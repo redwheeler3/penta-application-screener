@@ -13,16 +13,20 @@ This file is the shared working agreement for Codex, Cline, and any other agent 
 ## Collaboration
 
 - Keep the product specification current as decisions are made.
+- Treat `SPEC.md` as the product source of truth; update it when behavior, architecture, or milestone scope changes.
 - Prefer asking clarifying questions before implementing unclear product behavior.
 - When asking product or architecture questions, briefly explain meaningful tradeoffs where appropriate so Jeff can make informed decisions.
 - Treat applicant data as sensitive personal information.
 - Do not expose secrets, raw private application data, or unnecessary personal details in logs, commits, or reports.
 - Keep implementation choices documented enough that work can move between Codex and Cline without losing context.
+- Jeff handles commits at stable milestones unless he explicitly asks an agent to commit.
 
 ## Engineering Defaults
 
 - Start simple and testable.
+- Follow the implementation defaults in `SPEC.md`: `uv`, FastAPI, SQLAlchemy/Alembic, pytest, Vite React, npm, SQLite, and cookie-based sessions unless Jeff changes the plan.
 - Separate deterministic screening logic from AI-assisted evaluation logic.
 - Make AI decisions auditable: preserve prompts, model outputs, score rationales, and user choices where appropriate.
 - Design for human override at every candidate-screening stage.
 - Avoid irreversible writes to source Google Drive data unless the user explicitly approves them.
+- Do not commit `.env` files, OAuth secrets, SQLite database files, applicant exports, AI traces, or raw prompts/model outputs containing applicant data.
