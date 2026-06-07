@@ -1,0 +1,27 @@
+# Penta Application Screener Rules
+
+This file is the shared working agreement for Codex, Cline, and any other agent working on this repo.
+
+## Project Intent
+
+- Build an application screener for Penta Housing Coop applications.
+- Source application data from Google Drive spreadsheets in the Penta Drive folder.
+- Support deterministic hard filters before any AI-assisted review.
+- Use AI primarily for interpreting essay-question answers and helping narrow qualified candidates.
+- Produce committee-ready reports for MOMI (Move In Move Out) with recommendations and justifications.
+
+## Collaboration
+
+- Keep the product specification current as decisions are made.
+- Prefer asking clarifying questions before implementing unclear product behavior.
+- Treat applicant data as sensitive personal information.
+- Do not expose secrets, raw private application data, or unnecessary personal details in logs, commits, or reports.
+- Keep implementation choices documented enough that work can move between Codex and Cline without losing context.
+
+## Engineering Defaults
+
+- Start simple and testable.
+- Separate deterministic screening logic from AI-assisted evaluation logic.
+- Make AI decisions auditable: preserve prompts, model outputs, score rationales, and user choices where appropriate.
+- Design for human override at every candidate-screening stage.
+- Avoid irreversible writes to source Google Drive data unless the user explicitly approves them.
