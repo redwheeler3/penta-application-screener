@@ -556,6 +556,10 @@ Initial technical direction:
 
 Implementation defaults:
 
+- Code style should prioritize readability first, avoid redundancy, and prefer elegant, boring solutions over clever abstractions.
+- Shared business rules, eligibility thresholds, field mappings, prompts, and schema definitions should have a single clear home.
+- Abstractions should be added only when they reduce real duplication or clarify an important boundary.
+- During MVP iteration, clean changes are more important than backward compatibility for internal APIs, local schemas, fixtures, and UI shapes. Backward compatibility should be added only when real users or real applicant data require it.
 - Python environment and dependency management: `uv` with a project-local virtual environment.
 - Backend ORM and migrations: SQLAlchemy with Alembic.
 - Backend tests: `pytest`.

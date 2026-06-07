@@ -26,4 +26,26 @@ The first implementation phase should stop at:
 5. Dashboard shell
 6. Deterministic hard filters and unit tests
 
+## Local Development
+
+Backend:
+
+```powershell
+cd backend
+uv sync
+uv run alembic upgrade head
+uv run pytest
+uv run fastapi dev app/main.py
+```
+
+Frontend:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Google Cloud and OAuth setup notes live in [docs/google-cloud-oauth-setup.md](docs/google-cloud-oauth-setup.md).
+
 This repository is private while the application is being planned and built.

@@ -1,0 +1,25 @@
+[project]
+name = "penta-application-screener-backend"
+version = "0.1.0"
+description = "FastAPI backend for the Penta Application Screener."
+readme = "../README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic>=1.17.2",
+    "authlib>=1.7.2",
+    "fastapi[standard]>=0.124.0",
+    "itsdangerous>=2.2.0",
+    "pydantic-settings>=2.12.0",
+    "sqlalchemy>=2.0.44",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.3.0",
+    "pytest>=9.0.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
