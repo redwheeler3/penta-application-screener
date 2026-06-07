@@ -239,6 +239,8 @@ Specific filter behavior:
 
 AI essay review should only run for candidates who pass deterministic hard filters.
 
+### Provider And Cost Controls
+
 For MVP, use OpenAI as the default AI provider while keeping the architecture provider-adaptable. A future cloud deployment may use AWS and should leave room to evaluate Amazon Bedrock AgentCore or similar managed agent platforms.
 
 The app should run locally as much as possible for MVP while staying cloud-ready for eventual MOMI use. Local-first implementation should not prevent later deployment to AWS or another hosted environment.
@@ -256,7 +258,7 @@ Cost control is a core product requirement. The app should prefer:
 
 Hard filters should run automatically after import/sync. AI review should not auto-run by default; it should start only after the user sees the cost estimate and confirms the run, unless an Admin explicitly enables an auto-run option later.
 
-MVP implementation should bias toward simplicity, readability, and understandability over maximum agent sophistication.
+### Interactive Screening
 
 The screening experience should discover patterns in essay responses and ask the user what matters, rather than starting from a fully fixed rubric. The likely high-level criterion is "fit for Penta," but this is intentionally opinionated and user-dependent.
 
@@ -266,9 +268,36 @@ Users should be able to undo answers to AI-generated narrowing questions.
 
 Users do not need a manual "pin candidate" workflow for the initial design.
 
+Rubrics should generally remain stable within a screening run. After a run completes, users should be able to revise criteria/rubrics for future runs.
+
+### Ranking And Outputs
+
 The primary output should be a ranked list. The ranking should be explainable and should preserve evidence behind each recommendation.
 
 AI should produce qualitative labels for user-facing screening. Hidden internal scores may be used to support ranking, but the UI should explain rankings in plain language rather than centering numeric scores.
+
+AI candidate summaries should use a neutral committee tone and avoid unnecessary personal judgments. They should still be transparent enough that users can detect bias, unsupported claims, or questionable reasoning.
+
+AI judgments should show:
+
+- Direct quotes or short excerpts where useful
+- Paraphrased evidence
+- Source field references
+- Score or ranking breakdown
+- Rationale for the recommendation
+- Confidence or uncertainty labels where useful
+
+Direct essay excerpts should be used sparingly as supporting evidence. The app should not reproduce entire essays in AI summaries or reports.
+
+For admin debugging and learning, raw AI analysis, traces, prompts, and intermediate outputs should be accessible to Admin users. The normal app experience should emphasize polished summaries.
+
+The app should provide `why not selected` explanations for candidates who do not make a member's shortlist, especially for merged MOMI comparison. These explanations are internal only; applicants will not see them, so they can be transparent and candid while remaining respectful and evidence-based.
+
+Each screening run should be saved with its criteria, prompts, model outputs, user answers, ranking outputs, shortlist, and final decisions.
+
+AI output schemas should be defined before implementing the AI milestone so prompts, storage, caching, UI rendering, and eval checks share the same contract.
+
+### Essay Judgment
 
 Strong negative essay signals include, but are not limited to:
 
@@ -281,33 +310,29 @@ Essay concerns may justify a "do not interview" recommendation. Essay review is 
 
 Brief, awkward, translated, or non-native English essay answers should not be penalized for writing polish. The AI should judge evidence of co-op fit, participation commitment, and relevant signals rather than style, fluency, or grammar.
 
-AI judgments should show:
+### Agent Workflow
 
-- Direct quotes where useful
-- Paraphrased evidence
-- Source field references
-- Score or ranking breakdown
-- Rationale for the recommendation
+MVP implementation should bias toward simplicity, readability, and understandability over maximum agent sophistication.
 
-For admin debugging and learning, raw AI analysis, traces, prompts, and intermediate outputs should be accessible to Admin users. The normal app experience should emphasize polished summaries.
+The application should be designed as a multi-agent system, but the initial implementation can use simple service boundaries that make agent roles visible in the UI. Initial roles may include:
 
-Named agent roles should be visible in the UI so users can understand the multi-agent workflow. Initial names may include:
+- `Coordination Agent`: plans and supervises the screening workflow, routes work between agents, tracks run state, and decides when outputs need revision before they are shown to the user.
+- `Ingestion Agent`: reads application rows, maps columns, validates required fields, and detects schema drift.
+- `Hard Filter Agent`: applies deterministic eligibility and completeness rules, producing auditable pass/fail reasons.
+- `Essay Analyst`: evaluates essay answers and extracts evidence.
+- `Pattern Finder`: finds themes, differentiators, risks, and clusters across qualified candidates.
+- `Criteria Coach`: proposes high-value questions for the user that will meaningfully narrow the pool.
+- `Ranking Agent`: updates candidate ranking/shortlist after user answers and rubric changes.
+- `Evidence Auditor`: checks that outputs are grounded in application data and sends unsupported or weakly supported recommendations back for revision.
+- `Report Agent`: produces MOMI-facing summaries, justifications, and caveats.
 
-- `Essay Analyst`
-- `Pattern Finder`
-- `Criteria Coach`
-- `Ranking Agent`
-- `Evidence Auditor`
+Every AI recommendation should be reviewable and overrideable. AI outputs should explain why a candidate advanced, not just provide a numeric score.
 
-One AI agent should challenge/check another agent's recommendation before it reaches the user.
+### Privacy, Auditability, And Evals
 
 It is acceptable to send full application context, including names/contact context, to the AI model for this project. Redaction is not required for the initial design.
 
-Rubrics should generally remain stable within a screening run. After a run completes, users should be able to revise criteria/rubrics for future runs.
-
-Each screening run should be saved with its criteria, prompts, model outputs, user answers, ranking outputs, shortlist, and final decisions.
-
-The app should provide "why not selected" explanations for candidates who do not make a member's shortlist, especially for merged MOMI comparison.
+Applicant data should still be treated as sensitive personal information. The app should keep deterministic filtering separate from AI-assisted judgment, preserve auditability for prompts, model outputs, filter decisions, ranking rationales, and user overrides, and avoid writing back to source Google Sheets unless explicitly approved.
 
 The app should include an eval-oriented design from early development:
 
@@ -529,6 +554,17 @@ Initial technical direction:
 - Google data: read-only Google Sheets import/sync
 - AI provider: OpenAI adapter behind a provider-agnostic interface
 
+Implementation defaults:
+
+- Python environment and dependency management: `uv` with a project-local virtual environment.
+- Backend ORM and migrations: SQLAlchemy with Alembic.
+- Backend tests: `pytest`.
+- Frontend package manager: `npm`.
+- Frontend tooling: Vite React.
+- Authentication/session handling: Google OAuth with signed server-side session cookies for the local MVP.
+- Database design: relational tables for workflow data, with JSON columns for raw Google Sheets rows, flexible source payloads, AI outputs, and debug traces.
+- Future hosted database path: keep the relational model portable to Postgres.
+
 Suggested implementation milestones:
 
 1. Project scaffold, local dev environment, Google OAuth setup, and SQLite schema.
@@ -544,42 +580,6 @@ The first implementation phase should stop at import/sync, dashboard, and hard f
 Milestone 1 should include unit tests for deterministic hard-filter logic.
 
 Jeff will handle commits at stable milestones.
-
-## AI Output Guidelines
-
-AI candidate summaries should use a neutral committee tone and avoid unnecessary personal judgments. They should still be transparent enough that users can detect bias, unsupported claims, or questionable reasoning.
-
-Direct essay excerpts should be used sparingly as supporting evidence. The app should not reproduce entire essays in AI summaries or reports.
-
-`Why not selected` explanations are internal only. Applicants will not see them, so they can be transparent and candid while remaining respectful and evidence-based.
-
-AI outputs should include confidence or uncertainty labels where useful.
-
-If the `Evidence Auditor` finds unsupported claims or weak evidence, it should send the recommendation back for revision rather than simply blocking it outright.
-
-AI output schemas should be defined before implementing the AI milestone so prompts, storage, caching, UI rendering, and eval checks share the same contract.
-
-## AI Direction
-
-The application should be designed as a multi-agent system. Candidate architecture:
-
-- `Ingestion Agent`: reads application rows, maps columns, validates required fields, and detects schema drift.
-- `Hard Filter Agent`: applies deterministic eligibility and completeness rules, producing auditable pass/fail reasons.
-- `Essay Analysis Agent`: evaluates essay answers against defined rubrics and extracts evidence.
-- `Pattern Discovery Agent`: finds themes, differentiators, risks, and clusters across qualified candidates.
-- `Questioning Agent`: proposes high-value questions for the user that will meaningfully narrow the pool.
-- `Ranking Agent`: updates candidate ranking/shortlist after user answers and rubric changes.
-- `Report Agent`: produces MOMI-facing summaries, justifications, and caveats.
-- `Audit Agent`: checks that outputs are grounded in application data and flags unsupported claims or sensitive-data issues.
-
-## Principles
-
-- Treat applicant data as sensitive personal information.
-- Keep deterministic filtering separate from AI-assisted judgment.
-- Preserve auditability for prompts, model outputs, filter decisions, score rationales, and user overrides.
-- Make every AI recommendation reviewable and overrideable.
-- Avoid writing back to source Google Sheets unless explicitly approved.
-- Prefer outputs that explain why a candidate advanced, not just a numeric score.
 
 ## Remaining Open Questions
 
