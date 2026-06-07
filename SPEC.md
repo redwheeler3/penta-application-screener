@@ -4,6 +4,8 @@
 
 The Penta Application Screener helps screen 300+ housing co-op applications for Penta Housing Coop. It imports application responses from a Google Sheets response spreadsheet in the Penta Google Drive folder, applies deterministic hard filters, uses AI-assisted review for essay answers, and produces a committee-ready report for MOMI (Move In Move Out).
 
+The project is also a deliberate learning and portfolio project for Jeff to build practical expertise in AI product management, agentic workflows, evals, cost-aware model use, human-in-the-loop product design, and AI-assisted software delivery. The code may eventually be made public as part of Jeff's AI product management portfolio, so the implementation should be understandable, well-documented, and credible as a real product artifact while preserving applicant privacy.
+
 ## Primary User
 
 The primary user is Jeff. The output audience is MOMI, who need a clear shortlist of applicants recommended for the interview stage, with justification.
@@ -162,6 +164,401 @@ The screener proceeds in phases:
 6. Continue until the candidate list reaches a user-approved threshold for manual review.
 7. Produce a MOMI-ready report with recommended interview candidates and justifications.
 
+The screener should eventually support multiple MOMI committee members running their own screening sessions independently. Each member may value different criteria. The app must preserve and summarize each member's criteria, question answers, shortlist, and rationale so MOMI can compare both applicant recommendations and the values/criteria behind those recommendations.
+
+## Screening Scope
+
+The screener should be configurable for any Penta unit size, but the current search is for a 2-bedroom unit with an expected move-in date of September 1, 2026.
+
+The application form is responsible for collecting complete applications. The screener focuses on what happens after applications have been submitted.
+
+## Dashboard
+
+The app should provide a dashboard summarizing the current application pool and screening state, including:
+
+- Total submitted applications
+- Eligible applications after deterministic hard filters
+- Filtered-out applications with reasons
+- Applications ready for AI review
+- Currently qualified applications after user/AI narrowing
+- Shortlisted applications
+- Manual review pile
+
+Every submitted application should remain visible somewhere in the app. Deterministically disqualified applicants should be excluded from AI essay review but remain accessible in a filtered-out view with the applicable reasons.
+
+## Sync And Run Records
+
+The app should use a hybrid live-sync/run-record model:
+
+- While applications are open, the app may sync live from the Google Sheets response spreadsheet.
+- Once serious screening begins, each screening run should record the application set and source sync state used for that run.
+- The dashboard should show any new applications submitted after the run's recorded source sync state.
+- Users should be able to add newly synced applications to an existing run by updating the run record.
+- Reports must reference the exact sync/run record used.
+
+Immutable snapshots are not required. This preserves convenience during intake while keeping screening decisions and reports understandable.
+
+## Deterministic Eligibility Rules
+
+Unit-size eligibility rules:
+
+- 1 bedroom: 1 or 2 adults
+- 2 bedroom: 1 or 2 adults plus 1 to 4 children under 18
+- 3 bedroom: 1 or 2 adults plus 2 or more children under 18
+
+Additional deterministic rules:
+
+- 3 adults is ineligible.
+- For child age calculations, use age on the move-in date when a date is needed.
+- A child turning 18 shortly after move-in does not matter.
+- Owning real estate disqualifies an applicant.
+- Household gross income should be used as a deterministic hard filter and should be configurable per run or unit opening. For the current 2-bedroom search, target stable gross household income is $70,000 to $150,000. Applications clearly outside this range should be `filtered_out`.
+- Living at the current address for less than 2 years is not disqualifying; it only indicates previous landlord details should be present.
+- Applicants outside Vancouver, BC, or Canada are eligible.
+- Pet eligibility for screening should follow the Penta House Rules: one cat per unit and one dog per unit are permitted. Exceptions to the one-dog/one-cat rule require approval at a General Meeting, so applications exceeding this rule should be `filtered_out` for the current screening workflow.
+- Applications should be complete at submission time. The screener should not create applicant follow-up workflows for missing information because applicant volume is expected to be too high.
+- Applicants with an application already on file are not substantively treated differently; they simply do not have to submit a new application if they do not want to.
+- Email-list signup date and notification history are for outreach/admin only and must not influence screening priority.
+
+Hard filter outputs should use:
+
+- `eligible`: application can proceed to AI review
+- `filtered_out`: application fails deterministic rules and is excluded from AI review
+- `needs_review`: something is structurally wrong, unclear, or surprising enough that deterministic logic should not decide
+
+Hard filter reasons must be human-readable, such as `Household has 3 adults; maximum is 2`.
+
+Specific filter behavior:
+
+- Real-estate ownership is always `filtered_out`.
+- Pet rule violations are `filtered_out`.
+- Unclear household composition is `needs_review`.
+- `needs_review` should be rare and represents unexpected data or rule ambiguity rather than ordinary applicant follow-up.
+
+## AI-Assisted Screening
+
+AI essay review should only run for candidates who pass deterministic hard filters.
+
+For MVP, use OpenAI as the default AI provider while keeping the architecture provider-adaptable. A future cloud deployment may use AWS and should leave room to evaluate Amazon Bedrock AgentCore or similar managed agent platforms.
+
+The app should run locally as much as possible for MVP while staying cloud-ready for eventual MOMI use. Local-first implementation should not prevent later deployment to AWS or another hosted environment.
+
+Cost control is a core product requirement. The app should prefer:
+
+- Cached AI analysis per application and per run where possible
+- Smaller/cheaper models for first-pass extraction and clustering
+- Frontier models only for higher-judgment synthesis, adjudication, and final report generation
+- Batch/asynchronous processing where latency is not important
+- Short structured outputs rather than verbose freeform generations
+- Avoiding repeated spreadsheet reads and repeated AI calls
+- A visible AI cost estimate before running large reviews
+- A configurable spending cap per screening run
+
+Hard filters should run automatically after import/sync. AI review should not auto-run by default; it should start only after the user sees the cost estimate and confirms the run, unless an Admin explicitly enables an auto-run option later.
+
+MVP implementation should bias toward simplicity, readability, and understandability over maximum agent sophistication.
+
+The screening experience should discover patterns in essay responses and ask the user what matters, rather than starting from a fully fixed rubric. The likely high-level criterion is "fit for Penta," but this is intentionally opinionated and user-dependent.
+
+The app should ask the user batches of 1 to 3 narrowing questions based on discovered patterns. Each question should preview impact where possible, such as how many candidates would remain under each answer. The app should maintain a live count of how many applicants are currently qualified after each user answer or screening criterion. The user decides when the pool has been narrowed enough for manual review. A likely target shortlist size is around 20, but this should not be hard-coded.
+
+Users should be able to undo answers to AI-generated narrowing questions.
+
+Users do not need a manual "pin candidate" workflow for the initial design.
+
+The primary output should be a ranked list. The ranking should be explainable and should preserve evidence behind each recommendation.
+
+AI should produce qualitative labels for user-facing screening. Hidden internal scores may be used to support ranking, but the UI should explain rankings in plain language rather than centering numeric scores.
+
+Strong negative essay signals include, but are not limited to:
+
+- Applicant appears unaware of co-op obligations
+- Applicant treats the unit mainly as cheap rent without understanding shared work
+- Applicant expresses hostility or resistance to shared work
+- Applicant has an unclear or inconsistent household situation
+
+Essay concerns may justify a "do not interview" recommendation. Essay review is central to the screening process, not merely a low-priority flag.
+
+Brief, awkward, translated, or non-native English essay answers should not be penalized for writing polish. The AI should judge evidence of co-op fit, participation commitment, and relevant signals rather than style, fluency, or grammar.
+
+AI judgments should show:
+
+- Direct quotes where useful
+- Paraphrased evidence
+- Source field references
+- Score or ranking breakdown
+- Rationale for the recommendation
+
+For admin debugging and learning, raw AI analysis, traces, prompts, and intermediate outputs should be accessible to Admin users. The normal app experience should emphasize polished summaries.
+
+Named agent roles should be visible in the UI so users can understand the multi-agent workflow. Initial names may include:
+
+- `Essay Analyst`
+- `Pattern Finder`
+- `Criteria Coach`
+- `Ranking Agent`
+- `Evidence Auditor`
+
+One AI agent should challenge/check another agent's recommendation before it reaches the user.
+
+It is acceptable to send full application context, including names/contact context, to the AI model for this project. Redaction is not required for the initial design.
+
+Rubrics should generally remain stable within a screening run. After a run completes, users should be able to revise criteria/rubrics for future runs.
+
+Each screening run should be saved with its criteria, prompts, model outputs, user answers, ranking outputs, shortlist, and final decisions.
+
+The app should provide "why not selected" explanations for candidates who do not make a member's shortlist, especially for merged MOMI comparison.
+
+The app should include an eval-oriented design from early development:
+
+- Maintain small fake fixture sets for deterministic-filter and AI-schema tests
+- Test deterministic filters with unit tests
+- Test AI output schemas for consistency
+- Track whether agent recommendations are grounded in source fields
+- Track hallucination, unsupported-claim, and evidence-quality failures
+- Preserve enough trace data to debug regressions when models/prompts change
+
+An explicit eval dashboard is not required for MVP, but the architecture should make it possible later.
+
+Synthetic/sample applications are not required for MVP. Demos may use real co-op data only with people who are authorized to view it.
+
+## Multi-Member MOMI Workflow
+
+Each MOMI member should be able to run their own screening process separately. For each member, the app should preserve:
+
+- The patterns surfaced by AI
+- The questions asked by the app
+- The member's answers
+- The criteria or values inferred from those answers
+- The resulting ranked shortlist
+- Applicant-specific rationale and evidence
+
+Each MOMI member should use their own login/name. Members may see each other's criteria and shortlists; anonymization is not required.
+
+The app should then support combining member shortlists into a merged ranked list. The merged comparison should make criteria visible, so committee discussion can address not only which applicants were selected but why each member valued particular signals.
+
+Merged shortlist behavior:
+
+- Member rankings are weighted equally.
+- Applicants appearing on multiple member shortlists should be prioritized.
+- Applicants with strong disagreement, such as one member strongly rejecting a candidate while another ranks them highly, should be flagged for discussion.
+- The merged output should include consensus recommendations, disagreement/discussion-needed candidates, and not-recommended candidates.
+- A single-shortlist appearance may be shown if useful, but criteria comparison is more important than simply noting that an applicant appeared on one list.
+
+Criteria comparison should identify:
+
+- Criteria shared across committee members
+- Criteria that differed between members
+- Criteria unique to a member
+- Plain-language summaries of each member's priorities, such as "prioritized practical co-op labour and clear participation commitment"
+
+Members should be able to write manual candidate notes separate from AI-generated rationale.
+
+For now, any user may finalize the merged recommendation list. In practice this is the MOMI chair's job, but a special chair account/role is not required for the initial design.
+
+The committee-facing report should include both interview recommendations and a summary of how the pool was screened.
+
+## Users, Roles, And Authentication
+
+The MVP should support real Google login because multi-member screening is a major design requirement. For early MVP/testing, the app may run locally and Jeff may use multiple Google accounts to test authentication and role behavior.
+
+Preferred authentication is Google login.
+
+Access should be invitation/approval based when the app is live. Jeff is the initial admin and can invite MOMI members.
+
+Roles:
+
+- `Admin`: can invite/manage users and finalize administrative settings.
+- `Member`: can run screening sessions, answer AI questions, rank candidates, add notes, and participate in merged comparison.
+
+Admin users should have all normal MOMI member capabilities plus access to admin panels, provider/model settings, raw AI debugging details, and other extra information.
+
+A special MOMI chair/finalizer role is not required for the initial design.
+
+## Screening Runs
+
+Users may create multiple runs for the same application pool, such as "Jeff first pass" and "Jeff revised after thinking."
+
+Screening runs should preserve enough source information to understand what application pool was used. The app does not need immutable snapshots; a sync/run metadata record is sufficient for MVP and likely sufficient long-term.
+
+When criteria are revised after a completed run, the default behavior should be to update/overwrite the same run. The user should also be able to choose to create a separate new run instead.
+
+Manual candidate notes may be visible to other members immediately.
+
+AI-generated criteria summaries do not need a dedicated editing workflow for the initial design.
+
+An audit log is not required for the initial design.
+
+## Data Storage
+
+Recommendation:
+
+- Use Google Sheets as the external source of truth for submitted applications.
+- Import application rows into the app database for screening runs, AI outputs, user answers, notes, rankings, criteria summaries, and reports.
+- Use SQLite for the local MVP because it is simple, inspectable, and reliable for one machine/testing.
+- Design the data layer so it can move to a hosted database for multi-user use.
+
+The expected live committee size is about 5 MOMI members. They may sometimes use the app concurrently, but heavy simultaneous usage is unlikely. A hosted database will eventually be needed for true multi-user use across computers.
+
+The app should minimize repeated spreadsheet access by importing/syncing rows and then using the app database for screening state. Google Sheets should be accessed for refresh/sync, not for every AI or UI operation.
+
+Core data model decisions:
+
+- An `Application` represents one household/application.
+- Application data includes applicant, co-applicant, children, essays, references, income, pets, declaration, source metadata, and screening metadata.
+- Preserve the raw Google Sheets row exactly as imported alongside normalized fields.
+- Store the raw Google Sheets row as JSON in SQLite.
+- Use the primary applicant email address as the primary application identity, while still giving each stored application an internal database ID for relationships and history.
+- Normalize email identity by trimming whitespace and lowercasing before duplicate detection or primary-key use.
+- If Google Sheets contains duplicate emails, use only the last-added row.
+- If a source row changes after import, update the existing application when the user explicitly syncs and then re-run screening logic when the user tells the app to do so.
+- Duplicate detection for MVP is based on email address.
+- The newest application wins by default for duplicate email addresses.
+- Compute normalized fields during import/sync, including `adult_count`, `child_count`, `children_under_18_at_move_in`, `has_real_estate`, `household_income`, `pet_count`, and `pet_types`.
+- Income parsing should attempt to handle messy user-entered values. If the app cannot confidently parse household income, the application should be marked `needs_review`. Parsing logic should become more robust over time as real inputs reveal edge cases.
+- Each sync should create a `SyncRun` record with timestamp, source sheet ID, row count, duplicate count, imported count, updated count, eligible count, filtered-out count, and needs-review count.
+
+Admin settings such as Google Sheet ID, current unit size, move-in date, and spending cap should live in the database rather than `.env`.
+
+Local `.env` files should be supported for secrets and local credentials.
+
+Use `.env.local` for local secrets and `.env.example` for safe placeholder values.
+
+The following must not be committed to the repo:
+
+- `.env` files
+- OAuth credentials/secrets
+- SQLite database files
+- Applicant exports
+- AI traces
+- Raw prompts or model outputs containing applicant data
+
+The repo should include a `.gitignore` before implementation.
+
+## Reports
+
+The primary final report format should be Google Docs.
+
+Generated report links should be stored in the app database and associated with the relevant screening run.
+
+## MVP Shape
+
+The MVP should be a web app that runs locally and is used in the browser.
+
+Implementation should use a Python backend with a polished React frontend.
+
+MVP should use real Google login from the start. Jeff can test multiple user flows with multiple Google accounts. Google OAuth setup should be part of implementation or a documented prerequisite.
+
+The OAuth app should be named `Penta Application Screener`.
+
+Google Cloud setup should use a separate project for this app. This keeps OAuth scopes, consent screen, credentials, quotas, and future sharing cleaner.
+
+Local OAuth redirect URLs may use localhost, such as:
+
+- `http://localhost:8000/auth/google/callback`
+- `http://localhost:5173/auth/callback`
+
+The app should connect directly to Google Sheets in read-only mode for application import/sync. Google login and Google Sheets API access should be requested together at login because Sheets access is required for the app's core workflow.
+
+It is acceptable to request Google Docs/Drive write permissions early so later report generation can create Google Docs without a second consent/setup pass.
+
+Once user management exists, Google login should be restricted to invited/approved email addresses.
+
+For MVP, the logged-in Google account may also be the account used to access Sheets/Docs. Admin-only sheet sync is acceptable for MVP.
+
+The app should include an Admin settings screen for:
+
+- Current unit size
+- Move-in date
+- Household income screening range
+- AI spending cap
+- OpenAI/provider model choices
+- Google Sheet ID
+
+AI provider/model configuration should be Admin-only.
+
+Manual Google Sheet ID entry in Admin settings is good enough for MVP. A future Drive picker/browse flow is optional.
+
+Initial Google scopes should use the minimum set that supports MVP plus reports:
+
+- basic Google login profile/email
+- Google Sheets read-only
+- Google Docs create/edit
+- Google Drive file creation/management for files created by the app
+
+Generated Google Docs reports should be created in the MVP report folder:
+
+- `https://drive.google.com/drive/u/0/folders/1ymZE9c-_puF-3nxwexPYRdsU5iD00jRb`
+
+When report content changes, regenerating a fresh Google Doc is acceptable for MVP.
+
+Google Docs report generation should remain a later MVP milestone after ranked shortlist generation works.
+
+The repo should include a Google Cloud/OAuth setup checklist before implementation so setup is reproducible across computers.
+
+If required configuration is missing after login, the app should direct the user to setup/settings. Otherwise, the first screen should be the dashboard.
+
+The dashboard should include an obvious `Sync applications` action. Hard filters should run automatically after sync.
+
+Filtered-out views should show the human-readable reasons plus pertinent applicant-entered details that caused filtering.
+
+Eligible applications should be shown in a table with expandable details and a candidate detail page.
+
+Candidate detail pages should show normalized fields, hard-filter results, and source references. Raw source JSON should be available in an Admin-only expandable/debug section.
+
+Filtered-out applicants should be searchable and sortable in a table. This view must be designed for hundreds of filtered-out applicants without becoming unwieldy.
+
+MVP v1 should focus on single-member screening by the Admin. Authentication and roles can exist in v1, but the full multi-member screening workflow is v2. The data model and architecture should allow v2 to add multi-member screening and merged shortlist comparison.
+
+Overall MVP target demo:
+
+- Import/sync applications from Google Sheets
+- Show dashboard
+- Apply deterministic hard filters
+- Generate AI essay summaries for eligible applications
+- Surface AI pattern questions
+- Produce a ranked shortlist
+- Generate a Google Docs report
+
+Initial technical direction:
+
+- Backend: Python with FastAPI
+- Frontend: Vite React
+- Database: SQLite for local MVP
+- Authentication: Google OAuth
+- Google data: read-only Google Sheets import/sync
+- AI provider: OpenAI adapter behind a provider-agnostic interface
+
+Suggested implementation milestones:
+
+1. Project scaffold, local dev environment, Google OAuth setup, and SQLite schema.
+2. Read-only Google Sheets import/sync and application dashboard.
+3. Deterministic hard filters and filtered-out view.
+4. AI provider adapter, cost estimate/cap, cached per-candidate essay analysis, and admin raw-debug view.
+5. Pattern discovery, 1 to 3 narrowing questions, impact previews, undo, and ranked shortlist.
+6. Google Docs report generation.
+7. Multi-member screening and merged shortlist comparison.
+
+The first implementation phase should stop at import/sync, dashboard, and hard filters before adding AI.
+
+Milestone 1 should include unit tests for deterministic hard-filter logic.
+
+Jeff will handle commits at stable milestones.
+
+## AI Output Guidelines
+
+AI candidate summaries should use a neutral committee tone and avoid unnecessary personal judgments. They should still be transparent enough that users can detect bias, unsupported claims, or questionable reasoning.
+
+Direct essay excerpts should be used sparingly as supporting evidence. The app should not reproduce entire essays in AI summaries or reports.
+
+`Why not selected` explanations are internal only. Applicants will not see them, so they can be transparent and candid while remaining respectful and evidence-based.
+
+AI outputs should include confidence or uncertainty labels where useful.
+
+If the `Evidence Auditor` finds unsupported claims or weak evidence, it should send the recommendation back for revision rather than simply blocking it outright.
+
+AI output schemas should be defined before implementing the AI milestone so prompts, storage, caching, UI rendering, and eval checks share the same contract.
+
 ## AI Direction
 
 The application should be designed as a multi-agent system. Candidate architecture:
@@ -184,72 +581,38 @@ The application should be designed as a multi-agent system. Candidate architectu
 - Avoid writing back to source Google Sheets unless explicitly approved.
 - Prefer outputs that explain why a candidate advanced, not just a numeric score.
 
-## Open Questions
+## Remaining Open Questions
 
-### Eligibility And Hard Filters
+These are the questions that still need decisions or can wait until their implementation milestone.
 
-1. What unit size or sizes are being filled first: 1 bedroom, 2 bedroom, 3 bedroom, or multiple simultaneous lists?
-2. What are the hard eligibility rules for household size by unit type?
-3. Is income a hard filter, a ranking factor, or both?
-4. What are the exact income thresholds or affordability constraints?
-5. Does owning real estate automatically disqualify an applicant?
-6. Does living at the current address for less than two years affect eligibility, or only reference requirements?
-7. Are incomplete landlord or employment references hard failures, warnings, or follow-up items?
-8. Are duplicate applications expected, and how should they be merged or rejected?
-9. Should prior email-list signup date influence priority?
-10. Are there legal, co-op bylaw, or housing-policy constraints we must encode exactly?
+### Before Google Integration
 
-### Essay Review
+1. Create the separate Google Cloud project for OAuth and Sheets/Docs API access.
+2. Translate the already-decided Google access needs into exact OAuth scope strings during implementation.
 
-1. What qualities should the essay review reward?
-2. What qualities should it penalize or flag for manual review?
-3. Are there disallowed criteria the AI must never use?
-4. Should each essay question have a separate rubric?
-5. Should the app score essays numerically, categorize them qualitatively, or both?
-6. What evidence should be shown for each AI assessment?
-7. How should we handle applicants whose writing is brief, awkward, translated, or non-native English?
-8. Should the app detect likely AI-written answers, and if so, what should it do with that signal?
-9. Should the review favor co-op experience, practical maintenance skills, committee experience, community values, long-term stability, or some balance?
-10. What makes a candidate clearly worth interviewing?
+### Before AI Milestone
 
-### Interactive Narrowing
+1. Pick initial OpenAI models for:
+   - first-pass candidate analysis
+   - pattern discovery
+   - recommendation challenge/audit
+   - final report synthesis
+2. Set default per-run AI spending cap.
+3. Define structured AI output schemas for candidate analysis, pattern discovery, narrowing questions, ranking, evidence audit, and report sections.
+4. Decide whether likely AI-written answers should be detected or ignored.
+5. Define the first small eval/fixture strategy for deterministic filters and AI schema consistency.
 
-1. What is the target shortlist size before manual review?
-2. Do you want the app to ask one question at a time or present batches?
-3. What kinds of questions should the app ask you: value tradeoffs, threshold decisions, tie-breakers, or candidate comparisons?
-4. Should user answers become permanent screening criteria for the run?
-5. Should the app show how many candidates would be affected before applying an answer?
-6. Should you be able to undo or branch a screening decision?
-7. Should different screening runs be saved and compared?
-8. How should the app handle uncertainty or close calls?
+### Before Reporting
 
-### Output And Committee Report
+1. Define the Google Docs report outline.
+2. Decide whether reports include recommended candidates only, near-misses, filtered-out counts, or filtered-out details.
+3. Decide the amount of applicant personal/contact detail appropriate for MOMI reports.
+4. Define the tone and format of recommendation and `why not selected` explanations.
 
-1. What should MOMI receive: PDF, Google Doc, spreadsheet, HTML report, or multiple formats?
-2. Should the report include all candidates, only recommended candidates, or recommended plus near-misses?
-3. How much personal detail should be included in the MOMI version?
-4. Should rejected candidates have reasons recorded privately but omitted from the shared report?
-5. What tone should the justifications use?
-6. Should the report include dissenting signals or caveats for recommended candidates?
-7. Do you need anonymized/blinded review options?
+### Before Multi-Member V2
 
-### App Shape
-
-1. Should this be a local-only app, a hosted web app, or a CLI plus local web UI?
-2. How will authentication to Google Drive and Sheets work across multiple computers?
-3. Which AI provider/model should we use?
-4. Do you want the app to store data locally, and if so, where?
-5. Should runs be resumable after closing the app?
-6. Do you need multi-user access, or is sharing the final report enough?
-7. What should happen when new applications arrive after a screening run starts?
-8. Should the app continuously sync, manually refresh, or import snapshots?
-
-### Risk, Privacy, And Audit
-
-1. What applicant data should never be sent to an AI model?
-2. Is it acceptable to send essay answers to an AI model?
-3. Do we need applicant consent language or internal policy notes?
-4. How long should imported data, AI outputs, and audit logs be retained?
-5. Should every shortlist decision be traceable to exact source fields?
-6. Who besides Jeff can view raw applicant data?
-7. Should the app redact contact information from AI prompts when possible?
+1. Define the exact merged-ranking formula for equal-weight member rankings.
+2. Define how disagreement flags should be calculated.
+3. Define the criteria-comparison report layout.
+4. Decide whether multi-member deployment requires hosted Postgres, AWS-hosted SQLite-compatible storage, or another hosted database.
+5. Choose the eventual cloud deployment path, including whether AWS AgentCore is useful once the local MVP is working.
