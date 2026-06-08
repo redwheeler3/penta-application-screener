@@ -443,7 +443,7 @@ Core data model decisions:
 - Income parsing should attempt to handle messy user-entered values. If the app cannot confidently parse household income, the application should be marked `needs_review`. Parsing logic should become more robust over time as real inputs reveal edge cases.
 - Each sync should create a `SyncRun` record with timestamp, source sheet ID, row count, duplicate count, imported count, updated count, eligible count, filtered-out count, and needs-review count.
 
-Admin settings such as Google Sheet ID, current unit size, move-in date, and spending cap should live in the database rather than `.env`.
+Admin settings such as Google Sheet link or ID, current unit size, move-in date, and spending cap should live in the database rather than `.env`.
 
 Local `.env` files should be supported for secrets and local credentials.
 
@@ -498,11 +498,11 @@ The app should include an Admin settings screen for:
 - Household income screening range
 - AI spending cap
 - OpenAI/provider model choices
-- Google Sheet ID
+- Google Sheet link or ID
 
 AI provider/model configuration should be Admin-only.
 
-Manual Google Sheet ID entry in Admin settings is good enough for MVP. A future Drive picker/browse flow is optional.
+Manual Google Sheet link or ID entry in Admin settings is good enough for MVP. A future Drive picker/browse flow is optional.
 
 Initial Google scopes should use the minimum set that supports MVP plus reports:
 

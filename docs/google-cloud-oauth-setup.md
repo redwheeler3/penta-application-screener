@@ -59,4 +59,4 @@ The local backend can also point directly to Google's downloaded filename throug
 
 - `GOOGLE_OAUTH_CLIENT_SECRETS_FILE=./secrets/<downloaded-client-secret-file>.json`
 
-Admin settings such as source Sheet ID, unit size, move-in date, income range, AI spending cap, and provider/model choices should live in the database, not `.env.local`.
+Admin settings such as source Google Sheet link or ID, unit size, move-in date, income range, AI spending cap, and provider/model choices should live in the database, not `.env.local`.

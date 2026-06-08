@@ -6,6 +6,8 @@ The project will import application responses from Google Sheets, apply determin
 
 Current planning lives in [SPEC.md](SPEC.md). Shared agent guidance lives in [.clinerules](.clinerules), with [AGENTS.md](AGENTS.md) pointing agents there.
 
+Developer architecture notes live in [docs/app-architecture.md](docs/app-architecture.md).
+
 ## Current Build Direction
 
 - Backend: Python, FastAPI, SQLAlchemy, Alembic, SQLite
