@@ -1,5 +1,5 @@
 import { Home, LogIn, LogOut, RefreshCw, Settings } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { type SyntheticEvent, useEffect, useState } from "react";
 
 type CurrentUser = {
   id: number;
@@ -110,7 +110,7 @@ export function App() {
     setUser(null);
   }
 
-  async function saveSettings(event: FormEvent<HTMLFormElement>) {
+  async function saveSettings(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSavingSettings(true);
     setSettingsMessage("");
