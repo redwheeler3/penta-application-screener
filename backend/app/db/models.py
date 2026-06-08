@@ -56,6 +56,16 @@ class User(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
 
 
+class GoogleCredential(TimestampMixin, Base):
+    __tablename__ = "google_credentials"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, nullable=False)
+    token: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+    user: Mapped[User] = relationship()
+
+
 class AdminSetting(TimestampMixin, Base):
     __tablename__ = "admin_settings"
 

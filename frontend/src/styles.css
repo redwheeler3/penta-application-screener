@@ -135,6 +135,11 @@ h1 {
   color: var(--penta-blue-dark);
 }
 
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .primary-button {
   display: inline-flex;
   align-items: center;
@@ -174,6 +179,106 @@ h1 {
 
 .login-panel p {
   color: var(--muted);
+}
+
+.settings-panel {
+  display: grid;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.06);
+}
+
+.settings-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-form label:first-child {
+  grid-column: 1 / -1;
+}
+
+.settings-form label span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.settings-form label .sheet-reference {
+  color: var(--penta-blue-dark);
+  font-size: 0.84rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.settings-form label a.sheet-reference:hover {
+  text-decoration: underline;
+}
+
+.settings-form input,
+.settings-form select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.settings-form input:focus,
+.settings-form select:focus {
+  outline: 2px solid #bfdbfe;
+  outline-offset: 1px;
+  border-color: var(--penta-blue);
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  grid-column: 1 / -1;
+  gap: 12px;
+}
+
+.settings-actions span {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.setup-callout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.setup-callout strong {
+  color: #ea580c;
+}
+
+.sync-message {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: var(--penta-green-soft);
+  color: #166534;
+  font-size: 0.94rem;
 }
 
 .panel-kicker {
@@ -275,5 +380,14 @@ h1 {
 
   .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-form {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-callout {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

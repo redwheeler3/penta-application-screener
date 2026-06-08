@@ -8,6 +8,7 @@ from app.core.config import get_settings
 from app.core.google_oauth import get_oauth
 from app.db.models import User
 from app.db.session import get_db
+from app.services.google_credentials import save_google_token
 from app.services.users import upsert_google_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -27,7 +28,12 @@ def serialize_user(user: User) -> dict[str, Any]:
 async def google_login(request: Request):
     oauth = get_oauth()
     settings = get_settings()
-    return await oauth.google.authorize_redirect(request, settings.google_redirect_uri)
+    return await oauth.google.authorize_redirect(
+        request,
+        settings.google_redirect_uri,
+        access_type="offline",
+        prompt="consent",
+    )
 
 
 @router.get("/google/callback")
@@ -53,6 +59,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         display_name=str(display_name),
         avatar_url=user_info.get("picture"),
     )
+    save_google_token(db, user_id=user.id, token=dict(token))
     request.session["user_id"] = user.id
     return RedirectResponse(get_settings().frontend_url)
 
@@ -75,4 +82,3 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
 def logout(request: Request):
     request.session.clear()
     return {"ok": True}
-
