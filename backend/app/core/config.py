@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     frontend_url: str = "http://127.0.0.1:5173"
     google_client_id: str = ""
     google_client_secret: str = ""
-    google_oauth_client_secrets_file: str = "./secrets/google-oauth-client.json"
+    google_oauth_client_secrets_file: str = ""
     google_redirect_uri: str = "http://127.0.0.1:8000/auth/google/callback"
     google_oauth_scopes: str = (
         "openid email profile "
@@ -28,7 +28,13 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    if not settings.google_oauth_client_secrets_file:
+        secrets_dir = Path(__file__).resolve().parents[2] / "secrets"
+        matches = sorted(secrets_dir.glob("client_secret_*.json"))
+        if matches:
+            settings.google_oauth_client_secrets_file = str(matches[0])
+    return settings
 
 
 def resolve_backend_path(path: str) -> Path:

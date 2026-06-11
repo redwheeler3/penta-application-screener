@@ -28,26 +28,63 @@ The first implementation phase should stop at:
 5. Dashboard shell
 6. Deterministic hard filters and unit tests
 
+## Setup
+
+1. Install prerequisites: [uv](https://docs.astral.sh/uv/) (`brew install uv`), Node.js 20+ with npm (`brew install node`).
+
+2. Install dependencies:
+
+   ```sh
+   cd backend && uv sync && cd ..
+   cd frontend && npm install && cd ..
+   ```
+
+3. Place your Google OAuth client secret JSON (downloaded from Google Cloud Console) in `backend/secrets/`:
+
+   ```sh
+   mkdir -p backend/secrets
+   # copy or move the downloaded client_secret_*.json file into backend/secrets/
+   ```
+
+   The backend auto-discovers any `client_secret_*.json` file in that directory. All other settings have working defaults for local dev. See `.env.example` files for the full list of overridable values.
+
+6. Run database migrations:
+
+   ```sh
+   cd backend && uv run alembic upgrade head
+   ```
+
+See [docs/google-cloud-oauth-setup.md](docs/google-cloud-oauth-setup.md) for full Google Cloud and OAuth details.
+
 ## Local Development
+
+Start both servers:
+
+```sh
+./dev.sh        # macOS/Linux
+./dev.ps1       # Windows PowerShell
+```
+
+Or run them individually:
 
 Backend:
 
-```powershell
+```sh
 cd backend
-uv sync
-uv run alembic upgrade head
-uv run pytest
 uv run fastapi dev app/main.py
 ```
 
 Frontend:
 
-```powershell
+```sh
 cd frontend
-npm install
 npm run dev
 ```
 
-Google Cloud and OAuth setup notes live in [docs/google-cloud-oauth-setup.md](docs/google-cloud-oauth-setup.md).
+Run tests:
+
+```sh
+cd backend && uv run pytest
+```
 
 This repository is private while the application is being planned and built.
