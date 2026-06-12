@@ -200,44 +200,112 @@ Immutable snapshots are not required. This preserves convenience during intake w
 
 ## Deterministic Eligibility Rules
 
-Unit-size eligibility rules:
+### Rules Engine Architecture
 
-- 1 bedroom: 1 or 2 adults
-- 2 bedroom: 1 or 2 adults plus 1 to 4 children under 18
-- 3 bedroom: 1 or 2 adults plus 2 or more children under 18
+The screening rules system is a configurable rules engine. Each rule is a discrete, named validation that produces an outcome (`filtered_out` or `needs_review`) with a human-readable reason.
 
-Additional deterministic rules:
+Each rule has:
 
-- 3 adults is ineligible.
-- For child age calculations, use age on the move-in date when a date is needed.
-- A child turning 18 shortly after move-in does not matter.
-- Owning real estate disqualifies an applicant.
-- Household gross income should be used as a deterministic hard filter and should be configurable per run or unit opening. For the current 2-bedroom search, target stable gross household income is $70,000 to $150,000. Applications clearly outside this range should be `filtered_out`.
-- Living at the current address for less than 2 years is not disqualifying; it only indicates previous landlord details should be present.
+- **ID**: machine-readable slug (e.g. `real_estate_ownership`, `child_age_over_18`)
+- **Display name**: human-readable label shown in the admin UI (e.g. "Real estate ownership")
+- **Description**: explains what the rule checks and why
+- **Outcome**: `filtered_out` or `needs_review`
+- **Parameters**: configurable thresholds or values (e.g. income min/max, max adults, max pets). Not all rules have parameters.
+- **Enabled**: toggle on/off per screening configuration
+
+Rules are stored in the database as part of admin settings. The Admin settings UI shows the full rule list with toggles and parameter inputs. Disabled rules do not run during screening.
+
+Adding a new rule requires code (a rule function that takes normalized application data and returns pass/fail with a reason). Once the code exists, the rule appears in the admin UI and can be configured. The goal is that the rule logic is simple enough to add and that the admin can control which rules are active and what thresholds apply without code changes.
+
+Rules run in a defined order. An application that fails any `filtered_out` rule is excluded. An application that fails any `needs_review` rule (but no `filtered_out` rules) is flagged for AI triage. An application that passes all enabled rules is `eligible`.
+
+### Rule Catalog
+
+The following rules should be implemented. Each rule is listed with its default outcome and parameters.
+
+**Household composition rules:**
+
+| Rule ID | Outcome | Description |
+|---------|---------|-------------|
+| `unit_size_eligibility` | filtered_out | Household composition (adults + children) must match the configured unit size requirements. Parameters: unit size (1br/2br/3br), max adults (default 2), min/max children per unit type. |
+| `household_unclear` | needs_review | Adult count or child count could not be determined from the application data. |
+| `child_count_mismatch` | needs_review | Declared child count does not match the number of complete child detail blocks. A complete block = first name + last name + age all filled. |
+
+**Age rules:**
+
+| Rule ID | Outcome | Description |
+|---------|---------|-------------|
+| `child_age_over_18` | filtered_out | Any listed child has age 18 or older. The form states "children under 18." |
+| `applicant_under_19` | filtered_out | Applicant or co-applicant age is under 19 (BC age of majority). |
+| `child_age_exceeds_parent` | needs_review | Any child's age is older than the applicant's or co-applicant's age. Data entry error. |
+
+**Financial rules:**
+
+| Rule ID | Outcome | Description |
+|---------|---------|-------------|
+| `income_below_range` | filtered_out | Household gross income is below the configured minimum. Parameter: min_income (default $70,000). |
+| `income_above_range` | filtered_out | Household gross income is above the configured maximum. Parameter: max_income (default $150,000). |
+| `income_arithmetic_mismatch` | needs_review | Applicant income + co-applicant income does not equal stated household total (tolerance: $1,000). |
+
+**Property and pet rules:**
+
+| Rule ID | Outcome | Description |
+|---------|---------|-------------|
+| `real_estate_ownership` | filtered_out | Applicant owns real estate. |
+| `pet_rule_violation` | filtered_out | Household exceeds pet policy (max 1 dog, max 1 cat, no other pets). Parameters: max_dogs (default 1), max_cats (default 1), allow_other_pets (default false). |
+
+**Relationship rules:**
+
+| Rule ID | Outcome | Description |
+|---------|---------|-------------|
+| `co_applicant_is_child` | needs_review | Co-applicant relationship field contains a value suggesting they are a child (e.g. "Son", "Daughter", "Child"). Indicates the applicant may have misunderstood the form and listed a child as co-applicant, which makes the household composition unclear. |
+
+**Data integrity rules:**
+
+| Rule ID | Outcome | Description |
+|---------|---------|-------------|
+| `negative_number` | needs_review | Any whole-number-validated field (age, income) contains a negative value. The form allows negative integers but they are clearly data entry errors. |
+| `child_name_placeholder` | needs_review | A child's first name appears to be a placeholder (e.g. "Baby", "TBD", "N/A", "Test", "Unknown"). Indicates the applicant wasn't ready to provide child details. |
+| `future_employment_start` | needs_review | Employment start date is in the future. |
+| `co_applicant_incomplete` | needs_review | Some co-applicant fields are filled but others are blank (partially filled). |
+| `email_mismatch` | needs_review | Form submission email differs from the applicant email field. |
+
+### Rule Behavior Notes
+
+- Living at the current address for less than 2 years is not disqualifying and does not trigger any rule.
 - Applicants outside Vancouver, BC, or Canada are eligible.
-- Pet eligibility for screening should follow the Penta House Rules: one cat per unit and one dog per unit are permitted. Exceptions to the one-dog/one-cat rule require approval at a General Meeting, so applications exceeding this rule should be `filtered_out` for the current screening workflow.
-- Applications should be complete at submission time. The screener should not create applicant follow-up workflows for missing information because applicant volume is expected to be too high.
-- Applicants with an application already on file are not substantively treated differently; they simply do not have to submit a new application if they do not want to.
-- Email-list signup date and notification history are for outreach/admin only and must not influence screening priority.
+- Applications should be complete at submission time. The screener does not create applicant follow-up workflows.
+- Applicants with an application already on file are not treated differently.
+- Email-list signup date and notification history must not influence screening.
+- For child age calculations, use age on the move-in date when a date is needed. A child turning 18 shortly after move-in does not matter.
 
-Hard filter outputs should use:
+### Hard Filter Outputs
 
 - `eligible`: application can proceed to AI review
-- `filtered_out`: application fails deterministic rules and is excluded from AI review
+- `filtered_out`: application fails one or more deterministic rules and is excluded from AI review
 - `needs_review`: something is structurally wrong, unclear, or surprising enough that deterministic logic should not decide
 
 Hard filter reasons must be human-readable, such as `Household has 3 adults; maximum is 2`.
 
-Specific filter behavior:
+`needs_review` should be rare and represents unexpected data or rule ambiguity rather than ordinary applicant follow-up.
 
-- Real-estate ownership is always `filtered_out`.
-- Pet rule violations are `filtered_out`.
-- Unclear household composition is `needs_review`.
-- `needs_review` should be rare and represents unexpected data or rule ambiguity rather than ordinary applicant follow-up.
+### AI Triage Of Needs-Review Applications
+
+Applications marked `needs_review` by deterministic filters should receive an AI triage pass before requiring manual review. The purpose is to let AI resolve common ambiguities (e.g. income entered as "100K" instead of digits, unclear household descriptions that are actually straightforward) while flagging genuinely ambiguous cases for human judgment.
+
+AI triage should produce one of:
+
+- `ai_resolved_eligible`: AI confidently determined the application meets filter criteria. Include the reasoning and parsed values.
+- `ai_resolved_filtered_out`: AI confidently determined the application fails filter criteria. Include the reasoning.
+- `manual_review_needed`: AI confidence is too low to decide. Include what is unclear and why.
+
+AI triage must not run automatically after sync. The dashboard should show the `needs_review` count and a cost estimate. The user clicks to confirm before AI tokens are spent.
+
+The UI and data model must distinguish which applications passed via deterministic filters vs. AI triage, so the screening path is always visible and auditable.
 
 ## AI-Assisted Screening
 
-AI essay review should only run for candidates who pass deterministic hard filters.
+AI essay review should only run for candidates who pass deterministic hard filters or are resolved as eligible by AI triage.
 
 ### Provider And Cost Controls
 
