@@ -20,6 +20,13 @@ class AppSettings(BaseModel):
     move_in_date: date = date(2026, 9, 1)
     income_min: int = Field(default=70_000, ge=0)
     income_max: int = Field(default=150_000, ge=0)
+    max_adults: int = Field(default=2, ge=1, le=10)
+    min_adult_age: int = Field(default=19, ge=1, le=100)
+    max_dogs: int = Field(default=1, ge=0, le=10)
+    max_cats: int = Field(default=1, ge=0, le=10)
+    allow_other_pets: bool = False
+    income_mismatch_tolerance: int = Field(default=1_000, ge=0)
+    disabled_rules: list[str] = Field(default_factory=list)
 
     @field_validator("google_sheet_id")
     @classmethod

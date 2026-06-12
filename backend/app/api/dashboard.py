@@ -19,7 +19,6 @@ def read_dashboard(
     total = db.scalar(select(func.count()).select_from(Application)) or 0
     eligible = count_by_status(db, HardFilterStatus.ELIGIBLE)
     filtered_out = count_by_status(db, HardFilterStatus.FILTERED_OUT)
-    needs_review = count_by_status(db, HardFilterStatus.NEEDS_REVIEW)
 
     return {
         "settingsComplete": bool(settings.google_sheet_id),
@@ -27,7 +26,6 @@ def read_dashboard(
             "submitted": total,
             "eligible": eligible,
             "filteredOut": filtered_out,
-            "needsReview": needs_review,
         },
     }
 

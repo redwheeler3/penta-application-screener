@@ -202,14 +202,14 @@ Immutable snapshots are not required. This preserves convenience during intake w
 
 ### Rules Engine Architecture
 
-The screening rules system is a configurable rules engine. Each rule is a discrete, named validation that produces an outcome (`filtered_out` or `needs_review`) with a human-readable reason.
+The screening rules system is a configurable rules engine. Each rule is a discrete, named validation that produces a binary outcome: the application is either `eligible` or `filtered_out`.
 
 Each rule has:
 
 - **ID**: machine-readable slug (e.g. `real_estate_ownership`, `child_age_over_18`)
 - **Display name**: human-readable label shown in the admin UI (e.g. "Real estate ownership")
 - **Description**: explains what the rule checks and why
-- **Outcome**: `filtered_out` or `needs_review`
+- **Outcome**: `filtered_out` (the only outcome — any rule that fires disqualifies)
 - **Parameters**: configurable thresholds or values (e.g. income min/max, max adults, max pets). Not all rules have parameters.
 - **Enabled**: toggle on/off per screening configuration
 
@@ -217,7 +217,7 @@ Rules are stored in the database as part of admin settings. The Admin settings U
 
 Adding a new rule requires code (a rule function that takes normalized application data and returns pass/fail with a reason). Once the code exists, the rule appears in the admin UI and can be configured. The goal is that the rule logic is simple enough to add and that the admin can control which rules are active and what thresholds apply without code changes.
 
-Rules run in a defined order. An application that fails any `filtered_out` rule is excluded. An application that fails any `needs_review` rule (but no `filtered_out` rules) is flagged for AI triage. An application that passes all enabled rules is `eligible`.
+Rules run in a defined order. An application that fails any enabled rule is `filtered_out`. An application that passes all enabled rules is `eligible` and proceeds to AI screening.
 
 ### Rule Catalog
 
@@ -225,50 +225,40 @@ The following rules should be implemented. Each rule is listed with its default 
 
 **Household composition rules:**
 
-| Rule ID | Outcome | Description |
-|---------|---------|-------------|
-| `unit_size_eligibility` | filtered_out | Household composition (adults + children) must match the configured unit size requirements. Parameters: unit size (1br/2br/3br), max adults (default 2), min/max children per unit type. |
-| `household_unclear` | needs_review | Adult count or child count could not be determined from the application data. |
-| `child_count_mismatch` | needs_review | Declared child count does not match the number of complete child detail blocks. A complete block = first name + last name + age all filled. |
+| Rule ID | Description |
+|---------|-------------|
+| `child_count_mismatch` | Declared child count does not match the number of complete child detail blocks. A complete block = first name + last name + age all filled. |
 
 **Age rules:**
 
-| Rule ID | Outcome | Description |
-|---------|---------|-------------|
-| `child_age_over_18` | filtered_out | Any listed child has age 18 or older. The form states "children under 18." |
-| `applicant_under_19` | filtered_out | Applicant or co-applicant age is under 19 (BC age of majority). |
-| `child_age_exceeds_parent` | needs_review | Any child's age is older than the applicant's or co-applicant's age. Data entry error. |
+| Rule ID | Description |
+|---------|-------------|
+| `child_age_over_18` | Any listed child has age 18 or older. The form states "children under 18." |
+| `applicant_under_19` | Applicant age is under 19 (BC age of majority). |
+| `co_applicant_under_19` | Co-applicant age is under 19. Indicates the co-applicant may actually be a child, not an adult household member. |
+| `child_age_exceeds_parent` | Any child's age is older than the applicant's or co-applicant's age. Data entry error. |
 
 **Financial rules:**
 
-| Rule ID | Outcome | Description |
-|---------|---------|-------------|
-| `income_below_range` | filtered_out | Household gross income is below the configured minimum. Parameter: min_income (default $70,000). |
-| `income_above_range` | filtered_out | Household gross income is above the configured maximum. Parameter: max_income (default $150,000). |
-| `income_arithmetic_mismatch` | needs_review | Applicant income + co-applicant income does not equal stated household total (tolerance: $1,000). |
+| Rule ID | Description |
+|---------|-------------|
+| `income_below_range` | Household gross income is below the configured minimum. Parameter: min_income (default $70,000). |
+| `income_above_range` | Household gross income is above the configured maximum. Parameter: max_income (default $150,000). |
+| `income_arithmetic_mismatch` | Applicant income + co-applicant income does not equal stated household total (tolerance: $1,000). |
 
-**Property and pet rules:**
+**Property rules:**
 
-| Rule ID | Outcome | Description |
-|---------|---------|-------------|
-| `real_estate_ownership` | filtered_out | Applicant owns real estate. |
-| `pet_rule_violation` | filtered_out | Household exceeds pet policy (max 1 dog, max 1 cat, no other pets). Parameters: max_dogs (default 1), max_cats (default 1), allow_other_pets (default false). |
-
-**Relationship rules:**
-
-| Rule ID | Outcome | Description |
-|---------|---------|-------------|
-| `co_applicant_is_child` | needs_review | Co-applicant relationship field contains a value suggesting they are a child (e.g. "Son", "Daughter", "Child"). Indicates the applicant may have misunderstood the form and listed a child as co-applicant, which makes the household composition unclear. |
+| Rule ID | Description |
+|---------|-------------|
+| `real_estate_ownership` | Applicant owns real estate. |
 
 **Data integrity rules:**
 
-| Rule ID | Outcome | Description |
-|---------|---------|-------------|
-| `negative_number` | needs_review | Any whole-number-validated field (age, income) contains a negative value. The form allows negative integers but they are clearly data entry errors. |
-| `child_name_placeholder` | needs_review | A child's first name appears to be a placeholder (e.g. "Baby", "TBD", "N/A", "Test", "Unknown"). Indicates the applicant wasn't ready to provide child details. |
-| `future_employment_start` | needs_review | Employment start date is in the future. |
-| `co_applicant_incomplete` | needs_review | Some co-applicant fields are filled but others are blank (partially filled). |
-| `email_mismatch` | needs_review | Form submission email differs from the applicant email field. |
+| Rule ID | Description |
+|---------|-------------|
+| `negative_number` | Any whole-number-validated field (age, income) contains a negative value. The form allows negative integers but they are clearly data entry errors. |
+| `future_employment_start` | Employment start date is in the future. |
+| `co_applicant_incomplete` | Some co-applicant fields are filled but others are blank (partially filled). Nothing or everything is fine; partial is not. |
 
 ### Rule Behavior Notes
 
@@ -281,27 +271,28 @@ The following rules should be implemented. Each rule is listed with its default 
 
 ### Hard Filter Outputs
 
-- `eligible`: application can proceed to AI review
-- `filtered_out`: application fails one or more deterministic rules and is excluded from AI review
-- `needs_review`: something is structurally wrong, unclear, or surprising enough that deterministic logic should not decide
+- `eligible`: application passes all enabled rules and proceeds to AI screening
+- `filtered_out`: application fails one or more deterministic rules and is excluded
 
-Hard filter reasons must be human-readable, such as `Household has 3 adults; maximum is 2`.
+Hard filter reasons must be human-readable, such as `Household has 3 adults; maximum is 2`. There is no intermediate state — rules are binary filters.
 
-`needs_review` should be rare and represents unexpected data or rule ambiguity rather than ordinary applicant follow-up.
+### AI Quality Flags
 
-### AI Triage Of Needs-Review Applications
+Separately from AI triage (which resolves ambiguous data), AI should make a quality/integrity pass over eligible applications to flag suspicious patterns that are too subjective or contextual for deterministic rules. This is not filtering — it's surfacing things for the screener to be aware of. Flags are informational, not disqualifying.
 
-Applications marked `needs_review` by deterministic filters should receive an AI triage pass before requiring manual review. The purpose is to let AI resolve common ambiguities (e.g. income entered as "100K" instead of digits, unclear household descriptions that are actually straightforward) while flagging genuinely ambiguous cases for human judgment.
+Known patterns to detect (this list is intentionally incomplete and should grow over time):
 
-AI triage should produce one of:
+- Child names that look like placeholders ("Baby", "TBD", "N/A", "Test")
+- Applicant or child names that appear fake or nonsensical
+- Essay responses that are suspiciously short or minimal (single sentences, "N/A")
+- Essay responses that appear to be advertising or spam
+- Essay responses that appear to be AI-generated boilerplate with no personal detail
+- Responses that are copy-pasted across multiple essay fields
+- Internal inconsistencies between essays and other fields (e.g. claims skills they can't have given stated employment)
+- Phone numbers or emails that appear fake beyond format validation (e.g. all same digits)
+- Pet descriptions that violate the co-op pet policy (more than 1 dog, more than 1 cat, or exotic/unusual pets). The pets field is free text and too ambiguous for deterministic parsing — negation ("I don't have pets"), unclear phrasing, and context-dependent language require AI judgment.
 
-- `ai_resolved_eligible`: AI confidently determined the application meets filter criteria. Include the reasoning and parsed values.
-- `ai_resolved_filtered_out`: AI confidently determined the application fails filter criteria. Include the reasoning.
-- `manual_review_needed`: AI confidence is too low to decide. Include what is unclear and why.
-
-AI triage must not run automatically after sync. The dashboard should show the `needs_review` count and a cost estimate. The user clicks to confirm before AI tokens are spent.
-
-The UI and data model must distinguish which applications passed via deterministic filters vs. AI triage, so the screening path is always visible and auditable.
+AI quality flags should be stored per-application and shown in the candidate detail view as informational notices, not as filter reasons.
 
 ## AI-Assisted Screening
 
@@ -508,7 +499,7 @@ Core data model decisions:
 - Duplicate detection for MVP is based on email address.
 - The newest application wins by default for duplicate email addresses.
 - Compute normalized fields during import/sync, including `adult_count`, `child_count`, `children_under_18_at_move_in`, `has_real_estate`, `household_income`, `pet_count`, and `pet_types`.
-- Income parsing should attempt to handle messy user-entered values. If the app cannot confidently parse household income, the application should be marked `needs_review`. Parsing logic should become more robust over time as real inputs reveal edge cases.
+- Income parsing is straightforward because the form uses whole-number validation. The field always contains a clean integer for new submissions.
 - Each sync should create a `SyncRun` record with timestamp, source sheet ID, row count, duplicate count, imported count, updated count, eligible count, filtered-out count, and needs-review count.
 
 Admin settings such as Google Sheet link or ID, current unit size, move-in date, and spending cap should live in the database rather than `.env`.
@@ -641,15 +632,15 @@ Suggested implementation milestones:
 
 1. Project scaffold, local dev environment, Google OAuth setup, and SQLite schema.
 2. Read-only Google Sheets import/sync and application dashboard.
-3. Deterministic hard filters and filtered-out view.
-4. AI provider adapter, cost estimate/cap, cached per-candidate essay analysis, and admin raw-debug view.
-5. Pattern discovery, 1 to 3 narrowing questions, impact previews, undo, and ranked shortlist.
-6. Google Docs report generation.
-7. Multi-member screening and merged shortlist comparison.
+3. Deterministic hard filters, configurable rules engine, and filtered-out view.
+4. Application tables, candidate detail pages, and searchable/sortable views.
+5. AI quality flags (cost estimate, user confirms, detect suspicious patterns in eligible applications).
+6. AI provider adapter, cost estimate/cap, cached per-candidate essay analysis, and admin raw-debug view.
+7. Pattern discovery, 1 to 3 narrowing questions, impact previews, undo, and ranked shortlist.
+8. Google Docs report generation.
+9. Multi-member screening and merged shortlist comparison.
 
-The first implementation phase should stop at import/sync, dashboard, and hard filters before adding AI.
-
-Milestone 1 should include unit tests for deterministic hard-filter logic.
+Milestones 1–4 are complete. The next milestone is AI quality flags (milestone 5).
 
 Jeff will handle commits at stable milestones.
 

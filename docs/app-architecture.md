@@ -798,17 +798,7 @@ This module is intentionally pure domain logic. It takes normalized application-
 
 Keeping this logic isolated makes it easy to test, read, and change.
 
-Current tests cover:
-
-- Eligible 2-bedroom household
-- 3 adults filtered out
-- 2-bedroom household without a child filtered out
-- Unclear household marked `needs_review`
-- Income outside configured range filtered out
-- Unclear income marked `needs_review`
-- Real estate ownership filtered out
-- One dog plus one cat allowed
-- Extra pets filtered out
+Current tests cover all deterministic screening rules including child age limits, applicant age, income range, real estate ownership, child count mismatch, negative values, future employment dates, and co-applicant completeness.
 
 This file is a good place to read if you want to understand the business rules without web-framework noise.
 

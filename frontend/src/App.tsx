@@ -1,4 +1,4 @@
-import { Home, LogIn, LogOut, RefreshCw, Settings } from "lucide-react";
+import { ChevronLeft, Home, LogIn, LogOut, RefreshCw, Settings } from "lucide-react";
 import { type SyntheticEvent, useEffect, useState } from "react";
 
 type CurrentUser = {
@@ -15,6 +15,13 @@ type AppSettings = {
   move_in_date: string;
   income_min: number;
   income_max: number;
+  max_adults: number;
+  min_adult_age: number;
+  income_mismatch_tolerance: number;
+  max_dogs: number;
+  max_cats: number;
+  allow_other_pets: boolean;
+  disabled_rules: string[];
 };
 
 type SettingsResponse = {
@@ -27,10 +34,26 @@ type DashboardCounts = {
   submitted: number;
   eligible: number;
   filteredOut: number;
-  needsReview: number;
 };
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+type ApplicationSummary = {
+  id: number;
+  primaryEmail: string;
+  applicantName: string | null;
+  coApplicantName: string | null;
+  hardFilterStatus: "eligible" | "filtered_out";
+  hardFilterReasons: Array<{ code: string; message: string; details: Record<string, unknown> }>;
+  childCount: number | null;
+  householdIncome: number | null;
+  createdAt: string | null;
+};
+
+type ApplicationDetail = ApplicationSummary & {
+  normalized: Record<string, unknown>;
+  rawRow?: Record<string, unknown>;
+};
+
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 const defaultSettings: AppSettings = {
   google_sheet_id: "",
@@ -38,7 +61,29 @@ const defaultSettings: AppSettings = {
   move_in_date: "2026-09-01",
   income_min: 70000,
   income_max: 150000,
+  max_adults: 2,
+  min_adult_age: 19,
+  income_mismatch_tolerance: 1000,
+  max_dogs: 1,
+  max_cats: 1,
+  allow_other_pets: false,
+  disabled_rules: [],
 };
+
+const ALL_RULES = [
+  { id: "applicant_under_19", label: "Applicant under 19", outcome: "filtered_out" },
+  { id: "child_age_over_18", label: "Child age 18+", outcome: "filtered_out" },
+  { id: "child_count_mismatch", label: "Child count mismatch", outcome: "filtered_out" },
+  { id: "co_applicant_incomplete", label: "Co-applicant incomplete", outcome: "filtered_out" },
+  { id: "co_applicant_under_19", label: "Co-applicant under 19", outcome: "filtered_out" },
+  { id: "future_employment_start", label: "Future employment start", outcome: "filtered_out" },
+  { id: "income_above_range", label: "Income above range", outcome: "filtered_out" },
+  { id: "income_arithmetic_mismatch", label: "Income arithmetic mismatch", outcome: "filtered_out" },
+  { id: "income_below_range", label: "Income below range", outcome: "filtered_out" },
+  { id: "negative_number", label: "Negative number", outcome: "filtered_out" },
+  { id: "owns_real_estate", label: "Real estate ownership", outcome: "filtered_out" },
+  { id: "child_age_exceeds_parent", label: "Child age exceeds parent", outcome: "filtered_out" },
+] as const;
 
 export function App() {
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -53,17 +98,24 @@ export function App() {
     submitted: 0,
     eligible: 0,
     filteredOut: 0,
-    needsReview: 0,
   });
   const [syncMessage, setSyncMessage] = useState("");
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const dashboardStats = [
-    { label: "Submitted", value: dashboardCounts.submitted },
-    { label: "Eligible", value: dashboardCounts.eligible },
-    { label: "Filtered Out", value: dashboardCounts.filteredOut },
-    { label: "Needs Review", value: dashboardCounts.needsReview },
-  ];
+  useEffect(() => {
+    if (syncMessage && syncMessage.startsWith("Synced")) {
+      const timer = setTimeout(() => setSyncMessage(""), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [syncMessage]);
+  const [applications, setApplications] = useState<ApplicationSummary[]>([]);
+  const [appTotal, setAppTotal] = useState(0);
+  const [appPage, setAppPage] = useState(1);
+  const [appPageSize, setAppPageSize] = useState(25);
+  const [appFilter, setAppFilter] = useState<string | null>(null);
+  const [appSearch, setAppSearch] = useState("");
+  const [selectedApp, setSelectedApp] = useState<ApplicationDetail | null>(null);
+
 
   useEffect(() => {
     fetch(`${apiBaseUrl}/auth/me`, { credentials: "include" })
@@ -81,6 +133,7 @@ export function App() {
       .then((response) => response.json())
       .then((payload: SettingsResponse) => applySettingsResponse(payload));
     refreshDashboard();
+    fetchApplications(null, 1, "");
   }, [user]);
 
   function applySettingsResponse(payload: SettingsResponse) {
@@ -96,6 +149,65 @@ export function App() {
     fetch(`${apiBaseUrl}/dashboard`, { credentials: "include" })
       .then((response) => response.json())
       .then((payload: { counts: DashboardCounts }) => setDashboardCounts(payload.counts));
+  }
+
+  function fetchApplications(
+    filter: string | null = appFilter,
+    page: number = 1,
+    search: string = appSearch,
+    pageSize: number = appPageSize,
+  ) {
+    const params = new URLSearchParams();
+    if (filter) params.set("status", filter);
+    if (search) params.set("search", search);
+    params.set("page", String(page));
+    params.set("page_size", String(pageSize));
+
+    fetch(`${apiBaseUrl}/applications?${params}`, { credentials: "include" })
+      .then((response) => response.json())
+      .then((payload: { applications: ApplicationSummary[]; total: number; page: number; pageSize: number }) => {
+        setApplications(payload.applications);
+        setAppTotal(payload.total);
+        setAppPage(payload.page);
+        setAppPageSize(payload.pageSize);
+      });
+  }
+
+  function viewApplication(id: number) {
+    fetch(`${apiBaseUrl}/applications/${id}`, { credentials: "include" })
+      .then((response) => response.json())
+      .then((payload: { application: ApplicationDetail }) => setSelectedApp(payload.application));
+  }
+
+  function formatFieldValue(value: unknown): React.ReactNode {
+    if (value == null) return "—";
+    if (Array.isArray(value)) {
+      if (value.length === 0) return "—";
+      return (
+        <ul className="field-list">
+          {value.map((item, i) => (
+            <li key={i}>{formatArrayItem(item)}</li>
+          ))}
+        </ul>
+      );
+    }
+    if (typeof value === "object") {
+      return Object.entries(value as Record<string, unknown>)
+        .filter(([, v]) => v != null && v !== "")
+        .map(([, v]) => String(v))
+        .join(", ");
+    }
+    return String(value);
+  }
+
+  function formatArrayItem(item: unknown): string {
+    if (typeof item !== "object" || item === null) return String(item);
+    const obj = item as Record<string, unknown>;
+    if ("first_name" in obj || "last_name" in obj) {
+      const name = [obj.first_name, obj.last_name].filter(Boolean).join(" ");
+      return obj.age != null ? `${name} (${obj.age})` : name || "—";
+    }
+    return Object.values(obj).filter((v) => v != null && v !== "").join(", ");
   }
 
   function login() {
@@ -138,21 +250,32 @@ export function App() {
     setIsSyncing(true);
     setSyncMessage("");
 
-    const response = await fetch(`${apiBaseUrl}/sync/applications`, {
-      method: "POST",
-      credentials: "include",
-    });
+    try {
+      const response = await fetch(`${apiBaseUrl}/sync/applications`, {
+        method: "POST",
+        credentials: "include",
+      });
 
-    if (response.ok) {
-      const payload: { syncRun: { rowCount: number; importedCount: number; updatedCount: number } } =
-        await response.json();
-      setSyncMessage(
-        `Synced ${payload.syncRun.rowCount} rows: ${payload.syncRun.importedCount} imported, ${payload.syncRun.updatedCount} updated.`,
-      );
-      refreshDashboard();
-    } else {
-      const payload: { detail?: string } = await response.json();
-      setSyncMessage(payload.detail ?? "Sync failed.");
+      if (response.ok) {
+        const payload: { syncRun: { rowCount: number; importedCount: number; updatedCount: number } } =
+          await response.json();
+        setSyncMessage(
+          `Synced ${payload.syncRun.rowCount} rows: ${payload.syncRun.importedCount} imported, ${payload.syncRun.updatedCount} updated.`,
+        );
+        refreshDashboard();
+        fetchApplications(appFilter, 1, appSearch);
+      } else {
+        let detail = `Sync failed (HTTP ${response.status}).`;
+        try {
+          const payload = await response.json();
+          if (payload.detail) detail = `Sync failed: ${payload.detail}`;
+        } catch {
+          // response body wasn't JSON
+        }
+        setSyncMessage(detail);
+      }
+    } catch (error) {
+      setSyncMessage(`Sync error: ${error instanceof Error ? error.message : "Network request failed. Check that the backend is running."}`);
     }
 
     setIsSyncing(false);
@@ -228,10 +351,8 @@ export function App() {
                   />
                   {googleSheetTitle && googleSheetUrl ? (
                     <a className="sheet-reference" href={googleSheetUrl} target="_blank" rel="noreferrer">
-                      Spreadsheet: {googleSheetTitle}
+                      {googleSheetTitle}
                     </a>
-                  ) : settings.google_sheet_id ? (
-                    <span className="sheet-reference">Spreadsheet title will appear after the link is saved.</span>
                   ) : null}
                 </label>
                 <label>
@@ -273,6 +394,89 @@ export function App() {
                     onChange={(event) => setSettings({ ...settings, income_max: Number(event.target.value) })}
                   />
                 </label>
+                <label>
+                  <span>Income mismatch tolerance</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={settings.income_mismatch_tolerance}
+                    onChange={(event) =>
+                      setSettings({ ...settings, income_mismatch_tolerance: Number(event.target.value) })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Max adults per unit</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={settings.max_adults}
+                    onChange={(event) => setSettings({ ...settings, max_adults: Number(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span>Min adult age</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={settings.min_adult_age}
+                    onChange={(event) => setSettings({ ...settings, min_adult_age: Number(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span>Max dogs</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="10"
+                    value={settings.max_dogs}
+                    onChange={(event) => setSettings({ ...settings, max_dogs: Number(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span>Max cats</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="10"
+                    value={settings.max_cats}
+                    onChange={(event) => setSettings({ ...settings, max_cats: Number(event.target.value) })}
+                  />
+                </label>
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={settings.allow_other_pets}
+                    onChange={(event) => setSettings({ ...settings, allow_other_pets: event.target.checked })}
+                  />
+                  <span>Allow other pets</span>
+                </label>
+                <div className="rules-section">
+                  <h3>Screening Rules</h3>
+                  <p className="rules-hint">Uncheck a rule to disable it. Disabled rules will not run during screening.</p>
+                  <div className="rules-grid">
+                    {ALL_RULES.map((rule) => (
+                      <label key={rule.id} className="checkbox-label rule-toggle">
+                        <input
+                          type="checkbox"
+                          checked={!settings.disabled_rules.includes(rule.id)}
+                          onChange={(event) => {
+                            const disabled = event.target.checked
+                              ? settings.disabled_rules.filter((r) => r !== rule.id)
+                              : [...settings.disabled_rules, rule.id];
+                            setSettings({ ...settings, disabled_rules: disabled });
+                          }}
+                        />
+                        <span>{rule.label}</span>
+                        <span className={`rule-outcome rule-outcome-${rule.outcome}`}>
+                          {rule.outcome.replace("_", " ")}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
                 <div className="settings-actions">
                   <button className="primary-button" type="submit" disabled={isSavingSettings}>
                     {isSavingSettings ? "Saving" : "Save settings"}
@@ -290,20 +494,6 @@ export function App() {
             </section>
           ) : null}
 
-          {syncMessage ? (
-            <section className="sync-message" aria-live="polite">
-              {syncMessage}
-            </section>
-          ) : null}
-
-          <section className="stats-grid" aria-label="Application dashboard">
-            {dashboardStats.map((stat) => (
-              <article className="stat-card" key={stat.label}>
-                <span>{stat.label}</span>
-                <strong>{stat.value}</strong>
-              </article>
-            ))}
-          </section>
 
           <section className="panel">
             <div className="panel-header">
@@ -311,14 +501,178 @@ export function App() {
                 <span className="panel-kicker">Current opening</span>
                 <h2>Applications</h2>
               </div>
-              <span>Ready for Google Sheets sync</span>
             </div>
-            <div className="empty-state">
-              <p>No applications imported yet.</p>
-            </div>
+
+            {selectedApp ? (
+              <div className="app-detail">
+                <button className="back-button" onClick={() => setSelectedApp(null)}>
+                  <ChevronLeft size={16} />
+                  <span>Back to list</span>
+                </button>
+                <div className="app-detail-header">
+                  <h3>{selectedApp.applicantName || selectedApp.primaryEmail}</h3>
+                  <span className={`status-badge status-${selectedApp.hardFilterStatus}`}>
+                    {selectedApp.hardFilterStatus.replace("_", " ")}
+                  </span>
+                </div>
+                {selectedApp.coApplicantName ? (
+                  <p className="co-applicant-line">Co-applicant: {selectedApp.coApplicantName}</p>
+                ) : null}
+                {selectedApp.hardFilterReasons.length > 0 ? (
+                  <div className="filter-reasons">
+                    <strong>Filter reasons:</strong>
+                    <ul>
+                      {selectedApp.hardFilterReasons.map((reason, i) => (
+                        <li key={i}>{reason.message}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                <div className="app-detail-fields">
+                  <h4>Normalized data</h4>
+                  <dl>
+                    {Object.entries(selectedApp.normalized).map(([key, value]) => (
+                      <div key={key}>
+                        <dt>{key}</dt>
+                        <dd>{formatFieldValue(value)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+                {selectedApp.rawRow ? (
+                  <details className="raw-row-section">
+                    <summary>Raw source row (admin)</summary>
+                    <pre>{JSON.stringify(selectedApp.rawRow, null, 2)}</pre>
+                  </details>
+                ) : null}
+              </div>
+            ) : (
+              <>
+                <div className="app-controls">
+                  <div className="app-tabs">
+                    {[
+                      { label: "All", value: null, count: dashboardCounts.submitted },
+                      { label: "Eligible", value: "eligible", count: dashboardCounts.eligible },
+                      { label: "Filtered Out", value: "filtered_out", count: dashboardCounts.filteredOut },
+                    ].map((tab) => (
+                      <button
+                        key={tab.label}
+                        className={`tab-button ${appFilter === tab.value ? "active" : ""}`}
+                        onClick={() => {
+                          setAppFilter(tab.value);
+                          fetchApplications(tab.value, 1, appSearch);
+                        }}
+                      >
+                        {tab.label} ({tab.count})
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    className="app-search"
+                    type="search"
+                    placeholder="Search by name or email"
+                    value={appSearch}
+                    onChange={(event) => {
+                      setAppSearch(event.target.value);
+                      fetchApplications(appFilter, 1, event.target.value);
+                    }}
+                  />
+                </div>
+
+                {applications.length === 0 ? (
+                  <div className="empty-state">
+                    <p>No applications {appFilter ? `with status "${appFilter.replace("_", " ")}"` : "imported yet"}.</p>
+                  </div>
+                ) : (
+                  <>
+                    <table className="app-table">
+                      <thead>
+                        <tr>
+                          <th>Applicant</th>
+                          <th>Co-applicant</th>
+                          <th>Children</th>
+                          <th>Income</th>
+                          <th>Status</th>
+                          <th>Reason</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {applications.map((app) => (
+                          <tr key={app.id} onClick={() => viewApplication(app.id)} className="clickable-row">
+                            <td>{app.applicantName || app.primaryEmail}</td>
+                            <td>{app.coApplicantName || "—"}</td>
+                            <td>{app.childCount ?? "?"}</td>
+                            <td>{app.householdIncome != null ? `$${app.householdIncome.toLocaleString()}` : "?"}</td>
+                            <td>
+                              <span className={`status-badge status-${app.hardFilterStatus}`}>
+                                {app.hardFilterStatus.replace("_", " ")}
+                              </span>
+                            </td>
+                            <td className="reason-cell">
+                              {app.hardFilterReasons.length > 0
+                                ? app.hardFilterReasons.map((r) => r.message).join("; ")
+                                : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="pagination">
+                      <div className="pagination-size">
+                        <span>Rows:</span>
+                        <select
+                          value={appPageSize}
+                          onChange={(event) => {
+                            const newSize = Number(event.target.value);
+                            fetchApplications(appFilter, 1, appSearch, newSize);
+                          }}
+                        >
+                          <option value="10">10</option>
+                          <option value="25">25</option>
+                          <option value="50">50</option>
+                          <option value="100">100</option>
+                        </select>
+                      </div>
+                      <div className="pagination-pages">
+                        <button disabled={appPage <= 1} onClick={() => fetchApplications(appFilter, 1, appSearch)}>
+                          «
+                        </button>
+                        <button disabled={appPage <= 1} onClick={() => fetchApplications(appFilter, appPage - 1, appSearch)}>
+                          ‹
+                        </button>
+                        <span>
+                          Page {appPage} of {Math.ceil(appTotal / appPageSize) || 1}
+                        </span>
+                        <button
+                          disabled={appPage >= Math.ceil(appTotal / appPageSize)}
+                          onClick={() => fetchApplications(appFilter, appPage + 1, appSearch)}
+                        >
+                          ›
+                        </button>
+                        <button
+                          disabled={appPage >= Math.ceil(appTotal / appPageSize)}
+                          onClick={() => fetchApplications(appFilter, Math.ceil(appTotal / appPageSize), appSearch)}
+                        >
+                          »
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
           </section>
         </>
       )}
+      {syncMessage ? (
+        <div
+          className={`toast ${syncMessage.startsWith("Sync") && !syncMessage.startsWith("Synced") ? "toast-error" : "toast-success"}`}
+          aria-live="polite"
+          onClick={() => setSyncMessage("")}
+        >
+          {syncMessage}
+        </div>
+      ) : null}
     </main>
   );
 }

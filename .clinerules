@@ -31,6 +31,7 @@ This file is the shared working agreement for Codex, Cline, and any other agent 
 - Keep domain rules close to tests so screening behavior is easy to verify and change.
 - Optimize for future maintainers who are learning the system, including Jeff, Codex, and Cline.
 - During MVP iteration, do not preserve backward compatibility for internal APIs, local database schemas, fixtures, or UI shapes unless Jeff explicitly asks for it. Prefer clean changes over compatibility layers.
+- When removing a feature or concept, remove it completely: code, tests, types, database columns, migrations, UI references, CSS, and spec mentions. Do not leave dead references behind "just in case." If it's gone, it's gone everywhere. Rebuild the database rather than writing migration shims.
 - Follow the implementation defaults in `SPEC.md`: `uv`, FastAPI, SQLAlchemy/Alembic, pytest, Vite React, npm, SQLite, and cookie-based sessions unless Jeff changes the plan.
 - Separate deterministic screening logic from AI-assisted evaluation logic.
 - Make AI decisions auditable: preserve prompts, model outputs, score rationales, and user choices where appropriate.
