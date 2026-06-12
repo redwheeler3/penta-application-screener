@@ -46,7 +46,7 @@ The first implementation phase should stop at:
    # copy or move the downloaded client_secret_*.json file into backend/secrets/
    ```
 
-   The backend auto-discovers any `client_secret_*.json` file in that directory. All other settings have working defaults for local dev. See `.env.example` files for the full list of overridable values.
+   The backend auto-discovers any `client_secret_*.json` file in that directory. All other settings have working defaults for local dev.
 
 6. Run database migrations:
 
