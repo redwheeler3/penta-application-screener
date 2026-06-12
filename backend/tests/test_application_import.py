@@ -36,9 +36,7 @@ def test_normalize_application_extracts_basic_fields() -> None:
     assert normalized["child_count"] == 1
     assert normalized["household_income"] == 100_000
     assert normalized["has_real_estate"] is False
-    assert normalized["dog_count"] == 1
-    assert normalized["cat_count"] == 1
-    assert normalized["other_pet_count"] == 0
+    assert normalized["pets_text"] == "one dog and one cat"
 
 
 def test_make_unique_headers_preserves_repeated_google_form_labels() -> None:
@@ -68,9 +66,7 @@ def test_normalize_application_extracts_real_form_fields() -> None:
     assert normalized["child_count"] == 2
     assert normalized["household_income"] == 100_000
     assert normalized["has_real_estate"] is False
-    assert normalized["dog_count"] == 1
-    assert normalized["cat_count"] == 1
-    assert normalized["other_pet_count"] == 0
+    assert normalized["pets_text"] == "one dog and one cat"
 
 
 def test_import_applications_dedupes_by_latest_email_and_applies_filters() -> None:
@@ -86,9 +82,9 @@ def test_import_applications_dedupes_by_latest_email_and_applies_filters() -> No
         {
             "Email Address": "applicant@example.com",
             "Applicant Name": "New",
-            "Number of children under 18 living in the unit on the move-in date": "0",
+            "Number of children under 18 living in the unit on the move-in date": "1",
             "Household gross yearly income": "$100,000",
-            "Do you own real estate?": "No",
+            "Do you own real estate?": "Yes",
         },
     ]
 

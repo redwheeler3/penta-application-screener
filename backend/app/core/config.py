@@ -7,11 +7,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/penta_screener.db"
     session_secret: str = "dev-only-change-me"
-    frontend_url: str = "http://127.0.0.1:5173"
+    frontend_url: str = "http://localhost:5173"
     google_client_id: str = ""
     google_client_secret: str = ""
     google_oauth_client_secrets_file: str = ""
-    google_redirect_uri: str = "http://127.0.0.1:8000/auth/google/callback"
+    google_redirect_uri: str = "http://localhost:8000/auth/google/callback"
     google_oauth_scopes: str = (
         "openid email profile "
         "https://www.googleapis.com/auth/spreadsheets.readonly "

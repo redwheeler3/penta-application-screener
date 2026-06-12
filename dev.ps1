@@ -1,5 +1,9 @@
 $ErrorActionPreference = "Stop"
 
+Write-Host "Running migrations..."
+Start-Process -NoNewWindow -Wait -WorkingDirectory "$PSScriptRoot\backend" `
+    -FilePath "uv" -ArgumentList "run", "alembic", "upgrade", "head"
+
 $backend = Start-Process -NoNewWindow -PassThru -WorkingDirectory "$PSScriptRoot\backend" `
     -FilePath "uv" -ArgumentList "run", "fastapi", "dev", "app/main.py"
 

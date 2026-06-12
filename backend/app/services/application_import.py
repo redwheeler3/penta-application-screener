@@ -2,13 +2,14 @@ import hashlib
 import json
 import re
 from collections import OrderedDict
+from datetime import date as date_type
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Application, HardFilterStatus, SyncRun
-from app.domain.hard_filters import FilterReason, FilterStatus, UnitRules, evaluate_hard_filters
+from app.domain.hard_filters import FilterReason, FilterStatus, RulesConfig, evaluate_hard_filters
 from app.schemas.settings import AppSettings
 
 
@@ -23,15 +24,27 @@ CHILD_COUNT_ALIASES = [
     "number of children under 18 living in the unit on the move-in date",
     "how many children (under 18) will be living in the unit on the move in date?",
 ]
-INCOME_ALIASES = [
+HOUSEHOLD_INCOME_ALIASES = [
     "household_income",
     "household income",
     "household gross yearly income",
     "total household income",
     "total yearly gross income for your household",
 ]
+APPLICANT_INCOME_ALIASES = [
+    "total yearly gross income for applicant",
+    "applicant income",
+    "applicant gross income",
+]
+CO_APPLICANT_INCOME_ALIASES = [
+    "total yearly gross income for co-applicant",
+    "co-applicant income",
+    "co applicant income",
+]
 REAL_ESTATE_ALIASES = ["has_real_estate", "owns real estate", "do you own real estate"]
 PETS_ALIASES = ["pets description", "pets", "pet description"]
+APPLICANT_START_DATE_ALIASES = ["start date at this company"]
+CO_APPLICANT_START_DATE_ALIASES = ["start date at this company [2]"]
 
 
 def import_applications_from_rows(
@@ -58,15 +71,23 @@ def import_applications_from_rows(
     counts = {
         HardFilterStatus.ELIGIBLE: 0,
         HardFilterStatus.FILTERED_OUT: 0,
-        HardFilterStatus.NEEDS_REVIEW: 0,
     }
 
-    rules = UnitRules(unit_size=settings.unit_size, min_income=settings.income_min, max_income=settings.income_max)
+    rules = RulesConfig(
+        unit_size=settings.unit_size,
+        min_income=settings.income_min,
+        max_income=settings.income_max,
+        max_adults=settings.max_adults,
+        min_adult_age=settings.min_adult_age,
+        income_mismatch_tolerance=settings.income_mismatch_tolerance,
+        disabled_rules=tuple(settings.disabled_rules),
+    )
 
     for email, row in latest_by_email.items():
         raw_hash = hash_row(row)
         normalized = normalize_application(row)
         result = evaluate_hard_filters(normalized, rules)
+        normalized = _make_json_safe(normalized)
         status = HardFilterStatus(result.status.value)
         reason_payload = [reason_to_payload(reason) for reason in result.reasons]
 
@@ -104,7 +125,6 @@ def import_applications_from_rows(
         updated_count=updated_count,
         eligible_count=counts[HardFilterStatus.ELIGIBLE],
         filtered_out_count=counts[HardFilterStatus.FILTERED_OUT],
-        needs_review_count=counts[HardFilterStatus.NEEDS_REVIEW],
     )
     db.add(sync_run)
     db.commit()
@@ -119,18 +139,53 @@ def normalize_application(row: dict[str, Any]) -> dict[str, Any]:
         row,
         CO_APPLICANT_NAME_ALIASES,
     )
+
+    form_submission_email = str(row.get("Email Address", "") or "").strip()
+    applicant_email = str(row.get("Email address", "") or "").strip()
+    if not applicant_email:
+        applicant_email = str(_first_value(row, EMAIL_ALIASES) or "").strip()
+
     return {
         "applicant_name": applicant_name,
         "co_applicant_name": co_applicant_name,
+        "applicant_age": parse_int_signed(row.get("Age")),
+        "co_applicant_age": parse_int_signed(row.get("Age [2]")),
         "adult_count": parse_int(_first_value(row, ADULT_COUNT_ALIASES))
         or infer_adult_count(applicant_name, co_applicant_name),
         "child_count": parse_child_count(_first_value(row, CHILD_COUNT_ALIASES)),
-        "household_income": parse_money(_first_value(row, INCOME_ALIASES)),
+        "child_details": _extract_child_details(row),
+        "household_income": parse_money(_first_value(row, HOUSEHOLD_INCOME_ALIASES)),
+        "applicant_income": parse_money(_first_value(row, APPLICANT_INCOME_ALIASES)),
+        "co_applicant_income": parse_money(_first_value(row, CO_APPLICANT_INCOME_ALIASES)),
         "has_real_estate": parse_bool(_first_value(row, REAL_ESTATE_ALIASES)),
-        "dog_count": count_pet_mentions(pets_text, "dog"),
-        "cat_count": count_pet_mentions(pets_text, "cat"),
-        "other_pet_count": infer_other_pet_count(pets_text),
+        "pets_text": pets_text or None,
+        "co_applicant_phone": str(row.get("Phone number (xxx-xxx-xxxx) [2]", "") or "").strip() or None,
+        "co_applicant_email": str(row.get("Email address [2]", "") or "").strip() or None,
+        "applicant_email": applicant_email or None,
+        "form_submission_email": form_submission_email or None,
+        "applicant_employment_start": parse_date(_first_value(row, APPLICANT_START_DATE_ALIASES)),
+        "co_applicant_employment_start": parse_date(_first_value(row, CO_APPLICANT_START_DATE_ALIASES)),
     }
+
+
+def _extract_child_details(row: dict[str, Any]) -> list[dict[str, Any]]:
+    # After make_unique_headers:
+    # Applicant: First name, Last name, Age
+    # Co-applicant: First name [2], Last name [2], Age [2]
+    # Child 1: First name [3], Last name [3], Age [3]
+    # Child 2: First name [4], Last name [4], Age [4]
+    # Child 3: First name [5], Last name [5], Age [5]
+    # Child 4: First name [6], Last name [6], Age [6]
+    children = []
+    for suffix in ("[3]", "[4]", "[5]", "[6]"):
+        first_name = str(row.get(f"First name {suffix}", "") or "").strip() or None
+        last_name = str(row.get(f"Last name {suffix}", "") or "").strip() or None
+        age = parse_int_signed(row.get(f"Age {suffix}"))
+
+        if first_name or last_name or age is not None:
+            children.append({"first_name": first_name, "last_name": last_name, "age": age})
+
+    return children
 
 
 def _form_full_name(row: dict[str, Any], first_name_key: str, last_name_key: str) -> str | None:
@@ -167,6 +222,35 @@ def parse_int(value: Any) -> int | None:
     if not match:
         return None
     return int(match.group())
+
+
+def parse_int_signed(value: Any) -> int | None:
+    if isinstance(value, int):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return None
+    match = re.match(r"^-?\d+$", text)
+    if match:
+        return int(match.group())
+    return None
+
+
+def parse_date(value: Any) -> date_type | None:
+    if isinstance(value, date_type):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return None
+    match = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", text)
+    if match:
+        try:
+            return date_type(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        except ValueError:
+            return None
+    return None
+
+
 
 
 def parse_child_count(value: Any) -> int | None:
@@ -208,34 +292,20 @@ def infer_adult_count(applicant_name: str | None, co_applicant_name: str | None)
     return None
 
 
-def count_pet_mentions(text: str, pet_type: str) -> int:
-    if not text.strip():
-        return 0
-    matches = re.findall(rf"\b{pet_type}s?\b", text.lower())
-    return len(matches)
 
 
-def infer_other_pet_count(text: str) -> int:
-    lowered = text.lower()
-    if not lowered.strip():
-        return 0
-    known_words = {
-        "a",
-        "and",
-        "cat",
-        "cats",
-        "dog",
-        "dogs",
-        "n",
-        "na",
-        "no",
-        "none",
-        "one",
-        "pet",
-        "pets",
-    }
-    words = set(re.findall(r"[a-z]+", lowered))
-    return 0 if words <= known_words else 1
+def _make_json_safe(data: dict[str, Any]) -> dict[str, Any]:
+    result = {}
+    for key, value in data.items():
+        if isinstance(value, date_type):
+            result[key] = value.isoformat()
+        elif isinstance(value, list):
+            result[key] = [_make_json_safe(item) if isinstance(item, dict) else item for item in value]
+        elif isinstance(value, dict):
+            result[key] = _make_json_safe(value)
+        else:
+            result[key] = value
+    return result
 
 
 def reason_to_payload(reason: FilterReason) -> dict[str, Any]:

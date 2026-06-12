@@ -19,7 +19,6 @@ class UserRole(StrEnum):
 class HardFilterStatus(StrEnum):
     ELIGIBLE = "eligible"
     FILTERED_OUT = "filtered_out"
-    NEEDS_REVIEW = "needs_review"
 
 
 def enum_values(enum_class: type[StrEnum]) -> list[str]:
@@ -86,7 +85,7 @@ class Application(TimestampMixin, Base):
     normalized: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     hard_filter_status: Mapped[HardFilterStatus] = mapped_column(
         Enum(HardFilterStatus, values_callable=enum_values),
-        default=HardFilterStatus.NEEDS_REVIEW,
+        default=HardFilterStatus.ELIGIBLE,
         nullable=False,
         index=True,
     )
@@ -104,7 +103,6 @@ class SyncRun(TimestampMixin, Base):
     updated_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     eligible_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     filtered_out_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    needs_review_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
 
 
