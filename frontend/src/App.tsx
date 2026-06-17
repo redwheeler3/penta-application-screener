@@ -1,4 +1,4 @@
-import { ChevronLeft, Home, LogIn, LogOut, RefreshCw, Settings } from "lucide-react";
+import { ChevronLeft, Clipboard, Home, LogIn, LogOut, RefreshCw, Settings, X } from "lucide-react";
 import { type SyntheticEvent, useEffect, useState } from "react";
 
 type CurrentUser = {
@@ -100,10 +100,11 @@ export function App() {
     filteredOut: 0,
   });
   const [syncMessage, setSyncMessage] = useState("");
+  const [syncError, setSyncError] = useState("");
   const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
-    if (syncMessage && syncMessage.startsWith("Synced")) {
+    if (syncMessage) {
       const timer = setTimeout(() => setSyncMessage(""), 4000);
       return () => clearTimeout(timer);
     }
@@ -210,6 +211,12 @@ export function App() {
     return Object.values(obj).filter((v) => v != null && v !== "").join(", ");
   }
 
+  function formatErrorDetail(detail: unknown): string {
+    if (typeof detail === "string") return detail;
+    if (detail == null) return "";
+    return JSON.stringify(detail, null, 2);
+  }
+
   function login() {
     window.location.href = `${apiBaseUrl}/auth/google/login`;
   }
@@ -249,6 +256,7 @@ export function App() {
   async function syncApplications() {
     setIsSyncing(true);
     setSyncMessage("");
+    setSyncError("");
 
     try {
       const response = await fetch(`${apiBaseUrl}/sync/applications`, {
@@ -268,14 +276,18 @@ export function App() {
         let detail = `Sync failed (HTTP ${response.status}).`;
         try {
           const payload = await response.json();
-          if (payload.detail) detail = `Sync failed: ${payload.detail}`;
+          if (payload.detail) detail = `Sync failed: ${formatErrorDetail(payload.detail)}`;
         } catch {
           // response body wasn't JSON
         }
-        setSyncMessage(detail);
+        setSyncError(detail);
       }
     } catch (error) {
-      setSyncMessage(`Sync error: ${error instanceof Error ? error.message : "Network request failed. Check that the backend is running."}`);
+      setSyncError(
+        `Sync error: ${
+          error instanceof Error ? error.message : "Network request failed. Check that the backend is running."
+        }`,
+      );
     }
 
     setIsSyncing(false);
@@ -494,7 +506,6 @@ export function App() {
             </section>
           ) : null}
 
-
           <section className="panel">
             <div className="panel-header">
               <div>
@@ -664,13 +675,36 @@ export function App() {
           </section>
         </>
       )}
-      {syncMessage ? (
+      {syncError || syncMessage ? (
         <div
-          className={`toast ${syncMessage.startsWith("Sync") && !syncMessage.startsWith("Synced") ? "toast-error" : "toast-success"}`}
-          aria-live="polite"
-          onClick={() => setSyncMessage("")}
+          className={`toast ${syncError ? "toast-error" : "toast-success"}`}
+          aria-live={syncError ? "assertive" : "polite"}
+          role={syncError ? "alert" : "status"}
         >
-          {syncMessage}
+          <div className="toast-message">{syncError || syncMessage}</div>
+          <div className="toast-actions">
+            {syncError ? (
+              <button
+                className="toast-button"
+                aria-label="Copy sync error"
+                title="Copy sync error"
+                onClick={() => navigator.clipboard.writeText(syncError)}
+              >
+                <Clipboard size={16} />
+              </button>
+            ) : null}
+            <button
+              className="toast-button"
+              aria-label="Dismiss notification"
+              title="Dismiss notification"
+              onClick={() => {
+                setSyncError("");
+                setSyncMessage("");
+              }}
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
       ) : null}
     </main>
