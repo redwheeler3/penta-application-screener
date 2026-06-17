@@ -970,11 +970,8 @@ Current expected backend test result:
 
 ## Next Architecture Step
 
-The current feature is Google Sheets sync. The next planned feature is improving the application table and candidate detail surfaces.
+The current feature set now includes Google Sheets sync, deterministic hard filters, application tables, searchable/filterable views, candidate detail pages, filtered-out reason display, and admin-only raw row inspection.
 
-Upcoming UI work will add:
+The next planned product area is AI quality flags, but implementation should wait until the current application review surfaces have had one more product pass. That pass may adjust the dashboard, table, detail view, or screening workflow before AI-generated notices are added on top.
 
-- Searchable/sortable application tables
-- Filtered-out reason display
-- Candidate detail pages
-- Admin-only raw row debug view
+When AI quality flags begin, they should land as informational, reviewable notices on eligible candidate detail pages rather than as hard-filter outcomes.

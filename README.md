@@ -15,7 +15,7 @@ Developer architecture notes live in [docs/app-architecture.md](docs/app-archite
 - Frontend: Vite React with `npm`
 - Authentication: Google OAuth with signed server-side session cookies
 - Google integration: read-only Google Sheets import/sync for applications
-- AI integration: OpenAI adapter behind a provider-agnostic interface, after deterministic filtering works
+- AI integration: provider-agnostic interface, likely starting with Amazon Bedrock after deterministic filtering works
 
 ## First Implementation Phase
 
