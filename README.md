@@ -65,6 +65,18 @@ Start both servers:
 ./dev.ps1       # Windows PowerShell
 ```
 
+If local screening data looks stale or inconsistent, reset the local SQLite database before starting dev:
+
+```sh
+./reset-db.sh
+./dev.sh
+```
+
+```powershell
+./reset-db.ps1
+./dev.ps1
+```
+
 Or run them individually:
 
 Backend:

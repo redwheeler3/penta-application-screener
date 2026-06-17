@@ -33,6 +33,7 @@ This file is the shared working agreement for Codex, Cline, and any other agent 
 - During MVP iteration, do not preserve backward compatibility for internal APIs, local database schemas, fixtures, or UI shapes unless Jeff explicitly asks for it. Prefer clean changes over compatibility layers.
 - When removing a feature or concept, remove it completely: code, tests, types, database columns, migrations, UI references, CSS, and spec mentions. Do not leave dead references behind "just in case." If it's gone, it's gone everywhere. Rebuild the database rather than writing migration shims.
 - Follow the implementation defaults in `SPEC.md`: `uv`, FastAPI, SQLAlchemy/Alembic, pytest, Vite React, npm, SQLite, and cookie-based sessions unless Jeff changes the plan.
+- Do not start the backend or frontend servers for Jeff. Jeff starts local dev servers manually with the project script when needed.
 - Separate deterministic screening logic from AI-assisted evaluation logic.
 - Make AI decisions auditable: preserve prompts, model outputs, score rationales, and user choices where appropriate.
 - Design for human override at every candidate-screening stage.
