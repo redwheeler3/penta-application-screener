@@ -1,4 +1,4 @@
-import { ChevronLeft, Clipboard, Home, LogIn, LogOut, RefreshCw, Settings, X } from "lucide-react";
+import { ChevronLeft, Clipboard, Home, LogIn, LogOut, RefreshCw, X } from "lucide-react";
 import { type SyntheticEvent, useEffect, useState } from "react";
 
 type CurrentUser = {
@@ -91,7 +91,7 @@ export function App() {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [googleSheetUrl, setGoogleSheetUrl] = useState("");
   const [googleSheetTitle, setGoogleSheetTitle] = useState<string | null>(null);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState("");
   const [dashboardCounts, setDashboardCounts] = useState<DashboardCounts>({
@@ -244,6 +244,9 @@ export function App() {
     if (response.ok) {
       const payload: SettingsResponse = await response.json();
       applySettingsResponse(payload);
+      if (payload.google_sheet_url || payload.settings.google_sheet_id) {
+        setIsSettingsExpanded(false);
+      }
       setSettingsMessage("Settings saved.");
       refreshDashboard();
     } else {
@@ -293,6 +296,9 @@ export function App() {
     setIsSyncing(false);
   }
 
+  const hasGoogleSheetLink = Boolean(settings.google_sheet_id);
+  const showSettingsForm = !hasGoogleSheetLink || isSettingsExpanded;
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -311,23 +317,6 @@ export function App() {
               <span>{user.displayName}</span>
               <strong>{user.role}</strong>
             </div>
-            <button
-              className="icon-button"
-              aria-label="Sync applications"
-              title="Sync applications"
-              onClick={syncApplications}
-              disabled={isSyncing || !settings.google_sheet_id}
-            >
-              <RefreshCw size={18} />
-            </button>
-            <button
-              className="icon-button"
-              aria-label="Settings"
-              title="Settings"
-              onClick={() => setIsSettingsOpen((isOpen) => !isOpen)}
-            >
-              <Settings size={18} />
-            </button>
             <button className="icon-button" aria-label="Log out" title="Log out" onClick={logout}>
               <LogOut size={18} />
             </button>
@@ -347,12 +336,49 @@ export function App() {
         </section>
       ) : (
         <>
-          {isSettingsOpen ? (
-            <section className="settings-panel" aria-label="Admin settings">
+          <section className={`settings-panel ${showSettingsForm ? "" : "settings-panel-collapsed"}`} aria-label="Admin settings">
+            <div className="settings-panel-header">
               <div>
                 <span className="panel-kicker">Admin setup</span>
                 <h2>Settings</h2>
               </div>
+              {hasGoogleSheetLink ? (
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => setIsSettingsExpanded((isExpanded) => !isExpanded)}
+                >
+                  {isSettingsExpanded ? "Hide settings" : "Edit settings"}
+                </button>
+              ) : null}
+            </div>
+
+            {hasGoogleSheetLink && !showSettingsForm ? (
+              <div className="settings-summary">
+                <div>
+                  <span>Google Sheet</span>
+                  {googleSheetTitle && googleSheetUrl ? (
+                    <a className="sheet-reference" href={googleSheetUrl} target="_blank" rel="noreferrer">
+                      {googleSheetTitle}
+                    </a>
+                  ) : (
+                    <strong>{settings.google_sheet_id}</strong>
+                  )}
+                </div>
+                <div>
+                  <span>Opening</span>
+                  <strong>
+                    {settings.unit_size.replace("br", " bedroom")}, {settings.move_in_date}
+                  </strong>
+                </div>
+                <div>
+                  <span>Income range</span>
+                  <strong>
+                    ${settings.income_min.toLocaleString()}-${settings.income_max.toLocaleString()}
+                  </strong>
+                </div>
+              </div>
+            ) : (
               <form className="settings-form" onSubmit={saveSettings}>
                 <label>
                   <span>Google Sheet link</span>
@@ -496,8 +522,8 @@ export function App() {
                   {settingsMessage ? <span>{settingsMessage}</span> : null}
                 </div>
               </form>
-            </section>
-          ) : null}
+            )}
+          </section>
 
           {!settings.google_sheet_id ? (
             <section className="setup-callout">
@@ -512,6 +538,15 @@ export function App() {
                 <span className="panel-kicker">Current opening</span>
                 <h2>Applications</h2>
               </div>
+              <button
+                className="primary-button"
+                type="button"
+                onClick={syncApplications}
+                disabled={isSyncing || !settings.google_sheet_id}
+              >
+                <RefreshCw size={18} />
+                <span>{isSyncing ? "Syncing" : "Sync applications"}</span>
+              </button>
             </div>
 
             {selectedApp ? (

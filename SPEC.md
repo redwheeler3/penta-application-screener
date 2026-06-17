@@ -300,7 +300,9 @@ AI essay review should only run for candidates who pass deterministic hard filte
 
 ### Provider And Cost Controls
 
-For MVP, use OpenAI as the default AI provider while keeping the architecture provider-adaptable. A future cloud deployment may use AWS and should leave room to evaluate Amazon Bedrock AgentCore or similar managed agent platforms.
+For MVP, keep the AI architecture provider-adaptable. Because Jeff may work on this project from AWS-managed laptops where direct OpenAI, Anthropic, or similar external AI API calls may be blocked, Amazon Bedrock is the likely first provider to implement. Direct OpenAI or Anthropic providers can still be added later if useful, but the application should depend on an internal AI provider interface rather than a specific vendor SDK.
+
+Jeff will set up AWS credentials, CLI, and SDK support on the relevant machines before Bedrock integration begins.
 
 The app should run locally as much as possible for MVP while staying cloud-ready for eventual MOMI use. Local-first implementation should not prevent later deployment to AWS or another hosted environment.
 
@@ -556,7 +558,7 @@ The app should include an Admin settings screen for:
 - Move-in date
 - Household income screening range
 - AI spending cap
-- OpenAI/provider model choices
+- Bedrock/provider model choices
 - Google Sheet link or ID
 
 AI provider/model configuration should be Admin-only.
@@ -611,7 +613,7 @@ Initial technical direction:
 - Database: SQLite for local MVP
 - Authentication: Google OAuth
 - Google data: read-only Google Sheets import/sync
-- AI provider: OpenAI adapter behind a provider-agnostic interface
+- AI provider: Bedrock likely first, behind a provider-agnostic interface
 
 Implementation defaults:
 
@@ -655,7 +657,7 @@ These are the questions that still need decisions or can wait until their implem
 
 ### Before AI Milestone
 
-1. Pick initial OpenAI models for:
+1. Pick initial Bedrock/provider models for:
    - first-pass candidate analysis
    - pattern discovery
    - recommendation challenge/audit
