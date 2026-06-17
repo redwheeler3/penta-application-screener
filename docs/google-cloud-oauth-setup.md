@@ -49,7 +49,7 @@ Create `.env.local` from `.env.example` or `backend/.env.example` and fill in:
 
 For frontend-only values, create `frontend/.env.local` from `frontend/.env.example`.
 
-For local browser testing, keep the app on one hostname family. The default setup uses `127.0.0.1` for both frontend and backend callback URLs so OAuth session cookies are sent back to the callback route.
+For local browser testing, keep the app on one hostname family. The default setup uses `localhost` for both frontend and backend callback URLs so OAuth session cookies are sent back to the callback route.
 
 If using Google's downloaded OAuth client JSON, store it under `backend/secrets/`, which is ignored by Git. A simple local filename is preferred:
 

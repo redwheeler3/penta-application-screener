@@ -1,9 +1,11 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_current_user
 from app.core.config import get_settings
-from app.db.models import User
+from app.db.models import HardFilterStatus, User
 from app.db.session import get_db
 from app.services.application_import import import_applications_from_rows
 from app.services.google_credentials import get_google_token
@@ -47,7 +49,10 @@ def sync_applications(
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Import failed after reading {len(rows)} rows: {type(e).__name__}: {e}",
+            detail=format_sync_error_detail(
+                f"Import failed after reading {len(rows)} rows",
+                e,
+            ),
         ) from e
 
     return {
@@ -61,4 +66,24 @@ def sync_applications(
             "filteredOutCount": sync_run.filtered_out_count,
         }
     }
+
+
+def format_sync_error_detail(prefix: str, error: Exception) -> str:
+    error_message = str(error)
+    extra_lines: list[str] = []
+
+    if isinstance(error, LookupError) and "hardfilterstatus" in error_message.lower():
+        error_message = re.sub(r"\. Possible values: .*$", ".", error_message)
+        extra_lines.append(
+            "Allowed hard filter statuses: "
+            + ", ".join(status.value for status in HardFilterStatus)
+        )
+        extra_lines.append(
+            "This usually means the local database contains a row written by an older schema."
+        )
+
+    detail = f"{prefix}: {type(error).__name__}: {error_message}"
+    if extra_lines:
+        detail += "\n" + "\n".join(extra_lines)
+    return detail
 

@@ -8,8 +8,8 @@ The application is intentionally simple right now. The goal is to keep the code 
 
 The app has two local development processes:
 
-1. A FastAPI backend running at `http://127.0.0.1:8000`
-2. A Vite React frontend running at `http://127.0.0.1:5173`
+1. A FastAPI backend running at `http://localhost:8000`
+2. A Vite React frontend running at `http://localhost:5173`
 
 The frontend is what the user sees in the browser. The backend owns authentication, database access, Google API integration, deterministic screening rules, and later AI integration.
 
@@ -66,13 +66,13 @@ During local development, start the frontend with:
 
 ```powershell
 cd frontend
-npm run dev -- --host 127.0.0.1
+npm run dev
 ```
 
 Then open:
 
 ```text
-http://127.0.0.1:5173
+http://localhost:5173
 ```
 
 The frontend is currently a single React screen. It does six main things:
@@ -128,7 +128,7 @@ The favicon is linked here too:
 Files in `frontend/public/` are served directly by Vite. That is why `frontend/public/favicon.ico` is available at:
 
 ```text
-http://127.0.0.1:5173/favicon.ico
+http://localhost:5173/favicon.ico
 ```
 
 ### React Entry Point
@@ -169,7 +169,7 @@ These types describe the data shape the frontend expects from the backend. They 
 The next important line is:
 
 ```ts
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 ```
 
 `import.meta.env` is Vite's way of exposing frontend environment variables. If `VITE_API_BASE_URL` is not set, the app defaults to the local backend at port `8000`.
@@ -229,7 +229,7 @@ The important option is `credentials: "include"`. Without it, the browser would 
 When the user clicks "Sign in with Google", the browser is redirected to:
 
 ```text
-http://127.0.0.1:8000/auth/google/login
+http://localhost:8000/auth/google/login
 ```
 
 The backend then redirects the browser to Google's OAuth consent flow. After Google finishes, it redirects back to the backend callback route. If login succeeds, the backend redirects the browser back to the frontend.
@@ -237,7 +237,7 @@ The backend then redirects the browser to Google's OAuth consent flow. After Goo
 When the user clicks logout, the frontend calls:
 
 ```text
-POST http://127.0.0.1:8000/auth/logout
+POST http://localhost:8000/auth/logout
 ```
 
 and then clears the local `user` state.
@@ -402,7 +402,7 @@ uv run fastapi dev app/main.py --port 8000
 The health check is:
 
 ```text
-http://127.0.0.1:8000/health
+http://localhost:8000/health
 ```
 
 `uv run ...` means "run this command inside the backend project's managed Python environment." That keeps dependencies local to this project instead of relying on globally installed Python packages.
@@ -506,7 +506,7 @@ The `Settings` class is a Pydantic settings model. It defines config values and 
 class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/penta_screener.db"
     session_secret: str = "dev-only-change-me"
-    frontend_url: str = "http://127.0.0.1:5173"
+    frontend_url: str = "http://localhost:5173"
     ...
 ```
 
@@ -912,7 +912,7 @@ import.meta.env.VITE_API_BASE_URL
 and falls back to:
 
 ```text
-http://127.0.0.1:8000
+http://localhost:8000
 ```
 
 For local development, the frontend runs on port `5173` and the backend runs on port `8000`. Because these are different origins, the backend must explicitly allow the frontend origin through CORS.
@@ -928,7 +928,7 @@ It also allows credentials so browser cookies work across the local frontend/bac
 
 The current login flow looks like this:
 
-1. Browser opens `http://127.0.0.1:5173`.
+1. Browser opens `http://localhost:5173`.
 2. React calls `GET /auth/me`.
 3. Backend returns `{ "user": null }`.
 4. React shows the login panel.
@@ -943,7 +943,7 @@ The current login flow looks like this:
 13. Backend returns the current user.
 14. React shows the dashboard shell.
 
-It is important that the local flow consistently uses `127.0.0.1` rather than mixing `localhost` and `127.0.0.1`. Browser cookies are host-specific, so mixing them can break OAuth state.
+It is important that the local flow consistently uses `localhost` rather than mixing `localhost` and `127.0.0.1`. Browser cookies are host-specific, so mixing them can break OAuth state.
 
 ## Current Verification Commands
 
