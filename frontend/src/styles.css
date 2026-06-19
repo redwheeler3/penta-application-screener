@@ -71,23 +71,16 @@ button {
   cursor: pointer;
 }
 
-.brand-button:hover .brand-name {
-  color: var(--penta-green-dark);
-}
-
+.brand-button:hover .brand-name,
 .brand-button:hover .brand-mark {
-  background: #dcfce7;
+  color: var(--penta-green-dark);
 }
 
 .brand-mark {
   display: grid;
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
   place-items: center;
-  border-radius: 8px;
-  background: var(--penta-green-soft);
-  color: var(--penta-green-dark);
+  color: var(--penta-green);
 }
 
 .brand-name {
