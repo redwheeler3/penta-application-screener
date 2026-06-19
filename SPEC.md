@@ -285,7 +285,7 @@ Status is set by an actor, recorded in **`status_source`**:
 
 Only an actor that *acts* stamps itself. Rules passing an application through, or AI declining to flag it, leaves it `untouched` — they do not "decide" eligibility, they hand it to the next step. Only a human can move an application from `ineligible` back to `eligible` (or the reverse).
 
-There is no third status. The UI surfaces the `status_source = ai` group as an "AI Flagged" view, composed client-side as a filter over the real columns. This keeps status binary while distinguishing high-trust deterministic exclusions from AI exclusions. The labeling is deliberately factual ("AI Flagged" — what happened), not prescriptive ("Needs Review" — what the user must do): whether to review an AI exclusion, and which flags matter, is the human's judgment, not the system's. The backend never names these views; it returns counts and filters keyed by the real `status` and `status_source` columns.
+There is no third status. The UI surfaces the `status_source = ai` group as an "AI Flagged" view, composed client-side as a filter over the real columns. This keeps status binary while distinguishing high-trust deterministic exclusions from AI exclusions. The labeling is deliberately factual ("AI Flagged" — what happened), not prescriptive ("Needs Review" — what the user must do): whether to review an AI exclusion, and which flags matter, is the human's judgment, not the system's. The backend never names these views; it returns counts and filters keyed by the real `status` and `status_source` columns. When the two filter groups combine, their counts are faceted — each group's counts reflect the other group's active filter (plus search) — so impossible combinations read zero rather than a misleading total.
 
 **The "why" is kept separately as immutable records**, never mutated by a human:
 
@@ -300,7 +300,7 @@ A human flipping the status never deletes these records — an applicant can be 
 
 ### AI Quality Flags
 
-Separately from AI triage (which resolves ambiguous data), AI should make a quality/integrity pass over eligible applications to flag suspicious patterns that are too subjective or contextual for deterministic rules. When the AI pass flags an eligible application, it sets the status to `ineligible` with `status_source = ai` — the low-trust "needs review" bucket — rather than excluding it outright. A human reviews these and either confirms the exclusion or restores the applicant to `eligible`. The flags themselves are kept as immutable records regardless of the human's decision.
+Separately from AI triage (which resolves ambiguous data), AI should make a quality/integrity pass over eligible applications to flag suspicious patterns that are too subjective or contextual for deterministic rules. When the AI pass flags an eligible application, it sets the status to `ineligible` with `status_source = ai` — the low-trust AI-excluded group — rather than excluding it outright. A human reviews these and either confirms the exclusion or restores the applicant to `eligible`. The flags themselves are kept as immutable records regardless of the human's decision.
 
 Known patterns to detect (this list is intentionally incomplete and should grow over time):
 
