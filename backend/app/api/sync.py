@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_current_user
 from app.core.config import get_settings
-from app.db.models import HardFilterStatus, User
+from app.db.models import ApplicationStatus, User
 from app.db.session import get_db
 from app.services.application_import import import_applications_from_rows
 from app.services.google_credentials import get_google_token
@@ -72,11 +72,11 @@ def format_sync_error_detail(prefix: str, error: Exception) -> str:
     error_message = str(error)
     extra_lines: list[str] = []
 
-    if isinstance(error, LookupError) and "hardfilterstatus" in error_message.lower():
+    if isinstance(error, LookupError) and "applicationstatus" in error_message.lower():
         error_message = re.sub(r"\. Possible values: .*$", ".", error_message)
         extra_lines.append(
-            "Allowed hard filter statuses: "
-            + ", ".join(status.value for status in HardFilterStatus)
+            "Allowed application statuses: "
+            + ", ".join(status.value for status in ApplicationStatus)
         )
         extra_lines.append(
             "This usually means the local database contains a row written by an older schema."

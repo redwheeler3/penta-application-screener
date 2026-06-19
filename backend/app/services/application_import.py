@@ -8,8 +8,9 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Application, HardFilterStatus, SyncRun
+from app.db.models import Application, ApplicationAIResult, ApplicationStatus, SyncRun
 from app.domain.hard_filters import FilterReason, FilterStatus, RulesConfig, evaluate_hard_filters
+from app.domain.status import apply_machine_status
 from app.schemas.settings import AppSettings
 
 
@@ -100,8 +101,8 @@ def import_applications_from_rows(
     imported_count = 0
     updated_count = 0
     counts = {
-        HardFilterStatus.ELIGIBLE: 0,
-        HardFilterStatus.FILTERED_OUT: 0,
+        ApplicationStatus.ELIGIBLE: 0,
+        ApplicationStatus.INELIGIBLE: 0,
     }
 
     rules = RulesConfig(
@@ -119,7 +120,6 @@ def import_applications_from_rows(
         normalized = normalize_application(row)
         result = evaluate_hard_filters(normalized, rules)
         normalized = _make_json_safe(normalized)
-        status = HardFilterStatus(result.status.value)
         reason_payload = [reason_to_payload(reason) for reason in result.reasons]
 
         application = db.scalar(select(Application).where(Application.primary_email == email))
@@ -132,7 +132,6 @@ def import_applications_from_rows(
                 raw_row=row,
                 raw_row_hash=raw_hash,
                 normalized=normalized,
-                hard_filter_status=status,
                 hard_filter_reasons=reason_payload,
             )
             db.add(application)
@@ -143,10 +142,16 @@ def import_applications_from_rows(
             application.raw_row = row
             application.raw_row_hash = raw_hash
             application.normalized = normalized
-            application.hard_filter_status = status
             application.hard_filter_reasons = reason_payload
 
-        counts[status] += 1
+        # The rules actor preserves any prior AI flags' effect, and never
+        # overrides a human-set status.
+        apply_machine_status(
+            application,
+            has_reasons=bool(reason_payload),
+            has_ai_flags=_has_ai_flags(db, application),
+        )
+        counts[application.status] += 1
 
     sync_run = SyncRun(
         source_sheet_id=source_sheet_id,
@@ -154,8 +159,8 @@ def import_applications_from_rows(
         duplicate_count=duplicate_count,
         imported_count=imported_count,
         updated_count=updated_count,
-        eligible_count=counts[HardFilterStatus.ELIGIBLE],
-        filtered_out_count=counts[HardFilterStatus.FILTERED_OUT],
+        eligible_count=counts[ApplicationStatus.ELIGIBLE],
+        filtered_out_count=counts[ApplicationStatus.INELIGIBLE],
     )
     db.add(sync_run)
     db.commit()
@@ -345,3 +350,21 @@ def reason_to_payload(reason: FilterReason) -> dict[str, Any]:
         "message": reason.message,
         "details": reason.details,
     }
+
+
+def _has_ai_flags(db: Session, application: Application) -> bool:
+    """Whether the application's most recent quality-flag pass found any flags.
+
+    A new application (no id yet) cannot have prior AI results.
+    """
+    if application.id is None:
+        return False
+    result = db.scalar(
+        select(ApplicationAIResult)
+        .where(
+            ApplicationAIResult.application_id == application.id,
+            ApplicationAIResult.kind == "quality_flags",
+        )
+        .order_by(ApplicationAIResult.created_at.desc())
+    )
+    return bool(result and (result.output or {}).get("flags"))

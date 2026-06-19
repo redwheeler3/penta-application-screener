@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Application, Base, HardFilterStatus
+from app.db.models import Application, ApplicationStatus, Base, StatusSource
 from app.schemas.settings import AppSettings
 from app.services.application_import import (
     extract_essays,
@@ -132,4 +132,6 @@ def test_import_applications_dedupes_by_latest_email_and_applies_filters() -> No
     assert sync_run.imported_count == 1
     assert application is not None
     assert application.applicant_name == "New"
-    assert application.hard_filter_status == HardFilterStatus.FILTERED_OUT
+    # This fixture row owns real estate, so the rules actor sets it ineligible.
+    assert application.status == ApplicationStatus.INELIGIBLE
+    assert application.status_source == StatusSource.RULES

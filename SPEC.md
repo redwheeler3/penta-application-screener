@@ -269,16 +269,38 @@ The following rules should be implemented. Each rule is listed with its default 
 - Email-list signup date and notification history must not influence screening.
 - For child age calculations, use age on the move-in date when a date is needed. A child turning 18 shortly after move-in does not matter.
 
-### Hard Filter Outputs
+### Application Status Model
 
-- `eligible`: application passes all enabled rules and proceeds to AI screening
-- `filtered_out`: application fails one or more deterministic rules and is excluded
+Each application has a single mutable **status** with exactly two values:
 
-Hard filter reasons must be human-readable, such as `Household has 3 adults; maximum is 2`. There is no intermediate state — rules are binary filters.
+- `eligible`: in the running, proceeds through screening
+- `ineligible`: not in the running
+
+Status is set by an actor, recorded in **`status_source`**:
+
+- `untouched`: no actor has acted on it — it passed the rules and either AI has not run or AI did not flag it. The default for a clean eligible application.
+- `rules`: the deterministic filters set it `ineligible` (high trust)
+- `ai`: the AI quality pass set it `ineligible` (lower trust — this is the "needs review" bucket)
+- `human`: a person set the status, in either direction
+
+Only an actor that *acts* stamps itself. Rules passing an application through, or AI declining to flag it, leaves it `untouched` — they do not "decide" eligibility, they hand it to the next step. Only a human can move an application from `ineligible` back to `eligible` (or the reverse).
+
+There is no third status. The UI surfaces the `status_source = ai` group as an "AI Flagged" view, composed client-side as a filter over the real columns. This keeps status binary while distinguishing high-trust deterministic exclusions from AI exclusions. The labeling is deliberately factual ("AI Flagged" — what happened), not prescriptive ("Needs Review" — what the user must do): whether to review an AI exclusion, and which flags matter, is the human's judgment, not the system's. The backend never names these views; it returns counts and filters keyed by the real `status` and `status_source` columns.
+
+**The "why" is kept separately as immutable records**, never mutated by a human:
+
+- deterministic **filter reasons** (e.g. `Household gross income ($164,000) is above $150,000.`)
+- **AI quality flags** (category, summary, evidence)
+
+A human flipping the status never deletes these records — an applicant can be `eligible / human` while still showing the AI flags a reviewer chose to accept. This preserves the audit trail.
+
+**Stickiness:** a machine actor (rules or AI) must never overwrite a `human` status. On re-sync or re-run, machine actors refresh the reason/flag records but leave a human-set status untouched.
+
+**Staleness nudge:** because human decisions are sticky, a re-run can surface new findings on an application a human already cleared. When the machine records change after a human's review, the application is marked stale ("new findings since last review") so the reviewer can re-decide. Status does not move; staleness is derived by comparing the latest machine-record timestamp to when the human set the status.
 
 ### AI Quality Flags
 
-Separately from AI triage (which resolves ambiguous data), AI should make a quality/integrity pass over eligible applications to flag suspicious patterns that are too subjective or contextual for deterministic rules. This is not filtering — it's surfacing things for the screener to be aware of. Flags are informational, not disqualifying.
+Separately from AI triage (which resolves ambiguous data), AI should make a quality/integrity pass over eligible applications to flag suspicious patterns that are too subjective or contextual for deterministic rules. When the AI pass flags an eligible application, it sets the status to `ineligible` with `status_source = ai` — the low-trust "needs review" bucket — rather than excluding it outright. A human reviews these and either confirms the exclusion or restores the applicant to `eligible`. The flags themselves are kept as immutable records regardless of the human's decision.
 
 Known patterns to detect (this list is intentionally incomplete and should grow over time):
 
