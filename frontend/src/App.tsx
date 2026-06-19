@@ -191,6 +191,12 @@ function flagCategoryLabel(category: string): string {
   return FLAG_CATEGORY_LABELS[category] ?? category;
 }
 
+// Percent complete (0–100) for a quality-flag run, used for both the label text
+// and the progress-bar width so the two never drift apart.
+function qfPercent(progress: { processed: number; total: number }): number {
+  return (progress.processed / progress.total) * 100;
+}
+
 // The configured sheet id from a server response: prefer the resolved URL, falling
 // back to the bare id. Returns "" when no sheet is configured.
 function resolveSheetId(payload: SettingsResponse): string {
@@ -856,7 +862,7 @@ export function App() {
                     {qfRunning
                       ? qfProgress
                         ? `Running ${qfProgress.processed}/${qfProgress.total} ` +
-                          `(${Math.round((qfProgress.processed / qfProgress.total) * 100)}%)`
+                          `(${Math.round(qfPercent(qfProgress))}%)`
                         : "Running checks"
                       : "Run quality checks"}
                   </span>
@@ -909,7 +915,7 @@ export function App() {
                 <div className="qf-progress-label">
                   {qfProgress
                     ? `Analyzing applications… ${qfProgress.processed}/${qfProgress.total} ` +
-                      `(${Math.round((qfProgress.processed / qfProgress.total) * 100)}%)`
+                      `(${Math.round(qfPercent(qfProgress))}%)`
                     : "Starting analysis…"}
                 </div>
                 {/* Until the first progress event arrives, show an indeterminate bar
@@ -919,7 +925,7 @@ export function App() {
                   {qfProgress ? (
                     <div
                       className="qf-progress-fill"
-                      style={{ width: `${(qfProgress.processed / qfProgress.total) * 100}%` }}
+                      style={{ width: `${qfPercent(qfProgress)}%` }}
                     />
                   ) : (
                     <div className="qf-progress-fill qf-progress-fill-indeterminate" />
