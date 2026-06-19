@@ -129,7 +129,15 @@ class ApplicationAIResult(TimestampMixin, Base):
     kind: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     cache_key: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     model_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    # The prompt version this result was produced under. Hashed into cache_key for
+    # cache hits, but also stored plainly so cost estimates can prefer usage from
+    # the current prompt version and fall back to earlier ones. Nullable: rows
+    # written before this column have an unknown version.
+    prompt_version: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     output: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    # The model's free-text reasoning alongside the structured output, kept for the
+    # admin "Raw AI output" view. Nullable: not every provider surfaces it.
+    narrative: Mapped[str | None] = mapped_column(Text, nullable=True)
     input_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)

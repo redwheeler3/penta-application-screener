@@ -32,12 +32,14 @@ class MockProvider:
         model_id: str = "mock-model",
         input_tokens: int = 100,
         output_tokens: int = 50,
+        narrative: str | None = None,
     ) -> None:
         self.results.append(
             AIResult(
                 output=output,
                 usage=Usage(input_tokens=input_tokens, output_tokens=output_tokens),
                 model_id=model_id,
+                narrative=narrative,
             )
         )
 

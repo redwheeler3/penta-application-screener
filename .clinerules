@@ -26,6 +26,7 @@ This file is the shared working agreement for Codex, Cline, and any other agent 
 - Start simple and testable.
 - Prioritize readability above cleverness, compactness, or premature abstraction.
 - Avoid redundancy, especially duplicated business rules, eligibility thresholds, field mappings, prompts, and schema definitions.
+- Clean up technical debt as soon as it is found, rather than patching around it. Do not be afraid to refactor to keep the code aligned with these rules; a correct one-off fix that leaves the underlying redundancy or smell in place is not done. When a targeted fix would be the Nth instance of the same workaround, fix the root cause instead.
 - Prefer elegant, boring code: clear names, small functions, obvious modules, and simple control flow.
 - Add abstractions only when they reduce real duplication or clarify a meaningful boundary.
 - Keep domain rules close to tests so screening behavior is easy to verify and change.

@@ -42,4 +42,29 @@ class StrandsProvider:
                 output_tokens=usage_data["outputTokens"],
             ),
             model_id=model_id,
+            narrative=_conversation_narrative(agent.messages),
         )
+
+
+def _conversation_narrative(messages: object) -> str | None:
+    """Join the model's reasoning text across the whole conversation.
+
+    When the model produces structured output it calls a tool, which splits its
+    reasoning across several assistant turns: a short preamble in one message, the
+    detailed analysis in others, plus tool-use/tool-result messages in between.
+    ``result.message`` is only the LAST turn, so it captures just the preamble for
+    flagged applications. We therefore walk every assistant message and concatenate
+    its text blocks (dropping toolUse/toolResult blocks), preserving order.
+    """
+    if not isinstance(messages, list):
+        return None
+    parts: list[str] = []
+    for message in messages:
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+        for block in message.get("content", []):
+            if isinstance(block, dict) and isinstance(block.get("text"), str):
+                text = block["text"].strip()
+                if text:
+                    parts.append(text)
+    return "\n\n".join(parts) or None

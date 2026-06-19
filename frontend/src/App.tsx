@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronLeft, ChevronUp, Clipboard, LogIn, LogOut, RefreshCw, Sparkles, X } from "lucide-react";
 import { type SyntheticEvent, useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { HouseIcon } from "./HouseIcon";
 
 type CurrentUser = {
@@ -87,7 +88,8 @@ type ApplicationDetail = ApplicationSummary & {
   // null = quality-flag pass not yet run for this application; [] = ran, clean.
   qualityFlags: QualityFlag[] | null;
   rawRow?: Record<string, unknown>;
-  rawAiOutput?: Record<string, unknown>;
+  // The model's free-text reasoning from the latest quality-flag pass (admin only).
+  aiNarrative?: string | null;
 };
 
 type QualityFlagEstimate = {
@@ -189,6 +191,12 @@ function flagCategoryLabel(category: string): string {
   return FLAG_CATEGORY_LABELS[category] ?? category;
 }
 
+// The configured sheet id from a server response: prefer the resolved URL, falling
+// back to the bare id. Returns "" when no sheet is configured.
+function resolveSheetId(payload: SettingsResponse): string {
+  return payload.google_sheet_url || payload.settings.google_sheet_id;
+}
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 const defaultSettings: AppSettings = {
@@ -224,9 +232,13 @@ const ALL_RULES = [
 export function App() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
-  const [settings, setSettings] = useState<AppSettings>(defaultSettings);
-  const [googleSheetUrl, setGoogleSheetUrl] = useState("");
-  const [googleSheetTitle, setGoogleSheetTitle] = useState<string | null>(null);
+  // The form draft the user edits. Kept separate from `saved` so typing never
+  // affects affordances that must gate on persisted state (Sync button, the setup
+  // callout, panel collapse) until the change is actually saved to the server.
+  const [draft, setDraft] = useState<AppSettings>(defaultSettings);
+  // The last settings persisted on the server — the single source of truth for what
+  // is actually configured. `draft` is reset to this on load and after each save.
+  const [saved, setSaved] = useState<SettingsResponse | null>(null);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState("");
@@ -285,13 +297,12 @@ export function App() {
   }, [user]);
 
   function applySettingsResponse(payload: SettingsResponse) {
-    const sheetId = payload.google_sheet_url || payload.settings.google_sheet_id;
-    setSettings({
+    const sheetId = resolveSheetId(payload);
+    setSaved(payload);
+    setDraft({
       ...payload.settings,
       google_sheet_id: sheetId,
     });
-    setGoogleSheetUrl(payload.google_sheet_url);
-    setGoogleSheetTitle(payload.google_sheet_title);
     // First-run setup: open the form when there's no sheet configured yet.
     if (!sheetId) {
       setIsSettingsExpanded(true);
@@ -419,7 +430,7 @@ export function App() {
       method: "PUT",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(settings),
+      body: JSON.stringify(draft),
     });
 
     if (response.ok) {
@@ -427,7 +438,7 @@ export function App() {
       applySettingsResponse(payload);
       // Collapse the form after a successful save (applySettingsResponse keeps it
       // open only when no sheet is configured yet).
-      if (payload.google_sheet_url || payload.settings.google_sheet_id) {
+      if (resolveSheetId(payload)) {
         setIsSettingsExpanded(false);
       }
       setSettingsMessage("Settings saved.");
@@ -567,7 +578,7 @@ export function App() {
     }
   }
 
-  const hasGoogleSheetLink = Boolean(settings.google_sheet_id);
+  const hasGoogleSheetLink = Boolean(saved && resolveSheetId(saved));
   // Form visibility is an explicit open/closed state, not derived from the field
   // value — otherwise typing a link would collapse the form before saving.
   const showSettingsForm = isSettingsExpanded;
@@ -643,28 +654,28 @@ export function App() {
               ) : null}
             </div>
 
-            {hasGoogleSheetLink && !showSettingsForm ? (
+            {hasGoogleSheetLink && saved && !showSettingsForm ? (
               <div className="settings-summary">
                 <div>
                   <span>Google Sheet</span>
-                  {googleSheetTitle && googleSheetUrl ? (
-                    <a className="sheet-reference" href={googleSheetUrl} target="_blank" rel="noreferrer">
-                      {googleSheetTitle}
+                  {saved.google_sheet_title && saved.google_sheet_url ? (
+                    <a className="sheet-reference" href={saved.google_sheet_url} target="_blank" rel="noreferrer">
+                      {saved.google_sheet_title}
                     </a>
                   ) : (
-                    <strong>{settings.google_sheet_id}</strong>
+                    <strong>{saved.settings.google_sheet_id}</strong>
                   )}
                 </div>
                 <div>
                   <span>Opening</span>
                   <strong>
-                    {settings.unit_size.replace("br", " bedroom")}, {settings.move_in_date}
+                    {saved.settings.unit_size.replace("br", " bedroom")}, {saved.settings.move_in_date}
                   </strong>
                 </div>
                 <div>
                   <span>Income range</span>
                   <strong>
-                    {`$${settings.income_min.toLocaleString()} – $${settings.income_max.toLocaleString()}`}
+                    {`$${saved.settings.income_min.toLocaleString()} – $${saved.settings.income_max.toLocaleString()}`}
                   </strong>
                 </div>
               </div>
@@ -673,22 +684,22 @@ export function App() {
                 <label>
                   <span>Google Sheet link</span>
                   <input
-                    value={settings.google_sheet_id}
-                    onChange={(event) => setSettings({ ...settings, google_sheet_id: event.target.value })}
+                    value={draft.google_sheet_id}
+                    onChange={(event) => setDraft({ ...draft, google_sheet_id: event.target.value })}
                     placeholder="Paste the response spreadsheet link"
                   />
-                  {googleSheetTitle && googleSheetUrl ? (
-                    <a className="sheet-reference" href={googleSheetUrl} target="_blank" rel="noreferrer">
-                      {googleSheetTitle}
+                  {saved?.google_sheet_title && saved.google_sheet_url ? (
+                    <a className="sheet-reference" href={saved.google_sheet_url} target="_blank" rel="noreferrer">
+                      {saved.google_sheet_title}
                     </a>
                   ) : null}
                 </label>
                 <label>
                   <span>Unit size</span>
                   <select
-                    value={settings.unit_size}
+                    value={draft.unit_size}
                     onChange={(event) =>
-                      setSettings({ ...settings, unit_size: event.target.value as AppSettings["unit_size"] })
+                      setDraft({ ...draft, unit_size: event.target.value as AppSettings["unit_size"] })
                     }
                   >
                     <option value="1br">1 bedroom</option>
@@ -700,8 +711,8 @@ export function App() {
                   <span>Move-in date</span>
                   <input
                     type="date"
-                    value={settings.move_in_date}
-                    onChange={(event) => setSettings({ ...settings, move_in_date: event.target.value })}
+                    value={draft.move_in_date}
+                    onChange={(event) => setDraft({ ...draft, move_in_date: event.target.value })}
                   />
                 </label>
                 <label>
@@ -709,8 +720,8 @@ export function App() {
                   <input
                     type="number"
                     min="0"
-                    value={settings.income_min}
-                    onChange={(event) => setSettings({ ...settings, income_min: Number(event.target.value) })}
+                    value={draft.income_min}
+                    onChange={(event) => setDraft({ ...draft, income_min: Number(event.target.value) })}
                   />
                 </label>
                 <label>
@@ -718,8 +729,8 @@ export function App() {
                   <input
                     type="number"
                     min="0"
-                    value={settings.income_max}
-                    onChange={(event) => setSettings({ ...settings, income_max: Number(event.target.value) })}
+                    value={draft.income_max}
+                    onChange={(event) => setDraft({ ...draft, income_max: Number(event.target.value) })}
                   />
                 </label>
                 <label>
@@ -727,9 +738,9 @@ export function App() {
                   <input
                     type="number"
                     min="0"
-                    value={settings.income_mismatch_tolerance}
+                    value={draft.income_mismatch_tolerance}
                     onChange={(event) =>
-                      setSettings({ ...settings, income_mismatch_tolerance: Number(event.target.value) })
+                      setDraft({ ...draft, income_mismatch_tolerance: Number(event.target.value) })
                     }
                   />
                 </label>
@@ -739,8 +750,8 @@ export function App() {
                     type="number"
                     min="1"
                     max="10"
-                    value={settings.max_adults}
-                    onChange={(event) => setSettings({ ...settings, max_adults: Number(event.target.value) })}
+                    value={draft.max_adults}
+                    onChange={(event) => setDraft({ ...draft, max_adults: Number(event.target.value) })}
                   />
                 </label>
                 <label>
@@ -749,8 +760,8 @@ export function App() {
                     type="number"
                     min="1"
                     max="100"
-                    value={settings.min_adult_age}
-                    onChange={(event) => setSettings({ ...settings, min_adult_age: Number(event.target.value) })}
+                    value={draft.min_adult_age}
+                    onChange={(event) => setDraft({ ...draft, min_adult_age: Number(event.target.value) })}
                   />
                 </label>
                 <label>
@@ -759,8 +770,8 @@ export function App() {
                     type="number"
                     min="0"
                     max="10"
-                    value={settings.max_dogs}
-                    onChange={(event) => setSettings({ ...settings, max_dogs: Number(event.target.value) })}
+                    value={draft.max_dogs}
+                    onChange={(event) => setDraft({ ...draft, max_dogs: Number(event.target.value) })}
                   />
                 </label>
                 <label>
@@ -769,15 +780,15 @@ export function App() {
                     type="number"
                     min="0"
                     max="10"
-                    value={settings.max_cats}
-                    onChange={(event) => setSettings({ ...settings, max_cats: Number(event.target.value) })}
+                    value={draft.max_cats}
+                    onChange={(event) => setDraft({ ...draft, max_cats: Number(event.target.value) })}
                   />
                 </label>
                 <label className="checkbox-label">
                   <input
                     type="checkbox"
-                    checked={settings.allow_other_pets}
-                    onChange={(event) => setSettings({ ...settings, allow_other_pets: event.target.checked })}
+                    checked={draft.allow_other_pets}
+                    onChange={(event) => setDraft({ ...draft, allow_other_pets: event.target.checked })}
                   />
                   <span>Allow other pets</span>
                 </label>
@@ -789,12 +800,12 @@ export function App() {
                       <label key={rule.id} className="checkbox-label rule-toggle">
                         <input
                           type="checkbox"
-                          checked={!settings.disabled_rules.includes(rule.id)}
+                          checked={!draft.disabled_rules.includes(rule.id)}
                           onChange={(event) => {
                             const disabled = event.target.checked
-                              ? settings.disabled_rules.filter((r) => r !== rule.id)
-                              : [...settings.disabled_rules, rule.id];
-                            setSettings({ ...settings, disabled_rules: disabled });
+                              ? draft.disabled_rules.filter((r) => r !== rule.id)
+                              : [...draft.disabled_rules, rule.id];
+                            setDraft({ ...draft, disabled_rules: disabled });
                           }}
                         />
                         <span>{rule.label}</span>
@@ -812,7 +823,7 @@ export function App() {
             )}
           </section>
 
-          {!settings.google_sheet_id ? (
+          {!hasGoogleSheetLink ? (
             <section className="setup-callout">
               <strong>Setup needed</strong>
               <span>Add the Google Sheet link in settings before syncing applications.</span>
@@ -827,7 +838,7 @@ export function App() {
               </div>
               <div className="panel-actions">
                 <button
-                  className="secondary-button"
+                  className={`secondary-button${qfRunning ? " is-busy" : ""}`}
                   type="button"
                   onClick={requestQualityFlagsEstimate}
                   // Disable while a run is in progress, while the estimate
@@ -851,10 +862,10 @@ export function App() {
                   </span>
                 </button>
                 <button
-                  className="primary-button"
+                  className={`primary-button${isSyncing ? " is-busy" : ""}`}
                   type="button"
                   onClick={syncApplications}
-                  disabled={isSyncing || !settings.google_sheet_id}
+                  disabled={isSyncing || !hasGoogleSheetLink}
                 >
                   <RefreshCw size={18} />
                   <span>{isSyncing ? "Syncing" : "Sync applications"}</span>
@@ -893,17 +904,26 @@ export function App() {
                 </div>
               </div>
             ) : null}
-            {qfRunning && qfProgress ? (
+            {qfRunning ? (
               <div className="qf-progress">
                 <div className="qf-progress-label">
-                  Analyzing applications… {qfProgress.processed}/{qfProgress.total} (
-                  {Math.round((qfProgress.processed / qfProgress.total) * 100)}%)
+                  {qfProgress
+                    ? `Analyzing applications… ${qfProgress.processed}/${qfProgress.total} ` +
+                      `(${Math.round((qfProgress.processed / qfProgress.total) * 100)}%)`
+                    : "Starting analysis…"}
                 </div>
+                {/* Until the first progress event arrives, show an indeterminate bar
+                    so the indicator appears instantly on confirm, not seconds later
+                    once the first application finishes. */}
                 <div className="qf-progress-track">
-                  <div
-                    className="qf-progress-fill"
-                    style={{ width: `${(qfProgress.processed / qfProgress.total) * 100}%` }}
-                  />
+                  {qfProgress ? (
+                    <div
+                      className="qf-progress-fill"
+                      style={{ width: `${(qfProgress.processed / qfProgress.total) * 100}%` }}
+                    />
+                  ) : (
+                    <div className="qf-progress-fill qf-progress-fill-indeterminate" />
+                  )}
                 </div>
               </div>
             ) : null}
@@ -1035,10 +1055,12 @@ export function App() {
                     <pre>{JSON.stringify(selectedApp.rawRow, null, 2)}</pre>
                   </details>
                 ) : null}
-                {selectedApp.rawAiOutput ? (
+                {selectedApp.aiNarrative ? (
                   <details className="raw-row-section">
-                    <summary>Raw AI output (admin)</summary>
-                    <pre>{JSON.stringify(selectedApp.rawAiOutput, null, 2)}</pre>
+                    <summary>Raw AI narrative (admin)</summary>
+                    <div className="ai-narrative">
+                      <ReactMarkdown>{selectedApp.aiNarrative}</ReactMarkdown>
+                    </div>
                   </details>
                 ) : null}
               </div>

@@ -176,7 +176,7 @@ async def test_ai_flag_sets_needs_review_status_and_filter() -> None:
 
 
 @pytest.mark.anyio
-async def test_raw_ai_output_is_admin_only_on_detail() -> None:
+async def test_ai_narrative_is_admin_only_on_detail() -> None:
     app, db, provider = setup_app(role=UserRole.ADMIN)
     flagged = add_eligible(db, email="flag@x.com", raw_hash="h1")
     provider.queue(
@@ -189,7 +189,8 @@ async def test_raw_ai_output_is_admin_only_on_detail() -> None:
                     evidence="pets",
                 )
             ]
-        )
+        ),
+        narrative="Checking pets: a hamster is outside the allowed categories.",
     )
 
     transport = ASGITransport(app=app)
@@ -199,16 +200,9 @@ async def test_raw_ai_output_is_admin_only_on_detail() -> None:
         admin_detail = (await client.get(f"/applications/{flagged.id}")).json()[
             "application"
         ]
-        assert admin_detail["rawAiOutput"] == {
-            "flags": [
-                {
-                    "category": "pet_policy",
-                    "severity": "notable",
-                    "summary": "Too many pets.",
-                    "evidence": "pets",
-                }
-            ]
-        }
+        assert admin_detail["aiNarrative"] == (
+            "Checking pets: a hamster is outside the allowed categories."
+        )
 
         member = User(
             email="member@x.com",
@@ -223,7 +217,7 @@ async def test_raw_ai_output_is_admin_only_on_detail() -> None:
         member_detail = (await client.get(f"/applications/{flagged.id}")).json()[
             "application"
         ]
-        assert "rawAiOutput" not in member_detail
+        assert "aiNarrative" not in member_detail
 
 
 @pytest.mark.anyio
