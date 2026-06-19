@@ -664,7 +664,11 @@ Suggested implementation milestones:
 8. Google Docs report generation.
 9. Multi-member screening and merged shortlist comparison.
 
-Milestones 1–4 are complete. The next milestone is AI quality flags (milestone 5).
+Milestones 1–5 are complete. The next milestone is per-candidate AI essay analysis and summaries (milestone 6).
+
+Milestone 5 (AI quality flags) also delivered the shared AI foundation originally listed under milestone 6: the provider-agnostic interface (Strands + Amazon Bedrock, with a deterministic mock for tests), cached per-application analysis keyed on content hash + model + prompt version, a token pricing table, cost estimate, per-run spending cap, and admin-only raw-debug access via the candidate detail page. Milestone 6 is therefore now scoped to essay analysis and committee-ready summaries on top of that foundation.
+
+The status model was reworked during milestone 5 (see "Application Status Model"): `status` (eligible/ineligible) with a `status_source` (untouched/rules/ai/human), human override that is sticky against machine re-runs, and a staleness signal when machine findings change after a human review.
 
 Jeff will handle commits at stable milestones.
 
@@ -679,15 +683,19 @@ These are the questions that still need decisions or can wait until their implem
 
 ### Before AI Milestone
 
-1. Pick initial Bedrock/provider models for:
-   - first-pass candidate analysis
-   - pattern discovery
-   - recommendation challenge/audit
-   - final report synthesis
-2. Set default per-run AI spending cap.
-3. Define structured AI output schemas for candidate analysis, pattern discovery, narrowing questions, ranking, evidence audit, and report sections.
-4. Decide whether likely AI-written answers should be detected or ignored.
-5. Define the first small eval/fixture strategy for deterministic filters and AI schema consistency.
+Decisions resolved during milestone 5:
+
+- **Provider/SDK:** Strands Agents over Amazon Bedrock (`us-west-2`), behind a provider-agnostic interface; a deterministic mock provider backs tests with no AWS. Model IDs are Bedrock inference profile IDs (the `us.`/`global.` prefixed form), not bare on-demand IDs.
+- **Models:** quality-flag first pass uses `us.anthropic.claude-haiku-4-5` (cheapest capable); a Sonnet synthesis model is configured for later judgment-heavy milestones. Both are Admin-configurable.
+- **Spending cap:** default $0.50 per run, Admin-configurable; enforced against the estimate before a run starts.
+- **Pricing:** hardcoded token table (the AWS Price List API carries no Claude model past v3, so it cannot price the models we use); unknown models fall back to Opus-tier so estimates never under-count.
+- **AI-written answers:** the quality pass flags generic AI-boilerplate essays, but flagging is informational input to human review, never auto-disqualifying.
+
+Still open for later AI milestones:
+
+1. Pick models for pattern discovery, recommendation challenge/audit, and final report synthesis.
+2. Define structured output schemas for pattern discovery, narrowing questions, ranking, evidence audit, and report sections (the quality-flag schema exists; `app/ai/schemas.py` is the shared home).
+3. Define the first small eval/fixture strategy for AI schema consistency.
 
 ### Before Reporting
 
