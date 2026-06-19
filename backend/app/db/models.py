@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
@@ -90,6 +90,32 @@ class Application(TimestampMixin, Base):
         index=True,
     )
     hard_filter_reasons: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+
+
+class ApplicationAIResult(TimestampMixin, Base):
+    """Cached AI analysis for one application and analysis kind.
+
+    ``cache_key`` is a hash of the application content + model + prompt version,
+    so re-running an unchanged application with the same model/prompt reuses the
+    stored result instead of paying for another call. ``output`` holds the
+    validated structured-output JSON; usage/cost are kept for auditability.
+    """
+
+    __tablename__ = "application_ai_results"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id"), index=True, nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    cache_key: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    model_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    output: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+
+    application: Mapped[Application] = relationship()
 
 
 class SyncRun(TimestampMixin, Base):

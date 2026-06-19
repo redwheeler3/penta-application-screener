@@ -1,0 +1,45 @@
+"""Strands + Amazon Bedrock implementation of ``AIProvider``.
+
+Bedrock model IDs here must be inference profile IDs (e.g.
+``us.anthropic.claude-haiku-4-5-20251001-v1:0``); the bare on-demand IDs are
+rejected by Bedrock for these models. Only model invocation is performed — no
+AWS resources are created, modified, or deleted.
+"""
+
+from __future__ import annotations
+
+from app.ai.provider import AIResult, SchemaT, Usage
+
+
+class StrandsProvider:
+    def __init__(self, region: str) -> None:
+        self._region = region
+
+    def structured_output(
+        self,
+        *,
+        model_id: str,
+        schema: type[SchemaT],
+        prompt: str,
+        system_prompt: str | None = None,
+    ) -> AIResult:
+        # Imported lazily so importing this module (and the test suite) does not
+        # require the strands package or any AWS configuration to be present.
+        from strands import Agent
+        from strands.models import BedrockModel
+
+        agent = Agent(
+            model=BedrockModel(model_id=model_id, region_name=self._region),
+            system_prompt=system_prompt,
+        )
+        result = agent(prompt, structured_output_model=schema)
+
+        usage_data = result.metrics.accumulated_usage
+        return AIResult(
+            output=result.structured_output,
+            usage=Usage(
+                input_tokens=usage_data["inputTokens"],
+                output_tokens=usage_data["outputTokens"],
+            ),
+            model_id=model_id,
+        )

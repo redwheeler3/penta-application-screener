@@ -14,6 +14,21 @@ def google_sheet_url_from_id(sheet_id: str) -> str:
     return f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit"
 
 
+class AISettings(BaseModel):
+    """Admin-only AI provider configuration.
+
+    Model IDs are Bedrock inference profile IDs (the ``us.`` / ``global.``
+    prefixed form), not bare on-demand model IDs, which Bedrock requires for
+    these models. The quality-flag pass uses the cheaper first-pass model;
+    judgment-heavier milestones will use the synthesis model.
+    """
+
+    region: str = Field(default="us-west-2")
+    first_pass_model: str = Field(default="us.anthropic.claude-haiku-4-5-20251001-v1:0")
+    synthesis_model: str = Field(default="us.anthropic.claude-sonnet-4-6")
+    spending_cap_usd: float = Field(default=0.5, ge=0)
+
+
 class AppSettings(BaseModel):
     google_sheet_id: str = Field(default="", max_length=2000)
     unit_size: str = Field(default="2br", pattern="^(1br|2br|3br)$")
@@ -27,6 +42,7 @@ class AppSettings(BaseModel):
     allow_other_pets: bool = False
     income_mismatch_tolerance: int = Field(default=1_000, ge=0)
     disabled_rules: list[str] = Field(default_factory=list)
+    ai: AISettings = Field(default_factory=AISettings)
 
     @field_validator("google_sheet_id")
     @classmethod
