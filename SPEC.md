@@ -345,11 +345,13 @@ Hard filters should run automatically after import/sync. AI review should not au
 
 ### Interactive Screening
 
-The screening experience should discover patterns in essay responses and ask the user what matters, rather than starting from a fully fixed rubric. The likely high-level criterion is "fit for Penta," but this is intentionally opinionated and user-dependent.
+The screening experience should discover patterns in essay responses and ask the user what matters, rather than starting from a fully fixed rubric. The likely high-level criterion is "fit for Penta," but this is intentionally opinionated and user-dependent. The patterns are not pre-defined: the AI discovers the differentiating dimensions that actually distinguish *this* applicant pool (the "Known patterns to detect" list under AI Quality Flags is for data-integrity flagging, not these screening differentiators). The screener is a screening assistant for a human, not an autonomous filter.
 
-The app should ask the user batches of 1 to 3 narrowing questions based on discovered patterns. Each question should preview impact where possible, such as how many candidates would remain under each answer. The app should maintain a live count of how many applicants are currently qualified after each user answer or screening criterion. The user decides when the pool has been narrowed enough for manual review. A likely target shortlist size is around 20, but this should not be hard-coded.
+The assistant does not "cut" candidates. At the expected scale (~300 applicants) it cannot ask the committee about candidates individually, and hard removal is the wrong model. Instead, the assistant **stack-ranks the entire qualified pool with a per-row rationale**, and the committee's answers re-sort that list. Narrowing answers adjust standing (soft ranking), never remove anyone — so a low-ranked candidate is never "rejected," just currently low, and a later answer can lift them back up. The committee draws the shortlist line wherever they choose by reading top-down.
 
-Users should be able to undo answers to AI-generated narrowing questions.
+Narrowing questions are global preference-elicitation, not per-candidate: e.g. "What matters more — financial stability or community involvement — or about equal?" Each answer reweights the ranking and the list re-sorts. The app should ask batches of 1 to 3 such questions based on discovered patterns. Questions should intentionally include some redundancy/overlap so that no single answer locks the order prematurely — a later, differently-framed question can rebalance the ranking and resurface candidates an earlier answer had pushed down. Each question should preview impact where possible, such as how the top of the list (e.g. the would-be top ~20) changes under each answer. The app should maintain a live count of how many applicants are currently above the user's chosen shortlist line. The user decides when the ranking is trustworthy enough for manual review. A likely target shortlist size is around 20, but this should not be hard-coded.
+
+Users should be able to undo answers to AI-generated narrowing questions. Undo is a manual correction; the soft-ranking model above is what makes routine revisiting automatic (re-sorting rather than un-rejecting).
 
 Users do not need a manual "pin candidate" workflow for the initial design.
 
