@@ -12,8 +12,14 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_oauth_client_secrets_file: str = ""
     google_redirect_uri: str = "http://localhost:8000/auth/google/callback"
+    # Request the canonical scope URIs for email/profile, not the short aliases.
+    # Google grants these but echoes them back as the full userinfo.* URIs, so
+    # requesting the aliases makes Authlib's literal scope check report them as
+    # "missing" even though they were granted.
     google_oauth_scopes: str = (
-        "openid email profile "
+        "openid "
+        "https://www.googleapis.com/auth/userinfo.email "
+        "https://www.googleapis.com/auth/userinfo.profile "
         "https://www.googleapis.com/auth/spreadsheets.readonly "
         "https://www.googleapis.com/auth/documents "
         "https://www.googleapis.com/auth/drive.file"
