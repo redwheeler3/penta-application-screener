@@ -1,5 +1,6 @@
-import { ChevronDown, ChevronLeft, ChevronUp, Clipboard, Home, LogIn, LogOut, RefreshCw, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronUp, Clipboard, LogIn, LogOut, RefreshCw, X } from "lucide-react";
 import { type SyntheticEvent, useEffect, useState } from "react";
+import { HouseIcon } from "./HouseIcon";
 
 type CurrentUser = {
   id: number;
@@ -387,14 +388,14 @@ export function App() {
               title="Back to applications"
             >
               <span className="brand-mark" aria-hidden="true">
-                <Home size={20} />
+                <HouseIcon size={30} />
               </span>
               <span className="brand-name">Penta Housing Co-Op</span>
             </button>
           ) : (
             <div className="brand-lockup">
               <span className="brand-mark" aria-hidden="true">
-                <Home size={20} />
+                <HouseIcon size={30} />
               </span>
               <span className="brand-name">Penta Housing Co-Op</span>
             </div>
