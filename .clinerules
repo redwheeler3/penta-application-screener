@@ -34,6 +34,7 @@ This file is the shared working agreement for Codex, Cline, and any other agent 
 - When removing a feature or concept, remove it completely: code, tests, types, database columns, migrations, UI references, CSS, and spec mentions. Do not leave dead references behind "just in case." If it's gone, it's gone everywhere. Rebuild the database rather than writing migration shims.
 - Follow the implementation defaults in `SPEC.md`: `uv`, FastAPI, SQLAlchemy/Alembic, pytest, Vite React, npm, SQLite, and cookie-based sessions unless Jeff changes the plan.
 - Do not start the backend or frontend servers for Jeff. Jeff starts local dev servers manually with the project script when needed.
+- The Vite dev server has hot module replacement, so frontend edits appear in Jeff's browser automatically. Do not reload the page for Jeff after a code change. When driving the browser yourself, you may reload to refresh your own snapshot, but reloads are not needed for HMR to work and are only worth it after React state-logic changes where HMR can keep stale state. Run `npm run build` to catch type/build errors; that production build is separate from the dev server and does not update Jeff's page.
 - Separate deterministic screening logic from AI-assisted evaluation logic.
 - Make AI decisions auditable: preserve prompts, model outputs, score rationales, and user choices where appropriate.
 - Design for human override at every candidate-screening stage.

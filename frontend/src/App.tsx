@@ -1,4 +1,4 @@
-import { ChevronLeft, Clipboard, Home, LogIn, LogOut, RefreshCw, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronUp, Clipboard, Home, LogIn, LogOut, RefreshCw, X } from "lucide-react";
 import { type SyntheticEvent, useEffect, useState } from "react";
 
 type CurrentUser = {
@@ -48,10 +48,66 @@ type ApplicationSummary = {
   createdAt: string | null;
 };
 
+type Essay = {
+  label: string;
+  question: string;
+  answer: string;
+};
+
 type ApplicationDetail = ApplicationSummary & {
   normalized: Record<string, unknown>;
+  essays: Essay[];
   rawRow?: Record<string, unknown>;
 };
+
+type SortKey = "applicant" | "co_applicant" | "children" | "income" | "status";
+type SortState = { key: SortKey; direction: "asc" | "desc" } | null;
+
+// Committee-facing labels for the normalized field keys. Keys not listed here
+// fall back to a title-cased version of the raw key.
+const FIELD_LABELS: Record<string, string> = {
+  applicant_name: "Applicant name",
+  co_applicant_name: "Co-applicant name",
+  applicant_age: "Applicant age",
+  co_applicant_age: "Co-applicant age",
+  adult_count: "Adults",
+  child_count: "Number of children",
+  child_details: "Children",
+  household_income: "Household income",
+  applicant_income: "Applicant income",
+  co_applicant_income: "Co-applicant income",
+  has_real_estate: "Owns real estate",
+  pets_text: "Pets",
+  co_applicant_phone: "Co-applicant phone",
+  co_applicant_email: "Co-applicant email",
+  applicant_email: "Applicant email",
+  form_submission_email: "Form submission email",
+  applicant_employment_start: "Applicant employment start",
+  co_applicant_employment_start: "Co-applicant employment start",
+};
+
+// Normalized fields that should render as currency.
+const MONEY_FIELDS = new Set(["household_income", "applicant_income", "co_applicant_income"]);
+
+// Maps a filter reason code to the normalized field(s) that caused it, so the
+// detail view can highlight the offending value next to the reason.
+const REASON_FIELDS: Record<string, string[]> = {
+  income_below_range: ["household_income"],
+  income_above_range: ["household_income"],
+  income_arithmetic_mismatch: ["household_income", "applicant_income", "co_applicant_income"],
+  owns_real_estate: ["has_real_estate"],
+  applicant_under_19: ["applicant_age"],
+  co_applicant_under_19: ["co_applicant_age"],
+  child_count_mismatch: ["child_count", "child_details"],
+  child_age_over_18: ["child_details"],
+  child_age_exceeds_parent: ["child_details", "applicant_age", "co_applicant_age"],
+  co_applicant_incomplete: ["co_applicant_name", "co_applicant_age", "co_applicant_phone", "co_applicant_email"],
+  future_employment_start: ["applicant_employment_start", "co_applicant_employment_start"],
+};
+
+function fieldLabel(key: string): string {
+  return FIELD_LABELS[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
@@ -71,18 +127,18 @@ const defaultSettings: AppSettings = {
 };
 
 const ALL_RULES = [
-  { id: "applicant_under_19", label: "Applicant under 19", outcome: "filtered_out" },
-  { id: "child_age_over_18", label: "Child age 18+", outcome: "filtered_out" },
-  { id: "child_count_mismatch", label: "Child count mismatch", outcome: "filtered_out" },
-  { id: "co_applicant_incomplete", label: "Co-applicant incomplete", outcome: "filtered_out" },
-  { id: "co_applicant_under_19", label: "Co-applicant under 19", outcome: "filtered_out" },
-  { id: "future_employment_start", label: "Future employment start", outcome: "filtered_out" },
-  { id: "income_above_range", label: "Income above range", outcome: "filtered_out" },
-  { id: "income_arithmetic_mismatch", label: "Income arithmetic mismatch", outcome: "filtered_out" },
-  { id: "income_below_range", label: "Income below range", outcome: "filtered_out" },
-  { id: "negative_number", label: "Negative number", outcome: "filtered_out" },
-  { id: "owns_real_estate", label: "Real estate ownership", outcome: "filtered_out" },
-  { id: "child_age_exceeds_parent", label: "Child age exceeds parent", outcome: "filtered_out" },
+  { id: "applicant_under_19", label: "Applicant under 19" },
+  { id: "child_age_over_18", label: "Child age 18+" },
+  { id: "child_count_mismatch", label: "Child count mismatch" },
+  { id: "co_applicant_incomplete", label: "Co-applicant incomplete" },
+  { id: "co_applicant_under_19", label: "Co-applicant under 19" },
+  { id: "future_employment_start", label: "Future employment start" },
+  { id: "income_above_range", label: "Income above range" },
+  { id: "income_arithmetic_mismatch", label: "Income arithmetic mismatch" },
+  { id: "income_below_range", label: "Income below range" },
+  { id: "negative_number", label: "Negative number" },
+  { id: "owns_real_estate", label: "Real estate ownership" },
+  { id: "child_age_exceeds_parent", label: "Child age exceeds parent" },
 ] as const;
 
 export function App() {
@@ -115,6 +171,7 @@ export function App() {
   const [appPageSize, setAppPageSize] = useState(25);
   const [appFilter, setAppFilter] = useState<string | null>(null);
   const [appSearch, setAppSearch] = useState("");
+  const [appSort, setAppSort] = useState<SortState>(null);
   const [selectedApp, setSelectedApp] = useState<ApplicationDetail | null>(null);
 
 
@@ -157,10 +214,15 @@ export function App() {
     page: number = 1,
     search: string = appSearch,
     pageSize: number = appPageSize,
+    sort: SortState = appSort,
   ) {
     const params = new URLSearchParams();
     if (filter) params.set("status", filter);
     if (search) params.set("search", search);
+    if (sort) {
+      params.set("sort", sort.key);
+      params.set("direction", sort.direction);
+    }
     params.set("page", String(page));
     params.set("page_size", String(pageSize));
 
@@ -180,8 +242,22 @@ export function App() {
       .then((payload: { application: ApplicationDetail }) => setSelectedApp(payload.application));
   }
 
-  function formatFieldValue(value: unknown): React.ReactNode {
-    if (value == null) return "—";
+  function toggleSort(key: SortKey) {
+    // First click sorts ascending; clicking the active column flips direction.
+    const next: SortState =
+      appSort?.key === key
+        ? { key, direction: appSort.direction === "asc" ? "desc" : "asc" }
+        : { key, direction: "asc" };
+    setAppSort(next);
+    fetchApplications(appFilter, 1, appSearch, appPageSize, next);
+  }
+
+  function formatFieldValue(value: unknown, key?: string): React.ReactNode {
+    if (value == null || value === "") return "—";
+    if (typeof value === "boolean") return value ? "Yes" : "No";
+    if (key && MONEY_FIELDS.has(key) && typeof value === "number") {
+      return `$${value.toLocaleString()}`;
+    }
     if (Array.isArray(value)) {
       if (value.length === 0) return "—";
       return (
@@ -301,28 +377,46 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <div className="brand-lockup">
-          <div className="brand-mark" aria-hidden="true">
-            <Home size={24} />
-          </div>
-          <div>
-            <p className="eyebrow">Penta Housing Coop</p>
-            <h1>Application Screener</h1>
-          </div>
-        </div>
-        {user ? (
-          <div className="toolbar">
-            <div className="user-chip">
-              <span>{user.displayName}</span>
-              <strong>{user.role}</strong>
-            </div>
-            <button className="icon-button" aria-label="Log out" title="Log out" onClick={logout}>
-              <LogOut size={18} />
+      <header className="topnav">
+        <div className="topnav-inner">
+          {user ? (
+            <button
+              className="brand-lockup brand-button"
+              type="button"
+              onClick={() => setSelectedApp(null)}
+              title="Back to applications"
+            >
+              <span className="brand-mark" aria-hidden="true">
+                <Home size={20} />
+              </span>
+              <span className="brand-name">Penta Housing Co-Op</span>
             </button>
-          </div>
-        ) : null}
+          ) : (
+            <div className="brand-lockup">
+              <span className="brand-mark" aria-hidden="true">
+                <Home size={20} />
+              </span>
+              <span className="brand-name">Penta Housing Co-Op</span>
+            </div>
+          )}
+          {user ? (
+            <div className="toolbar">
+              <div className="user-chip">
+                <span>{user.displayName}</span>
+                <strong>{user.role}</strong>
+              </div>
+              <button className="icon-button" aria-label="Log out" title="Log out" onClick={logout}>
+                <LogOut size={18} />
+              </button>
+            </div>
+          ) : null}
+        </div>
       </header>
+
+      <div className="page-heading">
+        <p className="eyebrow">Application screening</p>
+        <h1>Application Screener</h1>
+      </div>
 
       {!user ? (
         <section className="login-panel">
@@ -374,7 +468,7 @@ export function App() {
                 <div>
                   <span>Income range</span>
                   <strong>
-                    ${settings.income_min.toLocaleString()}-${settings.income_max.toLocaleString()}
+                    {`$${settings.income_min.toLocaleString()} – $${settings.income_max.toLocaleString()}`}
                   </strong>
                 </div>
               </div>
@@ -508,9 +602,6 @@ export function App() {
                           }}
                         />
                         <span>{rule.label}</span>
-                        <span className={`rule-outcome rule-outcome-${rule.outcome}`}>
-                          {rule.outcome.replace("_", " ")}
-                        </span>
                       </label>
                     ))}
                   </div>
@@ -549,7 +640,11 @@ export function App() {
               </button>
             </div>
 
-            {selectedApp ? (
+            {selectedApp ? (() => {
+              const flaggedFields = new Set(
+                selectedApp.hardFilterReasons.flatMap((reason) => REASON_FIELDS[reason.code] ?? []),
+              );
+              return (
               <div className="app-detail">
                 <button className="back-button" onClick={() => setSelectedApp(null)}>
                   <ChevronLeft size={16} />
@@ -574,15 +669,33 @@ export function App() {
                     </ul>
                   </div>
                 ) : null}
-                <div className="app-detail-fields">
-                  <h4>Normalized data</h4>
-                  <dl>
-                    {Object.entries(selectedApp.normalized).map(([key, value]) => (
-                      <div key={key}>
-                        <dt>{key}</dt>
-                        <dd>{formatFieldValue(value)}</dd>
+                {selectedApp.essays?.some((essay) => essay.answer) ? (
+                  <div className="app-detail-essays">
+                    <h4>Essay responses</h4>
+                    {selectedApp.essays.map((essay) => (
+                      <div key={essay.question} className="essay-block">
+                        <h5>{essay.label}</h5>
+                        {essay.answer ? (
+                          <p>{essay.answer}</p>
+                        ) : (
+                          <p className="essay-empty">No response provided.</p>
+                        )}
                       </div>
                     ))}
+                  </div>
+                ) : null}
+                <div className="app-detail-fields">
+                  <h4>Applicant data</h4>
+                  <dl>
+                    {Object.entries(selectedApp.normalized).map(([key, value]) => {
+                      const flagged = flaggedFields.has(key);
+                      return (
+                        <div key={key} className={flagged ? "field-flagged" : undefined}>
+                          <dt>{fieldLabel(key)}</dt>
+                          <dd>{formatFieldValue(value, key)}</dd>
+                        </div>
+                      );
+                    })}
                   </dl>
                 </div>
                 {selectedApp.rawRow ? (
@@ -592,7 +705,8 @@ export function App() {
                   </details>
                 ) : null}
               </div>
-            ) : (
+              );
+            })() : (
               <>
                 <div className="app-controls">
                   <div className="app-tabs">
@@ -634,11 +748,32 @@ export function App() {
                     <table className="app-table">
                       <thead>
                         <tr>
-                          <th>Applicant</th>
-                          <th>Co-applicant</th>
-                          <th>Children</th>
-                          <th>Income</th>
-                          <th>Status</th>
+                          {(
+                            [
+                              { label: "Applicant", key: "applicant" },
+                              { label: "Co-applicant", key: "co_applicant" },
+                              { label: "Children", key: "children" },
+                              { label: "Income", key: "income" },
+                              { label: "Status", key: "status" },
+                            ] as Array<{ label: string; key: SortKey }>
+                          ).map((col) => (
+                            <th key={col.key}>
+                              <button
+                                type="button"
+                                className={`sort-header ${appSort?.key === col.key ? "active" : ""}`}
+                                onClick={() => toggleSort(col.key)}
+                              >
+                                <span>{col.label}</span>
+                                {appSort?.key === col.key ? (
+                                  appSort.direction === "asc" ? (
+                                    <ChevronUp size={14} />
+                                  ) : (
+                                    <ChevronDown size={14} />
+                                  )
+                                ) : null}
+                              </button>
+                            </th>
+                          ))}
                           <th>Reason</th>
                         </tr>
                       </thead>

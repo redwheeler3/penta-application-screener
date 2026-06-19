@@ -3,7 +3,12 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Application, Base, HardFilterStatus
 from app.schemas.settings import AppSettings
-from app.services.application_import import import_applications_from_rows, normalize_application, parse_money
+from app.services.application_import import (
+    extract_essays,
+    import_applications_from_rows,
+    normalize_application,
+    parse_money,
+)
 from app.services.google_sheets import make_unique_headers
 
 
@@ -17,6 +22,32 @@ def test_parse_money_handles_common_inputs() -> None:
     assert parse_money("$100,000") == 100_000
     assert parse_money("95k") == 95_000
     assert parse_money("") is None
+
+
+def test_extract_essays_returns_labeled_answers_in_order() -> None:
+    row = {
+        "Please introduce yourself and your family, including your employment background, interests, and values.": "We are a family of four.",
+        "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "Carpentry.",
+        "Please tell us about any previous co-op experience you or the co-applicant may have.": "",
+        "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "Community living.",
+    }
+
+    essays = extract_essays(row)
+
+    assert [essay["label"] for essay in essays] == [
+        "About the household",
+        "Skills to contribute",
+        "Previous co-op experience",
+        "Why a co-op",
+    ]
+    assert essays[0]["answer"] == "We are a family of four."
+    assert essays[2]["answer"] == ""
+
+
+def test_extract_essays_handles_missing_columns() -> None:
+    essays = extract_essays({})
+    assert len(essays) == 4
+    assert all(essay["answer"] == "" for essay in essays)
 
 
 def test_normalize_application_extracts_basic_fields() -> None:
