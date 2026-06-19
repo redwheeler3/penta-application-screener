@@ -302,6 +302,8 @@ A human flipping the status never deletes these records — an applicant can be 
 
 Separately from AI triage (which resolves ambiguous data), AI should make a quality/integrity pass over eligible applications to flag suspicious patterns that are too subjective or contextual for deterministic rules. When the AI pass flags an eligible application, it sets the status to `ineligible` with `status_source = ai` — the low-trust AI-excluded group — rather than excluding it outright. A human reviews these and either confirms the exclusion or restores the applicant to `eligible`. The flags themselves are kept as immutable records regardless of the human's decision.
 
+The pass also re-analyzes applications a *previous AI pass* marked ineligible, not only currently-eligible ones, so that a revised prompt can change the verdict in either direction — clearing a previously-flagged applicant back to `eligible`, not just flagging clean ones. Applications the deterministic rules disqualified are excluded from the pass (rules outrank AI, so re-running AI on them cannot change their status). Human-set statuses remain sticky: their flags refresh for the staleness nudge, but the status is never overwritten by a machine run.
+
 Known patterns to detect (this list is intentionally incomplete and should grow over time):
 
 - Child names that look like placeholders ("Baby", "TBD", "N/A", "Test")
@@ -614,7 +616,7 @@ Filtered-out views should show the human-readable reasons plus pertinent applica
 
 Eligible applications should be shown in a table with expandable details and a candidate detail page.
 
-Candidate detail pages should show normalized fields, hard-filter results, and source references. Raw source JSON and saved raw AI output should be available in separate Admin-only expandable/debug sections.
+Candidate detail pages should show normalized fields, hard-filter results, and source references. Raw source JSON and the model's raw AI reasoning narrative (the free-text commentary emitted alongside the structured quality-flag output) should be available in separate Admin-only expandable/debug sections.
 
 Filtered-out applicants should be searchable and sortable in a table. This view must be designed for hundreds of filtered-out applicants without becoming unwieldy.
 

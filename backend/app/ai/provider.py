@@ -30,6 +30,10 @@ class AIResult:
     output: BaseModel
     usage: Usage
     model_id: str
+    # The model's free-text reasoning emitted alongside the structured tool call
+    # (the running commentary shown in the console). None when the provider does
+    # not surface it. Persisted for the admin "Raw AI output" view, never parsed.
+    narrative: str | None = None
 
 
 class AIProvider(Protocol):

@@ -263,5 +263,5 @@ def _serialize_detail(
     if include_raw:
         detail["rawRow"] = app.raw_row
         if ai_result is not None:
-            detail["rawAiOutput"] = ai_result.output
+            detail["aiNarrative"] = ai_result.narrative
     return detail

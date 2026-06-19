@@ -10,7 +10,7 @@ from app.ai.analysis import SpendingCapExceeded, enforce_cap
 from app.ai.provider import AIProvider
 from app.ai.quality_flags import (
     analyze_one,
-    eligible_applications,
+    applications_to_analyze,
     estimate_quality_flags,
 )
 from app.ai.strands_provider import StrandsProvider
@@ -47,7 +47,7 @@ def run(
     db: Session = Depends(get_db),
     provider: AIProvider = Depends(get_ai_provider),
 ) -> StreamingResponse:
-    """Run quality flags over eligible applications, streaming progress.
+    """Run quality flags over the candidate applications, streaming progress.
 
     Responds as newline-delimited JSON (NDJSON): one ``{"type":"progress",...}``
     line per application as it finishes, then a final ``{"type":"summary",...}``
@@ -63,7 +63,7 @@ def run(
         # 402 Payment Required: the run was blocked by the configured cap.
         raise HTTPException(status_code=402, detail=str(exc)) from exc
 
-    applications = eligible_applications(db)
+    applications = applications_to_analyze(db)
 
     def stream() -> Iterator[str]:
         total = len(applications)

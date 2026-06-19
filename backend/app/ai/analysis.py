@@ -22,7 +22,7 @@ from app.db.models import Application, ApplicationAIResult
 
 # Bump when a prompt or schema changes so cached results from the old version
 # are not reused.
-PROMPT_VERSION = "3"
+PROMPT_VERSION = "8"
 
 
 class SpendingCapExceeded(Exception):
@@ -41,6 +41,9 @@ class AnalysisOutcome:
     output: BaseModel
     cost_usd: float
     cached: bool
+    # The model's reasoning narrative, if the provider surfaced one. None for
+    # results stored before narratives were captured.
+    narrative: str | None = None
 
 
 def cache_key(*, application: Application, kind: str, model_id: str) -> str:
@@ -60,17 +63,27 @@ def cache_key(*, application: Application, kind: str, model_id: str) -> str:
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()
 
 
+# How many recent calls to average when learning token counts from real usage.
+# A window (rather than all history) keeps the average tracking recent behavior.
+_USAGE_SAMPLE_SIZE = 50
+
+
 def estimate_cost(
     db: Session,
     *,
     applications: list[Application],
     kind: str,
     model_id: str,
-    avg_input_tokens: int,
-    avg_output_tokens: int,
+    fallback_input_tokens: int,
+    fallback_output_tokens: int,
 ) -> dict[str, object]:
     """Estimate the cost of analyzing the given applications, excluding any that
     are already cached. Returned shape feeds the pre-run confirmation UI.
+
+    Prefers per-call token counts learned from real usage: the current prompt
+    version first, then any earlier version (still closer to reality than a
+    static guess). The fallback values are used only when there is no usage
+    history at all for this kind+model.
     """
     price = price_for_model(model_id)
     uncached = [
@@ -78,6 +91,9 @@ def estimate_cost(
         for app in applications
         if _cached_result(db, app, kind, model_id) is None
     ]
+    avg_input_tokens, avg_output_tokens = _observed_avg_tokens(
+        db, kind=kind, model_id=model_id
+    ) or (fallback_input_tokens, fallback_output_tokens)
     per_call = (
         avg_input_tokens / 1_000_000 * price.input_per_mtok
         + avg_output_tokens / 1_000_000 * price.output_per_mtok
@@ -88,6 +104,46 @@ def estimate_cost(
         "cached": len(applications) - len(uncached),
         "estimated_usd": round(per_call * len(uncached), 4),
     }
+
+
+def _observed_avg_tokens(
+    db: Session, *, kind: str, model_id: str
+) -> tuple[int, int] | None:
+    """Average input/output tokens from this kind+model's recent real calls.
+
+    Prefers usage from the current ``PROMPT_VERSION`` (the most representative of
+    what the next run will cost). If none exists yet — e.g. right after a prompt
+    change, before the new version has been run — falls back to the most recent
+    usage from any version, which still beats a static guess. Returns None only
+    when there is no usage history at all, so the caller uses its fixed fallback.
+    """
+    current = _avg_tokens_query(db, kind=kind, model_id=model_id, prompt_version=PROMPT_VERSION)
+    if current is not None:
+        return current
+    return _avg_tokens_query(db, kind=kind, model_id=model_id, prompt_version=None)
+
+
+def _avg_tokens_query(
+    db: Session, *, kind: str, model_id: str, prompt_version: str | None
+) -> tuple[int, int] | None:
+    """Average tokens over recent rows for this kind+model, optionally pinned to a
+    prompt version. ``prompt_version=None`` averages across all versions.
+    """
+    query = (
+        select(ApplicationAIResult.input_tokens, ApplicationAIResult.output_tokens)
+        .where(ApplicationAIResult.kind == kind)
+        .where(ApplicationAIResult.model_id == model_id)
+    )
+    if prompt_version is not None:
+        query = query.where(ApplicationAIResult.prompt_version == prompt_version)
+    rows = db.execute(
+        query.order_by(ApplicationAIResult.created_at.desc()).limit(_USAGE_SAMPLE_SIZE)
+    ).all()
+    if not rows:
+        return None
+    avg_in = round(sum(r[0] for r in rows) / len(rows))
+    avg_out = round(sum(r[1] for r in rows) / len(rows))
+    return avg_in, avg_out
 
 
 def analyze_application(
@@ -112,6 +168,7 @@ def analyze_application(
             output=schema.model_validate(existing.output),
             cost_usd=existing.cost_usd,
             cached=True,
+            narrative=existing.narrative,
         )
 
     result = provider.structured_output(
@@ -127,7 +184,9 @@ def analyze_application(
         kind=kind,
         cache_key=cache_key(application=application, kind=kind, model_id=model_id),
         model_id=result.model_id,
+        prompt_version=PROMPT_VERSION,
         output=result.output.model_dump(mode="json"),
+        narrative=result.narrative,
         input_tokens=result.usage.input_tokens,
         output_tokens=result.usage.output_tokens,
         cost_usd=call_cost,
@@ -135,7 +194,12 @@ def analyze_application(
     db.add(record)
     db.commit()
 
-    return AnalysisOutcome(output=result.output, cost_usd=call_cost, cached=False)
+    return AnalysisOutcome(
+        output=result.output,
+        cost_usd=call_cost,
+        cached=False,
+        narrative=result.narrative,
+    )
 
 
 def enforce_cap(estimate: dict[str, object], cap_usd: float) -> None:

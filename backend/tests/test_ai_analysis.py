@@ -142,11 +142,77 @@ def test_estimate_excludes_cached_applications() -> None:
 
     est = estimate_cost(
         db, applications=[app1, app2], kind=KIND, model_id=MODEL,
-        avg_input_tokens=600, avg_output_tokens=120,
+        fallback_input_tokens=600, fallback_output_tokens=120,
     )
     assert est["total"] == 2
     assert est["cached"] == 1
     assert est["to_analyze"] == 1
+
+
+def test_estimate_uses_fallback_with_no_history() -> None:
+    db = make_session()
+    app = make_application(db, email="a@x.com", raw_hash="h1")
+
+    est = estimate_cost(
+        db, applications=[app], kind=KIND, model_id=MODEL,
+        fallback_input_tokens=1_000_000, fallback_output_tokens=0,
+    )
+    # With no prior calls, the per-call cost is the fallback tokens at the model
+    # rate: 1M input tokens * haiku input rate, 0 output.
+    assert est["estimated_usd"] == pytest.approx(price_for_model(MODEL).input_per_mtok)
+
+
+def test_estimate_prefers_observed_usage_over_fallback() -> None:
+    db = make_session()
+    analyzed = make_application(db, email="a@x.com", raw_hash="h1")
+    pending = make_application(db, email="b@x.com", raw_hash="h2")
+    provider = MockProvider()
+    # One prior call recorded 1M input / 0 output tokens of real usage.
+    provider.queue(clean_report(), model_id=MODEL, input_tokens=1_000_000, output_tokens=0)
+    analyze_application(
+        db, provider, application=analyzed, kind=KIND, schema=QualityFlagReport,
+        model_id=MODEL, prompt="analyze",
+    )
+
+    # Fallback is absurdly large; if it were used the estimate would explode.
+    est = estimate_cost(
+        db, applications=[analyzed, pending], kind=KIND, model_id=MODEL,
+        fallback_input_tokens=999_000_000, fallback_output_tokens=999_000_000,
+    )
+    assert est["to_analyze"] == 1  # only `pending` is uncached
+    # Estimate uses observed 1M-in/0-out for the single uncached app.
+    assert est["estimated_usd"] == pytest.approx(price_for_model(MODEL).input_per_mtok)
+
+
+def test_estimate_falls_back_to_earlier_prompt_version_usage() -> None:
+    """When the current prompt version has no usage yet, an earlier version's
+    real usage is preferred over the static fallback.
+    """
+    db = make_session()
+    app = make_application(db, email="a@x.com", raw_hash="h1")
+    # A stored result from an OLD prompt version (not the current PROMPT_VERSION).
+    db.add(
+        ApplicationAIResult(
+            application_id=app.id,
+            kind=KIND,
+            cache_key="old-version-key",
+            model_id=MODEL,
+            prompt_version="0",
+            output={"flags": []},
+            input_tokens=1_000_000,
+            output_tokens=0,
+        )
+    )
+    db.commit()
+
+    # `app` is uncached under the CURRENT prompt version, so it counts as work.
+    est = estimate_cost(
+        db, applications=[app], kind=KIND, model_id=MODEL,
+        fallback_input_tokens=999_000_000, fallback_output_tokens=999_000_000,
+    )
+    assert est["to_analyze"] == 1
+    # Uses the old version's observed 1M-in/0-out, not the huge fallback.
+    assert est["estimated_usd"] == pytest.approx(price_for_model(MODEL).input_per_mtok)
 
 
 def test_enforce_cap_raises_when_over() -> None:

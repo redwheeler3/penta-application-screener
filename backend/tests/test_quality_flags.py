@@ -5,12 +5,12 @@ from sqlalchemy.orm import Session
 from app.ai.mock_provider import MockProvider
 from app.ai.quality_flags import (
     analyze_one,
+    applications_to_analyze,
     build_prompt,
-    eligible_applications,
     estimate_quality_flags,
 )
 from app.ai.schemas import FlagCategory, FlagSeverity, QualityFlag, QualityFlagReport
-from app.db.models import Application, ApplicationStatus, Base
+from app.db.models import Application, ApplicationStatus, Base, StatusSource
 from app.schemas.settings import AppSettings
 
 
@@ -26,6 +26,7 @@ def add_application(
     email: str,
     status: ApplicationStatus,
     raw_hash: str,
+    status_source: StatusSource = StatusSource.UNTOUCHED,
     raw_row: dict | None = None,
     normalized: dict | None = None,
 ) -> Application:
@@ -36,6 +37,7 @@ def add_application(
         raw_row_hash=raw_hash,
         normalized=normalized or {},
         status=status,
+        status_source=status_source,
         hard_filter_reasons=[],
     )
     db.add(app)
@@ -60,13 +62,37 @@ def flagged() -> QualityFlagReport:
     )
 
 
-def test_eligible_applications_excludes_filtered_out() -> None:
+def test_applications_to_analyze_scope() -> None:
+    """Eligible and AI-ineligible apps are analyzed so a prompt change can revise
+    the verdict either way; rules-ineligible apps are excluded (rules outrank AI).
+    Human-owned statuses are included so their flags refresh for the staleness nudge.
+    """
     db = make_session()
-    add_application(db, email="ok@x.com", status=ApplicationStatus.ELIGIBLE, raw_hash="h1")
-    add_application(db, email="no@x.com", status=ApplicationStatus.INELIGIBLE, raw_hash="h2")
+    add_application(db, email="eligible@x.com", status=ApplicationStatus.ELIGIBLE, raw_hash="h1")
+    add_application(
+        db,
+        email="ai-no@x.com",
+        status=ApplicationStatus.INELIGIBLE,
+        status_source=StatusSource.AI,
+        raw_hash="h2",
+    )
+    add_application(
+        db,
+        email="rules-no@x.com",
+        status=ApplicationStatus.INELIGIBLE,
+        status_source=StatusSource.RULES,
+        raw_hash="h3",
+    )
+    add_application(
+        db,
+        email="human-no@x.com",
+        status=ApplicationStatus.INELIGIBLE,
+        status_source=StatusSource.HUMAN,
+        raw_hash="h4",
+    )
 
-    eligible = eligible_applications(db)
-    assert [a.primary_email for a in eligible] == ["ok@x.com"]
+    emails = {a.primary_email for a in applications_to_analyze(db)}
+    assert emails == {"eligible@x.com", "ai-no@x.com", "human-no@x.com"}
 
 
 def test_build_prompt_includes_essays_and_pet_policy() -> None:
@@ -109,13 +135,28 @@ def test_analyze_one_runs_and_caches() -> None:
     assert len(provider.calls) == 1
 
 
-def test_estimate_counts_only_eligible() -> None:
+def test_estimate_counts_analyzable_excluding_rules_ineligible() -> None:
     db = make_session()
     add_application(db, email="a@x.com", status=ApplicationStatus.ELIGIBLE, raw_hash="h1")
     add_application(db, email="b@x.com", status=ApplicationStatus.ELIGIBLE, raw_hash="h2")
-    add_application(db, email="c@x.com", status=ApplicationStatus.INELIGIBLE, raw_hash="h3")
+    # AI-ineligible: counted, so a prompt change can re-clear it.
+    add_application(
+        db,
+        email="c@x.com",
+        status=ApplicationStatus.INELIGIBLE,
+        status_source=StatusSource.AI,
+        raw_hash="h3",
+    )
+    # Rules-ineligible: excluded, rules outrank AI.
+    add_application(
+        db,
+        email="d@x.com",
+        status=ApplicationStatus.INELIGIBLE,
+        status_source=StatusSource.RULES,
+        raw_hash="h4",
+    )
 
     est = estimate_quality_flags(db, AppSettings())
-    assert est["total"] == 2
-    assert est["to_analyze"] == 2
+    assert est["total"] == 3
+    assert est["to_analyze"] == 3
     assert est["estimated_usd"] >= 0
