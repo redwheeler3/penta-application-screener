@@ -62,6 +62,7 @@ def sync_applications(
             "duplicateCount": sync_run.duplicate_count,
             "importedCount": sync_run.imported_count,
             "updatedCount": sync_run.updated_count,
+            "unchangedCount": sync_run.unchanged_count,
             "eligibleCount": sync_run.eligible_count,
             "filteredOutCount": sync_run.filtered_out_count,
         }

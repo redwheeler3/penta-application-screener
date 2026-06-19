@@ -135,3 +135,52 @@ def test_import_applications_dedupes_by_latest_email_and_applies_filters() -> No
     # This fixture row owns real estate, so the rules actor sets it ineligible.
     assert application.status == ApplicationStatus.INELIGIBLE
     assert application.status_source == StatusSource.RULES
+
+
+def test_reimport_of_identical_rows_counts_unchanged_not_updated() -> None:
+    db = make_session()
+    rows = [
+        {
+            "Email Address": "a@example.com",
+            "Applicant Name": "Avery",
+            "Number of children under 18 living in the unit on the move-in date": "1",
+            "Household gross yearly income": "$100,000",
+            "Do you own real estate?": "No",
+        }
+    ]
+    settings = AppSettings(google_sheet_id="sheet-123")
+
+    first = import_applications_from_rows(db, rows=rows, source_sheet_id="s", settings=settings)
+    assert first.imported_count == 1
+    assert first.unchanged_count == 0
+
+    application = db.scalar(select(Application))
+    updated_at_before = application.updated_at
+
+    # Re-import the byte-identical rows: nothing should be counted as updated.
+    second = import_applications_from_rows(db, rows=rows, source_sheet_id="s", settings=settings)
+    assert second.imported_count == 0
+    assert second.updated_count == 0
+    assert second.unchanged_count == 1
+
+    # The row was not rewritten, so its updated_at is untouched.
+    db.refresh(application)
+    assert application.updated_at == updated_at_before
+
+
+def test_reimport_with_changed_content_counts_updated() -> None:
+    db = make_session()
+    base = {
+        "Email Address": "a@example.com",
+        "Applicant Name": "Avery",
+        "Number of children under 18 living in the unit on the move-in date": "1",
+        "Household gross yearly income": "$100,000",
+        "Do you own real estate?": "No",
+    }
+    settings = AppSettings(google_sheet_id="sheet-123")
+    import_applications_from_rows(db, rows=[base], source_sheet_id="s", settings=settings)
+
+    changed = {**base, "Household gross yearly income": "$120,000"}
+    result = import_applications_from_rows(db, rows=[changed], source_sheet_id="s", settings=settings)
+    assert result.updated_count == 1
+    assert result.unchanged_count == 0
