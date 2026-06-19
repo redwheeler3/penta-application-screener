@@ -558,6 +558,26 @@ h1 {
   gap: 0.25rem;
 }
 
+/* Filter group: a labeled axis (Status / Decided by) of combinable tabs */
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.filter-group-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.filter-group + .filter-group {
+  padding-left: 1rem;
+  border-left: 1px solid var(--line);
+}
+
 .tab-button {
   padding: 0.375rem 0.75rem;
   border: 1px solid var(--line);
@@ -670,9 +690,95 @@ h1 {
   color: #166534;
 }
 
-.status-filtered_out {
+.status-ineligible {
   background: #fee2e2;
   color: #991b1b;
+}
+
+/* "Decided by" source badges — secondary info, lighter than status badges */
+.source-badge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.source-rules {
+  background: #f3f4f6;
+  color: #374151;
+  border-color: #e5e7eb;
+}
+
+.source-ai {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fcd34d;
+}
+
+.source-human {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #bfdbfe;
+}
+
+.stale-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: #fde68a;
+  color: #92400e;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Status panel (candidate detail): source line, staleness, human override */
+.status-panel {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0 1.25rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.status-source-line {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.stale-note {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  border-left: 3px solid #d97706;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 0.82rem;
+}
+
+.status-override {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-override-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.status-override .secondary-button {
+  min-height: 32px;
 }
 
 
@@ -777,6 +883,143 @@ h1 {
 
 .filter-reasons li {
   margin-bottom: 0.25rem;
+}
+
+/* AI quality flags (informational, on candidate detail) */
+.quality-flags {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.85rem;
+}
+
+.quality-flags-hint {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.quality-flags ul {
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.quality-flag {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.5rem 0.65rem;
+  background: #fff;
+  border: 1px solid #dbeafe;
+  border-left: 3px solid #3b82f6;
+  border-radius: 6px;
+}
+
+.quality-flag-notable {
+  border-left-color: #d97706;
+}
+
+.quality-flag-category {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.quality-flag-summary {
+  color: var(--ink);
+}
+
+.quality-flag-evidence {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.quality-flags-clean {
+  margin-bottom: 1.25rem;
+  color: var(--penta-green-dark);
+  font-size: 0.82rem;
+}
+
+/* Quality-flag run controls (panel header) */
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.qf-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  background: #eff6ff;
+}
+
+.qf-confirm-body {
+  font-size: 0.85rem;
+  min-width: 0;
+}
+
+.qf-confirm-body p {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+}
+
+.qf-confirm-warn {
+  color: #991b1b !important;
+}
+
+.qf-confirm-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.qf-message {
+  padding: 0.7rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--penta-green-soft);
+  color: var(--penta-green-dark);
+  font-size: 0.85rem;
+}
+
+/* Quality-flag run progress */
+.qf-progress {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.7rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--penta-green-soft);
+}
+
+.qf-progress-label {
+  font-size: 0.85rem;
+  color: var(--penta-green-dark);
+  font-weight: 600;
+}
+
+.qf-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: #dcfce7;
+  overflow: hidden;
+}
+
+.qf-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--penta-green);
+  transition: width 0.3s ease;
 }
 
 .app-detail-fields h4 {

@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronLeft, ChevronUp, Clipboard, LogIn, LogOut, RefreshCw, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronUp, Clipboard, LogIn, LogOut, RefreshCw, Sparkles, X } from "lucide-react";
 import { type SyntheticEvent, useEffect, useState } from "react";
 import { HouseIcon } from "./HouseIcon";
 
@@ -31,10 +31,22 @@ type SettingsResponse = {
   google_sheet_title: string | null;
 };
 
+type AppStatus = "eligible" | "ineligible";
+type StatusSource = "untouched" | "rules" | "ai" | "human";
+
+// Counts keyed by the real columns; named views (e.g. "Needs review" = source
+// "ai") are composed here in the client, not by the backend.
 type DashboardCounts = {
   submitted: number;
-  eligible: number;
-  filteredOut: number;
+  status: Record<AppStatus, number>;
+  source: Record<StatusSource, number>;
+};
+
+// Faceted counts from the list response: each facet reflects the other group's
+// active filter, so option counts stay consistent across the two filter groups.
+type AppFacets = {
+  status: Record<AppStatus, number>;
+  source: Record<StatusSource, number>;
 };
 
 type ApplicationSummary = {
@@ -42,10 +54,17 @@ type ApplicationSummary = {
   primaryEmail: string;
   applicantName: string | null;
   coApplicantName: string | null;
-  hardFilterStatus: "eligible" | "filtered_out";
+  status: AppStatus;
+  statusSource: StatusSource;
+  // True when machine findings changed since a human last reviewed.
+  stale: boolean;
   hardFilterReasons: Array<{ code: string; message: string; details: Record<string, unknown> }>;
   childCount: number | null;
   householdIncome: number | null;
+  // null = AI quality-flag pass not run; int = flag count (0 = ran clean).
+  flagCount: number | null;
+  // Distinct flag categories from the latest pass (null if not run).
+  flagCategories: string[] | null;
   createdAt: string | null;
 };
 
@@ -55,10 +74,28 @@ type Essay = {
   answer: string;
 };
 
+type QualityFlag = {
+  category: string;
+  severity: "info" | "notable";
+  summary: string;
+  evidence: string;
+};
+
 type ApplicationDetail = ApplicationSummary & {
   normalized: Record<string, unknown>;
   essays: Essay[];
+  // null = quality-flag pass not yet run for this application; [] = ran, clean.
+  qualityFlags: QualityFlag[] | null;
   rawRow?: Record<string, unknown>;
+};
+
+type QualityFlagEstimate = {
+  total: number;
+  to_analyze: number;
+  cached: number;
+  estimated_usd: number;
+  cap_usd: number;
+  within_cap: boolean;
 };
 
 type SortKey = "applicant" | "co_applicant" | "children" | "income" | "status";
@@ -90,6 +127,20 @@ const FIELD_LABELS: Record<string, string> = {
 // Normalized fields that should render as currency.
 const MONEY_FIELDS = new Set(["household_income", "applicant_income", "co_applicant_income"]);
 
+// Human-readable labels for AI quality-flag categories.
+const FLAG_CATEGORY_LABELS: Record<string, string> = {
+  placeholder_name: "Placeholder name",
+  suspicious_name: "Suspicious name",
+  minimal_essay: "Minimal essay",
+  spam_essay: "Spam essay",
+  ai_generated_essay: "AI-generated essay",
+  duplicated_answers: "Duplicated answers",
+  internal_inconsistency: "Internal inconsistency",
+  fake_contact: "Suspicious contact info",
+  pet_policy: "Pet policy",
+  other: "Other",
+};
+
 // Maps a filter reason code to the normalized field(s) that caused it, so the
 // detail view can highlight the offending value next to the reason.
 const REASON_FIELDS: Record<string, string[]> = {
@@ -108,6 +159,33 @@ const REASON_FIELDS: Record<string, string[]> = {
 
 function fieldLabel(key: string): string {
   return FIELD_LABELS[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Status and "who set it" are independent axes, shown as separate columns.
+const STATUS_LABELS: Record<AppStatus, string> = {
+  eligible: "Eligible",
+  ineligible: "Ineligible",
+};
+
+// Short label for the "Decided by" column. "untouched" means no actor changed
+// the status, so it shows nothing.
+const SOURCE_LABELS: Record<StatusSource, string> = {
+  untouched: "—",
+  rules: "Rules",
+  ai: "AI",
+  human: "Reviewer",
+};
+
+// Longer, non-prescriptive sentence for the candidate detail page.
+const SOURCE_DESCRIPTIONS: Record<StatusSource, string> = {
+  untouched: "Passed the deterministic rules; the AI pass raised no flags.",
+  rules: "Set ineligible by the deterministic screening rules.",
+  ai: "Flagged by the AI quality pass.",
+  human: "Set by a reviewer.",
+};
+
+function flagCategoryLabel(category: string): string {
+  return FLAG_CATEGORY_LABELS[category] ?? category;
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -153,8 +231,8 @@ export function App() {
   const [settingsMessage, setSettingsMessage] = useState("");
   const [dashboardCounts, setDashboardCounts] = useState<DashboardCounts>({
     submitted: 0,
-    eligible: 0,
-    filteredOut: 0,
+    status: { eligible: 0, ineligible: 0 },
+    source: { untouched: 0, rules: 0, ai: 0, human: 0 },
   });
   const [syncMessage, setSyncMessage] = useState("");
   const [syncError, setSyncError] = useState("");
@@ -170,10 +248,20 @@ export function App() {
   const [appTotal, setAppTotal] = useState(0);
   const [appPage, setAppPage] = useState(1);
   const [appPageSize, setAppPageSize] = useState(25);
-  const [appFilter, setAppFilter] = useState<string | null>(null);
+  // Filter mirrors the real columns. A tab sets one of these (or neither for All).
+  const [appFilter, setAppFilter] = useState<{ status?: AppStatus; status_source?: StatusSource }>({});
+  // Faceted option counts from the latest list response (reflect the cross-group filter).
+  const [appFacets, setAppFacets] = useState<AppFacets | null>(null);
   const [appSearch, setAppSearch] = useState("");
   const [appSort, setAppSort] = useState<SortState>(null);
   const [selectedApp, setSelectedApp] = useState<ApplicationDetail | null>(null);
+
+  // AI quality-flag run flow: estimate (shown for confirmation) -> running -> message.
+  const [qfEstimate, setQfEstimate] = useState<QualityFlagEstimate | null>(null);
+  const [qfRunning, setQfRunning] = useState(false);
+  const [qfMessage, setQfMessage] = useState("");
+  // Live progress while the run streams: processed/total applications.
+  const [qfProgress, setQfProgress] = useState<{ processed: number; total: number } | null>(null);
 
 
   useEffect(() => {
@@ -192,16 +280,21 @@ export function App() {
       .then((response) => response.json())
       .then((payload: SettingsResponse) => applySettingsResponse(payload));
     refreshDashboard();
-    fetchApplications(null, 1, "");
+    fetchApplications({}, 1, "");
   }, [user]);
 
   function applySettingsResponse(payload: SettingsResponse) {
+    const sheetId = payload.google_sheet_url || payload.settings.google_sheet_id;
     setSettings({
       ...payload.settings,
-      google_sheet_id: payload.google_sheet_url || payload.settings.google_sheet_id,
+      google_sheet_id: sheetId,
     });
     setGoogleSheetUrl(payload.google_sheet_url);
     setGoogleSheetTitle(payload.google_sheet_title);
+    // First-run setup: open the form when there's no sheet configured yet.
+    if (!sheetId) {
+      setIsSettingsExpanded(true);
+    }
   }
 
   function refreshDashboard() {
@@ -211,14 +304,15 @@ export function App() {
   }
 
   function fetchApplications(
-    filter: string | null = appFilter,
+    filter: { status?: AppStatus; status_source?: StatusSource } = appFilter,
     page: number = 1,
     search: string = appSearch,
     pageSize: number = appPageSize,
     sort: SortState = appSort,
   ) {
     const params = new URLSearchParams();
-    if (filter) params.set("status", filter);
+    if (filter.status) params.set("status", filter.status);
+    if (filter.status_source) params.set("status_source", filter.status_source);
     if (search) params.set("search", search);
     if (sort) {
       params.set("sort", sort.key);
@@ -229,12 +323,21 @@ export function App() {
 
     fetch(`${apiBaseUrl}/applications?${params}`, { credentials: "include" })
       .then((response) => response.json())
-      .then((payload: { applications: ApplicationSummary[]; total: number; page: number; pageSize: number }) => {
-        setApplications(payload.applications);
-        setAppTotal(payload.total);
-        setAppPage(payload.page);
-        setAppPageSize(payload.pageSize);
-      });
+      .then(
+        (payload: {
+          applications: ApplicationSummary[];
+          total: number;
+          page: number;
+          pageSize: number;
+          facets: AppFacets;
+        }) => {
+          setApplications(payload.applications);
+          setAppTotal(payload.total);
+          setAppPage(payload.page);
+          setAppPageSize(payload.pageSize);
+          setAppFacets(payload.facets);
+        },
+      );
   }
 
   function viewApplication(id: number) {
@@ -321,6 +424,8 @@ export function App() {
     if (response.ok) {
       const payload: SettingsResponse = await response.json();
       applySettingsResponse(payload);
+      // Collapse the form after a successful save (applySettingsResponse keeps it
+      // open only when no sheet is configured yet).
       if (payload.google_sheet_url || payload.settings.google_sheet_id) {
         setIsSettingsExpanded(false);
       }
@@ -373,8 +478,86 @@ export function App() {
     setIsSyncing(false);
   }
 
+  // Fetch the cost estimate and show the confirmation prompt. AI never runs
+  // without the user first seeing the estimate and confirming (SPEC cost control).
+  async function requestQualityFlagsEstimate() {
+    setQfMessage("");
+    const response = await fetch(`${apiBaseUrl}/quality-flags/estimate`, { credentials: "include" });
+    if (response.ok) {
+      setQfEstimate(await response.json());
+    } else {
+      setQfMessage("Could not load the AI cost estimate.");
+    }
+  }
+
+  async function runQualityFlags() {
+    setQfRunning(true);
+    setQfMessage("");
+    setQfEstimate(null);
+    setQfProgress(null);
+    try {
+      const response = await fetch(`${apiBaseUrl}/quality-flags/run`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!response.ok || !response.body) {
+        const payload = await response.json().catch(() => null);
+        setQfMessage(payload?.detail ? `Run failed: ${formatErrorDetail(payload.detail)}` : "Run failed.");
+      } else {
+        // Read the NDJSON stream: a progress line per application, then a summary.
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? ""; // keep any partial line for the next chunk
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            const event = JSON.parse(line);
+            if (event.type === "progress") {
+              setQfProgress({ processed: event.processed, total: event.total });
+            } else if (event.type === "summary") {
+              setQfMessage(
+                `Quality checks complete: ${event.flagged} flagged of ` +
+                  `${event.analyzed + event.cached} analyzed ($${event.totalCostUsd.toFixed(4)}).`,
+              );
+            }
+          }
+        }
+        // Refresh dashboard counts and the open candidate so new flags/status show.
+        refreshDashboard();
+        if (selectedApp) viewApplication(selectedApp.id);
+      }
+    } catch (error) {
+      setQfMessage(error instanceof Error ? `Run error: ${error.message}` : "Run error.");
+    }
+    setQfProgress(null);
+    setQfRunning(false);
+  }
+
+  // Human override of an application's status (admin only). The backend marks it
+  // human-owned and sticky against future machine runs.
+  async function overrideStatus(id: number, status: AppStatus) {
+    const response = await fetch(`${apiBaseUrl}/applications/${id}/status`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (response.ok) {
+      const payload: { application: ApplicationDetail } = await response.json();
+      setSelectedApp(payload.application);
+      refreshDashboard();
+    }
+  }
+
   const hasGoogleSheetLink = Boolean(settings.google_sheet_id);
-  const showSettingsForm = !hasGoogleSheetLink || isSettingsExpanded;
+  // Form visibility is an explicit open/closed state, not derived from the field
+  // value — otherwise typing a link would collapse the form before saving.
+  const showSettingsForm = isSettingsExpanded;
 
   return (
     <main className="app-shell">
@@ -415,7 +598,6 @@ export function App() {
       </header>
 
       <div className="page-heading">
-        <p className="eyebrow">Application screening</p>
         <h1>Application Screener</h1>
       </div>
 
@@ -630,16 +812,83 @@ export function App() {
                 <span className="panel-kicker">Current opening</span>
                 <h2>Applications</h2>
               </div>
-              <button
-                className="primary-button"
-                type="button"
-                onClick={syncApplications}
-                disabled={isSyncing || !settings.google_sheet_id}
-              >
-                <RefreshCw size={18} />
-                <span>{isSyncing ? "Syncing" : "Sync applications"}</span>
-              </button>
+              <div className="panel-actions">
+                {user.role === "admin" ? (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={requestQualityFlagsEstimate}
+                    disabled={qfRunning || dashboardCounts.status.eligible === 0}
+                  >
+                    <Sparkles size={16} />
+                    <span>
+                      {qfRunning
+                        ? qfProgress
+                          ? `Running ${qfProgress.processed}/${qfProgress.total} ` +
+                            `(${Math.round((qfProgress.processed / qfProgress.total) * 100)}%)`
+                          : "Running checks"
+                        : "Run quality checks"}
+                    </span>
+                  </button>
+                ) : null}
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={syncApplications}
+                  disabled={isSyncing || !settings.google_sheet_id}
+                >
+                  <RefreshCw size={18} />
+                  <span>{isSyncing ? "Syncing" : "Sync applications"}</span>
+                </button>
+              </div>
             </div>
+
+            {qfEstimate ? (
+              <div className="qf-confirm">
+                <div className="qf-confirm-body">
+                  <strong>Run AI quality checks?</strong>
+                  <p>
+                    Analyze {qfEstimate.to_analyze} eligible applicant
+                    {qfEstimate.to_analyze === 1 ? "" : "s"}
+                    {qfEstimate.cached > 0 ? ` (${qfEstimate.cached} already cached)` : ""}. Estimated cost{" "}
+                    <strong>${qfEstimate.estimated_usd.toFixed(4)}</strong> (cap ${qfEstimate.cap_usd.toFixed(2)}).
+                  </p>
+                  {!qfEstimate.within_cap ? (
+                    <p className="qf-confirm-warn">
+                      Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
+                    </p>
+                  ) : null}
+                </div>
+                <div className="qf-confirm-actions">
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={runQualityFlags}
+                    disabled={qfRunning || !qfEstimate.within_cap}
+                  >
+                    {qfRunning ? "Running" : "Confirm & run"}
+                  </button>
+                  <button className="secondary-button" type="button" onClick={() => setQfEstimate(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {qfRunning && qfProgress ? (
+              <div className="qf-progress">
+                <div className="qf-progress-label">
+                  Analyzing applications… {qfProgress.processed}/{qfProgress.total} (
+                  {Math.round((qfProgress.processed / qfProgress.total) * 100)}%)
+                </div>
+                <div className="qf-progress-track">
+                  <div
+                    className="qf-progress-fill"
+                    style={{ width: `${(qfProgress.processed / qfProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {qfMessage ? <div className="qf-message">{qfMessage}</div> : null}
 
             {selectedApp ? (() => {
               const flaggedFields = new Set(
@@ -653,13 +902,52 @@ export function App() {
                 </button>
                 <div className="app-detail-header">
                   <h3>{selectedApp.applicantName || selectedApp.primaryEmail}</h3>
-                  <span className={`status-badge status-${selectedApp.hardFilterStatus}`}>
-                    {selectedApp.hardFilterStatus.replace("_", " ")}
+                  <span className={`status-badge status-${selectedApp.status}`}>
+                    {STATUS_LABELS[selectedApp.status]}
                   </span>
+                  {selectedApp.statusSource !== "untouched" ? (
+                    <span className={`source-badge source-${selectedApp.statusSource}`}>
+                      {SOURCE_LABELS[selectedApp.statusSource]}
+                    </span>
+                  ) : null}
                 </div>
                 {selectedApp.coApplicantName ? (
                   <p className="co-applicant-line">Co-applicant: {selectedApp.coApplicantName}</p>
                 ) : null}
+
+                <div className="status-panel">
+                  <p className="status-source-line">{SOURCE_DESCRIPTIONS[selectedApp.statusSource]}</p>
+                  {selectedApp.stale ? (
+                    <p className="stale-note">
+                      New AI findings since this was last reviewed — you may want to look again.
+                    </p>
+                  ) : null}
+                  {user.role === "admin" ? (
+                    <div className="status-override">
+                      <span className="status-override-label">Set status:</span>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        disabled={
+                          selectedApp.status === "eligible" && selectedApp.statusSource === "human"
+                        }
+                        onClick={() => overrideStatus(selectedApp.id, "eligible")}
+                      >
+                        Eligible
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        disabled={
+                          selectedApp.status === "ineligible" && selectedApp.statusSource === "human"
+                        }
+                        onClick={() => overrideStatus(selectedApp.id, "ineligible")}
+                      >
+                        Ineligible
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
                 {selectedApp.hardFilterReasons.length > 0 ? (
                   <div className="filter-reasons">
                     <strong>Filter reasons:</strong>
@@ -669,6 +957,29 @@ export function App() {
                       ))}
                     </ul>
                   </div>
+                ) : null}
+                {selectedApp.qualityFlags && selectedApp.qualityFlags.length > 0 ? (
+                  <div className="quality-flags">
+                    <strong>AI quality flags</strong>
+                    <p className="quality-flags-hint">
+                      The AI raised these. Decide for yourself which matter — set the status above.
+                    </p>
+                    <ul>
+                      {selectedApp.qualityFlags.map((flag, i) => (
+                        <li key={i} className={`quality-flag quality-flag-${flag.severity}`}>
+                          <span className="quality-flag-category">
+                            {FLAG_CATEGORY_LABELS[flag.category] ?? flag.category}
+                          </span>
+                          <span className="quality-flag-summary">{flag.summary}</span>
+                          {flag.evidence ? (
+                            <span className="quality-flag-evidence">{flag.evidence}</span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : selectedApp.qualityFlags ? (
+                  <p className="quality-flags-clean">AI quality checks found no concerns.</p>
                 ) : null}
                 {selectedApp.essays?.some((essay) => essay.answer) ? (
                   <div className="app-detail-essays">
@@ -710,24 +1021,65 @@ export function App() {
             })() : (
               <>
                 <div className="app-controls">
-                  <div className="app-tabs">
-                    {[
-                      { label: "All", value: null, count: dashboardCounts.submitted },
-                      { label: "Eligible", value: "eligible", count: dashboardCounts.eligible },
-                      { label: "Filtered Out", value: "filtered_out", count: dashboardCounts.filteredOut },
-                    ].map((tab) => (
-                      <button
-                        key={tab.label}
-                        className={`tab-button ${appFilter === tab.value ? "active" : ""}`}
-                        onClick={() => {
-                          setAppFilter(tab.value);
-                          fetchApplications(tab.value, 1, appSearch);
-                        }}
-                      >
-                        {tab.label} ({tab.count})
-                      </button>
-                    ))}
-                  </div>
+                  {(() => {
+                    // Each group toggles one axis of the filter, preserving the
+                    // other, so Status and "Decided by" combine (AND).
+                    const applyFilter = (next: typeof appFilter) => {
+                      setAppFilter(next);
+                      fetchApplications(next, 1, appSearch);
+                    };
+                    // Counts are faceted: each group reflects the OTHER group's
+                    // active filter (plus search). "All"/"Any" sums the facet.
+                    const statusFacet = appFacets?.status ?? dashboardCounts.status;
+                    const sourceFacet = appFacets?.source ?? dashboardCounts.source;
+                    const sum = (counts: Record<string, number>) =>
+                      Object.values(counts).reduce((a, b) => a + b, 0);
+                    const statusOptions = [
+                      { label: "All", value: undefined, count: sum(statusFacet) },
+                      { label: "Eligible", value: "eligible" as const, count: statusFacet.eligible },
+                      { label: "Ineligible", value: "ineligible" as const, count: statusFacet.ineligible },
+                    ];
+                    const sourceOptions = [
+                      { label: "Any", value: undefined, count: sum(sourceFacet) },
+                      { label: "Rules", value: "rules" as const, count: sourceFacet.rules },
+                      { label: "AI", value: "ai" as const, count: sourceFacet.ai },
+                      { label: "Reviewer", value: "human" as const, count: sourceFacet.human },
+                    ];
+                    return (
+                      <>
+                        <div className="filter-group">
+                          <span className="filter-group-label">Status</span>
+                          <div className="app-tabs">
+                            {statusOptions.map((opt) => (
+                              <button
+                                key={opt.label}
+                                className={`tab-button ${appFilter.status === opt.value ? "active" : ""}`}
+                                onClick={() => applyFilter({ ...appFilter, status: opt.value })}
+                              >
+                                {opt.label} ({opt.count})
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="filter-group">
+                          <span className="filter-group-label">Decided by</span>
+                          <div className="app-tabs">
+                            {sourceOptions.map((opt) => (
+                              <button
+                                key={opt.label}
+                                className={`tab-button ${
+                                  appFilter.status_source === opt.value ? "active" : ""
+                                }`}
+                                onClick={() => applyFilter({ ...appFilter, status_source: opt.value })}
+                              >
+                                {opt.label} ({opt.count})
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
                   <input
                     className="app-search"
                     type="search"
@@ -742,7 +1094,11 @@ export function App() {
 
                 {applications.length === 0 ? (
                   <div className="empty-state">
-                    <p>No applications {appFilter ? `with status "${appFilter.replace("_", " ")}"` : "imported yet"}.</p>
+                    <p>
+                      {appFilter.status || appFilter.status_source
+                        ? "No applications match this filter."
+                        : "No applications imported yet."}
+                    </p>
                   </div>
                 ) : (
                   <>
@@ -775,28 +1131,51 @@ export function App() {
                               </button>
                             </th>
                           ))}
+                          <th>Decided by</th>
                           <th>Reason</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {applications.map((app) => (
-                          <tr key={app.id} onClick={() => viewApplication(app.id)} className="clickable-row">
-                            <td>{app.applicantName || app.primaryEmail}</td>
-                            <td>{app.coApplicantName || "—"}</td>
-                            <td>{app.childCount ?? "?"}</td>
-                            <td>{app.householdIncome != null ? `$${app.householdIncome.toLocaleString()}` : "?"}</td>
-                            <td>
-                              <span className={`status-badge status-${app.hardFilterStatus}`}>
-                                {app.hardFilterStatus.replace("_", " ")}
-                              </span>
-                            </td>
-                            <td className="reason-cell">
-                              {app.hardFilterReasons.length > 0
-                                ? app.hardFilterReasons.map((r) => r.message).join("; ")
-                                : "—"}
-                            </td>
-                          </tr>
-                        ))}
+                        {applications.map((app) => {
+                          // Reason cell shows the machine's "why" for an exclusion: rules
+                          // reasons, or AI flag categories. Human overrides show neither.
+                          const reason =
+                            app.statusSource === "rules"
+                              ? app.hardFilterReasons.map((r) => r.message).join("; ")
+                              : app.statusSource === "ai"
+                                ? (app.flagCategories ?? []).map(flagCategoryLabel).join("; ")
+                                : "—";
+                          return (
+                            <tr key={app.id} onClick={() => viewApplication(app.id)} className="clickable-row">
+                              <td>{app.applicantName || app.primaryEmail}</td>
+                              <td>{app.coApplicantName || "—"}</td>
+                              <td>{app.childCount ?? "?"}</td>
+                              <td>
+                                {app.householdIncome != null ? `$${app.householdIncome.toLocaleString()}` : "?"}
+                              </td>
+                              <td>
+                                <span className={`status-badge status-${app.status}`}>
+                                  {STATUS_LABELS[app.status]}
+                                </span>
+                              </td>
+                              <td>
+                                {app.statusSource === "untouched" ? (
+                                  "—"
+                                ) : (
+                                  <span className={`source-badge source-${app.statusSource}`}>
+                                    {SOURCE_LABELS[app.statusSource]}
+                                  </span>
+                                )}
+                                {app.stale ? (
+                                  <span className="stale-badge" title="New AI findings since last review">
+                                    stale
+                                  </span>
+                                ) : null}
+                              </td>
+                              <td className="reason-cell">{reason}</td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                     <div className="pagination">
