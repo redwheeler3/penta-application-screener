@@ -46,6 +46,37 @@ PETS_ALIASES = ["pets description", "pets", "pet description"]
 APPLICANT_START_DATE_ALIASES = ["start date at this company"]
 CO_APPLICANT_START_DATE_ALIASES = ["start date at this company [2]"]
 
+# Free-text essay questions, keyed by their exact form column with a short
+# committee-facing label. This is the single home for the essay field mapping;
+# both import and the detail API read from here.
+ESSAY_FIELDS: list[tuple[str, str]] = [
+    (
+        "About the household",
+        "Please introduce yourself and your family, including your employment background, interests, and values.",
+    ),
+    (
+        "Skills to contribute",
+        "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.",
+    ),
+    (
+        "Previous co-op experience",
+        "Please tell us about any previous co-op experience you or the co-applicant may have.",
+    ),
+    (
+        "Why a co-op",
+        "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.",
+    ),
+]
+
+
+def extract_essays(row: dict[str, Any]) -> list[dict[str, str]]:
+    """Pull the free-text essay answers out of a raw form row, in form order."""
+    essays = []
+    for label, column in ESSAY_FIELDS:
+        answer = str(row.get(column, "") or "").strip()
+        essays.append({"label": label, "question": column, "answer": answer})
+    return essays
+
 
 def import_applications_from_rows(
     db: Session,
