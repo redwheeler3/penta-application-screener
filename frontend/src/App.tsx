@@ -450,10 +450,18 @@ export function App() {
       });
 
       if (response.ok) {
-        const payload: { syncRun: { rowCount: number; importedCount: number; updatedCount: number } } =
-          await response.json();
+        const payload: {
+          syncRun: {
+            rowCount: number;
+            importedCount: number;
+            updatedCount: number;
+            unchangedCount: number;
+          };
+        } = await response.json();
+        const { rowCount, importedCount, updatedCount, unchangedCount } = payload.syncRun;
         setSyncMessage(
-          `Synced ${payload.syncRun.rowCount} rows: ${payload.syncRun.importedCount} imported, ${payload.syncRun.updatedCount} updated.`,
+          `Synced ${rowCount} rows: ${importedCount} imported, ${updatedCount} updated, ` +
+            `${unchangedCount} unchanged.`,
         );
         refreshDashboard();
         fetchApplications(appFilter, 1, appSearch);
@@ -527,8 +535,10 @@ export function App() {
             }
           }
         }
-        // Refresh dashboard counts and the open candidate so new flags/status show.
+        // Refresh dashboard counts, the application list + facet counts, and the
+        // open candidate so new flags/status show immediately after the run.
         refreshDashboard();
+        fetchApplications(appFilter, appPage, appSearch);
         if (selectedApp) viewApplication(selectedApp.id);
       }
     } catch (error) {
@@ -550,7 +560,9 @@ export function App() {
     if (response.ok) {
       const payload: { application: ApplicationDetail } = await response.json();
       setSelectedApp(payload.application);
+      // Refresh dashboard + list/facet counts so the change shows on "Back to list".
       refreshDashboard();
+      fetchApplications(appFilter, appPage, appSearch);
     }
   }
 
@@ -818,7 +830,15 @@ export function App() {
                     className="secondary-button"
                     type="button"
                     onClick={requestQualityFlagsEstimate}
-                    disabled={qfRunning || dashboardCounts.status.eligible === 0}
+                    // Disable while a run is in progress, while the estimate
+                    // confirmation is open, or when there are no applications
+                    // (nothing synced) / none eligible to analyze.
+                    disabled={
+                      qfRunning ||
+                      qfEstimate !== null ||
+                      dashboardCounts.submitted === 0 ||
+                      dashboardCounts.status.eligible === 0
+                    }
                   >
                     <Sparkles size={16} />
                     <span>
