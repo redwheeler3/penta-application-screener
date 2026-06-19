@@ -16,8 +16,8 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.pricing import cost_usd, price_for_model
-from app.ai.provider import AIProvider
+from app.ai.pricing import cost_usd
+from app.ai.provider import AIProvider, Usage
 from app.db.models import Application, ApplicationAIResult
 
 # Bump when a prompt or schema changes so cached results from the old version
@@ -85,7 +85,6 @@ def estimate_cost(
     static guess). The fallback values are used only when there is no usage
     history at all for this kind+model.
     """
-    price = price_for_model(model_id)
     uncached = [
         app
         for app in applications
@@ -94,9 +93,10 @@ def estimate_cost(
     avg_input_tokens, avg_output_tokens = _observed_avg_tokens(
         db, kind=kind, model_id=model_id
     ) or (fallback_input_tokens, fallback_output_tokens)
-    per_call = (
-        avg_input_tokens / 1_000_000 * price.input_per_mtok
-        + avg_output_tokens / 1_000_000 * price.output_per_mtok
+    # Price one average call through the same formula as a real call, then scale
+    # by how many uncached applications will actually be sent.
+    per_call = cost_usd(
+        model_id, Usage(input_tokens=avg_input_tokens, output_tokens=avg_output_tokens)
     )
     return {
         "total": len(applications),
