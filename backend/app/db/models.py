@@ -146,6 +146,7 @@ class SyncRun(TimestampMixin, Base):
     duplicate_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     imported_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     updated_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    unchanged_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     eligible_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     filtered_out_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)

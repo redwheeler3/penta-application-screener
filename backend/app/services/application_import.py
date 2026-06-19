@@ -100,6 +100,7 @@ def import_applications_from_rows(
 
     imported_count = 0
     updated_count = 0
+    unchanged_count = 0
     counts = {
         ApplicationStatus.ELIGIBLE: 0,
         ApplicationStatus.INELIGIBLE: 0,
@@ -136,6 +137,19 @@ def import_applications_from_rows(
             )
             db.add(application)
         else:
+            # "Unchanged" means the source row is byte-identical AND the rules
+            # produce the same reasons (so a settings change that flips
+            # eligibility still counts as a real update). Skip the write entirely
+            # so updated_at and status are untouched for genuinely unchanged rows.
+            unchanged = (
+                application.raw_row_hash == raw_hash
+                and application.hard_filter_reasons == reason_payload
+            )
+            if unchanged:
+                unchanged_count += 1
+                counts[application.status] += 1
+                continue
+
             updated_count += 1
             application.applicant_name = normalized.get("applicant_name")
             application.co_applicant_name = normalized.get("co_applicant_name")
@@ -159,6 +173,7 @@ def import_applications_from_rows(
         duplicate_count=duplicate_count,
         imported_count=imported_count,
         updated_count=updated_count,
+        unchanged_count=unchanged_count,
         eligible_count=counts[ApplicationStatus.ELIGIBLE],
         filtered_out_count=counts[ApplicationStatus.INELIGIBLE],
     )
