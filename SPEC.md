@@ -477,9 +477,11 @@ Access should be invitation/approval based when the app is live. Jeff is the ini
 Roles:
 
 - `Admin`: can invite/manage users and finalize administrative settings.
-- `Member`: can run screening sessions, answer AI questions, rank candidates, add notes, and participate in merged comparison.
+- `Member`: can run screening sessions, run shared cached AI quality checks, answer AI questions, rank candidates, add notes, and participate in merged comparison.
 
 Admin users should have all normal MOMI member capabilities plus access to admin panels, provider/model settings, raw AI debugging details, and other extra information.
+
+AI quality-check results are shared across users and cached per application content, model, and prompt version. Any logged-in member may run the checks; the cost-control concern is uncached work, not which member initiates a shared run.
 
 A special MOMI chair/finalizer role is not required for the initial design.
 
@@ -612,7 +614,7 @@ Filtered-out views should show the human-readable reasons plus pertinent applica
 
 Eligible applications should be shown in a table with expandable details and a candidate detail page.
 
-Candidate detail pages should show normalized fields, hard-filter results, and source references. Raw source JSON should be available in an Admin-only expandable/debug section.
+Candidate detail pages should show normalized fields, hard-filter results, and source references. Raw source JSON and saved raw AI output should be available in separate Admin-only expandable/debug sections.
 
 Filtered-out applicants should be searchable and sortable in a table. This view must be designed for hundreds of filtered-out applicants without becoming unwieldy.
 
@@ -666,7 +668,7 @@ Suggested implementation milestones:
 
 Milestones 1–5 are complete. The next milestone is per-candidate AI essay analysis and summaries (milestone 6).
 
-Milestone 5 (AI quality flags) also delivered the shared AI foundation originally listed under milestone 6: the provider-agnostic interface (Strands + Amazon Bedrock, with a deterministic mock for tests), cached per-application analysis keyed on content hash + model + prompt version, a token pricing table, cost estimate, per-run spending cap, and admin-only raw-debug access via the candidate detail page. Milestone 6 is therefore now scoped to essay analysis and committee-ready summaries on top of that foundation.
+Milestone 5 (AI quality flags) also delivered the shared AI foundation originally listed under milestone 6: the provider-agnostic interface (Strands + Amazon Bedrock, with a deterministic mock for tests), cached per-application analysis keyed on content hash + model + prompt version, a token pricing table, cost estimate, per-run spending cap, member-accessible quality-check runs, and admin-only raw-debug access via the candidate detail page. Milestone 6 is therefore now scoped to essay analysis and committee-ready summaries on top of that foundation.
 
 The status model was reworked during milestone 5 (see "Application Status Model"): `status` (eligible/ineligible) with a `status_source` (untouched/rules/ai/human), human override that is sticky against machine re-runs, and a staleness signal when machine findings change after a human review.
 

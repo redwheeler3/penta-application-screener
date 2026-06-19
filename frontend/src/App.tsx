@@ -87,6 +87,7 @@ type ApplicationDetail = ApplicationSummary & {
   // null = quality-flag pass not yet run for this application; [] = ran, clean.
   qualityFlags: QualityFlag[] | null;
   rawRow?: Record<string, unknown>;
+  rawAiOutput?: Record<string, unknown>;
 };
 
 type QualityFlagEstimate = {
@@ -825,32 +826,30 @@ export function App() {
                 <h2>Applications</h2>
               </div>
               <div className="panel-actions">
-                {user.role === "admin" ? (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={requestQualityFlagsEstimate}
-                    // Disable while a run is in progress, while the estimate
-                    // confirmation is open, or when there are no applications
-                    // (nothing synced) / none eligible to analyze.
-                    disabled={
-                      qfRunning ||
-                      qfEstimate !== null ||
-                      dashboardCounts.submitted === 0 ||
-                      dashboardCounts.status.eligible === 0
-                    }
-                  >
-                    <Sparkles size={16} />
-                    <span>
-                      {qfRunning
-                        ? qfProgress
-                          ? `Running ${qfProgress.processed}/${qfProgress.total} ` +
-                            `(${Math.round((qfProgress.processed / qfProgress.total) * 100)}%)`
-                          : "Running checks"
-                        : "Run quality checks"}
-                    </span>
-                  </button>
-                ) : null}
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={requestQualityFlagsEstimate}
+                  // Disable while a run is in progress, while the estimate
+                  // confirmation is open, or when there are no applications
+                  // (nothing synced) / none eligible to analyze.
+                  disabled={
+                    qfRunning ||
+                    qfEstimate !== null ||
+                    dashboardCounts.submitted === 0 ||
+                    dashboardCounts.status.eligible === 0
+                  }
+                >
+                  <Sparkles size={16} />
+                  <span>
+                    {qfRunning
+                      ? qfProgress
+                        ? `Running ${qfProgress.processed}/${qfProgress.total} ` +
+                          `(${Math.round((qfProgress.processed / qfProgress.total) * 100)}%)`
+                        : "Running checks"
+                      : "Run quality checks"}
+                  </span>
+                </button>
                 <button
                   className="primary-button"
                   type="button"
@@ -1034,6 +1033,12 @@ export function App() {
                   <details className="raw-row-section">
                     <summary>Raw source row (admin)</summary>
                     <pre>{JSON.stringify(selectedApp.rawRow, null, 2)}</pre>
+                  </details>
+                ) : null}
+                {selectedApp.rawAiOutput ? (
+                  <details className="raw-row-section">
+                    <summary>Raw AI output (admin)</summary>
+                    <pre>{JSON.stringify(selectedApp.rawAiOutput, null, 2)}</pre>
                   </details>
                 ) : null}
               </div>

@@ -84,12 +84,18 @@ async def test_run_requires_login() -> None:
 
 
 @pytest.mark.anyio
-async def test_run_forbidden_for_non_admin() -> None:
-    app, _, _ = setup_app(role=UserRole.MEMBER)
+async def test_member_can_run_quality_flags() -> None:
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="member@x.com", raw_hash="h1")
+    provider.queue(QualityFlagReport(flags=[]))
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await client.post("/quality-flags/run")
-    assert response.status_code == 403
+        summary = await run_and_summarize(client)
+
+    assert summary["analyzed"] == 1
+    assert summary["cached"] == 0
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.anyio
@@ -167,6 +173,57 @@ async def test_ai_flag_sets_needs_review_status_and_filter() -> None:
         # "Needs review" is the client's label for the ai source bucket.
         assert dashboard["counts"]["source"]["ai"] == 1
         assert dashboard["counts"]["status"]["ineligible"] == 1
+
+
+@pytest.mark.anyio
+async def test_raw_ai_output_is_admin_only_on_detail() -> None:
+    app, db, provider = setup_app(role=UserRole.ADMIN)
+    flagged = add_eligible(db, email="flag@x.com", raw_hash="h1")
+    provider.queue(
+        QualityFlagReport(
+            flags=[
+                QualityFlag(
+                    category=FlagCategory.PET_POLICY,
+                    severity=FlagSeverity.NOTABLE,
+                    summary="Too many pets.",
+                    evidence="pets",
+                )
+            ]
+        )
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await run_and_summarize(client)
+
+        admin_detail = (await client.get(f"/applications/{flagged.id}")).json()[
+            "application"
+        ]
+        assert admin_detail["rawAiOutput"] == {
+            "flags": [
+                {
+                    "category": "pet_policy",
+                    "severity": "notable",
+                    "summary": "Too many pets.",
+                    "evidence": "pets",
+                }
+            ]
+        }
+
+        member = User(
+            email="member@x.com",
+            display_name="Member",
+            role=UserRole.MEMBER,
+            is_active=True,
+        )
+        db.add(member)
+        db.commit()
+        app.dependency_overrides[require_current_user] = lambda: member
+
+        member_detail = (await client.get(f"/applications/{flagged.id}")).json()[
+            "application"
+        ]
+        assert "rawAiOutput" not in member_detail
 
 
 @pytest.mark.anyio
