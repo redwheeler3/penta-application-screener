@@ -228,9 +228,17 @@ def _latest_flags(
     are absent (their state is unknown / not-yet-run). Pass application_ids to
     scope the query to one page.
     """
-    query = select(ApplicationAIResult).where(
-        ApplicationAIResult.kind == "quality_flags"
-    )
+    latest = _latest_quality_flag_results(db, application_ids)
+    return {
+        app_id: (result.output or {}).get("flags", [])
+        for app_id, result in latest.items()
+    }
+
+
+def _latest_quality_flag_results(
+    db: Session, application_ids: list[int] | None = None
+) -> dict[int, ApplicationAIResult]:
+    query = select(ApplicationAIResult).where(ApplicationAIResult.kind == "quality_flags")
     if application_ids is not None:
         if not application_ids:
             return {}
@@ -240,20 +248,20 @@ def _latest_flags(
     latest: dict[int, ApplicationAIResult] = {}
     for result in db.scalars(query.order_by(ApplicationAIResult.created_at)):
         latest[result.application_id] = result
-    return {
-        app_id: (result.output or {}).get("flags", [])
-        for app_id, result in latest.items()
-    }
+    return latest
 
 
 def _serialize_detail(
     app: Application, db: Session, include_raw: bool = False
 ) -> dict[str, Any]:
-    flags = _latest_flags(db, [app.id]).get(app.id)
+    ai_result = _latest_quality_flag_results(db, [app.id]).get(app.id)
+    flags = (ai_result.output or {}).get("flags", []) if ai_result else None
     detail = _serialize_summary(app, flags=flags)
     detail["normalized"] = app.normalized
     detail["essays"] = extract_essays(app.raw_row or {})
     detail["qualityFlags"] = flags
     if include_raw:
         detail["rawRow"] = app.raw_row
+        if ai_result is not None:
+            detail["rawAiOutput"] = ai_result.output
     return detail

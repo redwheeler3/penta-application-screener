@@ -14,7 +14,7 @@ from app.ai.quality_flags import (
     estimate_quality_flags,
 )
 from app.ai.strands_provider import StrandsProvider
-from app.api.dependencies import require_admin
+from app.api.dependencies import require_current_user
 from app.db.models import User
 from app.db.session import get_db
 from app.schemas.settings import AppSettings
@@ -31,7 +31,7 @@ def get_ai_provider(db: Session = Depends(get_db)) -> AIProvider:
 
 @router.get("/estimate")
 def estimate(
-    user: User = Depends(require_admin),
+    user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     settings: AppSettings = get_app_settings(db)
@@ -43,7 +43,7 @@ def estimate(
 
 @router.post("/run")
 def run(
-    user: User = Depends(require_admin),
+    user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
     provider: AIProvider = Depends(get_ai_provider),
 ) -> StreamingResponse:
