@@ -14,7 +14,7 @@ from app.ai.mock_provider import MockProvider
 from app.ai.pricing import cost_usd, price_for_model
 from app.ai.provider import Usage
 from app.ai.schemas import FlagCategory, FlagSeverity, QualityFlag, QualityFlagReport
-from app.db.models import Application, ApplicationAIResult, Base, HardFilterStatus
+from app.db.models import Application, ApplicationAIResult, ApplicationStatus, Base
 
 MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 KIND = "quality_flags"
@@ -33,7 +33,7 @@ def make_application(db: Session, *, email: str = "a@example.com", raw_hash: str
         raw_row={"x": 1},
         raw_row_hash=raw_hash,
         normalized={},
-        hard_filter_status=HardFilterStatus.ELIGIBLE,
+        status=ApplicationStatus.ELIGIBLE,
         hard_filter_reasons=[],
     )
     db.add(app)

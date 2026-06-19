@@ -22,7 +22,7 @@ from app.db.models import Application, ApplicationAIResult
 
 # Bump when a prompt or schema changes so cached results from the old version
 # are not reused.
-PROMPT_VERSION = "1"
+PROMPT_VERSION = "3"
 
 
 class SpendingCapExceeded(Exception):

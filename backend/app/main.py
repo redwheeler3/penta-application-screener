@@ -6,6 +6,7 @@ from app.api.applications import router as applications_router
 from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
 from app.api.health import router as health_router
+from app.api.quality_flags import router as quality_flags_router
 from app.api.settings import router as settings_router
 from app.api.sync import router as sync_router
 from app.core.config import get_settings
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(dashboard_router)
     app.include_router(health_router)
+    app.include_router(quality_flags_router)
     app.include_router(settings_router)
     app.include_router(sync_router)
     return app

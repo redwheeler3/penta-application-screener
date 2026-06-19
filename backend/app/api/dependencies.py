@@ -1,7 +1,7 @@
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.db.models import User
+from app.db.models import User, UserRole
 from app.db.session import get_db
 
 
@@ -15,5 +15,11 @@ def require_current_user(request: Request, db: Session = Depends(get_db)) -> Use
         request.session.clear()
         raise HTTPException(status_code=401, detail="Authentication required.")
 
+    return user
+
+
+def require_admin(user: User = Depends(require_current_user)) -> User:
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required.")
     return user
 

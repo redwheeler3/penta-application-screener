@@ -3,7 +3,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_current_user
-from app.db.models import Application, HardFilterStatus, User
+from app.db.models import Application, ApplicationStatus, StatusSource, User
 from app.db.session import get_db
 from app.services.settings import get_app_settings
 
@@ -17,26 +17,22 @@ def read_dashboard(
 ) -> dict:
     settings = get_app_settings(db)
     total = db.scalar(select(func.count()).select_from(Application)) or 0
-    eligible = count_by_status(db, HardFilterStatus.ELIGIBLE)
-    filtered_out = count_by_status(db, HardFilterStatus.FILTERED_OUT)
+
+    # Counts keyed by the real columns. Named views (e.g. "needs review" =
+    # source 'ai') are composed and labeled by the client, not invented here.
+    by_status = _count_by(db, Application.status)
+    by_source = _count_by(db, Application.status_source)
 
     return {
         "settingsComplete": bool(settings.google_sheet_id),
         "counts": {
             "submitted": total,
-            "eligible": eligible,
-            "filteredOut": filtered_out,
+            "status": {s.value: by_status.get(s, 0) for s in ApplicationStatus},
+            "source": {s.value: by_source.get(s, 0) for s in StatusSource},
         },
     }
 
 
-def count_by_status(db: Session, status: HardFilterStatus) -> int:
-    return (
-        db.scalar(
-            select(func.count())
-            .select_from(Application)
-            .where(Application.hard_filter_status == status)
-        )
-        or 0
-    )
-
+def _count_by(db: Session, column) -> dict:
+    rows = db.execute(select(column, func.count()).group_by(column)).all()
+    return {value: count for value, count in rows}

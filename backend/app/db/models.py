@@ -16,9 +16,16 @@ class UserRole(StrEnum):
     MEMBER = "member"
 
 
-class HardFilterStatus(StrEnum):
+class ApplicationStatus(StrEnum):
     ELIGIBLE = "eligible"
-    FILTERED_OUT = "filtered_out"
+    INELIGIBLE = "ineligible"
+
+
+class StatusSource(StrEnum):
+    UNTOUCHED = "untouched"  # passed rules, AI didn't flag (or hasn't run)
+    RULES = "rules"  # deterministic filters set it ineligible (high trust)
+    AI = "ai"  # AI quality pass set it ineligible (low trust — needs review)
+    HUMAN = "human"  # a person set the status, either direction
 
 
 def enum_values(enum_class: type[StrEnum]) -> list[str]:
@@ -83,13 +90,25 @@ class Application(TimestampMixin, Base):
     raw_row: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     raw_row_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     normalized: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    hard_filter_status: Mapped[HardFilterStatus] = mapped_column(
-        Enum(HardFilterStatus, values_callable=enum_values),
-        default=HardFilterStatus.ELIGIBLE,
+    status: Mapped[ApplicationStatus] = mapped_column(
+        Enum(ApplicationStatus, values_callable=enum_values),
+        default=ApplicationStatus.ELIGIBLE,
         nullable=False,
         index=True,
     )
+    status_source: Mapped[StatusSource] = mapped_column(
+        Enum(StatusSource, values_callable=enum_values),
+        default=StatusSource.UNTOUCHED,
+        nullable=False,
+        index=True,
+    )
+    # Immutable record of why the deterministic rules excluded the applicant.
     hard_filter_reasons: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    # Hash of the machine findings (reasons + AI flags) captured when a human
+    # last set the status. Null unless status_source == human. Used to detect
+    # staleness: if the current findings hash differs, there are new findings
+    # since the human's review.
+    reviewed_fingerprint: Mapped[str | None] = mapped_column(String(64))
 
 
 class ApplicationAIResult(TimestampMixin, Base):
