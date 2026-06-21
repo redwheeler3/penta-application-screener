@@ -9,8 +9,11 @@
   --page: #f9fafb;
 
   color: var(--ink);
+  /* Warm green page wash. It stays pale (and paler than the panel header
+     green below it) so the header rows read as distinct raised surfaces
+     rather than blending into a matching background. */
   background:
-    linear-gradient(180deg, #ecfdf5 0, rgba(236, 253, 245, 0) 260px),
+    linear-gradient(180deg, #f3faf6 0, rgba(243, 250, 246, 0) 320px),
     var(--page);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -165,23 +168,50 @@ h1 {
   opacity: 0.45;
 }
 
-.primary-button {
+/* Shared button family. The neutral white-card look is the default; .primary-button
+   overrides to a green CTA fill, .workflow-step-button opts out of centering.
+   (.workflow-step-button lives in the workflow section below but shares this base.) */
+.primary-button,
+.secondary-button,
+.workflow-step-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 0 16px;
-  border: 1px solid var(--penta-green);
-  border-radius: 6px;
-  background: var(--penta-green);
-  color: #fff;
+  gap: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
   cursor: pointer;
-  font-weight: 700;
-  box-shadow: 0 10px 22px rgba(22, 163, 74, 0.18);
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: border-color 0.12s, background-color 0.12s, box-shadow 0.12s, transform 0.12s;
 }
 
-.primary-button:hover {
+/* The family lifts on hover and settles on press. */
+.primary-button:hover:not(:disabled),
+.secondary-button:hover:not(:disabled),
+.workflow-step-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.primary-button:active:not(:disabled),
+.secondary-button:active:not(:disabled),
+.workflow-step-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Primary CTA: the strong "do it" action, set apart by its solid green fill. */
+.primary-button {
+  padding: 0.5rem 0.95rem;
+  border-color: var(--penta-green);
+  background: var(--penta-green);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(22, 163, 74, 0.18);
+}
+
+.primary-button:hover:not(:disabled) {
   border-color: var(--penta-green-dark);
   background: var(--penta-green-dark);
 }
@@ -195,23 +225,16 @@ h1 {
   cursor: wait;
 }
 
-.secondary-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 38px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--ink);
-  cursor: pointer;
-  font-weight: 700;
+/* Neutral/secondary action: green-tint hover-lift. */
+.secondary-button:hover:not(:disabled) {
+  border-color: var(--penta-green);
+  background: var(--penta-green-soft);
+  color: var(--penta-green-dark);
+  box-shadow: 0 1px 4px rgba(22, 163, 74, 0.18);
 }
 
-.secondary-button:hover {
-  border-color: #86efac;
-  color: var(--penta-green-dark);
+.secondary-button:active:not(:disabled) {
+  box-shadow: none;
 }
 
 .secondary-button:disabled,
@@ -221,6 +244,13 @@ h1 {
   color: #6b7280;
   cursor: not-allowed;
   opacity: 0.72;
+}
+
+/* Green-accented secondary button: same family, but green text + tinted border
+   at rest so it carries a little more presence (e.g. "Edit settings"). */
+.secondary-button-accent {
+  border-color: #bbf7d0;
+  color: var(--penta-green-dark);
 }
 
 .secondary-button.is-busy:disabled {
@@ -242,20 +272,16 @@ h1 {
   color: var(--muted);
 }
 
+/* Mirror the .panel structure so the header gets the same edge-to-edge green
+   row: no padding on the container (overflow clips the header to the radius),
+   padding lives on the header and body sections. */
 .settings-panel {
-  display: grid;
-  gap: 18px;
+  overflow: hidden;
   margin-bottom: 18px;
-  padding: 20px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
   box-shadow: 0 12px 28px rgba(17, 24, 39, 0.06);
-}
-
-.settings-panel-collapsed {
-  gap: 12px;
-  padding-bottom: 16px;
 }
 
 .settings-panel-header {
@@ -263,6 +289,15 @@ h1 {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(90deg, #dcfce7, #fff);
+}
+
+.settings-panel-body {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
 }
 
 .settings-summary {
@@ -278,7 +313,7 @@ h1 {
 }
 
 .settings-summary span {
-  color: var(--muted);
+  color: var(--penta-green-dark);
   font-size: 0.78rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -494,7 +529,7 @@ h1 {
   gap: 16px;
   padding: 18px 20px;
   border-bottom: 1px solid var(--line);
-  background: linear-gradient(90deg, var(--penta-green-soft), #fff);
+  background: linear-gradient(90deg, #dcfce7, #fff);
 }
 
 .panel-header > div > span {
@@ -1021,24 +1056,7 @@ h1 {
   font-size: 0.78rem;
 }
 
-/* Ordered screening workflow strip */
-.workflow-strip {
-  margin: 0 0 1.25rem;
-  padding: 0.85rem 1rem;
-  background: var(--page);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-}
-
-.workflow-strip-label {
-  display: block;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  margin-bottom: 0.6rem;
-}
-
+/* Ordered screening workflow, inline in the panel header */
 .workflow-steps {
   list-style: none;
   margin: 0;
@@ -1055,22 +1073,22 @@ h1 {
   gap: 0.25rem;
 }
 
+/* Shares the button-family base above; only its left-aligned layout differs
+   (steps read left-to-right with a leading badge, not centered like a CTA). */
 .workflow-step-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.85rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 0.85rem;
-  font-weight: 500;
-  cursor: pointer;
+  justify-content: flex-start;
 }
 
+/* Reinforce clickability on hover for any enabled step, including completed
+   ones (which stay clickable so a step can be re-run). */
 .workflow-step-button:hover:not(:disabled) {
   border-color: var(--penta-green);
+  background: var(--penta-green-soft);
+  box-shadow: 0 1px 4px rgba(22, 163, 74, 0.18);
+}
+
+.workflow-step-button:active:not(:disabled) {
+  box-shadow: none;
 }
 
 .workflow-step-button:disabled {
@@ -1079,10 +1097,18 @@ h1 {
 }
 
 /* A completed step reads as quietly done (green tint + check badge). */
+/* A completed step recedes: white button, a green check, green text. It reads
+   as quietly done rather than as a primary action competing in the header. */
 .workflow-step-button.is-done {
+  border-color: #bbf7d0;
+  color: var(--penta-green-dark);
+}
+
+/* On hover a done step picks up the soft green tint so the re-run affordance is
+   clear (and stays distinct from the deeper-green header it sits in). */
+.workflow-step-button.is-done:hover:not(:disabled) {
   background: var(--penta-green-soft);
   border-color: var(--penta-green);
-  color: var(--penta-green-dark);
 }
 
 .workflow-step-button.is-busy {
@@ -1102,10 +1128,11 @@ h1 {
   font-weight: 700;
 }
 
+/* Done badge: green check on a soft tint, no solid fill — understated. */
 .workflow-step-button.is-done .workflow-step-badge {
-  background: var(--penta-green);
-  border-color: var(--penta-green);
-  color: #fff;
+  background: var(--penta-green-soft);
+  border-color: #bbf7d0;
+  color: var(--penta-green-dark);
 }
 
 .workflow-step-arrow {
