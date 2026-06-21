@@ -271,9 +271,10 @@ def _serialize_detail(app: Application, db: Session) -> dict[str, Any]:
         detail["aiNarrative"] = flag_result.narrative
 
     # Essay analysis (milestone 6): informational, never affects status.
-    # null = pass not yet run for this application.
+    # null = pass not yet run for this application. No raw narrative: unlike the
+    # quality-flag pass, essay analysis no longer asks the model for a reasoning
+    # preamble — an A/B run showed it doesn't change the extracted fields (see
+    # SPEC "Essay Analysis"), so the structured output is the whole product.
     essay_result = _latest_results(db, "essay_analysis", [app.id]).get(app.id)
     detail["essayAnalysis"] = essay_result.output if essay_result else None
-    if essay_result is not None:
-        detail["essayAnalysisNarrative"] = essay_result.narrative
     return detail

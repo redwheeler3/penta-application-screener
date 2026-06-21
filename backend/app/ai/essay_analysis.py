@@ -67,7 +67,7 @@ Fill each field from the essays:
 
 Content bleeds across the four questions (skills appear in the introduction, etc.) — pull each fact into the right field wherever it appears. Leave a field null or empty if the applicant did not address it; do not fill gaps with guesses.
 
-Before returning the structured analysis, briefly explain your extraction as Markdown. Then return the structured analysis."""
+Return the structured analysis directly."""
 
     essays_json = json.dumps(essays, indent=2, default=str)
     return f"{instructions}\n\nESSAYS:\n{essays_json}"
