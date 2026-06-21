@@ -690,7 +690,7 @@ Current settings:
 - Household limits: max adults, minimum adult age
 - Pet limits: max dogs, max cats, whether other/exotic pets are allowed
 - `disabled_rules`: which deterministic hard-filter rules are turned off
-- A nested `ai` block (`AISettings`): region, first-pass model, synthesis model, spending cap, and screening concurrency (`max_workers`) — see [ai-screening.md](ai-screening.md)
+- A nested `ai` block (`AISettings`): region, first-pass model, synthesis model, spending cap, and screening concurrency (`max_workers`) — see [ai-screening.md](ai-screening.md). Of these, only the spending cap is editable in the settings form; the rest are config-only but still round-tripped on save.
 
 The defaults match the current planned 2-bedroom opening:
 
