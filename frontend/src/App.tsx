@@ -484,6 +484,10 @@ export function App() {
   const [screeningRun, setScreeningRun] = useState<ScreeningRunState | null>(null);
   const [pdRunning, setPdRunning] = useState(false);
   const [pdMessage, setPdMessage] = useState("");
+  // Discovery has no cost estimate (a single call), but still confirms before
+  // running — for consistency with the other AI steps and because it starts a
+  // new run that supersedes any existing dimensions/scores. true = card open.
+  const [pdConfirm, setPdConfirm] = useState(false);
   // Scoring reuses the estimate-confirm-stream shape of the other AI passes.
   const [dsEstimate, setDsEstimate] = useState<QualityFlagEstimate | null>(null);
   const [dsRunning, setDsRunning] = useState(false);
@@ -730,7 +734,10 @@ export function App() {
   // without the user first seeing the estimate and confirming (SPEC cost control).
   async function requestQualityFlagsEstimate() {
     setQfMessage("");
-    setEaEstimate(null); // close the other pass's confirmation if it's open
+    // Close any other open confirmation so only one card shows at a time.
+    setEaEstimate(null);
+    setDsEstimate(null);
+    setPdConfirm(false);
     const response = await fetch(`${apiBaseUrl}/quality-flags/estimate`, { credentials: "include" });
     if (response.ok) {
       setQfEstimate(await response.json());
@@ -797,7 +804,10 @@ export function App() {
   // cost control; this pass is informational and never changes status.
   async function requestEssayAnalysisEstimate() {
     setEaMessage("");
-    setQfEstimate(null); // close the other pass's confirmation if it's open
+    // Close any other open confirmation so only one card shows at a time.
+    setQfEstimate(null);
+    setDsEstimate(null);
+    setPdConfirm(false);
     const response = await fetch(`${apiBaseUrl}/essay-analysis/estimate`, { credentials: "include" });
     if (response.ok) {
       setEaEstimate(await response.json());
@@ -860,9 +870,20 @@ export function App() {
   }
 
   // Pattern discovery (milestone 7): one synthesis call over the eligible pool.
-  // No cost estimate/confirm — a single call is cheap and not cap-gated, unlike
-  // the per-candidate batch passes.
+  // It is not cap-gated (a single call), but it still confirms first — both for
+  // consistency with the other AI steps and because it starts a new run that
+  // replaces any existing dimensions/scores.
+  function requestDiscoverConfirm() {
+    setPdMessage("");
+    // Close any other open confirmation so only one card shows at a time.
+    setQfEstimate(null);
+    setEaEstimate(null);
+    setDsEstimate(null);
+    setPdConfirm(true);
+  }
+
   async function discoverPatterns() {
+    setPdConfirm(false);
     setPdRunning(true);
     setPdMessage("");
     try {
@@ -889,8 +910,10 @@ export function App() {
   // essay-analysis estimate-confirm-stream flow. Informational — no status change.
   async function requestScoringEstimate() {
     setDsMessage("");
+    // Close any other open confirmation so only one card shows at a time.
     setQfEstimate(null);
     setEaEstimate(null);
+    setPdConfirm(false);
     const response = await fetch(`${apiBaseUrl}/screening/scoring/estimate`, { credentials: "include" });
     if (response.ok) {
       setDsEstimate(await response.json());
@@ -1315,13 +1338,14 @@ export function App() {
                   busy={pdRunning}
                   busyLabel="Discovering"
                   // Gated until essays are analyzed (the digest it reasons over);
-                  // also needs eligible apps.
+                  // also needs eligible apps and no open confirmation.
                   disabled={
                     !workflow.essaysAnalyzed ||
                     pdRunning ||
+                    pdConfirm ||
                     dashboardCounts.status.eligible === 0
                   }
-                  onClick={discoverPatterns}
+                  onClick={requestDiscoverConfirm}
                 />
                 <WorkflowStep
                   n={5}
@@ -1455,6 +1479,33 @@ export function App() {
             ) : null}
             {eaMessage ? <div className="qf-message">{eaMessage}</div> : null}
 
+            {pdConfirm ? (
+              <div className="qf-confirm">
+                <div className="qf-confirm-body">
+                  <strong>Discover screening patterns?</strong>
+                  <p>
+                    Analyze all {dashboardCounts.status.eligible} eligible applicant
+                    {dashboardCounts.status.eligible === 1 ? "" : "s"} to discover how this pool varies.
+                    {screeningRun
+                      ? " This starts a new screening run; the existing dimensions and any scores will be replaced."
+                      : ""}
+                  </p>
+                </div>
+                <div className="qf-confirm-actions">
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={discoverPatterns}
+                    disabled={pdRunning}
+                  >
+                    {pdRunning ? "Running" : "Confirm & run"}
+                  </button>
+                  <button className="secondary-button" type="button" onClick={() => setPdConfirm(false)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {pdMessage ? <div className="qf-message">{pdMessage}</div> : null}
             {dsEstimate ? (
               <div className="qf-confirm">
