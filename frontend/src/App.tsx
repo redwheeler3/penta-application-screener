@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronLeft, ChevronUp, Clipboard, LogIn, LogOut, RefreshCw, Sparkles, X } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clipboard, LogIn, LogOut, RefreshCw, Sparkles, X } from "lucide-react";
 import { type ReactNode, type SyntheticEvent, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { HouseIcon } from "./HouseIcon";
@@ -53,6 +53,14 @@ type DashboardCounts = {
   submitted: number;
   status: Record<AppStatus, number>;
   source: Record<StatusSource, number>;
+};
+
+// Which screening steps have run, from the backend (persisted), so the ordered
+// workflow gating survives a page reload.
+type WorkflowState = {
+  synced: boolean;
+  qualityChecksRun: boolean;
+  essaysAnalyzed: boolean;
 };
 
 // Faceted counts from the list response: each facet reflects the other group's
@@ -257,6 +265,39 @@ function renderEssayChips(label: string, values: string[]): ReactNode {
   );
 }
 
+// One numbered step in the ordered screening workflow strip. Renders the step
+// button plus a chevron connector to the next step (omitted on the last).
+function WorkflowStep(props: {
+  n: number;
+  title: string;
+  icon: ReactNode;
+  done: boolean;
+  busy: boolean;
+  busyLabel: string;
+  disabled: boolean;
+  onClick: () => void;
+  last?: boolean;
+}): ReactNode {
+  const { n, title, icon, done, busy, busyLabel, disabled, onClick, last } = props;
+  return (
+    <li className="workflow-step">
+      <button
+        type="button"
+        className={`workflow-step-button${done ? " is-done" : ""}${busy ? " is-busy" : ""}`}
+        onClick={onClick}
+        disabled={disabled}
+      >
+        <span className="workflow-step-badge">
+          {done ? <Check size={14} /> : n}
+        </span>
+        {icon}
+        <span>{busy ? busyLabel : title}</span>
+      </button>
+      {!last ? <ChevronRight className="workflow-step-arrow" size={18} /> : null}
+    </li>
+  );
+}
+
 // The configured sheet id from a server response: prefer the resolved URL, falling
 // back to the bare id. Returns "" when no sheet is configured.
 function resolveSheetId(payload: SettingsResponse): string {
@@ -319,6 +360,11 @@ export function App() {
     submitted: 0,
     status: { eligible: 0, ineligible: 0 },
     source: { untouched: 0, rules: 0, ai: 0, human: 0 },
+  });
+  const [workflow, setWorkflow] = useState<WorkflowState>({
+    synced: false,
+    qualityChecksRun: false,
+    essaysAnalyzed: false,
   });
   const [syncMessage, setSyncMessage] = useState("");
   const [syncError, setSyncError] = useState("");
@@ -392,7 +438,10 @@ export function App() {
   function refreshDashboard() {
     fetch(`${apiBaseUrl}/dashboard`, { credentials: "include" })
       .then((response) => response.json())
-      .then((payload: { counts: DashboardCounts }) => setDashboardCounts(payload.counts));
+      .then((payload: { counts: DashboardCounts; workflow: WorkflowState }) => {
+        setDashboardCounts(payload.counts);
+        setWorkflow(payload.workflow);
+      });
   }
 
   function fetchApplications(
@@ -696,8 +745,10 @@ export function App() {
             }
           }
         }
-        // Refresh the open candidate so the new analysis shows immediately.
-        // Status/counts are unaffected by this pass, so no dashboard refresh.
+        // Refresh the open candidate so the new analysis shows immediately, and
+        // the dashboard so the workflow marks essay analysis done (gating).
+        // Status/counts are unaffected by this pass.
+        refreshDashboard();
         if (selectedApp) viewApplication(selectedApp.id);
       }
     } catch (error) {
@@ -1005,64 +1056,70 @@ export function App() {
                 <span className="panel-kicker">Current opening</span>
                 <h2>Applications</h2>
               </div>
-              <div className="panel-actions">
-                <button
-                  className={`secondary-button${qfRunning ? " is-busy" : ""}`}
-                  type="button"
-                  onClick={requestQualityFlagsEstimate}
-                  // Disable while a run is in progress, while the estimate
-                  // confirmation is open, or when there are no applications
-                  // (nothing synced) / none eligible to analyze.
+            </div>
+
+            {/* Ordered screening workflow. Each step's input depends on the
+                previous (sync sets the pool, quality checks refine who's
+                eligible, essay analysis runs on the eligible set), so later
+                steps are hard-gated until the previous step has run. The
+                "done" flags come from the backend, so gating survives reload. */}
+            <div className="workflow-strip">
+              <span className="workflow-strip-label">Screening workflow</span>
+              <ol className="workflow-steps">
+                <WorkflowStep
+                  n={1}
+                  title="Sync applications"
+                  icon={<RefreshCw size={16} />}
+                  done={workflow.synced}
+                  busy={isSyncing}
+                  busyLabel="Syncing"
+                  // Step 1 is always available once a sheet is configured.
+                  disabled={isSyncing || !hasGoogleSheetLink}
+                  onClick={syncApplications}
+                />
+                <WorkflowStep
+                  n={2}
+                  title="Run quality checks"
+                  icon={<Sparkles size={16} />}
+                  done={workflow.qualityChecksRun}
+                  busy={qfRunning}
+                  busyLabel={
+                    qfProgress
+                      ? `Running ${qfProgress.processed}/${qfProgress.total} (${Math.round(qfPercent(qfProgress))}%)`
+                      : "Running checks"
+                  }
+                  // Gated until a sync has happened; also needs eligible apps and
+                  // no estimate prompt already open.
                   disabled={
+                    !workflow.synced ||
                     qfRunning ||
                     qfEstimate !== null ||
-                    dashboardCounts.submitted === 0 ||
                     dashboardCounts.status.eligible === 0
                   }
-                >
-                  <Sparkles size={16} />
-                  <span>
-                    {qfRunning
-                      ? qfProgress
-                        ? `Running ${qfProgress.processed}/${qfProgress.total} ` +
-                          `(${Math.round(qfPercent(qfProgress))}%)`
-                        : "Running checks"
-                      : "Run quality checks"}
-                  </span>
-                </button>
-                <button
-                  className={`secondary-button${eaRunning ? " is-busy" : ""}`}
-                  type="button"
-                  onClick={requestEssayAnalysisEstimate}
-                  // Disabled while running, while its estimate confirmation is
-                  // open, or when there are no eligible applicants to analyze.
+                  onClick={requestQualityFlagsEstimate}
+                />
+                <WorkflowStep
+                  n={3}
+                  title="Analyze essays"
+                  icon={<Sparkles size={16} />}
+                  done={workflow.essaysAnalyzed}
+                  busy={eaRunning}
+                  busyLabel={
+                    eaProgress
+                      ? `Analyzing ${eaProgress.processed}/${eaProgress.total} (${Math.round(qfPercent(eaProgress))}%)`
+                      : "Analyzing essays"
+                  }
+                  // Gated until quality checks have run; also needs eligible apps.
                   disabled={
+                    !workflow.qualityChecksRun ||
                     eaRunning ||
                     eaEstimate !== null ||
-                    dashboardCounts.submitted === 0 ||
                     dashboardCounts.status.eligible === 0
                   }
-                >
-                  <Sparkles size={16} />
-                  <span>
-                    {eaRunning
-                      ? eaProgress
-                        ? `Analyzing ${eaProgress.processed}/${eaProgress.total} ` +
-                          `(${Math.round(qfPercent(eaProgress))}%)`
-                        : "Analyzing essays"
-                      : "Analyze essays"}
-                  </span>
-                </button>
-                <button
-                  className={`primary-button${isSyncing ? " is-busy" : ""}`}
-                  type="button"
-                  onClick={syncApplications}
-                  disabled={isSyncing || !hasGoogleSheetLink}
-                >
-                  <RefreshCw size={18} />
-                  <span>{isSyncing ? "Syncing" : "Sync applications"}</span>
-                </button>
-              </div>
+                  onClick={requestEssayAnalysisEstimate}
+                  last
+                />
+              </ol>
             </div>
 
             {qfEstimate ? (

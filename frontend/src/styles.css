@@ -1021,11 +1021,96 @@ h1 {
   font-size: 0.78rem;
 }
 
-/* Quality-flag run controls (panel header) */
-.panel-actions {
+/* Ordered screening workflow strip */
+.workflow-strip {
+  margin: 0 0 1.25rem;
+  padding: 0.85rem 1rem;
+  background: var(--page);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.workflow-strip-label {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 0.6rem;
+}
+
+.workflow-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.workflow-step {
   display: flex;
   align-items: center;
+  gap: 0.25rem;
+}
+
+.workflow-step-button {
+  display: inline-flex;
+  align-items: center;
   gap: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.workflow-step-button:hover:not(:disabled) {
+  border-color: var(--penta-green);
+}
+
+.workflow-step-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* A completed step reads as quietly done (green tint + check badge). */
+.workflow-step-button.is-done {
+  background: var(--penta-green-soft);
+  border-color: var(--penta-green);
+  color: var(--penta-green-dark);
+}
+
+.workflow-step-button.is-busy {
+  border-color: var(--penta-green);
+}
+
+.workflow-step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  background: var(--page);
+  border: 1px solid var(--line);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.workflow-step-button.is-done .workflow-step-badge {
+  background: var(--penta-green);
+  border-color: var(--penta-green);
+  color: #fff;
+}
+
+.workflow-step-arrow {
+  color: var(--muted);
+  flex-shrink: 0;
 }
 
 .qf-confirm {
