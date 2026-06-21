@@ -42,6 +42,23 @@ def test_save_app_settings_round_trips() -> None:
     assert loaded == saved
 
 
+def test_save_app_settings_round_trips_ai_block() -> None:
+    """A saved spending cap (and the rest of the ai block) survives the round
+    trip — the UI edits the cap, so it must persist rather than reset.
+    """
+    db = make_session()
+    saved = AppSettings(google_sheet_id="sheet-123")
+    saved.ai.spending_cap_usd = 2.5
+
+    save_app_settings(db, saved)
+    loaded = get_app_settings(db)
+
+    assert loaded.ai.spending_cap_usd == 2.5
+    # The unedited ai fields keep their defaults, not get dropped.
+    assert loaded.ai.max_workers == 50
+    assert loaded.ai.region == "us-west-2"
+
+
 def test_app_settings_accepts_google_sheet_url() -> None:
     settings = AppSettings(
         google_sheet_id="https://docs.google.com/spreadsheets/d/sheet-123/edit?gid=0#gid=0",

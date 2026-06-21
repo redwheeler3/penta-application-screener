@@ -11,6 +11,17 @@ type CurrentUser = {
   role: "admin" | "member";
 };
 
+// Mirrors the backend AISettings. The UI only edits spending_cap_usd; the other
+// fields are infra/tuning config that we still round-trip so a save never resets
+// them to defaults.
+type AISettings = {
+  region: string;
+  first_pass_model: string;
+  synthesis_model: string;
+  spending_cap_usd: number;
+  max_workers: number;
+};
+
 type AppSettings = {
   google_sheet_id: string;
   unit_size: "1br" | "2br" | "3br";
@@ -24,6 +35,7 @@ type AppSettings = {
   max_cats: number;
   allow_other_pets: boolean;
   disabled_rules: string[];
+  ai: AISettings;
 };
 
 type SettingsResponse = {
@@ -218,6 +230,13 @@ const defaultSettings: AppSettings = {
   max_cats: 1,
   allow_other_pets: false,
   disabled_rules: [],
+  ai: {
+    region: "us-west-2",
+    first_pass_model: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    synthesis_model: "us.anthropic.claude-sonnet-4-6",
+    spending_cap_usd: 0.5,
+    max_workers: 50,
+  },
 };
 
 const ALL_RULES = [
@@ -822,6 +841,28 @@ export function App() {
                       </label>
                     ))}
                   </div>
+                </div>
+                <div className="rules-section">
+                  <h3>AI Screening</h3>
+                  <p className="rules-hint">
+                    The quality-flag run is blocked before it starts if its estimated cost
+                    exceeds this cap.
+                  </p>
+                  <label>
+                    <span>Spending cap (USD per run)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={draft.ai.spending_cap_usd}
+                      onChange={(event) =>
+                        setDraft({
+                          ...draft,
+                          ai: { ...draft.ai, spending_cap_usd: Number(event.target.value) },
+                        })
+                      }
+                    />
+                  </label>
                 </div>
                 <div className="settings-actions">
                   <button className="primary-button" type="submit" disabled={isSavingSettings}>
