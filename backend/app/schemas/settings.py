@@ -27,6 +27,11 @@ class AISettings(BaseModel):
     first_pass_model: str = Field(default="us.anthropic.claude-haiku-4-5-20251001-v1:0")
     synthesis_model: str = Field(default="us.anthropic.claude-sonnet-4-6")
     spending_cap_usd: float = Field(default=0.5, ge=0)
+    # How many applications to screen concurrently. The model calls are the slow,
+    # blocking part; ~300 applicants finish in seconds at this width. The Bedrock
+    # connection pool is sized to match (see StrandsProvider), so don't raise one
+    # without the other. Bedrock quotas (10k RPM / 5M TPM) are far above this.
+    max_workers: int = Field(default=50, ge=1, le=100)
 
 
 class AppSettings(BaseModel):

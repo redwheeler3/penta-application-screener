@@ -59,13 +59,18 @@ def setup_app(role: UserRole | None) -> tuple:
     return app, db, provider
 
 
-def add_eligible(db: Session, *, email: str, raw_hash: str) -> Application:
+def add_eligible(
+    db: Session, *, email: str, raw_hash: str, name: str = "Test"
+) -> Application:
     app = Application(
         primary_email=email,
-        applicant_name="Test",
+        applicant_name=name,
         raw_row={},
         raw_row_hash=raw_hash,
-        normalized={},
+        # The name is surfaced in the prompt, so a distinct name lets a test
+        # route a specific verdict to this application regardless of the order
+        # concurrent screening calls complete in.
+        normalized={"applicant_name": name},
         status=ApplicationStatus.ELIGIBLE,
         hard_filter_reasons=[],
     )
@@ -130,10 +135,12 @@ async def test_admin_run_analyzes_eligible_and_reports() -> None:
 @pytest.mark.anyio
 async def test_ai_flag_sets_needs_review_status_and_filter() -> None:
     app, db, provider = setup_app(role=UserRole.ADMIN)
-    add_eligible(db, email="flag@x.com", raw_hash="h1")
-    add_eligible(db, email="clean@x.com", raw_hash="h2")
-    # Run quality flags: first app flagged, second clean.
-    provider.queue(
+    add_eligible(db, email="flag@x.com", raw_hash="h1", name="Flagged Applicant")
+    add_eligible(db, email="clean@x.com", raw_hash="h2", name="Clean Applicant")
+    # Bind verdicts to applications by name: the screening pass runs concurrently
+    # so results don't complete in submission order.
+    provider.route(
+        "Flagged Applicant",
         QualityFlagReport(
             flags=[
                 QualityFlag(
@@ -143,9 +150,9 @@ async def test_ai_flag_sets_needs_review_status_and_filter() -> None:
                     evidence="pets",
                 )
             ]
-        )
+        ),
     )
-    provider.queue(QualityFlagReport(flags=[]))
+    provider.route("Clean Applicant", QualityFlagReport(flags=[]))
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -223,9 +230,10 @@ async def test_ai_narrative_is_admin_only_on_detail() -> None:
 @pytest.mark.anyio
 async def test_facet_counts_reflect_cross_group_filter() -> None:
     app, db, provider = setup_app(role=UserRole.ADMIN)
-    add_eligible(db, email="flag@x.com", raw_hash="h1")
-    add_eligible(db, email="clean@x.com", raw_hash="h2")
-    provider.queue(
+    add_eligible(db, email="flag@x.com", raw_hash="h1", name="Flagged Applicant")
+    add_eligible(db, email="clean@x.com", raw_hash="h2", name="Clean Applicant")
+    provider.route(
+        "Flagged Applicant",
         QualityFlagReport(
             flags=[
                 QualityFlag(
@@ -235,9 +243,9 @@ async def test_facet_counts_reflect_cross_group_filter() -> None:
                     evidence="pets",
                 )
             ]
-        )
+        ),
     )
-    provider.queue(QualityFlagReport(flags=[]))
+    provider.route("Clean Applicant", QualityFlagReport(flags=[]))
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:

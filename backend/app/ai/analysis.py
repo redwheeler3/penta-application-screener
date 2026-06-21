@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.pricing import cost_usd
-from app.ai.provider import AIProvider, Usage
+from app.ai.provider import AIProvider, AIResult, Usage
 from app.db.models import Application, ApplicationAIResult
 
 # Bump when a prompt or schema changes so cached results from the old version
@@ -146,39 +146,47 @@ def _avg_tokens_query(
     return avg_in, avg_out
 
 
-def analyze_application(
+def cached_outcome(
     db: Session,
-    provider: AIProvider,
-    *,
     application: Application,
+    *,
     kind: str,
     schema: type[BaseModel],
     model_id: str,
-    prompt: str,
-    system_prompt: str | None = None,
-) -> AnalysisOutcome:
-    """Return cached analysis if present, else call the provider and store it.
+) -> AnalysisOutcome | None:
+    """The stored outcome for this application, or None if not yet analyzed.
 
-    Caching is checked before any cap logic, so reusing stored results is always
-    free and never blocked by a cap.
+    This is the read-only half of analysis and the only DB access on the hot
+    path that must happen before a model call. The parallel screening path calls
+    it on the main thread (it touches the session) to decide which applications
+    still need a model call.
     """
     existing = _cached_result(db, application, kind, model_id)
-    if existing is not None:
-        return AnalysisOutcome(
-            output=schema.model_validate(existing.output),
-            cost_usd=existing.cost_usd,
-            cached=True,
-            narrative=existing.narrative,
-        )
-
-    result = provider.structured_output(
-        model_id=model_id,
-        schema=schema,
-        prompt=prompt,
-        system_prompt=system_prompt,
+    if existing is None:
+        return None
+    return AnalysisOutcome(
+        output=schema.model_validate(existing.output),
+        cost_usd=existing.cost_usd,
+        cached=True,
+        narrative=existing.narrative,
     )
-    call_cost = cost_usd(result.model_id, result.usage)
 
+
+def store_result(
+    db: Session,
+    application: Application,
+    *,
+    kind: str,
+    model_id: str,
+    result: AIResult,
+) -> AnalysisOutcome:
+    """Price a fresh model result, persist it, and return its outcome.
+
+    The write half of analysis. Like ``cached_outcome`` it touches the session,
+    so the parallel path calls it on the main thread after a worker returns the
+    (session-free) model result.
+    """
+    call_cost = cost_usd(result.model_id, result.usage)
     record = ApplicationAIResult(
         application_id=application.id,
         kind=kind,
@@ -193,13 +201,42 @@ def analyze_application(
     )
     db.add(record)
     db.commit()
-
     return AnalysisOutcome(
         output=result.output,
         cost_usd=call_cost,
         cached=False,
         narrative=result.narrative,
     )
+
+
+def analyze_application(
+    db: Session,
+    provider: AIProvider,
+    *,
+    application: Application,
+    kind: str,
+    schema: type[BaseModel],
+    model_id: str,
+    prompt: str,
+    system_prompt: str | None = None,
+) -> AnalysisOutcome:
+    """Return cached analysis if present, else call the provider and store it.
+
+    The sequential single-application path, composed from the same building
+    blocks the parallel screening path uses. Caching is checked before any cap
+    logic, so reusing stored results is always free and never blocked by a cap.
+    """
+    cached = cached_outcome(db, application, kind=kind, schema=schema, model_id=model_id)
+    if cached is not None:
+        return cached
+
+    result = provider.structured_output(
+        model_id=model_id,
+        schema=schema,
+        prompt=prompt,
+        system_prompt=system_prompt,
+    )
+    return store_result(db, application, kind=kind, model_id=model_id, result=result)
 
 
 def enforce_cap(estimate: dict[str, object], cap_usd: float) -> None:

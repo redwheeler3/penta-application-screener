@@ -8,12 +8,57 @@ AWS resources are created, modified, or deleted.
 
 from __future__ import annotations
 
+import threading
+from typing import TYPE_CHECKING
+
 from app.ai.provider import AIResult, SchemaT, Usage
+
+if TYPE_CHECKING:
+    from strands.models import BedrockModel
 
 
 class StrandsProvider:
-    def __init__(self, region: str) -> None:
+    """Bedrock-backed provider, safe to share across the screening thread pool.
+
+    The boto3 Bedrock client (which owns the HTTP connection pool) is built once
+    per model id and reused: it is stateless and thread-safe, so one shared
+    client lets every worker draw from a single connection pool. The per-call
+    ``Agent`` is *not* shared — it accumulates the conversation in
+    ``agent.messages`` (read back for the narrative), so each call gets a fresh,
+    cheap one.
+    """
+
+    def __init__(self, region: str, max_pool_connections: int = 50) -> None:
         self._region = region
+        # Size the connection pool to the worker count so threads don't queue on
+        # sockets; one knob (worker count) drives the other (pool size).
+        self._max_pool_connections = max_pool_connections
+        self._models: dict[str, BedrockModel] = {}
+        self._models_lock = threading.Lock()
+
+    def _model_for(self, model_id: str) -> BedrockModel:
+        # Imported lazily so importing this module (and the test suite) does not
+        # require the strands/botocore packages or any AWS configuration.
+        from botocore.config import Config
+        from strands.models import BedrockModel
+
+        with self._models_lock:
+            model = self._models.get(model_id)
+            if model is None:
+                model = BedrockModel(
+                    model_id=model_id,
+                    region_name=self._region,
+                    boto_client_config=Config(
+                        max_pool_connections=self._max_pool_connections,
+                        # Adaptive mode backs off on throttling and retries
+                        # transient 5xx/timeouts — cheap insurance once parallel.
+                        retries={"max_attempts": 5, "mode": "adaptive"},
+                        connect_timeout=10,
+                        read_timeout=120,
+                    ),
+                )
+                self._models[model_id] = model
+            return model
 
     def structured_output(
         self,
@@ -23,13 +68,11 @@ class StrandsProvider:
         prompt: str,
         system_prompt: str | None = None,
     ) -> AIResult:
-        # Imported lazily so importing this module (and the test suite) does not
-        # require the strands package or any AWS configuration to be present.
+        # Imported lazily for the same reason as the model above.
         from strands import Agent
-        from strands.models import BedrockModel
 
         agent = Agent(
-            model=BedrockModel(model_id=model_id, region_name=self._region),
+            model=self._model_for(model_id),
             system_prompt=system_prompt,
         )
         result = agent(prompt, structured_output_model=schema)

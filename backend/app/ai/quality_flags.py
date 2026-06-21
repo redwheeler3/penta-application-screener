@@ -9,11 +9,20 @@ cost-capped analysis via the shared engine in ``analysis.py``.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.analysis import AnalysisOutcome, analyze_application, estimate_cost
+from app.ai.analysis import (
+    AnalysisOutcome,
+    analyze_application,
+    cached_outcome,
+    estimate_cost,
+    store_result,
+)
 from app.ai.provider import AIProvider
 from app.ai.schemas import QualityFlagReport
 from app.db.models import Application, ApplicationStatus, StatusSource
@@ -133,6 +142,24 @@ def estimate_quality_flags(db: Session, settings: AppSettings) -> dict[str, obje
     )
 
 
+def _apply_outcome_status(
+    db: Session, application: Application, outcome: AnalysisOutcome
+) -> None:
+    """Set the application's status from an outcome's flags and commit.
+
+    The AI actor sets status from its findings unless a human owns the decision
+    (then the flags are still refreshed for the staleness nudge). Touches the
+    session, so it always runs on the thread that owns ``db``.
+    """
+    report: QualityFlagReport = outcome.output
+    apply_machine_status(
+        application,
+        has_reasons=bool(application.hard_filter_reasons),
+        has_ai_flags=bool(report.flags),
+    )
+    db.commit()
+
+
 def analyze_one(
     db: Session,
     provider: AIProvider,
@@ -150,14 +177,81 @@ def analyze_one(
         prompt=build_prompt(application, settings),
         system_prompt=SYSTEM_PROMPT,
     )
-
-    # The AI actor sets status from its findings unless a human owns the
-    # decision (then the flags are still refreshed for the staleness nudge).
-    report: QualityFlagReport = outcome.output
-    apply_machine_status(
-        application,
-        has_reasons=bool(application.hard_filter_reasons),
-        has_ai_flags=bool(report.flags),
-    )
-    db.commit()
+    _apply_outcome_status(db, application, outcome)
     return outcome
+
+
+@dataclass(frozen=True)
+class ScreeningResult:
+    """One application's screening result, streamed as it completes."""
+
+    application: Application
+    outcome: AnalysisOutcome | None  # None when the model call failed
+    error: str | None = None
+
+
+def screen_quality_flags(
+    db: Session,
+    provider: AIProvider,
+    *,
+    applications: list[Application],
+    settings: AppSettings,
+    max_workers: int,
+) -> Iterator[ScreeningResult]:
+    """Run the quality-flag pass over ``applications``, yielding each result as
+    it completes (cached results first, then model results in completion order).
+
+    Only the blocking model call runs in worker threads; every DB and ORM
+    access — cache lookup, prompt building, persistence, status — stays on this
+    (the caller's) thread, so the session is never shared. Workers receive a
+    plain prompt string and return a session-free model result. A failed call
+    yields a ``ScreeningResult`` with an error rather than aborting the batch.
+    """
+    model_id = settings.ai.first_pass_model
+
+    # Cache lookups and prompt building touch the ORM, so do them here, up front.
+    # Cached applications are finished immediately; the rest are queued for the
+    # pool with a prebuilt prompt.
+    pending: list[tuple[Application, str]] = []
+    for application in applications:
+        cached = cached_outcome(
+            db, application, kind=KIND, schema=QualityFlagReport, model_id=model_id
+        )
+        if cached is not None:
+            _apply_outcome_status(db, application, cached)
+            yield ScreeningResult(application=application, outcome=cached)
+        else:
+            pending.append((application, build_prompt(application, settings)))
+
+    if not pending:
+        return
+
+    def call_model(prompt: str):
+        # Pure: no session, no ORM — safe to run in a worker thread.
+        return provider.structured_output(
+            model_id=model_id,
+            schema=QualityFlagReport,
+            prompt=prompt,
+            system_prompt=SYSTEM_PROMPT,
+        )
+
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(pending))) as pool:
+        futures = {
+            pool.submit(call_model, prompt): application
+            for application, prompt in pending
+        }
+        # as_completed (not map) so a slow call never holds back faster ones.
+        for future in as_completed(futures):
+            application = futures[future]
+            try:
+                result = future.result()
+            except Exception as exc:  # noqa: BLE001 — one app's failure is isolated
+                yield ScreeningResult(
+                    application=application, outcome=None, error=str(exc)
+                )
+                continue
+            outcome = store_result(
+                db, application, kind=KIND, model_id=model_id, result=result
+            )
+            _apply_outcome_status(db, application, outcome)
+            yield ScreeningResult(application=application, outcome=outcome)
