@@ -416,20 +416,28 @@ h1 {
 }
 
 /* Toast */
-.toast {
+/* Fixed bottom-right stack; individual toasts flow within it (newest on top,
+   sync error pinned at the bottom by document order). */
+.toast-stack {
   position: fixed;
   bottom: 1.5rem;
   right: 1.5rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: min(680px, calc(100vw - 3rem));
+}
+
+.toast {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.75rem;
-  width: min(680px, calc(100vw - 3rem));
   max-height: min(360px, calc(100vh - 3rem));
   padding: 0.85rem 0.9rem 0.85rem 1rem;
   border-radius: 8px;
   font-size: 0.85rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
   animation: toast-in 0.2s ease-out;
 }
 
@@ -1223,14 +1231,6 @@ h1 {
   display: flex;
   gap: 0.5rem;
   flex-shrink: 0;
-}
-
-.qf-message {
-  padding: 0.7rem 1.25rem;
-  border-bottom: 1px solid var(--line);
-  background: var(--penta-green-soft);
-  color: var(--penta-green-dark);
-  font-size: 0.85rem;
 }
 
 /* Quality-flag run progress */
