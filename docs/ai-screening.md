@@ -112,9 +112,24 @@ Cached results are stored in the `application_ai_results` table along with token
 
 Because each model call costs money, a run is cost-estimated *before* it starts and blocked if it would exceed a configurable cap.
 
-- **Prices** live in `pricing.py` as a hardcoded table (USD per million tokens), keyed by a substring of the model ID. They are hardcoded because the AWS Price List API does not list the Claude 4.x models we use; a live lookup would always fall back. An unknown model falls back to the most expensive known rate, so a missing entry never silently under-estimates.
-- **The estimate** counts only uncached applications and prices them using token counts *learned from recent real runs* (preferring the current prompt version), falling back to fixed guesses only when there is no usage history yet.
-- **The cap** (`ai.spending_cap_usd`, default `$0.50`) is enforced before streaming starts. An over-cap run fails fast with HTTP 402 rather than spending partway through.
+An estimate is the product of three things, and it helps to keep them separate:
+
+```text
+estimated cost  =  price rate  ×  token count per call  ×  number of uncached applications
+```
+
+- **The price rate** (USD per token) is *always* the hardcoded table in `pricing.py`, keyed by a substring of the model ID. It is hardcoded because the AWS Price List API does not list the Claude 4.x models we use, so a live lookup would always fall back anyway. An *unknown* model ID falls back to the most expensive known rate (Opus-tier), so a missing table entry never silently under-estimates. This rate is never learned — it is what AWS charges.
+
+- **The token count per call** (how many input/output tokens a call will use) is where the learning happens. It is chosen in three tiers, best first:
+  1. The average of recent real calls at the **current `prompt_version`** — the most representative of what the next run will cost.
+  2. If the current version has no history yet (e.g. right after a prompt change), the average of recent real calls from **any earlier version** — still real data, better than a guess.
+  3. Only if there is **no usage history at all**, a static fallback (`fallback_input_tokens` / `fallback_output_tokens`, passed in by the quality-flag pass).
+
+  The average is taken over the most recent 50 calls (`_USAGE_SAMPLE_SIZE`). So the estimate gets more accurate as real runs accumulate, while the *rate* it multiplies by stays fixed.
+
+- **The number of applications** counts only the *uncached* ones — cached results are free and excluded from the estimate.
+
+**The cap** (`ai.spending_cap_usd`, default `$0.50`) is enforced before streaming starts. An over-cap run fails fast with HTTP 402 rather than spending partway through.
 
 The estimate feeds a pre-run confirmation in the UI, so a screener sees the projected cost and how many applications will actually be sent before committing.
 
