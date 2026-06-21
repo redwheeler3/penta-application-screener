@@ -376,7 +376,7 @@ AI judgments should show:
 
 Direct essay excerpts should be used sparingly as supporting evidence. The app should not reproduce entire essays in AI summaries or reports.
 
-For admin debugging and learning, raw AI analysis, traces, prompts, and intermediate outputs should be accessible to Admin users. The normal app experience should emphasize polished summaries.
+For debugging and learning, raw AI analysis, traces, prompts, and intermediate outputs are accessible to any logged-in member (see "Users, Roles, And Authentication" — the workflow has no admin-only surface). The normal app experience should emphasize polished summaries, with the raw detail in collapsible debug sections.
 
 The app should provide `why not selected` explanations for candidates who do not make a member's shortlist, especially for merged MOMI comparison. These explanations are internal only; applicants will not see them, so they can be transparent and candid while remaining respectful and evidence-based.
 
@@ -397,21 +397,55 @@ Essay concerns may justify a "do not interview" recommendation. Essay review is 
 
 Brief, awkward, translated, or non-native English essay answers should not be penalized for writing polish. The AI should judge evidence of co-op fit, participation commitment, and relevant signals rather than style, fluency, or grammar.
 
+### Essay Analysis (Milestone 6)
+
+Milestone 6 adds a per-candidate essay-analysis pass on top of the shared AI foundation built in milestone 5 (the `analyze_application` engine, caching, cost estimate, spending cap, prompt versioning, narrative capture). It runs with `kind="essay_analysis"` through that engine, so it reuses all of the above for free.
+
+The defining boundary: **milestone 6 extracts and normalizes what applicants said; it does not judge.** The "negative signals" and "do not interview" judgments described above under Essay Judgment belong to the milestone 7 ranker, because the differentiating criteria are *discovered* there against the actual pool. If milestone 6 emitted judgment on fixed dimensions, it would pre-commit the patterns and defeat that discovery. So essay analysis stays purely factual.
+
+Decisions:
+
+- **Output:** a neutral committee-facing summary plus structured per-signal fields. The summary lets a screener skim ~300 candidates without reading every essay; the structured fields feed the milestone 7 ranker.
+- **Schema is fixed, not adhoc.** Normalization is the point — every candidate is described in the *same* structure so the committee can compare a column across the pool, milestone 7 reads a stable contract, and the output is evalable. The fields are locked; only the *contents* of list fields are open. The schema mirrors the four essay questions 1:1 — one field per thing the form explicitly asks for:
+
+  ```python
+  class EssayAnalysisReport(BaseModel):
+      summary: str                          # 2-4 sentence neutral cross-cutting digest, no evaluation
+      household_context: str | None         # who is in the household, as introduced (Q1)
+      employment_background: str | None     # work situation as narrated, applicant + co-applicant (Q1)
+      interests: list[str]                  # interests stated (Q1)
+      values: list[str]                     # values expressed (Q1)
+      skills_offered: list[str]             # skills offered to run/maintain the co-op (Q2)
+      prior_co_op_experience: str | None    # prior co-op experience stated; null if none given (Q3)
+      stated_motivations: list[str]         # reasons given for wanting co-op living (Q4)
+      stated_contributions: list[str]       # ways they said they would be a valuable member (Q4)
+      evidence: list[str]                   # short direct quotes grounding the extractions
+  ```
+
+  Extraction is cross-cutting (content bleeds across the four boxes — skills appear in the intro essay, etc.), not per-question. `null`/`[]` means "did not say," which milestone 7 may read as signal.
+- **No `other`/catch-all field.** That would reintroduce the adhoc shape normalization exists to prevent. Off-question or cross-cutting nuance is covered two ways instead: the `summary` absorbs connective tissue, and the **raw essays and structured form fields are preserved**, so milestone 7's Pattern Finder reads the source directly and can discover anything the schema did not anticipate. Essay analysis is an *additive* lens, never a replacement for the source.
+- **Model:** start on the first-pass model (Claude Haiku 4.5). Essays are short answers to fixed questions — extraction and summary, not the cross-document synthesis milestone 7 reserves for the synthesis model. Upgrade to Sonnet only if real output reads thin, decided empirically by comparing the same candidates. The model is Admin-configurable and the cost estimate self-tunes per model, so this is not a lock-in.
+- **Scope:** eligible applications only. There is no value in summarizing essays for rules-disqualified applicants.
+- **Status independence:** essay analysis is purely informational and never touches eligibility `status`/`status_source`. Unlike quality flags, it does not call `apply_machine_status`. Eligibility stays rules-and-flags driven; essay analysis informs the human ranking, not the gate.
+- **Surfacing:** the summary and structured fields appear on the candidate detail page (committee-facing); the raw model reasoning lives in the Admin debug section, same pattern as the quality-flag narrative.
+- **Schema evolution is deliberate, never automatic.** If validation on real essays shows a signal that recurs across many candidates with no home and is too specific for the summary, add a *named, fixed* field and bump the prompt version — a human-approved, versioned change. Never an `other` escape hatch, and never a runtime self-modifying schema (see the Screener-Evaluator role below).
+
 ### Agent Workflow
 
 MVP implementation should bias toward simplicity, readability, and understandability over maximum agent sophistication.
 
-The application should be designed as a multi-agent system, but the initial implementation can use simple service boundaries that make agent roles visible in the UI. Initial roles may include:
+The application is *designed as* a multi-agent system, but the agents are a conceptual model, not a mandate to build orchestrated LLM loops up front. Through milestone 6, each "agent" is implemented as a simple, single-purpose service — a named, user-visible pass (deterministic, or one structured-output call) — not a coordinated agent loop. Real multi-agent orchestration (cooperating roles with feedback/revision loops and run-state coordination) is reserved for milestone 7's interactive ranking, where the scale and the re-sort-on-answer loop make it earn its complexity. Do not build coordination/orchestration scaffolding before then. Initial roles may include:
 
 - `Coordination Agent`: plans and supervises the screening workflow, routes work between agents, tracks run state, and decides when outputs need revision before they are shown to the user.
 - `Ingestion Agent`: reads application rows, maps columns, validates required fields, and detects schema drift.
 - `Hard Filter Agent`: applies deterministic eligibility and completeness rules, producing auditable pass/fail reasons.
-- `Essay Analyst`: evaluates essay answers and extracts evidence.
+- `Essay Analyst`: extracts and normalizes what applicants said in their essays into a fixed schema, with grounding evidence (milestone 6). It does *not* judge fit — evaluation against discovered criteria is the Ranking Agent's job.
 - `Pattern Finder`: finds themes, differentiators, risks, and clusters across qualified candidates.
 - `Criteria Coach`: proposes high-value questions for the user that will meaningfully narrow the pool.
 - `Ranking Agent`: updates candidate ranking/shortlist after user answers and rubric changes.
 - `Evidence Auditor`: checks that outputs are grounded in application data and sends unsupported or weakly supported recommendations back for revision.
 - `Report Agent`: produces MOMI-facing summaries, justifications, and caveats.
+- `Screener-Evaluator`: evaluates the *screening system itself* rather than individual candidates. Aggregating across the pool and across runs, it surfaces human-approvable improvements — e.g. a recurring applicant signal that no schema field captures, consistently weak evidence quality on a field, or a model/prompt that should be revisited. Every suggestion is proposed to the operator and applied only as a deliberate, versioned change (a new named schema field plus a prompt-version bump, a prompt edit, a model swap). The schema and prompts are **never self-modified at runtime** — autonomous mutation would break the comparability, caching, eval consistency, and auditability the rest of the design depends on. This role is the human-in-the-loop engine for making the screener better over time, and ties into the eval goals below. It is a milestone 7+ capability; distinct from the Evidence Auditor, which checks a single output per run rather than the system across runs.
 
 Every AI recommendation should be reviewable and overrideable. AI outputs should explain why a candidate advanced, not just provide a numeric score.
 
@@ -480,10 +514,10 @@ Access should be invitation/approval based when the app is live. Jeff is the ini
 
 Roles:
 
-- `Admin`: can invite/manage users and finalize administrative settings.
-- `Member`: can run screening sessions, run shared cached AI quality checks, answer AI questions, rank candidates, add notes, and participate in merged comparison.
+- `Admin`: the initial account; can invite/manage users once invitations exist.
+- `Member`: a MOMI committee screener — can run screening sessions, run shared cached AI quality checks, answer AI questions, rank candidates, add notes, and participate in merged comparison.
 
-Admin users should have all normal MOMI member capabilities plus access to admin panels, provider/model settings, raw AI debugging details, and other extra information.
+Every committee member is a trusted screener, so **the screening workflow has no admin-only surface.** Status overrides, the raw source row, and the raw AI narrative are all available to any logged-in member — these are just the source and reasoning behind data members already see, and the privacy boundary is screeners-vs-outsiders, with members inside it. The `Admin`/`Member` distinction exists in the data model (the first user created becomes admin) and is intended to gate user management when invitations are built, but it does not currently gate any route. Settings are login-only, not admin-only. The engineering default is `require_current_user`; add a role gate only for a genuinely admin-only capability, as a deliberate decision.
 
 AI quality-check results are shared across users and cached per application content, model, and prompt version. Any logged-in member may run the checks; the cost-control concern is uncached work, not which member initiates a shared run.
 
@@ -578,7 +612,7 @@ It is acceptable to request Google Docs/Drive write permissions early so later r
 
 Once user management exists, Google login should be restricted to invited/approved email addresses.
 
-For MVP, the logged-in Google account may also be the account used to access Sheets/Docs. Admin-only sheet sync is acceptable for MVP.
+For MVP, the logged-in Google account may also be the account used to access Sheets/Docs. Sheet sync is currently available to any logged-in member; restricting it to admins later is acceptable but not current behavior.
 
 The app should include an Admin settings screen for:
 
@@ -589,7 +623,7 @@ The app should include an Admin settings screen for:
 - Bedrock/provider model choices
 - Google Sheet link or ID
 
-AI provider/model configuration should be Admin-only.
+AI provider/model configuration is part of settings, which are currently login-only (not yet admin-gated); restricting settings to admins is a reasonable future tightening, not current behavior.
 
 Manual Google Sheet link or ID entry in Admin settings is good enough for MVP. A future Drive picker/browse flow is optional.
 
@@ -618,7 +652,7 @@ Filtered-out views should show the human-readable reasons plus pertinent applica
 
 Eligible applications should be shown in a table with expandable details and a candidate detail page.
 
-Candidate detail pages should show normalized fields, hard-filter results, and source references. Raw source JSON and the model's raw AI reasoning narrative (the free-text commentary emitted alongside the structured quality-flag output) should be available in separate Admin-only expandable/debug sections.
+Candidate detail pages should show normalized fields, hard-filter results, and source references. Raw source JSON and the model's raw AI reasoning narrative (the free-text commentary emitted alongside the structured quality-flag output) are available in separate expandable/debug sections, visible to any logged-in member.
 
 Filtered-out applicants should be searchable and sortable in a table. This view must be designed for hundreds of filtered-out applicants without becoming unwieldy.
 
@@ -672,7 +706,7 @@ Suggested implementation milestones:
 
 Milestones 1–5 are complete. The next milestone is per-candidate AI essay analysis and summaries (milestone 6).
 
-Milestone 5 (AI quality flags) also delivered the shared AI foundation originally listed under milestone 6: the provider-agnostic interface (Strands + Amazon Bedrock, with a deterministic mock for tests), cached per-application analysis keyed on content hash + model + prompt version, a token pricing table, cost estimate, per-run spending cap, member-accessible quality-check runs, and admin-only raw-debug access via the candidate detail page. Milestone 6 is therefore now scoped to essay analysis and committee-ready summaries on top of that foundation.
+Milestone 5 (AI quality flags) also delivered the shared AI foundation originally listed under milestone 6: the provider-agnostic interface (Strands + Amazon Bedrock, with a deterministic mock for tests), cached per-application analysis keyed on content hash + model + prompt version, a token pricing table, cost estimate, per-run spending cap, member-accessible quality-check runs, and raw-debug access via the candidate detail page. Milestone 6 is therefore now scoped to essay analysis and committee-ready summaries on top of that foundation.
 
 The status model was reworked during milestone 5 (see "Application Status Model"): `status` (eligible/ineligible) with a `status_source` (untouched/rules/ai/human), human override that is sticky against machine re-runs, and a staleness signal when machine findings change after a human review.
 
