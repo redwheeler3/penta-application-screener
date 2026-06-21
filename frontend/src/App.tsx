@@ -1,4 +1,4 @@
-import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clipboard, LogIn, LogOut, RefreshCw, Sparkles, X } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clipboard, LogIn, LogOut, RefreshCw, Settings, Sparkles, X } from "lucide-react";
 import { type ReactNode, type SyntheticEvent, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { HouseIcon } from "./HouseIcon";
@@ -631,6 +631,7 @@ export function App() {
   // without the user first seeing the estimate and confirming (SPEC cost control).
   async function requestQualityFlagsEstimate() {
     setQfMessage("");
+    setEaEstimate(null); // close the other pass's confirmation if it's open
     const response = await fetch(`${apiBaseUrl}/quality-flags/estimate`, { credentials: "include" });
     if (response.ok) {
       setQfEstimate(await response.json());
@@ -697,6 +698,7 @@ export function App() {
   // cost control; this pass is informational and never changes status.
   async function requestEssayAnalysisEstimate() {
     setEaMessage("");
+    setQfEstimate(null); // close the other pass's confirmation if it's open
     const response = await fetch(`${apiBaseUrl}/essay-analysis/estimate`, { credentials: "include" });
     if (response.ok) {
       setEaEstimate(await response.json());
@@ -835,23 +837,24 @@ export function App() {
         </section>
       ) : (
         <>
-          <section className={`settings-panel ${showSettingsForm ? "" : "settings-panel-collapsed"}`} aria-label="Admin settings">
+          <section className="settings-panel" aria-label="Admin settings">
             <div className="settings-panel-header">
               <div>
-                <span className="panel-kicker">Admin setup</span>
                 <h2>Settings</h2>
               </div>
               {hasGoogleSheetLink ? (
                 <button
-                  className="secondary-button"
+                  className="secondary-button secondary-button-accent"
                   type="button"
                   onClick={() => setIsSettingsExpanded((isExpanded) => !isExpanded)}
                 >
-                  {isSettingsExpanded ? "Hide settings" : "Edit settings"}
+                  <Settings size={16} />
+                  <span>{isSettingsExpanded ? "Hide settings" : "Edit settings"}</span>
                 </button>
               ) : null}
             </div>
 
+            <div className="settings-panel-body">
             {hasGoogleSheetLink && saved && !showSettingsForm ? (
               <div className="settings-summary">
                 <div>
@@ -1041,6 +1044,7 @@ export function App() {
                 </div>
               </form>
             )}
+            </div>
           </section>
 
           {!hasGoogleSheetLink ? (
@@ -1051,20 +1055,16 @@ export function App() {
           ) : null}
 
           <section className="panel">
+            {/* The ordered screening workflow lives in the panel header to save
+                vertical space. Each step's input depends on the previous (sync
+                sets the pool, quality checks refine who's eligible, essay
+                analysis runs on the eligible set), so later steps are hard-gated
+                until the previous step has run. The "done" flags come from the
+                backend, so gating survives reload. */}
             <div className="panel-header">
               <div>
-                <span className="panel-kicker">Current opening</span>
                 <h2>Applications</h2>
               </div>
-            </div>
-
-            {/* Ordered screening workflow. Each step's input depends on the
-                previous (sync sets the pool, quality checks refine who's
-                eligible, essay analysis runs on the eligible set), so later
-                steps are hard-gated until the previous step has run. The
-                "done" flags come from the backend, so gating survives reload. */}
-            <div className="workflow-strip">
-              <span className="workflow-strip-label">Screening workflow</span>
               <ol className="workflow-steps">
                 <WorkflowStep
                   n={1}
