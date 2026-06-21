@@ -37,7 +37,7 @@ For example, `App.tsx` has state like:
 
 ```ts
 const [user, setUser] = useState<CurrentUser | null>(null);
-const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+const [draft, setDraft] = useState<AppSettings>(defaultSettings);
 const [dashboardCounts, setDashboardCounts] = useState<DashboardCounts>(...);
 ```
 
@@ -75,14 +75,18 @@ Then open:
 http://localhost:5173
 ```
 
-The frontend is currently a single React screen. It does six main things:
+The frontend is a single React screen (`App.tsx`) that has grown to cover the full review workflow. Its main responsibilities:
 
 1. On load, call the backend's `/auth/me` endpoint.
 2. If no user is logged in, show a Google sign-in panel.
-3. If a user is logged in, fetch saved app settings and dashboard counts.
-4. If a user is logged in, show the dashboard shell.
-5. Let the user open the settings panel from the gear icon.
+3. If a user is logged in, fetch saved app settings, dashboard counts, and the applications list.
+4. Show the dashboard: status/source tabs with faceted counts.
+5. Let the user expand the admin settings panel (an "Edit settings" toggle, not a gear icon) and save changes.
 6. Let the user sync applications from the configured Google Sheet.
+7. Show a searchable, sortable, paginated applications table.
+8. Open a candidate detail view: normalized fields, essays, filter reasons, AI quality flags, and (admin-only) the raw row and AI narrative.
+9. Run the AI quality-flag pass with a cost-estimate confirmation and live streamed progress.
+10. Let an admin override an application's status (the human decision is sticky).
 
 ### Vite Files
 
@@ -105,10 +109,11 @@ Important dependencies:
 - `react`: the UI library.
 - `react-dom`: connects React to the browser DOM.
 - `lucide-react`: icon library used for toolbar/button icons.
-- `vite`: dev server and bundler.
-- `typescript`: typed JavaScript tooling.
+- `react-markdown`: renders the AI narrative (Markdown) in the candidate detail view.
+- `vite` (devDependency): dev server and bundler.
+- `typescript` (devDependency): typed JavaScript tooling.
 
-`frontend/vite.config.ts` is intentionally small. It tells Vite to use the React plugin. Most of the behavior comes from Vite defaults.
+`frontend/vite.config.ts` is small. It tells Vite to use the React plugin and pins the dev server to `host: "localhost"` and `port: 5173`. The rest comes from Vite defaults.
 
 `frontend/index.html` is the one real HTML document. It has:
 
@@ -155,13 +160,14 @@ Read this as:
 
 `frontend/src/App.tsx` is currently the main UI component. It is doing a lot because the frontend is still young. This is acceptable for now because reading one file top-to-bottom makes the current flow easier to understand.
 
-The top of the file defines TypeScript types:
+The top of the file defines TypeScript types that mirror the backend's JSON shapes — `CurrentUser`, `AppSettings`, `SettingsResponse`, `DashboardCounts`, `AppFacets`, `ApplicationSummary`, `ApplicationDetail`, `Essay`, `QualityFlag`, `QualityFlagEstimate`, plus the `AppStatus` / `StatusSource` / `SortKey` unions:
 
 ```ts
 type CurrentUser = { ... };
 type AppSettings = { ... };
-type SettingsResponse = { ... };
-type DashboardCounts = { ... };
+type ApplicationSummary = { ... };
+type ApplicationDetail = { ... };
+// ...and more
 ```
 
 These types describe the data shape the frontend expects from the backend. They do not create runtime database tables or backend models; they are compile-time help for the frontend.
@@ -174,16 +180,13 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 `import.meta.env` is Vite's way of exposing frontend environment variables. If `VITE_API_BASE_URL` is not set, the app defaults to the local backend at port `8000`.
 
-Inside `App()`, the `useState` calls hold browser-side state:
+Inside `App()`, the `useState` calls hold browser-side state. There are more than twenty now; the main groups are:
 
-- `user`: who is logged in, or `null`.
-- `settings`: the current admin settings form values.
-- `googleSheetUrl`: the canonical clickable Google Sheets URL returned by the backend.
-- `googleSheetTitle`: the resolved spreadsheet title returned by the backend.
-- `isSettingsOpen`: whether the settings panel is visible.
-- `dashboardCounts`: submitted/eligible/filtered-out/needs-review counts.
-- `syncMessage`: the latest sync success/failure message.
-- `isSyncing`: whether the sync button should be disabled while sync is running.
+- Auth: `user`, `isLoadingUser`.
+- Settings: `draft` (the editable form values), `saved` (the persisted `SettingsResponse`, which carries the canonical Google Sheets URL and title), `isSettingsExpanded`, `isSavingSettings`, `settingsMessage`.
+- Dashboard/sync: `dashboardCounts`, `syncMessage`, `syncError`, `isSyncing`.
+- Applications list: `applications`, `appTotal`, `appPage`, `appPageSize`, `appFilter`, `appFacets`, `appSearch`, `appSort`, `selectedApp`.
+- Quality flags: `qfEstimate`, `qfRunning`, `qfMessage`, `qfProgress`.
 
 The first `useEffect` runs when the component first loads:
 
@@ -200,9 +203,14 @@ The functions in `App.tsx` line up with user actions:
 - `login()`: sends the browser to the backend's Google OAuth login route.
 - `logout()`: calls the backend logout route and clears local user state.
 - `saveSettings()`: sends the settings form to `PUT /settings`.
-- `syncApplications()`: calls `POST /sync/applications` and refreshes dashboard counts.
+- `syncApplications()`: calls `POST /sync/applications`, then refreshes the dashboard and the applications list.
 - `refreshDashboard()`: calls `GET /dashboard`.
 - `applySettingsResponse()`: converts the backend settings response into the shape the UI displays.
+- `fetchApplications()`: calls `GET /applications` with the current filter, search, sort, and page.
+- `viewApplication()`: loads one application's detail via `GET /applications/{id}`.
+- `toggleSort()`: changes the table sort column/direction.
+- `requestQualityFlagsEstimate()` / `runQualityFlags()`: fetch the cost estimate, then stream the AI run.
+- `overrideStatus()`: sets an application's status as a human decision via the applications API.
 
 The bottom half of `App.tsx` returns JSX. JSX looks like HTML, but it is really TypeScript syntax that React compiles into UI instructions. The JSX uses normal JavaScript conditions to decide what to show:
 
@@ -254,8 +262,9 @@ Browser loads React
   If logged in:
     App.tsx calls GET /settings
     App.tsx calls GET /dashboard
+    App.tsx calls GET /applications
   React stores the responses in state
-  React renders the dashboard from that state
+  React renders the dashboard, tabs, and applications table from that state
 ```
 
 The sync flow is:
@@ -265,8 +274,8 @@ User clicks Sync applications
   App.tsx calls POST /sync/applications
   Backend imports rows and applies hard filters
   App.tsx receives sync counts
-  App.tsx calls GET /dashboard
-  React redraws dashboard cards
+  App.tsx calls GET /dashboard and GET /applications
+  React redraws the counts and table
 ```
 
 This separation matters. The frontend is responsible for presentation and browser interactions. The backend is responsible for trusted work: authentication, Google API calls, database writes, and screening logic.
@@ -277,9 +286,9 @@ The current look borrows from `pentacoop.com`:
 
 - White and very light gray page surfaces
 - Green primary actions and success states
-- Blue neutral/action accents
-- Orange used sparingly for caution/current-opening accents
-- Red reserved for future filtered-out or failure states
+- Blue neutral/action accents (also used for the `ai` source badge)
+- Orange for caution and the staleness/needs-review accents
+- Red for ineligible status, flagged fields, and error toasts
 
 The app should remain dashboard-like and operational. It should not become a marketing landing page.
 
@@ -295,16 +304,21 @@ The app should remain dashboard-like and operational. It should not become a mar
 
 Those variables keep the palette consistent. Later CSS rules use them with `var(...)`.
 
-The file also defines the current layout pieces:
+The file defines the current layout pieces. Some of the main families:
 
 - `.app-shell`: centered page width and outer spacing.
-- `.topbar`: app header row.
+- `.topnav` / `.topnav-inner`: app header row (note: not `.topbar`).
 - `.brand-lockup` and `.brand-mark`: Penta title/icon grouping.
 - `.toolbar`: right-side icon buttons.
-- `.settings-panel` and `.settings-form`: admin settings layout.
-- `.stats-grid` and `.stat-card`: dashboard count cards.
-- `.panel`: current applications placeholder area.
+- `.settings-panel`, `.settings-form`, `.settings-summary`, `.rules-section` / `.rules-grid`: admin settings layout and the per-rule toggle grid.
+- `.app-controls`, `.filter-group`, `.app-tabs` / `.tab-button`, `.app-search`: dashboard tabs and table controls.
+- `.app-table`, `.sort-header`, `.status-badge` / `.source-badge` / `.stale-badge`, `.pagination`: the applications table.
+- `.app-detail`, `.app-detail-essays` / `.essay-block`, `.filter-reasons`, `.quality-flags` / `.quality-flag`, `.ai-narrative`, `.raw-row-section`, `.field-flagged`: the candidate detail view.
+- `.qf-confirm` / `.qf-progress` / `.qf-message`: the AI quality-flag run flow.
+- `.toast` / `.toast-error` / `.toast-success`: transient messages.
 - media query at the bottom: mobile layout adjustments.
+
+(`.stats-grid` / `.stat-card` are still defined but no longer used — dashboard counts now surface as tab labels.)
 
 When reading CSS in this project, start from the JSX class name in `App.tsx`, then search that class name in `styles.css`.
 
@@ -377,11 +391,11 @@ Important dependencies:
 
 `backend/app/main.py` creates the FastAPI app. This is the backend equivalent of the frontend entry point.
 
-`backend/app/api/*.py` files define routes. A route is an HTTP endpoint such as `GET /dashboard` or `POST /sync/applications`.
+`backend/app/api/*.py` files define routes. A route is an HTTP endpoint such as `GET /dashboard` or `POST /sync/applications`. The modules are `applications.py` (list/detail/status-override), `auth.py`, `dashboard.py`, `health.py`, `quality_flags.py` (the AI estimate/run endpoints), `settings.py`, and `sync.py`, plus `dependencies.py` for shared FastAPI dependencies (e.g. `require_current_user`).
 
 `backend/app/services/*.py` files contain reusable operations that routes call. For example, sync route code does not directly know every detail of importing application rows; it calls service functions.
 
-`backend/app/domain/hard_filters.py` contains pure screening logic. This is intentionally separate from HTTP, SQLAlchemy, and Google APIs.
+`backend/app/domain/hard_filters.py` contains pure screening logic. This is intentionally separate from HTTP, SQLAlchemy, and Google APIs. `backend/app/domain/status.py` is the companion module that resolves an application's eligibility status from its findings (see the status model under "Database").
 
 `backend/app/db/models.py` defines the database tables as Python classes.
 
@@ -417,7 +431,7 @@ It currently installs:
 
 - `SessionMiddleware`, which signs the browser session cookie.
 - `CORSMiddleware`, which allows the local React frontend to call the backend with credentials.
-- Route modules from `app.api.auth`, `app.api.dashboard`, `app.api.health`, `app.api.settings`, and `app.api.sync`.
+- Route modules from `app.api.applications`, `app.api.auth`, `app.api.dashboard`, `app.api.health`, `app.api.quality_flags`, `app.api.settings`, and `app.api.sync`.
 
 The app uses an app factory:
 
@@ -431,9 +445,11 @@ This makes testing easier because tests can create a fresh app instance.
 In older web frameworks, you might remember one large app object with routes registered directly in a central file. FastAPI can work that way too, but this project keeps routes in separate router modules:
 
 ```py
+app.include_router(applications_router)
 app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(health_router)
+app.include_router(quality_flags_router)
 app.include_router(settings_router)
 app.include_router(sync_router)
 ```
@@ -536,11 +552,13 @@ sqlite:///./data/penta_screener.db
 
 The SQLite database file is generated locally and ignored by Git.
 
-Alembic owns schema migrations. The current initial migration creates:
+Alembic owns schema migrations. The schema is built by a chain of migrations (in `backend/alembic/versions/`), starting with the initial-tables migration and adding the status-model rework, the AI results table, and related columns. The tables are:
 
 - `users`
+- `google_credentials`
 - `admin_settings`
 - `applications`
+- `application_ai_results` (cached AI analysis — see [ai-screening.md](ai-screening.md))
 - `sync_runs`
 - `screening_runs`
 
@@ -560,7 +578,10 @@ class Application(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     primary_email: Mapped[str] = mapped_column(String(320), unique=True)
     raw_row: Mapped[dict[str, Any]] = mapped_column(JSON)
+    raw_row_hash: Mapped[str] = mapped_column(String(64))
     normalized: Mapped[dict[str, Any]] = mapped_column(JSON)
+    status: Mapped[ApplicationStatus] = mapped_column(...)
+    status_source: Mapped[StatusSource] = mapped_column(...)
 ```
 
 Read that as "there is an `applications` table with these columns."
@@ -569,7 +590,7 @@ Some columns are regular relational columns, such as:
 
 - `id`
 - `primary_email`
-- `hard_filter_status`
+- `status` and `status_source`
 - `created_at`
 
 Some columns are JSON columns, such as:
@@ -579,6 +600,8 @@ Some columns are JSON columns, such as:
 - `hard_filter_reasons`
 
 This hybrid is intentional. We use relational columns for things we need to query/filter/sort, and JSON columns for flexible source payloads or debug/audit details.
+
+**The status model.** Eligibility is not a single boolean. An application has a `status` (`ApplicationStatus`: `eligible` / `ineligible`) and a `status_source` (`StatusSource`: `untouched` / `rules` / `ai` / `human`) recording *who* last set it. The precedence is rules > AI > untouched, and a `human` source is sticky — machine re-runs never overwrite it. This is the model that lets the AI pass and the hard filters coexist; the logic lives in `app/domain/status.py`. (The older single `hard_filter_status` column was replaced by this two-column model.)
 
 `backend/app/db/session.py` creates the database engine and session factory. A database session is the unit of work for a request:
 
@@ -590,7 +613,7 @@ Route starts
 Route ends
 ```
 
-`backend/alembic/versions/265a2a6c616c_create_initial_tables.py` is the current migration that creates the initial tables. Running:
+`backend/alembic/versions/265a2a6c616c_create_initial_tables.py` is the first migration; later migrations in the same directory evolve the schema (status-model rework, AI results table, and added columns). Running:
 
 ```powershell
 uv run alembic upgrade head
@@ -660,8 +683,12 @@ Current settings:
 - Google Sheet link or ID
 - Unit size
 - Move-in date
-- Income minimum
-- Income maximum
+- Income minimum and maximum
+- Income mismatch tolerance
+- Household limits: max adults, minimum adult age
+- Pet limits: max dogs, max cats, whether other/exotic pets are allowed
+- `disabled_rules`: which deterministic hard-filter rules are turned off
+- A nested `ai` block (`AISettings`): region, first-pass model, synthesis model, spending cap, and screening concurrency (`max_workers`) — see [ai-screening.md](ai-screening.md)
 
 The defaults match the current planned 2-bedroom opening:
 
@@ -688,9 +715,11 @@ class AppSettings(BaseModel):
     move_in_date: date = date(2026, 9, 1)
     income_min: int = Field(default=70_000, ge=0)
     income_max: int = Field(default=150_000, ge=0)
+    # ...plus household/pet limits, income_mismatch_tolerance,
+    # disabled_rules, and a nested ai: AISettings
 ```
 
-It also normalizes a pasted Google Sheets URL into a sheet ID before saving. The frontend can show a friendly URL, while the backend stores a stable ID.
+The full model has twelve fields (see `app/schemas/settings.py`), including the nested `AISettings` sub-model. It also normalizes a pasted Google Sheets URL into a sheet ID before saving. The frontend can show a friendly URL, while the backend stores a stable ID.
 
 Settings are stored as one JSON blob in the `admin_settings` table. That is simple for MVP because we have only one settings object, not many rows of settings.
 
@@ -722,7 +751,7 @@ The sync route:
 
 Google OAuth tokens are stored in the local SQLite database in `google_credentials`. This is acceptable for the local MVP because the database is ignored by Git. A future hosted deployment should move this secret material to a more deliberate encrypted store or cloud secret/token storage design.
 
-The dashboard route returns setup state and counts for submitted, eligible, filtered-out, and needs-review applications.
+The dashboard route returns `settingsComplete` (whether a Google Sheet is configured), a `submitted` total, and counts grouped by `status` (eligible / ineligible) and `status_source` (untouched / rules / ai / human). "Needs review" is the client's label for the `source = ai` group; "filtered out" is `source = rules`.
 
 The sync flow crosses several layers:
 
@@ -776,9 +805,21 @@ This prevents later columns from overwriting earlier columns.
 
 The importer preserves the raw Google Sheets row as JSON. That is useful for debugging, auditability, schema drift, and future candidate detail screens.
 
-`SyncRun` is the record of what happened during sync. It stores counts like row count, imported count, updated count, eligible count, filtered-out count, and needs-review count.
+`SyncRun` is the record of what happened during sync. It stores `row_count`, `duplicate_count`, `imported_count`, `updated_count`, `unchanged_count`, `eligible_count`, and `filtered_out_count`.
 
-The dashboard is intentionally lightweight right now. `backend/app/api/dashboard.py` queries application counts from SQLite and returns them to the frontend. Later, this route can grow or be replaced by richer application-list endpoints.
+`backend/app/api/dashboard.py` queries application counts from SQLite and returns them to the frontend (see the response shape above). Richer per-application data is served by the separate `app/api/applications.py` list/detail endpoints.
+
+### Application Routes
+
+Application routes live in `backend/app/api/applications.py`.
+
+Current routes:
+
+- `GET /applications` — a searchable, filterable, sortable, paginated list. Filters by `status` and `status_source`, and returns faceted counts so the UI can show how many applications fall in each tab.
+- `GET /applications/{id}` — one application's detail: normalized fields, essays, filter reasons, and AI quality flags. Admin callers additionally see the raw source row and the AI narrative.
+- `PATCH /applications/{id}/status` — a human status override. This sets `status_source = human`, which machine re-runs then leave untouched.
+
+The AI quality-flag endpoints (`GET /quality-flags/estimate` and `POST /quality-flags/run`) live in `app/api/quality_flags.py` and are documented in [ai-screening.md](ai-screening.md).
 
 ### User Creation
 
@@ -800,7 +841,7 @@ This module is intentionally pure domain logic. It takes normalized application-
 
 Keeping this logic isolated makes it easy to test, read, and change.
 
-Current tests cover all deterministic screening rules including child age limits, applicant age, income range, real estate ownership, child count mismatch, negative values, future employment dates, and co-applicant completeness.
+Current tests cover all deterministic screening rules including child age limits, child age exceeding a parent, applicant and co-applicant age, income range, the household-income arithmetic mismatch, real estate ownership, child count mismatch, negative values, future employment dates, and co-applicant completeness.
 
 This file is a good place to read if you want to understand the business rules without web-framework noise.
 
@@ -822,7 +863,7 @@ This section is a summary. The full pipeline — provider boundary, structured o
 The main function is:
 
 ```py
-def evaluate_hard_filters(application: dict[str, Any], rules: UnitRules = UnitRules()) -> FilterResult:
+def evaluate_hard_filters(application: dict[str, Any], rules: RulesConfig = RulesConfig()) -> FilterResult:
     ...
 ```
 
@@ -844,7 +885,7 @@ The hard-filter module returns structured reasons:
 ```py
 FilterReason(
     code="income_below_range",
-    message="Household gross income is below $70,000.",
+    message=f"Household gross income (${income:,.0f}) is below ${rules.min_income:,}.",
     details={"household_income": income, "min_income": rules.min_income},
 )
 ```
@@ -867,6 +908,8 @@ class SettingsResponse(BaseModel):
 ```
 
 FastAPI uses these models to validate and serialize data. They also make route behavior easier to read because the expected JSON shape is explicit.
+
+`backend/app/schemas/settings.py` also defines `AppSettings` (the full admin settings model) and its nested `AISettings` sub-model. The AI structured-output schemas (`QualityFlagReport` and friends) live separately in `app/ai/schemas.py` — see [ai-screening.md](ai-screening.md).
 
 ### Services
 
@@ -897,6 +940,8 @@ The tests are deliberately focused:
 - `test_auth.py`: auth endpoint expectations.
 - `test_dashboard.py`: dashboard access expectations.
 - `test_health.py`: health endpoint.
+- `test_status_model.py`: the status / status_source transition rules (machine vs. human, staleness).
+- `test_sync_errors.py`: sync failure handling.
 - `test_ai_analysis.py`: AI caching, cost estimate, and spending-cap behavior.
 - `test_quality_flags.py` / `test_quality_flags_api.py`: the AI quality-flag pass, including its concurrency and failure-isolation contracts.
 
