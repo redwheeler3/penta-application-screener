@@ -127,8 +127,6 @@ type ApplicationDetail = ApplicationSummary & {
   aiNarrative?: string | null;
   // null = essay-analysis pass not yet run for this application.
   essayAnalysis?: EssayAnalysis | null;
-  // The model's free-text reasoning from the latest essay-analysis pass.
-  essayAnalysisNarrative?: string | null;
 };
 
 type QualityFlagEstimate = {
@@ -1320,25 +1318,6 @@ export function App() {
                 ) : selectedApp.qualityFlags ? (
                   <p className="quality-flags-clean">AI quality checks found no concerns.</p>
                 ) : null}
-                {selectedApp.essayAnalysis ? (
-                  <div className="essay-analysis">
-                    <h4>AI essay summary</h4>
-                    <p className="essay-analysis-hint">
-                      A neutral digest of what the applicant wrote. It describes what they said, not how good it is.
-                    </p>
-                    <p className="essay-analysis-summary">{selectedApp.essayAnalysis.summary}</p>
-                    <dl className="essay-analysis-fields">
-                      {renderEssayText("Household", selectedApp.essayAnalysis.household_context)}
-                      {renderEssayText("Employment", selectedApp.essayAnalysis.employment_background)}
-                      {renderEssayText("Prior co-op experience", selectedApp.essayAnalysis.prior_co_op_experience)}
-                      {renderEssayChips("Skills offered", selectedApp.essayAnalysis.skills_offered)}
-                      {renderEssayChips("Stated contributions", selectedApp.essayAnalysis.stated_contributions)}
-                      {renderEssayChips("Motivations", selectedApp.essayAnalysis.stated_motivations)}
-                      {renderEssayChips("Interests", selectedApp.essayAnalysis.interests)}
-                      {renderEssayChips("Values", selectedApp.essayAnalysis.values)}
-                    </dl>
-                  </div>
-                ) : null}
                 {selectedApp.essays?.some((essay) => essay.answer) ? (
                   <div className="app-detail-essays">
                     <h4>Essay responses</h4>
@@ -1382,11 +1361,24 @@ export function App() {
                     </div>
                   </details>
                 ) : null}
-                {selectedApp.essayAnalysisNarrative ? (
+                {selectedApp.essayAnalysis ? (
                   <details className="raw-row-section">
-                    <summary>Raw AI narrative (essay analysis)</summary>
-                    <div className="ai-narrative">
-                      <ReactMarkdown>{selectedApp.essayAnalysisNarrative}</ReactMarkdown>
+                    <summary>AI essay summary</summary>
+                    <div className="essay-analysis">
+                      <p className="essay-analysis-hint">
+                        A neutral digest of what the applicant wrote. It describes what they said, not how good it is.
+                      </p>
+                      <p className="essay-analysis-summary">{selectedApp.essayAnalysis.summary}</p>
+                      <dl className="essay-analysis-fields">
+                        {renderEssayText("Household", selectedApp.essayAnalysis.household_context)}
+                        {renderEssayText("Employment", selectedApp.essayAnalysis.employment_background)}
+                        {renderEssayText("Prior co-op experience", selectedApp.essayAnalysis.prior_co_op_experience)}
+                        {renderEssayChips("Skills offered", selectedApp.essayAnalysis.skills_offered)}
+                        {renderEssayChips("Stated contributions", selectedApp.essayAnalysis.stated_contributions)}
+                        {renderEssayChips("Motivations", selectedApp.essayAnalysis.stated_motivations)}
+                        {renderEssayChips("Interests", selectedApp.essayAnalysis.interests)}
+                        {renderEssayChips("Values", selectedApp.essayAnalysis.values)}
+                      </dl>
                     </div>
                   </details>
                 ) : null}
