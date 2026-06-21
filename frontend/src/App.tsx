@@ -1506,6 +1506,17 @@ export function App() {
                 </div>
               </div>
             ) : null}
+            {pdRunning ? (
+              <div className="qf-progress">
+                <div className="qf-progress-label">Discovering patterns across the pool…</div>
+                {/* One pool-level call, so there is no per-item percentage — show
+                    the same indeterminate bar the other steps use before their
+                    first progress event arrives, so the wait reads as working. */}
+                <div className="qf-progress-track">
+                  <div className="qf-progress-fill qf-progress-fill-indeterminate" />
+                </div>
+              </div>
+            ) : null}
             {pdMessage ? <div className="qf-message">{pdMessage}</div> : null}
             {dsEstimate ? (
               <div className="qf-confirm">
