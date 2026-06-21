@@ -425,6 +425,8 @@ http://localhost:8000/health
 
 ### FastAPI App Setup
 
+> For a one-line index of every HTTP endpoint, see [api.md](api.md). Because this is a FastAPI app, the live, always-current reference is also auto-generated at `http://localhost:8000/docs` (Swagger UI) and `http://localhost:8000/openapi.json`.
+
 `backend/app/main.py` creates the FastAPI app.
 
 It currently installs:
@@ -1026,11 +1028,7 @@ cd frontend
 npm run build
 ```
 
-Current expected backend test result:
-
-```text
-78 passed
-```
+All backend tests should pass (`uv run pytest` reports the current count).
 
 ## Next Architecture Step
 
