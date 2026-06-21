@@ -544,6 +544,16 @@ h1 {
   color: var(--penta-green-dark);
 }
 
+/* The ordered screening workflow, in its own full-width band below the title.
+   At five steps it no longer fits beside the heading, so it gets a dedicated
+   row where the steps lay out left-to-right (wrapping as a group only when the
+   viewport is genuinely narrow). */
+.workflow-bar {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--page);
+}
+
 .empty-state {
   display: grid;
   min-height: 220px;
@@ -1114,6 +1124,51 @@ h1 {
   border-color: var(--penta-green);
 }
 
+/* Stale: the step ran but no longer covers the current eligible set (e.g. after
+   a re-sync). Amber so it reads as "needs attention," distinct from done-green
+   and from the neutral not-yet-run state. */
+.workflow-step-button.is-stale {
+  border-color: #fcd34d;
+  color: #b45309;
+}
+
+.workflow-step-button.is-stale:hover:not(:disabled) {
+  background: #fffbeb;
+  border-color: #f59e0b;
+}
+
+.workflow-step-button.is-stale .workflow-step-badge {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #b45309;
+}
+
+/* The label stacks the title over a small coverage fraction, so the count is
+   visible at a glance without widening the button (mockup: badge + fraction). */
+.workflow-step-text {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.15;
+}
+
+.workflow-step-fraction {
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+/* On a stale step the fraction inherits the amber tone for emphasis. */
+.workflow-step-button.is-stale .workflow-step-fraction {
+  color: #b45309;
+}
+
+/* A fully-covered (done) step's fraction recedes into the done-green. */
+.workflow-step-button.is-done .workflow-step-fraction {
+  color: var(--penta-green-dark);
+}
+
 .workflow-step-badge {
   display: inline-flex;
   align-items: center;
@@ -1439,5 +1494,142 @@ h1 {
   font-weight: 400;
   color: var(--ink);
   font-size: 0.82rem;
+}
+
+/* Pattern discovery + dimension scoring (milestone 7) */
+.dimensions-panel {
+  margin: 1rem 0;
+  border: 1px solid #ddd6fe;
+  border-radius: 8px;
+  background: #f5f3ff;
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+}
+
+.dimensions-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.dimensions-summary {
+  margin: 0.6rem 0 0;
+  line-height: 1.5;
+}
+
+.dimensions-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.dimension-item {
+  border-top: 1px solid #ddd6fe;
+  padding-top: 0.55rem;
+}
+
+.dimension-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.dimension-name {
+  font-weight: 600;
+}
+
+.dimension-weight {
+  color: var(--muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.dimension-def {
+  margin: 0.3rem 0 0;
+  line-height: 1.45;
+}
+
+.dimension-why {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+/* Per-candidate scores on the detail page */
+.dimension-scores {
+  margin-bottom: 1.25rem;
+}
+
+.dimension-scores-hint {
+  margin: 0.15rem 0 0.6rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.dimension-scores ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.dimension-score {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+}
+
+.dimension-score-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.dimension-score-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  min-width: 9rem;
+}
+
+.dimension-score-bar {
+  flex: 1;
+  height: 0.5rem;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.dimension-score-fill {
+  display: block;
+  height: 100%;
+  background: var(--penta-green);
+  border-radius: 999px;
+}
+
+.dimension-score-confidence {
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.dimension-score-confidence.confidence-low {
+  color: #b45309;
+}
+
+.dimension-score-rationale {
+  margin: 0.4rem 0 0;
+  font-size: 0.83rem;
+  line-height: 1.45;
+}
+
+.dimension-score-evidence {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-style: italic;
 }
 

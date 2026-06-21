@@ -10,6 +10,7 @@ from app.db.models import (
     ApplicationAIResult,
     ApplicationStatus,
     Base,
+    ScreeningRun,
     User,
     UserRole,
 )
@@ -54,7 +55,13 @@ async def test_workflow_flags_track_progress() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         # Nothing synced yet: every step is not-done.
         workflow = (await client.get("/dashboard")).json()["workflow"]
-        assert workflow == {"synced": False, "qualityChecksRun": False, "essaysAnalyzed": False}
+        assert workflow == {
+            "synced": False,
+            "qualityChecksRun": False,
+            "essaysAnalyzed": False,
+            "patternsDiscovered": False,
+            "candidatesScored": False,
+        }
 
         # An application exists -> synced.
         application = Application(
@@ -77,7 +84,7 @@ async def test_workflow_flags_track_progress() -> None:
         assert workflow["qualityChecksRun"] is True
         assert workflow["essaysAnalyzed"] is False
 
-        # An essay-analysis result exists -> all three done.
+        # An essay-analysis result exists -> that step done; M7 steps still not.
         db.add(ApplicationAIResult(
             application_id=application.id, kind="essay_analysis", cache_key="k2",
             model_id="m", output={"summary": "x"},
@@ -85,4 +92,72 @@ async def test_workflow_flags_track_progress() -> None:
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow["essaysAnalyzed"] is True
+        assert workflow["patternsDiscovered"] is False
+        assert workflow["candidatesScored"] is False
+
+        # A screening run exists -> patterns discovered (it's a run, not a result).
+        db.add(ScreeningRun(name="Run", criteria={}))
+        db.commit()
+        workflow = (await client.get("/dashboard")).json()["workflow"]
+        assert workflow["patternsDiscovered"] is True
+        assert workflow["candidatesScored"] is False
+
+        # A dimension-scoring result (per-run prefixed kind) -> scoring done.
+        db.add(ApplicationAIResult(
+            application_id=application.id, kind="dimension_scoring:abc123", cache_key="k3",
+            model_id="m", output={"scores": []},
+        ))
+        db.commit()
+        workflow = (await client.get("/dashboard")).json()["workflow"]
+        assert workflow["candidatesScored"] is True
+
+
+@pytest.mark.anyio
+async def test_coverage_distinguishes_current_from_stale() -> None:
+    """Coverage counts how many in-scope candidates have a CURRENT cached result.
+
+    A result stored against a different content hash (e.g. the row was re-synced
+    after analysis) does not count — that is exactly the staleness the workflow
+    UI must surface instead of showing a misleading done-check.
+    """
+    from app.ai.analysis import cache_key
+    from app.ai.essay_analysis import KIND as ESSAY_KIND
+    from app.schemas.settings import AppSettings
+
+    app, db = _logged_in_app()
+    model = AppSettings().ai.first_pass_model
+
+    # Two eligible applicants in essay-analysis scope.
+    a = Application(
+        primary_email="a@x.com", applicant_name="A", raw_row={"q": "1"}, raw_row_hash="ha",
+        normalized={}, status=ApplicationStatus.ELIGIBLE, hard_filter_reasons=[],
+    )
+    b = Application(
+        primary_email="b@x.com", applicant_name="B", raw_row={"q": "2"}, raw_row_hash="hb",
+        normalized={}, status=ApplicationStatus.ELIGIBLE, hard_filter_reasons=[],
+    )
+    db.add_all([a, b])
+    db.commit()
+
+    # a: current result (cache key computed from its present content + model).
+    db.add(ApplicationAIResult(
+        application_id=a.id, kind=ESSAY_KIND,
+        cache_key=cache_key(application=a, kind=ESSAY_KIND, model_id=model),
+        model_id=model, output={"summary": "x"},
+    ))
+    # b: a result keyed to OLD content -> does not match its current hash -> stale.
+    db.add(ApplicationAIResult(
+        application_id=b.id, kind=ESSAY_KIND, cache_key="stale-key",
+        model_id=model, output={"summary": "y"},
+    ))
+    db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        coverage = (await client.get("/dashboard")).json()["coverage"]
+
+    # 2 in scope, only a is current.
+    assert coverage["essaysAnalyzed"] == {"cached": 1, "inScope": 2}
+    # No screening run yet -> scoring coverage is absent, not zero.
+    assert "candidatesScored" not in coverage
 

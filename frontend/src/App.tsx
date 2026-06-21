@@ -1,4 +1,4 @@
-import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clipboard, LogIn, LogOut, RefreshCw, Settings, Sparkles, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clipboard, LogIn, LogOut, RefreshCw, Settings, Sparkles, X } from "lucide-react";
 import { type ReactNode, type SyntheticEvent, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { HouseIcon } from "./HouseIcon";
@@ -61,7 +61,17 @@ type WorkflowState = {
   synced: boolean;
   qualityChecksRun: boolean;
   essaysAnalyzed: boolean;
+  patternsDiscovered: boolean;
+  candidatesScored: boolean;
 };
+
+// Per-AI-step coverage of the current scope, from the dashboard. cached < inScope
+// means the step's results went stale (e.g. a re-sync changed content), so the
+// UI warns rather than showing a misleading done-check. Keys are absent for steps
+// whose coverage isn't computable yet (e.g. scoring before patterns exist).
+type Coverage = Partial<
+  Record<"qualityChecksRun" | "essaysAnalyzed" | "candidatesScored", { cached: number; inScope: number }>
+>;
 
 // Faceted counts from the list response: each facet reflects the other group's
 // active filter, so option counts stay consistent across the two filter groups.
@@ -127,6 +137,38 @@ type ApplicationDetail = ApplicationSummary & {
   aiNarrative?: string | null;
   // null = essay-analysis pass not yet run for this application.
   essayAnalysis?: EssayAnalysis | null;
+  // This candidate's scores against the current run's discovered dimensions
+  // (milestone 7). null = no run, or not scored under it. Informational only.
+  dimensionScores?: DimensionScore[] | null;
+};
+
+// One candidate's score on one discovered dimension. Mirrors the backend
+// DimensionScore, plus the dimension's display name joined in by the API.
+type DimensionScore = {
+  dimension_key: string;
+  name: string;
+  score: number;
+  rationale: string;
+  evidence: string;
+  confidence: "low" | "medium" | "high";
+};
+
+// The current screening run's discovered dimensions (milestone 7), from
+// GET /screening/current. null when discovery has not run yet.
+type PoolDimension = {
+  key: string;
+  name: string;
+  definition: string;
+  why_it_differentiates: string;
+  default_weight: number;
+};
+
+type ScreeningRunState = {
+  runId: number;
+  name: string;
+  status: string;
+  summary: string;
+  dimensions: PoolDimension[];
 };
 
 type QualityFlagEstimate = {
@@ -265,31 +307,64 @@ function renderEssayChips(label: string, values: string[]): ReactNode {
 
 // One numbered step in the ordered screening workflow strip. Renders the step
 // button plus a chevron connector to the next step (omitted on the last).
+//
+// The label is always two lines: a title on line 1 and a small fraction on line
+// 2. The fraction is the live "processed/total" while a run streams (`progress`),
+// otherwise the step's coverage "cached/inScope" when known. Both use the same
+// format so a running step and a settled one read identically.
+//
+// AI steps may pass `coverage` (how many in-scope candidates have a current
+// result). When results are incomplete/stale (cached < inScope) the step is NOT
+// treated as done: the badge turns amber and the fraction shows, so "it ran
+// once" can't masquerade as "it's current" after a re-sync.
 function WorkflowStep(props: {
   n: number;
   title: string;
   icon: ReactNode;
   done: boolean;
   busy: boolean;
+  // The line-1 verb while running (e.g. "Analyzing essays"). Line 2 is the
+  // live count, taken from `progress` below — not baked into this string.
   busyLabel: string;
   disabled: boolean;
   onClick: () => void;
   last?: boolean;
+  coverage?: { cached: number; inScope: number };
+  progress?: { processed: number; total: number } | null;
 }): ReactNode {
-  const { n, title, icon, done, busy, busyLabel, disabled, onClick, last } = props;
+  const { n, title, icon, done, busy, busyLabel, disabled, onClick, last, coverage, progress } = props;
+  // Stale only applies once a step has run (done) and we have coverage to judge:
+  // a run that covers fewer than the current scope is out of date.
+  const stale = done && coverage !== undefined && coverage.cached < coverage.inScope;
+  const showDone = done && !stale;
+  // Line 2: the live progress count while running, else the settled coverage.
+  const fraction = busy
+    ? progress
+      ? `${progress.processed}/${progress.total}`
+      : null
+    : coverage
+      ? `${coverage.cached}/${coverage.inScope}`
+      : null;
   return (
     <li className="workflow-step">
       <button
         type="button"
-        className={`workflow-step-button${done ? " is-done" : ""}${busy ? " is-busy" : ""}`}
+        className={
+          `workflow-step-button${showDone ? " is-done" : ""}` +
+          `${busy ? " is-busy" : ""}${stale ? " is-stale" : ""}`
+        }
         onClick={onClick}
         disabled={disabled}
+        title={stale ? `${coverage!.cached}/${coverage!.inScope} current — re-run to cover everyone` : undefined}
       >
         <span className="workflow-step-badge">
-          {done ? <Check size={14} /> : n}
+          {stale ? <AlertTriangle size={13} /> : showDone ? <Check size={14} /> : n}
         </span>
         {icon}
-        <span>{busy ? busyLabel : title}</span>
+        <span className="workflow-step-text">
+          {busy ? busyLabel : title}
+          {fraction ? <span className="workflow-step-fraction">{fraction}</span> : null}
+        </span>
       </button>
       {!last ? <ChevronRight className="workflow-step-arrow" size={18} /> : null}
     </li>
@@ -363,7 +438,10 @@ export function App() {
     synced: false,
     qualityChecksRun: false,
     essaysAnalyzed: false,
+    patternsDiscovered: false,
+    candidatesScored: false,
   });
+  const [coverage, setCoverage] = useState<Coverage>({});
   const [syncMessage, setSyncMessage] = useState("");
   const [syncError, setSyncError] = useState("");
   const [isSyncing, setIsSyncing] = useState(false);
@@ -400,6 +478,18 @@ export function App() {
   const [eaMessage, setEaMessage] = useState("");
   const [eaProgress, setEaProgress] = useState<{ processed: number; total: number } | null>(null);
 
+  // Pattern discovery (one pool-level call) and dimension scoring (per-candidate
+  // fan-out) — milestone 7. The current run's discovered dimensions, shown above
+  // the list once discovery has run.
+  const [screeningRun, setScreeningRun] = useState<ScreeningRunState | null>(null);
+  const [pdRunning, setPdRunning] = useState(false);
+  const [pdMessage, setPdMessage] = useState("");
+  // Scoring reuses the estimate-confirm-stream shape of the other AI passes.
+  const [dsEstimate, setDsEstimate] = useState<QualityFlagEstimate | null>(null);
+  const [dsRunning, setDsRunning] = useState(false);
+  const [dsMessage, setDsMessage] = useState("");
+  const [dsProgress, setDsProgress] = useState<{ processed: number; total: number } | null>(null);
+
 
   useEffect(() => {
     fetch(`${apiBaseUrl}/auth/me`, { credentials: "include" })
@@ -417,8 +507,18 @@ export function App() {
       .then((response) => response.json())
       .then((payload: SettingsResponse) => applySettingsResponse(payload));
     refreshDashboard();
+    refreshScreeningRun();
     fetchApplications({}, 1, "");
   }, [user]);
+
+  // The current screening run's dimensions, if discovery has run. Refreshed
+  // after discovery so the dimensions panel appears without a reload.
+  function refreshScreeningRun() {
+    fetch(`${apiBaseUrl}/screening/current`, { credentials: "include" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload: ScreeningRunState | null) => setScreeningRun(payload))
+      .catch(() => setScreeningRun(null));
+  }
 
   function applySettingsResponse(payload: SettingsResponse) {
     const sheetId = resolveSheetId(payload);
@@ -436,9 +536,10 @@ export function App() {
   function refreshDashboard() {
     fetch(`${apiBaseUrl}/dashboard`, { credentials: "include" })
       .then((response) => response.json())
-      .then((payload: { counts: DashboardCounts; workflow: WorkflowState }) => {
+      .then((payload: { counts: DashboardCounts; workflow: WorkflowState; coverage: Coverage }) => {
         setDashboardCounts(payload.counts);
         setWorkflow(payload.workflow);
+        setCoverage(payload.coverage ?? {});
       });
   }
 
@@ -758,6 +859,96 @@ export function App() {
     setEaRunning(false);
   }
 
+  // Pattern discovery (milestone 7): one synthesis call over the eligible pool.
+  // No cost estimate/confirm — a single call is cheap and not cap-gated, unlike
+  // the per-candidate batch passes.
+  async function discoverPatterns() {
+    setPdRunning(true);
+    setPdMessage("");
+    try {
+      const response = await fetch(`${apiBaseUrl}/screening/discover`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        setPdMessage(payload?.detail ? `Discovery failed: ${formatErrorDetail(payload.detail)}` : "Discovery failed.");
+      } else {
+        const run: ScreeningRunState = await response.json();
+        setScreeningRun(run);
+        setPdMessage(`Discovered ${run.dimensions.length} dimensions for this pool.`);
+        refreshDashboard();
+      }
+    } catch (error) {
+      setPdMessage(error instanceof Error ? `Discovery error: ${error.message}` : "Discovery error.");
+    }
+    setPdRunning(false);
+  }
+
+  // Dimension scoring (milestone 7): per-candidate fan-out, mirroring the
+  // essay-analysis estimate-confirm-stream flow. Informational — no status change.
+  async function requestScoringEstimate() {
+    setDsMessage("");
+    setQfEstimate(null);
+    setEaEstimate(null);
+    const response = await fetch(`${apiBaseUrl}/screening/scoring/estimate`, { credentials: "include" });
+    if (response.ok) {
+      setDsEstimate(await response.json());
+    } else {
+      setDsMessage("Could not load the AI cost estimate.");
+    }
+  }
+
+  async function runScoring() {
+    setDsRunning(true);
+    setDsMessage("");
+    setDsEstimate(null);
+    setDsProgress(null);
+    try {
+      const response = await fetch(`${apiBaseUrl}/screening/scoring/run`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!response.ok || !response.body) {
+        const payload = await response.json().catch(() => null);
+        setDsMessage(payload?.detail ? `Run failed: ${formatErrorDetail(payload.detail)}` : "Run failed.");
+      } else {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            const event = JSON.parse(line);
+            if (event.type === "progress") {
+              setDsProgress({ processed: event.processed, total: event.total });
+            } else if (event.type === "summary") {
+              const failedNote = event.failed ? ` ${event.failed} failed and were skipped.` : "";
+              setDsMessage(
+                `Scoring complete: ${event.analyzed + event.cached} scored ` +
+                  `($${event.totalCostUsd.toFixed(4)}).` +
+                  failedNote,
+              );
+            }
+          }
+        }
+        // Refresh the open candidate so its scores show immediately, and the
+        // dashboard so the workflow marks scoring done. Status is unaffected.
+        refreshDashboard();
+        if (selectedApp) viewApplication(selectedApp.id);
+      }
+    } catch (error) {
+      setDsMessage(error instanceof Error ? `Run error: ${error.message}` : "Run error.");
+    }
+    setDsProgress(null);
+    setDsRunning(false);
+  }
+
   // Human override of an application's status (any committee member). The backend
   // marks it human-owned and sticky against future machine runs.
   async function overrideStatus(id: number, status: AppStatus) {
@@ -1053,16 +1244,20 @@ export function App() {
           ) : null}
 
           <section className="panel">
-            {/* The ordered screening workflow lives in the panel header to save
-                vertical space. Each step's input depends on the previous (sync
-                sets the pool, quality checks refine who's eligible, essay
-                analysis runs on the eligible set), so later steps are hard-gated
-                until the previous step has run. The "done" flags come from the
-                backend, so gating survives reload. */}
             <div className="panel-header">
               <div>
                 <h2>Applications</h2>
               </div>
+            </div>
+            {/* The ordered screening workflow gets its own full-width band below
+                the title: at five steps it no longer fits beside the heading
+                without wrapping. Each step's input depends on the previous (sync
+                sets the pool, quality checks refine who's eligible, essay
+                analysis feeds pattern discovery, scoring rates against the
+                discovered dimensions), so later steps are hard-gated until the
+                previous step has run. The "done" flags come from the backend, so
+                gating survives reload. */}
+            <div className="workflow-bar">
               <ol className="workflow-steps">
                 <WorkflowStep
                   n={1}
@@ -1081,11 +1276,7 @@ export function App() {
                   icon={<Sparkles size={16} />}
                   done={workflow.qualityChecksRun}
                   busy={qfRunning}
-                  busyLabel={
-                    qfProgress
-                      ? `Running ${qfProgress.processed}/${qfProgress.total} (${Math.round(qfPercent(qfProgress))}%)`
-                      : "Running checks"
-                  }
+                  busyLabel="Running checks"
                   // Gated until a sync has happened; also needs eligible apps and
                   // no estimate prompt already open.
                   disabled={
@@ -1095,6 +1286,8 @@ export function App() {
                     dashboardCounts.status.eligible === 0
                   }
                   onClick={requestQualityFlagsEstimate}
+                  coverage={coverage.qualityChecksRun}
+                  progress={qfProgress}
                 />
                 <WorkflowStep
                   n={3}
@@ -1102,11 +1295,7 @@ export function App() {
                   icon={<Sparkles size={16} />}
                   done={workflow.essaysAnalyzed}
                   busy={eaRunning}
-                  busyLabel={
-                    eaProgress
-                      ? `Analyzing ${eaProgress.processed}/${eaProgress.total} (${Math.round(qfPercent(eaProgress))}%)`
-                      : "Analyzing essays"
-                  }
+                  busyLabel="Analyzing essays"
                   // Gated until quality checks have run; also needs eligible apps.
                   disabled={
                     !workflow.qualityChecksRun ||
@@ -1115,6 +1304,43 @@ export function App() {
                     dashboardCounts.status.eligible === 0
                   }
                   onClick={requestEssayAnalysisEstimate}
+                  coverage={coverage.essaysAnalyzed}
+                  progress={eaProgress}
+                />
+                <WorkflowStep
+                  n={4}
+                  title="Discover patterns"
+                  icon={<Sparkles size={16} />}
+                  done={workflow.patternsDiscovered}
+                  busy={pdRunning}
+                  busyLabel="Discovering"
+                  // Gated until essays are analyzed (the digest it reasons over);
+                  // also needs eligible apps.
+                  disabled={
+                    !workflow.essaysAnalyzed ||
+                    pdRunning ||
+                    dashboardCounts.status.eligible === 0
+                  }
+                  onClick={discoverPatterns}
+                />
+                <WorkflowStep
+                  n={5}
+                  title="Score candidates"
+                  icon={<Sparkles size={16} />}
+                  done={workflow.candidatesScored}
+                  busy={dsRunning}
+                  busyLabel="Scoring candidates"
+                  // Gated until patterns are discovered (the dimensions it scores
+                  // against); also needs eligible apps and no open estimate.
+                  disabled={
+                    !workflow.patternsDiscovered ||
+                    dsRunning ||
+                    dsEstimate !== null ||
+                    dashboardCounts.status.eligible === 0
+                  }
+                  onClick={requestScoringEstimate}
+                  coverage={coverage.candidatesScored}
+                  progress={dsProgress}
                   last
                 />
               </ol>
@@ -1229,6 +1455,83 @@ export function App() {
             ) : null}
             {eaMessage ? <div className="qf-message">{eaMessage}</div> : null}
 
+            {pdMessage ? <div className="qf-message">{pdMessage}</div> : null}
+            {dsEstimate ? (
+              <div className="qf-confirm">
+                <div className="qf-confirm-body">
+                  <strong>Score candidates against the discovered dimensions?</strong>
+                  <p>
+                    Score {dsEstimate.to_analyze} eligible applicant
+                    {dsEstimate.to_analyze === 1 ? "" : "s"}
+                    {dsEstimate.cached > 0 ? ` (${dsEstimate.cached} already cached)` : ""}. Estimated cost{" "}
+                    <strong>${dsEstimate.estimated_usd.toFixed(4)}</strong> (cap ${dsEstimate.cap_usd.toFixed(2)}).
+                  </p>
+                  {!dsEstimate.within_cap ? (
+                    <p className="qf-confirm-warn">
+                      Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
+                    </p>
+                  ) : null}
+                </div>
+                <div className="qf-confirm-actions">
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={runScoring}
+                    disabled={dsRunning || !dsEstimate.within_cap}
+                  >
+                    {dsRunning ? "Running" : "Confirm & run"}
+                  </button>
+                  <button className="secondary-button" type="button" onClick={() => setDsEstimate(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {dsRunning ? (
+              <div className="qf-progress">
+                <div className="qf-progress-label">
+                  {dsProgress
+                    ? `Scoring candidates… ${dsProgress.processed}/${dsProgress.total} ` +
+                      `(${Math.round(qfPercent(dsProgress))}%)`
+                    : "Starting scoring…"}
+                </div>
+                <div className="qf-progress-track">
+                  {dsProgress ? (
+                    <div className="qf-progress-fill" style={{ width: `${qfPercent(dsProgress)}%` }} />
+                  ) : (
+                    <div className="qf-progress-fill qf-progress-fill-indeterminate" />
+                  )}
+                </div>
+              </div>
+            ) : null}
+            {dsMessage ? <div className="qf-message">{dsMessage}</div> : null}
+
+            {/* The current run's discovered dimensions — the axes scoring rates
+                each candidate on. Shown only on the list view, not when a single
+                candidate is open. */}
+            {screeningRun && !selectedApp ? (
+              <details className="dimensions-panel">
+                <summary>
+                  Discovered dimensions ({screeningRun.dimensions.length}) — how this pool varies
+                </summary>
+                <p className="dimensions-summary">{screeningRun.summary}</p>
+                <ul className="dimensions-list">
+                  {screeningRun.dimensions.map((dim) => (
+                    <li key={dim.key} className="dimension-item">
+                      <div className="dimension-head">
+                        <span className="dimension-name">{dim.name}</span>
+                        <span className="dimension-weight">
+                          default weight {dim.default_weight.toFixed(2)}
+                        </span>
+                      </div>
+                      <p className="dimension-def">{dim.definition}</p>
+                      <p className="dimension-why">{dim.why_it_differentiates}</p>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+
             {selectedApp ? (() => {
               const flaggedFields = new Set(
                 selectedApp.hardFilterReasons.flatMap((reason) => REASON_FIELDS[reason.code] ?? []),
@@ -1317,6 +1620,37 @@ export function App() {
                   </div>
                 ) : selectedApp.qualityFlags ? (
                   <p className="quality-flags-clean">AI quality checks found no concerns.</p>
+                ) : null}
+                {selectedApp.dimensionScores && selectedApp.dimensionScores.length > 0 ? (
+                  <div className="dimension-scores">
+                    <h4>Fit dimensions</h4>
+                    <p className="dimension-scores-hint">
+                      How this candidate scores on the pool's discovered dimensions. Supporting
+                      detail for ranking — the committee weighs what matters.
+                    </p>
+                    <ul>
+                      {selectedApp.dimensionScores.map((s) => (
+                        <li key={s.dimension_key} className="dimension-score">
+                          <div className="dimension-score-head">
+                            <span className="dimension-score-name">{s.name}</span>
+                            <span className="dimension-score-bar" aria-hidden="true">
+                              <span
+                                className="dimension-score-fill"
+                                style={{ width: `${Math.round(s.score * 100)}%` }}
+                              />
+                            </span>
+                            <span className={`dimension-score-confidence confidence-${s.confidence}`}>
+                              {s.confidence} confidence
+                            </span>
+                          </div>
+                          <p className="dimension-score-rationale">{s.rationale}</p>
+                          {s.evidence ? (
+                            <p className="dimension-score-evidence">{s.evidence}</p>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ) : null}
                 {selectedApp.essays?.some((essay) => essay.answer) ? (
                   <div className="app-detail-essays">
