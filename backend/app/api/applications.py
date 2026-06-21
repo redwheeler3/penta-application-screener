@@ -230,23 +230,26 @@ def _latest_flags(
     are absent (their state is unknown / not-yet-run). Pass application_ids to
     scope the query to one page.
     """
-    latest = _latest_quality_flag_results(db, application_ids)
+    latest = _latest_results(db, "quality_flags", application_ids)
     return {
         app_id: (result.output or {}).get("flags", [])
         for app_id, result in latest.items()
     }
 
 
-def _latest_quality_flag_results(
-    db: Session, application_ids: list[int] | None = None
+def _latest_results(
+    db: Session, kind: str, application_ids: list[int] | None = None
 ) -> dict[int, ApplicationAIResult]:
-    query = select(ApplicationAIResult).where(ApplicationAIResult.kind == "quality_flags")
+    """Most recent AI result of ``kind`` per application (a re-run supersedes
+    older rows). Returns {application_id: result}; applications with no result of
+    that kind are absent. Pass application_ids to scope to one page.
+    """
+    query = select(ApplicationAIResult).where(ApplicationAIResult.kind == kind)
     if application_ids is not None:
         if not application_ids:
             return {}
         query = query.where(ApplicationAIResult.application_id.in_(application_ids))
 
-    # Most recent result per application wins (a re-run supersedes older rows).
     latest: dict[int, ApplicationAIResult] = {}
     for result in db.scalars(query.order_by(ApplicationAIResult.created_at)):
         latest[result.application_id] = result
@@ -257,13 +260,20 @@ def _serialize_detail(app: Application, db: Session) -> dict[str, Any]:
     # The raw source row and AI narrative are shown to any committee member, not
     # only admins: members are trusted screeners, and these are just the source
     # and reasoning behind data the member already sees.
-    ai_result = _latest_quality_flag_results(db, [app.id]).get(app.id)
-    flags = (ai_result.output or {}).get("flags", []) if ai_result else None
+    flag_result = _latest_results(db, "quality_flags", [app.id]).get(app.id)
+    flags = (flag_result.output or {}).get("flags", []) if flag_result else None
     detail = _serialize_summary(app, flags=flags)
     detail["normalized"] = app.normalized
     detail["essays"] = extract_essays(app.raw_row or {})
     detail["qualityFlags"] = flags
     detail["rawRow"] = app.raw_row
-    if ai_result is not None:
-        detail["aiNarrative"] = ai_result.narrative
+    if flag_result is not None:
+        detail["aiNarrative"] = flag_result.narrative
+
+    # Essay analysis (milestone 6): informational, never affects status.
+    # null = pass not yet run for this application.
+    essay_result = _latest_results(db, "essay_analysis", [app.id]).get(app.id)
+    detail["essayAnalysis"] = essay_result.output if essay_result else None
+    if essay_result is not None:
+        detail["essayAnalysisNarrative"] = essay_result.narrative
     return detail

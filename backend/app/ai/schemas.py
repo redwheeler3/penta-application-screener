@@ -50,3 +50,64 @@ class QualityFlagReport(BaseModel):
     """
 
     flags: list[QualityFlag] = Field(default_factory=list)
+
+
+class EssayAnalysisReport(BaseModel):
+    """Neutral, factual extraction across a candidate's four essays.
+
+    One field per thing the form's essay questions ask for (see SPEC "Essay
+    Analysis"). This describes WHAT the applicant said, never how good it is —
+    evaluation against committee criteria is the milestone 7 ranker's job, and
+    those criteria are discovered there, so this pass must not pre-commit
+    judgment. The raw essays are preserved alongside this, so this is an additive
+    digest, not a replacement: anything off-question stays available to the
+    ranker from the source.
+
+    ``str | None`` fields are prose-or-absent; ``list`` fields are empty when the
+    applicant said nothing of that kind. Both forms of "did not say" are real
+    signal the ranker may read; this pass does not judge the absence.
+    """
+
+    summary: str = Field(
+        description=(
+            "A 2-4 sentence neutral, factual digest across all four essays. "
+            "Describe what the applicant conveyed; do not evaluate fit, "
+            "commitment, or quality, and do not speculate."
+        )
+    )
+    household_context: str | None = Field(
+        default=None,
+        description="Who is in the household, as the applicant introduced them (Q1). Null if not stated.",
+    )
+    employment_background: str | None = Field(
+        default=None,
+        description="Work situation as narrated, applicant and co-applicant (Q1). Null if not stated.",
+    )
+    interests: list[str] = Field(
+        default_factory=list,
+        description="Interests the applicant stated (Q1).",
+    )
+    values: list[str] = Field(
+        default_factory=list,
+        description="Values the applicant expressed (Q1).",
+    )
+    skills_offered: list[str] = Field(
+        default_factory=list,
+        description="Concrete skills offered to help run or maintain the co-op, applicant and co-applicant (Q2).",
+    )
+    prior_co_op_experience: str | None = Field(
+        default=None,
+        description="Prior co-op experience the applicant or co-applicant stated (Q3). Null if none given.",
+    )
+    stated_motivations: list[str] = Field(
+        default_factory=list,
+        description="Reasons the applicant gave for wanting to live in a co-op (Q4).",
+    )
+    stated_contributions: list[str] = Field(
+        default_factory=list,
+        description="Ways the applicant said they would be a valuable member (Q4).",
+    )
+    evidence: list[str] = Field(
+        default_factory=list,
+        description="Short direct quotes or field references grounding the extractions above. No full essays.",
+    )

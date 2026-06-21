@@ -63,3 +63,12 @@ See [ai-screening.md](ai-screening.md) for the full pipeline behind these.
 | --- | --- | --- | --- |
 | GET | `/quality-flags/estimate` | Projected cost + how many applications would be analyzed vs. cached. | Login |
 | POST | `/quality-flags/run` | Run the AI quality-flag pass; streams NDJSON progress, then a summary. | Login |
+
+### Essay Analysis (AI) — `app/api/essay_analysis.py`
+
+The per-candidate essay extraction pass (milestone 6). Informational only — never changes status. See [ai-screening.md](ai-screening.md).
+
+| Method | Path | Purpose | Auth |
+| --- | --- | --- | --- |
+| GET | `/essay-analysis/estimate` | Projected cost + how many eligible applicants would be analyzed vs. cached. | Login |
+| POST | `/essay-analysis/run` | Run essay analysis over eligible applicants; streams NDJSON progress, then a summary. | Login |

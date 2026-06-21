@@ -964,6 +964,63 @@ h1 {
   font-size: 0.82rem;
 }
 
+/* AI essay summary (milestone 6) */
+.essay-analysis {
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.85rem;
+}
+
+.essay-analysis-hint {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.essay-analysis-summary {
+  margin: 0.6rem 0 0;
+  line-height: 1.5;
+}
+
+.essay-analysis-fields {
+  margin: 0.75rem 0 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.essay-analysis-field {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.essay-analysis-field dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.essay-analysis-field dd {
+  margin: 0;
+}
+
+.essay-analysis-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.essay-analysis-chip {
+  background: #fff;
+  border: 1px solid #ddd6fe;
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.78rem;
+}
+
 /* Quality-flag run controls (panel header) */
 .panel-actions {
   display: flex;

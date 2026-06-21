@@ -10,18 +10,16 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import (
     AnalysisOutcome,
+    ScreeningResult,
     analyze_application,
-    cached_outcome,
     estimate_cost,
-    store_result,
+    screen_applications,
 )
 from app.ai.provider import AIProvider
 from app.ai.schemas import QualityFlagReport
@@ -33,10 +31,10 @@ from app.services.application_import import extract_essays
 KIND = "quality_flags"
 
 SYSTEM_PROMPT = """\
-You are a careful assistant helping a housing co-op screening committee review applications for data-integrity concerns. 
-You only surface things a human should be aware of; you never make eligibility or acceptance decisions. 
-Be conservative: only flag something when there is concrete evidence in the application. 
-When in doubt, do not flag. 
+You are a careful assistant helping a housing co-op screening committee review applications for data-integrity concerns.
+You only surface things a human should be aware of; you never make eligibility or acceptance decisions.
+Be conservative: only flag something when there is concrete evidence in the application.
+When in doubt, do not flag.
 Use a neutral, factual tone and never speculate about protected characteristics."""
 
 
@@ -71,9 +69,9 @@ def build_prompt(application: Application, settings: AppSettings) -> str:
     # interpolated. The field/essay JSON is appended separately because its braces
     # would collide with f-string interpolation.
     instructions = f"""\
-Review this housing co-op application for data-integrity concerns and return any quality flags. 
-Flag ONLY clear, concrete problems. 
-If you are unsure, do not flag. 
+Review this housing co-op application for data-integrity concerns and return any quality flags.
+Flag ONLY clear, concrete problems.
+If you are unsure, do not flag.
 It is correct and expected for most applications to have zero flags.
 
 Flag these when clearly present:
@@ -181,19 +179,6 @@ def analyze_one(
     return outcome
 
 
-@dataclass(frozen=True)
-class ScreeningResult:
-    """One application's screening result, streamed as it completes."""
-
-    application: Application
-    outcome: AnalysisOutcome | None  # None when the model call failed
-    error: str | None = None
-
-    @property
-    def failed(self) -> bool:
-        return self.outcome is None
-
-
 def screen_quality_flags(
     db: Session,
     provider: AIProvider,
@@ -202,60 +187,20 @@ def screen_quality_flags(
     settings: AppSettings,
     max_workers: int,
 ) -> Iterator[ScreeningResult]:
-    """Run the quality-flag pass over ``applications``, yielding each result as
-    it completes (cached results first, then model results in completion order).
-
-    Only the blocking model call runs in worker threads; every DB and ORM
-    access — cache lookup, prompt building, persistence, status — stays on this
-    (the caller's) thread, so the session is never shared. Workers receive a
-    plain prompt string and return a session-free model result. A failed call
-    yields a ``ScreeningResult`` with an error rather than aborting the batch.
+    """Run the quality-flag pass over ``applications`` via the shared screening
+    engine, applying status from each result's flags as it completes.
     """
-    model_id = settings.ai.first_pass_model
-
-    # Cache lookups and prompt building touch the ORM, so do them here, up front.
-    # Cached applications are finished immediately; the rest are queued for the
-    # pool with a prebuilt prompt.
-    pending: list[tuple[Application, str]] = []
-    for application in applications:
-        cached = cached_outcome(
-            db, application, kind=KIND, schema=QualityFlagReport, model_id=model_id
-        )
-        if cached is not None:
-            _apply_outcome_status(db, application, cached)
-            yield ScreeningResult(application=application, outcome=cached)
-        else:
-            pending.append((application, build_prompt(application, settings)))
-
-    if not pending:
-        return
-
-    def call_model(prompt: str):
-        # Pure: no session, no ORM — safe to run in a worker thread.
-        return provider.structured_output(
-            model_id=model_id,
-            schema=QualityFlagReport,
-            prompt=prompt,
-            system_prompt=SYSTEM_PROMPT,
-        )
-
-    with ThreadPoolExecutor(max_workers=min(max_workers, len(pending))) as pool:
-        futures = {
-            pool.submit(call_model, prompt): application
-            for application, prompt in pending
-        }
-        # as_completed (not map) so a slow call never holds back faster ones.
-        for future in as_completed(futures):
-            application = futures[future]
-            try:
-                result = future.result()
-            except Exception as exc:  # noqa: BLE001 — one app's failure is isolated
-                yield ScreeningResult(
-                    application=application, outcome=None, error=str(exc)
-                )
-                continue
-            outcome = store_result(
-                db, application, kind=KIND, model_id=model_id, result=result
-            )
-            _apply_outcome_status(db, application, outcome)
-            yield ScreeningResult(application=application, outcome=outcome)
+    return screen_applications(
+        db,
+        provider,
+        applications=applications,
+        kind=KIND,
+        schema=QualityFlagReport,
+        model_id=settings.ai.first_pass_model,
+        build_prompt=lambda application: build_prompt(application, settings),
+        system_prompt=SYSTEM_PROMPT,
+        max_workers=max_workers,
+        on_result=lambda application, outcome: _apply_outcome_status(
+            db, application, outcome
+        ),
+    )
