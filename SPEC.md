@@ -431,6 +431,25 @@ Decisions:
 - **No reasoning narrative.** Unlike the quality-flag pass, essay analysis does *not* ask the model for a free-text reasoning preamble. An A/B run over real candidates (same model, with vs. without the "explain first" instruction) showed the preamble produces no systematic change in the extracted fields — the with/without difference sat within the model's own run-to-run nondeterminism — while costing ~18% more output tokens per candidate. Because this pass extracts short answers to fixed questions, the structured output needs no chain-of-thought scaffold, so the prompt returns the structured analysis directly. (The quality-flag pass keeps its narrative: it makes a status-affecting judgment where the reasoning trail is worth the audit.)
 - **Schema evolution is deliberate, never automatic.** If validation on real essays shows a signal that recurs across many candidates with no home and is too specific for the summary, add a *named, fixed* field and bump the prompt version — a human-approved, versioned change. Never an `other` escape hatch, and never a runtime self-modifying schema (see the Screener-Evaluator role below).
 
+### Pattern Discovery And Dimension Scoring (Milestone 7)
+
+Milestone 7 is the AI foundation for ranking. It is read-only: it discovers *how this pool varies* and scores each candidate on those axes, but does not yet rank, weight interactively, or ask questions (milestones 8–9). It builds on the same `analyze_application`/`screen_applications` engine, caching, cost estimate, spending cap, and prompt versioning as milestones 5–6.
+
+The defining architectural decision — **the LLM extracts scored features; ranking is deterministic math on top of them.** The model never produces "the ranking." It scores each candidate on a fixed set of discovered dimensions, and the ranking (milestone 8) is a plain weighted sum over those scores. This is what makes the milestone 9 interactions — re-sort on answer, preview every answer's impact, live count above the shortlist line, and undo — cheap, instant, and *deterministic*: a narrowing answer only nudges weights, never re-invokes the model. Re-ranking the pool with the LLM on every answer was rejected: it is ~300× the cost per answer, slow, gives no cheap impact preview, and is nondeterministic (the order would jump for reasons unrelated to the answer). The SPEC's "hidden internal scores may be used to support ranking" points the same way — scores are the hidden support; labels and rationale are what the UI shows.
+
+Two passes:
+
+- **Pattern Finder (pool-level, one call, synthesis model).** Reads every eligible candidate's `EssayAnalysisReport` plus raw essays and discovers the **differentiating dimensions for this specific pool** — not a fixed rubric. Each dimension has a name, a definition, and a short why-it-differentiates note; the pass also proposes a default "fit for Penta" weighting. Output is run-scoped (it describes the pool, not one candidate), stored on the `ScreeningRun`. Uses the synthesis model (Sonnet) because this is the cross-document judgment the synthesis tier is reserved for. This resolves the open question "pick a model for pattern discovery."
+- **Dimension Scoring (per-candidate fan-out, first-pass model).** Scores each eligible candidate against the discovered dimensions: per dimension a score, a rationale, grounding evidence, and a confidence label. Starts on the first-pass model (Haiku) and upgrades to Sonnet only if an eval shows the scoring reads thin — the same empirical, measure-first stance milestone 6 takes on its model. The schema *shape* is fixed (`list[DimensionScore]`); only which dimensions appear is open, mirroring the `EssayAnalysisReport` discipline (fixed structure, open list contents).
+
+Design constraints carried from the rest of the SPEC:
+
+- **Scope:** eligible applications only, like essay analysis. Status-independent — scoring never touches `status`/`status_source`; it informs ranking, not the gate.
+- **Cache key must include the dimensions.** The shared cache key is `(raw_row_hash, kind, model, prompt_version)` and does *not* see the prompt body — but a candidate's scores depend on the run's discovered dimensions. Two runs with different dimensions would otherwise collide and return stale scores. Fix: fold a short hash of the dimension set into the `kind` (e.g. `dimension_scoring:<dims-hash>`), so distinct dimension sets get distinct cache entries with no schema change.
+- **Run-scoped, building on the existing `ScreeningRun` table.** The discovered dimensions and default weighting are a property of a run, persisted in `ScreeningRun.criteria` (the table and JSON column already exist but are currently unwired). Milestone 7 wires the minimum the foundation needs; milestones 8–9 accrete weights, answers, and rankings onto the same run rather than adding a separate persistence milestone.
+- **Surfacing (read-only):** the run's discovered dimensions are shown at the screening level; each candidate's per-dimension scores, rationale, and evidence appear on the candidate detail page. No ranked order yet — that is milestone 8. Numeric scores stay supporting detail; the committee-facing emphasis remains qualitative, per "Ranking And Outputs."
+- **Schemas defined first.** `PoolPatternReport` (dimensions + default weights) and `DimensionScoringReport` (`list[DimensionScore]`) land in `app/ai/schemas.py` before prompts/UI, per "AI output schemas should be defined before implementing the AI milestone." This resolves the open question "define schemas for pattern discovery and ranking."
+
 ### Agent Workflow
 
 MVP implementation should bias toward simplicity, readability, and understandability over maximum agent sophistication.
@@ -701,11 +720,15 @@ Suggested implementation milestones:
 4. Application tables, candidate detail pages, and searchable/sortable views.
 5. AI quality flags (cost estimate, user confirms, detect suspicious patterns in eligible applications).
 6. AI provider adapter, cost estimate/cap, cached per-candidate essay analysis, and admin raw-debug view.
-7. Pattern discovery, 1 to 3 narrowing questions, impact previews, undo, and ranked shortlist.
-8. Google Docs report generation.
-9. Multi-member screening and merged shortlist comparison.
+7. Pool pattern discovery and per-candidate dimension scoring (read-only surfacing) — the AI foundation for ranking.
+8. Deterministic ranked list: default weighting, manual shortlist line, and live count above the line.
+9. Narrowing questions, impact previews, and undo (the interactive re-sort).
+10. Google Docs report generation.
+11. Multi-member screening and merged shortlist comparison.
 
-Milestones 1–5 are complete. The next milestone is per-candidate AI essay analysis and summaries (milestone 6).
+The old milestone 7 ("pattern discovery, narrowing questions, previews, undo, ranked shortlist") was a single oversized step; it is now split across milestones 7–9, which pushed report generation to 10 and multi-member to 11. The split keeps each slice independently reviewable: 7 derisks the AI foundation (do discovered dimensions and per-candidate scores look right?) before 8–9 build the interactive ranking on top.
+
+Milestones 1–6 are complete. The next milestone is pool pattern discovery and per-candidate dimension scoring (milestone 7).
 
 Milestone 5 (AI quality flags) also delivered the shared AI foundation originally listed under milestone 6: the provider-agnostic interface (Strands + Amazon Bedrock, with a deterministic mock for tests), cached per-application analysis keyed on content hash + model + prompt version, a token pricing table, cost estimate, per-run spending cap, member-accessible quality-check runs, and raw-debug access via the candidate detail page. Milestone 6 is therefore now scoped to essay analysis and committee-ready summaries on top of that foundation.
 
@@ -734,8 +757,8 @@ Decisions resolved during milestone 5:
 
 Still open for later AI milestones:
 
-1. Pick models for pattern discovery, recommendation challenge/audit, and final report synthesis.
-2. Define structured output schemas for pattern discovery, narrowing questions, ranking, evidence audit, and report sections (the quality-flag schema exists; `app/ai/schemas.py` is the shared home).
+1. Pick models for recommendation challenge/audit and final report synthesis. (Pattern discovery resolved in milestone 7: synthesis model / Sonnet. Per-candidate dimension scoring starts on the first-pass model / Haiku, measure-first.)
+2. Define structured output schemas for narrowing questions, evidence audit, and report sections (the quality-flag, essay-analysis, and — in milestone 7 — pattern-discovery and dimension-scoring schemas exist; `app/ai/schemas.py` is the shared home).
 3. Define the first small eval/fixture strategy for AI schema consistency.
 
 ### Before Reporting

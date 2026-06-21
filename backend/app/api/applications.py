@@ -16,6 +16,7 @@ from app.db.models import (
 from app.db.session import get_db
 from app.domain.status import findings_fingerprint, is_stale
 from app.services.application_import import extract_essays
+from app.services.screening_run import current_pattern_report, get_current_run
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
@@ -277,4 +278,37 @@ def _serialize_detail(app: Application, db: Session) -> dict[str, Any]:
     # SPEC "Essay Analysis"), so the structured output is the whole product.
     essay_result = _latest_results(db, "essay_analysis", [app.id]).get(app.id)
     detail["essayAnalysis"] = essay_result.output if essay_result else None
+
+    # Dimension scoring (milestone 7): this candidate's scores against the
+    # current run's discovered dimensions. null = no run, or not scored under it.
+    # Scores are joined to their dimension labels so the UI shows names, not keys.
+    detail["dimensionScores"] = _dimension_scores(db, app)
     return detail
+
+
+def _dimension_scores(db: Session, app: Application) -> list[dict[str, Any]] | None:
+    """The candidate's per-dimension scores under the current run, label-joined.
+
+    Returns None when there is no current run or the candidate has no scores for
+    its dimension set (the scoring pass keys results on a per-run ``kind``, so a
+    stale prior run's scores never leak into a new run's view).
+    """
+    run = get_current_run(db)
+    report = current_pattern_report(run) if run is not None else None
+    if report is None:
+        return None
+
+    # Local import avoids a module-load cycle (dimension_scoring imports schemas
+    # and the engine, not this router, but keep the API layer's deps one-way).
+    from app.ai.dimension_scoring import kind_for
+
+    result = _latest_results(db, kind_for(report), [app.id]).get(app.id)
+    if result is None:
+        return None
+
+    labels = {d.key: d.name for d in report.dimensions}
+    scores = (result.output or {}).get("scores", [])
+    return [
+        {**score, "name": labels.get(score.get("dimension_key"), score.get("dimension_key"))}
+        for score in scores
+    ]

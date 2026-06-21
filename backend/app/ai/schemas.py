@@ -1,9 +1,10 @@
 """Structured output schemas — the shared contract between prompts, storage,
 the API, and the UI for AI-assisted screening.
 
-Milestone 5 (AI quality flags) uses ``QualityFlagReport``. Later milestones
-(essay analysis, ranking) will add their own schemas here so prompts, caching,
-and rendering stay aligned to one definition.
+Milestone 5 (AI quality flags) uses ``QualityFlagReport``; milestone 6 added
+``EssayAnalysisReport``; milestone 7 added ``PoolPatternReport`` and
+``DimensionScoringReport``. Each milestone's schemas live here so prompts,
+caching, and rendering stay aligned to one definition.
 """
 
 from __future__ import annotations
@@ -110,4 +111,114 @@ class EssayAnalysisReport(BaseModel):
     evidence: list[str] = Field(
         default_factory=list,
         description="Short direct quotes or field references grounding the extractions above. No full essays.",
+    )
+
+
+# --- Pattern discovery and dimension scoring (milestone 7) ------------------
+#
+# The LLM extracts scored features; ranking (milestone 8) is deterministic math
+# over them. The Pattern Finder discovers how THIS pool varies; the scoring pass
+# rates each candidate on those discovered dimensions. Both schemas have a fixed
+# SHAPE; only which dimensions appear is open — the same discipline as
+# EssayAnalysisReport (see SPEC "Pattern Discovery And Dimension Scoring").
+
+
+class PoolDimension(BaseModel):
+    """One discovered axis along which this applicant pool meaningfully varies."""
+
+    key: str = Field(
+        description=(
+            "Stable snake_case identifier, e.g. 'participation_commitment'. "
+            "Used to tie each candidate's score back to this dimension, so it "
+            "must be unique within the report and stable wording."
+        )
+    )
+    name: str = Field(description="Short human-readable label for the committee UI.")
+    definition: str = Field(
+        description="1-2 sentences defining what this dimension measures, in neutral terms.",
+    )
+    why_it_differentiates: str = Field(
+        description=(
+            "Briefly, why this dimension actually separates THIS pool — what "
+            "varies across candidates here, not a generic ideal."
+        )
+    )
+    default_weight: float = Field(
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Proposed starting importance toward 'fit for Penta', 0..1. The "
+            "committee re-weights these later; this is only a default."
+        ),
+    )
+
+
+class PoolPatternReport(BaseModel):
+    """Pool-level discovery: the differentiating dimensions for THIS pool.
+
+    Run-scoped, not per-candidate — it describes how the pool varies and proposes
+    a default weighting. It does not rank or score anyone; the per-candidate
+    scoring pass rates each applicant against these dimensions, and ranking is
+    deterministic math layered on top (milestone 8).
+    """
+
+    summary: str = Field(
+        description=(
+            "2-4 sentences on what most distinguishes strong from weak fit "
+            "across this specific pool. Neutral, committee-facing."
+        )
+    )
+    dimensions: list[PoolDimension] = Field(
+        default_factory=list,
+        description=(
+            "The discovered dimensions. Keep to the few that genuinely "
+            "differentiate this pool — not an exhaustive rubric."
+        ),
+    )
+
+
+class ScoreConfidence(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class DimensionScore(BaseModel):
+    """One candidate's score on one discovered dimension, with grounding."""
+
+    dimension_key: str = Field(
+        description="The PoolDimension.key this score is for. Must match a discovered dimension.",
+    )
+    score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description=(
+            "How strongly this candidate exhibits the dimension, 0..1, judged "
+            "only on stated evidence. Absence of evidence is a low score, not a "
+            "guess."
+        ),
+    )
+    rationale: str = Field(
+        description="One neutral sentence explaining the score from what the applicant said.",
+    )
+    evidence: str = Field(
+        description="Short quote or field reference grounding the score. No full essays. Empty if nothing stated.",
+    )
+    confidence: ScoreConfidence = Field(
+        description="How well-supported this score is by the available text.",
+    )
+
+
+class DimensionScoringReport(BaseModel):
+    """One candidate scored against the run's discovered dimensions.
+
+    Fixed shape, open contents: exactly one DimensionScore per discovered
+    dimension. Informational like essay analysis — never touches eligibility
+    status. The scores are the hidden support for ranking; the committee-facing
+    UI emphasizes labels, rationale, and evidence over the raw numbers.
+    """
+
+    scores: list[DimensionScore] = Field(
+        default_factory=list,
+        description="One entry per discovered dimension, scoring this candidate on it.",
     )
