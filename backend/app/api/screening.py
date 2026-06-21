@@ -98,9 +98,19 @@ def discover(
     if not applications:
         raise HTTPException(status_code=409, detail="No eligible applications to analyze.")
 
-    report, narrative, cost = discover_patterns(
-        db, provider, applications=applications, settings=settings
-    )
+    # The synthesis-model call is the one place a Bedrock/network failure can
+    # surface here. Wrap it so the client gets a readable 502 (the same shape as
+    # /sync) instead of a bare 500 with the traceback only in the server log.
+    try:
+        report, narrative, cost = discover_patterns(
+            db, provider, applications=applications, settings=settings
+        )
+    except Exception as exc:  # noqa: BLE001 — surface any provider failure to the UI
+        raise HTTPException(
+            status_code=502,
+            detail=f"Pattern discovery failed calling the AI model: {type(exc).__name__}: {exc}",
+        ) from exc
+
     create_run(
         db,
         report=report,

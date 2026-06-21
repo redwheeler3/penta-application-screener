@@ -133,6 +133,20 @@ async def test_discover_with_no_eligible_is_409() -> None:
 
 
 @pytest.mark.anyio
+async def test_discover_maps_provider_failure_to_502() -> None:
+    # An eligible applicant exists but the provider has no queued result, so the
+    # synthesis call raises. The endpoint must wrap it as a readable 502, not let
+    # it surface as a bare 500.
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post("/screening/discover")
+    assert response.status_code == 502
+    assert "Pattern discovery failed" in response.json()["detail"]
+
+
+@pytest.mark.anyio
 async def test_scoring_before_discovery_is_409() -> None:
     app, db, _ = setup_app(role=UserRole.MEMBER)
     add_eligible(db, email="a@x.com", raw_hash="h1")
