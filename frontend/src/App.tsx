@@ -546,9 +546,13 @@ export function App() {
             if (event.type === "progress") {
               setQfProgress({ processed: event.processed, total: event.total });
             } else if (event.type === "summary") {
+              const failedNote = event.failed
+                ? ` ${event.failed} failed and were skipped.`
+                : "";
               setQfMessage(
                 `Quality checks complete: ${event.flagged} flagged of ` +
-                  `${event.analyzed + event.cached} analyzed ($${event.totalCostUsd.toFixed(4)}).`,
+                  `${event.analyzed + event.cached} analyzed ($${event.totalCostUsd.toFixed(4)}).` +
+                  failedNote,
               );
             }
           }

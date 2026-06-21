@@ -1,13 +1,17 @@
+import threading
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.ai.mock_provider import MockProvider
+from app.ai.provider import AIResult, Usage
 from app.ai.quality_flags import (
     analyze_one,
     applications_to_analyze,
     build_prompt,
     estimate_quality_flags,
+    screen_quality_flags,
 )
 from app.ai.schemas import FlagCategory, FlagSeverity, QualityFlag, QualityFlagReport
 from app.db.models import Application, ApplicationStatus, Base, StatusSource
@@ -133,6 +137,80 @@ def test_analyze_one_runs_and_caches() -> None:
     second = analyze_one(db, provider, application=app, settings=settings)
     assert second.cached is True
     assert len(provider.calls) == 1
+
+
+def test_screen_isolates_a_failed_call() -> None:
+    """A model call that raises yields a result with an error and does not abort
+    the batch; the other applications are still screened and persisted.
+    """
+    db = make_session()
+    good = add_application(
+        db, email="good@x.com", status=ApplicationStatus.ELIGIBLE, raw_hash="h1",
+        normalized={"applicant_name": "Good One"},
+    )
+    bad = add_application(
+        db, email="bad@x.com", status=ApplicationStatus.ELIGIBLE, raw_hash="h2",
+        normalized={"applicant_name": "Bad One"},
+    )
+
+    class FlakyProvider:
+        def structured_output(self, *, model_id, schema, prompt, system_prompt=None):
+            if "Bad One" in prompt:
+                raise RuntimeError("boom")
+            return AIResult(
+                output=QualityFlagReport(flags=[]),
+                usage=Usage(input_tokens=10, output_tokens=5),
+                model_id=model_id,
+            )
+
+    results = list(
+        screen_quality_flags(
+            db, FlakyProvider(),
+            applications=[good, bad], settings=AppSettings(), max_workers=4,
+        )
+    )
+    by_email = {r.application.primary_email: r for r in results}
+    assert by_email["good@x.com"].outcome is not None
+    assert by_email["good@x.com"].error is None
+    assert by_email["bad@x.com"].outcome is None
+    assert "boom" in by_email["bad@x.com"].error
+
+
+def test_screen_runs_calls_concurrently() -> None:
+    """All workers are in the model call at once — proving real parallelism, not
+    a sequential loop. Each call blocks on a barrier that only releases when the
+    expected number of calls have arrived together.
+    """
+    n = 5
+    db = make_session()
+    apps = [
+        add_application(
+            db, email=f"a{i}@x.com", status=ApplicationStatus.ELIGIBLE,
+            raw_hash=f"h{i}", normalized={"applicant_name": f"Person {i}"},
+        )
+        for i in range(n)
+    ]
+    barrier = threading.Barrier(n, timeout=5)
+
+    class ConcurrentProvider:
+        def structured_output(self, *, model_id, schema, prompt, system_prompt=None):
+            # Raises BrokenBarrierError on timeout if fewer than n arrive — i.e.
+            # if the calls were serialized rather than run together.
+            barrier.wait()
+            return AIResult(
+                output=QualityFlagReport(flags=[]),
+                usage=Usage(input_tokens=10, output_tokens=5),
+                model_id=model_id,
+            )
+
+    results = list(
+        screen_quality_flags(
+            db, ConcurrentProvider(),
+            applications=apps, settings=AppSettings(), max_workers=n,
+        )
+    )
+    assert len(results) == n
+    assert all(r.outcome is not None for r in results)
 
 
 def test_estimate_counts_analyzable_excluding_rules_ineligible() -> None:

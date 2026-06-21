@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 from app.ai.analysis import SpendingCapExceeded, enforce_cap
 from app.ai.provider import AIProvider
 from app.ai.quality_flags import (
-    analyze_one,
     applications_to_analyze,
     estimate_quality_flags,
+    screen_quality_flags,
 )
 from app.ai.strands_provider import StrandsProvider
 from app.api.dependencies import require_current_user
@@ -26,7 +26,12 @@ router = APIRouter(prefix="/quality-flags", tags=["quality-flags"])
 def get_ai_provider(db: Session = Depends(get_db)) -> AIProvider:
     """Real Bedrock-backed provider. Overridden in tests with a MockProvider."""
     settings = get_app_settings(db)
-    return StrandsProvider(region=settings.ai.region)
+    # Size the connection pool to the worker count so concurrent screening calls
+    # don't queue on sockets.
+    return StrandsProvider(
+        region=settings.ai.region,
+        max_pool_connections=settings.ai.max_workers,
+    )
 
 
 @router.get("/estimate")
@@ -67,19 +72,38 @@ def run(
 
     def stream() -> Iterator[str]:
         total = len(applications)
-        analyzed = cached = flagged = 0
+        analyzed = cached = flagged = failed = 0
+        processed = 0
         total_cost = 0.0
-        for index, application in enumerate(applications, start=1):
-            outcome = analyze_one(db, provider, application=application, settings=settings)
-            if outcome.cached:
-                cached += 1
+        results = screen_quality_flags(
+            db,
+            provider,
+            applications=applications,
+            settings=settings,
+            max_workers=settings.ai.max_workers,
+        )
+        for result in results:
+            processed += 1
+            if result.outcome is None:
+                # The model call failed for this one; surface it and keep going.
+                failed += 1
+                yield json.dumps(
+                    {
+                        "type": "error",
+                        "applicationId": result.application.id,
+                        "message": result.error,
+                    }
+                ) + "\n"
             else:
-                analyzed += 1
-            total_cost += outcome.cost_usd
-            if outcome.output.flags:
-                flagged += 1
+                if result.outcome.cached:
+                    cached += 1
+                else:
+                    analyzed += 1
+                total_cost += result.outcome.cost_usd
+                if result.outcome.output.flags:
+                    flagged += 1
             yield json.dumps(
-                {"type": "progress", "processed": index, "total": total, "flagged": flagged}
+                {"type": "progress", "processed": processed, "total": total, "flagged": flagged}
             ) + "\n"
 
         yield json.dumps(
@@ -88,6 +112,7 @@ def run(
                 "analyzed": analyzed,
                 "cached": cached,
                 "flagged": flagged,
+                "failed": failed,
                 "totalCostUsd": round(total_cost, 4),
             }
         ) + "\n"
