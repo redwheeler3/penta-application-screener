@@ -11,7 +11,7 @@ This page is just a **map** — a one-line index of every endpoint so you can se
 
 ## Endpoint Index
 
-Unless noted, endpoints require a logged-in user (the signed session cookie). "Admin" means the route or some of its fields are restricted to the admin role.
+Unless noted, endpoints require a logged-in user (the signed session cookie). There is currently no admin-only endpoint — every committee member is a trusted screener, so all screening surfaces (status override, raw row, AI narrative) are open to any logged-in user. The `admin` / `member` roles exist in the data model but do not gate any route today.
 
 ### Auth — `app/api/auth.py`
 
@@ -52,8 +52,8 @@ Unless noted, endpoints require a logged-in user (the signed session cookie). "A
 | Method | Path | Purpose | Auth |
 | --- | --- | --- | --- |
 | GET | `/applications` | Searchable, filterable, sortable, paginated list with faceted counts. | Login |
-| GET | `/applications/{id}` | One application's detail. The raw row and AI narrative are admin-only. | Login (some fields admin) |
-| PATCH | `/applications/{id}/status` | Human status override (sets `status_source = human`, which is sticky). | Admin |
+| GET | `/applications/{id}` | One application's detail, including the raw source row and AI narrative. | Login |
+| PATCH | `/applications/{id}/status` | Human status override (sets `status_source = human`, which is sticky). | Login |
 
 ### Quality Flags (AI) — `app/api/quality_flags.py`
 

@@ -84,7 +84,7 @@ The frontend is a single React screen (`App.tsx`) that has grown to cover the fu
 5. Let the user expand the admin settings panel (an "Edit settings" toggle, not a gear icon) and save changes.
 6. Let the user sync applications from the configured Google Sheet.
 7. Show a searchable, sortable, paginated applications table.
-8. Open a candidate detail view: normalized fields, essays, filter reasons, AI quality flags, and (admin-only) the raw row and AI narrative.
+8. Open a candidate detail view: normalized fields, essays, filter reasons, AI quality flags, the raw row, and the AI narrative.
 9. Run the AI quality-flag pass with a cost-estimate confirmation and live streamed progress.
 10. Let an admin override an application's status (the human decision is sticky).
 
@@ -818,8 +818,10 @@ Application routes live in `backend/app/api/applications.py`.
 Current routes:
 
 - `GET /applications` — a searchable, filterable, sortable, paginated list. Filters by `status` and `status_source`, and returns faceted counts so the UI can show how many applications fall in each tab.
-- `GET /applications/{id}` — one application's detail: normalized fields, essays, filter reasons, and AI quality flags. Admin callers additionally see the raw source row and the AI narrative.
+- `GET /applications/{id}` — one application's detail: normalized fields, essays, filter reasons, AI quality flags, the raw source row, and the AI narrative.
 - `PATCH /applications/{id}/status` — a human status override. This sets `status_source = human`, which machine re-runs then leave untouched.
+
+All application routes are open to any logged-in committee member. Roles (`admin` / `member`) exist in the data model but do not currently gate any route — members are trusted screeners.
 
 The AI quality-flag endpoints (`GET /quality-flags/estimate` and `POST /quality-flags/run`) live in `app/api/quality_flags.py` and are documented in [ai-screening.md](ai-screening.md).
 
@@ -1032,6 +1034,6 @@ All backend tests should pass (`uv run pytest` reports the current count).
 
 ## Next Architecture Step
 
-The current feature set includes Google Sheets sync, deterministic hard filters, application tables, searchable/filterable views, candidate detail pages, filtered-out reason display, admin-only raw row inspection, and the AI quality-flag pass (see [ai-screening.md](ai-screening.md)).
+The current feature set includes Google Sheets sync, deterministic hard filters, application tables, searchable/filterable views, candidate detail pages, filtered-out reason display, raw row inspection, and the AI quality-flag pass (see [ai-screening.md](ai-screening.md)).
 
 The next planned product areas build on the AI foundation: per-candidate essay analysis, and an interactive stack-ranking assistant that ranks the full applicant pool with per-row rationale. Both reuse the provider boundary, caching, and cost-cap machinery already in `app/ai/`.

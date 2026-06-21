@@ -1,7 +1,7 @@
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.db.models import User, UserRole
+from app.db.models import User
 from app.db.session import get_db
 
 
@@ -18,8 +18,7 @@ def require_current_user(request: Request, db: Session = Depends(get_db)) -> Use
     return user
 
 
-def require_admin(user: User = Depends(require_current_user)) -> User:
-    if user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin access required.")
-    return user
+# Note: there is intentionally no role gate here. Every committee member is a
+# trusted screener, so all routes use require_current_user. Re-add a
+# require_admin dependency if a genuinely admin-only surface ever appears.
 

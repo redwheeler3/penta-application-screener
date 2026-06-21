@@ -183,8 +183,11 @@ async def test_ai_flag_sets_needs_review_status_and_filter() -> None:
 
 
 @pytest.mark.anyio
-async def test_ai_narrative_is_admin_only_on_detail() -> None:
-    app, db, provider = setup_app(role=UserRole.ADMIN)
+async def test_raw_row_and_narrative_visible_to_members() -> None:
+    """The raw source row and AI narrative are shown to any committee member,
+    not only admins — members are trusted screeners.
+    """
+    app, db, provider = setup_app(role=UserRole.MEMBER)
     flagged = add_eligible(db, email="flag@x.com", raw_hash="h1")
     provider.queue(
         QualityFlagReport(
@@ -204,27 +207,13 @@ async def test_ai_narrative_is_admin_only_on_detail() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         await run_and_summarize(client)
 
-        admin_detail = (await client.get(f"/applications/{flagged.id}")).json()[
-            "application"
-        ]
-        assert admin_detail["aiNarrative"] == (
-            "Checking pets: a hamster is outside the allowed categories."
-        )
-
-        member = User(
-            email="member@x.com",
-            display_name="Member",
-            role=UserRole.MEMBER,
-            is_active=True,
-        )
-        db.add(member)
-        db.commit()
-        app.dependency_overrides[require_current_user] = lambda: member
-
         member_detail = (await client.get(f"/applications/{flagged.id}")).json()[
             "application"
         ]
-        assert "aiNarrative" not in member_detail
+        assert member_detail["aiNarrative"] == (
+            "Checking pets: a hamster is outside the allowed categories."
+        )
+        assert "rawRow" in member_detail
 
 
 @pytest.mark.anyio
@@ -320,6 +309,23 @@ async def test_human_override_is_sticky_and_snapshots_fingerprint() -> None:
         assert detail["status"] == "eligible"
         assert detail["statusSource"] == "human"
         assert detail["stale"] is False
+
+
+@pytest.mark.anyio
+async def test_member_can_override_status() -> None:
+    """Status override is open to any committee member, not only admins."""
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    application = add_eligible(db, email="a@x.com", raw_hash="h1")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.patch(
+            f"/applications/{application.id}/status", json={"status": "ineligible"}
+        )
+        assert response.status_code == 200
+        patched = response.json()["application"]
+        assert patched["status"] == "ineligible"
+        assert patched["statusSource"] == "human"
 
 
 @pytest.mark.anyio

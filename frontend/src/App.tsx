@@ -88,7 +88,7 @@ type ApplicationDetail = ApplicationSummary & {
   // null = quality-flag pass not yet run for this application; [] = ran, clean.
   qualityFlags: QualityFlag[] | null;
   rawRow?: Record<string, unknown>;
-  // The model's free-text reasoning from the latest quality-flag pass (admin only).
+  // The model's free-text reasoning from the latest quality-flag pass.
   aiNarrative?: string | null;
 };
 
@@ -570,8 +570,8 @@ export function App() {
     setQfRunning(false);
   }
 
-  // Human override of an application's status (admin only). The backend marks it
-  // human-owned and sticky against future machine runs.
+  // Human override of an application's status (any committee member). The backend
+  // marks it human-owned and sticky against future machine runs.
   async function overrideStatus(id: number, status: AppStatus) {
     const response = await fetch(`${apiBaseUrl}/applications/${id}/status`, {
       method: "PATCH",
@@ -971,31 +971,29 @@ export function App() {
                       New AI findings since this was last reviewed — you may want to look again.
                     </p>
                   ) : null}
-                  {user.role === "admin" ? (
-                    <div className="status-override">
-                      <span className="status-override-label">Set status:</span>
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        disabled={
-                          selectedApp.status === "eligible" && selectedApp.statusSource === "human"
-                        }
-                        onClick={() => overrideStatus(selectedApp.id, "eligible")}
-                      >
-                        Eligible
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        disabled={
-                          selectedApp.status === "ineligible" && selectedApp.statusSource === "human"
-                        }
-                        onClick={() => overrideStatus(selectedApp.id, "ineligible")}
-                      >
-                        Ineligible
-                      </button>
-                    </div>
-                  ) : null}
+                  <div className="status-override">
+                    <span className="status-override-label">Set status:</span>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={
+                        selectedApp.status === "eligible" && selectedApp.statusSource === "human"
+                      }
+                      onClick={() => overrideStatus(selectedApp.id, "eligible")}
+                    >
+                      Eligible
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={
+                        selectedApp.status === "ineligible" && selectedApp.statusSource === "human"
+                      }
+                      onClick={() => overrideStatus(selectedApp.id, "ineligible")}
+                    >
+                      Ineligible
+                    </button>
+                  </div>
                 </div>
                 {selectedApp.hardFilterReasons.length > 0 ? (
                   <div className="filter-reasons">
@@ -1061,13 +1059,13 @@ export function App() {
                 </div>
                 {selectedApp.rawRow ? (
                   <details className="raw-row-section">
-                    <summary>Raw source row (admin)</summary>
+                    <summary>Raw source row</summary>
                     <pre>{JSON.stringify(selectedApp.rawRow, null, 2)}</pre>
                   </details>
                 ) : null}
                 {selectedApp.aiNarrative ? (
                   <details className="raw-row-section">
-                    <summary>Raw AI narrative (admin)</summary>
+                    <summary>Raw AI narrative</summary>
                     <div className="ai-narrative">
                       <ReactMarkdown>{selectedApp.aiNarrative}</ReactMarkdown>
                     </div>
