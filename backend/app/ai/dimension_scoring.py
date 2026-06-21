@@ -33,6 +33,7 @@ from app.ai.analysis import (
     estimate_cost,
     screen_applications,
 )
+from app.ai.applicant_facts import FILTERED_FACTS_NOTE, applicant_facts
 from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
 from app.ai.provider import AIProvider
 from app.ai.schemas import DimensionScoringReport, EssayAnalysisReport, PoolPatternReport
@@ -86,13 +87,18 @@ def _dimensions_block(report: PoolPatternReport) -> str:
 
 
 def _applicant_block(application: Application, essay_report: dict | None) -> str:
-    """The applicant evidence: the essay-analysis digest plus the raw essays.
+    """The applicant evidence: structured facts, the essay-analysis digest, and
+    the raw essays.
 
-    Both are included (unlike pattern discovery, which trims for pool size): a
-    single-candidate call is cheap, and the raw essays let the model ground
-    evidence quotes precisely.
+    The facts must match what discovery saw (same shared view), or a fact-based
+    dimension would be unscoreable here. Essays are included in full (unlike
+    discovery, which trims for pool size): a single-candidate call is cheap, and
+    the raw essays let the model ground evidence quotes precisely.
     """
-    payload: dict[str, object] = {"applicant_id": application.id}
+    payload: dict[str, object] = {
+        "applicant_id": application.id,
+        "facts": applicant_facts(application),
+    }
     if essay_report is not None:
         payload["essay_analysis"] = EssayAnalysisReport.model_validate(
             essay_report
@@ -104,15 +110,18 @@ def _applicant_block(application: Application, essay_report: dict | None) -> str
 def build_prompt(
     application: Application, report: PoolPatternReport, essay_report: dict | None
 ) -> str:
-    instructions = """\
+    instructions = f"""\
 Score this applicant on EACH of the dimensions below, returning exactly one entry per dimension.
+Judge from BOTH the applicant's structured facts and their essays, using whichever the dimension draws on.
+
+{FILTERED_FACTS_NOTE}
 
 For each dimension provide:
 - dimension_key: the dimension's key, exactly as given
 - score: 0..1 for how strongly this applicant exhibits it, judged only on stated evidence
-- rationale: one neutral sentence from what the applicant said
-- evidence: a short quote or field reference (empty string if they said nothing relevant)
-- confidence: low, medium, or high — how well the text supports your score
+- rationale: one neutral sentence from the applicant's facts or words
+- evidence: a short quote or field reference (empty string if there is nothing relevant)
+- confidence: low, medium, or high — how well the available evidence supports your score
 
 Score every dimension, even when the applicant did not address it (low score, low confidence). Do not invent evidence."""
 
