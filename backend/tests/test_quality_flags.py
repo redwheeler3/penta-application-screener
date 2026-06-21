@@ -170,9 +170,9 @@ def test_screen_isolates_a_failed_call() -> None:
         )
     )
     by_email = {r.application.primary_email: r for r in results}
-    assert by_email["good@x.com"].outcome is not None
+    assert by_email["good@x.com"].failed is False
     assert by_email["good@x.com"].error is None
-    assert by_email["bad@x.com"].outcome is None
+    assert by_email["bad@x.com"].failed is True
     assert "boom" in by_email["bad@x.com"].error
 
 
@@ -210,7 +210,7 @@ def test_screen_runs_calls_concurrently() -> None:
         )
     )
     assert len(results) == n
-    assert all(r.outcome is not None for r in results)
+    assert all(not r.failed for r in results)
 
 
 def test_estimate_counts_analyzable_excluding_rules_ineligible() -> None:

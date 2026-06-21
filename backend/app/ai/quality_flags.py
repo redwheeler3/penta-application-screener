@@ -189,6 +189,10 @@ class ScreeningResult:
     outcome: AnalysisOutcome | None  # None when the model call failed
     error: str | None = None
 
+    @property
+    def failed(self) -> bool:
+        return self.outcome is None
+
 
 def screen_quality_flags(
     db: Session,
