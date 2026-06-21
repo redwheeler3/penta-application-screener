@@ -1,5 +1,5 @@
 import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clipboard, LogIn, LogOut, RefreshCw, Settings, Sparkles, X } from "lucide-react";
-import { type ReactNode, type SyntheticEvent, useEffect, useState } from "react";
+import { type ReactNode, type SyntheticEvent, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { HouseIcon } from "./HouseIcon";
 
@@ -171,6 +171,10 @@ type ScreeningRunState = {
   dimensions: PoolDimension[];
 };
 
+// A notification toast. Success toasts auto-dismiss; error toasts persist until
+// dismissed (and offer a copy button), so a failure can't scroll away unread.
+type Toast = { id: number; message: string; variant: "success" | "error" };
+
 type QualityFlagEstimate = {
   total: number;
   to_analyze: number;
@@ -331,20 +335,25 @@ function WorkflowStep(props: {
   last?: boolean;
   coverage?: { cached: number; inScope: number };
   progress?: { processed: number; total: number } | null;
+  // A single persistent value for line 2 when there is no coverage fraction
+  // (e.g. sync's row count, discovery's dimension count). These are not
+  // coverage, so they show as one number, not "n/n".
+  caption?: string;
 }): ReactNode {
-  const { n, title, icon, done, busy, busyLabel, disabled, onClick, last, coverage, progress } = props;
+  const { n, title, icon, done, busy, busyLabel, disabled, onClick, last, coverage, progress, caption } = props;
   // Stale only applies once a step has run (done) and we have coverage to judge:
   // a run that covers fewer than the current scope is out of date.
   const stale = done && coverage !== undefined && coverage.cached < coverage.inScope;
   const showDone = done && !stale;
-  // Line 2: the live progress count while running, else the settled coverage.
+  // Line 2 priority: live progress while running, then settled coverage, then a
+  // standalone caption (a single persisted value with no fraction).
   const fraction = busy
     ? progress
       ? `${progress.processed}/${progress.total}`
       : null
     : coverage
       ? `${coverage.cached}/${coverage.inScope}`
-      : null;
+      : caption ?? null;
   return (
     <li className="workflow-step">
       <button
@@ -442,16 +451,35 @@ export function App() {
     candidatesScored: false,
   });
   const [coverage, setCoverage] = useState<Coverage>({});
-  const [syncMessage, setSyncMessage] = useState("");
-  const [syncError, setSyncError] = useState("");
   const [isSyncing, setIsSyncing] = useState(false);
 
-  useEffect(() => {
-    if (syncMessage) {
-      const timer = setTimeout(() => setSyncMessage(""), 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [syncMessage]);
+  // All workflow notifications surface as bottom-right toasts. Success toasts
+  // auto-dismiss; error toasts persist until dismissed so a failure can't scroll
+  // away unread. Each gets a unique id so several can stack independently.
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastSeq = useRef(0);
+
+  // Success toasts auto-dismiss after this long. Long enough to read a cost
+  // figure or count without lingering.
+  const TOAST_DURATION_MS = 7000;
+
+  function showToast(message: string) {
+    const id = (toastSeq.current += 1);
+    setToasts((current) => [...current, { id, message, variant: "success" }]);
+    setTimeout(() => {
+      setToasts((current) => current.filter((t) => t.id !== id));
+    }, TOAST_DURATION_MS);
+  }
+
+  function showError(message: string) {
+    const id = (toastSeq.current += 1);
+    setToasts((current) => [...current, { id, message, variant: "error" }]);
+    // No auto-dismiss: errors stay until the user reads and dismisses them.
+  }
+
+  function dismissToast(id: number) {
+    setToasts((current) => current.filter((t) => t.id !== id));
+  }
   const [applications, setApplications] = useState<ApplicationSummary[]>([]);
   const [appTotal, setAppTotal] = useState(0);
   const [appPage, setAppPage] = useState(1);
@@ -464,18 +492,16 @@ export function App() {
   const [appSort, setAppSort] = useState<SortState>(null);
   const [selectedApp, setSelectedApp] = useState<ApplicationDetail | null>(null);
 
-  // AI quality-flag run flow: estimate (shown for confirmation) -> running -> message.
+  // AI run flows share a shape: estimate (confirmation) -> running -> result.
+  // Success and failure both surface as toasts (see showToast/showError), so no
+  // per-step message state is kept here.
   const [qfEstimate, setQfEstimate] = useState<QualityFlagEstimate | null>(null);
   const [qfRunning, setQfRunning] = useState(false);
-  const [qfMessage, setQfMessage] = useState("");
   // Live progress while the run streams: processed/total applications.
   const [qfProgress, setQfProgress] = useState<{ processed: number; total: number } | null>(null);
 
-  // Essay-analysis run flow, mirroring the quality-flag flow above. Same
-  // estimate-confirm-stream shape; informational pass (no flagged count).
   const [eaEstimate, setEaEstimate] = useState<QualityFlagEstimate | null>(null);
   const [eaRunning, setEaRunning] = useState(false);
-  const [eaMessage, setEaMessage] = useState("");
   const [eaProgress, setEaProgress] = useState<{ processed: number; total: number } | null>(null);
 
   // Pattern discovery (one pool-level call) and dimension scoring (per-candidate
@@ -483,7 +509,6 @@ export function App() {
   // the list once discovery has run.
   const [screeningRun, setScreeningRun] = useState<ScreeningRunState | null>(null);
   const [pdRunning, setPdRunning] = useState(false);
-  const [pdMessage, setPdMessage] = useState("");
   // Discovery has no cost estimate (a single call), but still confirms before
   // running — for consistency with the other AI steps and because it starts a
   // new run that supersedes any existing dimensions/scores. true = card open.
@@ -491,7 +516,6 @@ export function App() {
   // Scoring reuses the estimate-confirm-stream shape of the other AI passes.
   const [dsEstimate, setDsEstimate] = useState<QualityFlagEstimate | null>(null);
   const [dsRunning, setDsRunning] = useState(false);
-  const [dsMessage, setDsMessage] = useState("");
   const [dsProgress, setDsProgress] = useState<{ processed: number; total: number } | null>(null);
 
 
@@ -684,8 +708,6 @@ export function App() {
 
   async function syncApplications() {
     setIsSyncing(true);
-    setSyncMessage("");
-    setSyncError("");
 
     try {
       const response = await fetch(`${apiBaseUrl}/sync/applications`, {
@@ -703,7 +725,7 @@ export function App() {
           };
         } = await response.json();
         const { rowCount, importedCount, updatedCount, unchangedCount } = payload.syncRun;
-        setSyncMessage(
+        showToast(
           `Synced ${rowCount} rows: ${importedCount} imported, ${updatedCount} updated, ` +
             `${unchangedCount} unchanged.`,
         );
@@ -717,10 +739,10 @@ export function App() {
         } catch {
           // response body wasn't JSON
         }
-        setSyncError(detail);
+        showError(detail);
       }
     } catch (error) {
-      setSyncError(
+      showError(
         `Sync error: ${
           error instanceof Error ? error.message : "Network request failed. Check that the backend is running."
         }`,
@@ -733,7 +755,6 @@ export function App() {
   // Fetch the cost estimate and show the confirmation prompt. AI never runs
   // without the user first seeing the estimate and confirming (SPEC cost control).
   async function requestQualityFlagsEstimate() {
-    setQfMessage("");
     // Close any other open confirmation so only one card shows at a time.
     setEaEstimate(null);
     setDsEstimate(null);
@@ -742,13 +763,12 @@ export function App() {
     if (response.ok) {
       setQfEstimate(await response.json());
     } else {
-      setQfMessage("Could not load the AI cost estimate.");
+      showError("Could not load the AI cost estimate for quality checks.");
     }
   }
 
   async function runQualityFlags() {
     setQfRunning(true);
-    setQfMessage("");
     setQfEstimate(null);
     setQfProgress(null);
     try {
@@ -758,7 +778,7 @@ export function App() {
       });
       if (!response.ok || !response.body) {
         const payload = await response.json().catch(() => null);
-        setQfMessage(payload?.detail ? `Run failed: ${formatErrorDetail(payload.detail)}` : "Run failed.");
+        showError(payload?.detail ? `Quality checks failed: ${formatErrorDetail(payload.detail)}` : "Quality checks failed.");
       } else {
         // Read the NDJSON stream: a progress line per application, then a summary.
         const reader = response.body.getReader();
@@ -779,7 +799,7 @@ export function App() {
               const failedNote = event.failed
                 ? ` ${event.failed} failed and were skipped.`
                 : "";
-              setQfMessage(
+              showToast(
                 `Quality checks complete: ${event.flagged} flagged of ` +
                   `${event.analyzed + event.cached} analyzed ($${event.totalCostUsd.toFixed(4)}).` +
                   failedNote,
@@ -794,7 +814,7 @@ export function App() {
         if (selectedApp) viewApplication(selectedApp.id);
       }
     } catch (error) {
-      setQfMessage(error instanceof Error ? `Run error: ${error.message}` : "Run error.");
+      showError(error instanceof Error ? `Quality checks error: ${error.message}` : "Quality checks error.");
     }
     setQfProgress(null);
     setQfRunning(false);
@@ -803,7 +823,6 @@ export function App() {
   // Essay-analysis run flow, mirroring quality flags. Same estimate-then-confirm
   // cost control; this pass is informational and never changes status.
   async function requestEssayAnalysisEstimate() {
-    setEaMessage("");
     // Close any other open confirmation so only one card shows at a time.
     setQfEstimate(null);
     setDsEstimate(null);
@@ -812,13 +831,12 @@ export function App() {
     if (response.ok) {
       setEaEstimate(await response.json());
     } else {
-      setEaMessage("Could not load the AI cost estimate.");
+      showError("Could not load the AI cost estimate for essay analysis.");
     }
   }
 
   async function runEssayAnalysis() {
     setEaRunning(true);
-    setEaMessage("");
     setEaEstimate(null);
     setEaProgress(null);
     try {
@@ -828,7 +846,7 @@ export function App() {
       });
       if (!response.ok || !response.body) {
         const payload = await response.json().catch(() => null);
-        setEaMessage(payload?.detail ? `Run failed: ${formatErrorDetail(payload.detail)}` : "Run failed.");
+        showError(payload?.detail ? `Essay analysis failed: ${formatErrorDetail(payload.detail)}` : "Essay analysis failed.");
       } else {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -848,7 +866,7 @@ export function App() {
               const failedNote = event.failed
                 ? ` ${event.failed} failed and were skipped.`
                 : "";
-              setEaMessage(
+              showToast(
                 `Essay analysis complete: ${event.analyzed + event.cached} analyzed ` +
                   `($${event.totalCostUsd.toFixed(4)}).` +
                   failedNote,
@@ -863,7 +881,7 @@ export function App() {
         if (selectedApp) viewApplication(selectedApp.id);
       }
     } catch (error) {
-      setEaMessage(error instanceof Error ? `Run error: ${error.message}` : "Run error.");
+      showError(error instanceof Error ? `Essay analysis error: ${error.message}` : "Essay analysis error.");
     }
     setEaProgress(null);
     setEaRunning(false);
@@ -874,7 +892,6 @@ export function App() {
   // consistency with the other AI steps and because it starts a new run that
   // replaces any existing dimensions/scores.
   function requestDiscoverConfirm() {
-    setPdMessage("");
     // Close any other open confirmation so only one card shows at a time.
     setQfEstimate(null);
     setEaEstimate(null);
@@ -885,7 +902,6 @@ export function App() {
   async function discoverPatterns() {
     setPdConfirm(false);
     setPdRunning(true);
-    setPdMessage("");
     try {
       const response = await fetch(`${apiBaseUrl}/screening/discover`, {
         method: "POST",
@@ -893,15 +909,15 @@ export function App() {
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        setPdMessage(payload?.detail ? `Discovery failed: ${formatErrorDetail(payload.detail)}` : "Discovery failed.");
+        showError(payload?.detail ? `Pattern discovery failed: ${formatErrorDetail(payload.detail)}` : "Pattern discovery failed.");
       } else {
         const run: ScreeningRunState = await response.json();
         setScreeningRun(run);
-        setPdMessage(`Discovered ${run.dimensions.length} dimensions for this pool.`);
+        showToast(`Discovered ${run.dimensions.length} dimensions for this pool.`);
         refreshDashboard();
       }
     } catch (error) {
-      setPdMessage(error instanceof Error ? `Discovery error: ${error.message}` : "Discovery error.");
+      showError(error instanceof Error ? `Pattern discovery error: ${error.message}` : "Pattern discovery error.");
     }
     setPdRunning(false);
   }
@@ -909,7 +925,6 @@ export function App() {
   // Dimension scoring (milestone 7): per-candidate fan-out, mirroring the
   // essay-analysis estimate-confirm-stream flow. Informational — no status change.
   async function requestScoringEstimate() {
-    setDsMessage("");
     // Close any other open confirmation so only one card shows at a time.
     setQfEstimate(null);
     setEaEstimate(null);
@@ -918,13 +933,12 @@ export function App() {
     if (response.ok) {
       setDsEstimate(await response.json());
     } else {
-      setDsMessage("Could not load the AI cost estimate.");
+      showError("Could not load the AI cost estimate for scoring.");
     }
   }
 
   async function runScoring() {
     setDsRunning(true);
-    setDsMessage("");
     setDsEstimate(null);
     setDsProgress(null);
     try {
@@ -934,7 +948,7 @@ export function App() {
       });
       if (!response.ok || !response.body) {
         const payload = await response.json().catch(() => null);
-        setDsMessage(payload?.detail ? `Run failed: ${formatErrorDetail(payload.detail)}` : "Run failed.");
+        showError(payload?.detail ? `Scoring failed: ${formatErrorDetail(payload.detail)}` : "Scoring failed.");
       } else {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -952,7 +966,7 @@ export function App() {
               setDsProgress({ processed: event.processed, total: event.total });
             } else if (event.type === "summary") {
               const failedNote = event.failed ? ` ${event.failed} failed and were skipped.` : "";
-              setDsMessage(
+              showToast(
                 `Scoring complete: ${event.analyzed + event.cached} scored ` +
                   `($${event.totalCostUsd.toFixed(4)}).` +
                   failedNote,
@@ -966,7 +980,7 @@ export function App() {
         if (selectedApp) viewApplication(selectedApp.id);
       }
     } catch (error) {
-      setDsMessage(error instanceof Error ? `Run error: ${error.message}` : "Run error.");
+      showError(error instanceof Error ? `Scoring error: ${error.message}` : "Scoring error.");
     }
     setDsProgress(null);
     setDsRunning(false);
@@ -1289,9 +1303,15 @@ export function App() {
                   done={workflow.synced}
                   busy={isSyncing}
                   busyLabel="Syncing"
-                  // Step 1 is always available once a sheet is configured.
+                  // Step 1 is always available once a sheet is configured. The
+                  // caption persists the imported row count (not a fraction).
                   disabled={isSyncing || !hasGoogleSheetLink}
                   onClick={syncApplications}
+                  caption={
+                    workflow.synced && dashboardCounts.submitted > 0
+                      ? `${dashboardCounts.submitted} rows`
+                      : undefined
+                  }
                 />
                 <WorkflowStep
                   n={2}
@@ -1346,6 +1366,9 @@ export function App() {
                     dashboardCounts.status.eligible === 0
                   }
                   onClick={requestDiscoverConfirm}
+                  caption={
+                    screeningRun ? `${screeningRun.dimensions.length} dimensions` : undefined
+                  }
                 />
                 <WorkflowStep
                   n={5}
@@ -1424,7 +1447,6 @@ export function App() {
                 </div>
               </div>
             ) : null}
-            {qfMessage ? <div className="qf-message">{qfMessage}</div> : null}
 
             {eaEstimate ? (
               <div className="qf-confirm">
@@ -1477,7 +1499,6 @@ export function App() {
                 </div>
               </div>
             ) : null}
-            {eaMessage ? <div className="qf-message">{eaMessage}</div> : null}
 
             {pdConfirm ? (
               <div className="qf-confirm">
@@ -1517,7 +1538,6 @@ export function App() {
                 </div>
               </div>
             ) : null}
-            {pdMessage ? <div className="qf-message">{pdMessage}</div> : null}
             {dsEstimate ? (
               <div className="qf-confirm">
                 <div className="qf-confirm-body">
@@ -1566,7 +1586,6 @@ export function App() {
                 </div>
               </div>
             ) : null}
-            {dsMessage ? <div className="qf-message">{dsMessage}</div> : null}
 
             {/* The current run's discovered dimensions — the axes scoring rates
                 each candidate on. Shown only on the list view, not when a single
@@ -1987,36 +2006,44 @@ export function App() {
           </section>
         </>
       )}
-      {syncError || syncMessage ? (
-        <div
-          className={`toast ${syncError ? "toast-error" : "toast-success"}`}
-          aria-live={syncError ? "assertive" : "polite"}
-          role={syncError ? "alert" : "status"}
-        >
-          <div className="toast-message">{syncError || syncMessage}</div>
-          <div className="toast-actions">
-            {syncError ? (
-              <button
-                className="toast-button"
-                aria-label="Copy sync error"
-                title="Copy sync error"
-                onClick={() => navigator.clipboard.writeText(syncError)}
+      {/* Bottom-right toast stack. Success toasts auto-dismiss; error toasts
+          persist (with a copy button) until the user dismisses them. One
+          mechanism for every workflow step. */}
+      {toasts.length > 0 ? (
+        <div className="toast-stack">
+          {toasts.map((toast) => {
+            const isError = toast.variant === "error";
+            return (
+              <div
+                key={toast.id}
+                className={`toast ${isError ? "toast-error" : "toast-success"}`}
+                aria-live={isError ? "assertive" : "polite"}
+                role={isError ? "alert" : "status"}
               >
-                <Clipboard size={16} />
-              </button>
-            ) : null}
-            <button
-              className="toast-button"
-              aria-label="Dismiss notification"
-              title="Dismiss notification"
-              onClick={() => {
-                setSyncError("");
-                setSyncMessage("");
-              }}
-            >
-              <X size={16} />
-            </button>
-          </div>
+                <div className="toast-message">{toast.message}</div>
+                <div className="toast-actions">
+                  {isError ? (
+                    <button
+                      className="toast-button"
+                      aria-label="Copy error"
+                      title="Copy error"
+                      onClick={() => navigator.clipboard.writeText(toast.message)}
+                    >
+                      <Clipboard size={16} />
+                    </button>
+                  ) : null}
+                  <button
+                    className="toast-button"
+                    aria-label="Dismiss notification"
+                    title="Dismiss notification"
+                    onClick={() => dismissToast(toast.id)}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : null}
     </main>
