@@ -11,7 +11,7 @@ The app has two local development processes:
 1. A FastAPI backend running at `http://localhost:8000`
 2. A Vite React frontend running at `http://localhost:5173`
 
-The frontend is what the user sees in the browser. The backend owns authentication, database access, Google API integration, deterministic screening rules, and later AI integration.
+The frontend is what the user sees in the browser. The backend owns authentication, database access, Google API integration, deterministic screening rules, and AI-assisted screening.
 
 The frontend and backend communicate over HTTP. When authentication is involved, they also share a signed session cookie issued by the backend.
 
@@ -332,6 +332,7 @@ The backend is more complex than the frontend because it owns the trusted parts 
 - Google Sheets reads
 - application import and normalization
 - deterministic screening rules
+- AI-assisted screening (quality flags)
 - API responses consumed by the React frontend
 
 The backend is deliberately split into layers. The layers are not fancy; they are mostly there so each file has a clear job.
@@ -343,6 +344,7 @@ app/db/        database models and sessions
 app/domain/    pure business rules
 app/schemas/   request/response data shapes
 app/services/  reusable application operations
+app/ai/        AI-assisted screening (provider, caching, quality flags)
 ```
 
 Current important files:
@@ -802,6 +804,21 @@ Current tests cover all deterministic screening rules including child age limits
 
 This file is a good place to read if you want to understand the business rules without web-framework noise.
 
+### AI Quality Flags
+
+On top of the deterministic hard filters, the app runs an **AI quality-flag pass**. It reviews each application for data-integrity concerns — placeholder-looking names, non-responsive essays, pet descriptions that conflict with the co-op policy, obviously fake contact details — and surfaces them as informational notices for a human screener.
+
+Two things keep this bounded:
+
+- **Flags never decide eligibility.** The hard filters decide; AI only annotates. A flagged application moves into a "needs review" bucket, not a rejection.
+- **Machines never overwrite humans.** A human-set status is sticky across re-runs.
+
+The AI code lives in `backend/app/ai/` and is built around a provider boundary: the app depends on an `AIProvider` interface, with the real implementation backed by the Strands SDK on Amazon Bedrock (Claude Haiku 4.5) and a `MockProvider` used in tests so they run with no AWS access. Results are cached by a content + model + prompt-version hash, and every run is cost-estimated and capped before it starts.
+
+The pass runs applications **concurrently** through a thread pool (the model call is a slow, blocking network round-trip), streaming progress back to the browser as NDJSON. The design rule is that only the model call runs in worker threads; all database access stays on the request thread, so the SQLAlchemy session is never shared.
+
+This section is a summary. The full pipeline — provider boundary, structured output, caching, cost cap, the flags-to-status model, and the concurrency design — is documented in **[ai-screening.md](ai-screening.md)**.
+
 The main function is:
 
 ```py
@@ -880,6 +897,8 @@ The tests are deliberately focused:
 - `test_auth.py`: auth endpoint expectations.
 - `test_dashboard.py`: dashboard access expectations.
 - `test_health.py`: health endpoint.
+- `test_ai_analysis.py`: AI caching, cost estimate, and spending-cap behavior.
+- `test_quality_flags.py` / `test_quality_flags_api.py`: the AI quality-flag pass, including its concurrency and failure-isolation contracts.
 
 The most important tests right now are the hard-filter and application-import tests, because those protect the screening behavior.
 
@@ -965,13 +984,11 @@ npm run build
 Current expected backend test result:
 
 ```text
-25 passed
+78 passed
 ```
 
 ## Next Architecture Step
 
-The current feature set now includes Google Sheets sync, deterministic hard filters, application tables, searchable/filterable views, candidate detail pages, filtered-out reason display, and admin-only raw row inspection.
+The current feature set includes Google Sheets sync, deterministic hard filters, application tables, searchable/filterable views, candidate detail pages, filtered-out reason display, admin-only raw row inspection, and the AI quality-flag pass (see [ai-screening.md](ai-screening.md)).
 
-The next planned product area is AI quality flags, but implementation should wait until the current application review surfaces have had one more product pass. That pass may adjust the dashboard, table, detail view, or screening workflow before AI-generated notices are added on top.
-
-When AI quality flags begin, they should land as informational, reviewable notices on eligible candidate detail pages rather than as hard-filter outcomes.
+The next planned product areas build on the AI foundation: per-candidate essay analysis, and an interactive stack-ranking assistant that ranks the full applicant pool with per-row rationale. Both reuse the provider boundary, caching, and cost-cap machinery already in `app/ai/`.
