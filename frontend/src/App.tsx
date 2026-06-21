@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronLeft, ChevronUp, Clipboard, LogIn, LogOut, RefreshCw, Sparkles, X } from "lucide-react";
-import { type SyntheticEvent, useEffect, useState } from "react";
+import { type ReactNode, type SyntheticEvent, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { HouseIcon } from "./HouseIcon";
 
@@ -94,6 +94,21 @@ type QualityFlag = {
   evidence: string;
 };
 
+// Neutral factual extraction across the four essays (milestone 6). Mirrors the
+// backend EssayAnalysisReport. Informational only — never affects status.
+type EssayAnalysis = {
+  summary: string;
+  household_context: string | null;
+  employment_background: string | null;
+  interests: string[];
+  values: string[];
+  skills_offered: string[];
+  prior_co_op_experience: string | null;
+  stated_motivations: string[];
+  stated_contributions: string[];
+  evidence: string[];
+};
+
 type ApplicationDetail = ApplicationSummary & {
   normalized: Record<string, unknown>;
   essays: Essay[];
@@ -102,6 +117,10 @@ type ApplicationDetail = ApplicationSummary & {
   rawRow?: Record<string, unknown>;
   // The model's free-text reasoning from the latest quality-flag pass.
   aiNarrative?: string | null;
+  // null = essay-analysis pass not yet run for this application.
+  essayAnalysis?: EssayAnalysis | null;
+  // The model's free-text reasoning from the latest essay-analysis pass.
+  essayAnalysisNarrative?: string | null;
 };
 
 type QualityFlagEstimate = {
@@ -209,6 +228,35 @@ function qfPercent(progress: { processed: number; total: number }): number {
   return (progress.processed / progress.total) * 100;
 }
 
+// Render one essay-analysis prose field as a dt/dd row, omitted when the model
+// captured nothing for it (null = "applicant did not address this").
+function renderEssayText(label: string, value: string | null): ReactNode {
+  if (!value) return null;
+  return (
+    <div className="essay-analysis-field">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+// Render one essay-analysis list field as chips, omitted when empty.
+function renderEssayChips(label: string, values: string[]): ReactNode {
+  if (!values || values.length === 0) return null;
+  return (
+    <div className="essay-analysis-field">
+      <dt>{label}</dt>
+      <dd className="essay-analysis-chips">
+        {values.map((value, i) => (
+          <span key={i} className="essay-analysis-chip">
+            {value}
+          </span>
+        ))}
+      </dd>
+    </div>
+  );
+}
+
 // The configured sheet id from a server response: prefer the resolved URL, falling
 // back to the bare id. Returns "" when no sheet is configured.
 function resolveSheetId(payload: SettingsResponse): string {
@@ -300,6 +348,13 @@ export function App() {
   const [qfMessage, setQfMessage] = useState("");
   // Live progress while the run streams: processed/total applications.
   const [qfProgress, setQfProgress] = useState<{ processed: number; total: number } | null>(null);
+
+  // Essay-analysis run flow, mirroring the quality-flag flow above. Same
+  // estimate-confirm-stream shape; informational pass (no flagged count).
+  const [eaEstimate, setEaEstimate] = useState<QualityFlagEstimate | null>(null);
+  const [eaRunning, setEaRunning] = useState(false);
+  const [eaMessage, setEaMessage] = useState("");
+  const [eaProgress, setEaProgress] = useState<{ processed: number; total: number } | null>(null);
 
 
   useEffect(() => {
@@ -587,6 +642,69 @@ export function App() {
     }
     setQfProgress(null);
     setQfRunning(false);
+  }
+
+  // Essay-analysis run flow, mirroring quality flags. Same estimate-then-confirm
+  // cost control; this pass is informational and never changes status.
+  async function requestEssayAnalysisEstimate() {
+    setEaMessage("");
+    const response = await fetch(`${apiBaseUrl}/essay-analysis/estimate`, { credentials: "include" });
+    if (response.ok) {
+      setEaEstimate(await response.json());
+    } else {
+      setEaMessage("Could not load the AI cost estimate.");
+    }
+  }
+
+  async function runEssayAnalysis() {
+    setEaRunning(true);
+    setEaMessage("");
+    setEaEstimate(null);
+    setEaProgress(null);
+    try {
+      const response = await fetch(`${apiBaseUrl}/essay-analysis/run`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!response.ok || !response.body) {
+        const payload = await response.json().catch(() => null);
+        setEaMessage(payload?.detail ? `Run failed: ${formatErrorDetail(payload.detail)}` : "Run failed.");
+      } else {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            const event = JSON.parse(line);
+            if (event.type === "progress") {
+              setEaProgress({ processed: event.processed, total: event.total });
+            } else if (event.type === "summary") {
+              const failedNote = event.failed
+                ? ` ${event.failed} failed and were skipped.`
+                : "";
+              setEaMessage(
+                `Essay analysis complete: ${event.analyzed + event.cached} analyzed ` +
+                  `($${event.totalCostUsd.toFixed(4)}).` +
+                  failedNote,
+              );
+            }
+          }
+        }
+        // Refresh the open candidate so the new analysis shows immediately.
+        // Status/counts are unaffected by this pass, so no dashboard refresh.
+        if (selectedApp) viewApplication(selectedApp.id);
+      }
+    } catch (error) {
+      setEaMessage(error instanceof Error ? `Run error: ${error.message}` : "Run error.");
+    }
+    setEaProgress(null);
+    setEaRunning(false);
   }
 
   // Human override of an application's status (any committee member). The backend
@@ -913,6 +1031,29 @@ export function App() {
                   </span>
                 </button>
                 <button
+                  className={`secondary-button${eaRunning ? " is-busy" : ""}`}
+                  type="button"
+                  onClick={requestEssayAnalysisEstimate}
+                  // Disabled while running, while its estimate confirmation is
+                  // open, or when there are no eligible applicants to analyze.
+                  disabled={
+                    eaRunning ||
+                    eaEstimate !== null ||
+                    dashboardCounts.submitted === 0 ||
+                    dashboardCounts.status.eligible === 0
+                  }
+                >
+                  <Sparkles size={16} />
+                  <span>
+                    {eaRunning
+                      ? eaProgress
+                        ? `Analyzing ${eaProgress.processed}/${eaProgress.total} ` +
+                          `(${Math.round(qfPercent(eaProgress))}%)`
+                        : "Analyzing essays"
+                      : "Analyze essays"}
+                  </span>
+                </button>
+                <button
                   className={`primary-button${isSyncing ? " is-busy" : ""}`}
                   type="button"
                   onClick={syncApplications}
@@ -979,6 +1120,59 @@ export function App() {
               </div>
             ) : null}
             {qfMessage ? <div className="qf-message">{qfMessage}</div> : null}
+
+            {eaEstimate ? (
+              <div className="qf-confirm">
+                <div className="qf-confirm-body">
+                  <strong>Run AI essay analysis?</strong>
+                  <p>
+                    Analyze the essays of {eaEstimate.to_analyze} eligible applicant
+                    {eaEstimate.to_analyze === 1 ? "" : "s"}
+                    {eaEstimate.cached > 0 ? ` (${eaEstimate.cached} already cached)` : ""}. Estimated cost{" "}
+                    <strong>${eaEstimate.estimated_usd.toFixed(4)}</strong> (cap ${eaEstimate.cap_usd.toFixed(2)}).
+                  </p>
+                  {!eaEstimate.within_cap ? (
+                    <p className="qf-confirm-warn">
+                      Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
+                    </p>
+                  ) : null}
+                </div>
+                <div className="qf-confirm-actions">
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={runEssayAnalysis}
+                    disabled={eaRunning || !eaEstimate.within_cap}
+                  >
+                    {eaRunning ? "Running" : "Confirm & run"}
+                  </button>
+                  <button className="secondary-button" type="button" onClick={() => setEaEstimate(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {eaRunning ? (
+              <div className="qf-progress">
+                <div className="qf-progress-label">
+                  {eaProgress
+                    ? `Analyzing essays… ${eaProgress.processed}/${eaProgress.total} ` +
+                      `(${Math.round(qfPercent(eaProgress))}%)`
+                    : "Starting analysis…"}
+                </div>
+                <div className="qf-progress-track">
+                  {eaProgress ? (
+                    <div
+                      className="qf-progress-fill"
+                      style={{ width: `${qfPercent(eaProgress)}%` }}
+                    />
+                  ) : (
+                    <div className="qf-progress-fill qf-progress-fill-indeterminate" />
+                  )}
+                </div>
+              </div>
+            ) : null}
+            {eaMessage ? <div className="qf-message">{eaMessage}</div> : null}
 
             {selectedApp ? (() => {
               const flaggedFields = new Set(
@@ -1069,6 +1263,25 @@ export function App() {
                 ) : selectedApp.qualityFlags ? (
                   <p className="quality-flags-clean">AI quality checks found no concerns.</p>
                 ) : null}
+                {selectedApp.essayAnalysis ? (
+                  <div className="essay-analysis">
+                    <h4>AI essay summary</h4>
+                    <p className="essay-analysis-hint">
+                      A neutral digest of what the applicant wrote. It describes what they said, not how good it is.
+                    </p>
+                    <p className="essay-analysis-summary">{selectedApp.essayAnalysis.summary}</p>
+                    <dl className="essay-analysis-fields">
+                      {renderEssayText("Household", selectedApp.essayAnalysis.household_context)}
+                      {renderEssayText("Employment", selectedApp.essayAnalysis.employment_background)}
+                      {renderEssayText("Prior co-op experience", selectedApp.essayAnalysis.prior_co_op_experience)}
+                      {renderEssayChips("Skills offered", selectedApp.essayAnalysis.skills_offered)}
+                      {renderEssayChips("Stated contributions", selectedApp.essayAnalysis.stated_contributions)}
+                      {renderEssayChips("Motivations", selectedApp.essayAnalysis.stated_motivations)}
+                      {renderEssayChips("Interests", selectedApp.essayAnalysis.interests)}
+                      {renderEssayChips("Values", selectedApp.essayAnalysis.values)}
+                    </dl>
+                  </div>
+                ) : null}
                 {selectedApp.essays?.some((essay) => essay.answer) ? (
                   <div className="app-detail-essays">
                     <h4>Essay responses</h4>
@@ -1106,9 +1319,17 @@ export function App() {
                 ) : null}
                 {selectedApp.aiNarrative ? (
                   <details className="raw-row-section">
-                    <summary>Raw AI narrative</summary>
+                    <summary>Raw AI narrative (quality flags)</summary>
                     <div className="ai-narrative">
                       <ReactMarkdown>{selectedApp.aiNarrative}</ReactMarkdown>
+                    </div>
+                  </details>
+                ) : null}
+                {selectedApp.essayAnalysisNarrative ? (
+                  <details className="raw-row-section">
+                    <summary>Raw AI narrative (essay analysis)</summary>
+                    <div className="ai-narrative">
+                      <ReactMarkdown>{selectedApp.essayAnalysisNarrative}</ReactMarkdown>
                     </div>
                   </details>
                 ) : null}

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
 from pydantic import BaseModel
@@ -22,7 +24,7 @@ from app.db.models import Application, ApplicationAIResult
 
 # Bump when a prompt or schema changes so cached results from the old version
 # are not reused.
-PROMPT_VERSION = "8"
+PROMPT_VERSION = "9"
 
 
 class SpendingCapExceeded(Exception):
@@ -237,6 +239,99 @@ def analyze_application(
         system_prompt=system_prompt,
     )
     return store_result(db, application, kind=kind, model_id=model_id, result=result)
+
+
+@dataclass(frozen=True)
+class ScreeningResult:
+    """One application's result from a screening pass, streamed as it completes."""
+
+    application: Application
+    outcome: AnalysisOutcome | None  # None when the model call failed
+    error: str | None = None
+
+    @property
+    def failed(self) -> bool:
+        return self.outcome is None
+
+
+def screen_applications(
+    db: Session,
+    provider: AIProvider,
+    *,
+    applications: list[Application],
+    kind: str,
+    schema: type[BaseModel],
+    model_id: str,
+    build_prompt: Callable[[Application], str],
+    system_prompt: str | None = None,
+    max_workers: int,
+    on_result: Callable[[Application, AnalysisOutcome], None] | None = None,
+) -> Iterator[ScreeningResult]:
+    """Run a cached AI pass over ``applications``, yielding each result as it
+    completes (cached results first, then model results in completion order).
+
+    The shared engine behind every screening pass (quality flags, essay
+    analysis, …). Only the blocking model call runs in worker threads; every DB
+    and ORM access — cache lookup, prompt building, persistence, and the
+    ``on_result`` hook — stays on this (the caller's) thread, so the session is
+    never shared. Workers receive a plain prompt string and return a
+    session-free result. A failed call yields a ``ScreeningResult`` with an
+    error rather than aborting the batch.
+
+    ``on_result`` is an optional side effect run on the caller's thread for each
+    successful outcome (e.g. quality flags applying status). Passes that are
+    purely informational, like essay analysis, omit it.
+    """
+
+    def finish(application: Application, outcome: AnalysisOutcome) -> ScreeningResult:
+        if on_result is not None:
+            on_result(application, outcome)
+        return ScreeningResult(application=application, outcome=outcome)
+
+    # Cache lookups and prompt building touch the ORM, so do them here, up front.
+    # Cached applications are finished immediately; the rest are queued for the
+    # pool with a prebuilt prompt.
+    pending: list[tuple[Application, str]] = []
+    for application in applications:
+        cached = cached_outcome(
+            db, application, kind=kind, schema=schema, model_id=model_id
+        )
+        if cached is not None:
+            yield finish(application, cached)
+        else:
+            pending.append((application, build_prompt(application)))
+
+    if not pending:
+        return
+
+    def call_model(prompt: str) -> AIResult:
+        # Pure: no session, no ORM — safe to run in a worker thread.
+        return provider.structured_output(
+            model_id=model_id,
+            schema=schema,
+            prompt=prompt,
+            system_prompt=system_prompt,
+        )
+
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(pending))) as pool:
+        futures = {
+            pool.submit(call_model, prompt): application
+            for application, prompt in pending
+        }
+        # as_completed (not map) so a slow call never holds back faster ones.
+        for future in as_completed(futures):
+            application = futures[future]
+            try:
+                result = future.result()
+            except Exception as exc:  # noqa: BLE001 — one app's failure is isolated
+                yield ScreeningResult(
+                    application=application, outcome=None, error=str(exc)
+                )
+                continue
+            outcome = store_result(
+                db, application, kind=kind, model_id=model_id, result=result
+            )
+            yield finish(application, outcome)
 
 
 def enforce_cap(estimate: dict[str, object], cap_usd: float) -> None:

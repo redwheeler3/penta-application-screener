@@ -7,32 +7,31 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.ai.analysis import SpendingCapExceeded, enforce_cap
-from app.ai.provider import AIProvider
-from app.ai.quality_flags import (
-    ScreeningResult,
+from app.ai.analysis import ScreeningResult, SpendingCapExceeded, enforce_cap
+from app.ai.essay_analysis import (
     applications_to_analyze,
-    estimate_quality_flags,
-    screen_quality_flags,
+    estimate_essay_analysis,
+    screen_essays,
 )
+from app.ai.provider import AIProvider
 from app.api.dependencies import get_ai_provider, require_current_user
 from app.db.models import User
 from app.db.session import get_db
 from app.schemas.settings import AppSettings
 from app.services.settings import get_app_settings
 
-router = APIRouter(prefix="/quality-flags", tags=["quality-flags"])
+router = APIRouter(prefix="/essay-analysis", tags=["essay-analysis"])
 
 
 @dataclass
 class RunTally:
-    """Running totals for a quality-flag run, fed one screening result at a time
-    and emitted as the final summary line.
+    """Running totals for an essay-analysis run, fed one result at a time and
+    emitted as the final summary line. Essay analysis is informational, so there
+    is no flagged/status count — just analyzed/cached/failed and cost.
     """
 
     analyzed: int = 0
     cached: int = 0
-    flagged: int = 0
     failed: int = 0
     cost_usd: float = 0.0
 
@@ -45,8 +44,6 @@ class RunTally:
         else:
             self.analyzed += 1
         self.cost_usd += result.outcome.cost_usd
-        if result.outcome.output.flags:
-            self.flagged += 1
 
 
 @router.get("/estimate")
@@ -55,7 +52,7 @@ def estimate(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     settings: AppSettings = get_app_settings(db)
-    result = estimate_quality_flags(db, settings)
+    result = estimate_essay_analysis(db, settings)
     result["cap_usd"] = settings.ai.spending_cap_usd
     result["within_cap"] = float(result["estimated_usd"]) <= settings.ai.spending_cap_usd
     return result
@@ -67,16 +64,16 @@ def run(
     db: Session = Depends(get_db),
     provider: AIProvider = Depends(get_ai_provider),
 ) -> StreamingResponse:
-    """Run quality flags over the candidate applications, streaming progress.
+    """Run essay analysis over the eligible applications, streaming progress.
 
     Responds as newline-delimited JSON (NDJSON): one ``{"type":"progress",...}``
     line per application as it finishes, then a final ``{"type":"summary",...}``
     line. The cap is enforced before streaming starts, so an over-cap run still
-    fails fast with a 402.
+    fails fast with a 402. This pass is informational and never changes status.
     """
     settings: AppSettings = get_app_settings(db)
 
-    estimate_result = estimate_quality_flags(db, settings)
+    estimate_result = estimate_essay_analysis(db, settings)
     try:
         enforce_cap(estimate_result, settings.ai.spending_cap_usd)
     except SpendingCapExceeded as exc:
@@ -88,7 +85,7 @@ def run(
     def stream() -> Iterator[str]:
         total = len(applications)
         tally = RunTally()
-        results = screen_quality_flags(
+        results = screen_essays(
             db,
             provider,
             applications=applications,
@@ -107,7 +104,7 @@ def run(
                     }
                 ) + "\n"
             yield json.dumps(
-                {"type": "progress", "processed": processed, "total": total, "flagged": tally.flagged}
+                {"type": "progress", "processed": processed, "total": total}
             ) + "\n"
 
         yield json.dumps(
@@ -115,7 +112,6 @@ def run(
                 "type": "summary",
                 "analyzed": tally.analyzed,
                 "cached": tally.cached,
-                "flagged": tally.flagged,
                 "failed": tally.failed,
                 "totalCostUsd": round(tally.cost_usd, 4),
             }

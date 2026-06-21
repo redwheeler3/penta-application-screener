@@ -1,8 +1,10 @@
 # AI Screening
 
-This document explains how AI-assisted screening works: the quality-flag pass that reviews applications for data-integrity concerns, how results are cached and cost-capped, and how the pass runs many applications concurrently.
+This document explains how AI-assisted screening works: the **quality-flag pass** that reviews applications for data-integrity concerns and the **essay-analysis pass** that extracts what applicants said in their essays, how results are cached and cost-capped, and how each pass runs many applications concurrently.
 
 It is a companion to [app-architecture.md](app-architecture.md). The architecture doc gives the one-paragraph summary; this doc is the depth.
+
+Both passes are built on one shared engine (`app/ai/analysis.py`): the same caching, cost estimate, spending cap, narrative capture, and the concurrent `screen_applications` loop. They differ only in their schema, prompt, scope, and whether they affect status. Most of this doc describes the quality-flag pass in detail; the [Essay Analysis](#essay-analysis) section covers how the second pass differs.
 
 ## What It Is, And What It Is Not
 
@@ -43,15 +45,16 @@ The AI code lives in `backend/app/ai/`:
 - `provider.py` — the provider-agnostic interface. The rest of the app depends on `AIProvider` (a Protocol), never on a vendor SDK directly. Defines `AIResult` (output + token usage + optional narrative) and `Usage`.
 - `strands_provider.py` — the real implementation, backed by the Strands Agents SDK on Amazon Bedrock.
 - `mock_provider.py` — a deterministic in-memory provider for tests and offline development. No AWS access.
-- `analysis.py` — the shared engine: cache key, cache read/write, cost estimate, and spending-cap enforcement. Provider-agnostic.
-- `quality_flags.py` — the quality-flag pass itself: prompt building, which applications to analyze, and the concurrent orchestrator.
-- `schemas.py` — the structured-output contract (`QualityFlagReport` and its `QualityFlag` items). One definition shared by prompt, storage, API, and UI.
+- `analysis.py` — the shared engine: cache key, cache read/write, cost estimate, spending-cap enforcement, and the concurrent `screen_applications` loop both passes run through. Provider-agnostic.
+- `quality_flags.py` — the quality-flag pass: prompt building, which applications to analyze, and status application via the shared engine.
+- `essay_analysis.py` — the essay-analysis pass (milestone 6): prompt building and eligible-only scope, run through the same shared engine, status-independent.
+- `schemas.py` — the structured-output contracts (`QualityFlagReport`, `EssayAnalysisReport`). One definition each, shared by prompt, storage, API, and UI.
 - `pricing.py` — Bedrock token prices, used for cost estimates and the cap.
 
-Plus one HTTP route module and one domain module:
+Plus HTTP route modules and one domain module:
 
-- `app/api/quality_flags.py` — the `/quality-flags/estimate` and `/quality-flags/run` endpoints.
-- `app/domain/status.py` — how flags translate into an application's eligibility status.
+- `app/api/quality_flags.py` and `app/api/essay_analysis.py` — the `/quality-flags/*` and `/essay-analysis/*` endpoints. Both depend on the shared `get_ai_provider` in `app/api/dependencies.py`.
+- `app/domain/status.py` — how quality flags translate into an application's eligibility status (the essay pass does not touch status).
 
 ## The Provider Boundary
 
@@ -154,7 +157,7 @@ This is why re-running the pass is safe and can revise a verdict in *either* dir
 
 The model call is the slow part — a blocking, multi-second Bedrock round-trip. Everything else (cache lookup, prompt building, persistence, status) is sub-millisecond. So screening ~300 applications one-at-a-time spent almost all its wall-clock waiting on the network, serially.
 
-`screen_quality_flags` runs the model calls concurrently through a `ThreadPoolExecutor` (default 50 workers). The design rule that makes this safe and simple:
+The shared `screen_applications` loop (in `analysis.py`, used by both passes) runs the model calls concurrently through a `ThreadPoolExecutor` (default 50 workers). The design rule that makes this safe and simple:
 
 > **Workers do only the pure model call. Every database and ORM access stays on the request thread.**
 
@@ -202,6 +205,20 @@ The connection client is configured with **adaptive retries** (`mode="adaptive"`
 
 The route keeps a small `RunTally` of the counts and emits the summary at the end. The frontend reads the stream incrementally, updating a progress indicator and, on completion, showing how many were flagged, how much it cost, and how many (if any) failed.
 
+## Essay Analysis
+
+The essay-analysis pass (milestone 6, `app/ai/essay_analysis.py`) is the second AI pass. It reads a candidate's four essays and extracts **what they said** into a fixed, normalized schema (`EssayAnalysisReport`) plus a neutral committee-facing summary. It reuses everything in this doc — the provider boundary, structured output, caching (keyed `kind="essay_analysis"`), cost estimate, spending cap, narrative, and the concurrent `screen_applications` loop — through the same shared engine.
+
+How it differs from quality flags:
+
+- **It extracts, it does not judge.** One field per thing the essay questions ask for (household, employment, interests, values, skills, prior co-op experience, motivations, contributions), each describing what the applicant said — never how good it is. Evaluation against discovered criteria is the milestone 7 ranker's job; if this pass pre-committed judgment on fixed dimensions it would defeat that discovery. See SPEC "Essay Analysis (Milestone 6)".
+- **It never touches status.** Unlike quality flags, it does not call `apply_machine_status` — there is no `on_result` hook on its `screen_applications` call. It is purely informational. (Its summary line therefore has no `flagged` count.)
+- **Scope is eligible-only.** There is no value in summarizing essays for disqualified applicants; quality flags use a broader scope because they can *change* status, which this pass cannot.
+- **It is additive, not a replacement.** The raw essays and form fields are preserved, so the ranker reads the source directly for anything the fixed schema did not capture. No catch-all field — cross-cutting nuance goes in the `summary`.
+- **Model:** the first-pass model (Haiku 4.5), confirmed adequate by validating real essays — the summaries were neutral, grounded, and correctly structured, so no Sonnet upgrade was needed. Revisit empirically if real output ever reads thin.
+
+Endpoints (`/essay-analysis/estimate`, `/essay-analysis/run`) and the streamed NDJSON mirror the quality-flag pass, minus the `flagged` count. The summary and structured fields render on the candidate detail page; the raw model reasoning is in a debug section alongside the quality-flag narrative.
+
 ## Configuration
 
 AI settings live under `ai` in the admin settings (`app/schemas/settings.py`):
@@ -219,5 +236,7 @@ The other `ai` fields (region, model IDs) are config-only too. The frontend stil
 - `test_ai_analysis.py` — pricing, cache key, cache miss-then-hit, cost estimate, cap enforcement.
 - `test_quality_flags.py` — prompt building, which applications are analyzed, status application, plus the concurrency contracts: that calls genuinely run in parallel (a thread barrier proves it) and that a failed call is isolated from the batch.
 - `test_quality_flags_api.py` — the streamed run end-to-end with `MockProvider`: status transitions, the needs-review bucket, member-visible raw row and narrative, member status override, and facet counts.
+- `test_essay_analysis.py` — the essay pass: eligible-only scope, prompt building, that it does *not* change status, caching, and the concurrent screen.
+- `test_essay_analysis_api.py` — the streamed run end-to-end: member access, summary counts (no `flagged`), status untouched, and the analysis surfacing on the detail page (null before a run).
 
 `MockProvider` supports two ways to supply results: a FIFO `queue` (for count-only assertions) and content-routed `route` (bind a specific verdict to a specific application by a marker in its prompt). Routing exists because, under real concurrency, calls do not complete in submission order — so a test that needs a particular application to be flagged keys on content, not order.
