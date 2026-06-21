@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import require_admin, require_current_user
+from app.api.dependencies import require_current_user
 from app.db.models import (
     Application,
     ApplicationAIResult,
@@ -139,7 +139,7 @@ def _sort_key(value: Any, descending: bool) -> tuple[int, Any]:
 @router.get("/{application_id}")
 def get_application(
     application_id: int,
-    user: User = Depends(require_current_user),
+    _: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     application = db.get(Application, application_id)
@@ -147,7 +147,7 @@ def get_application(
         raise HTTPException(status_code=404, detail="Application not found.")
 
     result: dict[str, Any] = {
-        "application": _serialize_detail(application, db, include_raw=user.role == "admin")
+        "application": _serialize_detail(application, db)
     }
     return result
 
@@ -160,14 +160,16 @@ class StatusOverride(BaseModel):
 def override_status(
     application_id: int,
     body: StatusOverride,
-    user: User = Depends(require_admin),
+    _: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Human override of an application's status.
 
-    Sets status_source to human (sticky against future machine runs) and snapshots
-    the current findings fingerprint, so later runs that change the findings mark
-    the application stale. Machine reason/flag records are never altered.
+    Any committee member (not only admins) may set an application's status — the
+    whole tool exists for members to make these judgments. Sets status_source to
+    human (sticky against future machine runs) and snapshots the current findings
+    fingerprint, so later runs that change the findings mark the application
+    stale. Machine reason/flag records are never altered.
     """
     application = db.get(Application, application_id)
     if application is None:
@@ -183,7 +185,7 @@ def override_status(
     db.refresh(application)
 
     return {
-        "application": _serialize_detail(application, db, include_raw=user.role == "admin")
+        "application": _serialize_detail(application, db)
     }
 
 
@@ -251,17 +253,17 @@ def _latest_quality_flag_results(
     return latest
 
 
-def _serialize_detail(
-    app: Application, db: Session, include_raw: bool = False
-) -> dict[str, Any]:
+def _serialize_detail(app: Application, db: Session) -> dict[str, Any]:
+    # The raw source row and AI narrative are shown to any committee member, not
+    # only admins: members are trusted screeners, and these are just the source
+    # and reasoning behind data the member already sees.
     ai_result = _latest_quality_flag_results(db, [app.id]).get(app.id)
     flags = (ai_result.output or {}).get("flags", []) if ai_result else None
     detail = _serialize_summary(app, flags=flags)
     detail["normalized"] = app.normalized
     detail["essays"] = extract_essays(app.raw_row or {})
     detail["qualityFlags"] = flags
-    if include_raw:
-        detail["rawRow"] = app.raw_row
-        if ai_result is not None:
-            detail["aiNarrative"] = ai_result.narrative
+    detail["rawRow"] = app.raw_row
+    if ai_result is not None:
+        detail["aiNarrative"] = ai_result.narrative
     return detail
