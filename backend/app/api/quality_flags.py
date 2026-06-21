@@ -1,5 +1,6 @@
 import json
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.ai.analysis import SpendingCapExceeded, enforce_cap
 from app.ai.provider import AIProvider
 from app.ai.quality_flags import (
+    ScreeningResult,
     applications_to_analyze,
     estimate_quality_flags,
     screen_quality_flags,
@@ -21,6 +23,31 @@ from app.schemas.settings import AppSettings
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/quality-flags", tags=["quality-flags"])
+
+
+@dataclass
+class RunTally:
+    """Running totals for a quality-flag run, fed one screening result at a time
+    and emitted as the final summary line.
+    """
+
+    analyzed: int = 0
+    cached: int = 0
+    flagged: int = 0
+    failed: int = 0
+    cost_usd: float = 0.0
+
+    def add(self, result: ScreeningResult) -> None:
+        if result.failed:
+            self.failed += 1
+            return
+        if result.outcome.cached:
+            self.cached += 1
+        else:
+            self.analyzed += 1
+        self.cost_usd += result.outcome.cost_usd
+        if result.outcome.output.flags:
+            self.flagged += 1
 
 
 def get_ai_provider(db: Session = Depends(get_db)) -> AIProvider:
@@ -72,9 +99,7 @@ def run(
 
     def stream() -> Iterator[str]:
         total = len(applications)
-        analyzed = cached = flagged = failed = 0
-        processed = 0
-        total_cost = 0.0
+        tally = RunTally()
         results = screen_quality_flags(
             db,
             provider,
@@ -82,11 +107,10 @@ def run(
             settings=settings,
             max_workers=settings.ai.max_workers,
         )
-        for result in results:
-            processed += 1
-            if result.outcome is None:
-                # The model call failed for this one; surface it and keep going.
-                failed += 1
+        for processed, result in enumerate(results, start=1):
+            tally.add(result)
+            if result.failed:
+                # Surface the failed application, then keep streaming the rest.
                 yield json.dumps(
                     {
                         "type": "error",
@@ -94,26 +118,18 @@ def run(
                         "message": result.error,
                     }
                 ) + "\n"
-            else:
-                if result.outcome.cached:
-                    cached += 1
-                else:
-                    analyzed += 1
-                total_cost += result.outcome.cost_usd
-                if result.outcome.output.flags:
-                    flagged += 1
             yield json.dumps(
-                {"type": "progress", "processed": processed, "total": total, "flagged": flagged}
+                {"type": "progress", "processed": processed, "total": total, "flagged": tally.flagged}
             ) + "\n"
 
         yield json.dumps(
             {
                 "type": "summary",
-                "analyzed": analyzed,
-                "cached": cached,
-                "flagged": flagged,
-                "failed": failed,
-                "totalCostUsd": round(total_cost, 4),
+                "analyzed": tally.analyzed,
+                "cached": tally.cached,
+                "flagged": tally.flagged,
+                "failed": tally.failed,
+                "totalCostUsd": round(tally.cost_usd, 4),
             }
         ) + "\n"
 
