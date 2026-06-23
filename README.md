@@ -132,3 +132,7 @@ npm run build
 ## Status
 
 This is an active MVP. It is useful today for local screening workflows, but it is not yet a hosted multi-user production system.
+
+## License
+
+This project is licensed under the **Apache License 2.0**. See [LICENSE](LICENSE).
