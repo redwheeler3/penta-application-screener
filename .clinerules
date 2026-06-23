@@ -14,6 +14,7 @@ This file is the shared working agreement for Codex, Cline, and any other agent 
 
 - Keep the product specification current as decisions are made.
 - Treat `SPEC.md` as the product source of truth; update it when behavior, architecture, or milestone scope changes.
+- **Actively capture durable "gems."** When Jeff corrects you, confirms an approach, states a preference, or surfaces a decision that will matter beyond this conversation, write it down — don't let it evaporate. There's no auto-memory prompting you to do this, so it's on you to notice and record.
 - Do not rely on agent-private memory for anything that should persist. Durable knowledge lives in the repo where any agent or human can read it: product decisions, architecture, and milestone scope go in `SPEC.md`; deeper implementation walkthroughs go in `docs/`; collaboration and engineering rules (including recurring gotchas) go in this file. If a decision is worth remembering, write it to one of these, not to a private store.
 - Prefer asking clarifying questions before implementing unclear product behavior.
 - When asking product or architecture questions, briefly explain meaningful tradeoffs where appropriate so Jeff can make informed decisions.
