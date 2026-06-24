@@ -1861,19 +1861,21 @@ export function App() {
                                   {candidate.band}
                                 </span>
                               </div>
-                              {topContributions.length > 0 ? (
-                                <p className="ranking-rationale">
-                                  {topContributions[0].rationale}
-                                </p>
-                              ) : null}
-                              <div className="ranking-dimensions">
+                              <div className="ranking-contributions">
                                 {topContributions.map((c) => (
-                                  <span key={c.dimension_key} className="ranking-dim-chip">
-                                    {c.name}
-                                    <span className={`dim-confidence conf-${c.confidence}`}>
-                                      {c.confidence}
+                                  <div key={c.dimension_key} className="ranking-contribution">
+                                    <span className="ranking-dim-chip">
+                                      {c.name}
+                                      <span className={`dim-confidence conf-${c.confidence}`}>
+                                        {c.confidence}
+                                      </span>
                                     </span>
-                                  </span>
+                                    {c.rationale ? (
+                                      <span className="ranking-contribution-rationale">
+                                        {c.rationale}
+                                      </span>
+                                    ) : null}
+                                  </div>
                                 ))}
                               </div>
                             </div>
