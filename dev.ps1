@@ -47,9 +47,11 @@ function Stop-ProcessTree {
 }
 
 try {
+    Write-Host "Starting backend on http://localhost:8000 ..."
     $backend = Start-Process -NoNewWindow -PassThru -WorkingDirectory "$PSScriptRoot\backend" `
         -FilePath "uv" -ArgumentList "run", "fastapi", "dev", "app/main.py"
 
+    Write-Host "Starting frontend on http://localhost:5173 ..."
     $frontend = Start-Process -NoNewWindow -PassThru -WorkingDirectory "$PSScriptRoot\frontend" `
         -FilePath "pwsh" -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "npm run dev"
 
