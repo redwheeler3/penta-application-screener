@@ -206,11 +206,11 @@ The screening rules system is a configurable rules engine. Each rule is a discre
 
 Each rule has:
 
-- **ID**: machine-readable slug (e.g. `real_estate_ownership`, `child_age_over_18`)
+- **ID**: machine-readable slug (e.g. `real_estate_ownership`, `child_age_over_max`)
 - **Display name**: human-readable label shown in the admin UI (e.g. "Real estate ownership")
 - **Description**: explains what the rule checks and why
 - **Outcome**: `filtered_out` (the only outcome — any rule that fires disqualifies)
-- **Parameters**: configurable thresholds or values (e.g. income min/max, max adults, max pets). Not all rules have parameters.
+- **Parameters**: configurable thresholds or values (e.g. income min/max, min/max children, max child age, max pets). Not all rules have parameters.
 - **Enabled**: toggle on/off per screening configuration
 
 Rules are stored in the database as part of admin settings. The Admin settings UI shows the full rule list with toggles and parameter inputs. Disabled rules do not run during screening.
@@ -228,15 +228,17 @@ The following rules should be implemented. Each rule is listed with its default 
 | Rule ID | Description |
 |---------|-------------|
 | `child_count_mismatch` | Declared child count does not match the number of complete child detail blocks. A complete block = first name + last name + age all filled. |
+| `too_few_children` | Household child count is below the configured minimum. Parameter: min_children (default 1). Moved off the form so the form can drop branching validation. |
+| `too_many_children` | Household child count is above the configured maximum. Parameter: max_children (default 4). Moved off the form likewise. |
 
 **Age rules:**
 
 | Rule ID | Description |
 |---------|-------------|
-| `child_age_over_18` | Any listed child has age 18 or older. The form states "children under 18." |
+| `child_age_over_max` | Any listed child is older than the configured maximum child age. Parameter: max_child_age (default 17 — i.e. the form's "children under 18"). Tunable for co-ops housing older dependants. |
 | `applicant_under_19` | Applicant age is under 19 (BC age of majority). |
 | `co_applicant_under_19` | Co-applicant age is under 19. Indicates the co-applicant may actually be a child, not an adult household member. |
-| `child_age_exceeds_parent` | Any child's age is older than the applicant's or co-applicant's age. Data entry error. |
+| `child_age_exceeds_parent` | Any child's age is older than the applicant's or co-applicant's age. Data entry error. (Distinct from `child_age_over_max`: this is a sanity check against the household's own adults, not the policy ceiling.) |
 
 **Financial rules:**
 
@@ -244,7 +246,7 @@ The following rules should be implemented. Each rule is listed with its default 
 |---------|-------------|
 | `income_below_range` | Household gross income is below the configured minimum. Parameter: min_income (default $70,000). |
 | `income_above_range` | Household gross income is above the configured maximum. Parameter: max_income (default $150,000). |
-| `income_arithmetic_mismatch` | Applicant income + co-applicant income does not equal stated household total (tolerance: $1,000). |
+| `income_arithmetic_mismatch` | Applicant income + co-applicant income does not exactly equal the stated household total. No tolerance — any discrepancy is flagged. |
 
 **Property rules:**
 
@@ -626,7 +628,7 @@ Core data model decisions:
 - Income parsing is straightforward because the form uses whole-number validation. The field always contains a clean integer for new submissions.
 - Each sync should create a `SyncRun` record with timestamp, source sheet ID, row count, duplicate count, imported count, updated count, eligible count, filtered-out count, and needs-review count.
 
-Admin settings such as Google Sheet link or ID, current unit size, move-in date, and spending cap should live in the database rather than `.env`.
+Admin settings such as Google Sheet link or ID, the hard-filter thresholds (income band, min/max children, max child age, pet limits), and the AI spending cap should live in the database rather than `.env`.
 
 Local `.env` files should be supported for secrets and local credentials.
 
@@ -676,9 +678,11 @@ For MVP, the logged-in Google account may also be the account used to access She
 
 The app should include an Admin settings screen for:
 
-- Current unit size
-- Move-in date
 - Household income screening range
+- Min/max children per unit and max child age
+- Pet limits (max dogs, max cats, allow-other-pets)
+- Min adult age
+- Per-rule enable/disable toggles
 - AI spending cap
 - Bedrock/provider model choices
 - Google Sheet link or ID

@@ -63,13 +63,13 @@ def test_real_estate_ownership_is_filtered_out() -> None:
 
 
 
-def test_child_age_over_18_is_filtered_out() -> None:
+def test_child_age_over_max_is_filtered_out() -> None:
     result = evaluate_hard_filters(eligible_application(
         child_details=[{"first_name": "Alex", "last_name": "Smith", "age": 18}],
     ))
 
     assert result.status == FilterStatus.FILTERED_OUT
-    assert "child_age_over_18" in reason_codes(result)
+    assert "child_age_over_max" in reason_codes(result)
 
 
 def test_child_age_17_passes() -> None:
@@ -78,6 +78,53 @@ def test_child_age_17_passes() -> None:
     ))
 
     assert result.status == FilterStatus.ELIGIBLE
+
+
+def test_configurable_max_child_age() -> None:
+    # A co-op housing teens could raise the ceiling; a 19-year-old then passes.
+    rules = RulesConfig(max_child_age=20)
+    result = evaluate_hard_filters(
+        eligible_application(
+            child_details=[{"first_name": "Alex", "last_name": "Smith", "age": 19}],
+        ),
+        rules,
+    )
+
+    assert "child_age_over_max" not in reason_codes(result)
+
+
+def test_too_few_children_is_filtered_out() -> None:
+    result = evaluate_hard_filters(
+        eligible_application(child_count=0, child_details=[])
+    )
+
+    assert result.status == FilterStatus.FILTERED_OUT
+    assert "too_few_children" in reason_codes(result)
+
+
+def test_too_many_children_is_filtered_out() -> None:
+    result = evaluate_hard_filters(
+        eligible_application(
+            child_count=5,
+            child_details=[
+                {"first_name": f"Kid{i}", "last_name": "Garcia", "age": 5 + i}
+                for i in range(5)
+            ],
+        )
+    )
+
+    assert result.status == FilterStatus.FILTERED_OUT
+    assert "too_many_children" in reason_codes(result)
+
+
+def test_configurable_children_bounds() -> None:
+    # A childless-allowed co-op: min 0 lets a 0-child household through.
+    rules = RulesConfig(min_children=0)
+    result = evaluate_hard_filters(
+        eligible_application(child_count=0, child_details=[]), rules
+    )
+
+    assert "too_few_children" not in reason_codes(result)
 
 
 def test_applicant_under_19_is_filtered_out() -> None:
@@ -164,14 +211,25 @@ def test_income_arithmetic_mismatch_is_filtered_out() -> None:
     assert "income_arithmetic_mismatch" in reason_codes(result)
 
 
-def test_income_arithmetic_within_tolerance_passes() -> None:
+def test_income_arithmetic_exact_match_passes() -> None:
     result = evaluate_hard_filters(eligible_application(
         applicant_income=50_000,
         co_applicant_income=45_000,
-        household_income=95_500,
+        household_income=95_000,
     ))
 
     assert "income_arithmetic_mismatch" not in reason_codes(result)
+
+
+def test_income_arithmetic_off_by_any_amount_is_filtered_out() -> None:
+    # No tolerance: even a $1 discrepancy is a mismatch.
+    result = evaluate_hard_filters(eligible_application(
+        applicant_income=50_000,
+        co_applicant_income=45_000,
+        household_income=95_001,
+    ))
+
+    assert "income_arithmetic_mismatch" in reason_codes(result)
 
 
 def test_negative_age_is_filtered_out() -> None:
@@ -215,13 +273,6 @@ def test_co_applicant_incomplete_is_filtered_out() -> None:
     assert "co_applicant_incomplete" in reason_codes(result)
 
 
-
-
-def test_configurable_max_adults() -> None:
-    rules = RulesConfig(max_adults=3)
-    result = evaluate_hard_filters(eligible_application(adult_count=3), rules)
-
-    assert "too_many_adults" not in reason_codes(result)
 
 
 

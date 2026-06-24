@@ -11,12 +11,12 @@ class FilterStatus(StrEnum):
 
 @dataclass(frozen=True)
 class RulesConfig:
-    unit_size: str = "2br"
-    max_adults: int = 2
     min_income: int = 70_000
     max_income: int = 150_000
-    income_mismatch_tolerance: int = 1_000
     min_adult_age: int = 19
+    max_child_age: int = 17
+    min_children: int = 1
+    max_children: int = 4
     disabled_rules: tuple[str, ...] = ()
     today: date = field(default_factory=date.today)
 
@@ -44,13 +44,15 @@ def evaluate_hard_filters(
     reasons: list[FilterReason] = []
 
     reasons.extend(_child_count_mismatch(application))
-    reasons.extend(_child_age_over_18(application))
+    reasons.extend(_too_few_children(application, rules))
+    reasons.extend(_too_many_children(application, rules))
+    reasons.extend(_child_age_over_max(application, rules))
     reasons.extend(_applicant_under_19(application, rules))
     reasons.extend(_co_applicant_under_19(application, rules))
     reasons.extend(_child_age_exceeds_parent(application))
     reasons.extend(_income_below_range(application, rules))
     reasons.extend(_income_above_range(application, rules))
-    reasons.extend(_income_arithmetic_mismatch(application, rules))
+    reasons.extend(_income_arithmetic_mismatch(application))
     reasons.extend(_real_estate_ownership(application))
     reasons.extend(_negative_number(application))
     reasons.extend(_future_employment_start(application, rules))
@@ -94,22 +96,58 @@ def _child_count_mismatch(application: dict[str, Any]) -> list[FilterReason]:
     return []
 
 
-def _child_age_over_18(application: dict[str, Any]) -> list[FilterReason]:
+def _child_age_over_max(
+    application: dict[str, Any], rules: RulesConfig
+) -> list[FilterReason]:
     child_details = application.get("child_details", [])
     reasons = []
 
     for child in child_details:
         age = child.get("age")
-        if isinstance(age, int) and age >= 18:
+        if isinstance(age, int) and age > rules.max_child_age:
             reasons.append(
                 FilterReason(
-                    code="child_age_over_18",
-                    message=f"Child '{child.get('first_name', '?')}' is {age}; must be under 18.",
-                    details={"child_name": child.get("first_name"), "child_age": age},
+                    code="child_age_over_max",
+                    message=f"Child '{child.get('first_name', '?')}' is {age}; must be at most {rules.max_child_age}.",
+                    details={"child_name": child.get("first_name"), "child_age": age, "max_child_age": rules.max_child_age},
                 )
             )
 
     return reasons
+
+
+def _too_few_children(
+    application: dict[str, Any], rules: RulesConfig
+) -> list[FilterReason]:
+    child_count = application.get("child_count")
+    if not isinstance(child_count, int):
+        return []
+    if child_count < rules.min_children:
+        return [
+            FilterReason(
+                code="too_few_children",
+                message=f"Household has {child_count} child(ren); at least {rules.min_children} required.",
+                details={"child_count": child_count, "min_children": rules.min_children},
+            )
+        ]
+    return []
+
+
+def _too_many_children(
+    application: dict[str, Any], rules: RulesConfig
+) -> list[FilterReason]:
+    child_count = application.get("child_count")
+    if not isinstance(child_count, int):
+        return []
+    if child_count > rules.max_children:
+        return [
+            FilterReason(
+                code="too_many_children",
+                message=f"Household has {child_count} child(ren); at most {rules.max_children} allowed.",
+                details={"child_count": child_count, "max_children": rules.max_children},
+            )
+        ]
+    return []
 
 
 def _applicant_under_19(
@@ -206,9 +244,7 @@ def _income_above_range(
     return []
 
 
-def _income_arithmetic_mismatch(
-    application: dict[str, Any], rules: RulesConfig
-) -> list[FilterReason]:
+def _income_arithmetic_mismatch(application: dict[str, Any]) -> list[FilterReason]:
     applicant_income = application.get("applicant_income")
     co_applicant_income = application.get("co_applicant_income")
     household_income = application.get("household_income")
@@ -226,7 +262,7 @@ def _income_arithmetic_mismatch(
         return []
 
     expected = sum(parts)
-    if abs(expected - household_income) > rules.income_mismatch_tolerance:
+    if expected != household_income:
         return [
             FilterReason(
                 code="income_arithmetic_mismatch",

@@ -45,13 +45,12 @@ type AISettings = {
 
 type AppSettings = {
   google_sheet_id: string;
-  unit_size: "1br" | "2br" | "3br";
-  move_in_date: string;
   income_min: number;
   income_max: number;
-  max_adults: number;
   min_adult_age: number;
-  income_mismatch_tolerance: number;
+  max_child_age: number;
+  min_children: number;
+  max_children: number;
   max_dogs: number;
   max_cats: number;
   allow_other_pets: boolean;
@@ -324,7 +323,9 @@ const REASON_FIELDS: Record<string, string[]> = {
   applicant_under_19: ["applicant_age"],
   co_applicant_under_19: ["co_applicant_age"],
   child_count_mismatch: ["child_count", "child_details"],
-  child_age_over_18: ["child_details"],
+  child_age_over_max: ["child_details"],
+  too_few_children: ["child_count"],
+  too_many_children: ["child_count"],
   child_age_exceeds_parent: ["child_details", "applicant_age", "co_applicant_age"],
   co_applicant_incomplete: ["co_applicant_name", "co_applicant_age", "co_applicant_phone", "co_applicant_email"],
   future_employment_start: ["applicant_employment_start", "co_applicant_employment_start"],
@@ -801,13 +802,12 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 const defaultSettings: AppSettings = {
   google_sheet_id: "",
-  unit_size: "2br",
-  move_in_date: "2026-09-01",
   income_min: 70000,
   income_max: 150000,
-  max_adults: 2,
   min_adult_age: 19,
-  income_mismatch_tolerance: 1000,
+  max_child_age: 17,
+  min_children: 1,
+  max_children: 4,
   max_dogs: 1,
   max_cats: 1,
   allow_other_pets: false,
@@ -823,8 +823,10 @@ const defaultSettings: AppSettings = {
 
 const ALL_RULES = [
   { id: "applicant_under_19", label: "Applicant under 19" },
-  { id: "child_age_over_18", label: "Child age 18+" },
+  { id: "child_age_over_max", label: "Child over max age" },
   { id: "child_count_mismatch", label: "Child count mismatch" },
+  { id: "too_few_children", label: "Too few children" },
+  { id: "too_many_children", label: "Too many children" },
   { id: "co_applicant_incomplete", label: "Co-applicant incomplete" },
   { id: "co_applicant_under_19", label: "Co-applicant under 19" },
   { id: "future_employment_start", label: "Future employment start" },
@@ -1485,12 +1487,6 @@ export function App() {
                   )}
                 </div>
                 <div>
-                  <span>Opening</span>
-                  <strong>
-                    {saved.settings.unit_size.replace("br", " bedroom")}, {saved.settings.move_in_date}
-                  </strong>
-                </div>
-                <div>
                   <span>Income range</span>
                   <strong>
                     {`$${saved.settings.income_min.toLocaleString()} – $${saved.settings.income_max.toLocaleString()}`}
@@ -1513,27 +1509,6 @@ export function App() {
                   ) : null}
                 </label>
                 <label>
-                  <span>Unit size</span>
-                  <select
-                    value={draft.unit_size}
-                    onChange={(event) =>
-                      setDraft({ ...draft, unit_size: event.target.value as AppSettings["unit_size"] })
-                    }
-                  >
-                    <option value="1br">1 bedroom</option>
-                    <option value="2br">2 bedroom</option>
-                    <option value="3br">3 bedroom</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Move-in date</span>
-                  <input
-                    type="date"
-                    value={draft.move_in_date}
-                    onChange={(event) => setDraft({ ...draft, move_in_date: event.target.value })}
-                  />
-                </label>
-                <label>
                   <span>Income minimum</span>
                   <input
                     type="number"
@@ -1552,27 +1527,6 @@ export function App() {
                   />
                 </label>
                 <label>
-                  <span>Income mismatch tolerance</span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={draft.income_mismatch_tolerance}
-                    onChange={(event) =>
-                      setDraft({ ...draft, income_mismatch_tolerance: Number(event.target.value) })
-                    }
-                  />
-                </label>
-                <label>
-                  <span>Max adults per unit</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    value={draft.max_adults}
-                    onChange={(event) => setDraft({ ...draft, max_adults: Number(event.target.value) })}
-                  />
-                </label>
-                <label>
                   <span>Min adult age</span>
                   <input
                     type="number"
@@ -1580,6 +1534,36 @@ export function App() {
                     max="100"
                     value={draft.min_adult_age}
                     onChange={(event) => setDraft({ ...draft, min_adult_age: Number(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span>Max child age</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={draft.max_child_age}
+                    onChange={(event) => setDraft({ ...draft, max_child_age: Number(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span>Min children per unit</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="20"
+                    value={draft.min_children}
+                    onChange={(event) => setDraft({ ...draft, min_children: Number(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span>Max children per unit</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="20"
+                    value={draft.max_children}
+                    onChange={(event) => setDraft({ ...draft, max_children: Number(event.target.value) })}
                   />
                 </label>
                 <label>

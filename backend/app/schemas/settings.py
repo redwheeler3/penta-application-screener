@@ -1,4 +1,3 @@
-from datetime import date
 import re
 
 from pydantic import BaseModel, Field, field_validator
@@ -36,16 +35,15 @@ class AISettings(BaseModel):
 
 class AppSettings(BaseModel):
     google_sheet_id: str = Field(default="", max_length=2000)
-    unit_size: str = Field(default="2br", pattern="^(1br|2br|3br)$")
-    move_in_date: date = date(2026, 9, 1)
     income_min: int = Field(default=70_000, ge=0)
     income_max: int = Field(default=150_000, ge=0)
-    max_adults: int = Field(default=2, ge=1, le=10)
     min_adult_age: int = Field(default=19, ge=1, le=100)
+    max_child_age: int = Field(default=17, ge=0, le=100)
+    min_children: int = Field(default=1, ge=0, le=20)
+    max_children: int = Field(default=4, ge=0, le=20)
     max_dogs: int = Field(default=1, ge=0, le=10)
     max_cats: int = Field(default=1, ge=0, le=10)
     allow_other_pets: bool = False
-    income_mismatch_tolerance: int = Field(default=1_000, ge=0)
     disabled_rules: list[str] = Field(default_factory=list)
     ai: AISettings = Field(default_factory=AISettings)
 

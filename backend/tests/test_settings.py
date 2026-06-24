@@ -21,19 +21,21 @@ def test_get_app_settings_returns_defaults_when_none_saved() -> None:
     settings = get_app_settings(db)
 
     assert settings.google_sheet_id == ""
-    assert settings.unit_size == "2br"
-    assert settings.move_in_date.isoformat() == "2026-09-01"
     assert settings.income_min == 70_000
     assert settings.income_max == 150_000
+    assert settings.min_children == 1
+    assert settings.max_children == 4
+    assert settings.max_child_age == 17
 
 
 def test_save_app_settings_round_trips() -> None:
     db = make_session()
     saved = AppSettings(
         google_sheet_id="sheet-123",
-        unit_size="3br",
         income_min=80_000,
         income_max=160_000,
+        min_children=0,
+        max_children=3,
     )
 
     save_app_settings(db, saved)
