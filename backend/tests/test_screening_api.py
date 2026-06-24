@@ -69,14 +69,12 @@ def a_pattern_report() -> PoolPatternReport:
                 name="Participation commitment",
                 definition="Willingness to do shared work.",
                 why_it_differentiates="Some are eager, some vague.",
-                default_weight=0.6,
             ),
             PoolDimension(
                 key="skills_offered",
                 name="Skills offered",
                 definition="Concrete maintenance skills.",
                 why_it_differentiates="Range from none to specific trades.",
-                default_weight=0.4,
             ),
         ],
     )
@@ -98,6 +96,28 @@ def a_scoring_report() -> DimensionScoringReport:
                 rationale="No concrete skills stated.",
                 evidence="",
                 confidence=ScoreConfidence.LOW,
+            ),
+        ]
+    )
+
+
+def _scoring_report(*, commitment: float, skills: float) -> DimensionScoringReport:
+    """A scoring report with caller-chosen scores, for ranking-order tests."""
+    return DimensionScoringReport(
+        scores=[
+            DimensionScore(
+                dimension_key="participation_commitment",
+                score=commitment,
+                rationale="r",
+                evidence="",
+                confidence=ScoreConfidence.MEDIUM,
+            ),
+            DimensionScore(
+                dimension_key="skills_offered",
+                score=skills,
+                rationale="r",
+                evidence="",
+                confidence=ScoreConfidence.MEDIUM,
             ),
         ]
     )
@@ -194,6 +214,77 @@ async def test_full_flow_discover_then_score_then_detail() -> None:
         assert by_key["participation_commitment"]["name"] == "Participation commitment"
         assert by_key["participation_commitment"]["score"] == 0.8
         assert by_key["skills_offered"]["confidence"] == "low"
+
+
+@pytest.mark.anyio
+async def test_ranking_before_discovery_is_409() -> None:
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        assert (await client.get("/screening/ranking")).status_code == 409
+        assert (
+            await client.put("/screening/shortlist-line", json={"shortlist_size": 5})
+        ).status_code == 409
+
+
+@pytest.mark.anyio
+async def test_ranking_orders_pool_and_seeds_equal_weights() -> None:
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    weak = add_eligible(db, email="weak@x.com", raw_hash="h1")
+    strong = add_eligible(db, email="strong@x.com", raw_hash="h2")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        provider.queue(a_pattern_report())
+        await client.post("/screening/discover")
+
+        # Scoring fans out concurrently, so bind each result to its application by
+        # the applicant_id marker in the prompt rather than relying on queue order.
+        provider.route(f'"applicant_id": {weak.id}', _scoring_report(commitment=0.2, skills=0.2))
+        provider.route(f'"applicant_id": {strong.id}', _scoring_report(commitment=0.9, skills=0.9))
+        await stream_summary(client, "/screening/scoring/run")
+
+        ranking = (await client.get("/screening/ranking")).json()
+
+        # Equal-weight baseline: both dimensions weight 1.0, no AI-proposed weight.
+        assert ranking["weights"] == {
+            "participation_commitment": 1.0,
+            "skills_offered": 1.0,
+        }
+        # Strong candidate leads; fit is the plain average under equal weights.
+        candidates = ranking["candidates"]
+        assert [c["application_id"] for c in candidates] == [strong.id, weak.id]
+        assert candidates[0]["fit"] == 0.9
+        assert candidates[0]["band"] == "Strong fit"
+        # Default shortlist line keeps everyone above it.
+        assert ranking["shortlistSize"] == 20
+        assert ranking["aboveLineCount"] == 2
+        assert all(c["above_line"] for c in candidates)
+
+
+@pytest.mark.anyio
+async def test_shortlist_line_update_changes_above_count() -> None:
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    high = add_eligible(db, email="a@x.com", raw_hash="h1")
+    low = add_eligible(db, email="b@x.com", raw_hash="h2")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        provider.queue(a_pattern_report())
+        await client.post("/screening/discover")
+        provider.route(f'"applicant_id": {high.id}', _scoring_report(commitment=0.8, skills=0.6))
+        provider.route(f'"applicant_id": {low.id}', _scoring_report(commitment=0.5, skills=0.5))
+        await stream_summary(client, "/screening/scoring/run")
+
+        updated = (
+            await client.put("/screening/shortlist-line", json={"shortlist_size": 1})
+        ).json()
+        assert updated["shortlistSize"] == 1
+
+        ranking = (await client.get("/screening/ranking")).json()
+        assert ranking["aboveLineCount"] == 1
+        assert [c["above_line"] for c in ranking["candidates"]] == [True, False]
 
 
 @pytest.mark.anyio

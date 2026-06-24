@@ -1540,12 +1540,6 @@ h1 {
   font-weight: 600;
 }
 
-.dimension-weight {
-  color: var(--muted);
-  font-size: 0.75rem;
-  white-space: nowrap;
-}
-
 .dimension-def {
   margin: 0.3rem 0 0;
   line-height: 1.45;
@@ -1631,5 +1625,229 @@ h1 {
   color: var(--muted);
   font-size: 0.78rem;
   font-style: italic;
+}
+
+/* --- Ranked shortlist (milestone 8) ------------------------------------- */
+
+.ranking-entry {
+  margin: 1rem 0 0;
+}
+
+.ranking-view {
+  margin-top: 1rem;
+}
+
+.ranking-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.ranking-header h3 {
+  margin: 0;
+}
+
+.ranking-subhead {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  max-width: 40rem;
+  line-height: 1.45;
+}
+
+.shortlist-line-control {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+}
+
+.shortlist-line-control label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.shortlist-line-input {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.shortlist-line-input input {
+  width: 4rem;
+  text-align: center;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.stepper-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.stepper-button:hover {
+  border-color: var(--penta-green);
+}
+
+.above-line-count {
+  font-size: 0.8rem;
+  color: var(--penta-green-dark);
+  font-weight: 600;
+}
+
+.ranking-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.ranking-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.ranking-row:hover {
+  border-color: var(--penta-green);
+}
+
+/* Below the shortlist line: still present (never removed), just visually
+   de-emphasized so the eye reads the above-line group first. */
+.ranking-row.below-line {
+  opacity: 0.7;
+  background: var(--page);
+}
+
+.ranking-rank {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--muted);
+  min-width: 2.5rem;
+}
+
+.ranking-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.ranking-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.ranking-name {
+  font-weight: 600;
+}
+
+.fit-band {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.band-strong-fit {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.band-promising {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.band-mixed {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.band-limited {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.ranking-rationale {
+  margin: 0.3rem 0 0;
+  font-size: 0.83rem;
+  line-height: 1.45;
+}
+
+.ranking-dimensions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.ranking-dim-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+
+.dim-confidence {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.dim-confidence.conf-low {
+  color: #b45309;
+}
+
+.dim-confidence.conf-medium {
+  color: #075985;
+}
+
+.dim-confidence.conf-high {
+  color: #166534;
+}
+
+/* The shortlist line itself — a divider the committee reads down to, not a
+   removal. Rendered after the last above-line candidate. */
+.shortlist-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.5rem 0;
+  color: var(--penta-green-dark);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.shortlist-divider::before,
+.shortlist-divider::after {
+  content: "";
+  flex: 1;
+  height: 0;
+  border-top: 2px dashed var(--penta-green);
 }
 

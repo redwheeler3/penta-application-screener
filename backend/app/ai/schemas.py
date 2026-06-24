@@ -143,23 +143,16 @@ class PoolDimension(BaseModel):
             "varies across candidates here, not a generic ideal."
         )
     )
-    default_weight: float = Field(
-        ge=0.0,
-        le=1.0,
-        description=(
-            "Proposed starting importance toward 'fit for Penta', 0..1. The "
-            "committee re-weights these later; this is only a default."
-        ),
-    )
 
 
 class PoolPatternReport(BaseModel):
     """Pool-level discovery: the differentiating dimensions for THIS pool.
 
-    Run-scoped, not per-candidate — it describes how the pool varies and proposes
-    a default weighting. It does not rank or score anyone; the per-candidate
-    scoring pass rates each applicant against these dimensions, and ranking is
-    deterministic math layered on top (milestone 8).
+    Run-scoped, not per-candidate — it describes how the pool varies. It does not
+    rank, score, or weight anyone: importance is the committee's call, so weights
+    are seeded equal at run creation and only the human moves them (milestone 9).
+    The per-candidate scoring pass rates each applicant against these dimensions,
+    and ranking is deterministic math layered on top (milestone 8).
     """
 
     summary: str = Field(

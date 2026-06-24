@@ -219,6 +219,17 @@ How it differs from quality flags:
 
 Endpoints (`/essay-analysis/estimate`, `/essay-analysis/run`) and the streamed NDJSON mirror the quality-flag pass, minus the `flagged` count. The summary and structured fields render on the candidate detail page; the raw model reasoning is in a debug section alongside the quality-flag narrative.
 
+## Ranking (Milestone 8)
+
+The ranked shortlist is **not an AI pass** — it is deterministic math over the cached dimension scores, so it does not touch the provider, the cache, or the spending cap. It lives in `app/domain/ranking.py` alongside `hard_filters.py` (deterministic domain logic, separate from AI evaluation), as a pure function with no DB or I/O. This is the architectural payoff of milestone 7's "the LLM extracts scored features; ranking is math on top of them" decision: re-ranking is a re-fetch, not a re-spend, which is what makes the milestone 9 interactions instant and reproducible.
+
+- **Fit** is the weight-normalized average of a candidate's per-dimension scores: `Σ(weight·score) / Σ(weight)` over dimensions with weight > 0. Weights live in `ScreeningRun.criteria.weights`, seeded **equal** at run creation (`create_run`) — the AI never proposes importance. At milestone 8 every weight is equal, so fit is a plain average; milestone 9's narrowing answers are the only thing that moves weights off equal, and the engine reads `criteria.weights` (never a per-dimension field), so that map is the single seam those answers mutate.
+- **Confidence is surfaced, never folded into fit.** Each `DimensionScore` keeps its confidence label for display, but a score moves the ranking by exactly its weight — so the order stays explainable top-down.
+- **Bands are relative to the pool**, not absolute thresholds. A candidate's label ("Strong fit" … "Limited") comes from its rank position, split into even contiguous slices anchored at the top (so rank 1 is always top-band even in a small pool). Equal-fit candidates share a band. This matches the "how does THIS pool vary" framing and keeps numbers as supporting detail.
+- **The shortlist line** is a reading aid the committee reads down to (`criteria.shortlist_size`, default 20 via `set_shortlist_size`); it never removes anyone. `GET /screening/ranking` returns the ordered rows + weights + line + live above-line count; `PUT /screening/shortlist-line` moves it.
+
+The frontend surfaces this as a **separate ranked view**, not a re-sort of the browse table: the order is the product, read top-down, and milestone 9's question panel will dock beside it. Re-discovering patterns drops any ranking (a new dimensions-hash means no scores exist under it yet); re-scoring refreshes an open ranking.
+
 ## Configuration
 
 AI settings live under `ai` in the admin settings (`app/schemas/settings.py`):

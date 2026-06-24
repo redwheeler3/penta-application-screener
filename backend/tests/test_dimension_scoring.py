@@ -58,7 +58,6 @@ def report_with(keys: list[str]) -> PoolPatternReport:
                 name=k.replace("_", " ").title(),
                 definition="def",
                 why_it_differentiates="why",
-                default_weight=0.5,
             )
             for k in keys
         ],

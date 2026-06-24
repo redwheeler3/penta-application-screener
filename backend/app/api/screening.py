@@ -16,29 +16,40 @@ projection); scoring is cap-gated before streaming, like the other batch passes.
 
 import json
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import ScreeningResult, SpendingCapExceeded, enforce_cap
 from app.ai.dimension_scoring import (
     applications_to_score,
     estimate_dimension_scoring,
+    kind_for,
     screen_dimension_scores,
 )
 from app.ai.pattern_discovery import discover_patterns, eligible_applications
 from app.ai.provider import AIProvider
 from app.api.dependencies import get_ai_provider, require_current_user
-from app.db.models import User
+from app.db.models import ApplicationAIResult, User
 from app.db.session import get_db
+from app.domain.ranking import (
+    CandidateScores,
+    ScoredDimension,
+    rank_candidates,
+)
 from app.schemas.settings import AppSettings
 from app.services.screening_run import (
     create_run,
     current_pattern_report,
+    dimension_weights,
     get_current_run,
+    set_shortlist_size,
+    shortlist_size,
 )
 from app.services.settings import get_app_settings
 
@@ -208,3 +219,107 @@ def scoring_run(
         ) + "\n"
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+
+# --- Ranking (milestone 8) --------------------------------------------------
+#
+# The ranked shortlist is deterministic math over the cached dimension scores —
+# no model call. This layer loads each eligible candidate's scores for the
+# current run, joins the dimension labels, and hands flat values to the pure
+# ``rank_candidates`` domain function. The run's equal-weight baseline lives in
+# ``criteria.weights``; M9 will mutate it, and re-ranking is just a re-fetch.
+
+
+def _candidate_scores(db: Session, report) -> list[CandidateScores]:
+    """Build the ranker's input: every eligible candidate with its per-dimension
+    scores under the current run, joined to dimension labels. Candidates not yet
+    scored under this dimension set are skipped (they have nothing to rank on).
+    """
+    applications = applications_to_score(db)
+    by_id = {app.id: app for app in applications}
+    labels = {d.key: d.name for d in report.dimensions}
+
+    kind = kind_for(report)
+    results = db.scalars(
+        select(ApplicationAIResult)
+        .where(ApplicationAIResult.kind == kind)
+        .where(ApplicationAIResult.application_id.in_(list(by_id)))
+        .order_by(ApplicationAIResult.created_at)
+    )
+    latest: dict[int, ApplicationAIResult] = {}
+    for result in results:
+        latest[result.application_id] = result  # a re-run supersedes older rows
+
+    candidates: list[CandidateScores] = []
+    for app_id, app in by_id.items():
+        result = latest.get(app_id)
+        if result is None:
+            continue
+        scores = [
+            ScoredDimension(
+                dimension_key=s.get("dimension_key"),
+                name=labels.get(s.get("dimension_key"), s.get("dimension_key")),
+                score=float(s.get("score", 0.0)),
+                confidence=s.get("confidence", "low"),
+                rationale=s.get("rationale", ""),
+                evidence=s.get("evidence", ""),
+            )
+            for s in (result.output or {}).get("scores", [])
+        ]
+        candidates.append(
+            CandidateScores(
+                application_id=app_id,
+                name=app.applicant_name,
+                scores=scores,
+            )
+        )
+    return candidates
+
+
+@router.get("/ranking")
+def ranking(
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """The deterministic ranked shortlist for the current run.
+
+    Ranks every scored eligible candidate by the weight-normalized average of its
+    dimension scores, labels each by relative pool position, and marks those above
+    the shortlist line. No model call — pure math over cached scores.
+    """
+    run = get_current_run(db)
+    report = current_pattern_report(run) if run is not None else None
+    if report is None:
+        raise HTTPException(status_code=409, detail="Discover patterns before ranking.")
+
+    weights = dimension_weights(run)
+    line = shortlist_size(run)
+    ranked = rank_candidates(_candidate_scores(db, report), weights, line)
+    return {
+        "runId": run.id,
+        "weights": weights,
+        "shortlistSize": line,
+        "aboveLineCount": sum(1 for c in ranked if c.above_line),
+        "scoredCount": len(ranked),
+        "candidates": [asdict(c) for c in ranked],
+    }
+
+
+class ShortlistLineUpdate(BaseModel):
+    shortlist_size: int = Field(ge=0)
+
+
+@router.put("/shortlist-line")
+def update_shortlist_line(
+    body: ShortlistLineUpdate,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Move the shortlist line for the current run. The line is a reading aid —
+    it never removes anyone — so any non-negative position is valid.
+    """
+    run = get_current_run(db)
+    if run is None:
+        raise HTTPException(status_code=409, detail="Discover patterns before ranking.")
+    set_shortlist_size(db, run, body.shortlist_size)
+    return {"shortlistSize": shortlist_size(run)}
