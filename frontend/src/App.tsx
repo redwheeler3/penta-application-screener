@@ -3,12 +3,17 @@ import { type ReactNode, type SyntheticEvent, useEffect, useRef, useState } from
 import ReactMarkdown from "react-markdown";
 import {
   DndContext,
+  DragOverlay,
   PointerSensor,
   KeyboardSensor,
+  closestCorners,
   useSensor,
   useSensors,
   useDroppable,
+  type CollisionDetection,
   type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -503,25 +508,55 @@ function tierIndexOfKey(tiers: Tier[], dimKey: string): number {
   return tiers.findIndex((t) => t.dimension_keys.includes(dimKey));
 }
 
+// Collision detection for the tier-list: the tier that contains the *center of
+// the dragged chip* wins. This matches how a tier-list feels — the chip itself
+// decides its tier — and, by using the chip's midpoint rather than its corners,
+// avoids the wide drag-overlay straying into the tier above/below during
+// horizontal movement (which plain `closestCorners` allowed). Falls back to
+// `closestCorners` when the center is outside every tier (e.g. in the gap
+// between rows, or keyboard dragging, which has no moving rect to measure).
+const tierCollisionDetection: CollisionDetection = (args) => {
+  const rect = args.collisionRect;
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const containing = args.droppableContainers.filter((container) => {
+    const r = args.droppableRects.get(container.id);
+    return r && cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
+  });
+  if (containing.length > 0) {
+    return containing.map((container) => ({ id: container.id }));
+  }
+  return closestCorners(args);
+};
+
+// The visual chip (used both in place and inside the DragOverlay). `dragging`
+// adds the lifted look for the floating overlay copy.
+function ChipBody(props: { label: string; dragging?: boolean }): ReactNode {
+  return (
+    <span className={`tier-chip${props.dragging ? " tier-chip-overlay" : ""}`}>
+      <GripVertical size={12} className="tier-chip-grip" />
+      {props.label}
+    </span>
+  );
+}
+
 // A draggable dimension chip (one criterion the committee can place in a tier).
+// While dragging, the original is hidden (opacity 0) and a DragOverlay copy
+// follows the cursor freely across tiers — see TierList. That overlay is why the
+// drag isn't clipped to its tier's box.
 function DimensionChip(props: { dimKey: string; label: string }): ReactNode {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: props.dimKey });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
+    // Hide the in-place chip entirely while it's the active drag; the overlay
+    // copy is what the user sees moving.
+    opacity: isDragging ? 0 : 1,
   };
   return (
-    <span
-      ref={setNodeRef}
-      style={style}
-      className="tier-chip"
-      {...attributes}
-      {...listeners}
-    >
-      <GripVertical size={12} className="tier-chip-grip" />
-      {props.label}
+    <span ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <ChipBody label={props.label} />
     </span>
   );
 }
@@ -531,6 +566,7 @@ function DimensionChip(props: { dimKey: string; label: string }): ReactNode {
 function TierRow(props: {
   tier: Tier;
   labelFor: (key: string) => string;
+  isOver: boolean;
   canMoveUp: boolean;
   canMoveDown: boolean;
   onMoveUp: () => void;
@@ -538,10 +574,19 @@ function TierRow(props: {
   onRemove: () => void;
   onRename: (label: string) => void;
 }): ReactNode {
-  const { tier } = props;
-  const { setNodeRef, isOver } = useDroppable({ id: tier.id });
+  const { tier, isOver } = props;
+  // The droppable is the WHOLE row (controls + chips), not just the chips column,
+  // so its rect covers the full visual tier height — otherwise a taller row (the
+  // left-hand controls make it taller than one line of chips) has dead space
+  // below the chips that doesn't register as part of the tier. The highlight is
+  // driven by the parent's tracked `overTierId` (passed as `isOver`), not this
+  // hook's own `isOver`, which flickers off when the pointer is over a chip.
+  const { setNodeRef } = useDroppable({ id: tier.id });
   return (
-    <div className={`tier-row ${tier.ignore ? "tier-row-ignore" : ""} ${isOver ? "tier-row-over" : ""}`}>
+    <div
+      ref={setNodeRef}
+      className={`tier-row ${tier.ignore ? "tier-row-ignore" : ""} ${isOver ? "tier-row-over" : ""}`}
+    >
       <div className="tier-row-head">
         {tier.ignore ? (
           <span className="tier-label tier-label-ignore">{tier.label}</span>
@@ -571,7 +616,7 @@ function TierRow(props: {
         ) : null}
       </div>
       <SortableContext items={tier.dimension_keys} strategy={horizontalListSortingStrategy}>
-        <div ref={setNodeRef} className="tier-chips">
+        <div className="tier-chips">
           {tier.dimension_keys.length === 0 ? (
             <span className="tier-empty">Drag criteria here</span>
           ) : (
@@ -594,13 +639,37 @@ function TierList(props: {
   onChange: (next: Tier[]) => void;
 }): ReactNode {
   const { tiers, onChange } = props;
+  // The chip currently being dragged (for the DragOverlay), and the tier the
+  // pointer is over (drives the highlight — tracked here rather than via each
+  // row's own isOver, which flickers off over nested chips).
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [overTierId, setOverTierId] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  // Resolve which tier an `over.id` refers to: it is either a tier id (pointer
+  // over empty row space) or a chip's dimension key (resolve to its tier).
+  function tierIdForOver(overId: string): string | null {
+    if (tiers.some((t) => t.id === overId)) return overId;
+    const idx = tierIndexOfKey(tiers, overId);
+    return idx >= 0 ? tiers[idx].id : null;
+  }
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveKey(String(event.active.id));
+  }
+
+  function handleDragOver(event: DragOverEvent) {
+    const { over } = event;
+    setOverTierId(over ? tierIdForOver(String(over.id)) : null);
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
+    setActiveKey(null);
+    setOverTierId(null);
     if (!over) return;
     const dimKey = String(active.id);
     const overId = String(over.id);
@@ -619,6 +688,7 @@ function TierList(props: {
   // The Ignore tier sorts last; working tiers keep their order.
   const working = tiers.filter((t) => !t.ignore);
   const ignore = tiers.find((t) => t.ignore);
+  const activeLabel = activeKey ? props.labelFor(activeKey) : null;
 
   function renameTier(id: string, label: string) {
     onChange(tiers.map((t) => (t.id === id ? { ...t, label } : t)));
@@ -658,12 +728,19 @@ function TierList(props: {
           <Plus size={14} /> Add tier
         </button>
       </div>
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={tierCollisionDetection}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+      >
         {working.map((tier, idx) => (
           <TierRow
             key={tier.id}
             tier={tier}
             labelFor={props.labelFor}
+            isOver={overTierId === tier.id}
             canMoveUp={idx > 0}
             canMoveDown={idx < working.length - 1}
             onMoveUp={() => moveTier(idx, -1)}
@@ -676,6 +753,7 @@ function TierList(props: {
           <TierRow
             tier={ignore}
             labelFor={props.labelFor}
+            isOver={overTierId === ignore.id}
             canMoveUp={false}
             canMoveDown={false}
             onMoveUp={() => {}}
@@ -684,6 +762,11 @@ function TierList(props: {
             onRename={() => {}}
           />
         ) : null}
+        {/* The floating copy that follows the cursor freely across tiers — this
+            is what makes cross-tier drag smooth instead of clipped to a row. */}
+        <DragOverlay>
+          {activeLabel ? <ChipBody label={activeLabel} dragging /> : null}
+        </DragOverlay>
       </DndContext>
     </div>
   );

@@ -1948,6 +1948,14 @@ h1 {
   cursor: grabbing;
 }
 
+/* The floating DragOverlay copy: lifted off the page and showing the grabbing
+   cursor while it tracks the pointer across tiers. */
+.tier-chip-overlay {
+  cursor: grabbing;
+  box-shadow: 0 6px 16px rgba(17, 24, 39, 0.18);
+  border-color: var(--penta-green);
+}
+
 .tier-chip-grip {
   color: var(--muted);
   flex-shrink: 0;
