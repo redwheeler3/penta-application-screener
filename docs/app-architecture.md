@@ -86,7 +86,7 @@ The frontend is a single React screen (`App.tsx`) that has grown to cover the fu
 7. Show a searchable, sortable, paginated applications table.
 8. Open a candidate detail view: normalized fields, essays, filter reasons, AI quality flags, the raw row, and the AI narrative.
 9. Run the AI quality-flag pass with a cost-estimate confirmation and live streamed progress.
-10. Let an admin override an application's status (the human decision is sticky).
+10. Let a committee member override an application's status (the human decision is sticky) or clear the override to hand the decision back to the machine.
 
 ### Vite Files
 
@@ -211,6 +211,7 @@ The functions in `App.tsx` line up with user actions:
 - `toggleSort()`: changes the table sort column/direction.
 - `requestQualityFlagsEstimate()` / `runQualityFlags()`: fetch the cost estimate, then stream the AI run.
 - `overrideStatus()`: sets an application's status as a human decision via the applications API.
+- `clearStatusOverride()`: removes a human override (DELETE), handing the decision back to the machine, which recomputes from current findings.
 
 The bottom half of `App.tsx` returns JSX. JSX looks like HTML, but it is really TypeScript syntax that React compiles into UI instructions. The JSX uses normal JavaScript conditions to decide what to show:
 
@@ -820,6 +821,7 @@ Current routes:
 - `GET /applications` — a searchable, filterable, sortable, paginated list. Filters by `status` and `status_source`, and returns faceted counts so the UI can show how many applications fall in each tab.
 - `GET /applications/{id}` — one application's detail: normalized fields, essays, filter reasons, AI quality flags, the raw source row, and the AI narrative.
 - `PATCH /applications/{id}/status` — a human status override. This sets `status_source = human`, which machine re-runs then leave untouched.
+- `DELETE /applications/{id}/status` — removes a human override, handing the decision back to the machine. Recomputes status from the current findings and clears human ownership; idempotent if no override is set.
 
 All application routes are open to any logged-in committee member. Roles (`admin` / `member`) exist in the data model but do not currently gate any route — members are trusted screeners.
 

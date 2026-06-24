@@ -848,20 +848,59 @@ h1 {
   font-size: 0.82rem;
 }
 
-.status-override {
+.status-decider {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.65rem;
 }
 
-.status-override-label {
+.status-decider-label {
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--muted);
 }
 
-.status-override .secondary-button {
+/* Segmented control over who owns the status: Automatic | Eligible | Ineligible.
+   The pressed (aria-pressed) segment is the current owner and is disabled. */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segment {
   min-height: 32px;
+  padding: 0 0.85rem;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segment:first-child {
+  border-left: 0;
+}
+
+.segment:hover:not([aria-pressed="true"]) {
+  background: var(--page);
+}
+
+.segment[aria-pressed="true"] {
+  background: var(--penta-green);
+  color: #ffffff;
+  cursor: default;
+}
+
+.status-decider-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
 }
 
 

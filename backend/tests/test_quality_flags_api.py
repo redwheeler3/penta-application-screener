@@ -355,6 +355,64 @@ async def test_human_override_is_sticky_and_snapshots_fingerprint() -> None:
 
 
 @pytest.mark.anyio
+async def test_clear_override_restores_machine_status() -> None:
+    """Deleting a human override hands the decision back to the machine, which
+    recomputes from the current findings (here: the AI flag -> ineligible/ai)."""
+    app, db, provider = setup_app(role=UserRole.ADMIN)
+    flagged = add_eligible(db, email="flag@x.com", raw_hash="h1")
+    provider.queue(
+        QualityFlagReport(
+            flags=[
+                QualityFlag(
+                    category=FlagCategory.PET_POLICY,
+                    severity=FlagSeverity.NOTABLE,
+                    summary="Too many pets.",
+                    evidence="pets",
+                )
+            ]
+        )
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await run_and_summarize(client)
+        # Human overrides the AI flag back to eligible.
+        patched = (
+            await client.patch(
+                f"/applications/{flagged.id}/status", json={"status": "eligible"}
+            )
+        ).json()["application"]
+        assert patched["statusSource"] == "human"
+        # The detail payload exposes what Automatic would decide.
+        assert patched["autoStatus"] == "ineligible"
+        assert patched["autoStatusSource"] == "ai"
+
+        # Clearing the override recomputes from the still-present AI flag.
+        cleared = (
+            await client.delete(f"/applications/{flagged.id}/status")
+        ).json()["application"]
+        assert cleared["status"] == "ineligible"
+        assert cleared["statusSource"] == "ai"
+        assert cleared["stale"] is False
+        assert cleared["flagCount"] == 1
+
+
+@pytest.mark.anyio
+async def test_clear_override_without_override_is_noop() -> None:
+    """DELETE on a machine-owned status is idempotent and leaves it untouched."""
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    application = add_eligible(db, email="a@x.com", raw_hash="h1")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.delete(f"/applications/{application.id}/status")
+        assert response.status_code == 200
+        cleared = response.json()["application"]
+        assert cleared["status"] == "eligible"
+        assert cleared["statusSource"] == "untouched"
+
+
+@pytest.mark.anyio
 async def test_member_can_override_status() -> None:
     """Status override is open to any committee member, not only admins."""
     app, db, _ = setup_app(role=UserRole.MEMBER)
