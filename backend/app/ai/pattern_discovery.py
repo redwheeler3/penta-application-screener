@@ -110,7 +110,8 @@ For each dimension provide:
 - name: a short committee-facing label
 - definition: 1-2 neutral sentences on what it measures
 - why_it_differentiates: what actually varies across THESE applicants on this axis
-- default_weight: a starting importance 0..1 toward overall fit (the committee will re-weight later)
+
+Do NOT assign importance or weight to the dimensions. Discovering which axes exist is your job; deciding how much each matters is the committee's, and they do it later. Treat every dimension as equally important here.
 
 Also write a 2-4 sentence neutral summary of what most distinguishes strong from weak fit across this pool.
 

@@ -72,3 +72,16 @@ The per-candidate essay extraction pass (milestone 6). Informational only — ne
 | --- | --- | --- | --- |
 | GET | `/essay-analysis/estimate` | Projected cost + how many eligible applicants would be analyzed vs. cached. | Login |
 | POST | `/essay-analysis/run` | Run essay analysis over eligible applicants; streams NDJSON progress, then a summary. | Login |
+
+### Screening — `app/api/screening.py`
+
+Pattern discovery + dimension scoring (milestone 7) and the deterministic ranked shortlist (milestone 8). Discovery and scoring are AI passes; ranking is pure math over the cached scores — no model call. See [ai-screening.md](ai-screening.md).
+
+| Method | Path | Purpose | Auth |
+| --- | --- | --- | --- |
+| POST | `/screening/discover` | One synthesis call over the eligible pool; persists a new `ScreeningRun` with the discovered dimensions and an equal-weight baseline. | Login |
+| GET | `/screening/current` | The current run's dimensions + summary, or null if discovery has never run. | Login |
+| GET | `/screening/scoring/estimate` | Projected cost + how many eligible applicants would be scored vs. cached against the current run's dimensions. | Login |
+| POST | `/screening/scoring/run` | Score every eligible applicant against the current run's dimensions; streams NDJSON progress, then a summary. | Login |
+| GET | `/screening/ranking` | The deterministic ranked shortlist: candidates ordered by weight-normalized fit, each with a relative band, the shortlist line, and the live above-line count. 409 before patterns exist. | Login |
+| PUT | `/screening/shortlist-line` | Move the shortlist line for the current run (`{"shortlist_size": n}`). A reading aid — never removes anyone. 409 before patterns exist. | Login |

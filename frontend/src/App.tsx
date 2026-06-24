@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clipboard, LogIn, LogOut, RefreshCw, Settings, Sparkles, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clipboard, ListOrdered, LogIn, LogOut, RefreshCw, Settings, Sparkles, X } from "lucide-react";
 import { type ReactNode, type SyntheticEvent, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { HouseIcon } from "./HouseIcon";
@@ -160,7 +160,41 @@ type PoolDimension = {
   name: string;
   definition: string;
   why_it_differentiates: string;
-  default_weight: number;
+};
+
+// --- Ranking (milestone 8). The deterministic ranked shortlist from
+// GET /screening/ranking — pure math over the cached dimension scores, no model
+// call. Mirrors the backend ranking dataclasses.
+
+// How one dimension fed a candidate's fit: the score and the weight applied,
+// plus the grounding kept for the explainable per-row view.
+type DimensionContribution = {
+  dimension_key: string;
+  name: string;
+  score: number;
+  weight: number;
+  confidence: "low" | "medium" | "high";
+  rationale: string;
+  evidence: string;
+};
+
+type RankedCandidate = {
+  application_id: number;
+  name: string | null;
+  rank: number; // 1-based position
+  fit: number; // 0..1 weighted average — supporting detail, not the headline
+  band: string; // relative pool-position label (Strong fit … Limited)
+  above_line: boolean;
+  contributions: DimensionContribution[];
+};
+
+type RankingState = {
+  runId: number;
+  weights: Record<string, number>;
+  shortlistSize: number;
+  aboveLineCount: number;
+  scoredCount: number;
+  candidates: RankedCandidate[];
 };
 
 type ScreeningRunState = {
@@ -272,6 +306,12 @@ const SOURCE_DESCRIPTIONS: Record<StatusSource, string> = {
 
 function flagCategoryLabel(category: string): string {
   return FLAG_CATEGORY_LABELS[category] ?? category;
+}
+
+// Map a relative fit band ("Strong fit" … "Limited") to a CSS modifier class.
+// Derived from the label so the backend stays the single source of band names.
+function bandClass(band: string): string {
+  return band.toLowerCase().replace(/[^a-z]+/g, "-");
 }
 
 // Percent complete (0–100) for a quality-flag run, used for both the label text
@@ -517,6 +557,12 @@ export function App() {
   const [dsEstimate, setDsEstimate] = useState<QualityFlagEstimate | null>(null);
   const [dsRunning, setDsRunning] = useState(false);
   const [dsProgress, setDsProgress] = useState<{ processed: number; total: number } | null>(null);
+
+  // Ranking (milestone 8): the deterministic ranked shortlist. `showRanking`
+  // toggles the ranked view on over the applications list; null ranking means
+  // it has not been fetched yet (or scoring has not run).
+  const [ranking, setRanking] = useState<RankingState | null>(null);
+  const [showRanking, setShowRanking] = useState(false);
 
 
   useEffect(() => {
@@ -915,6 +961,10 @@ export function App() {
         setScreeningRun(run);
         showToast(`Discovered ${run.dimensions.length} dimensions for this pool.`);
         refreshDashboard();
+        // A new run replaces the dimensions (and weights), so no candidate has
+        // scores under it yet — drop any stale ranking and close the view.
+        setRanking(null);
+        setShowRanking(false);
       }
     } catch (error) {
       showError(error instanceof Error ? `Pattern discovery error: ${error.message}` : "Pattern discovery error.");
@@ -978,12 +1028,50 @@ export function App() {
         // dashboard so the workflow marks scoring done. Status is unaffected.
         refreshDashboard();
         if (selectedApp) viewApplication(selectedApp.id);
+        // Scores changed, so any open ranking is stale — re-fetch it.
+        if (showRanking) openRanking();
       }
     } catch (error) {
       showError(error instanceof Error ? `Scoring error: ${error.message}` : "Scoring error.");
     }
     setDsProgress(null);
     setDsRunning(false);
+  }
+
+  // Ranking (milestone 8): fetch the deterministic ranked shortlist and open the
+  // ranked view. No cost — pure math over the cached scores — so it just loads.
+  async function openRanking() {
+    setSelectedApp(null);
+    const response = await fetch(`${apiBaseUrl}/screening/ranking`, { credentials: "include" });
+    if (response.ok) {
+      setRanking(await response.json());
+      setShowRanking(true);
+    } else {
+      const payload = await response.json().catch(() => null);
+      showError(
+        payload?.detail
+          ? `Could not load the ranking: ${formatErrorDetail(payload.detail)}`
+          : "Could not load the ranking.",
+      );
+    }
+  }
+
+  // Move the shortlist line. The line is a reading aid over the soft ranking — it
+  // never removes anyone — so we persist the new position and re-fetch so the
+  // above-line count and per-row marks stay in sync with the backend.
+  async function setShortlistLine(size: number) {
+    const next = Math.max(0, size);
+    const response = await fetch(`${apiBaseUrl}/screening/shortlist-line`, {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shortlist_size: next }),
+    });
+    if (response.ok) {
+      await openRanking();
+    } else {
+      showError("Could not update the shortlist line.");
+    }
   }
 
   // Human override of an application's status (any committee member). The backend
@@ -1393,6 +1481,25 @@ export function App() {
               </ol>
             </div>
 
+            {/* Ranked shortlist entry point. Available once scoring has run (the
+                ranking is math over those scores). Toggles the ranked view on
+                over the applications list; never a gated AI step — no model call. */}
+            {workflow.candidatesScored && !selectedApp ? (
+              <div className="ranking-entry">
+                {showRanking ? (
+                  <button type="button" className="secondary-button" onClick={() => setShowRanking(false)}>
+                    <ChevronLeft size={16} />
+                    <span>Back to applications</span>
+                  </button>
+                ) : (
+                  <button type="button" className="primary-button" onClick={openRanking}>
+                    <ListOrdered size={16} />
+                    <span>View ranked shortlist</span>
+                  </button>
+                )}
+              </div>
+            ) : null}
+
             {qfEstimate ? (
               <div className="qf-confirm">
                 <div className="qf-confirm-body">
@@ -1589,8 +1696,8 @@ export function App() {
 
             {/* The current run's discovered dimensions — the axes scoring rates
                 each candidate on. Shown only on the list view, not when a single
-                candidate is open. */}
-            {screeningRun && !selectedApp ? (
+                candidate is open or the ranked view is showing. */}
+            {screeningRun && !selectedApp && !showRanking ? (
               <details className="dimensions-panel">
                 <summary>
                   Discovered dimensions ({screeningRun.dimensions.length}) — how this pool varies
@@ -1601,9 +1708,6 @@ export function App() {
                     <li key={dim.key} className="dimension-item">
                       <div className="dimension-head">
                         <span className="dimension-name">{dim.name}</span>
-                        <span className="dimension-weight">
-                          default weight {dim.default_weight.toFixed(2)}
-                        </span>
                       </div>
                       <p className="dimension-def">{dim.definition}</p>
                       <p className="dimension-why">{dim.why_it_differentiates}</p>
@@ -1613,7 +1717,115 @@ export function App() {
               </details>
             ) : null}
 
-            {selectedApp ? (() => {
+            {/* The ranked shortlist (milestone 8): a decision surface, not a
+                browse table. The order IS the product — read top-down to the
+                shortlist line. Numbers are supporting detail; the band label and
+                rationale lead, per "Ranking And Outputs". */}
+            {showRanking && !selectedApp && ranking ? (
+              <div className="ranking-view">
+                <div className="ranking-header">
+                  <div>
+                    <h3>Ranked shortlist</h3>
+                    <p className="ranking-subhead">
+                      {ranking.scoredCount} candidate{ranking.scoredCount === 1 ? "" : "s"} scored,
+                      ranked by overall fit. Dimensions are weighted equally until you adjust them.
+                    </p>
+                  </div>
+                  <div className="shortlist-line-control">
+                    <label htmlFor="shortlist-size">Shortlist line</label>
+                    <div className="shortlist-line-input">
+                      <button
+                        type="button"
+                        className="stepper-button"
+                        aria-label="Move line up one"
+                        onClick={() => setShortlistLine(ranking.shortlistSize - 1)}
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                      <input
+                        id="shortlist-size"
+                        type="number"
+                        min={0}
+                        value={ranking.shortlistSize}
+                        onChange={(event) => setShortlistLine(Number(event.target.value))}
+                      />
+                      <button
+                        type="button"
+                        className="stepper-button"
+                        aria-label="Move line down one"
+                        onClick={() => setShortlistLine(ranking.shortlistSize + 1)}
+                      >
+                        <ChevronUp size={14} />
+                      </button>
+                    </div>
+                    <span className="above-line-count">
+                      {ranking.aboveLineCount} above the line
+                    </span>
+                  </div>
+                </div>
+
+                {ranking.candidates.length === 0 ? (
+                  <div className="empty-state">
+                    <p>No scored candidates to rank yet. Run scoring first.</p>
+                  </div>
+                ) : (
+                  <ol className="ranking-list">
+                    {ranking.candidates.map((candidate, index) => {
+                      // The shortlist line renders as a divider after the last
+                      // above-line candidate, so the committee can read straight
+                      // down to it. It never removes anyone below.
+                      const lineHere =
+                        candidate.above_line &&
+                        ranking.candidates[index + 1]?.above_line === false;
+                      // Lead with the highest-weighted dimensions this candidate
+                      // exhibits — the plain-language "why here", not the number.
+                      const topContributions = [...candidate.contributions]
+                        .filter((c) => c.weight > 0)
+                        .sort((a, b) => b.weight * b.score - a.weight * a.score)
+                        .slice(0, 3);
+                      return (
+                        <li key={candidate.application_id}>
+                          <div
+                            className={`ranking-row ${candidate.above_line ? "above-line" : "below-line"}`}
+                            onClick={() => viewApplication(candidate.application_id)}
+                          >
+                            <span className="ranking-rank">#{candidate.rank}</span>
+                            <div className="ranking-main">
+                              <div className="ranking-name-row">
+                                <span className="ranking-name">{candidate.name || "Unnamed applicant"}</span>
+                                <span className={`fit-band band-${bandClass(candidate.band)}`}>
+                                  {candidate.band}
+                                </span>
+                              </div>
+                              {topContributions.length > 0 ? (
+                                <p className="ranking-rationale">
+                                  {topContributions[0].rationale}
+                                </p>
+                              ) : null}
+                              <div className="ranking-dimensions">
+                                {topContributions.map((c) => (
+                                  <span key={c.dimension_key} className="ranking-dim-chip">
+                                    {c.name}
+                                    <span className={`dim-confidence conf-${c.confidence}`}>
+                                      {c.confidence}
+                                    </span>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          {lineHere ? (
+                            <div className="shortlist-divider">
+                              <span>Shortlist line — {ranking.aboveLineCount} above</span>
+                            </div>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+              </div>
+            ) : selectedApp ? (() => {
               const flaggedFields = new Set(
                 selectedApp.hardFilterReasons.flatMap((reason) => REASON_FIELDS[reason.code] ?? []),
               );
