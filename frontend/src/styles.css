@@ -1063,12 +1063,6 @@ h1 {
   font-style: italic;
 }
 
-.quality-flags-clean {
-  margin-bottom: 1.25rem;
-  color: var(--penta-green-dark);
-  font-size: 0.82rem;
-}
-
 /* AI essay summary (milestone 6) */
 .essay-analysis {
   background: #f5f3ff;

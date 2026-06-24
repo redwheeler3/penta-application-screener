@@ -84,6 +84,11 @@ type WorkflowState = {
   essaysAnalyzed: boolean;
   patternsDiscovered: boolean;
   candidatesScored: boolean;
+  // Whether the current run was built from the eligible pool as it is now — the
+  // same truth the Rank no-op gate uses. The Rank step's "needs re-run" badge
+  // reads this (not score coverage), so a pool change that leaves coverage full
+  // (e.g. toggling a previously-scored candidate back in) still flags re-rank.
+  rankingCurrent: boolean;
 };
 
 // Per-AI-step coverage of the current scope, from the dashboard. cached < inScope
@@ -427,11 +432,23 @@ function WorkflowStep(props: {
   // (e.g. sync's row count, discovery's dimension count). These are not
   // coverage, so they show as one number, not "n/n".
   caption?: string;
+  // Explicit "out of date" signal for steps whose currency isn't captured by
+  // score coverage (Rank: the pool can change while every still-eligible
+  // candidate keeps a cached score). When set, it drives the stale badge instead
+  // of the coverage comparison; the coverage fraction still shows.
+  outOfDate?: boolean;
+  // Tooltip shown when stale, overriding the default coverage-based one.
+  staleTitle?: string;
 }): ReactNode {
-  const { n, title, icon, done, busy, busyLabel, disabled, onClick, last, coverage, progress, caption } = props;
-  // Stale only applies once a step has run (done) and we have coverage to judge:
-  // a run that covers fewer than the current scope is out of date.
-  const stale = done && coverage !== undefined && coverage.cached < coverage.inScope;
+  const { n, title, icon, done, busy, busyLabel, disabled, onClick, last, coverage, progress, caption, outOfDate, staleTitle } = props;
+  // Stale only applies once a step has run (done). It's driven by an explicit
+  // out-of-date signal when given (Rank), otherwise by coverage falling short of
+  // the current scope (a run that no longer covers everyone).
+  const stale =
+    done &&
+    (outOfDate !== undefined
+      ? outOfDate
+      : coverage !== undefined && coverage.cached < coverage.inScope);
   const showDone = done && !stale;
   // Line 2 priority: live progress while running, then settled coverage, then a
   // standalone caption (a single persisted value with no fraction).
@@ -452,7 +469,11 @@ function WorkflowStep(props: {
         }
         onClick={onClick}
         disabled={disabled}
-        title={stale ? `${coverage!.cached}/${coverage!.inScope} current — re-run to cover everyone` : undefined}
+        title={
+          stale
+            ? staleTitle ?? `${coverage!.cached}/${coverage!.inScope} current — re-run to cover everyone`
+            : undefined
+        }
       >
         <span className="workflow-step-badge">
           {stale ? <AlertTriangle size={13} /> : showDone ? <Check size={14} /> : n}
@@ -839,6 +860,7 @@ export function App() {
     essaysAnalyzed: false,
     patternsDiscovered: false,
     candidatesScored: false,
+    rankingCurrent: false,
   });
   const [coverage, setCoverage] = useState<Coverage>({});
   const [isSyncing, setIsSyncing] = useState(false);
@@ -1160,12 +1182,9 @@ export function App() {
     const response = await fetch(`${apiBaseUrl}/quality-flags/estimate`, { credentials: "include" });
     if (response.ok) {
       const estimate: QualityFlagEstimate = await response.json();
-      // Nothing uncached to analyze means re-running is a $0 no-op — mirror the
-      // Rank flow and just say it's current rather than offering a confirm card.
-      if (estimate.to_analyze === 0) {
-        showToast("Screening is already up to date for these applicants.");
-        return;
-      }
+      // Always open the confirmation card — even a $0 no-op (nothing uncached to
+      // analyze). The card states there's nothing to do and disables Confirm,
+      // rather than firing a transient toast the user might miss.
       setQfEstimate(estimate);
     } else {
       showError("Could not load the AI cost estimate for flagging submissions.");
@@ -1235,12 +1254,9 @@ export function App() {
     const response = await fetch(`${apiBaseUrl}/screening/rank/estimate`, { credentials: "include" });
     if (response.ok) {
       const estimate: RankEstimate = await response.json();
-      // If the pool is unchanged since the last run, re-running is a no-op the
-      // backend blocks — so don't offer the confirm card; just say it's current.
-      if (estimate.ranking_current) {
-        showToast("Ranking is already up to date for this applicant pool.");
-        return;
-      }
+      // Always open the confirmation card, even when the pool is unchanged (the
+      // backend would block the run as a no-op). The card explains there's
+      // nothing to re-rank and disables Confirm, instead of a transient toast.
       setRankEstimate(estimate);
     } else {
       showError("Could not load the AI cost estimate for ranking.");
@@ -1726,6 +1742,12 @@ export function App() {
                   }
                   onClick={requestRankEstimate}
                   coverage={coverage.candidatesScored}
+                  // Rank's currency is the pool fingerprint, not score coverage:
+                  // a pool change (candidate added/edited/eligibility flip) makes
+                  // ranking out of date even when every still-eligible candidate
+                  // keeps a cached score. Mirrors the no-op gate exactly.
+                  outOfDate={workflow.candidatesScored && !workflow.rankingCurrent}
+                  staleTitle="The applicant pool changed since the last ranking — re-rank to refresh it."
                   progress={rankProgress}
                   last
                 />
@@ -1754,29 +1776,41 @@ export function App() {
               <div className="qf-confirm">
                 <div className="qf-confirm-body">
                   <strong>Run AI quality checks?</strong>
-                  <p>
-                    Analyze {qfEstimate.to_analyze} eligible applicant
-                    {qfEstimate.to_analyze === 1 ? "" : "s"}
-                    {qfEstimate.cached > 0 ? ` (${qfEstimate.cached} already cached)` : ""}. Estimated cost{" "}
-                    <strong>${qfEstimate.estimated_usd.toFixed(4)}</strong> (cap ${qfEstimate.cap_usd.toFixed(2)}).
-                  </p>
-                  {!qfEstimate.within_cap ? (
+                  {qfEstimate.to_analyze === 0 ? (
+                    <p>
+                      Screening is already up to date — all {qfEstimate.cached} eligible
+                      applicant{qfEstimate.cached === 1 ? " has" : "s have"} been checked.
+                      Sync new or changed applications to screen again.
+                    </p>
+                  ) : (
+                    <p>
+                      Analyze {qfEstimate.to_analyze} eligible applicant
+                      {qfEstimate.to_analyze === 1 ? "" : "s"}
+                      {qfEstimate.cached > 0 ? ` (${qfEstimate.cached} already cached)` : ""}. Estimated cost{" "}
+                      <strong>${qfEstimate.estimated_usd.toFixed(4)}</strong> (cap ${qfEstimate.cap_usd.toFixed(2)}).
+                    </p>
+                  )}
+                  {qfEstimate.to_analyze > 0 && !qfEstimate.within_cap ? (
                     <p className="qf-confirm-warn">
                       Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
                     </p>
                   ) : null}
                 </div>
                 <div className="qf-confirm-actions">
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={runQualityFlags}
-                    disabled={qfRunning || !qfEstimate.within_cap}
-                  >
-                    {qfRunning ? "Running" : "Confirm & run"}
-                  </button>
+                  {/* No run button in the nothing-to-do state — there's nothing to
+                      confirm, so the card is informational and only offers Close. */}
+                  {qfEstimate.to_analyze > 0 ? (
+                    <button
+                      className="primary-button"
+                      type="button"
+                      onClick={runQualityFlags}
+                      disabled={qfRunning || !qfEstimate.within_cap}
+                    >
+                      {qfRunning ? "Running" : "Confirm & run"}
+                    </button>
+                  ) : null}
                   <button className="secondary-button" type="button" onClick={() => setQfEstimate(null)}>
-                    Cancel
+                    {qfEstimate.to_analyze === 0 ? "Close" : "Cancel"}
                   </button>
                 </div>
               </div>
@@ -1809,38 +1843,52 @@ export function App() {
               <div className="qf-confirm">
                 <div className="qf-confirm-body">
                   <strong>Rank the candidates?</strong>
-                  <p>
-                    This summarizes essays, finds the criteria that distinguish this
-                    pool, and scores all {rankEstimate.eligible} eligible applicant
-                    {rankEstimate.eligible === 1 ? "" : "s"} against them. Estimated
-                    cost <strong>~${rankEstimate.estimated_usd.toFixed(4)}</strong> (cap $
-                    {rankEstimate.cap_usd.toFixed(2)}).
-                  </p>
-                  <ul className="qf-confirm-breakdown">
-                    <li>
-                      Summarize essays ~${rankEstimate.breakdown.essays_usd.toFixed(4)}
-                      {rankEstimate.essays_cached > 0 ? ` (${rankEstimate.essays_cached} cached)` : ""}
-                    </li>
-                    <li>Find distinguishing criteria ~${rankEstimate.breakdown.criteria_usd.toFixed(4)}</li>
-                    <li>Score against criteria ~${rankEstimate.breakdown.scoring_usd.toFixed(4)}</li>
-                  </ul>
-                  {!rankEstimate.within_cap ? (
+                  {rankEstimate.ranking_current ? (
+                    <p>
+                      Ranking is already up to date for this applicant pool. Sync new
+                      or changed applications, or move someone in or out of the
+                      eligible pool, to re-rank.
+                    </p>
+                  ) : (
+                    <>
+                      <p>
+                        This summarizes essays, finds the criteria that distinguish this
+                        pool, and scores all {rankEstimate.eligible} eligible applicant
+                        {rankEstimate.eligible === 1 ? "" : "s"} against them. Estimated
+                        cost <strong>~${rankEstimate.estimated_usd.toFixed(4)}</strong> (cap $
+                        {rankEstimate.cap_usd.toFixed(2)}).
+                      </p>
+                      <ul className="qf-confirm-breakdown">
+                        <li>
+                          Summarize essays ~${rankEstimate.breakdown.essays_usd.toFixed(4)}
+                          {rankEstimate.essays_cached > 0 ? ` (${rankEstimate.essays_cached} cached)` : ""}
+                        </li>
+                        <li>Find distinguishing criteria ~${rankEstimate.breakdown.criteria_usd.toFixed(4)}</li>
+                        <li>Score against criteria ~${rankEstimate.breakdown.scoring_usd.toFixed(4)}</li>
+                      </ul>
+                    </>
+                  )}
+                  {!rankEstimate.ranking_current && !rankEstimate.within_cap ? (
                     <p className="qf-confirm-warn">
                       Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
                     </p>
                   ) : null}
                 </div>
                 <div className="qf-confirm-actions">
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={runRank}
-                    disabled={rankRunning || !rankEstimate.within_cap}
-                  >
-                    {rankRunning ? "Running" : "Confirm & run"}
-                  </button>
+                  {/* No run button when ranking is already current — nothing to
+                      confirm, so the card is informational and only offers Close. */}
+                  {!rankEstimate.ranking_current ? (
+                    <button
+                      className="primary-button"
+                      type="button"
+                      onClick={runRank}
+                      disabled={rankRunning || !rankEstimate.within_cap}
+                    >
+                      {rankRunning ? "Running" : "Confirm & run"}
+                    </button>
+                  ) : null}
                   <button className="secondary-button" type="button" onClick={() => setRankEstimate(null)}>
-                    Cancel
+                    {rankEstimate.ranking_current ? "Close" : "Cancel"}
                   </button>
                 </div>
               </div>
@@ -2092,8 +2140,6 @@ export function App() {
                       ))}
                     </ul>
                   </div>
-                ) : selectedApp.qualityFlags ? (
-                  <p className="quality-flags-clean">AI quality checks found no concerns.</p>
                 ) : null}
                 {selectedApp.dimensionScores && selectedApp.dimensionScores.length > 0 ? (
                   <div className="dimension-scores">
