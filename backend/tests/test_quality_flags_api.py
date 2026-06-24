@@ -133,6 +133,55 @@ async def test_admin_run_analyzes_eligible_and_reports() -> None:
 
 
 @pytest.mark.anyio
+async def test_fully_cached_rerun_is_blocked() -> None:
+    # Once every applicant is cached, re-screening is a $0 no-op, so the endpoint
+    # blocks it (409) — symmetric with the Rank chain's pool gate. The UI turns
+    # this into an "already up to date" toast.
+    app, db, provider = setup_app(role=UserRole.ADMIN)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    add_eligible(db, email="b@x.com", raw_hash="h2")
+    provider.queue(QualityFlagReport(flags=[]))
+    provider.queue(QualityFlagReport(flags=[]))
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        first = await run_and_summarize(client)
+        assert first["analyzed"] == 2
+        assert first["totalCostUsd"] > 0  # real calls cost money
+
+        # Nothing uncached now → blocked.
+        assert (await client.post("/quality-flags/run")).status_code == 409
+
+
+@pytest.mark.anyio
+async def test_partial_cache_run_counts_only_uncached_cost() -> None:
+    # A run with a mix of cached and new applicants must report only the NEW
+    # ones' cost — a cache hit carries its original first-run cost for auditing,
+    # but that is not money spent now. (Regression: the tally summed cached cost.)
+    app, db, provider = setup_app(role=UserRole.ADMIN)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    add_eligible(db, email="b@x.com", raw_hash="h2")
+    provider.queue(QualityFlagReport(flags=[]))
+    provider.queue(QualityFlagReport(flags=[]))
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        first = await run_and_summarize(client)
+        assert first["analyzed"] == 2
+        first_cost = first["totalCostUsd"]
+
+        # Add one new applicant and re-run: 2 cached + 1 new. The run proceeds
+        # (one uncached), and the total reflects only that one call — not the two
+        # cached results' stored cost.
+        add_eligible(db, email="c@x.com", raw_hash="h3")
+        provider.queue(QualityFlagReport(flags=[]))
+        second = await run_and_summarize(client)
+        assert second["analyzed"] == 1
+        assert second["cached"] == 2
+        assert 0 < second["totalCostUsd"] < first_cost
+
+
+@pytest.mark.anyio
 async def test_ai_flag_sets_needs_review_status_and_filter() -> None:
     app, db, provider = setup_app(role=UserRole.ADMIN)
     add_eligible(db, email="flag@x.com", raw_hash="h1", name="Flagged Applicant")
@@ -291,19 +340,13 @@ async def test_human_override_is_sticky_and_snapshots_fingerprint() -> None:
         # Flags are preserved through the override.
         assert patched["flagCount"] == 1
 
-        # A re-run with the SAME finding must not flip the human status or go stale.
-        provider.queue(
-            QualityFlagReport(
-                flags=[
-                    QualityFlag(
-                        category=FlagCategory.PET_POLICY,
-                        severity=FlagSeverity.NOTABLE,
-                        summary="Too many pets.",
-                        evidence="pets",
-                    )
-                ]
-            )
-        )
+        # A re-run must not flip the human status or go stale, even though the
+        # cached result still flows through the status hook. The pool must change
+        # for a re-run to be allowed at all (the no-op gate), so add a new
+        # applicant to trigger it; the human-overridden one stays cached and its
+        # hook must respect the sticky human status.
+        add_eligible(db, email="new@x.com", raw_hash="h2")
+        provider.queue(QualityFlagReport(flags=[]))  # for the new applicant only
         await run_and_summarize(client)
         detail = (await client.get(f"/applications/{flagged.id}")).json()["application"]
         assert detail["status"] == "eligible"

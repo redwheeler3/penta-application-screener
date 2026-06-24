@@ -78,6 +78,7 @@ def estimate_cost(
     model_id: str,
     fallback_input_tokens: int,
     fallback_output_tokens: int,
+    usage_kind_prefix: str | None = None,
 ) -> dict[str, object]:
     """Estimate the cost of analyzing the given applications, excluding any that
     are already cached. Returned shape feeds the pre-run confirmation UI.
@@ -85,7 +86,14 @@ def estimate_cost(
     Prefers per-call token counts learned from real usage: the current prompt
     version first, then any earlier version (still closer to reality than a
     static guess). The fallback values are used only when there is no usage
-    history at all for this kind+model.
+    history at all.
+
+    ``usage_kind_prefix`` lets a pass whose ``kind`` carries a per-run suffix
+    (e.g. ``dimension_scoring:<dims_hash>``) learn from *all* its prior runs:
+    token usage depends on the prompt shape, not on which dimensions were
+    discovered, so averaging across every ``dimension_scoring:*`` row keeps the
+    estimate self-tuning even though each run gets a fresh hash. Cache hits still
+    key on the exact ``kind``. Defaults to exact-kind matching.
     """
     uncached = [
         app
@@ -93,7 +101,7 @@ def estimate_cost(
         if _cached_result(db, app, kind, model_id) is None
     ]
     avg_input_tokens, avg_output_tokens = _observed_avg_tokens(
-        db, kind=kind, model_id=model_id
+        db, kind=kind, model_id=model_id, kind_prefix=usage_kind_prefix
     ) or (fallback_input_tokens, fallback_output_tokens)
     # Price one average call through the same formula as a real call, then scale
     # by how many uncached applications will actually be sent.
@@ -109,33 +117,43 @@ def estimate_cost(
 
 
 def _observed_avg_tokens(
-    db: Session, *, kind: str, model_id: str
+    db: Session, *, kind: str, model_id: str, kind_prefix: str | None = None
 ) -> tuple[int, int] | None:
-    """Average input/output tokens from this kind+model's recent real calls.
+    """Average input/output tokens from this model's recent real calls for the
+    pass.
 
-    Prefers usage from the current ``PROMPT_VERSION`` (the most representative of
-    what the next run will cost). If none exists yet — e.g. right after a prompt
-    change, before the new version has been run — falls back to the most recent
-    usage from any version, which still beats a static guess. Returns None only
-    when there is no usage history at all, so the caller uses its fixed fallback.
+    Matches on the exact ``kind`` unless ``kind_prefix`` is given, in which case
+    it matches every kind starting with that prefix (see ``estimate_cost`` for
+    why scoring needs this). Prefers usage from the current ``PROMPT_VERSION``
+    (the most representative of what the next run will cost). If none exists yet —
+    e.g. right after a prompt change — falls back to the most recent usage from
+    any version, which still beats a static guess. Returns None only when there
+    is no usage history at all, so the caller uses its fixed fallback.
     """
-    current = _avg_tokens_query(db, kind=kind, model_id=model_id, prompt_version=PROMPT_VERSION)
+    current = _avg_tokens_query(
+        db, kind=kind, model_id=model_id, prompt_version=PROMPT_VERSION, kind_prefix=kind_prefix
+    )
     if current is not None:
         return current
-    return _avg_tokens_query(db, kind=kind, model_id=model_id, prompt_version=None)
+    return _avg_tokens_query(
+        db, kind=kind, model_id=model_id, prompt_version=None, kind_prefix=kind_prefix
+    )
 
 
 def _avg_tokens_query(
-    db: Session, *, kind: str, model_id: str, prompt_version: str | None
+    db: Session, *, kind: str, model_id: str, prompt_version: str | None,
+    kind_prefix: str | None = None,
 ) -> tuple[int, int] | None:
-    """Average tokens over recent rows for this kind+model, optionally pinned to a
-    prompt version. ``prompt_version=None`` averages across all versions.
+    """Average tokens over recent rows for this model, matching the exact ``kind``
+    or — when ``kind_prefix`` is set — every kind starting with that prefix.
+    ``prompt_version=None`` averages across all versions.
     """
-    query = (
-        select(ApplicationAIResult.input_tokens, ApplicationAIResult.output_tokens)
-        .where(ApplicationAIResult.kind == kind)
-        .where(ApplicationAIResult.model_id == model_id)
-    )
+    query = select(ApplicationAIResult.input_tokens, ApplicationAIResult.output_tokens)
+    if kind_prefix is not None:
+        query = query.where(ApplicationAIResult.kind.like(f"{kind_prefix}%"))
+    else:
+        query = query.where(ApplicationAIResult.kind == kind)
+    query = query.where(ApplicationAIResult.model_id == model_id)
     if prompt_version is not None:
         query = query.where(ApplicationAIResult.prompt_version == prompt_version)
     rows = db.execute(

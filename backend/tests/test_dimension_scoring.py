@@ -127,6 +127,66 @@ def test_different_dimension_sets_do_not_share_cache() -> None:
     assert len(provider.calls) == 2
 
 
+def test_scoring_estimate_self_tunes_across_dimension_sets() -> None:
+    # The bug: each Rank run gets a fresh dims_hash, so scoring's per-run kind
+    # never accumulates usage and the estimate stayed pinned to the fallback
+    # constant (which under-counted ~2.5x). The fix matches usage by the
+    # "dimension_scoring:" prefix, so a NEW dimension set's estimate learns from
+    # prior runs' real usage.
+    from app.ai.dimension_scoring import (
+        SCORING_FALLBACK_INPUT_TOKENS,
+        SCORING_FALLBACK_OUTPUT_TOKENS,
+        estimate_dimension_scoring,
+        estimate_scoring_without_dimensions,
+    )
+    from app.ai.pricing import cost_usd
+    from app.ai.provider import Usage
+
+    db = make_db()
+    application = add_eligible(db, email="a@x.com", raw_hash="h1")
+    settings = AppSettings()
+    provider = MockProvider()
+
+    # Run scoring under set A, recording real usage with token counts deliberately
+    # DIFFERENT from the fallback constants, so the estimate's value reveals which
+    # source it used.
+    observed_in, observed_out = 5000, 2500
+    report_a = report_with(["community", "skills"])
+    provider.queue(
+        a_scoring_report(["community", "skills"]),
+        # Echo the model the estimate filters on (the real provider does this; the
+        # mock defaults to a placeholder id that wouldn't match the usage query).
+        model_id=settings.ai.first_pass_model,
+        input_tokens=observed_in,
+        output_tokens=observed_out,
+    )
+    analyze_one(db, provider, application=application, report=report_a, settings=settings)
+
+    # Estimate for a DIFFERENT set B (fresh dims_hash, zero cache rows of its own).
+    # With the prefix match it prices one uncached candidate at set A's OBSERVED
+    # tokens — not the fallback constant.
+    report_b = report_with(["community", "skills", "stability"])
+    est_b = estimate_dimension_scoring(db, report_b, settings)
+    expected = round(
+        cost_usd(settings.ai.first_pass_model, Usage(observed_in, observed_out)), 4
+    )
+    fallback = round(
+        cost_usd(
+            settings.ai.first_pass_model,
+            Usage(SCORING_FALLBACK_INPUT_TOKENS, SCORING_FALLBACK_OUTPUT_TOKENS),
+        ),
+        4,
+    )
+    assert est_b["to_analyze"] == 1
+    assert est_b["estimated_usd"] == expected
+    assert est_b["estimated_usd"] != fallback  # proves it read observed, not the constant
+
+    # The no-dimensions path (used by the combined Rank estimate before discovery)
+    # self-tunes from the same prior usage rather than the blind constant.
+    est_nodims = estimate_scoring_without_dimensions(db, settings)
+    assert est_nodims["estimated_usd"] == expected
+
+
 def test_screen_scores_all_eligible_and_does_not_touch_status() -> None:
     db = make_db()
     app1 = add_eligible(db, email="a@x.com", raw_hash="h1")

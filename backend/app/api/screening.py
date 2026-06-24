@@ -58,6 +58,7 @@ from app.services.screening_run import (
     current_pattern_report,
     dimension_weights,
     get_current_run,
+    ranking_is_current,
     set_shortlist_size,
     shortlist_size,
 )
@@ -80,9 +81,12 @@ class RunTally:
             self.failed += 1
             return
         if result.outcome.cached:
+            # A cache hit made no model call, so it spent nothing on THIS run.
+            # (A cached outcome carries its original first-run cost for auditing;
+            # that is not money spent now, so it must not count toward the total.)
             self.cached += 1
-        else:
-            self.analyzed += 1
+            return
+        self.analyzed += 1
         self.cost_usd += result.outcome.cost_usd
 
 
@@ -135,7 +139,8 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     essays = estimate_essay_analysis(db, settings)
     pool = eligible_applications(db)
     discovery_usd = estimate_discovery(pool, settings)
-    scoring_usd = estimate_scoring_without_dimensions(db, settings)
+    scoring = estimate_scoring_without_dimensions(db, settings)
+    scoring_usd = float(scoring["estimated_usd"])
     total = round(float(essays["estimated_usd"]) + discovery_usd + scoring_usd, 4)
     return {
         "eligible": len(pool),
@@ -161,6 +166,10 @@ def rank_estimate(
     result = _rank_estimate(db, settings)
     result["cap_usd"] = settings.ai.spending_cap_usd
     result["within_cap"] = result["estimated_usd"] <= settings.ai.spending_cap_usd
+    # When the pool hasn't changed since the last run, the ranking is already
+    # current — re-running would only re-pay for an identical result. The UI uses
+    # this to say "ranking is up to date" instead of offering to spend.
+    result["ranking_current"] = ranking_is_current(db, get_current_run(db))
     return result
 
 
@@ -182,6 +191,17 @@ def rank_run(
     settings: AppSettings = get_app_settings(db)
     if not eligible_applications(db):
         raise HTTPException(status_code=409, detail="No eligible applications to rank.")
+
+    # Block a no-op re-run: if the eligible pool is unchanged since the current
+    # run, the ranking is already current and re-running would only re-spend for
+    # an identical result (discovery is nondeterministic, so it would even churn
+    # the criteria and force a full re-score). The pool must change to re-rank.
+    if ranking_is_current(db, get_current_run(db)):
+        raise HTTPException(
+            status_code=409,
+            detail="Ranking is already current for this applicant pool. "
+            "Sync new or changed applications before re-ranking.",
+        )
 
     estimate = _rank_estimate(db, settings)
     try:
