@@ -218,6 +218,19 @@ type QualityFlagEstimate = {
   within_cap: boolean;
 };
 
+// Combined cost projection for the Rank chain (essays + criteria + scores), from
+// GET /screening/rank/estimate. `approximate` is always true: the criteria and
+// scoring costs scale with essay output that does not exist until essays run.
+type RankEstimate = {
+  eligible: number;
+  breakdown: { essays_usd: number; criteria_usd: number; scoring_usd: number };
+  essays_cached: number;
+  estimated_usd: number;
+  approximate: boolean;
+  cap_usd: number;
+  within_cap: boolean;
+};
+
 type SortKey = "applicant" | "co_applicant" | "children" | "income" | "status";
 type SortState = { key: SortKey; direction: "asc" | "desc" } | null;
 
@@ -540,27 +553,26 @@ export function App() {
   // Live progress while the run streams: processed/total applications.
   const [qfProgress, setQfProgress] = useState<{ processed: number; total: number } | null>(null);
 
-  const [eaEstimate, setEaEstimate] = useState<QualityFlagEstimate | null>(null);
-  const [eaRunning, setEaRunning] = useState(false);
-  const [eaProgress, setEaProgress] = useState<{ processed: number; total: number } | null>(null);
-
-  // Pattern discovery (one pool-level call) and dimension scoring (per-candidate
-  // fan-out) — milestone 7. The current run's discovered dimensions, shown above
-  // the list once discovery has run.
+  // The current run's discovered dimensions, shown above the list once the Rank
+  // chain has run. Refreshed after a rank run / on load.
   const [screeningRun, setScreeningRun] = useState<ScreeningRunState | null>(null);
-  const [pdRunning, setPdRunning] = useState(false);
-  // Discovery has no cost estimate (a single call), but still confirms before
-  // running — for consistency with the other AI steps and because it starts a
-  // new run that supersedes any existing dimensions/scores. true = card open.
-  const [pdConfirm, setPdConfirm] = useState(false);
-  // Scoring reuses the estimate-confirm-stream shape of the other AI passes.
-  const [dsEstimate, setDsEstimate] = useState<QualityFlagEstimate | null>(null);
-  const [dsRunning, setDsRunning] = useState(false);
-  const [dsProgress, setDsProgress] = useState<{ processed: number; total: number } | null>(null);
+
+  // Rank (the combined essays → criteria → scores chain). One estimate-confirm-
+  // stream flow over all three passes, gated once on the combined cost. The
+  // committee never runs the sub-passes individually, so there is no per-pass
+  // state — just the chain's estimate, running flag, and phase-aware progress.
+  const [rankEstimate, setRankEstimate] = useState<RankEstimate | null>(null);
+  const [rankRunning, setRankRunning] = useState(false);
+  // Live progress while the chain streams. `phase` is which pass is running
+  // (essays / criteria / scores); processed/total drive the bar for the
+  // per-candidate phases (criteria is a single call, so it has no fraction).
+  const [rankProgress, setRankProgress] = useState<
+    { phase: "essays" | "criteria" | "scores"; processed: number; total: number } | null
+  >(null);
 
   // Ranking (milestone 8): the deterministic ranked shortlist. `showRanking`
   // toggles the ranked view on over the applications list; null ranking means
-  // it has not been fetched yet (or scoring has not run).
+  // it has not been fetched yet (or the Rank chain has not run).
   const [ranking, setRanking] = useState<RankingState | null>(null);
   const [showRanking, setShowRanking] = useState(false);
 
@@ -801,15 +813,13 @@ export function App() {
   // Fetch the cost estimate and show the confirmation prompt. AI never runs
   // without the user first seeing the estimate and confirming (SPEC cost control).
   async function requestQualityFlagsEstimate() {
-    // Close any other open confirmation so only one card shows at a time.
-    setEaEstimate(null);
-    setDsEstimate(null);
-    setPdConfirm(false);
+    // Close the Rank confirmation if open, so only one card shows at a time.
+    setRankEstimate(null);
     const response = await fetch(`${apiBaseUrl}/quality-flags/estimate`, { credentials: "include" });
     if (response.ok) {
       setQfEstimate(await response.json());
     } else {
-      showError("Could not load the AI cost estimate for quality checks.");
+      showError("Could not load the AI cost estimate for flagging submissions.");
     }
   }
 
@@ -824,7 +834,7 @@ export function App() {
       });
       if (!response.ok || !response.body) {
         const payload = await response.json().catch(() => null);
-        showError(payload?.detail ? `Quality checks failed: ${formatErrorDetail(payload.detail)}` : "Quality checks failed.");
+        showError(payload?.detail ? `Flagging failed: ${formatErrorDetail(payload.detail)}` : "Flagging failed.");
       } else {
         // Read the NDJSON stream: a progress line per application, then a summary.
         const reader = response.body.getReader();
@@ -846,7 +856,7 @@ export function App() {
                 ? ` ${event.failed} failed and were skipped.`
                 : "";
               showToast(
-                `Quality checks complete: ${event.flagged} flagged of ` +
+                `Flagging complete: ${event.flagged} flagged of ` +
                   `${event.analyzed + event.cached} analyzed ($${event.totalCostUsd.toFixed(4)}).` +
                   failedNote,
               );
@@ -860,39 +870,39 @@ export function App() {
         if (selectedApp) viewApplication(selectedApp.id);
       }
     } catch (error) {
-      showError(error instanceof Error ? `Quality checks error: ${error.message}` : "Quality checks error.");
+      showError(error instanceof Error ? `Flagging error: ${error.message}` : "Flagging error.");
     }
     setQfProgress(null);
     setQfRunning(false);
   }
 
-  // Essay-analysis run flow, mirroring quality flags. Same estimate-then-confirm
-  // cost control; this pass is informational and never changes status.
-  async function requestEssayAnalysisEstimate() {
-    // Close any other open confirmation so only one card shows at a time.
+  // Rank: the combined essays → criteria → scores chain (milestones 6-8). One
+  // estimate-confirm-stream flow over all three passes. The cost is projected and
+  // cap-checked as a single combined number server-side, so the one button keeps
+  // the same hard cost gate the individual passes had.
+  async function requestRankEstimate() {
+    // Close the flagging confirmation if open, so only one card shows at a time.
     setQfEstimate(null);
-    setDsEstimate(null);
-    setPdConfirm(false);
-    const response = await fetch(`${apiBaseUrl}/essay-analysis/estimate`, { credentials: "include" });
+    const response = await fetch(`${apiBaseUrl}/screening/rank/estimate`, { credentials: "include" });
     if (response.ok) {
-      setEaEstimate(await response.json());
+      setRankEstimate(await response.json());
     } else {
-      showError("Could not load the AI cost estimate for essay analysis.");
+      showError("Could not load the AI cost estimate for ranking.");
     }
   }
 
-  async function runEssayAnalysis() {
-    setEaRunning(true);
-    setEaEstimate(null);
-    setEaProgress(null);
+  async function runRank() {
+    setRankRunning(true);
+    setRankEstimate(null);
+    setRankProgress(null);
     try {
-      const response = await fetch(`${apiBaseUrl}/essay-analysis/run`, {
+      const response = await fetch(`${apiBaseUrl}/screening/rank/run`, {
         method: "POST",
         credentials: "include",
       });
       if (!response.ok || !response.body) {
         const payload = await response.json().catch(() => null);
-        showError(payload?.detail ? `Essay analysis failed: ${formatErrorDetail(payload.detail)}` : "Essay analysis failed.");
+        showError(payload?.detail ? `Ranking failed: ${formatErrorDetail(payload.detail)}` : "Ranking failed.");
       } else {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -906,136 +916,36 @@ export function App() {
           for (const line of lines) {
             if (!line.trim()) continue;
             const event = JSON.parse(line);
-            if (event.type === "progress") {
-              setEaProgress({ processed: event.processed, total: event.total });
-            } else if (event.type === "summary") {
-              const failedNote = event.failed
-                ? ` ${event.failed} failed and were skipped.`
-                : "";
-              showToast(
-                `Essay analysis complete: ${event.analyzed + event.cached} analyzed ` +
-                  `($${event.totalCostUsd.toFixed(4)}).` +
-                  failedNote,
-              );
-            }
-          }
-        }
-        // Refresh the open candidate so the new analysis shows immediately, and
-        // the dashboard so the workflow marks essay analysis done (gating).
-        // Status/counts are unaffected by this pass.
-        refreshDashboard();
-        if (selectedApp) viewApplication(selectedApp.id);
-      }
-    } catch (error) {
-      showError(error instanceof Error ? `Essay analysis error: ${error.message}` : "Essay analysis error.");
-    }
-    setEaProgress(null);
-    setEaRunning(false);
-  }
-
-  // Pattern discovery (milestone 7): one synthesis call over the eligible pool.
-  // It is not cap-gated (a single call), but it still confirms first — both for
-  // consistency with the other AI steps and because it starts a new run that
-  // replaces any existing dimensions/scores.
-  function requestDiscoverConfirm() {
-    // Close any other open confirmation so only one card shows at a time.
-    setQfEstimate(null);
-    setEaEstimate(null);
-    setDsEstimate(null);
-    setPdConfirm(true);
-  }
-
-  async function discoverPatterns() {
-    setPdConfirm(false);
-    setPdRunning(true);
-    try {
-      const response = await fetch(`${apiBaseUrl}/screening/discover`, {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        showError(payload?.detail ? `Pattern discovery failed: ${formatErrorDetail(payload.detail)}` : "Pattern discovery failed.");
-      } else {
-        const run: ScreeningRunState = await response.json();
-        setScreeningRun(run);
-        showToast(`Discovered ${run.dimensions.length} dimensions for this pool.`);
-        refreshDashboard();
-        // A new run replaces the dimensions (and weights), so no candidate has
-        // scores under it yet — drop any stale ranking and close the view.
-        setRanking(null);
-        setShowRanking(false);
-      }
-    } catch (error) {
-      showError(error instanceof Error ? `Pattern discovery error: ${error.message}` : "Pattern discovery error.");
-    }
-    setPdRunning(false);
-  }
-
-  // Dimension scoring (milestone 7): per-candidate fan-out, mirroring the
-  // essay-analysis estimate-confirm-stream flow. Informational — no status change.
-  async function requestScoringEstimate() {
-    // Close any other open confirmation so only one card shows at a time.
-    setQfEstimate(null);
-    setEaEstimate(null);
-    setPdConfirm(false);
-    const response = await fetch(`${apiBaseUrl}/screening/scoring/estimate`, { credentials: "include" });
-    if (response.ok) {
-      setDsEstimate(await response.json());
-    } else {
-      showError("Could not load the AI cost estimate for scoring.");
-    }
-  }
-
-  async function runScoring() {
-    setDsRunning(true);
-    setDsEstimate(null);
-    setDsProgress(null);
-    try {
-      const response = await fetch(`${apiBaseUrl}/screening/scoring/run`, {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!response.ok || !response.body) {
-        const payload = await response.json().catch(() => null);
-        showError(payload?.detail ? `Scoring failed: ${formatErrorDetail(payload.detail)}` : "Scoring failed.");
-      } else {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            const event = JSON.parse(line);
-            if (event.type === "progress") {
-              setDsProgress({ processed: event.processed, total: event.total });
+            if (event.type === "phase") {
+              // A new pass started: reset the bar to its total (criteria, a single
+              // call, has no total — show an indeterminate bar for it).
+              setRankProgress({ phase: event.phase, processed: 0, total: event.total ?? 0 });
+            } else if (event.type === "progress") {
+              setRankProgress({ phase: event.phase, processed: event.processed, total: event.total });
+            } else if (event.type === "error") {
+              showError(event.message || "Ranking failed.");
             } else if (event.type === "summary") {
               const failedNote = event.failed ? ` ${event.failed} failed and were skipped.` : "";
               showToast(
-                `Scoring complete: ${event.analyzed + event.cached} scored ` +
+                `Ranking complete: ${event.dimensions} criteria, ${event.scored} candidates scored ` +
                   `($${event.totalCostUsd.toFixed(4)}).` +
                   failedNote,
               );
             }
           }
         }
-        // Refresh the open candidate so its scores show immediately, and the
-        // dashboard so the workflow marks scoring done. Status is unaffected.
+        // The chain replaced the dimensions and scores, so refresh the run, the
+        // dashboard (workflow gating), the open candidate, and any open ranking.
+        refreshScreeningRun();
         refreshDashboard();
         if (selectedApp) viewApplication(selectedApp.id);
-        // Scores changed, so any open ranking is stale — re-fetch it.
         if (showRanking) openRanking();
       }
     } catch (error) {
-      showError(error instanceof Error ? `Scoring error: ${error.message}` : "Scoring error.");
+      showError(error instanceof Error ? `Ranking error: ${error.message}` : "Ranking error.");
     }
-    setDsProgress(null);
-    setDsRunning(false);
+    setRankProgress(null);
+    setRankRunning(false);
   }
 
   // Ranking (milestone 8): fetch the deterministic ranked shortlist and open the
@@ -1375,22 +1285,21 @@ export function App() {
               </div>
             </div>
             {/* The ordered screening workflow gets its own full-width band below
-                the title: at five steps it no longer fits beside the heading
-                without wrapping. Each step's input depends on the previous (sync
-                sets the pool, quality checks refine who's eligible, essay
-                analysis feeds pattern discovery, scoring rates against the
-                discovered dimensions), so later steps are hard-gated until the
-                previous step has run. The "done" flags come from the backend, so
-                gating survives reload. */}
+                the title: three single-verb steps — Import, Screen, Rank. Rank is
+                one button that runs the whole essays → criteria → scores chain
+                (the user never runs those sub-passes individually), under one
+                combined cost estimate. Each step's input depends on the previous,
+                so later steps stay hard-gated until the previous has run; the
+                "done" flags come from the backend, so gating survives reload. */}
             <div className="workflow-bar">
               <ol className="workflow-steps">
                 <WorkflowStep
                   n={1}
-                  title="Sync applications"
+                  title="Import"
                   icon={<RefreshCw size={16} />}
                   done={workflow.synced}
                   busy={isSyncing}
-                  busyLabel="Syncing"
+                  busyLabel="Importing"
                   // Step 1 is always available once a sheet is configured. The
                   // caption persists the imported row count (not a fraction).
                   disabled={isSyncing || !hasGoogleSheetLink}
@@ -1403,11 +1312,11 @@ export function App() {
                 />
                 <WorkflowStep
                   n={2}
-                  title="Run quality checks"
+                  title="Screen"
                   icon={<Sparkles size={16} />}
                   done={workflow.qualityChecksRun}
                   busy={qfRunning}
-                  busyLabel="Running checks"
+                  busyLabel="Screening"
                   // Gated until a sync has happened; also needs eligible apps and
                   // no estimate prompt already open.
                   disabled={
@@ -1422,83 +1331,47 @@ export function App() {
                 />
                 <WorkflowStep
                   n={3}
-                  title="Analyze essays"
+                  title="Rank"
                   icon={<Sparkles size={16} />}
-                  done={workflow.essaysAnalyzed}
-                  busy={eaRunning}
-                  busyLabel="Analyzing essays"
-                  // Gated until quality checks have run; also needs eligible apps.
+                  // Rank is the essays → criteria → scores chain. It reads as done
+                  // only once the final pass (scoring) has full coverage; coverage
+                  // tracks that last pass so a re-sync correctly shows it stale.
+                  done={workflow.candidatesScored}
+                  busy={rankRunning}
+                  busyLabel="Ranking"
+                  // Gated until screening has run; also needs eligible apps and no
+                  // open estimate.
                   disabled={
                     !workflow.qualityChecksRun ||
-                    eaRunning ||
-                    eaEstimate !== null ||
+                    rankRunning ||
+                    rankEstimate !== null ||
                     dashboardCounts.status.eligible === 0
                   }
-                  onClick={requestEssayAnalysisEstimate}
-                  coverage={coverage.essaysAnalyzed}
-                  progress={eaProgress}
-                />
-                <WorkflowStep
-                  n={4}
-                  title="Discover patterns"
-                  icon={<Sparkles size={16} />}
-                  done={workflow.patternsDiscovered}
-                  busy={pdRunning}
-                  busyLabel="Discovering"
-                  // Gated until essays are analyzed (the digest it reasons over);
-                  // also needs eligible apps and no open confirmation.
-                  disabled={
-                    !workflow.essaysAnalyzed ||
-                    pdRunning ||
-                    pdConfirm ||
-                    dashboardCounts.status.eligible === 0
-                  }
-                  onClick={requestDiscoverConfirm}
-                  caption={
-                    screeningRun ? `${screeningRun.dimensions.length} dimensions` : undefined
-                  }
-                />
-                <WorkflowStep
-                  n={5}
-                  title="Score candidates"
-                  icon={<Sparkles size={16} />}
-                  done={workflow.candidatesScored}
-                  busy={dsRunning}
-                  busyLabel="Scoring candidates"
-                  // Gated until patterns are discovered (the dimensions it scores
-                  // against); also needs eligible apps and no open estimate.
-                  disabled={
-                    !workflow.patternsDiscovered ||
-                    dsRunning ||
-                    dsEstimate !== null ||
-                    dashboardCounts.status.eligible === 0
-                  }
-                  onClick={requestScoringEstimate}
+                  onClick={requestRankEstimate}
                   coverage={coverage.candidatesScored}
-                  progress={dsProgress}
+                  progress={rankProgress}
                   last
                 />
               </ol>
-            </div>
 
-            {/* Ranked shortlist entry point. Available once scoring has run (the
-                ranking is math over those scores). Toggles the ranked view on
-                over the applications list; never a gated AI step — no model call. */}
-            {workflow.candidatesScored && !selectedApp ? (
-              <div className="ranking-entry">
-                {showRanking ? (
-                  <button type="button" className="secondary-button" onClick={() => setShowRanking(false)}>
+              {/* Ranked shortlist entry point, sharing the workflow row: once the
+                  Rank chain has run, viewing the shortlist is the natural next
+                  move, so it sits beside the steps rather than on its own line.
+                  Never a gated AI step — viewing the ranking is math, no model. */}
+              {workflow.candidatesScored && !selectedApp ? (
+                showRanking ? (
+                  <button type="button" className="secondary-button workflow-shortlist-button" onClick={() => setShowRanking(false)}>
                     <ChevronLeft size={16} />
                     <span>Back to applications</span>
                   </button>
                 ) : (
-                  <button type="button" className="primary-button" onClick={openRanking}>
+                  <button type="button" className="primary-button workflow-shortlist-button" onClick={openRanking}>
                     <ListOrdered size={16} />
-                    <span>View ranked shortlist</span>
+                    <span>View shortlist</span>
                   </button>
-                )}
-              </div>
-            ) : null}
+                )
+              ) : null}
+            </div>
 
             {qfEstimate ? (
               <div className="qf-confirm">
@@ -1555,17 +1428,26 @@ export function App() {
               </div>
             ) : null}
 
-            {eaEstimate ? (
+            {rankEstimate ? (
               <div className="qf-confirm">
                 <div className="qf-confirm-body">
-                  <strong>Run AI essay analysis?</strong>
+                  <strong>Rank the candidates?</strong>
                   <p>
-                    Analyze the essays of {eaEstimate.to_analyze} eligible applicant
-                    {eaEstimate.to_analyze === 1 ? "" : "s"}
-                    {eaEstimate.cached > 0 ? ` (${eaEstimate.cached} already cached)` : ""}. Estimated cost{" "}
-                    <strong>${eaEstimate.estimated_usd.toFixed(4)}</strong> (cap ${eaEstimate.cap_usd.toFixed(2)}).
+                    This summarizes essays, finds the criteria that distinguish this
+                    pool, and scores all {rankEstimate.eligible} eligible applicant
+                    {rankEstimate.eligible === 1 ? "" : "s"} against them. Estimated
+                    cost <strong>~${rankEstimate.estimated_usd.toFixed(4)}</strong> (cap $
+                    {rankEstimate.cap_usd.toFixed(2)}).
                   </p>
-                  {!eaEstimate.within_cap ? (
+                  <ul className="qf-confirm-breakdown">
+                    <li>
+                      Summarize essays ~${rankEstimate.breakdown.essays_usd.toFixed(4)}
+                      {rankEstimate.essays_cached > 0 ? ` (${rankEstimate.essays_cached} cached)` : ""}
+                    </li>
+                    <li>Find distinguishing criteria ~${rankEstimate.breakdown.criteria_usd.toFixed(4)}</li>
+                    <li>Score against criteria ~${rankEstimate.breakdown.scoring_usd.toFixed(4)}</li>
+                  </ul>
+                  {!rankEstimate.within_cap ? (
                     <p className="qf-confirm-warn">
                       Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
                     </p>
@@ -1575,31 +1457,34 @@ export function App() {
                   <button
                     className="primary-button"
                     type="button"
-                    onClick={runEssayAnalysis}
-                    disabled={eaRunning || !eaEstimate.within_cap}
+                    onClick={runRank}
+                    disabled={rankRunning || !rankEstimate.within_cap}
                   >
-                    {eaRunning ? "Running" : "Confirm & run"}
+                    {rankRunning ? "Running" : "Confirm & run"}
                   </button>
-                  <button className="secondary-button" type="button" onClick={() => setEaEstimate(null)}>
+                  <button className="secondary-button" type="button" onClick={() => setRankEstimate(null)}>
                     Cancel
                   </button>
                 </div>
               </div>
             ) : null}
-            {eaRunning ? (
+            {rankRunning ? (
               <div className="qf-progress">
                 <div className="qf-progress-label">
-                  {eaProgress
-                    ? `Analyzing essays… ${eaProgress.processed}/${eaProgress.total} ` +
-                      `(${Math.round(qfPercent(eaProgress))}%)`
-                    : "Starting analysis…"}
+                  {rankProgress
+                    ? rankProgress.phase === "criteria"
+                      ? "Finding criteria across the pool…"
+                      : `${rankProgress.phase === "essays" ? "Summarizing essays" : "Scoring candidates"}… ` +
+                        `${rankProgress.processed}/${rankProgress.total}` +
+                        (rankProgress.total ? ` (${Math.round(qfPercent(rankProgress))}%)` : "")
+                    : "Starting…"}
                 </div>
                 <div className="qf-progress-track">
-                  {eaProgress ? (
-                    <div
-                      className="qf-progress-fill"
-                      style={{ width: `${qfPercent(eaProgress)}%` }}
-                    />
+                  {/* The criteria phase is a single pool call with no fraction, so
+                      it (and the moment before the first progress event) shows the
+                      indeterminate bar; the per-candidate phases show real width. */}
+                  {rankProgress && rankProgress.phase !== "criteria" && rankProgress.total ? (
+                    <div className="qf-progress-fill" style={{ width: `${qfPercent(rankProgress)}%` }} />
                   ) : (
                     <div className="qf-progress-fill qf-progress-fill-indeterminate" />
                   )}
@@ -1607,100 +1492,14 @@ export function App() {
               </div>
             ) : null}
 
-            {pdConfirm ? (
-              <div className="qf-confirm">
-                <div className="qf-confirm-body">
-                  <strong>Discover screening patterns?</strong>
-                  <p>
-                    Analyze all {dashboardCounts.status.eligible} eligible applicant
-                    {dashboardCounts.status.eligible === 1 ? "" : "s"} to discover how this pool varies.
-                    {screeningRun
-                      ? " This starts a new screening run; the existing dimensions and any scores will be replaced."
-                      : ""}
-                  </p>
-                </div>
-                <div className="qf-confirm-actions">
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={discoverPatterns}
-                    disabled={pdRunning}
-                  >
-                    {pdRunning ? "Running" : "Confirm & run"}
-                  </button>
-                  <button className="secondary-button" type="button" onClick={() => setPdConfirm(false)}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : null}
-            {pdRunning ? (
-              <div className="qf-progress">
-                <div className="qf-progress-label">Discovering patterns across the pool…</div>
-                {/* One pool-level call, so there is no per-item percentage — show
-                    the same indeterminate bar the other steps use before their
-                    first progress event arrives, so the wait reads as working. */}
-                <div className="qf-progress-track">
-                  <div className="qf-progress-fill qf-progress-fill-indeterminate" />
-                </div>
-              </div>
-            ) : null}
-            {dsEstimate ? (
-              <div className="qf-confirm">
-                <div className="qf-confirm-body">
-                  <strong>Score candidates against the discovered dimensions?</strong>
-                  <p>
-                    Score {dsEstimate.to_analyze} eligible applicant
-                    {dsEstimate.to_analyze === 1 ? "" : "s"}
-                    {dsEstimate.cached > 0 ? ` (${dsEstimate.cached} already cached)` : ""}. Estimated cost{" "}
-                    <strong>${dsEstimate.estimated_usd.toFixed(4)}</strong> (cap ${dsEstimate.cap_usd.toFixed(2)}).
-                  </p>
-                  {!dsEstimate.within_cap ? (
-                    <p className="qf-confirm-warn">
-                      Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
-                    </p>
-                  ) : null}
-                </div>
-                <div className="qf-confirm-actions">
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={runScoring}
-                    disabled={dsRunning || !dsEstimate.within_cap}
-                  >
-                    {dsRunning ? "Running" : "Confirm & run"}
-                  </button>
-                  <button className="secondary-button" type="button" onClick={() => setDsEstimate(null)}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : null}
-            {dsRunning ? (
-              <div className="qf-progress">
-                <div className="qf-progress-label">
-                  {dsProgress
-                    ? `Scoring candidates… ${dsProgress.processed}/${dsProgress.total} ` +
-                      `(${Math.round(qfPercent(dsProgress))}%)`
-                    : "Starting scoring…"}
-                </div>
-                <div className="qf-progress-track">
-                  {dsProgress ? (
-                    <div className="qf-progress-fill" style={{ width: `${qfPercent(dsProgress)}%` }} />
-                  ) : (
-                    <div className="qf-progress-fill qf-progress-fill-indeterminate" />
-                  )}
-                </div>
-              </div>
-            ) : null}
-
-            {/* The current run's discovered dimensions — the axes scoring rates
-                each candidate on. Shown only on the list view, not when a single
-                candidate is open or the ranked view is showing. */}
-            {screeningRun && !selectedApp && !showRanking ? (
+            {/* The current run's discovered criteria — the axes scoring rates
+                each candidate on. Shown above both the applications list and the
+                ranked shortlist (it is the context for reading either), but not
+                when a single candidate is open. Collapsed by default. */}
+            {screeningRun && !selectedApp ? (
               <details className="dimensions-panel">
                 <summary>
-                  Discovered dimensions ({screeningRun.dimensions.length}) — how this pool varies
+                  Screening criteria ({screeningRun.dimensions.length}) — how this pool varies
                 </summary>
                 <p className="dimensions-summary">{screeningRun.summary}</p>
                 <ul className="dimensions-list">

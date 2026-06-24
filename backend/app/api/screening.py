@@ -1,17 +1,18 @@
-"""Screening API (milestone 7): pool pattern discovery and per-candidate
-dimension scoring.
+"""Screening API: the Rank chain (milestones 6-8) and the deterministic ranked
+shortlist (milestone 8).
 
 Flow the UI drives:
-  1. POST /screening/discover  — one synthesis call over the eligible pool;
-     persists a new ScreeningRun holding the discovered dimensions.
-  2. GET  /screening/current   — the current run's dimensions + summary.
-  3. GET  /screening/scoring/estimate — cost projection for scoring the pool
-     against the current run's dimensions.
-  4. POST /screening/scoring/run — scores every eligible applicant, streaming
-     progress as NDJSON (same shape as the essay-analysis run).
+  1. GET  /screening/rank/estimate — combined cost projection for the chain.
+  2. POST /screening/rank/run — summarize essays → find criteria → score every
+     eligible applicant, streaming phase/progress/summary as NDJSON. The cap is
+     enforced once over the COMBINED cost before any model call.
+  3. GET  /screening/current — the current run's criteria + summary.
+  4. GET  /screening/ranking — the ranked shortlist (math over cached scores).
+  5. PUT  /screening/shortlist-line — move the shortlist line.
 
-Discovery is not cap-gated (a single call is cheap and the cap is a per-batch
-projection); scoring is cap-gated before streaming, like the other batch passes.
+The committee never runs the three sub-passes individually, so they are exposed
+as the single Rank step; the passes stay separate underneath (distinct schemas,
+cache kinds, and status behavior).
 """
 
 import json
@@ -28,11 +29,20 @@ from sqlalchemy.orm import Session
 from app.ai.analysis import ScreeningResult, SpendingCapExceeded, enforce_cap
 from app.ai.dimension_scoring import (
     applications_to_score,
-    estimate_dimension_scoring,
+    estimate_scoring_without_dimensions,
     kind_for,
     screen_dimension_scores,
 )
-from app.ai.pattern_discovery import discover_patterns, eligible_applications
+from app.ai.essay_analysis import (
+    applications_to_analyze,
+    estimate_essay_analysis,
+    screen_essays,
+)
+from app.ai.pattern_discovery import (
+    discover_patterns,
+    eligible_applications,
+    estimate_discovery,
+)
 from app.ai.provider import AIProvider
 from app.api.dependencies import get_ai_provider, require_current_user
 from app.db.models import ApplicationAIResult, User
@@ -93,45 +103,6 @@ def _run_payload(db: Session) -> dict[str, Any] | None:
     }
 
 
-@router.post("/discover")
-def discover(
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-    provider: AIProvider = Depends(get_ai_provider),
-) -> dict[str, Any]:
-    """Discover the pool's differentiating dimensions and start a screening run.
-
-    One synthesis call over the eligible pool. Requires at least one eligible
-    applicant. Each call creates a fresh run (the current run is the latest).
-    """
-    settings: AppSettings = get_app_settings(db)
-    applications = eligible_applications(db)
-    if not applications:
-        raise HTTPException(status_code=409, detail="No eligible applications to analyze.")
-
-    # The synthesis-model call is the one place a Bedrock/network failure can
-    # surface here. Wrap it so the client gets a readable 502 (the same shape as
-    # /sync) instead of a bare 500 with the traceback only in the server log.
-    try:
-        report, narrative, cost = discover_patterns(
-            db, provider, applications=applications, settings=settings
-        )
-    except Exception as exc:  # noqa: BLE001 — surface any provider failure to the UI
-        raise HTTPException(
-            status_code=502,
-            detail=f"Pattern discovery failed calling the AI model: {type(exc).__name__}: {exc}",
-        ) from exc
-
-    create_run(
-        db,
-        report=report,
-        model_id=settings.ai.synthesis_model,
-        narrative=narrative,
-        cost_usd=cost,
-    )
-    return _run_payload(db)
-
-
 @router.get("/current")
 def current(
     user: User = Depends(require_current_user),
@@ -141,80 +112,149 @@ def current(
     return _run_payload(db)
 
 
-@router.get("/scoring/estimate")
-def scoring_estimate(
+# --- Rank: the combined essays → criteria → scores chain --------------------
+#
+# The committee never runs the three sub-passes individually, so the UI exposes
+# them as one "Rank" button. The passes stay separate underneath (distinct
+# schemas, cache kinds, and status behavior — essay summary and scoring never
+# touch status, discovery starts a fresh run); this layer just orchestrates them
+# back-to-back. The spending cap is enforced once, over the COMBINED projected
+# cost, before any model call — so the single button keeps the same hard cost
+# gate as the individual passes had.
+
+
+def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
+    """Combined projected cost of the three Rank passes.
+
+    Essay summary is netted against its cache (re-running is cheap if essays were
+    already summarized). Discovery always re-runs (uncached) and scoring is
+    priced for the whole eligible pool, because Rank discovers a fresh dimension
+    set every time — so no prior scores are cache hits under it. The total is
+    therefore an upper-ish bound; the confirmation labels it approximate.
+    """
+    essays = estimate_essay_analysis(db, settings)
+    pool = eligible_applications(db)
+    discovery_usd = estimate_discovery(pool, settings)
+    scoring_usd = estimate_scoring_without_dimensions(db, settings)
+    total = round(float(essays["estimated_usd"]) + discovery_usd + scoring_usd, 4)
+    return {
+        "eligible": len(pool),
+        "breakdown": {
+            "essays_usd": round(float(essays["estimated_usd"]), 4),
+            "criteria_usd": round(discovery_usd, 4),
+            "scoring_usd": round(scoring_usd, 4),
+        },
+        "essays_cached": essays["cached"],
+        "estimated_usd": total,
+        "approximate": True,  # criteria/scoring scale with essay output not yet produced
+    }
+
+
+@router.get("/rank/estimate")
+def rank_estimate(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     settings: AppSettings = get_app_settings(db)
-    run = get_current_run(db)
-    report = current_pattern_report(run) if run is not None else None
-    if report is None:
-        raise HTTPException(status_code=409, detail="Discover patterns before scoring.")
-
-    result = estimate_dimension_scoring(db, report, settings)
+    if not eligible_applications(db):
+        raise HTTPException(status_code=409, detail="No eligible applications to rank.")
+    result = _rank_estimate(db, settings)
     result["cap_usd"] = settings.ai.spending_cap_usd
-    result["within_cap"] = float(result["estimated_usd"]) <= settings.ai.spending_cap_usd
+    result["within_cap"] = result["estimated_usd"] <= settings.ai.spending_cap_usd
     return result
 
 
-@router.post("/scoring/run")
-def scoring_run(
+@router.post("/rank/run")
+def rank_run(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
     provider: AIProvider = Depends(get_ai_provider),
 ) -> StreamingResponse:
-    """Score every eligible applicant against the current run's dimensions,
-    streaming progress as NDJSON (one progress line per applicant, then a
-    summary). The cap is enforced before streaming starts, so an over-cap run
-    fails fast with a 402. Informational — never changes status.
+    """Run the full ranking chain — summarize essays → find criteria → score —
+    streaming NDJSON. The combined cost is checked against the cap once, before
+    any model call, so an over-cap run fails fast with a 402 and spends nothing.
+
+    Stream shape: a ``phase`` line announces each pass (essays / criteria /
+    scores), then ``progress`` lines for the per-candidate passes, then a final
+    ``summary`` with the combined cost. Discovery is one call, so it emits a
+    phase line and its standalone result, no progress fraction.
     """
     settings: AppSettings = get_app_settings(db)
-    run = get_current_run(db)
-    report = current_pattern_report(run) if run is not None else None
-    if report is None:
-        raise HTTPException(status_code=409, detail="Discover patterns before scoring.")
+    if not eligible_applications(db):
+        raise HTTPException(status_code=409, detail="No eligible applications to rank.")
 
-    estimate_result = estimate_dimension_scoring(db, report, settings)
+    estimate = _rank_estimate(db, settings)
     try:
-        enforce_cap(estimate_result, settings.ai.spending_cap_usd)
+        enforce_cap(estimate, settings.ai.spending_cap_usd)
     except SpendingCapExceeded as exc:
         raise HTTPException(status_code=402, detail=str(exc)) from exc
 
-    applications = applications_to_score(db)
-
     def stream() -> Iterator[str]:
-        total = len(applications)
-        tally = RunTally()
-        results = screen_dimension_scores(
-            db,
-            provider,
-            applications=applications,
-            report=report,
-            settings=settings,
-            max_workers=settings.ai.max_workers,
-        )
-        for processed, result in enumerate(results, start=1):
-            tally.add(result)
-            if result.failed:
-                yield json.dumps(
-                    {
-                        "type": "error",
-                        "applicationId": result.application.id,
-                        "message": result.error,
-                    }
-                ) + "\n"
+        total_cost = 0.0
+
+        # Phase 1: summarize essays (informational; never touches status).
+        essays = applications_to_analyze(db)
+        yield json.dumps({"type": "phase", "phase": "essays", "total": len(essays)}) + "\n"
+        essay_tally = RunTally()
+        for processed, result in enumerate(
+            screen_essays(
+                db, provider, applications=essays, settings=settings,
+                max_workers=settings.ai.max_workers,
+            ),
+            start=1,
+        ):
+            essay_tally.add(result)
             yield json.dumps(
-                {"type": "progress", "processed": processed, "total": total}
+                {"type": "progress", "phase": "essays", "processed": processed, "total": len(essays)}
             ) + "\n"
+        total_cost += essay_tally.cost_usd
+
+        # Phase 2: find criteria (one synthesis call; starts a fresh run).
+        yield json.dumps({"type": "phase", "phase": "criteria"}) + "\n"
+        pool = eligible_applications(db)
+        try:
+            report, narrative, discovery_cost = discover_patterns(
+                db, provider, applications=pool, settings=settings
+            )
+        except Exception as exc:  # noqa: BLE001 — surface provider failure to the client
+            yield json.dumps(
+                {"type": "error", "phase": "criteria",
+                 "message": f"Finding criteria failed: {type(exc).__name__}: {exc}"}
+            ) + "\n"
+            return
+        create_run(
+            db, report=report, model_id=settings.ai.synthesis_model,
+            narrative=narrative, cost_usd=discovery_cost,
+        )
+        total_cost += discovery_cost
+        yield json.dumps(
+            {"type": "criteria_done", "dimensions": len(report.dimensions)}
+        ) + "\n"
+
+        # Phase 3: score every eligible candidate against the new dimensions.
+        to_score = applications_to_score(db)
+        yield json.dumps({"type": "phase", "phase": "scores", "total": len(to_score)}) + "\n"
+        score_tally = RunTally()
+        for processed, result in enumerate(
+            screen_dimension_scores(
+                db, provider, applications=to_score, report=report,
+                settings=settings, max_workers=settings.ai.max_workers,
+            ),
+            start=1,
+        ):
+            score_tally.add(result)
+            yield json.dumps(
+                {"type": "progress", "phase": "scores", "processed": processed, "total": len(to_score)}
+            ) + "\n"
+        total_cost += score_tally.cost_usd
 
         yield json.dumps(
             {
                 "type": "summary",
-                "analyzed": tally.analyzed,
-                "cached": tally.cached,
-                "failed": tally.failed,
-                "totalCostUsd": round(tally.cost_usd, 4),
+                "dimensions": len(report.dimensions),
+                "scored": score_tally.analyzed + score_tally.cached,
+                "failed": essay_tally.failed + score_tally.failed,
+                "totalCostUsd": round(total_cost, 4),
             }
         ) + "\n"
 
