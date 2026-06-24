@@ -289,6 +289,119 @@ async def test_rank_chain_runs_essays_criteria_scores() -> None:
 
 
 @pytest.mark.anyio
+async def test_tiers_reweight_and_resort_the_ranking() -> None:
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    # Two candidates who each lead on a different dimension, so the weighting
+    # decides the order: commitment-strong vs skills-strong.
+    commit_lead = add_eligible(db, email="commit@x.com", raw_hash="h1")
+    skills_lead = add_eligible(db, email="skills@x.com", raw_hash="h2")
+
+    provider.route("ESSAYS:", an_essay_report())
+    provider.route("APPLICANT POOL:", a_pattern_report())
+    provider.route(
+        f'"applicant_id": {commit_lead.id}', _scoring_report(commitment=0.9, skills=0.1)
+    )
+    provider.route(
+        f'"applicant_id": {skills_lead.id}', _scoring_report(commitment=0.1, skills=0.9)
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await stream_events(client, "/screening/rank/run")
+
+        # Default layout: one working tier holding both dimensions, plus Ignore.
+        default = (await client.get("/screening/tiers")).json()["tiers"]
+        working = [t for t in default if not t["ignore"]]
+        assert len(working) == 1
+        assert set(working[0]["dimension_keys"]) == {"participation_commitment", "skills_offered"}
+
+        # Put skills above commitment: skills_lead should now top the ranking.
+        layout = {
+            "tiers": [
+                {"id": "t1", "label": "Top", "dimension_keys": ["skills_offered"], "ignore": False},
+                {"id": "t2", "label": "Lower", "dimension_keys": ["participation_commitment"], "ignore": False},
+                {"id": "ignore", "label": "Ignore", "dimension_keys": [], "ignore": True},
+            ]
+        }
+        ranking = (await client.put("/screening/tiers", json=layout)).json()
+        assert ranking["candidates"][0]["application_id"] == skills_lead.id
+        assert ranking["weights"] == {"skills_offered": 2.0, "participation_commitment": 1.0}
+
+
+@pytest.mark.anyio
+async def test_tiers_ignore_drops_then_revives_a_dimension() -> None:
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    commit_lead = add_eligible(db, email="commit@x.com", raw_hash="h1")
+    skills_lead = add_eligible(db, email="skills@x.com", raw_hash="h2")
+    provider.route("ESSAYS:", an_essay_report())
+    provider.route("APPLICANT POOL:", a_pattern_report())
+    provider.route(
+        f'"applicant_id": {commit_lead.id}', _scoring_report(commitment=0.9, skills=0.1)
+    )
+    provider.route(
+        f'"applicant_id": {skills_lead.id}', _scoring_report(commitment=0.1, skills=0.9)
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await stream_events(client, "/screening/rank/run")
+
+        # Ignore commitment entirely: only skills counts, so skills_lead leads on
+        # fit 0.9 vs 0.1 — decisive, not a tiebreak.
+        ignore_commit = {
+            "tiers": [
+                {"id": "t1", "label": "Top", "dimension_keys": ["skills_offered"], "ignore": False},
+                {"id": "ignore", "label": "Ignore", "dimension_keys": ["participation_commitment"], "ignore": True},
+            ]
+        }
+        ranking = (await client.put("/screening/tiers", json=ignore_commit)).json()
+        assert ranking["candidates"][0]["application_id"] == skills_lead.id
+        assert ranking["weights"]["participation_commitment"] == 0.0
+        assert ranking["candidates"][0]["fit"] == 0.9
+
+        # Revive it back into a tier: it counts again.
+        revive = {
+            "tiers": [
+                {"id": "t1", "label": "Top", "dimension_keys": ["skills_offered", "participation_commitment"], "ignore": False},
+                {"id": "ignore", "label": "Ignore", "dimension_keys": [], "ignore": True},
+            ]
+        }
+        ranking2 = (await client.put("/screening/tiers", json=revive)).json()
+        assert ranking2["weights"]["participation_commitment"] == 1.0
+
+
+@pytest.mark.anyio
+async def test_tiers_reject_unknown_dimension_key() -> None:
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    a = add_eligible(db, email="a@x.com", raw_hash="h1")
+    provider.route("ESSAYS:", an_essay_report())
+    provider.route("APPLICANT POOL:", a_pattern_report())
+    provider.route(f'"applicant_id": {a.id}', a_scoring_report())
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await stream_events(client, "/screening/rank/run")
+        bad = {
+            "tiers": [
+                {"id": "t1", "label": "Top", "dimension_keys": ["not_a_real_dimension"], "ignore": False},
+            ]
+        }
+        assert (await client.put("/screening/tiers", json=bad)).status_code == 400
+
+
+@pytest.mark.anyio
+async def test_tiers_before_run_is_409() -> None:
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        assert (await client.get("/screening/tiers")).status_code == 409
+        assert (
+            await client.put("/screening/tiers", json={"tiers": []})
+        ).status_code == 409
+
+
+@pytest.mark.anyio
 async def test_rank_blocks_no_op_rerun_on_unchanged_pool() -> None:
     # After a Rank run, re-ranking an unchanged pool is a no-op the backend
     # blocks (it would only re-spend for an identical result). A pool change must

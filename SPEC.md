@@ -463,7 +463,30 @@ Milestone 8 turns the M7 per-candidate scores into the ranked shortlist. **No ne
 - **Qualitative labels are relative bands, not fixed thresholds.** The committee-facing label on each row ("Strong fit", "Promising", "Mixed", "Limited") is assigned by the candidate's *position within this pool* (rank percentile), not an absolute score cutoff. This matches the "how does THIS pool vary" framing — bands always spread the pool and recompute as weights change — and keeps numbers as supporting detail, per "Ranking And Outputs." The raw fit number is available but never the headline.
 - **Ranking is a pure domain function.** It lives in `app/domain/ranking.py` alongside `hard_filters.py` (deterministic logic, separate from AI per the engineering rules), takes already-fetched scores + weights and returns ordered rows with fit, band, rank, and per-dimension contributions preserved for explainability. No DB or provider access in the function itself — trivially unit-testable with hand-built scores, no mock provider needed.
 - **Manual shortlist line + live count.** `criteria.shortlist_size` seeds the line (default ~20, not hard-coded as a rule); the user moves it and the UI shows a live count above it. The line never removes anyone — it is a reading aid over the soft ranking, per "Interactive Screening."
-- **Surfacing: a separate ranked view, not an in-place re-sort** of the eligible table. Ranking is run-scoped and will grow the M9 question panel beside it, so it gets its own view rather than re-sorting the browse-applications table. The workflow strip is unchanged (ranking is a view over completed scoring, not a gated AI step). `GET /screening/ranking` returns the ordered rows + current weights + line + count; a shortlist-line endpoint persists the line. Both 409 if patterns/scores don't exist yet, matching the scoring endpoints.
+- **Surfacing: a separate ranked view, not an in-place re-sort** of the eligible table. Ranking is run-scoped and grows the M9 tier-list beside it, so it gets its own view rather than re-sorting the browse-applications table. The workflow strip is unchanged (ranking is a view over completed scoring, not a gated AI step). `GET /screening/ranking` returns the ordered rows + current weights + line + count; a shortlist-line endpoint persists the line. Both 409 if patterns/scores don't exist yet, matching the scoring endpoints.
+
+### Interactive Weighting — Tier List (Milestone 9)
+
+The M8 equal-weight ranking was validated against the real pool and judged not good enough — every discovered dimension counting equally does not reflect what the committee values. M9 lets the committee say what matters and re-sorts instantly, as **deterministic math over the cached `DimensionScore`s — no model call**.
+
+**The interface is a tier-list maker, not sequential pairwise questions.** The committee drags the discovered dimensions into **importance tiers they define themselves** — from 2 tiers (Important / Ignore) to one-per-dimension (a strict stack rank), most landing in between — plus a bottom **Ignore** zone (weight 0). This was a deliberate move away from the SPEC's original "what matters more — X or Y?" framing:
+
+- **Direct beats indirect for a committee that already has opinions.** Backing into a known preference via many pairwise questions is slow; dragging dimensions into tiers states it directly in one pass, and can zero out whole groups at once ("only the top 3 matter").
+- **Always-editable controls remove the lock-in that pairwise redundancy guarded against.** The original design wove in redundant/overlapping questions so no single early answer "locked" the order prematurely. With a tier-list every dimension is visible and re-draggable at any time, so there is nothing to lock — the anti-lock-in machinery (and the constraint-solver that would integrate overlapping comparisons) is unnecessary.
+
+Design:
+
+- **Tier layout is the source of truth; weights are derived.** The run stores `criteria.tiers` (ordered list of `{id, label, dimension_keys}`, most→least important, with a conventional Ignore tier). A pure `weights_from_tiers(dimension_keys, tiers)` recomputes `criteria.weights` from the layout: non-ignore tiers get a descending weight by position (top = N, …, 1; equal within a tier), Ignore = 0. Every weight traces to a tier position — maximally auditable, matching "explain rankings in plain language / traceable to a recorded human choice." The exact weight curve is a tunable constant.
+- **The ranking engine is untouched.** `weights_from_tiers` writes the same `criteria.weights` map `rank_candidates` already reads (M8). Re-sorting on a tier edit is the existing pure math; M9 adds only the tier→weights derivation and its persistence.
+- **Default layout = one tier with all dimensions = the M8 equal-weight baseline**, so opening M9 changes nothing until the committee tiers.
+- **Deterministic and trivially reversible.** Same tier layout → same weights → same order. Undo/redo is editing the layout; there is no separate weight state to keep in sync.
+- **No AI, no cost gate in v1.** Manual tiering only — a tier-list UI (`@dnd-kit` for accessible drag), a pure derivation function, and thin persistence (`GET`/`PUT /screening/tiers`; PUT validates keys against the run's dimensions, persists `tiers` + derived `weights`, and returns the fresh ranking). Both 409 before a run exists.
+- **Run-scoped.** Tiers reference dimension keys, so they belong to a run. Re-running Rank makes a new run with fresh dimensions and a default (single-tier) layout — correct, since old tiers would reference dead keys.
+
+**Fast-follows (in order), recorded so they aren't lost:**
+
+1. **Add a dimension mid-tiering** (next after v1). Dragging dimensions around is exactly when the committee notices a factor the AI missed, so the tier-list grows an "add dimension" affordance. A user-added dimension changes the dimension set → new `dims_hash` → it re-enters the **cap-gated scoring pass for that one dimension** (existing scores stay cached), then appears as a chip. No new AI surface — it reuses the existing scoring pass. This relocates the parked "human-editable criteria" enhancement into the M9 flow where the need actually arises.
+2. **AI Criteria Coach** (later, after hands-on use). *Not* a propose-the-tiering tool — its role is to **help the committee understand the weighting they built and challenge it**: surface tensions ("income mix is in Ignore, but three of your top candidates lead mainly on it — intended?"), flag near-ties, prompt reflection. Deliberately deferred until the tier-list has been used against real data, because what is worth challenging only becomes clear from use. A cheap synthesis call when it lands.
 
 ### Agent Workflow
 
@@ -737,7 +760,7 @@ Suggested implementation milestones:
 6. AI provider adapter, cost estimate/cap, cached per-candidate essay analysis, and admin raw-debug view.
 7. Pool pattern discovery and per-candidate dimension scoring (read-only surfacing) — the AI foundation for ranking.
 8. Deterministic ranked list: equal-weight baseline, manual shortlist line, and live count above the line.
-9. Narrowing questions, impact previews, and undo (the interactive re-sort).
+9. Interactive weighting via a tier-list maker: the committee drags discovered dimensions into self-defined importance tiers (+ an Ignore zone), and the ranking re-sorts instantly. Deterministic — no model call.
 10. Google Docs report generation.
 11. Multi-member screening and merged shortlist comparison.
 

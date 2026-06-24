@@ -75,3 +75,5 @@ The **Rank chain** (milestones 6–8) and the deterministic ranked shortlist (mi
 | GET | `/screening/current` | The current run's criteria + summary, or null if the chain has never run. | Login |
 | GET | `/screening/ranking` | The deterministic ranked shortlist: candidates ordered by weight-normalized fit, each with a relative band, the shortlist line, and the live above-line count. 409 before criteria exist. | Login |
 | PUT | `/screening/shortlist-line` | Move the shortlist line for the current run (`{"shortlist_size": n}`). A reading aid — never removes anyone. 409 before criteria exist. | Login |
+| GET | `/screening/tiers` | The current run's M9 importance-tier layout (or the default single-tier = equal-weight layout). 409 before a run exists. | Login |
+| PUT | `/screening/tiers` | Persist a new tier layout (`{"tiers": [{id,label,dimension_keys,ignore}]}`), derive weights from it, and return the freshly re-sorted ranking. Unknown dimension keys → 400; no run → 409. No model call. | Login |
