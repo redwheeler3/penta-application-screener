@@ -14,7 +14,7 @@ echo "Running migrations..."
 echo "Starting backend on http://localhost:8000 ..."
 (cd "$REPO_ROOT/backend" && uv run fastapi dev app/main.py) &
 
-echo "Starting frontend on http://127.0.0.1:5173 ..."
+echo "Starting frontend on http://localhost:5173 ..."
 (cd "$REPO_ROOT/frontend" && npm run dev) &
 
 wait
