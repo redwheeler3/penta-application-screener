@@ -8,7 +8,7 @@ Flow the UI drives:
      enforced once over the COMBINED cost before any model call.
   3. GET  /screening/current — the current run's criteria + summary.
   4. GET  /screening/ranking — the ranked shortlist (math over cached scores).
-  5. PUT  /screening/shortlist-line — move the shortlist line.
+  5. GET/PUT /screening/tiers — the committee's importance-tier weighting (M9).
 
 The committee never runs the three sub-passes individually, so they are exposed
 as the single Rank step; the passes stay separate underneath (distinct schemas,
@@ -59,9 +59,7 @@ from app.services.screening_run import (
     dimension_weights,
     get_current_run,
     ranking_is_current,
-    set_shortlist_size,
     set_tiers,
-    shortlist_size,
     tiers,
 )
 from app.services.settings import get_app_settings
@@ -345,13 +343,10 @@ def _ranking_payload(db: Session, run) -> dict[str, Any]:
     """
     report = current_pattern_report(run)
     weights = dimension_weights(run)
-    line = shortlist_size(run)
-    ranked = rank_candidates(_candidate_scores(db, report), weights, line)
+    ranked = rank_candidates(_candidate_scores(db, report), weights)
     return {
         "runId": run.id,
         "weights": weights,
-        "shortlistSize": line,
-        "aboveLineCount": sum(1 for c in ranked if c.above_line),
         "scoredCount": len(ranked),
         "candidates": [asdict(c) for c in ranked],
     }
@@ -365,34 +360,15 @@ def ranking(
     """The deterministic ranked shortlist for the current run.
 
     Ranks every scored eligible candidate by the weight-normalized average of its
-    dimension scores, labels each by relative pool position, and marks those above
-    the shortlist line. No model call — pure math over cached scores.
+    dimension scores and labels each by relative pool position. The committee
+    reads the stack-ranked list top-down — there is no fixed cut line. No model
+    call — pure math over cached scores.
     """
     run = get_current_run(db)
     report = current_pattern_report(run) if run is not None else None
     if report is None:
         raise HTTPException(status_code=409, detail="Discover patterns before ranking.")
     return _ranking_payload(db, run)
-
-
-class ShortlistLineUpdate(BaseModel):
-    shortlist_size: int = Field(ge=0)
-
-
-@router.put("/shortlist-line")
-def update_shortlist_line(
-    body: ShortlistLineUpdate,
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> dict[str, Any]:
-    """Move the shortlist line for the current run. The line is a reading aid —
-    it never removes anyone — so any non-negative position is valid.
-    """
-    run = get_current_run(db)
-    if run is None:
-        raise HTTPException(status_code=409, detail="Discover patterns before ranking.")
-    set_shortlist_size(db, run, body.shortlist_size)
-    return {"shortlistSize": shortlist_size(run)}
 
 
 # --- Tier-list weighting (milestone 9) --------------------------------------

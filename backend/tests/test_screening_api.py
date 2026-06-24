@@ -178,9 +178,6 @@ async def test_ranking_before_discovery_is_409() -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         assert (await client.get("/screening/ranking")).status_code == 409
-        assert (
-            await client.put("/screening/shortlist-line", json={"shortlist_size": 5})
-        ).status_code == 409
 
 
 @pytest.mark.anyio
@@ -211,34 +208,6 @@ async def test_ranking_orders_pool_and_seeds_equal_weights() -> None:
         assert [c["application_id"] for c in candidates] == [strong.id, weak.id]
         assert candidates[0]["fit"] == 0.9
         assert candidates[0]["band"] == "Strong fit"
-        # Default shortlist line keeps everyone above it.
-        assert ranking["shortlistSize"] == 20
-        assert ranking["aboveLineCount"] == 2
-        assert all(c["above_line"] for c in candidates)
-
-
-@pytest.mark.anyio
-async def test_shortlist_line_update_changes_above_count() -> None:
-    app, db, provider = setup_app(role=UserRole.MEMBER)
-    high = add_eligible(db, email="a@x.com", raw_hash="h1")
-    low = add_eligible(db, email="b@x.com", raw_hash="h2")
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        provider.route("ESSAYS:", an_essay_report())
-        provider.route("APPLICANT POOL:", a_pattern_report())
-        provider.route(f'"applicant_id": {high.id}', _scoring_report(commitment=0.8, skills=0.6))
-        provider.route(f'"applicant_id": {low.id}', _scoring_report(commitment=0.5, skills=0.5))
-        await stream_events(client, "/screening/rank/run")
-
-        updated = (
-            await client.put("/screening/shortlist-line", json={"shortlist_size": 1})
-        ).json()
-        assert updated["shortlistSize"] == 1
-
-        ranking = (await client.get("/screening/ranking")).json()
-        assert ranking["aboveLineCount"] == 1
-        assert [c["above_line"] for c in ranking["candidates"]] == [True, False]
 
 
 def an_essay_report() -> EssayAnalysisReport:
@@ -309,11 +278,13 @@ async def test_tiers_reweight_and_resort_the_ranking() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         await stream_events(client, "/screening/rank/run")
 
-        # Default layout: one working tier holding both dimensions, plus Ignore.
+        # Default layout: S / A / B working tiers + Ignore, with every dimension
+        # starting in the A (middle) tier.
         default = (await client.get("/screening/tiers")).json()["tiers"]
         working = [t for t in default if not t["ignore"]]
-        assert len(working) == 1
-        assert set(working[0]["dimension_keys"]) == {"participation_commitment", "skills_offered"}
+        assert [t["label"] for t in working] == ["S-Tier", "A-Tier", "B-Tier"]
+        a_tier = next(t for t in working if t["label"] == "A-Tier")
+        assert set(a_tier["dimension_keys"]) == {"participation_commitment", "skills_offered"}
 
         # Put skills above commitment: skills_lead should now top the ranking.
         layout = {

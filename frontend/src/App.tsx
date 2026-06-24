@@ -200,15 +200,12 @@ type RankedCandidate = {
   rank: number; // 1-based position
   fit: number; // 0..1 weighted average — supporting detail, not the headline
   band: string; // relative pool-position label (Strong fit … Limited)
-  above_line: boolean;
   contributions: DimensionContribution[];
 };
 
 type RankingState = {
   runId: number;
   weights: Record<string, number>;
-  shortlistSize: number;
-  aboveLineCount: number;
   scoredCount: number;
   candidates: RankedCandidate[];
 };
@@ -1262,24 +1259,6 @@ export function App() {
     }
   }
 
-  // Move the shortlist line. The line is a reading aid over the soft ranking — it
-  // never removes anyone — so we persist the new position and re-fetch so the
-  // above-line count and per-row marks stay in sync with the backend.
-  async function setShortlistLine(size: number) {
-    const next = Math.max(0, size);
-    const response = await fetch(`${apiBaseUrl}/screening/shortlist-line`, {
-      method: "PUT",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shortlist_size: next }),
-    });
-    if (response.ok) {
-      await openRanking();
-    } else {
-      showError("Could not update the shortlist line.");
-    }
-  }
-
   // Human override of an application's status (any committee member). The backend
   // marks it human-owned and sticky against future machine runs.
   async function overrideStatus(id: number, status: AppStatus) {
@@ -1663,7 +1642,7 @@ export function App() {
                 ) : (
                   <button type="button" className="primary-button workflow-shortlist-button" onClick={openRanking}>
                     <ListOrdered size={16} />
-                    <span>View shortlist</span>
+                    <span>View ranking</span>
                   </button>
                 )
               ) : null}
@@ -1792,14 +1771,28 @@ export function App() {
                 each candidate on. Shown above both the applications list and the
                 ranked shortlist (it is the context for reading either), but not
                 when a single candidate is open. Collapsed by default. */}
-            {screeningRun && !selectedApp ? (
+            {screeningRun && !selectedApp ? (() => {
+              // Order the criteria most→least important by the committee's tier
+              // layout (a dimension's rank = its tier's position; Ignore last;
+              // discovery order within a tier). Falls back to discovery order
+              // before any tiering exists.
+              const rankOf = new Map<string, number>();
+              (tiers ?? []).forEach((tier, tierIdx) => {
+                tier.dimension_keys.forEach((key) => rankOf.set(key, tierIdx));
+              });
+              const orderedDimensions = [...screeningRun.dimensions].sort(
+                (a, b) =>
+                  (rankOf.get(a.key) ?? Number.MAX_SAFE_INTEGER) -
+                  (rankOf.get(b.key) ?? Number.MAX_SAFE_INTEGER),
+              );
+              return (
               <details className="dimensions-panel">
                 <summary>
-                  Screening criteria ({screeningRun.dimensions.length}) — how this pool varies
+                  Screening criteria ({screeningRun.dimensions.length})
                 </summary>
                 <p className="dimensions-summary">{screeningRun.summary}</p>
                 <ul className="dimensions-list">
-                  {screeningRun.dimensions.map((dim) => (
+                  {orderedDimensions.map((dim) => (
                     <li key={dim.key} className="dimension-item">
                       <div className="dimension-head">
                         <span className="dimension-name">{dim.name}</span>
@@ -1810,7 +1803,8 @@ export function App() {
                   ))}
                 </ul>
               </details>
-            ) : null}
+              );
+            })() : null}
 
             {/* The ranked shortlist (milestone 8): a decision surface, not a
                 browse table. The order IS the product — read top-down to the
@@ -1820,42 +1814,11 @@ export function App() {
               <div className="ranking-view">
                 <div className="ranking-header">
                   <div>
-                    <h3>Ranked shortlist</h3>
+                    <h3>Candidate ranking</h3>
                     <p className="ranking-subhead">
                       {ranking.scoredCount} candidate{ranking.scoredCount === 1 ? "" : "s"} scored,
                       ranked by overall fit. Drag criteria into importance tiers below to re-rank.
                     </p>
-                  </div>
-                  <div className="shortlist-line-control">
-                    <label htmlFor="shortlist-size">Shortlist line</label>
-                    <div className="shortlist-line-input">
-                      <button
-                        type="button"
-                        className="stepper-button"
-                        aria-label="Move line up one"
-                        onClick={() => setShortlistLine(ranking.shortlistSize - 1)}
-                      >
-                        <ChevronDown size={14} />
-                      </button>
-                      <input
-                        id="shortlist-size"
-                        type="number"
-                        min={0}
-                        value={ranking.shortlistSize}
-                        onChange={(event) => setShortlistLine(Number(event.target.value))}
-                      />
-                      <button
-                        type="button"
-                        className="stepper-button"
-                        aria-label="Move line down one"
-                        onClick={() => setShortlistLine(ranking.shortlistSize + 1)}
-                      >
-                        <ChevronUp size={14} />
-                      </button>
-                    </div>
-                    <span className="above-line-count">
-                      {ranking.aboveLineCount} above the line
-                    </span>
                   </div>
                 </div>
 
@@ -1877,13 +1840,7 @@ export function App() {
                   </div>
                 ) : (
                   <ol className="ranking-list">
-                    {ranking.candidates.map((candidate, index) => {
-                      // The shortlist line renders as a divider after the last
-                      // above-line candidate, so the committee can read straight
-                      // down to it. It never removes anyone below.
-                      const lineHere =
-                        candidate.above_line &&
-                        ranking.candidates[index + 1]?.above_line === false;
+                    {ranking.candidates.map((candidate) => {
                       // Lead with the highest-weighted dimensions this candidate
                       // exhibits — the plain-language "why here", not the number.
                       const topContributions = [...candidate.contributions]
@@ -1893,7 +1850,7 @@ export function App() {
                       return (
                         <li key={candidate.application_id}>
                           <div
-                            className={`ranking-row ${candidate.above_line ? "above-line" : "below-line"}`}
+                            className="ranking-row"
                             onClick={() => viewApplication(candidate.application_id)}
                           >
                             <span className="ranking-rank">#{candidate.rank}</span>
@@ -1921,11 +1878,6 @@ export function App() {
                               </div>
                             </div>
                           </div>
-                          {lineHere ? (
-                            <div className="shortlist-divider">
-                              <span>Shortlist line — {ranking.aboveLineCount} above</span>
-                            </div>
-                          ) : null}
                         </li>
                       );
                     })}
