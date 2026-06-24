@@ -1,6 +1,22 @@
-import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clipboard, ListOrdered, LogIn, LogOut, RefreshCw, Settings, Sparkles, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clipboard, GripVertical, ListOrdered, LogIn, LogOut, Plus, RefreshCw, Settings, Sparkles, X } from "lucide-react";
 import { type ReactNode, type SyntheticEvent, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { HouseIcon } from "./HouseIcon";
 
 type CurrentUser = {
@@ -195,6 +211,16 @@ type RankingState = {
   aboveLineCount: number;
   scoredCount: number;
   candidates: RankedCandidate[];
+};
+
+// One importance tier in the M9 tier-list. Dimensions in the same tier weigh
+// equally; higher tiers weigh more; the Ignore tier weighs 0. The committee
+// defines how many tiers there are.
+type Tier = {
+  id: string;
+  label: string;
+  dimension_keys: string[];
+  ignore: boolean;
 };
 
 type ScreeningRunState = {
@@ -442,6 +468,230 @@ function resolveSheetId(payload: SettingsResponse): string {
   return payload.google_sheet_url || payload.settings.google_sheet_id;
 }
 
+// --- M9 tier-list maker -----------------------------------------------------
+//
+// The committee drags discovered dimensions into self-defined importance tiers
+// (+ an Ignore zone); higher tiers weigh more, Ignore weighs 0. Layout edits are
+// the source of truth — the backend derives weights from them and re-sorts. The
+// drag uses @dnd-kit; final placement is computed on drop (no live re-parenting),
+// which is simpler and robust for this chips-between-rows interaction.
+
+// Move a dimension into a target tier, optionally before a specific chip. Returns
+// a new tier array; pure so it is easy to reason about and the caller persists it.
+function moveDimensionToTier(
+  tiers: Tier[],
+  dimKey: string,
+  targetTierId: string,
+  beforeKey: string | null,
+): Tier[] {
+  return tiers.map((tier) => {
+    const without = tier.dimension_keys.filter((k) => k !== dimKey);
+    if (tier.id !== targetTierId) {
+      return { ...tier, dimension_keys: without };
+    }
+    if (beforeKey && beforeKey !== dimKey) {
+      const at = without.indexOf(beforeKey);
+      if (at >= 0) {
+        return {
+          ...tier,
+          dimension_keys: [...without.slice(0, at), dimKey, ...without.slice(at)],
+        };
+      }
+    }
+    return { ...tier, dimension_keys: [...without, dimKey] };
+  });
+}
+
+function tierIndexOfKey(tiers: Tier[], dimKey: string): number {
+  return tiers.findIndex((t) => t.dimension_keys.includes(dimKey));
+}
+
+// A draggable dimension chip (one criterion the committee can place in a tier).
+function DimensionChip(props: { dimKey: string; label: string }): ReactNode {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: props.dimKey });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+  return (
+    <span
+      ref={setNodeRef}
+      style={style}
+      className="tier-chip"
+      {...attributes}
+      {...listeners}
+    >
+      <GripVertical size={12} className="tier-chip-grip" />
+      {props.label}
+    </span>
+  );
+}
+
+// One tier row: a droppable target (so chips can land on empty space) wrapping a
+// sortable context of its chips, plus tier controls.
+function TierRow(props: {
+  tier: Tier;
+  labelFor: (key: string) => string;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onRemove: () => void;
+  onRename: (label: string) => void;
+}): ReactNode {
+  const { tier } = props;
+  const { setNodeRef, isOver } = useDroppable({ id: tier.id });
+  return (
+    <div className={`tier-row ${tier.ignore ? "tier-row-ignore" : ""} ${isOver ? "tier-row-over" : ""}`}>
+      <div className="tier-row-head">
+        {tier.ignore ? (
+          <span className="tier-label tier-label-ignore">{tier.label}</span>
+        ) : (
+          <input
+            className="tier-label-input"
+            value={tier.label}
+            aria-label="Tier name"
+            onChange={(e) => props.onRename(e.target.value)}
+          />
+        )}
+        {!tier.ignore ? (
+          <div className="tier-controls">
+            <button type="button" className="stepper-button" aria-label="Move tier up"
+              disabled={!props.canMoveUp} onClick={props.onMoveUp}>
+              <ChevronUp size={13} />
+            </button>
+            <button type="button" className="stepper-button" aria-label="Move tier down"
+              disabled={!props.canMoveDown} onClick={props.onMoveDown}>
+              <ChevronDown size={13} />
+            </button>
+            <button type="button" className="stepper-button" aria-label="Remove tier"
+              onClick={props.onRemove}>
+              <X size={13} />
+            </button>
+          </div>
+        ) : null}
+      </div>
+      <SortableContext items={tier.dimension_keys} strategy={horizontalListSortingStrategy}>
+        <div ref={setNodeRef} className="tier-chips">
+          {tier.dimension_keys.length === 0 ? (
+            <span className="tier-empty">Drag criteria here</span>
+          ) : (
+            tier.dimension_keys.map((key) => (
+              <DimensionChip key={key} dimKey={key} label={props.labelFor(key)} />
+            ))
+          )}
+        </div>
+      </SortableContext>
+    </div>
+  );
+}
+
+// The tier-list maker. `tiers` is the layout (ordered, with a final Ignore tier);
+// `onChange` persists a new layout. Dimension labels come from the run's
+// discovered dimensions.
+function TierList(props: {
+  tiers: Tier[];
+  labelFor: (key: string) => string;
+  onChange: (next: Tier[]) => void;
+}): ReactNode {
+  const { tiers, onChange } = props;
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over) return;
+    const dimKey = String(active.id);
+    const overId = String(over.id);
+    // over.id is a tier id (dropped on empty row space) or a chip's dimension key.
+    const targetTier = tiers.find((t) => t.id === overId);
+    if (targetTier) {
+      onChange(moveDimensionToTier(tiers, dimKey, targetTier.id, null));
+      return;
+    }
+    const destIdx = tierIndexOfKey(tiers, overId);
+    if (destIdx < 0) return;
+    if (overId === dimKey) return; // dropped on itself, no-op
+    onChange(moveDimensionToTier(tiers, dimKey, tiers[destIdx].id, overId));
+  }
+
+  // The Ignore tier sorts last; working tiers keep their order.
+  const working = tiers.filter((t) => !t.ignore);
+  const ignore = tiers.find((t) => t.ignore);
+
+  function renameTier(id: string, label: string) {
+    onChange(tiers.map((t) => (t.id === id ? { ...t, label } : t)));
+  }
+  function moveTier(idx: number, delta: number) {
+    const next = [...working];
+    const [moved] = next.splice(idx, 1);
+    next.splice(idx + delta, 0, moved);
+    onChange(ignore ? [...next, ignore] : next);
+  }
+  function removeTier(id: string) {
+    // Removing a tier drops its chips into the first working tier (never lost).
+    const target = working.find((t) => t.id !== id);
+    const removed = tiers.find((t) => t.id === id);
+    if (!target || !removed) return;
+    const next = tiers
+      .filter((t) => t.id !== id)
+      .map((t) =>
+        t.id === target.id
+          ? { ...t, dimension_keys: [...t.dimension_keys, ...removed.dimension_keys] }
+          : t,
+      );
+    onChange(next);
+  }
+  function addTier() {
+    // Insert a new empty tier just above the Ignore zone.
+    const id = `tier-${tiers.length}-${working.length}`;
+    const newTier: Tier = { id, label: `Tier ${working.length + 1}`, dimension_keys: [], ignore: false };
+    onChange(ignore ? [...working, newTier, ignore] : [...working, newTier]);
+  }
+
+  return (
+    <div className="tier-list">
+      <div className="tier-list-head">
+        <span className="tier-list-title">Importance tiers</span>
+        <button type="button" className="secondary-button tier-add" onClick={addTier}>
+          <Plus size={14} /> Add tier
+        </button>
+      </div>
+      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        {working.map((tier, idx) => (
+          <TierRow
+            key={tier.id}
+            tier={tier}
+            labelFor={props.labelFor}
+            canMoveUp={idx > 0}
+            canMoveDown={idx < working.length - 1}
+            onMoveUp={() => moveTier(idx, -1)}
+            onMoveDown={() => moveTier(idx, 1)}
+            onRemove={() => removeTier(tier.id)}
+            onRename={(label) => renameTier(tier.id, label)}
+          />
+        ))}
+        {ignore ? (
+          <TierRow
+            tier={ignore}
+            labelFor={props.labelFor}
+            canMoveUp={false}
+            canMoveDown={false}
+            onMoveUp={() => {}}
+            onMoveDown={() => {}}
+            onRemove={() => {}}
+            onRename={() => {}}
+          />
+        ) : null}
+      </DndContext>
+    </div>
+  );
+}
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 const defaultSettings: AppSettings = {
@@ -578,6 +828,11 @@ export function App() {
   // it has not been fetched yet (or the Rank chain has not run).
   const [ranking, setRanking] = useState<RankingState | null>(null);
   const [showRanking, setShowRanking] = useState(false);
+
+  // M9 tier-list: the committee's importance tiers for the current run. Loaded
+  // with the ranking; each edit is persisted (PUT /tiers) and the response is the
+  // freshly re-sorted ranking, so tiers and order stay in lockstep.
+  const [tiers, setTiers] = useState<Tier[] | null>(null);
 
 
   useEffect(() => {
@@ -967,19 +1222,43 @@ export function App() {
 
   // Ranking (milestone 8): fetch the deterministic ranked shortlist and open the
   // ranked view. No cost — pure math over the cached scores — so it just loads.
+  // Also loads the M9 tier layout so the tier-list and the order open together.
   async function openRanking() {
     setSelectedApp(null);
-    const response = await fetch(`${apiBaseUrl}/screening/ranking`, { credentials: "include" });
-    if (response.ok) {
-      setRanking(await response.json());
+    const [rankRes, tiersRes] = await Promise.all([
+      fetch(`${apiBaseUrl}/screening/ranking`, { credentials: "include" }),
+      fetch(`${apiBaseUrl}/screening/tiers`, { credentials: "include" }),
+    ]);
+    if (rankRes.ok) {
+      setRanking(await rankRes.json());
+      if (tiersRes.ok) setTiers((await tiersRes.json()).tiers);
       setShowRanking(true);
     } else {
-      const payload = await response.json().catch(() => null);
+      const payload = await rankRes.json().catch(() => null);
       showError(
         payload?.detail
           ? `Could not load the ranking: ${formatErrorDetail(payload.detail)}`
           : "Could not load the ranking.",
       );
+    }
+  }
+
+  // M9: persist a new tier layout. The PUT returns the freshly re-sorted ranking,
+  // so tiers and order update together in one round-trip. Optimistically set the
+  // tiers so the drag feels instant; reconcile from the response.
+  async function saveTiers(next: Tier[]) {
+    setTiers(next);
+    const response = await fetch(`${apiBaseUrl}/screening/tiers`, {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tiers: next }),
+    });
+    if (response.ok) {
+      setRanking(await response.json());
+    } else {
+      showError("Could not update the tiers.");
+      openRanking(); // reconcile back to the server's truth on failure
     }
   }
 
@@ -1544,7 +1823,7 @@ export function App() {
                     <h3>Ranked shortlist</h3>
                     <p className="ranking-subhead">
                       {ranking.scoredCount} candidate{ranking.scoredCount === 1 ? "" : "s"} scored,
-                      ranked by overall fit. Dimensions are weighted equally until you adjust them.
+                      ranked by overall fit. Drag criteria into importance tiers below to re-rank.
                     </p>
                   </div>
                   <div className="shortlist-line-control">
@@ -1579,6 +1858,18 @@ export function App() {
                     </span>
                   </div>
                 </div>
+
+                {/* M9 tier-list: drag criteria into importance tiers; the ranking
+                    re-sorts on each edit (deterministic, no model call). */}
+                {tiers && screeningRun ? (
+                  <TierList
+                    tiers={tiers}
+                    labelFor={(key) =>
+                      screeningRun.dimensions.find((d) => d.key === key)?.name ?? key
+                    }
+                    onChange={saveTiers}
+                  />
+                ) : null}
 
                 {ranking.candidates.length === 0 ? (
                   <div className="empty-state">

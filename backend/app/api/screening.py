@@ -60,7 +60,9 @@ from app.services.screening_run import (
     get_current_run,
     ranking_is_current,
     set_shortlist_size,
+    set_tiers,
     shortlist_size,
+    tiers,
 )
 from app.services.settings import get_app_settings
 
@@ -336,6 +338,25 @@ def _candidate_scores(db: Session, report) -> list[CandidateScores]:
     return candidates
 
 
+def _ranking_payload(db: Session, run) -> dict[str, Any]:
+    """The ranked-shortlist response for a run. Shared by ``/ranking`` and the
+    tier-edit endpoint, so a tier change returns the freshly re-sorted list in the
+    same shape — the client re-sorts in one round-trip.
+    """
+    report = current_pattern_report(run)
+    weights = dimension_weights(run)
+    line = shortlist_size(run)
+    ranked = rank_candidates(_candidate_scores(db, report), weights, line)
+    return {
+        "runId": run.id,
+        "weights": weights,
+        "shortlistSize": line,
+        "aboveLineCount": sum(1 for c in ranked if c.above_line),
+        "scoredCount": len(ranked),
+        "candidates": [asdict(c) for c in ranked],
+    }
+
+
 @router.get("/ranking")
 def ranking(
     user: User = Depends(require_current_user),
@@ -351,18 +372,7 @@ def ranking(
     report = current_pattern_report(run) if run is not None else None
     if report is None:
         raise HTTPException(status_code=409, detail="Discover patterns before ranking.")
-
-    weights = dimension_weights(run)
-    line = shortlist_size(run)
-    ranked = rank_candidates(_candidate_scores(db, report), weights, line)
-    return {
-        "runId": run.id,
-        "weights": weights,
-        "shortlistSize": line,
-        "aboveLineCount": sum(1 for c in ranked if c.above_line),
-        "scoredCount": len(ranked),
-        "candidates": [asdict(c) for c in ranked],
-    }
+    return _ranking_payload(db, run)
 
 
 class ShortlistLineUpdate(BaseModel):
@@ -383,3 +393,55 @@ def update_shortlist_line(
         raise HTTPException(status_code=409, detail="Discover patterns before ranking.")
     set_shortlist_size(db, run, body.shortlist_size)
     return {"shortlistSize": shortlist_size(run)}
+
+
+# --- Tier-list weighting (milestone 9) --------------------------------------
+#
+# The committee drags discovered dimensions into self-defined importance tiers;
+# weights derive from the layout (see ``weights_from_tiers``) and the ranking
+# re-sorts. No model call — pure persistence + the existing ranking math.
+
+
+class TierModel(BaseModel):
+    id: str
+    label: str
+    dimension_keys: list[str] = Field(default_factory=list)
+    ignore: bool = False
+
+
+class TierLayoutUpdate(BaseModel):
+    tiers: list[TierModel]
+
+
+@router.get("/tiers")
+def get_tiers(
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """The current run's tier layout (or the default single-tier layout if the
+    committee has not tiered yet). 409 before a run exists.
+    """
+    run = get_current_run(db)
+    if run is None or current_pattern_report(run) is None:
+        raise HTTPException(status_code=409, detail="Discover patterns before tiering.")
+    return {"tiers": tiers(run)}
+
+
+@router.put("/tiers")
+def update_tiers(
+    body: TierLayoutUpdate,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Persist a new tier layout, derive weights from it, and return the freshly
+    re-sorted ranking. Unknown dimension keys are rejected (400).
+    """
+    run = get_current_run(db)
+    if run is None or current_pattern_report(run) is None:
+        raise HTTPException(status_code=409, detail="Discover patterns before tiering.")
+    layout = [t.model_dump() for t in body.tiers]
+    try:
+        set_tiers(db, run, layout)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _ranking_payload(db, run)

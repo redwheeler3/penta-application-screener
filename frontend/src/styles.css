@@ -1880,3 +1880,130 @@ h1 {
   border-top: 2px dashed var(--penta-green);
 }
 
+/* --- M9 tier-list maker -------------------------------------------------- */
+
+.tier-list {
+  margin: 0 0 1.25rem;
+  padding: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--page);
+}
+
+.tier-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+
+.tier-list-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.tier-add {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.78rem;
+}
+
+/* Each tier is a row: a label/controls header on the left of a chip area. Higher
+   rows weigh more; the gradient hints at descending importance. */
+.tier-row {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: 0.6rem;
+  align-items: start;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.tier-row + .tier-row {
+  margin-top: 0.4rem;
+}
+
+/* Drop-target highlight while dragging a chip over a row. */
+.tier-row-over {
+  border-color: var(--penta-green);
+  box-shadow: 0 0 0 2px var(--penta-green-soft);
+}
+
+.tier-row-ignore {
+  background: #f9fafb;
+  border-style: dashed;
+}
+
+.tier-row-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.tier-label-input {
+  width: 100%;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.tier-label-ignore {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0.25rem 0.4rem;
+}
+
+.tier-controls {
+  display: flex;
+  gap: 0.25rem;
+}
+
+/* The chip area: a min-height drop zone so an empty tier is still a target. */
+.tier-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-height: 2.2rem;
+  padding: 0.3rem;
+  border-radius: 6px;
+}
+
+.tier-empty {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-style: italic;
+  align-self: center;
+}
+
+.tier-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: grab;
+  user-select: none;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.05);
+}
+
+.tier-chip:active {
+  cursor: grabbing;
+}
+
+.tier-chip-grip {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
