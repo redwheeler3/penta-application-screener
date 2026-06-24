@@ -27,7 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.schemas import PoolPatternReport
-from app.db.models import ScreeningRun
+from app.db.models import Application, ApplicationStatus, ScreeningRun
 
 # The shortlist line the committee reads top-down to; a starting point only, not
 # a hard rule (SPEC "Interactive Screening": a likely target ~20, not hard-coded).
@@ -35,6 +35,30 @@ DEFAULT_SHORTLIST_SIZE = 20
 
 # Equal-weight baseline: every discovered dimension starts equally important.
 INITIAL_DIMENSION_WEIGHT = 1.0
+
+
+def pool_fingerprint(db: Session) -> str:
+    """A stable hash of the eligible pool's inputs.
+
+    The Rank chain (essays → criteria → scores) is a pure function of the
+    eligible pool, so if this fingerprint is unchanged since the last completed
+    run, re-running would only re-pay for an identical result — discovery is
+    nondeterministic, so it would even churn the dimensions and force a needless
+    full re-score. We gate on this to block a no-op Rank.
+
+    Built from the sorted ``raw_row_hash`` of every eligible application, which
+    captures the three things that should trigger a re-rank: a new applicant (new
+    hash present), an edited application (its hash changes), and an eligibility
+    flip (an app enters or leaves the eligible set). Status *source* and AI
+    outputs are deliberately excluded — they don't change what the pool says.
+    """
+    hashes = db.scalars(
+        select(Application.raw_row_hash)
+        .where(Application.status == ApplicationStatus.ELIGIBLE)
+        .order_by(Application.raw_row_hash)
+    ).all()
+    basis = "\n".join(hashes)
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
 
 
 def dimensions_hash(report: PoolPatternReport) -> str:
@@ -66,6 +90,9 @@ def create_run(
         criteria={
             "pattern_report": report.model_dump(mode="json"),
             "dims_hash": dimensions_hash(report),
+            # Fingerprint of the eligible pool this run was built from, so the next
+            # Rank can detect an unchanged pool and skip a no-op re-run.
+            "pool_fingerprint": pool_fingerprint(db),
             # Equal-weight baseline — the ranking engine reads this map, never a
             # per-dimension field, so it is the single seam M9's answers mutate.
             "weights": {
@@ -86,6 +113,20 @@ def create_run(
 def get_current_run(db: Session) -> ScreeningRun | None:
     """The most recent screening run, or None if discovery has never run."""
     return db.scalar(select(ScreeningRun).order_by(ScreeningRun.id.desc()).limit(1))
+
+
+def ranking_is_current(db: Session, run: ScreeningRun | None) -> bool:
+    """True when ``run`` was built from the current eligible pool — i.e. its
+    stored ``pool_fingerprint`` matches the pool now. A no-op Rank is blocked on
+    this. False if there is no run, or the run predates fingerprinting (so it can
+    always be brought current by re-running once).
+    """
+    if run is None:
+        return False
+    stored = (run.criteria or {}).get("pool_fingerprint")
+    if not stored:
+        return False
+    return stored == pool_fingerprint(db)
 
 
 def current_pattern_report(run: ScreeningRun) -> PoolPatternReport | None:

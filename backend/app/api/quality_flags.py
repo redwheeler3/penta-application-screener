@@ -44,7 +44,11 @@ class RunTally:
             self.cached += 1
         else:
             self.analyzed += 1
-        self.cost_usd += result.outcome.cost_usd
+            # Only an actual model call spends money. A cache hit carries its
+            # original first-run cost for auditing, but that is not spent now, so
+            # it must not count toward this run's total. (The flag count below
+            # still includes cached results — a cached flag is still a finding.)
+            self.cost_usd += result.outcome.cost_usd
         if result.outcome.output.flags:
             self.flagged += 1
 
@@ -77,6 +81,17 @@ def run(
     settings: AppSettings = get_app_settings(db)
 
     estimate_result = estimate_quality_flags(db, settings)
+
+    # Block a no-op re-run: if nothing is uncached, every result would be a cache
+    # hit and the run would spend $0 to reproduce identical output. Mirrors the
+    # Rank chain's pool-fingerprint gate so the two steps behave the same.
+    if int(estimate_result["to_analyze"]) == 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Screening is already up to date for these applicants. "
+            "Sync new or changed applications before re-screening.",
+        )
+
     try:
         enforce_cap(estimate_result, settings.ai.spending_cap_usd)
     except SpendingCapExceeded as exc:

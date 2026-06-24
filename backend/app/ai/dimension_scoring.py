@@ -35,8 +35,7 @@ from app.ai.analysis import (
 )
 from app.ai.applicant_facts import FILTERED_FACTS_NOTE, applicant_facts
 from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
-from app.ai.pricing import cost_usd
-from app.ai.provider import AIProvider, Usage
+from app.ai.provider import AIProvider
 from app.ai.schemas import DimensionScoringReport, EssayAnalysisReport, PoolPatternReport
 from app.db.models import Application, ApplicationAIResult, ApplicationStatus
 from app.schemas.settings import AppSettings
@@ -143,11 +142,13 @@ def applications_to_score(db: Session) -> list[Application]:
     )
 
 
-# Scoring sends essays plus the dimension list and returns a few structured
-# entries, so it is in the same token range as essay analysis. Used as the
-# fallback when no real usage exists for a dimension set yet.
-SCORING_FALLBACK_INPUT_TOKENS = 3200
-SCORING_FALLBACK_OUTPUT_TOKENS = 700
+# Fallback per-call token weight, used only on the very first scoring run ever
+# (before any real usage exists). After that the estimate self-tunes from actual
+# usage across all dimension sets — see KIND_PREFIX below. Tuned to observed real
+# usage: scoring emits a rationale + evidence for EVERY dimension (~15), so output
+# is well above a single-flag pass — the earlier 700 guess under-counted ~2.5x.
+SCORING_FALLBACK_INPUT_TOKENS = 3900
+SCORING_FALLBACK_OUTPUT_TOKENS = 1800
 
 
 def estimate_dimension_scoring(
@@ -160,27 +161,33 @@ def estimate_dimension_scoring(
         model_id=settings.ai.first_pass_model,
         fallback_input_tokens=SCORING_FALLBACK_INPUT_TOKENS,
         fallback_output_tokens=SCORING_FALLBACK_OUTPUT_TOKENS,
+        # Each run gets a fresh dims_hash, so learn from every prior scoring run,
+        # not just this dimension set (which has no usage until it runs).
+        usage_kind_prefix=f"{KIND_PREFIX}:",
     )
 
 
 def estimate_scoring_without_dimensions(
     db: Session, settings: AppSettings
-) -> float:
+) -> dict[str, object]:
     """Projected scoring cost when dimensions do not exist yet (the first Rank).
 
     The combined Rank estimate is shown before discovery runs, so there is no
-    dimension set to key a cache on — every eligible candidate will be scored
-    fresh. Prices the whole eligible pool at the fallback per-call token weight.
+    dimension set yet. Still self-tunes from prior runs' real usage (any
+    ``dimension_scoring:*`` rows via the prefix), falling back to the fixed
+    weight only on the very first run ever. The ``kind`` is the bare prefix with
+    no hash, so it matches no cache row — every eligible candidate is counted as
+    uncached, which is correct: a fresh dimension set scores the whole pool.
     """
-    pool = applications_to_score(db)
-    per_call = cost_usd(
-        settings.ai.first_pass_model,
-        Usage(
-            input_tokens=SCORING_FALLBACK_INPUT_TOKENS,
-            output_tokens=SCORING_FALLBACK_OUTPUT_TOKENS,
-        ),
+    return estimate_cost(
+        db,
+        applications=applications_to_score(db),
+        kind=KIND_PREFIX,  # no ":<hash>", so nothing is cached under it
+        model_id=settings.ai.first_pass_model,
+        fallback_input_tokens=SCORING_FALLBACK_INPUT_TOKENS,
+        fallback_output_tokens=SCORING_FALLBACK_OUTPUT_TOKENS,
+        usage_kind_prefix=f"{KIND_PREFIX}:",
     )
-    return per_call * len(pool)
 
 
 def analyze_one(

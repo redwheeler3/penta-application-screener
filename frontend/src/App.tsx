@@ -229,6 +229,9 @@ type RankEstimate = {
   approximate: boolean;
   cap_usd: number;
   within_cap: boolean;
+  // True when the pool is unchanged since the last run — ranking is already
+  // current, so re-running is blocked (it would only re-spend for the same result).
+  ranking_current: boolean;
 };
 
 type SortKey = "applicant" | "co_applicant" | "children" | "income" | "status";
@@ -817,7 +820,14 @@ export function App() {
     setRankEstimate(null);
     const response = await fetch(`${apiBaseUrl}/quality-flags/estimate`, { credentials: "include" });
     if (response.ok) {
-      setQfEstimate(await response.json());
+      const estimate: QualityFlagEstimate = await response.json();
+      // Nothing uncached to analyze means re-running is a $0 no-op — mirror the
+      // Rank flow and just say it's current rather than offering a confirm card.
+      if (estimate.to_analyze === 0) {
+        showToast("Screening is already up to date for these applicants.");
+        return;
+      }
+      setQfEstimate(estimate);
     } else {
       showError("Could not load the AI cost estimate for flagging submissions.");
     }
@@ -885,7 +895,14 @@ export function App() {
     setQfEstimate(null);
     const response = await fetch(`${apiBaseUrl}/screening/rank/estimate`, { credentials: "include" });
     if (response.ok) {
-      setRankEstimate(await response.json());
+      const estimate: RankEstimate = await response.json();
+      // If the pool is unchanged since the last run, re-running is a no-op the
+      // backend blocks — so don't offer the confirm card; just say it's current.
+      if (estimate.ranking_current) {
+        showToast("Ranking is already up to date for this applicant pool.");
+        return;
+      }
+      setRankEstimate(estimate);
     } else {
       showError("Could not load the AI cost estimate for ranking.");
     }
