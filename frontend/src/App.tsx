@@ -1946,19 +1946,12 @@ export function App() {
                               </div>
                               <div className="ranking-contributions">
                                 {topContributions.map((c) => (
-                                  <div key={c.dimension_key} className="ranking-contribution">
-                                    <span className="ranking-dim-chip">
-                                      {c.name}
-                                      <span className={`dim-confidence conf-${c.confidence}`}>
-                                        {c.confidence}
-                                      </span>
+                                  <p key={c.dimension_key} className="ranking-contribution">
+                                    <span className={`ranking-contribution-label conf-${c.confidence}`}>
+                                      {c.name} ({c.confidence.charAt(0).toUpperCase() + c.confidence.slice(1)}){c.rationale ? ":" : ""}
                                     </span>
-                                    {c.rationale ? (
-                                      <span className="ranking-contribution-rationale">
-                                        {c.rationale}
-                                      </span>
-                                    ) : null}
-                                  </div>
+                                    {c.rationale ? ` ${c.rationale}` : null}
+                                  </p>
                                 ))}
                               </div>
                             </div>

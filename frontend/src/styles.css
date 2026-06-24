@@ -1782,47 +1782,38 @@ h1 {
    chip is a non-shrinking inline element so the sentence wraps around it. */
 .ranking-contributions {
   display: grid;
-  gap: 0.35rem;
-  margin-top: 0.45rem;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
 }
 
+/* Each contribution reads as a definition line: a bold dimension label (with its
+   confidence in parentheses) leads, then a colon and the rationale sentence. No
+   pill border — the name is the subject of the sentence, not a standalone tag.
+   The label is colored by confidence (matching the high/med/low scheme), so the
+   reader can scan strength down the column. Hanging indent so wrapped lines
+   align under the label rather than the rank gutter. */
 .ranking-contribution {
+  margin: 0;
   font-size: 0.83rem;
   line-height: 1.5;
   color: var(--ink);
+  padding-left: 1rem;
+  text-indent: -1rem;
 }
 
-.ranking-contribution-rationale {
-  margin-left: 0.4rem;
+.ranking-contribution-label {
+  font-weight: 600;
 }
 
-.ranking-dim-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.74rem;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0.1rem 0.5rem;
-  vertical-align: baseline;
-}
-
-.dim-confidence {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-
-.dim-confidence.conf-low {
+.ranking-contribution-label.conf-low {
   color: #b45309;
 }
 
-.dim-confidence.conf-medium {
+.ranking-contribution-label.conf-medium {
   color: #075985;
 }
 
-.dim-confidence.conf-high {
+.ranking-contribution-label.conf-high {
   color: #166534;
 }
 
