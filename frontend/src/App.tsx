@@ -149,6 +149,10 @@ type EssayAnalysis = {
 };
 
 type ApplicationDetail = ApplicationSummary & {
+  // What the machine would decide from the current findings — i.e. the result of
+  // clearing a human override. Lets the status control show the automatic verdict.
+  autoStatus: AppStatus;
+  autoStatusSource: StatusSource;
   normalized: Record<string, unknown>;
   essays: Essay[];
   // null = quality-flag pass not yet run for this application; [] = ran, clean.
@@ -1360,6 +1364,21 @@ export function App() {
     }
   }
 
+  // Remove a human override, handing the decision back to the machine. The
+  // backend recomputes status from the current findings (see DELETE handler).
+  async function clearStatusOverride(id: number) {
+    const response = await fetch(`${apiBaseUrl}/applications/${id}/status`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (response.ok) {
+      const payload: { application: ApplicationDetail } = await response.json();
+      setSelectedApp(payload.application);
+      refreshDashboard();
+      fetchApplications(appFilter, appPage, appSearch);
+    }
+  }
+
   const hasGoogleSheetLink = Boolean(saved && resolveSheetId(saved));
   // Form visibility is an explicit open/closed state, not derived from the field
   // value — otherwise typing a link would collapse the form before saving.
@@ -1994,29 +2013,54 @@ export function App() {
                       New AI findings since this was last reviewed — you may want to look again.
                     </p>
                   ) : null}
-                  <div className="status-override">
-                    <span className="status-override-label">Set status:</span>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      disabled={
-                        selectedApp.status === "eligible" && selectedApp.statusSource === "human"
-                      }
-                      onClick={() => overrideStatus(selectedApp.id, "eligible")}
-                    >
-                      Eligible
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      disabled={
-                        selectedApp.status === "ineligible" && selectedApp.statusSource === "human"
-                      }
-                      onClick={() => overrideStatus(selectedApp.id, "ineligible")}
-                    >
-                      Ineligible
-                    </button>
-                  </div>
+                  {(() => {
+                    // Source ownership is what's really being toggled: "Automatic"
+                    // (machine-decided) vs. a human-pinned Eligible/Ineligible.
+                    // Selecting Automatic clears the override and hands the
+                    // decision back to the rules/AI; the helper line shows what
+                    // that automatic verdict currently is.
+                    const isHuman = selectedApp.statusSource === "human";
+                    const autoLabel = STATUS_LABELS[selectedApp.autoStatus];
+                    return (
+                      <div className="status-decider">
+                        <span className="status-decider-label">Decided by:</span>
+                        <div className="segmented" role="group" aria-label="Status decided by">
+                          <button
+                            type="button"
+                            className="segment"
+                            aria-pressed={!isHuman}
+                            disabled={!isHuman}
+                            onClick={() => clearStatusOverride(selectedApp.id)}
+                          >
+                            Automatic
+                          </button>
+                          <button
+                            type="button"
+                            className="segment"
+                            aria-pressed={isHuman && selectedApp.status === "eligible"}
+                            disabled={isHuman && selectedApp.status === "eligible"}
+                            onClick={() => overrideStatus(selectedApp.id, "eligible")}
+                          >
+                            Eligible
+                          </button>
+                          <button
+                            type="button"
+                            className="segment"
+                            aria-pressed={isHuman && selectedApp.status === "ineligible"}
+                            disabled={isHuman && selectedApp.status === "ineligible"}
+                            onClick={() => overrideStatus(selectedApp.id, "ineligible")}
+                          >
+                            Ineligible
+                          </button>
+                        </div>
+                        {isHuman ? (
+                          <p className="status-decider-hint">
+                            Reviewer override. Automatic would mark this {autoLabel.toLowerCase()}.
+                          </p>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
                 </div>
                 {selectedApp.hardFilterReasons.length > 0 ? (
                   <div className="filter-reasons">

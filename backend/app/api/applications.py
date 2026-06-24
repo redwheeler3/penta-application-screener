@@ -14,7 +14,7 @@ from app.db.models import (
     User,
 )
 from app.db.session import get_db
-from app.domain.status import findings_fingerprint, is_stale
+from app.domain.status import findings_fingerprint, is_stale, resolve_machine_status
 from app.services.application_import import extract_essays
 from app.services.screening_run import (
     current_pattern_report,
@@ -194,6 +194,41 @@ def override_status(
     }
 
 
+@router.delete("/{application_id}/status")
+def clear_status_override(
+    application_id: int,
+    _: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Remove a human override, handing the decision back to the machine.
+
+    Recomputes status from the *current* findings (rules then AI) and clears the
+    human ownership, so future machine runs resume control. Because it reflects
+    the latest findings rather than a stored pre-override value, the result can
+    differ from what the status was before the human acted — which is the point
+    of reverting to automatic. No-op (idempotent) if no human override is set.
+    """
+    application = db.get(Application, application_id)
+    if application is None:
+        raise HTTPException(status_code=404, detail="Application not found.")
+
+    if application.status_source == StatusSource.HUMAN:
+        flags = _latest_flags(db, [application_id]).get(application_id)
+        status, source = resolve_machine_status(
+            has_reasons=bool(application.hard_filter_reasons),
+            has_ai_flags=bool(flags),
+        )
+        application.status = status
+        application.status_source = source
+        application.reviewed_fingerprint = None
+        db.commit()
+        db.refresh(application)
+
+    return {
+        "application": _serialize_detail(application, db)
+    }
+
+
 def _serialize_summary(
     app: Application, flags: list[dict[str, Any]] | None = None
 ) -> dict[str, Any]:
@@ -268,6 +303,14 @@ def _serialize_detail(app: Application, db: Session) -> dict[str, Any]:
     flag_result = _latest_results(db, "quality_flags", [app.id]).get(app.id)
     flags = (flag_result.output or {}).get("flags", []) if flag_result else None
     detail = _serialize_summary(app, flags=flags)
+    # What the machine would decide from the current findings, regardless of who
+    # owns the status now. Lets the UI show the live automatic verdict — i.e. the
+    # result of clearing a human override — without re-deriving the rules client-side.
+    auto_status, auto_source = resolve_machine_status(
+        has_reasons=bool(app.hard_filter_reasons), has_ai_flags=bool(flags)
+    )
+    detail["autoStatus"] = auto_status.value
+    detail["autoStatusSource"] = auto_source.value
     detail["normalized"] = app.normalized
     detail["essays"] = extract_essays(app.raw_row or {})
     detail["qualityFlags"] = flags

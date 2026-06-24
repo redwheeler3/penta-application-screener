@@ -54,6 +54,7 @@ Unless noted, endpoints require a logged-in user (the signed session cookie). Th
 | GET | `/applications` | Searchable, filterable, sortable, paginated list with faceted counts. | Login |
 | GET | `/applications/{id}` | One application's detail, including the raw source row and AI narrative. | Login |
 | PATCH | `/applications/{id}/status` | Human status override (sets `status_source = human`, which is sticky). | Login |
+| DELETE | `/applications/{id}/status` | Remove a human override; recomputes status from the current findings (rules then AI) and clears human ownership. Idempotent if no override is set. | Login |
 
 ### Quality Flags (AI) — `app/api/quality_flags.py`
 
