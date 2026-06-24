@@ -107,12 +107,12 @@ def import_applications_from_rows(
     }
 
     rules = RulesConfig(
-        unit_size=settings.unit_size,
         min_income=settings.income_min,
         max_income=settings.income_max,
-        max_adults=settings.max_adults,
         min_adult_age=settings.min_adult_age,
-        income_mismatch_tolerance=settings.income_mismatch_tolerance,
+        max_child_age=settings.max_child_age,
+        min_children=settings.min_children,
+        max_children=settings.max_children,
         disabled_rules=tuple(settings.disabled_rules),
     )
 

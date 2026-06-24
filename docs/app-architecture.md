@@ -714,15 +714,16 @@ There are three files involved:
 ```py
 class AppSettings(BaseModel):
     google_sheet_id: str = Field(default="", max_length=2000)
-    unit_size: str = Field(default="2br", pattern="^(1br|2br|3br)$")
-    move_in_date: date = date(2026, 9, 1)
     income_min: int = Field(default=70_000, ge=0)
     income_max: int = Field(default=150_000, ge=0)
-    # ...plus household/pet limits, income_mismatch_tolerance,
-    # disabled_rules, and a nested ai: AISettings
+    min_adult_age: int = Field(default=19, ge=1, le=100)
+    max_child_age: int = Field(default=17, ge=0, le=100)
+    min_children: int = Field(default=1, ge=0, le=20)
+    max_children: int = Field(default=4, ge=0, le=20)
+    # ...plus pet limits, disabled_rules, and a nested ai: AISettings
 ```
 
-The full model has twelve fields (see `app/schemas/settings.py`), including the nested `AISettings` sub-model. It also normalizes a pasted Google Sheets URL into a sheet ID before saving. The frontend can show a friendly URL, while the backend stores a stable ID.
+The full model (see `app/schemas/settings.py`) includes the nested `AISettings` sub-model. It also normalizes a pasted Google Sheets URL into a sheet ID before saving. The frontend can show a friendly URL, while the backend stores a stable ID. Note there is no `unit_size` or `move_in_date`: those were display-only and were removed, and there is no income-mismatch tolerance — the arithmetic check requires exact equality.
 
 Settings are stored as one JSON blob in the `admin_settings` table. That is simple for MVP because we have only one settings object, not many rows of settings.
 

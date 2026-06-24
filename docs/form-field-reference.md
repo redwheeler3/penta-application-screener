@@ -48,7 +48,7 @@ The section also contains the privacy/consent declaration text and mailing list 
 |-------|------|-----------|----------|
 | How many children (under 18) will be living in the unit on the move in date? | Dropdown | Options: 0, 1, 2, 3, 4, More than 4 | Yes |
 
-The children count dropdown controls form branching. Selecting "0" or "More than 4" routes to Section 3 (ineligible).
+The children count dropdown controls form branching. Selecting "0" or "More than 4" routes to Section 3 (ineligible). This min/max-children check is now **also** enforced server-side by the `too_few_children` / `too_many_children` hard-filter rules (configurable: `min_children` default 1, `max_children` default 4), so the form branching is no longer the only guard and may be simplified out of the form without losing the screen.
 
 ## Section 3: Sorry (Ineligible Branch)
 
