@@ -1777,17 +1777,23 @@ h1 {
   color: #4b5563;
 }
 
-.ranking-rationale {
-  margin: 0.3rem 0 0;
-  font-size: 0.83rem;
-  line-height: 1.45;
+/* Each top contribution reads inline — the chip (dimension + confidence) acts as
+   a label, then its rationale flows on the same line: "Something: blah blah." The
+   chip is a non-shrinking inline element so the sentence wraps around it. */
+.ranking-contributions {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
 }
 
-.ranking-dimensions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-top: 0.4rem;
+.ranking-contribution {
+  font-size: 0.83rem;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.ranking-contribution-rationale {
+  margin-left: 0.4rem;
 }
 
 .ranking-dim-chip {
@@ -1799,6 +1805,7 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 0.1rem 0.5rem;
+  vertical-align: baseline;
 }
 
 .dim-confidence {
