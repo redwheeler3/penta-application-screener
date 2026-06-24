@@ -64,24 +64,14 @@ See [ai-screening.md](ai-screening.md) for the full pipeline behind these.
 | GET | `/quality-flags/estimate` | Projected cost + how many applications would be analyzed vs. cached. | Login |
 | POST | `/quality-flags/run` | Run the AI quality-flag pass; streams NDJSON progress, then a summary. | Login |
 
-### Essay Analysis (AI) — `app/api/essay_analysis.py`
-
-The per-candidate essay extraction pass (milestone 6). Informational only — never changes status. See [ai-screening.md](ai-screening.md).
-
-| Method | Path | Purpose | Auth |
-| --- | --- | --- | --- |
-| GET | `/essay-analysis/estimate` | Projected cost + how many eligible applicants would be analyzed vs. cached. | Login |
-| POST | `/essay-analysis/run` | Run essay analysis over eligible applicants; streams NDJSON progress, then a summary. | Login |
-
 ### Screening — `app/api/screening.py`
 
-Pattern discovery + dimension scoring (milestone 7) and the deterministic ranked shortlist (milestone 8). Discovery and scoring are AI passes; ranking is pure math over the cached scores — no model call. See [ai-screening.md](ai-screening.md).
+The **Rank chain** (milestones 6–8) and the deterministic ranked shortlist (milestone 8). Rank is one button that runs essay summary → find criteria → score, back-to-back; the cap is enforced once over the combined cost. The individual sub-passes are not exposed as endpoints (the committee never runs them alone); `screen_essays` / `discover_patterns` / `screen_dimension_scores` are the underlying passes. Ranking itself is pure math over the cached scores — no model call. See [ai-screening.md](ai-screening.md).
 
 | Method | Path | Purpose | Auth |
 | --- | --- | --- | --- |
-| POST | `/screening/discover` | One synthesis call over the eligible pool; persists a new `ScreeningRun` with the discovered dimensions and an equal-weight baseline. | Login |
-| GET | `/screening/current` | The current run's dimensions + summary, or null if discovery has never run. | Login |
-| GET | `/screening/scoring/estimate` | Projected cost + how many eligible applicants would be scored vs. cached against the current run's dimensions. | Login |
-| POST | `/screening/scoring/run` | Score every eligible applicant against the current run's dimensions; streams NDJSON progress, then a summary. | Login |
-| GET | `/screening/ranking` | The deterministic ranked shortlist: candidates ordered by weight-normalized fit, each with a relative band, the shortlist line, and the live above-line count. 409 before patterns exist. | Login |
-| PUT | `/screening/shortlist-line` | Move the shortlist line for the current run (`{"shortlist_size": n}`). A reading aid — never removes anyone. 409 before patterns exist. | Login |
+| GET | `/screening/rank/estimate` | Combined projected cost of the Rank chain (essays + criteria + scoring), with a per-pass breakdown. Approximate — criteria/scoring scale with essay output. 409 if no eligible applicants. | Login |
+| POST | `/screening/rank/run` | Run the full chain. Streams NDJSON: a `phase` line per pass, `progress` lines for the per-candidate passes, then a `summary`. Cap enforced once over the combined cost (402 if over). 409 if no eligible applicants. | Login |
+| GET | `/screening/current` | The current run's criteria + summary, or null if the chain has never run. | Login |
+| GET | `/screening/ranking` | The deterministic ranked shortlist: candidates ordered by weight-normalized fit, each with a relative band, the shortlist line, and the live above-line count. 409 before criteria exist. | Login |
+| PUT | `/screening/shortlist-line` | Move the shortlist line for the current run (`{"shortlist_size": n}`). A reading aid — never removes anyone. 409 before criteria exist. | Login |

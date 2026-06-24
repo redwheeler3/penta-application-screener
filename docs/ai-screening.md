@@ -53,8 +53,8 @@ The AI code lives in `backend/app/ai/`:
 
 Plus HTTP route modules and one domain module:
 
-- `app/api/quality_flags.py` and `app/api/essay_analysis.py` — the `/quality-flags/*` and `/essay-analysis/*` endpoints. Both depend on the shared `get_ai_provider` in `app/api/dependencies.py`.
-- `app/domain/status.py` — how quality flags translate into an application's eligibility status (the essay pass does not touch status).
+- `app/api/quality_flags.py` (the `/quality-flags/*` "Screen" endpoints) and `app/api/screening.py` (the `/screening/rank/*` chain, `/current`, `/ranking`, `/shortlist-line`). Both depend on the shared `get_ai_provider` in `app/api/dependencies.py`. The essay-summary, find-criteria, and scoring passes have no standalone endpoints — they run only as phases of `POST /screening/rank/run`.
+- `app/domain/status.py` — how quality flags translate into an application's eligibility status (the essay/criteria/scoring passes do not touch status).
 
 ## The Provider Boundary
 
@@ -217,7 +217,7 @@ How it differs from quality flags:
 - **It is additive, not a replacement.** The raw essays and form fields are preserved, so the ranker reads the source directly for anything the fixed schema did not capture. No catch-all field — cross-cutting nuance goes in the `summary`.
 - **Model:** the first-pass model (Haiku 4.5), confirmed adequate by validating real essays — the summaries were neutral, grounded, and correctly structured, so no Sonnet upgrade was needed. Revisit empirically if real output ever reads thin.
 
-Endpoints (`/essay-analysis/estimate`, `/essay-analysis/run`) and the streamed NDJSON mirror the quality-flag pass, minus the `flagged` count. The summary and structured fields render on the candidate detail page; the raw model reasoning is in a debug section alongside the quality-flag narrative.
+Essay summary has no standalone endpoint: it is the first phase of the Rank chain (`POST /screening/rank/run`), which summarizes essays, then finds criteria, then scores — see "Ranking (Milestone 8)" below. The summary and structured fields render on the candidate detail page; the raw model reasoning is in a debug section alongside the quality-flag narrative.
 
 ## Ranking (Milestone 8)
 
@@ -228,7 +228,9 @@ The ranked shortlist is **not an AI pass** — it is deterministic math over the
 - **Bands are relative to the pool**, not absolute thresholds. A candidate's label ("Strong fit" … "Limited") comes from its rank position, split into even contiguous slices anchored at the top (so rank 1 is always top-band even in a small pool). Equal-fit candidates share a band. This matches the "how does THIS pool vary" framing and keeps numbers as supporting detail.
 - **The shortlist line** is a reading aid the committee reads down to (`criteria.shortlist_size`, default 20 via `set_shortlist_size`); it never removes anyone. `GET /screening/ranking` returns the ordered rows + weights + line + live above-line count; `PUT /screening/shortlist-line` moves it.
 
-The frontend surfaces this as a **separate ranked view**, not a re-sort of the browse table: the order is the product, read top-down, and milestone 9's question panel will dock beside it. Re-discovering patterns drops any ranking (a new dimensions-hash means no scores exist under it yet); re-scoring refreshes an open ranking.
+The frontend surfaces this as a **separate ranked view**, not a re-sort of the browse table: the order is the product, read top-down, and milestone 9's question panel will dock beside it. Re-running the Rank chain finds fresh criteria (a new dimensions-hash) and re-scores, then refreshes an open ranking.
+
+**The Rank button (workflow simplification).** The three model passes that produce a ranking — essay summary, find criteria (discovery), and dimension scoring — are exposed in the UI as a single "Rank" step, because the committee never runs them individually. `POST /screening/rank/run` orchestrates them back-to-back and streams phase-aware progress (`phase` lines for essays / criteria / scores, `progress` lines within the per-candidate phases, a final `summary`). The passes stay separate underneath (distinct schemas, cache kinds, status behavior); only the endpoint and the button are merged. Crucially for the cost rules, the cap is enforced **once over the combined projected cost** (`GET /screening/rank/estimate` sums essays + criteria + scoring), before any model call — so the single button keeps the same hard pre-run cost gate the individual passes had. The estimate is approximate: criteria and scoring scale with essay output that does not exist until the essay phase runs, so it is labeled as such. The workflow strip is correspondingly three single-verb steps — **Import** (sync + deterministic hard filters), **Screen** (the AI integrity/quality pass), **Rank** (this chain).
 
 ## Configuration
 

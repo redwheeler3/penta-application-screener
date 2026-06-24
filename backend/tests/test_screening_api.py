@@ -10,6 +10,7 @@ from app.ai.mock_provider import MockProvider
 from app.ai.schemas import (
     DimensionScore,
     DimensionScoringReport,
+    EssayAnalysisReport,
     PoolDimension,
     PoolPatternReport,
     ScoreConfidence,
@@ -123,88 +124,42 @@ def _scoring_report(*, commitment: float, skills: float) -> DimensionScoringRepo
     )
 
 
-async def stream_summary(client: AsyncClient, url: str) -> dict:
-    response = await client.post(url)
-    assert response.status_code == 200
-    summary = None
-    for line in response.text.splitlines():
-        if line.strip():
-            event = json.loads(line)
-            if event.get("type") == "summary":
-                summary = event
-    assert summary is not None
-    return summary
 
 
 @pytest.mark.anyio
-async def test_discover_requires_login() -> None:
+async def test_rank_requires_login() -> None:
     app, _, _ = setup_app(role=None)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        assert (await client.post("/screening/discover")).status_code == 401
+        assert (await client.post("/screening/rank/run")).status_code == 401
 
 
 @pytest.mark.anyio
-async def test_discover_with_no_eligible_is_409() -> None:
-    app, _, _ = setup_app(role=UserRole.MEMBER)
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        assert (await client.post("/screening/discover")).status_code == 409
-
-
-@pytest.mark.anyio
-async def test_discover_maps_provider_failure_to_502() -> None:
-    # An eligible applicant exists but the provider has no queued result, so the
-    # synthesis call raises. The endpoint must wrap it as a readable 502, not let
-    # it surface as a bare 500.
-    app, db, _ = setup_app(role=UserRole.MEMBER)
-    add_eligible(db, email="a@x.com", raw_hash="h1")
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await client.post("/screening/discover")
-    assert response.status_code == 502
-    assert "Pattern discovery failed" in response.json()["detail"]
-
-
-@pytest.mark.anyio
-async def test_scoring_before_discovery_is_409() -> None:
-    app, db, _ = setup_app(role=UserRole.MEMBER)
-    add_eligible(db, email="a@x.com", raw_hash="h1")
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        assert (await client.get("/screening/scoring/estimate")).status_code == 409
-        assert (await client.post("/screening/scoring/run")).status_code == 409
-
-
-@pytest.mark.anyio
-async def test_full_flow_discover_then_score_then_detail() -> None:
+async def test_full_flow_rank_then_detail() -> None:
     app, db, provider = setup_app(role=UserRole.MEMBER)
     application = add_eligible(db, email="a@x.com", raw_hash="h1")
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        # 1. Discover (one synthesis call over the pool).
-        provider.queue(a_pattern_report())
-        discovered = (await client.post("/screening/discover")).json()
-        assert discovered["summary"].startswith("Pool varies")
-        assert [d["key"] for d in discovered["dimensions"]] == [
-            "participation_commitment",
-            "skills_offered",
-        ]
-
-        # 2. Current run reflects the discovered dimensions.
-        current = (await client.get("/screening/current")).json()
-        assert current["runId"] == discovered["runId"]
-        assert len(current["dimensions"]) == 2
-
-        # 3. Score the pool.
-        provider.queue(a_scoring_report())
-        summary = await stream_summary(client, "/screening/scoring/run")
-        assert summary["analyzed"] == 1
+        # The Rank chain summarizes essays, finds criteria, then scores.
+        provider.route("ESSAYS:", an_essay_report())
+        provider.route("APPLICANT POOL:", a_pattern_report())
+        provider.route(f'"applicant_id": {application.id}', a_scoring_report())
+        summary = next(
+            e
+            for e in await stream_events(client, "/screening/rank/run")
+            if e["type"] == "summary"
+        )
+        assert summary["dimensions"] == 2
+        assert summary["scored"] == 1
         assert summary["failed"] == 0
 
-        # 4. Scores surface on the candidate detail, joined to dimension names,
-        #    and status is untouched.
+        # The current run reflects the freshly found criteria.
+        current = (await client.get("/screening/current")).json()
+        assert len(current["dimensions"]) == 2
+
+        # Scores surface on the candidate detail, joined to dimension names, and
+        # status is untouched (the chain's passes never gate eligibility).
         detail = (await client.get(f"/applications/{application.id}")).json()["application"]
         assert detail["status"] == "eligible"
         assert detail["statusSource"] == "untouched"
@@ -236,14 +191,13 @@ async def test_ranking_orders_pool_and_seeds_equal_weights() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        provider.queue(a_pattern_report())
-        await client.post("/screening/discover")
-
-        # Scoring fans out concurrently, so bind each result to its application by
-        # the applicant_id marker in the prompt rather than relying on queue order.
+        # Drive the whole chain; bind each candidate's scores by the applicant_id
+        # marker in the scoring prompt (scoring fans out concurrently).
+        provider.route("ESSAYS:", an_essay_report())
+        provider.route("APPLICANT POOL:", a_pattern_report())
         provider.route(f'"applicant_id": {weak.id}', _scoring_report(commitment=0.2, skills=0.2))
         provider.route(f'"applicant_id": {strong.id}', _scoring_report(commitment=0.9, skills=0.9))
-        await stream_summary(client, "/screening/scoring/run")
+        await stream_events(client, "/screening/rank/run")
 
         ranking = (await client.get("/screening/ranking")).json()
 
@@ -271,11 +225,11 @@ async def test_shortlist_line_update_changes_above_count() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        provider.queue(a_pattern_report())
-        await client.post("/screening/discover")
+        provider.route("ESSAYS:", an_essay_report())
+        provider.route("APPLICANT POOL:", a_pattern_report())
         provider.route(f'"applicant_id": {high.id}', _scoring_report(commitment=0.8, skills=0.6))
         provider.route(f'"applicant_id": {low.id}', _scoring_report(commitment=0.5, skills=0.5))
-        await stream_summary(client, "/screening/scoring/run")
+        await stream_events(client, "/screening/rank/run")
 
         updated = (
             await client.put("/screening/shortlist-line", json={"shortlist_size": 1})
@@ -287,19 +241,104 @@ async def test_shortlist_line_update_changes_above_count() -> None:
         assert [c["above_line"] for c in ranking["candidates"]] == [True, False]
 
 
+def an_essay_report() -> EssayAnalysisReport:
+    return EssayAnalysisReport(summary="They want community and will pitch in.")
+
+
+async def stream_events(client: AsyncClient, url: str) -> list[dict]:
+    """All NDJSON events from a streaming POST, in order."""
+    response = await client.post(url)
+    assert response.status_code == 200
+    return [json.loads(line) for line in response.text.splitlines() if line.strip()]
+
+
+@pytest.mark.anyio
+async def test_rank_chain_runs_essays_criteria_scores() -> None:
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    weak = add_eligible(db, email="weak@x.com", raw_hash="h1")
+    strong = add_eligible(db, email="strong@x.com", raw_hash="h2")
+
+    # Route by prompt content: the essay prompt carries "ESSAYS:", discovery
+    # carries "APPLICANT POOL:", scoring carries "DIMENSIONS:". Scores are bound
+    # to each applicant by the applicant_id marker in the scoring prompt.
+    provider.route("ESSAYS:", an_essay_report())
+    provider.route("APPLICANT POOL:", a_pattern_report())
+    provider.route(
+        f'"applicant_id": {weak.id}', _scoring_report(commitment=0.2, skills=0.2)
+    )
+    provider.route(
+        f'"applicant_id": {strong.id}', _scoring_report(commitment=0.9, skills=0.9)
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        events = await stream_events(client, "/screening/rank/run")
+
+        # The three phases are announced in order.
+        phases = [e["phase"] for e in events if e["type"] == "phase"]
+        assert phases == ["essays", "criteria", "scores"]
+
+        summary = next(e for e in events if e["type"] == "summary")
+        assert summary["dimensions"] == 2
+        assert summary["scored"] == 2
+        assert summary["failed"] == 0
+
+        # The chain produced a current run and a full ranking, strong above weak.
+        ranking = (await client.get("/screening/ranking")).json()
+        assert [c["application_id"] for c in ranking["candidates"]] == [strong.id, weak.id]
+
+
+@pytest.mark.anyio
+async def test_rank_estimate_combines_three_passes() -> None:
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        estimate = (await client.get("/screening/rank/estimate")).json()
+        b = estimate["breakdown"]
+        # Total is the sum of the three pass projections, and flagged approximate.
+        assert estimate["estimated_usd"] == pytest.approx(
+            b["essays_usd"] + b["criteria_usd"] + b["scoring_usd"], abs=1e-4
+        )
+        assert estimate["approximate"] is True
+        assert estimate["eligible"] == 1
+
+
+@pytest.mark.anyio
+async def test_rank_with_no_eligible_is_409() -> None:
+    app, _, _ = setup_app(role=UserRole.MEMBER)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        assert (await client.get("/screening/rank/estimate")).status_code == 409
+        assert (await client.post("/screening/rank/run")).status_code == 409
+
+
+@pytest.mark.anyio
+async def test_rank_over_cap_fails_fast() -> None:
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+
+    # Force the combined estimate over the cap by setting a tiny cap.
+    from app.services.settings import get_app_settings, save_app_settings
+
+    settings = get_app_settings(db)
+    settings.ai.spending_cap_usd = 0.0
+    save_app_settings(db, settings)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        # No provider results queued: a 402 must come before any model call.
+        assert (await client.post("/screening/rank/run")).status_code == 402
+
+
 @pytest.mark.anyio
 async def test_dimension_scores_null_before_run() -> None:
-    app, db, provider = setup_app(role=UserRole.MEMBER)
+    app, db, _ = setup_app(role=UserRole.MEMBER)
     application = add_eligible(db, email="a@x.com", raw_hash="h1")
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        # No run at all -> null.
-        detail = (await client.get(f"/applications/{application.id}")).json()["application"]
-        assert detail["dimensionScores"] is None
-
-        # After discovery but before scoring -> still null (no scores yet).
-        provider.queue(a_pattern_report())
-        await client.post("/screening/discover")
+        # No run at all -> null (the candidate has no scores to surface yet).
         detail = (await client.get(f"/applications/{application.id}")).json()["application"]
         assert detail["dimensionScores"] is None

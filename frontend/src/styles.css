@@ -560,6 +560,19 @@ h1 {
   padding: 14px 20px;
   border-bottom: 1px solid var(--line);
   background: var(--page);
+  /* The steps sit left; the "View shortlist" action (when present) sits right on
+     the same row. Wraps to its own line on narrow widths. */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+/* Push the shortlist action to the right edge of the workflow row. margin-left
+   auto keeps it right-aligned even when the steps wrap above it. */
+.workflow-shortlist-button {
+  margin-left: auto;
 }
 
 .empty-state {
@@ -1227,6 +1240,20 @@ h1 {
   color: #991b1b !important;
 }
 
+/* The per-pass cost breakdown under the combined Rank estimate. Smaller and
+   quieter than the headline cost — it's the supporting detail. One line per
+   pass so each step's verb reads clearly. */
+.qf-confirm-breakdown {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.76rem;
+  opacity: 0.85;
+}
+
+.qf-confirm-breakdown li {
+  margin: 0.1rem 0;
+}
+
 .qf-confirm-actions {
   display: flex;
   gap: 0.5rem;
@@ -1498,7 +1525,10 @@ h1 {
 
 /* Pattern discovery + dimension scoring (milestone 7) */
 .dimensions-panel {
-  margin: 1rem 0;
+  /* Horizontal margin matches the inset the panel's other children use (the
+     panel itself has no padding), so the criteria card doesn't run edge-to-edge
+     above the list/shortlist. */
+  margin: 1rem 1.25rem;
   border: 1px solid #ddd6fe;
   border-radius: 8px;
   background: #f5f3ff;
@@ -1629,12 +1659,11 @@ h1 {
 
 /* --- Ranked shortlist (milestone 8) ------------------------------------- */
 
-.ranking-entry {
-  margin: 1rem 0 0;
-}
-
 .ranking-view {
-  margin-top: 1rem;
+  /* The panel itself has no padding — each child supplies its own horizontal
+     inset (header, workflow bar, app-detail all use this), so the ranked view
+     must too or its rows run edge-to-edge. */
+  padding: 1.25rem;
 }
 
 .ranking-header {

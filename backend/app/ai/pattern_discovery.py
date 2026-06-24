@@ -24,11 +24,19 @@ from sqlalchemy.orm import Session
 from app.ai.applicant_facts import FILTERED_FACTS_NOTE, applicant_facts
 from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
 from app.ai.pricing import cost_usd
-from app.ai.provider import AIProvider
+from app.ai.provider import AIProvider, Usage
 from app.ai.schemas import EssayAnalysisReport, PoolPatternReport
 from app.db.models import Application, ApplicationAIResult, ApplicationStatus
 from app.schemas.settings import AppSettings
 from app.services.application_import import extract_essays
+
+# Rough per-candidate token weight of the discovery prompt (each candidate's
+# facts + essay digest) plus the single structured report. Discovery is one
+# pool-level call, so its cost scales with pool size; these feed the pre-run
+# estimate only (the real call is priced from actual usage). Tuned to the SPEC's
+# observed ~$0.07-0.11 range for a ~32-candidate pool on the synthesis model.
+_DISCOVERY_INPUT_TOKENS_PER_CANDIDATE = 600
+_DISCOVERY_OUTPUT_TOKENS = 2000
 
 # Not a cached per-application "kind"; named for the admin debug view / logging.
 KIND = "pattern_discovery"
@@ -119,6 +127,20 @@ Do not score or name individual applicants. Describe the axes, not the people.""
 
     pool_json = json.dumps(digests, indent=2, default=str)
     return f"{instructions}\n\nAPPLICANT POOL:\n{pool_json}"
+
+
+def estimate_discovery(applications: list[Application], settings: AppSettings) -> float:
+    """Projected cost of the single discovery call, scaled by pool size.
+
+    Discovery is uncached and always re-runs, so there is no per-candidate cache
+    to net out (unlike the per-application passes) — this is a straight estimate
+    used only to fold discovery into the combined Rank cost projection.
+    """
+    usage = Usage(
+        input_tokens=_DISCOVERY_INPUT_TOKENS_PER_CANDIDATE * len(applications),
+        output_tokens=_DISCOVERY_OUTPUT_TOKENS,
+    )
+    return cost_usd(settings.ai.synthesis_model, usage)
 
 
 def discover_patterns(

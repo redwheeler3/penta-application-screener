@@ -35,7 +35,8 @@ from app.ai.analysis import (
 )
 from app.ai.applicant_facts import FILTERED_FACTS_NOTE, applicant_facts
 from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
-from app.ai.provider import AIProvider
+from app.ai.pricing import cost_usd
+from app.ai.provider import AIProvider, Usage
 from app.ai.schemas import DimensionScoringReport, EssayAnalysisReport, PoolPatternReport
 from app.db.models import Application, ApplicationAIResult, ApplicationStatus
 from app.schemas.settings import AppSettings
@@ -142,6 +143,13 @@ def applications_to_score(db: Session) -> list[Application]:
     )
 
 
+# Scoring sends essays plus the dimension list and returns a few structured
+# entries, so it is in the same token range as essay analysis. Used as the
+# fallback when no real usage exists for a dimension set yet.
+SCORING_FALLBACK_INPUT_TOKENS = 3200
+SCORING_FALLBACK_OUTPUT_TOKENS = 700
+
+
 def estimate_dimension_scoring(
     db: Session, report: PoolPatternReport, settings: AppSettings
 ) -> dict[str, object]:
@@ -150,12 +158,29 @@ def estimate_dimension_scoring(
         applications=applications_to_score(db),
         kind=kind_for(report),
         model_id=settings.ai.first_pass_model,
-        # Fallback only — used before any real usage exists for this dimension
-        # set. Scoring sends essays plus the dimension list and returns a few
-        # structured entries, so it is in the same range as essay analysis.
-        fallback_input_tokens=3200,
-        fallback_output_tokens=700,
+        fallback_input_tokens=SCORING_FALLBACK_INPUT_TOKENS,
+        fallback_output_tokens=SCORING_FALLBACK_OUTPUT_TOKENS,
     )
+
+
+def estimate_scoring_without_dimensions(
+    db: Session, settings: AppSettings
+) -> float:
+    """Projected scoring cost when dimensions do not exist yet (the first Rank).
+
+    The combined Rank estimate is shown before discovery runs, so there is no
+    dimension set to key a cache on — every eligible candidate will be scored
+    fresh. Prices the whole eligible pool at the fallback per-call token weight.
+    """
+    pool = applications_to_score(db)
+    per_call = cost_usd(
+        settings.ai.first_pass_model,
+        Usage(
+            input_tokens=SCORING_FALLBACK_INPUT_TOKENS,
+            output_tokens=SCORING_FALLBACK_OUTPUT_TOKENS,
+        ),
+    )
+    return per_call * len(pool)
 
 
 def analyze_one(
