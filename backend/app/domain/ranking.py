@@ -80,7 +80,6 @@ class RankedCandidate:
     rank: int  # 1-based position in the ranking
     fit: float  # 0..1 weighted average; supporting detail, not the headline
     band: str  # relative pool-position label (see BANDS)
-    above_line: bool  # within the current shortlist line
     contributions: list[DimensionContribution]
 
 
@@ -140,7 +139,6 @@ def _contributions(
 def rank_candidates(
     candidates: list[CandidateScores],
     weights: dict[str, float],
-    shortlist_size: int,
 ) -> list[RankedCandidate]:
     """Rank the pool by fit (descending) and assign relative bands.
 
@@ -173,7 +171,6 @@ def rank_candidates(
                 rank=rank,
                 fit=fit,
                 band=band,
-                above_line=rank <= shortlist_size,
                 contributions=_contributions(candidate.scores, weights),
             )
         )

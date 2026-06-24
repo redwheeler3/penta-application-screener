@@ -13,10 +13,9 @@ run, and "the current run" is simply the most recent one. Weights, answers, and
 rankings accrete onto the same run in milestones 8-9.
 
 Milestone 8 seeds the run with an **equal-weight baseline** (``criteria.weights``,
-one entry per dimension key, all equal) and a default ``shortlist_size``. The AI
-never proposes importance — discovering the axes is its job; deciding what
-matters is the committee's, and milestone 9's narrowing answers are the only
-thing that moves these weights off equal.
+one entry per dimension key, all equal). The AI never proposes importance —
+discovering the axes is its job; deciding what matters is the committee's, and
+milestone 9's tier-list is the only thing that moves these weights off equal.
 """
 
 from __future__ import annotations
@@ -28,10 +27,6 @@ from sqlalchemy.orm import Session
 
 from app.ai.schemas import PoolPatternReport
 from app.db.models import Application, ApplicationStatus, ScreeningRun
-
-# The shortlist line the committee reads top-down to; a starting point only, not
-# a hard rule (SPEC "Interactive Screening": a likely target ~20, not hard-coded).
-DEFAULT_SHORTLIST_SIZE = 20
 
 # Equal-weight baseline: every discovered dimension starts equally important.
 INITIAL_DIMENSION_WEIGHT = 1.0
@@ -98,7 +93,6 @@ def create_run(
             "weights": {
                 d.key: INITIAL_DIMENSION_WEIGHT for d in report.dimensions
             },
-            "shortlist_size": DEFAULT_SHORTLIST_SIZE,
             "discovery_model_id": model_id,
             "discovery_narrative": narrative,
             "discovery_cost_usd": round(cost_usd, 6),
@@ -152,17 +146,23 @@ def dimension_weights(run: ScreeningRun) -> dict[str, float]:
 
 
 def default_tier_layout(report: PoolPatternReport) -> list[dict]:
-    """The opening tier layout: every dimension in one working tier, plus an empty
-    Ignore tier. One non-ignore tier means every dimension gets equal weight — so
-    this reproduces the M8 equal-weight baseline until the committee tiers.
+    """The opening tier layout: familiar S / A / B tiers + an Ignore zone, with
+    every dimension starting in the A (middle) tier. The named tiers give the
+    committee an immediate mental model of the tier-list and room to both promote
+    (to S) and demote (to B / Ignore). Starting everything in one tier keeps the
+    weights uniform — so the opening ranking is still the equal-weight baseline
+    (weight-normalized fit makes "all in A" identical to "all equal") until the
+    committee moves something.
     """
     return [
+        {"id": "tier-s", "label": "S-Tier", "dimension_keys": [], "ignore": False},
         {
-            "id": "tier-1",
-            "label": "All criteria",
+            "id": "tier-a",
+            "label": "A-Tier",
             "dimension_keys": [d.key for d in report.dimensions],
             "ignore": False,
         },
+        {"id": "tier-b", "label": "B-Tier", "dimension_keys": [], "ignore": False},
         {"id": "ignore", "label": "Ignore", "dimension_keys": [], "ignore": True},
     ]
 
@@ -236,22 +236,6 @@ def set_tiers(
     weights = weights_from_tiers(sorted(valid_keys), tier_layout)
     # criteria is a JSON column; reassign a new dict so SQLAlchemy sees the change.
     run.criteria = {**(run.criteria or {}), "tiers": tier_layout, "weights": weights}
-    db.commit()
-    db.refresh(run)
-    return run
-
-
-def shortlist_size(run: ScreeningRun) -> int:
-    """The run's shortlist-line position, defaulting when unset."""
-    return int((run.criteria or {}).get("shortlist_size", DEFAULT_SHORTLIST_SIZE))
-
-
-def set_shortlist_size(db: Session, run: ScreeningRun, size: int) -> ScreeningRun:
-    """Persist a new shortlist-line position. The line is a reading aid over the
-    soft ranking — it never removes anyone — so any non-negative value is valid.
-    """
-    # criteria is a JSON column; reassign a new dict so SQLAlchemy sees the change.
-    run.criteria = {**(run.criteria or {}), "shortlist_size": max(0, size)}
     db.commit()
     db.refresh(run)
     return run

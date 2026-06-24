@@ -16,7 +16,11 @@ from app.db.models import (
 from app.db.session import get_db
 from app.domain.status import findings_fingerprint, is_stale
 from app.services.application_import import extract_essays
-from app.services.screening_run import current_pattern_report, get_current_run
+from app.services.screening_run import (
+    current_pattern_report,
+    dimension_weights,
+    get_current_run,
+)
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
@@ -307,8 +311,17 @@ def _dimension_scores(db: Session, app: Application) -> list[dict[str, Any]] | N
         return None
 
     labels = {d.key: d.name for d in report.dimensions}
+    weights = dimension_weights(run)
     scores = (result.output or {}).get("scores", [])
-    return [
+    enriched = [
         {**score, "name": labels.get(score.get("dimension_key"), score.get("dimension_key"))}
         for score in scores
     ]
+    # Order by how much each dimension contributed to this candidate's fit under
+    # the committee's current weighting (weight x score, descending) — the same
+    # ordering the ranked-view pills use, so the detail page reads consistently.
+    enriched.sort(
+        key=lambda s: weights.get(s.get("dimension_key"), 0.0) * float(s.get("score", 0.0)),
+        reverse=True,
+    )
+    return enriched

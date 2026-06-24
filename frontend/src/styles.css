@@ -1687,34 +1687,6 @@ h1 {
   line-height: 1.45;
 }
 
-.shortlist-line-control {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.3rem;
-}
-
-.shortlist-line-control label {
-  font-size: 0.78rem;
-  color: var(--muted);
-  font-weight: 600;
-}
-
-.shortlist-line-input {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-
-.shortlist-line-input input {
-  width: 4rem;
-  text-align: center;
-  padding: 0.3rem 0.4rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  font: inherit;
-}
-
 .stepper-button {
   display: inline-flex;
   align-items: center;
@@ -1730,12 +1702,6 @@ h1 {
 
 .stepper-button:hover {
   border-color: var(--penta-green);
-}
-
-.above-line-count {
-  font-size: 0.8rem;
-  color: var(--penta-green-dark);
-  font-weight: 600;
 }
 
 .ranking-list {
@@ -1759,13 +1725,6 @@ h1 {
 
 .ranking-row:hover {
   border-color: var(--penta-green);
-}
-
-/* Below the shortlist line: still present (never removed), just visually
-   de-emphasized so the eye reads the above-line group first. */
-.ranking-row.below-line {
-  opacity: 0.7;
-  background: var(--page);
 }
 
 .ranking-rank {
@@ -1858,26 +1817,6 @@ h1 {
 
 .dim-confidence.conf-high {
   color: #166534;
-}
-
-/* The shortlist line itself — a divider the committee reads down to, not a
-   removal. Rendered after the last above-line candidate. */
-.shortlist-divider {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin: 0.5rem 0;
-  color: var(--penta-green-dark);
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-.shortlist-divider::before,
-.shortlist-divider::after {
-  content: "";
-  flex: 1;
-  height: 0;
-  border-top: 2px dashed var(--penta-green);
 }
 
 /* --- M9 tier-list maker -------------------------------------------------- */
