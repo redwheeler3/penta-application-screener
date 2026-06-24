@@ -21,7 +21,11 @@ from app.ai.analysis import cache_key
 from app.ai.dimension_scoring import applications_to_score, kind_for
 from app.ai.essay_analysis import applications_to_analyze as essay_scope
 from app.ai.quality_flags import applications_to_analyze as quality_scope
-from app.services.screening_run import current_pattern_report, get_current_run
+from app.services.screening_run import (
+    current_pattern_report,
+    get_current_run,
+    ranking_is_current,
+)
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -58,6 +62,12 @@ def read_dashboard(
             # Scoring kinds are per-run ("dimension_scoring:<hash>"), so match by
             # prefix rather than an exact kind.
             "candidatesScored": _kind_prefix_exists(db, "dimension_scoring:"),
+            # Whether the current run was built from the eligible pool as it is
+            # now. This is the SAME truth the Rank no-op gate uses, so the Rank
+            # step's "needs re-run" badge and its button agree: a pool change
+            # (candidate added/edited/eligibility-flipped) makes ranking not
+            # current even when every still-eligible candidate has a cached score.
+            "rankingCurrent": ranking_is_current(db, get_current_run(db)),
         },
         # Per-AI-step coverage of the CURRENT scope: {cached, inScope}. A step
         # whose results predate a re-sync goes stale (cached < inScope) even

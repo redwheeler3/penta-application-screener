@@ -61,6 +61,7 @@ async def test_workflow_flags_track_progress() -> None:
             "essaysAnalyzed": False,
             "patternsDiscovered": False,
             "candidatesScored": False,
+            "rankingCurrent": False,
         }
 
         # An application exists -> synced.
@@ -110,6 +111,43 @@ async def test_workflow_flags_track_progress() -> None:
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow["candidatesScored"] is True
+
+
+@pytest.mark.anyio
+async def test_ranking_current_tracks_pool_not_coverage() -> None:
+    """rankingCurrent follows the eligible pool fingerprint, not score coverage.
+
+    This is the green/yellow reconciliation: the Rank step's "needs re-run" badge
+    must agree with the no-op gate. A pool change (here: a new eligible applicant)
+    makes ranking not current even though the run still exists — coverage alone
+    would miss it.
+    """
+    from app.services.screening_run import pool_fingerprint
+
+    app, db = _logged_in_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        db.add(Application(
+            primary_email="a@x.com", applicant_name="A", raw_row={}, raw_row_hash="h1",
+            normalized={}, status=ApplicationStatus.ELIGIBLE, hard_filter_reasons=[],
+        ))
+        db.commit()
+
+        # A run whose fingerprint matches the current eligible pool -> current.
+        db.add(ScreeningRun(name="Run", criteria={"pool_fingerprint": pool_fingerprint(db)}))
+        db.commit()
+        workflow = (await client.get("/dashboard")).json()["workflow"]
+        assert workflow["rankingCurrent"] is True
+
+        # A new eligible applicant changes the pool -> ranking no longer current,
+        # even though we added no scores and removed nothing.
+        db.add(Application(
+            primary_email="b@x.com", applicant_name="B", raw_row={}, raw_row_hash="h2",
+            normalized={}, status=ApplicationStatus.ELIGIBLE, hard_filter_reasons=[],
+        ))
+        db.commit()
+        workflow = (await client.get("/dashboard")).json()["workflow"]
+        assert workflow["rankingCurrent"] is False
 
 
 @pytest.mark.anyio
