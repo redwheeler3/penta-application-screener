@@ -436,14 +436,18 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
 
         layout = (await client.get("/screening/tiers")).json()["tiers"]
         by_label = {t["label"]: t for t in layout}
-        # The matched dimension inherited the prior S-Tier placement.
-        assert by_label["S-Tier"]["dimension_keys"] == ["stated_participation"]
+        # The matched dimension ADOPTED the prior key and kept the prior S-Tier
+        # placement — so the placement carries forward by key, no separate identity.
+        assert by_label["S-Tier"]["dimension_keys"] == ["participation_commitment"]
         # The genuinely-new dimension is unplaced -> shows in the synthesized Ignore zone.
         ignore = next(t for t in layout if t.get("ignore"))
         assert "financial_stability" in ignore["dimension_keys"]
 
         current = (await client.get("/screening/current")).json()
         assert current["newDimensionKeys"] == ["financial_stability"]
+        # Key adopted, but the NEW content is kept (fresh discovery wording).
+        by_key = {d["key"]: d for d in current["dimensions"]}
+        assert by_key["participation_commitment"]["name"] == "Stated participation"
 
         # Acknowledge the new dimension in place (badge ✕ / "mark all reviewed"):
         # keep the layout unchanged, send the key in acknowledged_keys. It drops
@@ -463,10 +467,13 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
 
 
 def _scoring_report_v2() -> DimensionScoringReport:
+    # After key adoption the matched dimension is scored under the prior key
+    # (participation_commitment) — though in practice it is reused from the first
+    # run's cache, so only financial_stability is actually sent to the model.
     return DimensionScoringReport(
         scores=[
             DimensionScore(
-                dimension_key="stated_participation", score=0.8, rationale="r",
+                dimension_key="participation_commitment", score=0.8, rationale="r",
                 evidence="", confidence=ScoreConfidence.HIGH,
             ),
             DimensionScore(

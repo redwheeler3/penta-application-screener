@@ -268,7 +268,14 @@ type QualityFlagEstimate = {
 // scoring costs scale with essay output that does not exist until essays run.
 type RankEstimate = {
   eligible: number;
-  breakdown: { essays_usd: number; criteria_usd: number; scoring_usd: number };
+  breakdown: {
+    essays_usd: number;
+    criteria_usd: number;
+    // The dimension identity-match call (carry-forward); 0 on a first run (no
+    // prior dimensions to match, so the pass is skipped).
+    match_usd: number;
+    scoring_usd: number;
+  };
   essays_cached: number;
   estimated_usd: number;
   approximate: boolean;
@@ -1991,8 +1998,17 @@ export function App() {
                           {rankEstimate.essays_cached > 0 ? ` (${rankEstimate.essays_cached} cached)` : ""}
                         </li>
                         <li>Find distinguishing criteria ~${rankEstimate.breakdown.criteria_usd.toFixed(4)}</li>
-                        <li>Score against criteria ~${rankEstimate.breakdown.scoring_usd.toFixed(4)}</li>
+                        {rankEstimate.breakdown.match_usd > 0 ? (
+                          <li>Match criteria to the prior run ~${rankEstimate.breakdown.match_usd.toFixed(4)}</li>
+                        ) : null}
+                        <li>Score against criteria ~${rankEstimate.breakdown.scoring_usd.toFixed(4)} (max)</li>
                       </ul>
+                      {rankEstimate.breakdown.match_usd > 0 ? (
+                        <p className="qf-confirm-note">
+                          Scoring is an upper bound — criteria carried over from the prior run
+                          reuse their scores, so the actual cost is usually lower.
+                        </p>
+                      ) : null}
                     </>
                   )}
                   {!rankEstimate.ranking_current && !rankEstimate.within_cap ? (

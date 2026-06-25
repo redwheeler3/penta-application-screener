@@ -1,12 +1,14 @@
 """Screening-run persistence (milestone 7).
 
 A ``ScreeningRun`` holds the run-scoped products of pattern discovery: the
-discovered ``PoolPatternReport`` and a short hash of its dimension set. The
-per-candidate dimension scores are *not* stored here — they live in
-``ApplicationAIResult`` rows under ``kind = "dimension_scoring:<dims_hash>"``, so
-the run's ``dims_hash`` is the join back to a candidate's scores (see SPEC
-"Pattern Discovery And Dimension Scoring"). The table existed unused before this
-milestone; here is where it first gets wired.
+discovered ``PoolPatternReport``. The per-candidate dimension scores are *not*
+stored here — they live in ``ApplicationAIResult`` rows under
+``kind = "dimension_scoring:<dimension_key>"``, so a dimension's **key** is the
+join back to a candidate's score. Across a re-rank, a matched dimension's key is
+rewritten to its prior key (``adopt_matched_keys``), so both its tier placement
+and its cached score carry forward by key alone — no separate identity to
+maintain (see SPEC "Pattern Discovery And Dimension Scoring"). The table existed
+unused before milestone 7; here is where it first gets wired.
 
 Milestone 7 keeps the lifecycle minimal: rediscovering patterns creates a new
 run, and "the current run" is simply the most recent one. Weights, answers, and
@@ -55,17 +57,34 @@ def pool_fingerprint(db: Session) -> str:
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
 
 
-def dimensions_hash(report: PoolPatternReport) -> str:
-    """Stable short hash over the dimension *keys* of a pattern report.
+def adopt_matched_keys(
+    report: PoolPatternReport, new_to_old: dict[str, str]
+) -> PoolPatternReport:
+    """Rewrite a freshly-discovered dimension's **key** to its matched prior key,
+    keeping all the new content (name, definition, why_it_differentiates).
 
-    Folded into the scoring pass's cache ``kind`` so two runs with different
-    dimension sets get distinct cached scores instead of colliding. Keys only
-    (sorted): the identity of a dimension set is which axes it scores on, not
-    their prose definitions or proposed weights.
+    The dimension key is a stable cross-run *identity*, not committee-facing text.
+    When the match pass judges a new dimension to be the same concept as a prior
+    one, we adopt the prior key so everything keyed on it — the tier placements
+    AND the per-dimension score cache — carries forward by key alone, with no
+    separate identity to maintain. We keep the *new* descriptions because
+    discovery just re-read this pool, so its wording is the current, accurate one;
+    only the opaque identifier is borrowed from the past.
+
+    A new dimension with no match keeps its fresh key (→ a cache miss → scored).
+    Guard: never adopt a key already taken by another dimension in this report —
+    that would create a duplicate key. (Reuse is lost for that one dimension, but
+    the report stays structurally valid; this only triggers in the rare case the
+    LLM re-coins an old key string for a different, unmatched concept.)
     """
-    keys = sorted(d.key for d in report.dimensions)
-    basis = "\n".join(keys)
-    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:12]
+    taken: set[str] = set()
+    dims = []
+    for dim in report.dimensions:
+        old_key = new_to_old.get(dim.key)
+        key = old_key if (old_key is not None and old_key not in taken) else dim.key
+        taken.add(key)
+        dims.append(dim.model_copy(update={"key": key}))
+    return report.model_copy(update={"dimensions": dims})
 
 
 def create_run(
@@ -86,7 +105,9 @@ def create_run(
     default all-Ignore layout. Either way the run stores its tiers explicitly and
     derives ``weights`` from them, so the layout is the single source of truth.
     ``new_dimension_keys`` are the unmatched new dimensions (parked in Ignore) to
-    flag in the UI; empty on a first run.
+    flag in the UI; empty on a first run. (Matched dimensions have already had
+    their keys rewritten to the prior keys by ``adopt_matched_keys`` before this,
+    so their tiers and cached scores carry forward by key alone.)
     """
     layout = tier_layout if tier_layout is not None else default_tier_layout()
     dimension_keys = [d.key for d in report.dimensions]
@@ -95,7 +116,6 @@ def create_run(
         status="patterns_discovered",
         criteria={
             "pattern_report": report.model_dump(mode="json"),
-            "dims_hash": dimensions_hash(report),
             # Fingerprint of the eligible pool this run was built from, so the next
             # Rank can detect an unchanged pool and skip a no-op re-run.
             "pool_fingerprint": pool_fingerprint(db),
@@ -207,23 +227,25 @@ def carry_forward_layout(
     *,
     new_report: PoolPatternReport,
     old_tiers: list[dict],
-    new_to_old: dict[str, str],
+    prior_keys: set[str],
 ) -> tuple[list[dict], list[str]]:
     """Build the new run's *working*-tier layout by carrying old placements forward.
 
-    ``old_tiers`` is the prior run's working tiers (no Ignore zone — that's derived).
-    Re-uses the committee's prior structure (their renamed/added/reordered tiers),
-    placing each new dimension into the working tier its matched old dimension
-    occupied. Three cases per new dimension:
-      - matched a prior dimension in a working tier → carried into that tier;
-      - matched a prior dimension that was in Ignore → left unplaced (the
-        committee's "ignore" decision carries forward), and NOT flagged new —
-        they already weighed in on it;
-      - no match to any prior dimension → left unplaced AND flagged new, so the
+    Runs *after* ``adopt_matched_keys``, so a matched dimension already shares its
+    prior counterpart's key — carry-forward is therefore pure key equality, no
+    match map needed. ``old_tiers`` is the prior run's working tiers (no Ignore
+    zone — that's derived); ``prior_keys`` is every dimension key the prior run
+    had (working *and* Ignored), which is what tells "matched" from "new". Three
+    cases per new dimension:
+      - its key is in a prior working tier → carried into that tier;
+      - its key was a prior dimension that sat in Ignore (in ``prior_keys`` but not
+        in any working tier) → left unplaced (the committee's "ignore" decision
+        carries forward), and NOT flagged new — they already weighed in on it;
+      - its key is not a prior key at all → left unplaced AND flagged new, so the
         committee triages a dimension they have never seen.
     "Unplaced" means weight 0 ("ignored"), so it cannot influence the ranking
-    until the committee acts. The key distinction is *matched vs. not* — not which
-    tier the match landed in — so a prior-Ignored survivor is never mislabeled new.
+    until the committee acts. The distinction is *was it a prior dimension* — not
+    which tier it sat in — so a prior-Ignored survivor is never mislabeled new.
 
     Returns ``(working_tiers, new_dimension_keys)`` where ``new_dimension_keys`` is
     only the genuinely-new (unmatched) keys, for "new" badging in the UI. Falls
@@ -232,11 +254,11 @@ def carry_forward_layout(
     if not old_tiers:
         return default_tier_layout(), []
 
-    # old_key -> the id of the working tier it was in (so we can place new dims there).
-    old_key_to_tier: dict[str, str] = {}
+    # key -> the id of the working tier it was in (so we can place it there again).
+    key_to_tier: dict[str, str] = {}
     for tier in old_tiers:
         for key in tier.get("dimension_keys", []):
-            old_key_to_tier[key] = tier["id"]
+            key_to_tier[key] = tier["id"]
 
     # Clone the old working-tier structure, emptied of dimensions.
     layout: list[dict] = [
@@ -247,18 +269,16 @@ def carry_forward_layout(
 
     new_dimension_keys: list[str] = []
     for dim in new_report.dimensions:
-        old_key = new_to_old.get(dim.key)
-        if old_key is None:
-            # No match to ANY prior dimension: genuinely new. Unplaced (ignored
-            # by absence) and flagged so the committee triages it.
+        if dim.key not in prior_keys:
+            # Not a prior dimension at all: genuinely new. Unplaced (ignored by
+            # absence) and flagged so the committee triages it.
             new_dimension_keys.append(dim.key)
             continue
-        # Matched a prior dimension. If that dimension was in a working tier,
-        # carry the placement forward. If it was in Ignore (not in the map, since
-        # Ignore isn't stored), leave this one unplaced too — carrying the
-        # committee's "ignore" decision forward — but it is NOT new: they already
-        # weighed in on it, so it gets no badge.
-        target = old_key_to_tier.get(old_key)
+        # A prior dimension (its key was adopted on match). If it sat in a working
+        # tier, carry that placement forward; if it was in Ignore, leave it
+        # unplaced — carrying the committee's "ignore" decision forward — but it is
+        # NOT new: they already weighed in on it, so it gets no badge.
+        target = key_to_tier.get(dim.key)
         if target is not None and target in by_id:
             by_id[target]["dimension_keys"].append(dim.key)
 

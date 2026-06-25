@@ -26,11 +26,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import ScreeningResult, SpendingCapExceeded, enforce_cap
-from app.ai.dimension_matching import match_dimensions
+from app.ai.dimension_matching import estimate_match, match_dimensions
 from app.ai.dimension_scoring import (
     applications_to_score,
-    estimate_scoring_without_dimensions,
-    screen_dimension_scores,
+    estimate_dimension_scoring,
+    score_dimensions,
 )
 from app.ai.essay_analysis import (
     applications_to_analyze,
@@ -50,6 +50,7 @@ from app.domain.ranking import rank_candidates
 from app.services.ranking_view import candidate_scores
 from app.schemas.settings import AppSettings
 from app.services.screening_run import (
+    adopt_matched_keys,
     carry_forward_layout,
     create_run,
     current_pattern_report,
@@ -130,30 +131,41 @@ def current(
 
 
 def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
-    """Combined projected cost of the three Rank passes.
+    """Combined projected cost of the Rank passes (essays → discovery → match →
+    scoring).
 
     Essay summary is netted against its cache (re-running is cheap if essays were
-    already summarized). Discovery always re-runs (uncached) and scoring is
-    priced for the whole eligible pool, because Rank discovers a fresh dimension
-    set every time — so no prior scores are cache hits under it. The total is
-    therefore an upper-ish bound; the confirmation labels it approximate.
+    already summarized). Discovery always re-runs (uncached). The match pass adds
+    one small call, but only when a prior run exists (otherwise it is skipped); we
+    fold its cost in just then. Scoring is priced as a **whole-pool ceiling** —
+    every candidate × every dimension — because the estimate is shown before
+    discovery and the match pass run, so it cannot yet know how many dimensions
+    will carry forward (their scores reused). Per-dimension reuse makes the
+    *actual* run come in under this ceiling; the real saving shows in the run
+    summary. The total is therefore an upper bound; the confirmation labels it
+    approximate.
     """
     essays = estimate_essay_analysis(db, settings)
     pool = eligible_applications(db)
     discovery_usd = estimate_discovery(pool, settings)
-    scoring = estimate_scoring_without_dimensions(db, settings)
+    # A match pass runs only when there is a prior run to match against.
+    match_usd = estimate_match(settings) if get_current_run(db) is not None else 0.0
+    scoring = estimate_dimension_scoring(db, settings)
     scoring_usd = float(scoring["estimated_usd"])
-    total = round(float(essays["estimated_usd"]) + discovery_usd + scoring_usd, 4)
+    total = round(
+        float(essays["estimated_usd"]) + discovery_usd + match_usd + scoring_usd, 4
+    )
     return {
         "eligible": len(pool),
         "breakdown": {
             "essays_usd": round(float(essays["estimated_usd"]), 4),
             "criteria_usd": round(discovery_usd, 4),
+            "match_usd": round(match_usd, 4),
             "scoring_usd": round(scoring_usd, 4),
         },
         "essays_cached": essays["cached"],
         "estimated_usd": total,
-        "approximate": True,  # criteria/scoring scale with essay output not yet produced
+        "approximate": True,  # scoring is a ceiling; carry-forward reuse lowers the real cost
     }
 
 
@@ -260,11 +272,17 @@ def rank_run(
                  "message": f"Finding criteria failed: {type(exc).__name__}: {exc}"}
             ) + "\n"
             return
+        # Adopt the prior key for every matched dimension (keeping the new
+        # descriptions). After this, a matched dimension *is* the prior dimension
+        # by key, so its tier placement and its cached per-dimension score both
+        # carry forward by key alone — no separate identity to track.
+        report = adopt_matched_keys(report, new_to_old)
         # Carry the prior placements forward; unmatched new dimensions land in
         # Ignore and are flagged "new". A first run (no prior tiers) opens with the
         # default all-Ignore layout and nothing flagged.
+        prior_keys = {d.key for d in prior_report.dimensions} if prior_report else set()
         layout, new_dimension_keys = carry_forward_layout(
-            new_report=report, old_tiers=prior_tiers, new_to_old=new_to_old
+            new_report=report, old_tiers=prior_tiers, prior_keys=prior_keys
         )
         create_run(
             db, report=report, model_id=settings.ai.synthesis_model,
@@ -286,7 +304,7 @@ def rank_run(
         yield json.dumps({"type": "phase", "phase": "scores", "total": len(to_score)}) + "\n"
         score_tally = RunTally()
         for processed, result in enumerate(
-            screen_dimension_scores(
+            score_dimensions(
                 db, provider, applications=to_score, report=report,
                 settings=settings, max_workers=settings.ai.max_workers,
             ),
@@ -325,9 +343,8 @@ def _ranking_payload(db: Session, run) -> dict[str, Any]:
     tier-edit endpoint, so a tier change returns the freshly re-sorted list in the
     same shape — the client re-sorts in one round-trip.
     """
-    report = current_pattern_report(run)
     weights = dimension_weights(run)
-    ranked = rank_candidates(candidate_scores(db, report), weights)
+    ranked = rank_candidates(candidate_scores(db, run), weights)
     return {
         "runId": run.id,
         "weights": weights,

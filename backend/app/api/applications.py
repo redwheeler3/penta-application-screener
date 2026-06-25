@@ -361,7 +361,7 @@ def _dimension_scores(db: Session, app: Application) -> list[dict[str, Any]] | N
         return None
 
     weights = dimension_weights(run)
-    ranked = rank_candidates(candidate_scores(db, report), weights)
+    ranked = rank_candidates(candidate_scores(db, run), weights)
     candidate = next((c for c in ranked if c.application_id == app.id), None)
     if candidate is None:
         return None

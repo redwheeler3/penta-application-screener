@@ -20,7 +20,7 @@ from app.services.settings import get_app_settings
 # counts exactly what a re-run would (re)process — never a parallel definition
 # that could drift from the real scope.
 from app.ai.analysis import cache_key
-from app.ai.dimension_scoring import applications_to_score, kind_for
+from app.ai.dimension_scoring import applications_to_score, kind_for_dimension
 from app.ai.essay_analysis import applications_to_analyze as essay_scope
 from app.ai.quality_flags import applications_to_analyze as quality_scope
 from app.services.screening_run import (
@@ -122,12 +122,33 @@ def _coverage(db: Session, settings) -> dict[str, dict[str, int]]:
         "qualityChecksRun": covered(quality_scope(db), "quality_flags"),
         "essaysAnalyzed": covered(essay_scope(db), "essay_analysis"),
     }
-    # Scoring coverage is only meaningful against the current run's dimension set
-    # (its kind embeds the dimensions hash). Absent a run, leave it unset.
+    # Scoring coverage is only meaningful against the current run. A candidate
+    # counts as scored once it has a cached row for EVERY dimension key — scores
+    # now live per (candidate, dimension), so partial coverage (some dimensions
+    # carried forward, some still to score) reads as not-yet-complete.
     run = get_current_run(db)
     report = current_pattern_report(run) if run is not None else None
     if report is not None:
-        result["candidatesScored"] = covered(applications_to_score(db), kind_for(report))
+        kinds = [kind_for_dimension(d.key) for d in report.dimensions]
+        applications = applications_to_score(db)
+        fully_scored = sum(
+            1
+            for app in applications
+            if all(
+                db.scalar(
+                    select(ApplicationAIResult.id).where(
+                        ApplicationAIResult.cache_key
+                        == cache_key(application=app, kind=kind, model_id=model)
+                    )
+                )
+                is not None
+                for kind in kinds
+            )
+        )
+        result["candidatesScored"] = {
+            "cached": fully_scored,
+            "inScope": len(applications),
+        }
     return result
 
 

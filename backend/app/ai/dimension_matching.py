@@ -29,6 +29,29 @@ from app.schemas.settings import AppSettings
 
 KIND = "dimension_matching"  # for logging / the debug view; not a cached per-app kind
 
+# Flat token weight for the single match call, used only to fold its (small) cost
+# into the pre-run Rank estimate. The call compares two short dimension lists and
+# emits a compact match list, so it is far cheaper than a per-candidate scoring
+# call; this is a deliberately generous flat guess, not a self-tuning average
+# (the match pass is uncached and runs at most once per re-rank).
+MATCH_INPUT_TOKENS = 2000
+MATCH_OUTPUT_TOKENS = 600
+
+
+def estimate_match(settings: AppSettings) -> float:
+    """Projected cost of the one identity-match call on the first-pass model.
+
+    Only meaningful when a prior run exists (otherwise the match pass is skipped
+    and returns an empty map at no cost — see ``match_dimensions``). The caller
+    folds this into the combined Rank estimate only in that case.
+    """
+    from app.ai.provider import Usage
+
+    return cost_usd(
+        settings.ai.first_pass_model,
+        Usage(input_tokens=MATCH_INPUT_TOKENS, output_tokens=MATCH_OUTPUT_TOKENS),
+    )
+
 SYSTEM_PROMPT = """\
 You are reconciling two lists of "dimensions" — axes along which a pool of housing co-op applicants varies. One list is from a PRIOR analysis, one is freshly discovered from the same (slightly changed) pool. They overlap heavily but the wording may differ and some axes may be genuinely new or gone.
 Your only job is to identify which NEW dimension means the SAME THING as which PRIOR dimension — a pure identity match. You do not invent dimensions, rank them, or judge which matter.

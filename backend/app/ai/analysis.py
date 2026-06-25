@@ -13,10 +13,15 @@ import json
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from typing import TypeVar
 
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+# Work item / result types for the shared concurrency mechanism (run_in_pool).
+T = TypeVar("T")
+R = TypeVar("R")
 
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, Usage
@@ -29,9 +34,10 @@ from app.db.models import Application, ApplicationAIResult
 # Do NOT bump for the pattern-discovery (categorization) prompt: discovery is
 # uncached (it calls provider.structured_output directly, never analyze_application,
 # so it re-runs every Rank and this version never gates it). A discovery change also
-# self-invalidates downstream — different dimensions → different dimensions_hash →
-# the scoring cache kind changes and scores re-compute on their own. So a
-# categorization-prompt edit needs neither a bump nor any manual cache action.
+# self-invalidates downstream — genuinely new dimensions get new keys, so their
+# scoring cache kind (dimension_scoring:<dimension_key>) is new and they are scored
+# fresh. So a categorization-prompt edit needs neither a bump nor any manual cache
+# action.
 PROMPT_VERSION = "10"
 
 
@@ -96,11 +102,11 @@ def estimate_cost(
     static guess). The fallback values are used only when there is no usage
     history at all.
 
-    ``usage_kind_prefix`` lets a pass whose ``kind`` carries a per-run suffix
-    (e.g. ``dimension_scoring:<dims_hash>``) learn from *all* its prior runs:
-    token usage depends on the prompt shape, not on which dimensions were
-    discovered, so averaging across every ``dimension_scoring:*`` row keeps the
-    estimate self-tuning even though each run gets a fresh hash. Cache hits still
+    ``usage_kind_prefix`` lets a pass whose ``kind`` carries a per-dimension
+    suffix (e.g. ``dimension_scoring:<dimension_key>``) learn from *all* its prior
+    rows: token usage depends on the prompt shape, not on which dimension it was,
+    so averaging across every ``dimension_scoring:*`` row keeps the estimate
+    self-tuning even though each dimension has its own key kind. Cache hits still
     key on the exact ``kind``. Defaults to exact-kind matching.
     """
     uncached = [
@@ -108,7 +114,7 @@ def estimate_cost(
         for app in applications
         if _cached_result(db, app, kind, model_id) is None
     ]
-    avg_input_tokens, avg_output_tokens = _observed_avg_tokens(
+    avg_input_tokens, avg_output_tokens = observed_avg_tokens(
         db, kind=kind, model_id=model_id, kind_prefix=usage_kind_prefix
     ) or (fallback_input_tokens, fallback_output_tokens)
     # Price one average call through the same formula as a real call, then scale
@@ -124,7 +130,7 @@ def estimate_cost(
     }
 
 
-def _observed_avg_tokens(
+def observed_avg_tokens(
     db: Session, *, kind: str, model_id: str, kind_prefix: str | None = None
 ) -> tuple[int, int] | None:
     """Average input/output tokens from this model's recent real calls for the
@@ -280,6 +286,37 @@ class ScreeningResult:
         return self.outcome is None
 
 
+def run_in_pool(
+    items: list[T],
+    *,
+    call: Callable[[T], R],
+    max_workers: int,
+) -> Iterator[tuple[T, R | None, Exception | None]]:
+    """Run ``call(item)`` for each item across a thread pool, yielding
+    ``(item, result, error)`` as each completes — ``error`` set (and ``result``
+    None) when that item's call raised.
+
+    The pure concurrency mechanism shared by every AI pass: the thread pool, the
+    ``as_completed`` ordering (a slow call never holds back faster ones), the
+    bounded worker count, and per-item error isolation (one failure never aborts
+    the batch). It does NO database or ORM work — ``call`` must be session-free
+    and safe to run in a worker thread, and the caller does all DB work (cache
+    lookups, persistence) on its own thread around this generator. Keeping this
+    one copy means the subtle session-on-the-main-thread discipline lives in a
+    single place rather than being re-implemented per pass.
+    """
+    if not items:
+        return
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(items))) as pool:
+        futures = {pool.submit(call, item): item for item in items}
+        for future in as_completed(futures):
+            item = futures[future]
+            try:
+                yield item, future.result(), None
+            except Exception as exc:  # noqa: BLE001 — one item's failure is isolated
+                yield item, None, exc
+
+
 def screen_applications(
     db: Session,
     provider: AIProvider,
@@ -296,17 +333,19 @@ def screen_applications(
     """Run a cached AI pass over ``applications``, yielding each result as it
     completes (cached results first, then model results in completion order).
 
-    The shared engine behind every screening pass (quality flags, essay
-    analysis, …). Only the blocking model call runs in worker threads; every DB
-    and ORM access — cache lookup, prompt building, persistence, and the
-    ``on_result`` hook — stays on this (the caller's) thread, so the session is
-    never shared. Workers receive a plain prompt string and return a
-    session-free result. A failed call yields a ``ScreeningResult`` with an
+    The 1:1 engine behind quality flags and essay analysis — one application, one
+    cached result, one row. It builds the per-application prompts on this thread
+    (ORM access), runs the model calls through ``run_in_pool`` (the shared
+    concurrency mechanism), and stores each result back on this thread, so the
+    session is never shared. A failed call yields a ``ScreeningResult`` with an
     error rather than aborting the batch.
 
     ``on_result`` is an optional side effect run on the caller's thread for each
     successful outcome (e.g. quality flags applying status). Passes that are
-    purely informational, like essay analysis, omit it.
+    purely informational, like essay analysis, omit it. (Dimension scoring is no
+    longer 1:1 — it reuses scores per dimension and batches a candidate's
+    uncached dimensions into one call — so it has its own path on the same
+    ``run_in_pool`` core rather than bending this one.)
     """
 
     def finish(application: Application, outcome: AnalysisOutcome) -> ScreeningResult:
@@ -327,37 +366,25 @@ def screen_applications(
         else:
             pending.append((application, build_prompt(application)))
 
-    if not pending:
-        return
-
-    def call_model(prompt: str) -> AIResult:
+    def call_model(item: tuple[Application, str]) -> AIResult:
         # Pure: no session, no ORM — safe to run in a worker thread.
         return provider.structured_output(
             model_id=model_id,
             schema=schema,
-            prompt=prompt,
+            prompt=item[1],
             system_prompt=system_prompt,
         )
 
-    with ThreadPoolExecutor(max_workers=min(max_workers, len(pending))) as pool:
-        futures = {
-            pool.submit(call_model, prompt): application
-            for application, prompt in pending
-        }
-        # as_completed (not map) so a slow call never holds back faster ones.
-        for future in as_completed(futures):
-            application = futures[future]
-            try:
-                result = future.result()
-            except Exception as exc:  # noqa: BLE001 — one app's failure is isolated
-                yield ScreeningResult(
-                    application=application, outcome=None, error=str(exc)
-                )
-                continue
-            outcome = store_result(
-                db, application, kind=kind, model_id=model_id, result=result
-            )
-            yield finish(application, outcome)
+    for (application, _prompt), result, error in run_in_pool(
+        pending, call=call_model, max_workers=max_workers
+    ):
+        if error is not None:
+            yield ScreeningResult(application=application, outcome=None, error=str(error))
+            continue
+        outcome = store_result(
+            db, application, kind=kind, model_id=model_id, result=result
+        )
+        yield finish(application, outcome)
 
 
 def enforce_cap(estimate: dict[str, object], cap_usd: float) -> None:
