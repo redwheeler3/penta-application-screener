@@ -30,9 +30,8 @@ class AIResult:
     output: BaseModel
     usage: Usage
     model_id: str
-    # The model's free-text reasoning emitted alongside the structured tool call
-    # (the running commentary shown in the console). None when the provider does
-    # not surface it. Persisted for the admin "Raw AI output" view, never parsed.
+    # The model's free-text reasoning alongside the structured tool call. None when
+    # the provider doesn't surface it. Persisted for the admin view, never parsed.
     narrative: str | None = None
 
 

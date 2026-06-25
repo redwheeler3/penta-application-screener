@@ -1,5 +1,4 @@
-"""Screening API: the Rank chain (milestones 6-8) and the deterministic ranked
-shortlist (milestone 8).
+"""Screening API: the Rank chain and the deterministic ranked shortlist.
 
 Flow the UI drives:
   1. GET  /screening/rank/estimate — combined cost projection for the chain.
@@ -8,11 +7,11 @@ Flow the UI drives:
      enforced once over the COMBINED cost before any model call.
   3. GET  /screening/current — the current run's criteria + summary.
   4. GET  /screening/ranking — the ranked shortlist (math over cached scores).
-  5. GET/PUT /screening/tiers — the committee's importance-tier weighting (M9).
+  5. GET/PUT /screening/tiers — the committee's importance-tier weighting.
 
-The committee never runs the three sub-passes individually, so they are exposed
-as the single Rank step; the passes stay separate underneath (distinct schemas,
-cache kinds, and status behavior).
+The committee never runs the three sub-passes individually, so they're exposed as
+one Rank step; the passes stay separate underneath (distinct schemas, cache kinds,
+status behavior).
 """
 
 import json
@@ -81,8 +80,7 @@ class RunTally:
             return
         if result.outcome.cached:
             # A cache hit made no model call, so it spent nothing on THIS run.
-            # (A cached outcome carries its original first-run cost for auditing;
-            # that is not money spent now, so it must not count toward the total.)
+            # (Its stored cost is the original first-run cost, for auditing only.)
             self.cached += 1
             return
         self.analyzed += 1
@@ -103,9 +101,8 @@ def _run_payload(db: Session) -> dict[str, Any] | None:
         "status": run.status,
         "summary": report.summary,
         "dimensions": report.model_dump(mode="json")["dimensions"],
-        # Dimensions that appeared on the last re-discovery with no confident match
-        # to a prior dimension — parked in Ignore for the committee to triage, and
-        # flagged "new" in the tier-list UI. Empty on a first run.
+        # New dimensions with no confident match to a prior one — parked in Ignore,
+        # flagged "new" in the UI. Empty on a first run.
         "newDimensionKeys": (run.criteria or {}).get("new_dimension_keys", []),
     }
 
@@ -120,30 +117,18 @@ def current(
 
 
 # --- Rank: the combined essays → criteria → scores chain --------------------
-#
-# The committee never runs the three sub-passes individually, so the UI exposes
-# them as one "Rank" button. The passes stay separate underneath (distinct
-# schemas, cache kinds, and status behavior — essay summary and scoring never
-# touch status, discovery starts a fresh run); this layer just orchestrates them
-# back-to-back. The spending cap is enforced once, over the COMBINED projected
-# cost, before any model call — so the single button keeps the same hard cost
-# gate as the individual passes had.
 
 
 def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     """Combined projected cost of the Rank passes (essays → discovery → match →
     scoring).
 
-    Essay summary is netted against its cache (re-running is cheap if essays were
-    already summarized). Discovery always re-runs (uncached). The match pass adds
-    one small call, but only when a prior run exists (otherwise it is skipped); we
-    fold its cost in just then. Scoring is priced as a **whole-pool ceiling** —
-    every candidate × every dimension — because the estimate is shown before
-    discovery and the match pass run, so it cannot yet know how many dimensions
-    will carry forward (their scores reused). Per-dimension reuse makes the
-    *actual* run come in under this ceiling; the real saving shows in the run
-    summary. The total is therefore an upper bound; the confirmation labels it
-    approximate.
+    Essays are netted against their cache; discovery always re-runs (uncached);
+    the match pass adds one small call, only when a prior run exists. Scoring is
+    priced as a whole-pool ceiling (every candidate × every dimension) because the
+    estimate runs before discovery, so it can't yet know how many dimensions carry
+    forward. Per-dimension reuse makes the actual run come in under this ceiling,
+    so the total is an upper bound (the confirmation labels it approximate).
     """
     essays = estimate_essay_analysis(db, settings)
     pool = eligible_applications(db)
@@ -180,9 +165,8 @@ def rank_estimate(
     result = _rank_estimate(db, settings)
     result["cap_usd"] = settings.ai.spending_cap_usd
     result["within_cap"] = result["estimated_usd"] <= settings.ai.spending_cap_usd
-    # When the pool hasn't changed since the last run, the ranking is already
-    # current — re-running would only re-pay for an identical result. The UI uses
-    # this to say "ranking is up to date" instead of offering to spend.
+    # When the pool is unchanged, the ranking is already current; the UI uses this
+    # to say "up to date" instead of offering to spend.
     result["ranking_current"] = ranking_is_current(db, get_current_run(db))
     return result
 
@@ -194,22 +178,20 @@ def rank_run(
     provider: AIProvider = Depends(get_ai_provider),
 ) -> StreamingResponse:
     """Run the full ranking chain — summarize essays → find criteria → score —
-    streaming NDJSON. The combined cost is checked against the cap once, before
-    any model call, so an over-cap run fails fast with a 402 and spends nothing.
+    streaming NDJSON. The combined cost is checked against the cap once before any
+    model call, so an over-cap run fails fast with a 402 and spends nothing.
 
-    Stream shape: a ``phase`` line announces each pass (essays / criteria /
-    scores), then ``progress`` lines for the per-candidate passes, then a final
-    ``summary`` with the combined cost. Discovery is one call, so it emits a
-    phase line and its standalone result, no progress fraction.
+    Stream shape: a ``phase`` line per pass, ``progress`` lines for the
+    per-candidate passes, then a final ``summary`` with the combined cost.
+    Discovery is one call, so it emits a phase line and its result, no progress.
     """
     settings: AppSettings = get_app_settings(db)
     if not eligible_applications(db):
         raise HTTPException(status_code=409, detail="No eligible applications to rank.")
 
-    # Block a no-op re-run: if the eligible pool is unchanged since the current
-    # run, the ranking is already current and re-running would only re-spend for
-    # an identical result (discovery is nondeterministic, so it would even churn
-    # the criteria and force a full re-score). The pool must change to re-rank.
+    # Block a no-op re-run: an unchanged pool means the ranking is already current,
+    # and re-running would only re-spend for an identical result (discovery is
+    # nondeterministic, so it would even churn criteria and force a full re-score).
     if ranking_is_current(db, get_current_run(db)):
         raise HTTPException(
             status_code=409,
@@ -244,8 +226,8 @@ def rank_run(
         total_cost += essay_tally.cost_usd
 
         # Phase 2: find criteria (one synthesis call; starts a fresh run).
-        # Capture the PRIOR run and its tier layout before discovery, so we can
-        # carry the committee's placements forward onto the new dimensions.
+        # Capture the prior run + tiers before discovery, to carry the committee's
+        # placements forward onto the new dimensions.
         prior_run = get_current_run(db)
         prior_report = current_pattern_report(prior_run) if prior_run else None
         prior_tiers = stored_tiers(prior_run) if prior_run else []
@@ -272,14 +254,11 @@ def rank_run(
                  "message": f"Finding criteria failed: {type(exc).__name__}: {exc}"}
             ) + "\n"
             return
-        # Adopt the prior key for every matched dimension (keeping the new
-        # descriptions). After this, a matched dimension *is* the prior dimension
-        # by key, so its tier placement and its cached per-dimension score both
-        # carry forward by key alone — no separate identity to track.
+        # Adopt the prior key for every matched dimension (keeping new descriptions)
+        # so its tier placement and cached score carry forward by key alone.
         report = adopt_matched_keys(report, new_to_old)
-        # Carry the prior placements forward; unmatched new dimensions land in
-        # Ignore and are flagged "new". A first run (no prior tiers) opens with the
-        # default all-Ignore layout and nothing flagged.
+        # Carry prior placements forward; unmatched new dimensions land in Ignore,
+        # flagged "new". A first run opens with the default all-Ignore layout.
         prior_keys = {d.key for d in prior_report.dimensions} if prior_report else set()
         layout, new_dimension_keys = carry_forward_layout(
             new_report=report, old_tiers=prior_tiers, prior_keys=prior_keys
@@ -329,19 +308,17 @@ def rank_run(
     return StreamingResponse(stream(), media_type="application/x-ndjson")
 
 
-# --- Ranking (milestone 8) --------------------------------------------------
+# --- Ranking ----------------------------------------------------------------
 #
-# The ranked shortlist is deterministic math over the cached dimension scores —
-# no model call. This layer loads each eligible candidate's scores for the
-# current run, joins the dimension labels, and hands flat values to the pure
-# ``rank_candidates`` domain function. The run's equal-weight baseline lives in
-# ``criteria.weights``; M9 will mutate it, and re-ranking is just a re-fetch.
+# The ranked shortlist is deterministic math over cached dimension scores — no
+# model call. Loads each candidate's scores for the current run, joins dimension
+# labels, and hands flat values to the pure ``rank_candidates`` domain function.
 
 
 def _ranking_payload(db: Session, run) -> dict[str, Any]:
     """The ranked-shortlist response for a run. Shared by ``/ranking`` and the
-    tier-edit endpoint, so a tier change returns the freshly re-sorted list in the
-    same shape — the client re-sorts in one round-trip.
+    tier-edit endpoint, so a tier change returns the re-sorted list in one
+    round-trip.
     """
     weights = dimension_weights(run)
     ranked = rank_candidates(candidate_scores(db, run), weights)
@@ -350,8 +327,8 @@ def _ranking_payload(db: Session, run) -> dict[str, Any]:
         "weights": weights,
         "scoredCount": len(ranked),
         "candidates": [asdict(c) for c in ranked],
-        # Recomputed each save so the tier-list can refresh "New" badges in the
-        # same round-trip (placing or acknowledging a dimension clears it).
+        # Recomputed each save so the tier-list refreshes "New" badges in the same
+        # round-trip (placing or acknowledging a dimension clears it).
         "newDimensionKeys": (run.criteria or {}).get("new_dimension_keys", []),
     }
 
@@ -364,9 +341,8 @@ def ranking(
     """The deterministic ranked shortlist for the current run.
 
     Ranks every scored eligible candidate by the weight-normalized average of its
-    dimension scores and labels each by relative pool position. The committee
-    reads the stack-ranked list top-down — there is no fixed cut line. No model
-    call — pure math over cached scores.
+    dimension scores, labeled by relative pool position (no fixed cut line). Pure
+    math over cached scores.
     """
     run = get_current_run(db)
     report = current_pattern_report(run) if run is not None else None
@@ -375,11 +351,10 @@ def ranking(
     return _ranking_payload(db, run)
 
 
-# --- Tier-list weighting (milestone 9) --------------------------------------
+# --- Tier-list weighting -----------------------------------------------------
 #
-# The committee drags discovered dimensions into self-defined importance tiers;
-# weights derive from the layout (see ``weights_from_tiers``) and the ranking
-# re-sorts. No model call — pure persistence + the existing ranking math.
+# The committee drags dimensions into importance tiers; weights derive from the
+# layout (see ``weights_from_tiers``) and the ranking re-sorts. Pure persistence.
 
 
 class TierModel(BaseModel):
@@ -391,9 +366,8 @@ class TierModel(BaseModel):
 
 class TierLayoutUpdate(BaseModel):
     tiers: list[TierModel]
-    # Dimension keys the committee explicitly acknowledged as "reviewed" this save
-    # (badge ✕ / "mark all reviewed") — they drop out of new_dimension_keys even
-    # if left in Ignore. Placing a dimension in a working tier clears it anyway.
+    # Keys the committee acknowledged as "reviewed" this save (badge ✕ / "mark all
+    # reviewed") — they drop out of new_dimension_keys even if left in Ignore.
     acknowledged_keys: list[str] = Field(default_factory=list)
 
 

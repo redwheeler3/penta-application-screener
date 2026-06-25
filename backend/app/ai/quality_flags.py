@@ -1,9 +1,8 @@
 """Quality-flag analysis: the informational AI integrity pass over eligible
 applications (SPEC "AI Quality Flags").
 
-Flags are never disqualifying — they surface things a human screener should be
-aware of. This module builds the per-application prompt and runs the cached,
-cost-capped analysis via the shared engine in ``analysis.py``.
+Flags are never disqualifying — they surface things a human screener should be aware
+of. Builds the per-application prompt and runs it via the shared engine.
 """
 
 from __future__ import annotations
@@ -46,11 +45,9 @@ def _pet_policy_line(settings: AppSettings) -> str:
 
 
 def build_prompt(application: Application, settings: AppSettings) -> str:
-    """Assemble the analysis input from normalized fields, essays, and pets.
-
-    Essays are included in full because they are the basis for several flags
-    (minimal/spam/AI-generated/duplicated), but the model is instructed not to
-    echo them back wholesale.
+    """Assemble the analysis input from normalized fields, essays, and pets. Essays
+    are included in full (they're the basis for several flags), but the model is
+    told not to echo them back wholesale.
     """
     normalized = application.normalized or {}
     essays = extract_essays(application.raw_row or {})
@@ -65,9 +62,9 @@ def build_prompt(application: Application, settings: AppSettings) -> str:
         "co_applicant_phone": normalized.get("co_applicant_phone"),
     }
 
-    # Static instructions as one editable block; only the pet-policy line is
-    # interpolated. The field/essay JSON is appended separately because its braces
-    # would collide with f-string interpolation.
+    # Static instructions as one block; only the pet-policy line is interpolated.
+    # The field/essay JSON is appended separately (its braces would collide with
+    # f-string interpolation).
     instructions = f"""\
 Review this housing co-op application for data-integrity concerns and return any quality flags.
 Flag ONLY clear, concrete problems.
@@ -97,19 +94,15 @@ Before returning the structured flags, briefly explain your reasoning as Markdow
 
 
 def applications_to_analyze(db: Session) -> list[Application]:
-    """The applications the quality-flag pass should (re-)analyze.
+    """The applications the quality-flag pass should (re-)analyze: everything except
+    those the rules disqualified.
 
-    Covers everything except those the deterministic rules disqualified: any
-    currently-eligible application, plus those a *previous AI pass* marked
-    ineligible. Re-analyzing AI-flagged applications lets a prompt change revise
-    the verdict in either direction — an app it once flagged can be cleared and
-    restored to eligible, not just the reverse. ``apply_machine_status`` already
-    handles both transitions and leaves human-set statuses sticky.
-
-    Rules-ineligible applications are excluded: rules outrank AI in
-    ``resolve_machine_status``, so re-running AI on them could never change their
-    status and would only waste spend. Human-owned statuses are included so their
-    flags refresh for the staleness nudge, without their status being overwritten.
+    Covers any eligible application plus those a *previous AI pass* marked
+    ineligible — re-analyzing the latter lets a prompt change clear a flag and
+    restore eligibility, not just the reverse (``apply_machine_status`` handles both
+    and keeps human statuses sticky). Rules-ineligible apps are excluded (rules
+    outrank AI, so re-running could never change their status). Human-owned statuses
+    are included so their flags refresh for the staleness nudge.
     """
     return list(
         db.scalars(
@@ -132,9 +125,8 @@ def estimate_quality_flags(db: Session, settings: AppSettings) -> dict[str, obje
         applications=applications_to_analyze(db),
         kind=KIND,
         model_id=settings.ai.first_pass_model,
-        # Fallback only — used when there is no real usage to learn from yet.
-        # Order-of-magnitude figures from observed runs (prompt asks for a full
-        # Markdown narrative, so output is several hundred tokens, not tens).
+        # Fallback only (no real usage yet). Order-of-magnitude from observed runs;
+        # the prompt asks for a Markdown narrative, so output is several hundred tokens.
         fallback_input_tokens=2800,
         fallback_output_tokens=550,
     )
@@ -145,9 +137,8 @@ def _apply_outcome_status(
 ) -> None:
     """Set the application's status from an outcome's flags and commit.
 
-    The AI actor sets status from its findings unless a human owns the decision
-    (then the flags are still refreshed for the staleness nudge). Touches the
-    session, so it always runs on the thread that owns ``db``.
+    The AI actor sets status unless a human owns the decision (flags still refresh
+    for the staleness nudge). Touches the session, so it runs on the ``db`` thread.
     """
     report: QualityFlagReport = outcome.output
     apply_machine_status(

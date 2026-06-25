@@ -1,21 +1,12 @@
-"""Dimension identity matching: map a freshly-discovered dimension set back onto
-the prior run's dimensions, so the committee's tier placements (and cached
-scores) carry forward across a re-rank.
+"""Dimension identity matching: map a freshly-discovered dimension set onto the
+prior run's, so tier placements and cached scores carry forward across a re-rank
+(SPEC "Tier Carry-Forward On Re-Rank").
 
-This is the second pass of the carry-forward re-rank (SPEC "Tier Carry-Forward On
-Re-Rank"). The first pass (``pattern_discovery``) re-discovers dimensions *blind*
-— it never sees the prior set, so it cannot anchor on old wording. This pass then
-answers a narrow, purely *identity* question: which new dimension is the same
-concept as which old one? It does not discover anything and does not weigh
-importance (the committee already did that, as tier placements), so it does not
-violate "AI discovers what varies; the human decides what matters" — it only
-recognizes sameness so the human's decision can ride forward.
-
-The bar is deliberately high and the failure is asymmetric: a *missed* match costs
-the committee a re-drag (the survivor lands in Ignore, flagged new); a *wrong*
-match would silently move their tier intent onto the wrong concept. So the prompt
-instructs: when unsure, do not match. Runs on the first-pass model — this is a
-short structured comparison of two short lists, not cross-document synthesis.
+Discovery re-discovers dimensions *blind*; this pass then answers a narrow identity
+question: which new dimension is the same concept as which old one? It recognizes
+sameness, never weighs importance. The bar is high and the failure asymmetric — a
+missed match costs a re-drag, a wrong match moves tier intent onto the wrong
+concept — so when unsure, do not match. Runs on the first-pass model.
 """
 
 from __future__ import annotations
@@ -29,21 +20,16 @@ from app.schemas.settings import AppSettings
 
 KIND = "dimension_matching"  # for logging / the debug view; not a cached per-app kind
 
-# Flat token weight for the single match call, used only to fold its (small) cost
-# into the pre-run Rank estimate. The call compares two short dimension lists and
-# emits a compact match list, so it is far cheaper than a per-candidate scoring
-# call; this is a deliberately generous flat guess, not a self-tuning average
-# (the match pass is uncached and runs at most once per re-rank).
+# Flat token weight to fold the single match call's (small) cost into the pre-run
+# Rank estimate. A generous flat guess, not self-tuning (the pass is uncached and
+# runs at most once per re-rank).
 MATCH_INPUT_TOKENS = 2000
 MATCH_OUTPUT_TOKENS = 600
 
 
 def estimate_match(settings: AppSettings) -> float:
-    """Projected cost of the one identity-match call on the first-pass model.
-
-    Only meaningful when a prior run exists (otherwise the match pass is skipped
-    and returns an empty map at no cost — see ``match_dimensions``). The caller
-    folds this into the combined Rank estimate only in that case.
+    """Projected cost of the one identity-match call. Only meaningful when a prior
+    run exists (otherwise the pass is skipped at no cost — see ``match_dimensions``).
     """
     from app.ai.provider import Usage
 
@@ -59,9 +45,8 @@ Match only when you are confident the two describe the same underlying concept, 
 
 
 def _dimensions_block(label: str, report: PoolPatternReport) -> str:
-    """A compact JSON list of a report's dimensions for the prompt — name and
-    definition only. Keys are included so the model can return them, but it is
-    told to match on meaning (definitions), not key wording.
+    """A compact JSON list of a report's dimensions for the prompt. Keys are
+    included so the model can return them, but it matches on meaning, not wording.
     """
     dims = [
         {"key": d.key, "name": d.name, "definition": d.definition}
@@ -90,11 +75,9 @@ def match_dimensions(
 ) -> tuple[dict[str, str], str | None, float]:
     """Map new dimension keys to prior ones at a high confidence bar.
 
-    Returns ``(new_key -> old_key, narrative, cost_usd)``. Only confident,
-    one-to-one matches survive: the result is sanitized so a model that returns a
-    duplicate or an unknown key cannot corrupt the carry-forward — extra or
-    dangling entries are dropped, first valid wins. An empty map (e.g. a first run
-    with no prior set, or no confident matches) is the safe, common case.
+    Returns ``(new_key -> old_key, narrative, cost_usd)``. The result is sanitized
+    to strictly one-to-one over real keys, so a duplicate or unknown key can't
+    corrupt the carry-forward. An empty map (first run, or no matches) is common.
     """
     if not old.dimensions or not new.dimensions:
         return {}, None, 0.0
@@ -112,9 +95,7 @@ def match_dimensions(
     mapping: dict[str, str] = {}
     used_old: set[str] = set()
     for m in report.matches:
-        # Drop anything that would not be a clean one-to-one match between real
-        # keys: unknown keys, a new key already mapped, or an old key already
-        # claimed. First valid match for a key wins.
+        # Keep only clean one-to-one matches over real keys; first valid wins.
         if m.new_key not in new_keys or m.old_key not in old_keys:
             continue
         if m.new_key in mapping or m.old_key in used_old:

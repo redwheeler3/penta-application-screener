@@ -494,13 +494,12 @@ function resolveSheetId(payload: SettingsResponse): string {
   return payload.google_sheet_url || payload.settings.google_sheet_id;
 }
 
-// --- M9 tier-list maker -----------------------------------------------------
+// --- Tier-list maker ---------------------------------------------------------
 //
-// The committee drags discovered dimensions into self-defined importance tiers
-// (+ an Ignore zone); higher tiers weigh more, Ignore weighs 0. Layout edits are
-// the source of truth — the backend derives weights from them and re-sorts. The
-// drag uses @dnd-kit; final placement is computed on drop (no live re-parenting),
-// which is simpler and robust for this chips-between-rows interaction.
+// The committee drags dimensions into importance tiers (+ an Ignore zone); higher
+// tiers weigh more, Ignore weighs 0. Layout edits are the source of truth — the
+// backend derives weights and re-sorts. Drag uses @dnd-kit; final placement is
+// computed on drop (no live re-parenting).
 
 // Move a dimension into a target tier, optionally before a specific chip. Returns
 // a new tier array; pure so it is easy to reason about and the caller persists it.
@@ -1988,8 +1987,7 @@ export function App() {
                     : "Starting…"}
                 </div>
                 <div className="qf-progress-track">
-                  {/* The criteria phase is a single pool call with no fraction, so
-                      it (and the moment before the first progress event) shows the
+                  {/* Criteria is a single call with no fraction, so it shows the
                       indeterminate bar; the per-candidate phases show real width. */}
                   {rankProgress && rankProgress.phase !== "criteria" && rankProgress.total ? (
                     <div className="qf-progress-fill" style={{ width: `${qfPercent(rankProgress)}%` }} />
@@ -2000,15 +1998,12 @@ export function App() {
               </div>
             ) : null}
 
-            {/* The current run's discovered criteria — the axes scoring rates
-                each candidate on. Shown above both the applications list and the
-                ranked shortlist (it is the context for reading either), but not
-                when a single candidate is open. Collapsed by default. */}
+            {/* The current run's discovered criteria — the axes scoring rates each
+                candidate on. Shown above the list and the shortlist, not when a
+                candidate is open. Collapsed by default. */}
             {screeningRun && !selectedApp ? (() => {
-              // Order the criteria most→least important by the committee's tier
-              // layout (a dimension's rank = its tier's position; Ignore last;
-              // discovery order within a tier). Falls back to discovery order
-              // before any tiering exists.
+              // Order criteria most→least important by tier position (Ignore last;
+              // discovery order within a tier), falling back to discovery order.
               const rankOf = new Map<string, number>();
               (tiers ?? []).forEach((tier, tierIdx) => {
                 tier.dimension_keys.forEach((key) => rankOf.set(key, tierIdx));
@@ -2039,10 +2034,9 @@ export function App() {
               );
             })() : null}
 
-            {/* The ranked shortlist (milestone 8): a decision surface, not a
-                browse table. The order IS the product — read top-down to the
-                shortlist line. Numbers are supporting detail; the band label and
-                rationale lead, per "Ranking And Outputs". */}
+            {/* The ranked shortlist: a decision surface, not a browse table. The
+                order IS the product — read top-down. The band label and rationale
+                lead; numbers are supporting detail. */}
             {showRanking && !selectedApp && ranking ? (
               <div className="ranking-view">
                 <div className="ranking-header">
@@ -2063,7 +2057,7 @@ export function App() {
                   </button>
                 </div>
 
-                {/* M9 tier-list: drag criteria into importance tiers; the ranking
+                {/* Tier-list: drag criteria into importance tiers; the ranking
                     re-sorts on each edit (deterministic, no model call). */}
                 {tiers && screeningRun ? (
                   <>
@@ -2179,11 +2173,9 @@ export function App() {
                     </p>
                   ) : null}
                   {(() => {
-                    // Source ownership is what's really being toggled: "Automatic"
-                    // (machine-decided) vs. a human-pinned Eligible/Ineligible.
-                    // Selecting Automatic clears the override and hands the
-                    // decision back to the rules/AI; the helper line shows what
-                    // that automatic verdict currently is.
+                    // The toggle is source ownership: "Automatic" (machine-decided)
+                    // vs. a human-pinned status. Automatic clears the override; the
+                    // helper line shows the current automatic verdict.
                     const isHuman = selectedApp.statusSource === "human";
                     const autoLabel = STATUS_LABELS[selectedApp.autoStatus];
                     return (

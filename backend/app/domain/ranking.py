@@ -1,26 +1,19 @@
-"""Deterministic ranking (milestone 8): turn per-candidate dimension scores into
-a ranked shortlist.
+"""Deterministic ranking: turn per-candidate dimension scores into a ranked
+shortlist.
 
-This is pure math — no DB, no AI, no I/O — so it sits alongside ``hard_filters``
-as deterministic domain logic, separate from AI-assisted evaluation (per the
-engineering rules), and is trivially unit-testable with hand-built scores.
+Pure math — no DB, AI, or I/O — so it sits alongside ``hard_filters`` as
+deterministic domain logic, trivially unit-testable. The contract (SPEC
+"Deterministic Ranked List"):
 
-The contract (SPEC "Deterministic Ranked List"):
+- **Fit** is the weight-normalized average of a candidate's per-dimension scores,
+  ``Σ(weight·score) / Σ(weight)`` over dimensions whose weight is > 0.
+- **Confidence is surfaced, never folded into fit** — a score moves the ranking by
+  exactly its weight, so the order stays explainable top-down.
+- **Bands are relative to THIS pool**, not absolute thresholds: a candidate's label
+  comes from its rank position, recomputed as weights change. Equal-fit candidates
+  share a band.
 
-- **Fit** is the weight-normalized average of a candidate's per-dimension scores:
-  ``Σ(weight·score) / Σ(weight)`` over dimensions whose weight is > 0. At M8 every
-  weight is equal, so fit is a plain average; M9's narrowing answers are the only
-  thing that moves weights off equal.
-- **Confidence is surfaced, never folded into fit.** Each contribution keeps its
-  confidence label for display, but a score moves the ranking by exactly its
-  weight and nothing else — so the order stays explainable top-down.
-- **Bands are relative to THIS pool**, not absolute thresholds: a candidate's
-  label comes from its position in the ranking (rank percentile), so the bands
-  always spread the pool and recompute as weights change. Equal-fit candidates
-  always share a band.
-
-The LLM never produces the order; it produced the scores, and this is arithmetic
-on top of them.
+The LLM produced the scores; this is arithmetic on top of them.
 """
 
 from __future__ import annotations
@@ -34,9 +27,8 @@ BANDS = ("Strong fit", "Promising", "Mixed", "Limited")
 
 @dataclass(frozen=True)
 class ScoredDimension:
-    """One candidate's score on one dimension, as the ranker consumes it. A flat
-    view of ``DimensionScore`` joined to its dimension label — no Pydantic or DB
-    types, so the ranking function stays pure and easy to test.
+    """One candidate's score on one dimension — a flat view of ``DimensionScore``
+    joined to its label, free of Pydantic/DB types so the ranker stays pure.
     """
 
     dimension_key: str
@@ -49,9 +41,7 @@ class ScoredDimension:
 
 @dataclass(frozen=True)
 class CandidateScores:
-    """Everything the ranker needs about one candidate: identity plus its scores
-    against the run's dimensions.
-    """
+    """One candidate's identity plus its scores against the run's dimensions."""
 
     application_id: int
     name: str | None
@@ -60,19 +50,14 @@ class CandidateScores:
 
 @dataclass(frozen=True)
 class DimensionContribution:
-    """How one dimension fed a candidate's fit — score and the weight applied,
-    plus the grounding kept for the explainable per-row view.
+    """How one dimension fed a candidate's fit — score, weight, and grounding.
 
-    ``impact`` is the dimension's signed contribution to how far this candidate
-    sits from the pool average: ``weight · (score − pool_mean)``. This is the
-    exact per-dimension decomposition of ``fit_i − avg_fit`` (the shared ``/ΣW``
-    normalizer drops out, so it is comparable *within* a candidate), so ranking
-    the contributions by ``abs(impact)`` surfaces the dimensions that actually
-    moved this candidate up or down — a heavily-weighted dimension everyone
-    scores the same on has near-zero impact and is correctly demoted, while a
-    big strike (low score on a heavy dimension) ranks high with a negative sign.
-    A weakness can therefore outrank a middling strength, which ``weight·score``
-    could never surface. Sign carries direction; magnitude carries importance.
+    ``impact = weight · (score − pool_mean)`` is the dimension's signed contribution
+    to how far this candidate sits from the pool average (the per-dimension
+    decomposition of ``fit_i − avg_fit``). Ranking contributions by ``abs(impact)``
+    surfaces what actually moved this candidate: a heavy dimension everyone scores
+    alike has near-zero impact, while a big strike (low score on a heavy dimension)
+    ranks high and negative. Sign carries direction; magnitude carries importance.
     """
 
     dimension_key: str
@@ -113,12 +98,9 @@ def _fit(scores: list[ScoredDimension], weights: dict[str, float]) -> float:
 
 
 def _band_for(rank: int, total: int) -> str:
-    """Relative band from rank position: the pool is split into even contiguous
-    slices, one per label, top-down. ``rank`` is 1-based.
-
-    Anchored at the top (``(rank - 1) / total``) so rank 1 is always in the top
-    band — for a small pool that can't fill every slice, the leader still reads as
-    the strongest fit rather than landing mid-table on a boundary.
+    """Relative band from 1-based rank position: the pool split into even slices,
+    one per label, top-down. Anchored at the top so rank 1 is always the top band
+    even when a small pool can't fill every slice.
     """
     if total <= 0:
         return BANDS[-1]
@@ -128,13 +110,9 @@ def _band_for(rank: int, total: int) -> str:
 
 
 def _pool_means(candidates: list[CandidateScores]) -> dict[str, float]:
-    """Mean score per dimension across the whole pool — the baseline each
-    candidate's impact is measured against. A dimension only differentiates to
-    the extent scores deviate from this mean, so impact (and thus what we surface
-    as "what moved this candidate") is inherently pool-relative.
-
-    Averaged over the candidates that actually have the dimension scored, so a
-    candidate missing a dimension does not drag its mean toward zero.
+    """Mean score per dimension across the pool — the baseline each candidate's
+    impact is measured against. Averaged only over candidates that have the
+    dimension scored, so a missing dimension doesn't drag the mean toward zero.
     """
     totals: dict[str, float] = {}
     counts: dict[str, int] = {}
@@ -150,9 +128,9 @@ def _contributions(
     weights: dict[str, float],
     means: dict[str, float],
 ) -> list[DimensionContribution]:
-    """All of a candidate's scored dimensions, with the weight applied and the
-    pool-relative impact computed. Every dimension is kept (even weight 0) so the
-    row explains the full picture; only the fit math skips weight-0 dimensions.
+    """A candidate's scored dimensions with weight and pool-relative impact. Every
+    dimension is kept (even weight 0) for the explainable row; only the fit math
+    skips weight-0 dimensions.
     """
     return [
         DimensionContribution(
@@ -176,9 +154,8 @@ def rank_candidates(
 ) -> list[RankedCandidate]:
     """Rank the pool by fit (descending) and assign relative bands.
 
-    Deterministic and stable: ties in fit are broken by ``application_id`` so the
-    same inputs always produce the same order. Equal-fit candidates are assigned
-    the same band (the band of the first of the tie) so identical fit never lands
+    Deterministic and stable: fit ties break by ``application_id``, and equal-fit
+    candidates share the band of the first of the tie so identical fit never lands
     in different labels.
     """
     ordered = sorted(

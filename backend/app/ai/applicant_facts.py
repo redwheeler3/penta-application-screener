@@ -1,22 +1,14 @@
-"""Shared structured-fact view of an applicant for the milestone-7 AI passes.
+"""Shared structured-fact view of an applicant for the discovery and scoring AI
+passes.
 
-Both pattern discovery and dimension scoring feed the model the *same* subset of
-the normalized structured fields, alongside the essays. Defining it once here
-keeps the two passes from drifting — a dimension discovered from a fact must be
-scoreable from the identical fact.
-
-What is included: household composition, income (total + split), employment
-tenure, pets. What is deliberately excluded: names, emails, phone numbers
-(identifiers with no screening value), and real-estate ownership — it is a hard
-filter, so every eligible applicant is uniformly a non-owner (barring a rare
-human override) and it carries no residual signal to discover or score.
-
-Eligibility-overlap note: several of these fields are also hard-filter rules
-(income band, real-estate ownership, pet policy, household-vs-unit size), which
-every eligible applicant already passed. The passes therefore instruct the model
-to read these for *residual* variation (income mix, position within band,
-employment tenure, etc.), not the pass/fail fact, which is constant across the
-eligible pool. See FILTERED_FACTS_NOTE.
+Both passes feed the model the *same* subset of normalized fields alongside the
+essays — defined once here so a dimension discovered from a fact is scoreable from
+the identical fact. Included: household composition, income (total + split),
+employment tenure, pets. Excluded: identifiers (names/emails/phones, no screening
+value) and real-estate ownership (a hard filter, so constant across eligible
+applicants). Several included fields are also hard-filter rules everyone passed, so
+the passes read them for *residual* variation, not the pass/fail fact — see
+FILTERED_FACTS_NOTE.
 """
 
 from __future__ import annotations
@@ -55,10 +47,8 @@ FILTERED_FACTS_NOTE = (
 
 
 def applicant_facts(application: Application) -> dict[str, object]:
-    """The screening-relevant structured fields for one applicant.
-
-    Only keys present in the normalized blob are returned, so a missing field is
-    simply absent rather than a null the model might over-read.
+    """The screening-relevant structured fields for one applicant. Only keys present
+    in the normalized blob are returned, so a missing field is absent, not null.
     """
     normalized = application.normalized or {}
     return {key: normalized[key] for key in _FACT_KEYS if key in normalized}

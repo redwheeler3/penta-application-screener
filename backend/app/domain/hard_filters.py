@@ -3,11 +3,9 @@ from datetime import date
 from enum import StrEnum
 from typing import Any
 
-# The single source of truth for hard-filter threshold defaults. Both the
-# RulesConfig dataclass (below) and the AppSettings schema reference these, so a
-# default can't drift between the domain layer and the settings layer. They live
-# here, in the pure domain module, because they are screening-domain facts; the
-# settings schema imports them, never the reverse (keeps the domain dependency-free).
+# Single source of truth for hard-filter threshold defaults. RulesConfig and the
+# AppSettings schema both reference these (settings imports the domain, never the
+# reverse), so a default can't drift between the two layers.
 DEFAULT_MIN_INCOME = 70_000
 DEFAULT_MAX_INCOME = 150_000
 DEFAULT_MIN_ADULT_AGE = 18
