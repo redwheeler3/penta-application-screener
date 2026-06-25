@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/houseicon.tsx","./src/main.tsx","./src/vite-env.d.ts"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/houseicon.tsx","./src/api.ts","./src/constants.ts","./src/format.tsx","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/components/applicationslist.tsx","./src/components/candidatedetail.tsx","./src/components/rankingview.tsx","./src/components/settingspanel.tsx","./src/components/tierlist.tsx","./src/components/toasts.tsx","./src/components/workflowbar.tsx"],"version":"5.9.3"}
