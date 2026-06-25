@@ -2019,9 +2019,14 @@ h1 {
 
 /* Bulk "Mark all reviewed" on the Ignore row — clears every new badge at once. */
 .tier-mark-reviewed {
+  /* Full-width basis forces the button onto its own line below the chips it
+     acts on; margin-right auto keeps it left-aligned on that line. */
+  flex-basis: 100%;
+  margin-right: auto;
   display: inline-flex;
   align-items: center;
-  align-self: center;
+  align-self: flex-start;
+  width: fit-content;
   gap: 0.3rem;
   padding: 0.2rem 0.5rem;
   border: 0;
