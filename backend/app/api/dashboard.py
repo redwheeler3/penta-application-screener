@@ -9,9 +9,11 @@ from app.db.models import (
     ApplicationStatus,
     ScreeningRun,
     StatusSource,
+    SyncRun,
     User,
 )
 from app.db.session import get_db
+from app.services.application_import import settings_fingerprint
 from app.services.settings import get_app_settings
 
 # Scope + cache-key helpers reused from the passes themselves, so "coverage"
@@ -55,6 +57,14 @@ def read_dashboard(
         # application exists; the AI steps once any result of their kind exists.
         "workflow": {
             "synced": total > 0,
+            # Whether the latest import used the settings as they are now. False
+            # when the import-relevant settings changed since the last sync, so
+            # the Import step flags amber: a re-import would reclassify
+            # eligibility. We can't detect a changed spreadsheet, so a current
+            # fingerprint is "probably fresh," not a guarantee — but a stale one
+            # is near-certain grounds to re-import. Null fingerprint (pre-column
+            # rows) reads as current, leaving Import green rather than nagging.
+            "importCurrent": _import_is_current(db, settings),
             "qualityChecksRun": _kind_exists(db, "quality_flags"),
             "essaysAnalyzed": _kind_exists(db, "essay_analysis"),
             # Pattern discovery is a screening run, not a per-application result.
@@ -76,6 +86,19 @@ def read_dashboard(
         # because they reuse the passes' own scope + cache-key logic.
         "coverage": _coverage(db, settings),
     }
+
+
+def _import_is_current(db: Session, settings) -> bool:
+    """True when the latest import's settings fingerprint matches the live one.
+
+    True if there is no import yet (nothing to be stale), or the latest sync
+    predates fingerprinting (null — we can't tell, so don't nag). False only when
+    we have a stored fingerprint that differs from the current settings.
+    """
+    latest = db.scalar(select(SyncRun).order_by(SyncRun.id.desc()).limit(1))
+    if latest is None or latest.settings_fingerprint is None:
+        return True
+    return latest.settings_fingerprint == settings_fingerprint(settings)
 
 
 def _coverage(db: Session, settings) -> dict[str, dict[str, int]]:

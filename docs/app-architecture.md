@@ -809,7 +809,7 @@ This prevents later columns from overwriting earlier columns.
 
 The importer preserves the raw Google Sheets row as JSON. That is useful for debugging, auditability, schema drift, and future candidate detail screens.
 
-`SyncRun` is the record of what happened during sync. It stores `row_count`, `duplicate_count`, `imported_count`, `updated_count`, `unchanged_count`, `eligible_count`, and `filtered_out_count`.
+`SyncRun` is the record of what happened during sync. It stores `row_count`, `duplicate_count`, `imported_count`, `updated_count`, `unchanged_count`, `eligible_count`, `filtered_out_count`, and a `settings_fingerprint` (hash of the import-relevant settings at sync time). The dashboard compares the latest sync's fingerprint to the live settings to flag the Import step amber when settings changed since the last import (`workflow.importCurrent`).
 
 `backend/app/api/dashboard.py` queries application counts from SQLite and returns them to the frontend (see the response shape above). Richer per-application data is served by the separate `app/api/applications.py` list/detail endpoints.
 

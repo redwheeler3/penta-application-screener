@@ -79,6 +79,11 @@ type DashboardCounts = {
 // workflow gating survives a page reload.
 type WorkflowState = {
   synced: boolean;
+  // Whether the latest import used the settings as they are now. False when the
+  // import-relevant settings (sheet id, hard-filter thresholds, disabled rules)
+  // changed since the last sync, so the Import step flags amber — a re-import
+  // would reclassify eligibility.
+  importCurrent: boolean;
   qualityChecksRun: boolean;
   essaysAnalyzed: boolean;
   patternsDiscovered: boolean;
@@ -440,8 +445,12 @@ function WorkflowStep(props: {
   outOfDate?: boolean;
   // Tooltip shown when stale, overriding the default coverage-based one.
   staleTitle?: string;
+  // Tooltip shown when the step is disabled, explaining why (e.g. "configure a
+  // sheet first"). Lets a disabled step be self-explanatory instead of needing a
+  // separate callout. Stale takes precedence if somehow both apply.
+  disabledTitle?: string;
 }): ReactNode {
-  const { n, title, icon, done, busy, busyLabel, disabled, onClick, last, coverage, progress, caption, outOfDate, staleTitle } = props;
+  const { n, title, icon, done, busy, busyLabel, disabled, onClick, last, coverage, progress, caption, outOfDate, staleTitle, disabledTitle } = props;
   // Stale only applies once a step has run (done). It's driven by an explicit
   // out-of-date signal when given (Rank), otherwise by coverage falling short of
   // the current scope (a run that no longer covers everyone).
@@ -473,7 +482,9 @@ function WorkflowStep(props: {
         title={
           stale
             ? staleTitle ?? `${coverage!.cached}/${coverage!.inScope} current — re-run to cover everyone`
-            : undefined
+            : disabled
+              ? disabledTitle
+              : undefined
         }
       >
         <span className="workflow-step-badge">
@@ -866,6 +877,7 @@ export function App() {
   });
   const [workflow, setWorkflow] = useState<WorkflowState>({
     synced: false,
+    importCurrent: true,
     qualityChecksRun: false,
     essaysAnalyzed: false,
     patternsDiscovered: false,
@@ -1482,7 +1494,13 @@ export function App() {
             </div>
 
             <div className="settings-panel-body">
-            {hasGoogleSheetLink && saved && !showSettingsForm ? (
+            {/* Render nothing until the GET /settings fetch resolves. Before it
+                does, `saved` is null and the summary condition below is false, so
+                the panel would briefly fall through to the full form — a flash of
+                the expanded form on every load. Gating on `saved` avoids it; the
+                first-run case (no sheet) still opens the form, since `saved` is
+                set then, just with an empty sheet id. */}
+            {!saved ? null : hasGoogleSheetLink && !showSettingsForm ? (
               <div className="settings-summary">
                 <div>
                   <span>Google Sheet</span>
@@ -1656,13 +1674,6 @@ export function App() {
             </div>
           </section>
 
-          {!hasGoogleSheetLink ? (
-            <section className="setup-callout">
-              <strong>Setup needed</strong>
-              <span>Add the Google Sheet link in settings before syncing applications.</span>
-            </section>
-          ) : null}
-
           <section className="panel">
             <div className="panel-header">
               <div>
@@ -1688,6 +1699,13 @@ export function App() {
                   // Step 1 is always available once a sheet is configured. The
                   // caption persists the imported row count (not a fraction).
                   disabled={isSyncing || !hasGoogleSheetLink}
+                  disabledTitle="Add a Google Sheet link in settings to import."
+                  // Amber when the import-relevant settings changed since the last
+                  // sync: a re-import would reclassify eligibility. (We can't see
+                  // a changed spreadsheet, so green is "probably fresh," but a
+                  // settings change is near-certain grounds to re-import.)
+                  outOfDate={workflow.synced && !workflow.importCurrent}
+                  staleTitle="Settings changed since the last import — re-import to apply them."
                   onClick={syncApplications}
                   caption={
                     workflow.synced && dashboardCounts.submitted > 0
@@ -1710,6 +1728,13 @@ export function App() {
                     qfEstimate !== null ||
                     dashboardCounts.status.eligible === 0
                   }
+                  disabledTitle={
+                    !workflow.synced
+                      ? "Import applications first."
+                      : dashboardCounts.status.eligible === 0
+                        ? "No eligible applicants to screen."
+                        : undefined
+                  }
                   onClick={requestQualityFlagsEstimate}
                   coverage={coverage.qualityChecksRun}
                   progress={qfProgress}
@@ -1731,6 +1756,13 @@ export function App() {
                     rankRunning ||
                     rankEstimate !== null ||
                     dashboardCounts.status.eligible === 0
+                  }
+                  disabledTitle={
+                    !workflow.qualityChecksRun
+                      ? "Run Screen first."
+                      : dashboardCounts.status.eligible === 0
+                        ? "No eligible applicants to rank."
+                        : undefined
                   }
                   onClick={requestRankEstimate}
                   coverage={coverage.candidatesScored}
