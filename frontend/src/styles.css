@@ -1817,15 +1817,15 @@ h1 {
   font-weight: 600;
 }
 
-.ranking-contribution-label.conf-low {
+.ranking-contribution-label.score-weak {
   color: #b45309;
 }
 
-.ranking-contribution-label.conf-medium {
+.ranking-contribution-label.score-moderate {
   color: #075985;
 }
 
-.ranking-contribution-label.conf-high {
+.ranking-contribution-label.score-strong {
   color: #166534;
 }
 
