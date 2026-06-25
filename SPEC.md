@@ -206,7 +206,7 @@ The screening rules system is a configurable rules engine. Each rule is a discre
 
 Each rule has:
 
-- **ID**: machine-readable slug (e.g. `real_estate_ownership`, `child_age_over_max`)
+- **ID**: machine-readable slug (e.g. `owns_real_estate`, `child_age_over_max`)
 - **Display name**: human-readable label shown in the admin UI (e.g. "Real estate ownership")
 - **Description**: explains what the rule checks and why
 - **Outcome**: `filtered_out` (the only outcome — any rule that fires disqualifies)
@@ -236,8 +236,8 @@ The following rules should be implemented. Each rule is listed with its default 
 | Rule ID | Description |
 |---------|-------------|
 | `child_age_over_max` | Any listed child is older than the configured maximum child age. Parameter: max_child_age (default 17 — i.e. the form's "children under 18"). Tunable for co-ops housing older dependants. |
-| `applicant_under_19` | Applicant age is under 19 (BC age of majority). |
-| `co_applicant_under_19` | Co-applicant age is under 19. Indicates the co-applicant may actually be a child, not an adult household member. |
+| `applicant_under_min_age` | Applicant age is under the configured minimum adult age. Parameter: min_adult_age (default 18). |
+| `co_applicant_under_min_age` | Co-applicant age is under the configured minimum adult age (default 18). Indicates the co-applicant may actually be a child, not an adult household member. |
 | `child_age_exceeds_parent` | Any child's age is older than the applicant's or co-applicant's age. Data entry error. (Distinct from `child_age_over_max`: this is a sanity check against the household's own adults, not the policy ceiling.) |
 
 **Financial rules:**
@@ -252,7 +252,7 @@ The following rules should be implemented. Each rule is listed with its default 
 
 | Rule ID | Description |
 |---------|-------------|
-| `real_estate_ownership` | Applicant owns real estate. |
+| `owns_real_estate` | Applicant owns real estate. |
 
 **Data integrity rules:**
 
@@ -803,7 +803,7 @@ Decisions locked (don't re-litigate):
 M8 is complete: the ranked list reads each eligible candidate's latest `dimension_scoring:<current dims-hash>` result, combines with the run's equal `criteria.weights` into a weighted average, and renders a ranked view with relative bands and per-row rationale (numbers stay supporting detail per "Ranking And Outputs"). The committee reads the stack rank top-down; there is no fixed cut line.
 
 Known follow-ups still open (small, non-blocking):
-- Re-scoring the full pool is ~$0.40 on Haiku against a $0.50 default cap — iterating on dimensions can approach the cap; raise it in settings if a run 402s.
+- Re-scoring the full pool is ~$0.40 on Haiku against the $1.00 default cap — iterating on dimensions can approach the cap; raise it in settings if a run 402s.
 
 Resolved follow-ups:
 - **Scoring cost estimate was ~2x low and didn't self-tune.** Two compounding causes: the scoring fallback under-counted output tokens (~700 vs. the real ~1800 — scoring emits a rationale + evidence for *every* dimension), and the estimate's observed-usage lookup keyed on the exact `dimension_scoring:<dims_hash>` kind, which changes every run, so real usage never accumulated under a stable key and the blind fallback was always used. Fixed by (a) correcting the fallback constants to observed averages and (b) adding `usage_kind_prefix` to `estimate_cost`, so scoring averages usage across *all* `dimension_scoring:*` rows (token cost depends on prompt shape, not which dimensions were discovered) — the estimate now self-tunes across runs like the other passes. Cache hits still key on the exact kind. The combined Rank estimate prices what is currently uncached, so it shows essays at ~$0 once they are cached (correct), and the headline lands near real per-run cost.
@@ -828,7 +828,7 @@ Decisions resolved during milestone 5:
 
 - **Provider/SDK:** Strands Agents over Amazon Bedrock (`us-west-2`), behind a provider-agnostic interface; a deterministic mock provider backs tests with no AWS. Model IDs are Bedrock inference profile IDs (the `us.`/`global.` prefixed form), not bare on-demand IDs.
 - **Models:** quality-flag first pass uses `us.anthropic.claude-haiku-4-5` (cheapest capable); a Sonnet synthesis model is configured for later judgment-heavy milestones. Both are Admin-configurable.
-- **Spending cap:** default $0.50 per run, Admin-configurable; enforced against the estimate before a run starts.
+- **Spending cap:** default $1.00 per run, Admin-configurable; enforced against the estimate before a run starts.
 - **Pricing:** hardcoded token table (the AWS Price List API carries no Claude model past v3, so it cannot price the models we use); unknown models fall back to Opus-tier so estimates never under-count.
 - **AI-written answers:** the quality pass flags generic AI-boilerplate essays, but flagging is informational input to human review, never auto-disqualifying.
 

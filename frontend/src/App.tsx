@@ -320,8 +320,8 @@ const REASON_FIELDS: Record<string, string[]> = {
   income_above_range: ["household_income"],
   income_arithmetic_mismatch: ["household_income", "applicant_income", "co_applicant_income"],
   owns_real_estate: ["has_real_estate"],
-  applicant_under_19: ["applicant_age"],
-  co_applicant_under_19: ["co_applicant_age"],
+  applicant_under_min_age: ["applicant_age"],
+  co_applicant_under_min_age: ["co_applicant_age"],
   child_count_mismatch: ["child_count", "child_details"],
   child_age_over_max: ["child_details"],
   too_few_children: ["child_count"],
@@ -800,11 +800,17 @@ function TierList(props: {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
+// Placeholder for the initial render only: the GET /settings fetch on mount
+// overwrites both `draft` and `saved` with the server's values within a moment,
+// and the backend's AppSettings schema is the source of truth for every default
+// (see app/domain/hard_filters.py DEFAULT_* constants). These numbers exist just
+// so the form has a shape before the fetch resolves; if one drifted from the
+// backend, a user would effectively never see it. Do not treat these as canonical.
 const defaultSettings: AppSettings = {
   google_sheet_id: "",
   income_min: 70000,
   income_max: 150000,
-  min_adult_age: 19,
+  min_adult_age: 18,
   max_child_age: 17,
   min_children: 1,
   max_children: 4,
@@ -816,26 +822,28 @@ const defaultSettings: AppSettings = {
     region: "us-west-2",
     first_pass_model: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
     synthesis_model: "us.anthropic.claude-sonnet-4-6",
-    spending_cap_usd: 0.5,
+    spending_cap_usd: 1.0,
     max_workers: 50,
   },
 };
 
+// Kept in alphabetical order by label so the toggle grid reads predictably; the
+// render sorts defensively too, so a new rule added out of order still slots in.
 const ALL_RULES = [
-  { id: "applicant_under_19", label: "Applicant under 19" },
+  { id: "applicant_under_min_age", label: "Applicant under minimum age" },
+  { id: "child_age_exceeds_parent", label: "Child age exceeds parent" },
   { id: "child_age_over_max", label: "Child over max age" },
   { id: "child_count_mismatch", label: "Child count mismatch" },
-  { id: "too_few_children", label: "Too few children" },
-  { id: "too_many_children", label: "Too many children" },
   { id: "co_applicant_incomplete", label: "Co-applicant incomplete" },
-  { id: "co_applicant_under_19", label: "Co-applicant under 19" },
+  { id: "co_applicant_under_min_age", label: "Co-applicant under minimum age" },
   { id: "future_employment_start", label: "Future employment start" },
   { id: "income_above_range", label: "Income above range" },
   { id: "income_arithmetic_mismatch", label: "Income arithmetic mismatch" },
   { id: "income_below_range", label: "Income below range" },
   { id: "negative_number", label: "Negative number" },
   { id: "owns_real_estate", label: "Real estate ownership" },
-  { id: "child_age_exceeds_parent", label: "Child age exceeds parent" },
+  { id: "too_few_children", label: "Too few children" },
+  { id: "too_many_children", label: "Too many children" },
 ] as const;
 
 export function App() {
@@ -1598,7 +1606,7 @@ export function App() {
                   <h3>Screening Rules</h3>
                   <p className="rules-hint">Uncheck a rule to disable it. Disabled rules will not run during screening.</p>
                   <div className="rules-grid">
-                    {ALL_RULES.map((rule) => (
+                    {[...ALL_RULES].sort((a, b) => a.label.localeCompare(b.label)).map((rule) => (
                       <label key={rule.id} className="checkbox-label rule-toggle">
                         <input
                           type="checkbox"

@@ -2,6 +2,17 @@ import re
 
 from pydantic import BaseModel, Field, field_validator
 
+# Threshold defaults are owned by the domain layer (the single source of truth);
+# the settings schema references them so a default can't drift between the two.
+from app.domain.hard_filters import (
+    DEFAULT_MAX_CHILD_AGE,
+    DEFAULT_MAX_CHILDREN,
+    DEFAULT_MAX_INCOME,
+    DEFAULT_MIN_ADULT_AGE,
+    DEFAULT_MIN_CHILDREN,
+    DEFAULT_MIN_INCOME,
+)
+
 
 SHEETS_URL_ID_PATTERN = re.compile(r"/spreadsheets/d/([a-zA-Z0-9-_]+)")
 SHEETS_OPEN_ID_PATTERN = re.compile(r"[?&]id=([a-zA-Z0-9-_]+)")
@@ -25,7 +36,7 @@ class AISettings(BaseModel):
     region: str = Field(default="us-west-2")
     first_pass_model: str = Field(default="us.anthropic.claude-haiku-4-5-20251001-v1:0")
     synthesis_model: str = Field(default="us.anthropic.claude-sonnet-4-6")
-    spending_cap_usd: float = Field(default=0.5, ge=0)
+    spending_cap_usd: float = Field(default=1.0, ge=0)
     # How many applications to screen concurrently. The model calls are the slow,
     # blocking part; ~300 applicants finish in seconds at this width. The Bedrock
     # connection pool is sized to match (see StrandsProvider), so don't raise one
@@ -35,12 +46,12 @@ class AISettings(BaseModel):
 
 class AppSettings(BaseModel):
     google_sheet_id: str = Field(default="", max_length=2000)
-    income_min: int = Field(default=70_000, ge=0)
-    income_max: int = Field(default=150_000, ge=0)
-    min_adult_age: int = Field(default=19, ge=1, le=100)
-    max_child_age: int = Field(default=17, ge=0, le=100)
-    min_children: int = Field(default=1, ge=0, le=20)
-    max_children: int = Field(default=4, ge=0, le=20)
+    income_min: int = Field(default=DEFAULT_MIN_INCOME, ge=0)
+    income_max: int = Field(default=DEFAULT_MAX_INCOME, ge=0)
+    min_adult_age: int = Field(default=DEFAULT_MIN_ADULT_AGE, ge=1, le=100)
+    max_child_age: int = Field(default=DEFAULT_MAX_CHILD_AGE, ge=0, le=100)
+    min_children: int = Field(default=DEFAULT_MIN_CHILDREN, ge=0, le=20)
+    max_children: int = Field(default=DEFAULT_MAX_CHILDREN, ge=0, le=20)
     max_dogs: int = Field(default=1, ge=0, le=10)
     max_cats: int = Field(default=1, ge=0, le=10)
     allow_other_pets: bool = False

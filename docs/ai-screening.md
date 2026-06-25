@@ -132,7 +132,7 @@ estimated cost  =  price rate  ×  token count per call  ×  number of uncached 
 
 - **The number of applications** counts only the *uncached* ones — cached results are free and excluded from the estimate.
 
-**The cap** (`ai.spending_cap_usd`, default `$0.50`) is enforced before streaming starts. An over-cap run fails fast with HTTP 402 rather than spending partway through.
+**The cap** (`ai.spending_cap_usd`, default `$1.00`) is enforced before streaming starts. An over-cap run fails fast with HTTP 402 rather than spending partway through.
 
 The estimate feeds a pre-run confirmation in the UI, so a screener sees the projected cost and how many applications will actually be sent before committing.
 
@@ -239,7 +239,7 @@ AI settings live under `ai` in the admin settings (`app/schemas/settings.py`):
 - `region` — Bedrock region (default `us-west-2`).
 - `first_pass_model` — the quality-flag model. Default Claude Haiku 4.5, as a Bedrock inference-profile ID (`us.anthropic...`), which these models require.
 - `synthesis_model` — reserved for heavier, judgment-driven milestones (default Claude Sonnet 4.6). Not used by the quality-flag pass.
-- `spending_cap_usd` — the per-run cost ceiling (default `$0.50`). Editable from the settings form ("AI Screening" section).
+- `spending_cap_usd` — the per-run cost ceiling (default `$1.00`). Editable from the settings form ("AI Screening" section).
 - `max_workers` — screening concurrency and connection-pool size (default `50`). Config-only; not exposed in the UI.
 
 The other `ai` fields (region, model IDs) are config-only too. The frontend still round-trips the whole `ai` block on save, so editing the cap never resets them.

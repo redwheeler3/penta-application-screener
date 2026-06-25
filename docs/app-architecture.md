@@ -716,7 +716,7 @@ class AppSettings(BaseModel):
     google_sheet_id: str = Field(default="", max_length=2000)
     income_min: int = Field(default=70_000, ge=0)
     income_max: int = Field(default=150_000, ge=0)
-    min_adult_age: int = Field(default=19, ge=1, le=100)
+    min_adult_age: int = Field(default=18, ge=1, le=100)
     max_child_age: int = Field(default=17, ge=0, le=100)
     min_children: int = Field(default=1, ge=0, le=20)
     max_children: int = Field(default=4, ge=0, le=20)

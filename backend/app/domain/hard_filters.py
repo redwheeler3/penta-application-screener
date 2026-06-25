@@ -3,6 +3,18 @@ from datetime import date
 from enum import StrEnum
 from typing import Any
 
+# The single source of truth for hard-filter threshold defaults. Both the
+# RulesConfig dataclass (below) and the AppSettings schema reference these, so a
+# default can't drift between the domain layer and the settings layer. They live
+# here, in the pure domain module, because they are screening-domain facts; the
+# settings schema imports them, never the reverse (keeps the domain dependency-free).
+DEFAULT_MIN_INCOME = 70_000
+DEFAULT_MAX_INCOME = 150_000
+DEFAULT_MIN_ADULT_AGE = 18
+DEFAULT_MAX_CHILD_AGE = 17
+DEFAULT_MIN_CHILDREN = 1
+DEFAULT_MAX_CHILDREN = 4
+
 
 class FilterStatus(StrEnum):
     ELIGIBLE = "eligible"
@@ -11,12 +23,12 @@ class FilterStatus(StrEnum):
 
 @dataclass(frozen=True)
 class RulesConfig:
-    min_income: int = 70_000
-    max_income: int = 150_000
-    min_adult_age: int = 19
-    max_child_age: int = 17
-    min_children: int = 1
-    max_children: int = 4
+    min_income: int = DEFAULT_MIN_INCOME
+    max_income: int = DEFAULT_MAX_INCOME
+    min_adult_age: int = DEFAULT_MIN_ADULT_AGE
+    max_child_age: int = DEFAULT_MAX_CHILD_AGE
+    min_children: int = DEFAULT_MIN_CHILDREN
+    max_children: int = DEFAULT_MAX_CHILDREN
     disabled_rules: tuple[str, ...] = ()
     today: date = field(default_factory=date.today)
 
@@ -47,13 +59,13 @@ def evaluate_hard_filters(
     reasons.extend(_too_few_children(application, rules))
     reasons.extend(_too_many_children(application, rules))
     reasons.extend(_child_age_over_max(application, rules))
-    reasons.extend(_applicant_under_19(application, rules))
-    reasons.extend(_co_applicant_under_19(application, rules))
+    reasons.extend(_applicant_under_min_age(application, rules))
+    reasons.extend(_co_applicant_under_min_age(application, rules))
     reasons.extend(_child_age_exceeds_parent(application))
     reasons.extend(_income_below_range(application, rules))
     reasons.extend(_income_above_range(application, rules))
     reasons.extend(_income_arithmetic_mismatch(application))
-    reasons.extend(_real_estate_ownership(application))
+    reasons.extend(_owns_real_estate(application))
     reasons.extend(_negative_number(application))
     reasons.extend(_future_employment_start(application, rules))
     reasons.extend(_co_applicant_incomplete(application))
@@ -150,14 +162,14 @@ def _too_many_children(
     return []
 
 
-def _applicant_under_19(
+def _applicant_under_min_age(
     application: dict[str, Any], rules: RulesConfig
 ) -> list[FilterReason]:
     age = application.get("applicant_age")
     if isinstance(age, int) and age < rules.min_adult_age:
         return [
             FilterReason(
-                code="applicant_under_19",
+                code="applicant_under_min_age",
                 message=f"Applicant is {age}; must be at least {rules.min_adult_age}.",
                 details={"applicant_age": age, "min_adult_age": rules.min_adult_age},
             )
@@ -165,7 +177,7 @@ def _applicant_under_19(
     return []
 
 
-def _co_applicant_under_19(
+def _co_applicant_under_min_age(
     application: dict[str, Any], rules: RulesConfig
 ) -> list[FilterReason]:
     age = application.get("co_applicant_age")
@@ -174,7 +186,7 @@ def _co_applicant_under_19(
     if isinstance(age, int) and age < rules.min_adult_age:
         return [
             FilterReason(
-                code="co_applicant_under_19",
+                code="co_applicant_under_min_age",
                 message=f"Co-applicant is {age}; must be at least {rules.min_adult_age}.",
                 details={"co_applicant_age": age, "min_adult_age": rules.min_adult_age},
             )
@@ -278,7 +290,7 @@ def _income_arithmetic_mismatch(application: dict[str, Any]) -> list[FilterReaso
     return []
 
 
-def _real_estate_ownership(application: dict[str, Any]) -> list[FilterReason]:
+def _owns_real_estate(application: dict[str, Any]) -> list[FilterReason]:
     if application.get("has_real_estate") is True:
         return [
             FilterReason(
