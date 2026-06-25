@@ -453,5 +453,5 @@ async def test_estimate_reports_cap_and_within_cap() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["to_analyze"] == 1
-    assert body["cap_usd"] == 0.5
+    assert body["cap_usd"] == 1.0
     assert body["within_cap"] is True

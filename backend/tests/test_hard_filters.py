@@ -127,18 +127,18 @@ def test_configurable_children_bounds() -> None:
     assert "too_few_children" not in reason_codes(result)
 
 
-def test_applicant_under_19_is_filtered_out() -> None:
-    result = evaluate_hard_filters(eligible_application(applicant_age=18))
+def test_applicant_under_min_age_is_filtered_out() -> None:
+    result = evaluate_hard_filters(eligible_application(applicant_age=17))
 
     assert result.status == FilterStatus.FILTERED_OUT
-    assert "applicant_under_19" in reason_codes(result)
+    assert "applicant_under_min_age" in reason_codes(result)
 
 
-def test_co_applicant_under_19_is_filtered_out() -> None:
+def test_co_applicant_under_min_age_is_filtered_out() -> None:
     result = evaluate_hard_filters(eligible_application(co_applicant_age=14))
 
     assert result.status == FilterStatus.FILTERED_OUT
-    assert "co_applicant_under_19" in reason_codes(result)
+    assert "co_applicant_under_min_age" in reason_codes(result)
 
 
 def test_co_applicant_age_none_does_not_trigger() -> None:
