@@ -229,13 +229,15 @@ type RankingState = {
 };
 
 // One importance tier in the M9 tier-list. Dimensions in the same tier weigh
-// equally; higher tiers weigh more; the Ignore tier weighs 0. The committee
-// defines how many tiers there are.
+// equally; higher tiers weigh more; the Ignore zone weighs 0. The committee
+// defines how many working tiers there are. The backend stores only the working
+// tiers and synthesizes the Ignore zone for display (the one tier with
+// `ignore: true`); working tiers omit the flag, so it is optional here.
 type Tier = {
   id: string;
   label: string;
   dimension_keys: string[];
-  ignore: boolean;
+  ignore?: boolean;
 };
 
 type ScreeningRunState = {

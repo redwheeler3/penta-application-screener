@@ -8,6 +8,8 @@ from sqlalchemy.pool import StaticPool
 
 from app.ai.mock_provider import MockProvider
 from app.ai.schemas import (
+    DimensionMatch,
+    DimensionMatchReport,
     DimensionScore,
     DimensionScoringReport,
     EssayAnalysisReport,
@@ -278,13 +280,16 @@ async def test_tiers_reweight_and_resort_the_ranking() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         await stream_events(client, "/screening/rank/run")
 
-        # Default layout: S / A / B working tiers + Ignore, with every dimension
-        # starting in the A (middle) tier.
+        # Default layout: S / A / B working tiers (empty) + Ignore, with every
+        # dimension starting in Ignore — the committee drags them out to weigh in.
+        # Displayed layout: S / A / B working tiers (empty) + a synthesized Ignore
+        # zone holding every dimension, since nothing is placed yet.
         default = (await client.get("/screening/tiers")).json()["tiers"]
-        working = [t for t in default if not t["ignore"]]
+        working = [t for t in default if not t.get("ignore")]
         assert [t["label"] for t in working] == ["S-Tier", "A-Tier", "B-Tier"]
-        a_tier = next(t for t in working if t["label"] == "A-Tier")
-        assert set(a_tier["dimension_keys"]) == {"participation_commitment", "skills_offered"}
+        assert all(t["dimension_keys"] == [] for t in working)
+        ignore = next(t for t in default if t.get("ignore"))
+        assert set(ignore["dimension_keys"]) == {"participation_commitment", "skills_offered"}
 
         # Put skills above commitment: skills_lead should now top the ranking.
         layout = {
@@ -355,9 +360,132 @@ async def test_tiers_reject_unknown_dimension_key() -> None:
         bad = {
             "tiers": [
                 {"id": "t1", "label": "Top", "dimension_keys": ["not_a_real_dimension"], "ignore": False},
+                {"id": "ignore", "label": "Ignore", "dimension_keys": [], "ignore": True},
             ]
         }
         assert (await client.put("/screening/tiers", json=bad)).status_code == 400
+
+
+def a_pattern_report_v2() -> PoolPatternReport:
+    """A re-discovery: participation_commitment recurs (drifted key), skills_offered
+    is gone, and a genuinely new dimension appears."""
+    return PoolPatternReport(
+        summary="Pool varies on commitment and finances.",
+        dimensions=[
+            PoolDimension(
+                key="stated_participation",  # same concept, drifted key
+                name="Stated participation",
+                definition="Willingness to do shared work.",
+                why_it_differentiates="Some eager, some vague.",
+            ),
+            PoolDimension(
+                key="financial_stability",  # genuinely new
+                name="Financial stability",
+                definition="Income resilience and stability.",
+                why_it_differentiates="Range of income security.",
+            ),
+        ],
+    )
+
+
+@pytest.mark.anyio
+async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
+    """Re-ranking matches new dimensions to prior ones (high bar) and carries the
+    committee's tier placement forward; unmatched new dimensions land in Ignore,
+    flagged 'new'. The committee's deliberation is not lost on a re-rank."""
+    app, db, provider = setup_app(role=UserRole.ADMIN)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        # First run: discover v1 dimensions, score, then the committee tiers
+        # participation_commitment into S-Tier.
+        provider.route("ESSAYS:", an_essay_report())
+        provider.route("APPLICANT POOL:", a_pattern_report())
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/screening/rank/run")
+        await client.put(
+            "/screening/tiers",
+            json={
+                "tiers": [
+                    {"id": "tier-s", "label": "S-Tier", "dimension_keys": ["participation_commitment"], "ignore": False},
+                    {"id": "tier-a", "label": "A-Tier", "dimension_keys": ["skills_offered"], "ignore": False},
+                    {"id": "ignore", "label": "Ignore", "dimension_keys": [], "ignore": True},
+                ]
+            },
+        )
+
+        # Pool changes (new applicant) so re-rank is allowed; re-discovery returns
+        # v2 dimensions. The match pass maps stated_participation -> the prior
+        # participation_commitment (same concept); financial_stability is new.
+        add_eligible(db, email="b@x.com", raw_hash="h2")
+        provider.route("ESSAYS:", an_essay_report())
+        provider.route("APPLICANT POOL:", a_pattern_report_v2())
+        provider.route(
+            "PRIOR dimensions",
+            DimensionMatchReport(
+                matches=[DimensionMatch(new_key="stated_participation", old_key="participation_commitment")]
+            ),
+        )
+        provider.route("applicant_id", _scoring_report_v2())
+        events = await stream_events(client, "/screening/rank/run")
+
+        criteria_done = next(e for e in events if e["type"] == "criteria_done")
+        assert criteria_done["carriedForward"] == 1
+        assert criteria_done["newDimensions"] == 1
+
+        layout = (await client.get("/screening/tiers")).json()["tiers"]
+        by_label = {t["label"]: t for t in layout}
+        # The matched dimension inherited the prior S-Tier placement.
+        assert by_label["S-Tier"]["dimension_keys"] == ["stated_participation"]
+        # The genuinely-new dimension is unplaced -> shows in the synthesized Ignore zone.
+        ignore = next(t for t in layout if t.get("ignore"))
+        assert "financial_stability" in ignore["dimension_keys"]
+
+        current = (await client.get("/screening/current")).json()
+        assert current["newDimensionKeys"] == ["financial_stability"]
+
+
+def _scoring_report_v2() -> DimensionScoringReport:
+    return DimensionScoringReport(
+        scores=[
+            DimensionScore(
+                dimension_key="stated_participation", score=0.8, rationale="r",
+                evidence="", confidence=ScoreConfidence.HIGH,
+            ),
+            DimensionScore(
+                dimension_key="financial_stability", score=0.5, rationale="r",
+                evidence="", confidence=ScoreConfidence.MEDIUM,
+            ),
+        ]
+    )
+
+
+@pytest.mark.anyio
+async def test_tiers_without_ignore_zone_means_everything_ignored() -> None:
+    """Ignore is the absence of a placement, not a stored tier: a layout with only
+    a working tier is valid, and dimensions left out are weight 0 (ignored)."""
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    provider.route("ESSAYS:", an_essay_report())
+    provider.route("APPLICANT POOL:", a_pattern_report())
+    provider.route("applicant_id", a_scoring_report())
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await stream_events(client, "/screening/rank/run")
+        only_working = {
+            "tiers": [
+                {"id": "t1", "label": "Top", "dimension_keys": ["participation_commitment"], "ignore": False},
+            ]
+        }
+        ranking = (await client.put("/screening/tiers", json=only_working)).json()
+        # commitment is placed (weight 1); skills is unplaced -> ignored (weight 0).
+        assert ranking["weights"] == {"participation_commitment": 1.0, "skills_offered": 0.0}
+        # The displayed layout synthesizes the Ignore zone with the unplaced dim.
+        layout = (await client.get("/screening/tiers")).json()["tiers"]
+        ignore = next(t for t in layout if t.get("ignore"))
+        assert ignore["dimension_keys"] == ["skills_offered"]
 
 
 @pytest.mark.anyio

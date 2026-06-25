@@ -215,3 +215,46 @@ class DimensionScoringReport(BaseModel):
         default_factory=list,
         description="One entry per discovered dimension, scoring this candidate on it.",
     )
+
+
+class DimensionMatch(BaseModel):
+    """One identity match between a freshly-discovered dimension and a prior one.
+
+    Used when re-ranking re-discovers dimensions: the committee already placed the
+    PRIOR run's dimensions into importance tiers, and this maps each NEW dimension
+    onto the prior dimension it is the *same concept* as, so that tier placement
+    (and the cached scores) can carry forward. It is a pure identity judgment —
+    not a re-discovery and not a weighting — so it never decides what matters, only
+    what is the same. The bar is deliberately high: only assert a match when the
+    two dimensions mean the same thing; when unsure, do not match.
+    """
+
+    new_key: str = Field(
+        description="The key of a dimension in the NEW (just-discovered) set.",
+    )
+    old_key: str = Field(
+        description=(
+            "The key of the PRIOR-run dimension that means the same thing as "
+            "new_key. Only include a pair when they are clearly the same concept."
+        ),
+    )
+
+
+class DimensionMatchReport(BaseModel):
+    """The set of high-confidence identity matches from new dimensions to prior ones.
+
+    One entry per confidently-matched NEW dimension, at most (strictly one-to-one:
+    a given new_key or old_key appears at most once). New dimensions with no
+    confident match are simply absent — they are the genuinely-new axes that will
+    start in Ignore for the committee to triage. Absence is the safe default: a
+    missed match merely costs a re-drag, while a wrong match would silently move a
+    committee's tier intent onto the wrong concept.
+    """
+
+    matches: list[DimensionMatch] = Field(
+        default_factory=list,
+        description=(
+            "High-confidence identity matches only. Omit any new dimension you are "
+            "not confident maps to a specific prior dimension."
+        ),
+    )
