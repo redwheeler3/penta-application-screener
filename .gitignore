@@ -28,6 +28,7 @@ ai-traces/
 node_modules/
 dist/
 coverage/
+*.tsbuildinfo
 
 # OS/editor
 .DS_Store
