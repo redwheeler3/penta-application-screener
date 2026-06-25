@@ -445,6 +445,22 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
         current = (await client.get("/screening/current")).json()
         assert current["newDimensionKeys"] == ["financial_stability"]
 
+        # Acknowledge the new dimension in place (badge ✕ / "mark all reviewed"):
+        # keep the layout unchanged, send the key in acknowledged_keys. It drops
+        # out of new_dimension_keys without being placed in a working tier.
+        ack = await client.put(
+            "/screening/tiers",
+            json={"tiers": layout, "acknowledged_keys": ["financial_stability"]},
+        )
+        assert ack.status_code == 200
+        assert ack.json()["newDimensionKeys"] == []
+        # And it stuck: still unplaced (in Ignore), just no longer flagged.
+        current = (await client.get("/screening/current")).json()
+        assert current["newDimensionKeys"] == []
+        layout2 = (await client.get("/screening/tiers")).json()["tiers"]
+        ignore2 = next(t for t in layout2 if t.get("ignore"))
+        assert "financial_stability" in ignore2["dimension_keys"]
+
 
 def _scoring_report_v2() -> DimensionScoringReport:
     return DimensionScoringReport(

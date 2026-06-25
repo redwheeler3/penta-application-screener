@@ -384,6 +384,9 @@ def _ranking_payload(db: Session, run) -> dict[str, Any]:
         "weights": weights,
         "scoredCount": len(ranked),
         "candidates": [asdict(c) for c in ranked],
+        # Recomputed each save so the tier-list can refresh "New" badges in the
+        # same round-trip (placing or acknowledging a dimension clears it).
+        "newDimensionKeys": (run.criteria or {}).get("new_dimension_keys", []),
     }
 
 
@@ -422,6 +425,10 @@ class TierModel(BaseModel):
 
 class TierLayoutUpdate(BaseModel):
     tiers: list[TierModel]
+    # Dimension keys the committee explicitly acknowledged as "reviewed" this save
+    # (badge ✕ / "mark all reviewed") — they drop out of new_dimension_keys even
+    # if left in Ignore. Placing a dimension in a working tier clears it anyway.
+    acknowledged_keys: list[str] = Field(default_factory=list)
 
 
 @router.get("/tiers")
@@ -452,7 +459,7 @@ def update_tiers(
         raise HTTPException(status_code=409, detail="Discover patterns before tiering.")
     layout = [t.model_dump() for t in body.tiers]
     try:
-        set_tiers(db, run, layout)
+        set_tiers(db, run, layout, acknowledged_keys=body.acknowledged_keys)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _ranking_payload(db, run)
