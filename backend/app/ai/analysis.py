@@ -22,9 +22,17 @@ from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, Usage
 from app.db.models import Application, ApplicationAIResult
 
-# Bump when a prompt or schema changes so cached results from the old version
-# are not reused.
-PROMPT_VERSION = "9"
+# Bump when a prompt or schema for a CACHED, per-application pass changes (quality
+# flags, essay analysis, dimension scoring) so stale results are not reused — this
+# value is folded into cache_key below.
+#
+# Do NOT bump for the pattern-discovery (categorization) prompt: discovery is
+# uncached (it calls provider.structured_output directly, never analyze_application,
+# so it re-runs every Rank and this version never gates it). A discovery change also
+# self-invalidates downstream — different dimensions → different dimensions_hash →
+# the scoring cache kind changes and scores re-compute on their own. So a
+# categorization-prompt edit needs neither a bump nor any manual cache action.
+PROMPT_VERSION = "10"
 
 
 class SpendingCapExceeded(Exception):

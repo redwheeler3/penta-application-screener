@@ -46,7 +46,8 @@ KIND_PREFIX = "dimension_scoring"
 
 SYSTEM_PROMPT = """\
 You are helping a housing co-op screening committee score one applicant against a fixed set of dimensions the committee cares about.
-Score only on evidence in the applicant's own words; absence of evidence is a low score with low confidence, never an inferred guess.
+Score only on evidence in the applicant's own words; never infer a guess.
+Confidence measures how well your evidence pins down the applicant's TRUE standing on a dimension — NOT how sure you are about what they wrote. When an applicant simply did not address a dimension, score it low but with LOW confidence: silence is weak evidence, because they may well have that strength and just not have mentioned it. Being certain they omitted it is not the same as being confident they lack it. Reserve high confidence for dimensions the applicant gave substantial, direct evidence on.
 Do not penalize brief, awkward, translated, or non-native English answers for writing polish — judge substance.
 Stay neutral and never use protected characteristics. You are scoring this one applicant, not ranking them against others."""
 
@@ -121,7 +122,7 @@ For each dimension provide:
 - score: 0..1 for how strongly this applicant exhibits it, judged only on stated evidence
 - rationale: one neutral sentence from the applicant's facts or words
 - evidence: a short quote or field reference (empty string if there is nothing relevant)
-- confidence: low, medium, or high — how well the available evidence supports your score
+- confidence: low, medium, or high — how well the evidence pins down the applicant's TRUE standing, NOT how sure you are about what they wrote. A dimension the applicant did not address is low confidence even when you are certain it went unmentioned (they may have the strength and simply not have said so).
 
 Score every dimension, even when the applicant did not address it (low score, low confidence). Do not invent evidence."""
 
