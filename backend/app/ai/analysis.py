@@ -1,9 +1,8 @@
-"""Runs cached, cost-capped AI analysis over applications.
+"""Shared engine for cached, cost-capped AI analysis.
 
-This is the shared engine for AI-assisted screening: it computes a cache key,
-reuses a stored result when one exists, otherwise calls the provider, prices the
-call, and persists the result. A spending cap is enforced against the projected
-cost of the remaining (uncached) work before any new call is made.
+Computes a cache key, reuses a stored result when present, else calls the
+provider, prices the call, and persists it. The spending cap is enforced against
+the projected cost of the uncached work before any new call.
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-# Work item / result types for the shared concurrency mechanism (run_in_pool).
+# Work item / result types for run_in_pool.
 T = TypeVar("T")
 R = TypeVar("R")
 
@@ -27,17 +26,10 @@ from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, Usage
 from app.db.models import Application, ApplicationAIResult
 
-# Bump when a prompt or schema for a CACHED, per-application pass changes (quality
-# flags, essay analysis, dimension scoring) so stale results are not reused — this
-# value is folded into cache_key below.
-#
-# Do NOT bump for the pattern-discovery (categorization) prompt: discovery is
-# uncached (it calls provider.structured_output directly, never analyze_application,
-# so it re-runs every Rank and this version never gates it). A discovery change also
-# self-invalidates downstream — genuinely new dimensions get new keys, so their
-# scoring cache kind (dimension_scoring:<dimension_key>) is new and they are scored
-# fresh. So a categorization-prompt edit needs neither a bump nor any manual cache
-# action.
+# Folded into cache_key. Bump when a CACHED per-application prompt/schema changes
+# (quality flags, essay analysis, dimension scoring) so stale results aren't reused.
+# Do NOT bump for the pattern-discovery prompt: discovery is uncached and a change
+# self-invalidates downstream (new dimensions → new keys → new scoring cache kind).
 PROMPT_VERSION = "10"
 
 
@@ -57,15 +49,13 @@ class AnalysisOutcome:
     output: BaseModel
     cost_usd: float
     cached: bool
-    # The model's reasoning narrative, if the provider surfaced one. None for
-    # results stored before narratives were captured.
+    # The model's reasoning narrative, if the provider surfaced one.
     narrative: str | None = None
 
 
 def cache_key(*, application: Application, kind: str, model_id: str) -> str:
-    """Stable key over the application content, analysis kind, model, and prompt
-    version. Uses the normalized + raw content hash so an unchanged application
-    re-uses its result; changing the model or prompt version misses the cache.
+    """Stable key over application content, kind, model, and prompt version. An
+    unchanged application reuses its result; a new model or prompt version misses.
     """
     basis = json.dumps(
         {
@@ -80,7 +70,6 @@ def cache_key(*, application: Application, kind: str, model_id: str) -> str:
 
 
 # How many recent calls to average when learning token counts from real usage.
-# A window (rather than all history) keeps the average tracking recent behavior.
 _USAGE_SAMPLE_SIZE = 50
 
 
@@ -94,20 +83,16 @@ def estimate_cost(
     fallback_output_tokens: int,
     usage_kind_prefix: str | None = None,
 ) -> dict[str, object]:
-    """Estimate the cost of analyzing the given applications, excluding any that
-    are already cached. Returned shape feeds the pre-run confirmation UI.
+    """Estimate the cost of analyzing the applications, excluding cached ones.
+    Feeds the pre-run confirmation UI.
 
-    Prefers per-call token counts learned from real usage: the current prompt
-    version first, then any earlier version (still closer to reality than a
-    static guess). The fallback values are used only when there is no usage
-    history at all.
+    Prefers per-call token counts learned from real usage (current prompt version,
+    then any earlier one); the fallback values apply only with no usage history.
 
-    ``usage_kind_prefix`` lets a pass whose ``kind`` carries a per-dimension
-    suffix (e.g. ``dimension_scoring:<dimension_key>``) learn from *all* its prior
-    rows: token usage depends on the prompt shape, not on which dimension it was,
-    so averaging across every ``dimension_scoring:*`` row keeps the estimate
-    self-tuning even though each dimension has its own key kind. Cache hits still
-    key on the exact ``kind``. Defaults to exact-kind matching.
+    ``usage_kind_prefix`` lets a pass whose ``kind`` carries a per-dimension suffix
+    (e.g. ``dimension_scoring:<key>``) learn from all its prior rows — token usage
+    depends on prompt shape, not which dimension. Cache hits still key on the exact
+    ``kind``. Defaults to exact-kind matching.
     """
     uncached = [
         app
@@ -117,8 +102,7 @@ def estimate_cost(
     avg_input_tokens, avg_output_tokens = observed_avg_tokens(
         db, kind=kind, model_id=model_id, kind_prefix=usage_kind_prefix
     ) or (fallback_input_tokens, fallback_output_tokens)
-    # Price one average call through the same formula as a real call, then scale
-    # by how many uncached applications will actually be sent.
+    # Price one average call, then scale by the uncached count.
     per_call = cost_usd(
         model_id, Usage(input_tokens=avg_input_tokens, output_tokens=avg_output_tokens)
     )
@@ -133,16 +117,11 @@ def estimate_cost(
 def observed_avg_tokens(
     db: Session, *, kind: str, model_id: str, kind_prefix: str | None = None
 ) -> tuple[int, int] | None:
-    """Average input/output tokens from this model's recent real calls for the
-    pass.
+    """Average input/output tokens from this model's recent real calls.
 
-    Matches on the exact ``kind`` unless ``kind_prefix`` is given, in which case
-    it matches every kind starting with that prefix (see ``estimate_cost`` for
-    why scoring needs this). Prefers usage from the current ``PROMPT_VERSION``
-    (the most representative of what the next run will cost). If none exists yet —
-    e.g. right after a prompt change — falls back to the most recent usage from
-    any version, which still beats a static guess. Returns None only when there
-    is no usage history at all, so the caller uses its fixed fallback.
+    Matches the exact ``kind``, or every kind with ``kind_prefix`` when given (see
+    ``estimate_cost``). Prefers the current ``PROMPT_VERSION``, else the most recent
+    usage from any version. Returns None only with no usage history at all.
     """
     current = _avg_tokens_query(
         db, kind=kind, model_id=model_id, prompt_version=PROMPT_VERSION, kind_prefix=kind_prefix
@@ -190,10 +169,8 @@ def cached_outcome(
 ) -> AnalysisOutcome | None:
     """The stored outcome for this application, or None if not yet analyzed.
 
-    This is the read-only half of analysis and the only DB access on the hot
-    path that must happen before a model call. The parallel screening path calls
-    it on the main thread (it touches the session) to decide which applications
-    still need a model call.
+    Read-only half of analysis; touches the session, so the parallel path calls it
+    on the main thread to decide which applications still need a model call.
     """
     existing = _cached_result(db, application, kind, model_id)
     if existing is None:
@@ -216,9 +193,8 @@ def store_result(
 ) -> AnalysisOutcome:
     """Price a fresh model result, persist it, and return its outcome.
 
-    The write half of analysis. Like ``cached_outcome`` it touches the session,
-    so the parallel path calls it on the main thread after a worker returns the
-    (session-free) model result.
+    Write half of analysis; touches the session, so the parallel path calls it on
+    the main thread after a worker returns the (session-free) model result.
     """
     call_cost = cost_usd(result.model_id, result.usage)
     record = ApplicationAIResult(
@@ -256,9 +232,8 @@ def analyze_application(
 ) -> AnalysisOutcome:
     """Return cached analysis if present, else call the provider and store it.
 
-    The sequential single-application path, composed from the same building
-    blocks the parallel screening path uses. Caching is checked before any cap
-    logic, so reusing stored results is always free and never blocked by a cap.
+    The sequential single-application path. Caching is checked before any cap, so
+    reusing stored results is always free.
     """
     cached = cached_outcome(db, application, kind=kind, schema=schema, model_id=model_id)
     if cached is not None:
@@ -293,17 +268,13 @@ def run_in_pool(
     max_workers: int,
 ) -> Iterator[tuple[T, R | None, Exception | None]]:
     """Run ``call(item)`` for each item across a thread pool, yielding
-    ``(item, result, error)`` as each completes — ``error`` set (and ``result``
-    None) when that item's call raised.
+    ``(item, result, error)`` as each completes — ``error`` set (``result`` None)
+    when that item's call raised.
 
-    The pure concurrency mechanism shared by every AI pass: the thread pool, the
-    ``as_completed`` ordering (a slow call never holds back faster ones), the
-    bounded worker count, and per-item error isolation (one failure never aborts
-    the batch). It does NO database or ORM work — ``call`` must be session-free
-    and safe to run in a worker thread, and the caller does all DB work (cache
-    lookups, persistence) on its own thread around this generator. Keeping this
-    one copy means the subtle session-on-the-main-thread discipline lives in a
-    single place rather than being re-implemented per pass.
+    The concurrency core shared by every AI pass: bounded workers, ``as_completed``
+    ordering (a slow call never blocks faster ones), per-item error isolation. Does
+    NO DB/ORM work — ``call`` must be session-free, and the caller does all DB work
+    on its own thread around this generator.
     """
     if not items:
         return
@@ -331,21 +302,17 @@ def screen_applications(
     on_result: Callable[[Application, AnalysisOutcome], None] | None = None,
 ) -> Iterator[ScreeningResult]:
     """Run a cached AI pass over ``applications``, yielding each result as it
-    completes (cached results first, then model results in completion order).
+    completes (cached first, then model results in completion order).
 
     The 1:1 engine behind quality flags and essay analysis — one application, one
-    cached result, one row. It builds the per-application prompts on this thread
-    (ORM access), runs the model calls through ``run_in_pool`` (the shared
-    concurrency mechanism), and stores each result back on this thread, so the
-    session is never shared. A failed call yields a ``ScreeningResult`` with an
-    error rather than aborting the batch.
+    cached result, one row. Prompts are built and results stored on this thread
+    (ORM access); only the model calls run in ``run_in_pool``, so the session is
+    never shared. A failed call yields a ``ScreeningResult`` with an error rather
+    than aborting the batch.
 
-    ``on_result`` is an optional side effect run on the caller's thread for each
-    successful outcome (e.g. quality flags applying status). Passes that are
-    purely informational, like essay analysis, omit it. (Dimension scoring is no
-    longer 1:1 — it reuses scores per dimension and batches a candidate's
-    uncached dimensions into one call — so it has its own path on the same
-    ``run_in_pool`` core rather than bending this one.)
+    ``on_result`` is an optional side effect run per successful outcome on the
+    caller's thread (e.g. quality flags applying status); informational passes omit
+    it. (Dimension scoring isn't 1:1 — it has its own path on the same core.)
     """
 
     def finish(application: Application, outcome: AnalysisOutcome) -> ScreeningResult:
@@ -353,9 +320,8 @@ def screen_applications(
             on_result(application, outcome)
         return ScreeningResult(application=application, outcome=outcome)
 
-    # Cache lookups and prompt building touch the ORM, so do them here, up front.
-    # Cached applications are finished immediately; the rest are queued for the
-    # pool with a prebuilt prompt.
+    # Cache lookups and prompt building touch the ORM, so do them here. Cached
+    # applications finish immediately; the rest are queued with a prebuilt prompt.
     pending: list[tuple[Application, str]] = []
     for application in applications:
         cached = cached_outcome(
@@ -388,10 +354,8 @@ def screen_applications(
 
 
 def enforce_cap(estimate: dict[str, object], cap_usd: float) -> None:
-    """Raise SpendingCapExceeded if the estimated cost of a run exceeds the cap.
-
-    Call this with the result of estimate_cost() before running a batch, so a
-    large uncached run is blocked at the estimate stage rather than mid-run.
+    """Raise SpendingCapExceeded if the estimate exceeds the cap. Call before a
+    batch so an over-cap run is blocked at the estimate stage, not mid-run.
     """
     projected = float(estimate["estimated_usd"])  # type: ignore[arg-type]
     if projected > cap_usd:

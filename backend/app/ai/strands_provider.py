@@ -20,18 +20,15 @@ if TYPE_CHECKING:
 class StrandsProvider:
     """Bedrock-backed provider, safe to share across the screening thread pool.
 
-    The boto3 Bedrock client (which owns the HTTP connection pool) is built once
-    per model id and reused: it is stateless and thread-safe, so one shared
-    client lets every worker draw from a single connection pool. The per-call
-    ``Agent`` is *not* shared — it accumulates the conversation in
-    ``agent.messages`` (read back for the narrative), so each call gets a fresh,
-    cheap one.
+    The boto3 Bedrock client (which owns the connection pool) is built once per
+    model id and reused — it's thread-safe, so workers share one pool. The per-call
+    ``Agent`` is NOT shared: it accumulates the conversation in ``agent.messages``
+    (read back for the narrative), so each call gets a fresh one.
     """
 
     def __init__(self, region: str, max_pool_connections: int = 50) -> None:
         self._region = region
-        # Size the connection pool to the worker count so threads don't queue on
-        # sockets; one knob (worker count) drives the other (pool size).
+        # Size the pool to the worker count so threads don't queue on sockets.
         self._max_pool_connections = max_pool_connections
         self._models: dict[str, BedrockModel] = {}
         self._models_lock = threading.Lock()
@@ -92,12 +89,9 @@ class StrandsProvider:
 def _conversation_narrative(messages: object) -> str | None:
     """Join the model's reasoning text across the whole conversation.
 
-    When the model produces structured output it calls a tool, which splits its
-    reasoning across several assistant turns: a short preamble in one message, the
-    detailed analysis in others, plus tool-use/tool-result messages in between.
-    ``result.message`` is only the LAST turn, so it captures just the preamble for
-    flagged applications. We therefore walk every assistant message and concatenate
-    its text blocks (dropping toolUse/toolResult blocks), preserving order.
+    Structured output calls a tool, which splits reasoning across several assistant
+    turns. ``result.message`` is only the LAST turn, so we walk every assistant
+    message and concatenate its text blocks (dropping toolUse/toolResult), in order.
     """
     if not isinstance(messages, list):
         return None

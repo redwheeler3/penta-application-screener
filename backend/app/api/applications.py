@@ -52,8 +52,7 @@ def list_applications(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    # Filters mirror the real columns. Named views (e.g. "needs review" =
-    # status_source=ai) are composed by the client, not invented here.
+    # Filters mirror the real columns; named views are composed client-side.
     status_cond = (
         Application.status == ApplicationStatus(status) if status else None
     )
@@ -99,9 +98,8 @@ def list_applications(
     # Batch-fetch flags for just this page rather than per-row querying.
     flags_by_app = _latest_flags(db, [app.id for app in applications])
 
-    # Faceted counts: each facet applies every active filter EXCEPT its own, so
-    # the Status counts reflect the chosen Decided-by (and vice versa), plus
-    # search. This keeps the two filter groups consistent with each other.
+    # Faceted counts: each facet applies every active filter except its own, so the
+    # two filter groups stay consistent with each other.
     status_facet = with_conds(source_cond, search_cond)
     source_facet = with_conds(status_cond, search_cond)
     facets = {
@@ -173,11 +171,9 @@ def override_status(
 ) -> dict[str, Any]:
     """Human override of an application's status.
 
-    Any committee member (not only admins) may set an application's status — the
-    whole tool exists for members to make these judgments. Sets status_source to
-    human (sticky against future machine runs) and snapshots the current findings
-    fingerprint, so later runs that change the findings mark the application
-    stale. Machine reason/flag records are never altered.
+    Any committee member may set status. Sets status_source to human (sticky against
+    future machine runs) and snapshots the current findings fingerprint, so later
+    runs that change the findings mark it stale. Machine records are never altered.
     """
     application = db.get(Application, application_id)
     if application is None:
@@ -205,11 +201,9 @@ def clear_status_override(
 ) -> dict[str, Any]:
     """Remove a human override, handing the decision back to the machine.
 
-    Recomputes status from the *current* findings (rules then AI) and clears the
-    human ownership, so future machine runs resume control. Because it reflects
-    the latest findings rather than a stored pre-override value, the result can
-    differ from what the status was before the human acted — which is the point
-    of reverting to automatic. No-op (idempotent) if no human override is set.
+    Recomputes status from the *current* findings (rules then AI), so the result can
+    differ from the pre-override value — which is the point of reverting to
+    automatic. No-op if no human override is set.
     """
     application = db.get(Application, application_id)
     if application is None:
@@ -267,11 +261,9 @@ def _distinct_categories(flags: list[dict[str, Any]]) -> list[str]:
 def _latest_flags(
     db: Session, application_ids: list[int] | None = None
 ) -> dict[int, list[dict[str, Any]]]:
-    """Flags from each application's most recent quality-flag result.
-
-    Returns {application_id: flag_list}. Applications with no quality-flag result
-    are absent (their state is unknown / not-yet-run). Pass application_ids to
-    scope the query to one page.
+    """Flags from each application's most recent quality-flag result, as
+    {application_id: flag_list}. Applications with no result are absent. Pass
+    application_ids to scope the query to one page.
     """
     latest = _latest_results(db, "quality_flags", application_ids)
     return {
@@ -283,9 +275,9 @@ def _latest_flags(
 def _latest_results(
     db: Session, kind: str, application_ids: list[int] | None = None
 ) -> dict[int, ApplicationAIResult]:
-    """Most recent AI result of ``kind`` per application (a re-run supersedes
-    older rows). Returns {application_id: result}; applications with no result of
-    that kind are absent. Pass application_ids to scope to one page.
+    """Most recent AI result of ``kind`` per application, as {application_id:
+    result}. Applications with no result of that kind are absent. Pass
+    application_ids to scope to one page.
     """
     query = select(ApplicationAIResult).where(ApplicationAIResult.kind == kind)
     if application_ids is not None:
@@ -300,15 +292,14 @@ def _latest_results(
 
 
 def _serialize_detail(app: Application, db: Session) -> dict[str, Any]:
-    # The raw source row and AI narrative are shown to any committee member, not
-    # only admins: members are trusted screeners, and these are just the source
-    # and reasoning behind data the member already sees.
+    # The raw source row and AI narrative are shown to any committee member: they're
+    # trusted screeners, and these just back the data the member already sees.
     flag_result = _latest_results(db, "quality_flags", [app.id]).get(app.id)
     flags = (flag_result.output or {}).get("flags", []) if flag_result else None
     detail = _serialize_summary(app, flags=flags)
-    # What the machine would decide from the current findings, regardless of who
-    # owns the status now. Lets the UI show the live automatic verdict — i.e. the
-    # result of clearing a human override — without re-deriving the rules client-side.
+    # What the machine would decide from the current findings, whoever owns status
+    # now — lets the UI show the live automatic verdict (the result of clearing an
+    # override) without re-deriving the rules client-side.
     auto_status, auto_source = resolve_machine_status(
         has_reasons=bool(app.hard_filter_reasons), has_ai_flags=bool(flags)
     )
@@ -321,17 +312,14 @@ def _serialize_detail(app: Application, db: Session) -> dict[str, Any]:
     if flag_result is not None:
         detail["aiNarrative"] = flag_result.narrative
 
-    # Essay analysis (milestone 6): informational, never affects status.
-    # null = pass not yet run for this application. No raw narrative: unlike the
-    # quality-flag pass, essay analysis no longer asks the model for a reasoning
-    # preamble — an A/B run showed it doesn't change the extracted fields (see
-    # SPEC "Essay Analysis"), so the structured output is the whole product.
+    # Essay analysis: informational, never affects status. null = not yet run. No
+    # narrative — an A/B run showed it doesn't change the extracted fields (see SPEC
+    # "Essay Analysis"), so the structured output is the whole product.
     essay_result = _latest_results(db, "essay_analysis", [app.id]).get(app.id)
     detail["essayAnalysis"] = essay_result.output if essay_result else None
 
-    # Dimension scoring (milestone 7): this candidate's scores against the
-    # current run's discovered dimensions. null = no run, or not scored under it.
-    # Scores are joined to their dimension labels so the UI shows names, not keys.
+    # This candidate's scores against the current run's dimensions, joined to their
+    # labels. null = no run, or not scored under it.
     detail["dimensionScores"] = _dimension_scores(db, app)
     return detail
 
@@ -340,20 +328,12 @@ def _dimension_scores(db: Session, app: Application) -> list[dict[str, Any]] | N
     """The candidate's per-dimension scores under the current run, ordered by
     importance to THIS candidate's ranking.
 
-    Returns None when there is no current run or the candidate has no scores for
-    its dimension set (the scoring pass keys results on a per-run ``kind``, so a
-    stale prior run's scores never leak into a new run's view).
-
-    These are exactly the candidate's ranking ``contributions`` — the ranked-list
-    row is the top slice of this same list — so the detail page and the row tell
-    one story. Ordered by ``abs(impact)`` (``impact = weight · (score −
-    pool_mean)``): the dimensions that most moved this candidate up or down come
-    first, whether they helped or hurt. The score band's colour carries direction
-    (strength vs. weakness); the order carries importance.
-
-    Weight-0 (Ignored) dimensions are dropped: they contribute exactly 0 to fit
-    and 0 impact, so they are irrelevant to the ranking — showing them would only
-    clutter the page with axes the committee chose not to weigh.
+    Returns None when there is no run or the candidate has no scores for its
+    dimension set. These are the candidate's ranking ``contributions`` (the
+    ranked-list row is the top slice of this list), ordered by ``abs(impact)``
+    (``impact = weight · (score − pool_mean)``) so the dimensions that most moved
+    this candidate come first. Weight-0 (Ignored) dimensions are dropped — they
+    contribute nothing to the ranking.
     """
     run = get_current_run(db)
     report = current_pattern_report(run) if run is not None else None

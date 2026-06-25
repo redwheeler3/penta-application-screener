@@ -1,17 +1,12 @@
-"""Pattern discovery: the pool-level pass that finds how THIS applicant pool
-varies (SPEC "Pattern Discovery And Dimension Scoring", milestone 7).
+"""Pattern discovery: the pool-level pass that finds how THIS applicant pool varies
+(SPEC "Pattern Discovery And Dimension Scoring").
 
-Unlike the per-application passes (quality flags, essay analysis), this is a
-single synthesis call over the *whole* eligible pool. It produces run-scoped
-output — the differentiating dimensions and a default weighting — not a
-per-candidate result, so it does not go through the ``screen_applications``
-engine or the per-application cache. It reads each candidate's essay-analysis
-report (preferred) plus a trimmed view of their raw essays, and uses the
-synthesis model because this is exactly the cross-document judgment that tier is
-reserved for.
+A single synthesis call over the whole eligible pool, producing run-scoped output
+(the differentiating dimensions), so it bypasses the ``screen_applications`` engine
+and the per-application cache. It reads each candidate's essay-analysis report
+(preferred) plus a trimmed view of their raw essays, on the synthesis model.
 
-The model never ranks anyone here. It describes the axes; per-candidate scoring
-and (later) deterministic ranking build on top.
+The model describes the axes, never ranks anyone; scoring and ranking build on top.
 """
 
 from __future__ import annotations
@@ -30,11 +25,9 @@ from app.db.models import Application, ApplicationAIResult, ApplicationStatus
 from app.schemas.settings import AppSettings
 from app.services.application_import import extract_essays
 
-# Rough per-candidate token weight of the discovery prompt (each candidate's
-# facts + essay digest) plus the single structured report. Discovery is one
-# pool-level call, so its cost scales with pool size; these feed the pre-run
-# estimate only (the real call is priced from actual usage). Tuned to the SPEC's
-# observed ~$0.07-0.11 range for a ~32-candidate pool on the synthesis model.
+# Rough per-candidate token weight for the pre-run estimate only (the real call is
+# priced from actual usage). Tuned to the SPEC's observed ~$0.07-0.11 for a
+# ~32-candidate pool on the synthesis model.
 _DISCOVERY_INPUT_TOKENS_PER_CANDIDATE = 600
 _DISCOVERY_OUTPUT_TOKENS = 2000
 
@@ -62,10 +55,8 @@ def eligible_applications(db: Session) -> list[Application]:
 
 def _essay_reports(db: Session, application_ids: list[int]) -> dict[int, dict]:
     """Most recent essay-analysis output per application, as raw JSON dicts.
-
-    Pattern discovery prefers the normalized essay-analysis digest over raw
-    essays — it is shorter and already cross-cut into stable fields. Applications
-    without an essay-analysis result fall back to their raw essays in the prompt.
+    Discovery prefers this digest over raw essays (shorter, already cross-cut);
+    applications without one fall back to raw essays in the prompt.
     """
     if not application_ids:
         return {}
@@ -82,10 +73,10 @@ def _essay_reports(db: Session, application_ids: list[int]) -> dict[int, dict]:
 
 
 def _candidate_digest(application: Application, essay_report: dict | None) -> dict:
-    """One candidate's contribution to the pool prompt: the structured facts plus
-    the essay digest (falling back to raw essays). Kept compact so the whole pool
-    fits one call. Facts and essays together let the model discover both
-    quantitative axes (income mix, household fit, tenure) and qualitative ones.
+    """One candidate's contribution to the pool prompt: structured facts plus the
+    essay digest (falling back to raw essays), kept compact so the whole pool fits
+    one call. Facts and essays together surface both quantitative and qualitative
+    axes.
     """
     digest: dict[str, object] = {
         "applicant_id": application.id,
@@ -132,11 +123,9 @@ Do not score or name individual applicants. Describe the axes, not the people.""
 
 
 def estimate_discovery(applications: list[Application], settings: AppSettings) -> float:
-    """Projected cost of the single discovery call, scaled by pool size.
-
-    Discovery is uncached and always re-runs, so there is no per-candidate cache
-    to net out (unlike the per-application passes) — this is a straight estimate
-    used only to fold discovery into the combined Rank cost projection.
+    """Projected cost of the single discovery call, scaled by pool size. Discovery
+    is uncached, so there's nothing to net out — a straight estimate folded into
+    the combined Rank projection.
     """
     usage = Usage(
         input_tokens=_DISCOVERY_INPUT_TOKENS_PER_CANDIDATE * len(applications),
@@ -152,10 +141,8 @@ def discover_patterns(
     applications: list[Application],
     settings: AppSettings,
 ) -> tuple[PoolPatternReport, str | None, float]:
-    """Run the single pool-level discovery call on the synthesis model.
-
-    Returns the report, the model's reasoning narrative (kept for the debug
-    view), and the priced cost of the call.
+    """Run the single pool-level discovery call on the synthesis model. Returns the
+    report, the reasoning narrative (kept for the debug view), and the priced cost.
     """
     model_id = settings.ai.synthesis_model
     result = provider.structured_output(

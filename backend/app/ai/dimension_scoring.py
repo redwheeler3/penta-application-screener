@@ -1,25 +1,19 @@
 """Dimension scoring: the per-candidate pass that rates each eligible applicant
 against the run's discovered dimensions (SPEC "Pattern Discovery And Dimension
-Scoring", milestone 7; per-dimension reuse is the M9 carry-forward Phase 4).
+Scoring").
 
-Scores are cached at **per-(candidate, dimension)** granularity: a candidate's
-score for a dimension is stored under ``kind = "dimension_scoring:<dimension_key>"``.
-Because a re-discovered dimension that the match pass judged identical has its
-key rewritten to the prior key (``screening_run.adopt_matched_keys``), it hits
-the same cache row and its score is **reused across re-ranks** instead of being
-recomputed — only genuinely new or unmatched dimensions are sent to the model.
-This is the cost win: a re-rank re-scores the handful of new axes, not the whole
-pool against a fresh set.
+Scores are cached per (candidate, dimension), under
+``kind = "dimension_scoring:<dimension_key>"``. A re-discovered dimension the match
+pass judged identical has its key rewritten to the prior key
+(``adopt_matched_keys``), so it hits the same cache row and its score is reused
+across re-ranks — only new or unmatched dimensions are sent to the model.
 
-To stay token-efficient, a candidate's *uncached* dimensions are scored in **one
-batched call** (never one call per dimension — the candidate's facts + essays are
-never repeated), and the call's tokens are split evenly across the dimensions it
-scored when the per-dimension rows are stored. The cached and freshly-scored
-dimensions are then merged to assemble the candidate's full score set.
+A candidate's uncached dimensions are scored in one batched call (facts + essays
+never repeated), and the call's tokens are split evenly across them when the
+per-dimension rows are stored. Cached and fresh scores are then merged.
 
-Informational only — like essay analysis it never touches eligibility status, so
-there is no ``on_result`` hook. Starts on the first-pass model (Haiku),
-measure-first per the SPEC.
+Informational only — never touches status, so no ``on_result`` hook. Runs on the
+first-pass model.
 """
 
 from __future__ import annotations
@@ -67,15 +61,11 @@ Stay neutral and never use protected characteristics. You are scoring this one a
 
 def kind_for_dimension(dimension_key: str) -> str:
     """The cache ``kind`` for one dimension's score, keyed by the dimension key.
-    A candidate's score for a key is stored under this kind, so a dimension that
-    recurs under the same key reuses the cached score instead of re-scoring.
 
-    Cross-run reuse rides on the key: when the match pass judges a re-discovered
-    dimension to be the same concept, ``adopt_matched_keys`` rewrites it to the
-    prior key, so it hits the same cache. NB: cache identity is the key, NOT the
-    dimension's definition text — the match pass vouches the concept is the same,
-    so reuse is sound. (A future "edit a dimension's definition" feature would
-    need to change the key to force a re-score.)
+    Cross-run reuse rides on the key: ``adopt_matched_keys`` rewrites a matched
+    re-discovered dimension to the prior key, so it hits the same cache. Cache
+    identity is the key, NOT the definition text (the match pass vouches the concept
+    is the same) — editing a definition would need a new key to force a re-score.
     """
     return f"{KIND_PREFIX}:{dimension_key}"
 
@@ -97,9 +87,7 @@ def _essay_reports(db: Session, application_ids: list[int]) -> dict[int, dict]:
 
 
 def _dimensions_block(dimensions: list[PoolDimension]) -> str:
-    """The dimensions the model must score, as compact JSON for the prompt. Only
-    the candidate's *uncached* dimensions are passed — the model never re-emits a
-    dimension we already have a cached score for."""
+    """The candidate's uncached dimensions to score, as compact JSON for the prompt."""
     dims = [
         {"key": d.key, "name": d.name, "definition": d.definition}
         for d in dimensions
@@ -108,13 +96,12 @@ def _dimensions_block(dimensions: list[PoolDimension]) -> str:
 
 
 def _applicant_block(application: Application, essay_report: dict | None) -> str:
-    """The applicant evidence: structured facts, the essay-analysis digest, and
-    the raw essays.
+    """The applicant evidence: structured facts, the essay-analysis digest, and the
+    raw essays.
 
-    The facts must match what discovery saw (same shared view), or a fact-based
-    dimension would be unscoreable here. Essays are included in full (unlike
-    discovery, which trims for pool size): a single-candidate call is cheap, and
-    the raw essays let the model ground evidence quotes precisely.
+    Facts must match what discovery saw, or a fact-based dimension is unscoreable.
+    Essays are included in full (unlike discovery, which trims for pool size): a
+    single-candidate call is cheap and lets the model ground quotes precisely.
     """
     payload: dict[str, object] = {
         "applicant_id": application.id,
@@ -166,16 +153,14 @@ def applications_to_score(db: Session) -> list[Application]:
 
 
 # Fallback PER-DIMENSION token weight, used only on the very first scoring run
-# ever (before any real usage exists). After that the estimate self-tunes from
-# actual usage across all dimension sets via the ``dimension_scoring:`` prefix.
-# Per-dimension now: one stored row is one dimension's split share of a batched
-# call, so these are ~(whole-call ÷ dimensions-per-call). Output dominates: each
-# dimension emits a score + rationale + evidence.
+# (before any real usage exists); after that the estimate self-tunes from actual
+# usage via the ``dimension_scoring:`` prefix. One stored row is one dimension's
+# split share of a batched call, so these are ~(whole-call ÷ dimensions-per-call).
 SCORING_FALLBACK_INPUT_TOKENS = 350
 SCORING_FALLBACK_OUTPUT_TOKENS = 130
 
-# Dimensions assumed per candidate when none exist yet (the first Rank, before
-# discovery), so the pre-run ceiling estimate has a count to multiply by.
+# Dimensions assumed per candidate before any discovery, so the first-Rank ceiling
+# estimate has a count to multiply by.
 ASSUMED_DIMENSIONS_FIRST_RUN = 15
 
 
@@ -191,19 +176,13 @@ def _avg_tokens_per_dimension(db: Session, model_id: str) -> tuple[int, int]:
 def estimate_dimension_scoring(
     db: Session, settings: AppSettings
 ) -> dict[str, object]:
-    """Pre-run scoring estimate as a full-pool **ceiling**: price as if every
-    eligible candidate scores every dimension.
+    """Pre-run scoring estimate as a full-pool ceiling: price as if every eligible
+    candidate scores every dimension.
 
-    The estimate is shown before discovery and the match pass run, so it cannot
-    know how many dimensions will carry forward (their scores reused) versus be
-    new — and discovery is nondeterministic, so guessing would risk an estimate
-    that under-counts and erodes the cap guarantee. We therefore price the
-    worst case: the actual run comes in *under* this as carry-forward reuse kicks
-    in, and the real saving shows up in the run summary. Dimension count comes
-    from the current run (the best available proxy) or a constant on a first run.
-
-    Per-dimension token usage self-tunes across runs (token cost depends on the
-    prompt shape, not which axes were discovered), like the other passes.
+    Runs before discovery, so it can't know how many dimensions carry forward — and
+    under-counting would erode the cap guarantee, so we price the worst case. The
+    actual run comes in under this as carry-forward reuse kicks in. Dimension count
+    comes from the current run, or a constant on a first run.
     """
     model_id = settings.ai.first_pass_model
     candidates = applications_to_score(db)
@@ -222,12 +201,7 @@ def estimate_dimension_scoring(
     }
 
 
-# estimate_dimension_scoring is the single scoring estimate now: it always prices
-# the whole-pool ceiling, so it serves both the pre-discovery Rank estimate and
-# any later "what would scoring cost" question. (The old split into a
-# with-dimensions vs. without-dimensions variant is gone: a ceiling needs only a
-# dimension *count*, which the current run supplies and a constant covers on a
-# first run.)
+# Alias kept for callers; the ceiling estimate serves every scoring-cost question.
 estimate_scoring_without_dimensions = estimate_dimension_scoring
 
 
@@ -237,12 +211,8 @@ def _to_score_dimensions(
     report: PoolPatternReport,
     model_id: str,
 ) -> tuple[list[PoolDimension], dict[str, DimensionScore]]:
-    """Split a candidate's dimensions into (to-score, cached).
-
-    For each dimension, look up its per-key cache row for this candidate: a hit
-    yields a reusable ``DimensionScore`` (the dimension recurs under the same key,
-    via ``adopt_matched_keys``); a miss means the model must score it. Returns the
-    dimensions still to score and the already-cached scores keyed by dimension
+    """Split a candidate's dimensions into (to-score, cached) by per-key cache hit.
+    Returns the dimensions still to score and the cached scores keyed by dimension
     key, ready to merge.
     """
     to_score: list[PoolDimension] = []
@@ -264,8 +234,8 @@ def _to_score_dimensions(
 
 def _split_usage(usage: Usage, parts: int) -> Usage:
     """Divide a batched call's token usage evenly across the dimensions it scored,
-    so each per-dimension cache row carries its fair share. Aggregates back to the
-    call's real total, keeping cost accounting and the self-tuning estimate honest.
+    so each per-dimension cache row carries its fair share (and the rows aggregate
+    back to the call's real total).
     """
     parts = max(parts, 1)
     return Usage(
@@ -279,9 +249,8 @@ def _assemble(
     cached: dict[str, DimensionScore],
     fresh: dict[str, DimensionScore],
 ) -> DimensionScoringReport:
-    """Merge cached + freshly-scored dimensions into the candidate's full report,
-    one entry per discovered dimension (fresh wins on overlap; a dimension the
-    model omitted gets a low/empty placeholder so the shape stays complete)."""
+    """Merge cached + fresh scores into the candidate's full report, one entry per
+    dimension (fresh wins on overlap; an omitted dimension gets a low placeholder)."""
     scores: list[DimensionScore] = []
     for dim in report.dimensions:
         score = fresh.get(dim.key) or cached.get(dim.key)
@@ -303,13 +272,11 @@ def score_dimensions(
     settings: AppSettings,
     max_workers: int,
 ) -> Iterator[ScreeningResult]:
-    """Score every candidate, reusing cached per-dimension scores and batching
-    each candidate's uncached dimensions into one model call.
+    """Score every candidate, reusing cached per-dimension scores and batching each
+    candidate's uncached dimensions into one model call.
 
-    Mirrors ``screen_applications``' session discipline: all ORM work (cache
-    lookups, prompt building, persistence) happens on this thread; only the model
-    call runs in a worker, via ``run_in_pool``. Informational — never touches
-    status, so there is no ``on_result`` hook.
+    Mirrors ``screen_applications``' session discipline: all ORM work on this
+    thread, only the model call in a worker via ``run_in_pool``.
     """
     model_id = settings.ai.first_pass_model
     essay_reports = _essay_reports(db, [app.id for app in applications])

@@ -16,9 +16,8 @@ from app.db.session import get_db
 from app.services.application_import import settings_fingerprint
 from app.services.settings import get_app_settings
 
-# Scope + cache-key helpers reused from the passes themselves, so "coverage"
-# counts exactly what a re-run would (re)process — never a parallel definition
-# that could drift from the real scope.
+# Scope + cache-key helpers reused from the passes themselves, so "coverage" counts
+# exactly what a re-run would process (never a parallel definition that could drift).
 from app.ai.analysis import cache_key
 from app.ai.dimension_scoring import applications_to_score, kind_for_dimension
 from app.ai.essay_analysis import applications_to_analyze as essay_scope
@@ -40,8 +39,7 @@ def read_dashboard(
     settings = get_app_settings(db)
     total = db.scalar(select(func.count()).select_from(Application)) or 0
 
-    # Counts keyed by the real columns. Named views (e.g. "needs review" =
-    # source 'ai') are composed and labeled by the client, not invented here.
+    # Counts keyed by the real columns; named views are composed client-side.
     by_status = _count_by(db, Application.status)
     by_source = _count_by(db, Application.status_source)
 
@@ -52,48 +50,37 @@ def read_dashboard(
             "status": {s.value: by_status.get(s, 0) for s in ApplicationStatus},
             "source": {s.value: by_source.get(s, 0) for s in StatusSource},
         },
-        # Whether each screening step has run, derived from persisted data so the
-        # ordered workflow gating survives a page reload. Sync is "done" once any
-        # application exists; the AI steps once any result of their kind exists.
+        # Whether each step has run, from persisted data so workflow gating survives
+        # a reload. Sync is "done" once any application exists; the AI steps once any
+        # result of their kind exists.
         "workflow": {
             "synced": total > 0,
-            # Whether the latest import used the settings as they are now. False
-            # when the import-relevant settings changed since the last sync, so
-            # the Import step flags amber: a re-import would reclassify
-            # eligibility. We can't detect a changed spreadsheet, so a current
-            # fingerprint is "probably fresh," not a guarantee — but a stale one
-            # is near-certain grounds to re-import. Null fingerprint (pre-column
-            # rows) reads as current, leaving Import green rather than nagging.
+            # Whether the latest import used the settings as they are now. Changed
+            # import-relevant settings flag Import amber (a re-import would
+            # reclassify eligibility). We can't detect a changed spreadsheet, so this
+            # is "probably fresh," not a guarantee. Null fingerprint reads as current.
             "importCurrent": _import_is_current(db, settings),
             "qualityChecksRun": _kind_exists(db, "quality_flags"),
             "essaysAnalyzed": _kind_exists(db, "essay_analysis"),
             # Pattern discovery is a screening run, not a per-application result.
             "patternsDiscovered": _run_exists(db),
-            # Scoring kinds are per-run ("dimension_scoring:<hash>"), so match by
-            # prefix rather than an exact kind.
+            # Scoring kinds are per-dimension, so match by prefix.
             "candidatesScored": _kind_prefix_exists(db, "dimension_scoring:"),
-            # Whether the current run was built from the eligible pool as it is
-            # now. This is the SAME truth the Rank no-op gate uses, so the Rank
-            # step's "needs re-run" badge and its button agree: a pool change
-            # (candidate added/edited/eligibility-flipped) makes ranking not
-            # current even when every still-eligible candidate has a cached score.
+            # Same truth the Rank no-op gate uses, so the "needs re-run" badge and
+            # the Rank button agree even when every candidate has a cached score.
             "rankingCurrent": ranking_is_current(db, get_current_run(db)),
         },
-        # Per-AI-step coverage of the CURRENT scope: {cached, inScope}. A step
-        # whose results predate a re-sync goes stale (cached < inScope) even
-        # though "it ran" — this is what lets the UI warn instead of showing a
-        # misleading done-check. Counts match what a re-run would process,
-        # because they reuse the passes' own scope + cache-key logic.
+        # Per-AI-step coverage of the current scope: {cached, inScope}. A step whose
+        # results predate a re-sync goes stale (cached < inScope) even though it ran,
+        # so the UI warns instead of showing a misleading done-check.
         "coverage": _coverage(db, settings),
     }
 
 
 def _import_is_current(db: Session, settings) -> bool:
     """True when the latest import's settings fingerprint matches the live one.
-
-    True if there is no import yet (nothing to be stale), or the latest sync
-    predates fingerprinting (null — we can't tell, so don't nag). False only when
-    we have a stored fingerprint that differs from the current settings.
+    Also true if there's no import yet or the sync predates fingerprinting (can't
+    tell, so don't nag). False only when a stored fingerprint differs.
     """
     latest = db.scalar(select(SyncRun).order_by(SyncRun.id.desc()).limit(1))
     if latest is None or latest.settings_fingerprint is None:
@@ -123,9 +110,8 @@ def _coverage(db: Session, settings) -> dict[str, dict[str, int]]:
         "essaysAnalyzed": covered(essay_scope(db), "essay_analysis"),
     }
     # Scoring coverage is only meaningful against the current run. A candidate
-    # counts as scored once it has a cached row for EVERY dimension key — scores
-    # now live per (candidate, dimension), so partial coverage (some dimensions
-    # carried forward, some still to score) reads as not-yet-complete.
+    # counts as scored once it has a cached row for EVERY dimension key, so partial
+    # coverage reads as not-yet-complete.
     run = get_current_run(db)
     report = current_pattern_report(run) if run is not None else None
     if report is not None:

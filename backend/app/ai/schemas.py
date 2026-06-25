@@ -1,10 +1,6 @@
-"""Structured output schemas — the shared contract between prompts, storage,
-the API, and the UI for AI-assisted screening.
-
-Milestone 5 (AI quality flags) uses ``QualityFlagReport``; milestone 6 added
-``EssayAnalysisReport``; milestone 7 added ``PoolPatternReport`` and
-``DimensionScoringReport``. Each milestone's schemas live here so prompts,
-caching, and rendering stay aligned to one definition.
+"""Structured output schemas — the shared contract between prompts, storage, the
+API, and the UI for AI-assisted screening. One definition per shape keeps prompts,
+caching, and rendering aligned.
 """
 
 from __future__ import annotations
@@ -54,19 +50,14 @@ class QualityFlagReport(BaseModel):
 
 
 class EssayAnalysisReport(BaseModel):
-    """Neutral, factual extraction across a candidate's four essays.
+    """Neutral, factual extraction across a candidate's four essays (see SPEC "Essay
+    Analysis").
 
-    One field per thing the form's essay questions ask for (see SPEC "Essay
-    Analysis"). This describes WHAT the applicant said, never how good it is —
-    evaluation against committee criteria is the milestone 7 ranker's job, and
-    those criteria are discovered there, so this pass must not pre-commit
-    judgment. The raw essays are preserved alongside this, so this is an additive
-    digest, not a replacement: anything off-question stays available to the
-    ranker from the source.
-
-    ``str | None`` fields are prose-or-absent; ``list`` fields are empty when the
-    applicant said nothing of that kind. Both forms of "did not say" are real
-    signal the ranker may read; this pass does not judge the absence.
+    Describes WHAT the applicant said, never how good it is — evaluation is the
+    ranker's job. An additive digest: the raw essays are preserved, so off-question
+    content stays available. ``str | None`` fields are prose-or-absent; ``list``
+    fields are empty when nothing was said — both forms of "did not say" are signal
+    the ranker may read.
     """
 
     summary: str = Field(
@@ -114,13 +105,11 @@ class EssayAnalysisReport(BaseModel):
     )
 
 
-# --- Pattern discovery and dimension scoring (milestone 7) ------------------
+# --- Pattern discovery and dimension scoring --------------------------------
 #
-# The LLM extracts scored features; ranking (milestone 8) is deterministic math
-# over them. The Pattern Finder discovers how THIS pool varies; the scoring pass
-# rates each candidate on those discovered dimensions. Both schemas have a fixed
-# SHAPE; only which dimensions appear is open — the same discipline as
-# EssayAnalysisReport (see SPEC "Pattern Discovery And Dimension Scoring").
+# The LLM extracts scored features; ranking is deterministic math over them.
+# Discovery finds how THIS pool varies; scoring rates each candidate on those
+# dimensions. Both schemas have a fixed SHAPE; only which dimensions appear is open.
 
 
 class PoolDimension(BaseModel):
@@ -148,11 +137,9 @@ class PoolDimension(BaseModel):
 class PoolPatternReport(BaseModel):
     """Pool-level discovery: the differentiating dimensions for THIS pool.
 
-    Run-scoped, not per-candidate — it describes how the pool varies. It does not
-    rank, score, or weight anyone: importance is the committee's call, so weights
-    are seeded equal at run creation and only the human moves them (milestone 9).
-    The per-candidate scoring pass rates each applicant against these dimensions,
-    and ranking is deterministic math layered on top (milestone 8).
+    Run-scoped, not per-candidate. It does not rank, score, or weight anyone —
+    importance is the committee's call. Scoring rates each applicant against these
+    dimensions; ranking is deterministic math on top.
     """
 
     summary: str = Field(
@@ -209,12 +196,9 @@ class DimensionScore(BaseModel):
 
 
 class DimensionScoringReport(BaseModel):
-    """One candidate scored against the run's discovered dimensions.
-
-    Fixed shape, open contents: exactly one DimensionScore per discovered
-    dimension. Informational like essay analysis — never touches eligibility
-    status. The scores are the hidden support for ranking; the committee-facing
-    UI emphasizes labels, rationale, and evidence over the raw numbers.
+    """One candidate scored against the run's discovered dimensions — exactly one
+    DimensionScore per dimension. Informational; never touches status. The scores
+    are the support for ranking, behind committee-facing labels and rationale.
     """
 
     scores: list[DimensionScore] = Field(
@@ -226,13 +210,9 @@ class DimensionScoringReport(BaseModel):
 class DimensionMatch(BaseModel):
     """One identity match between a freshly-discovered dimension and a prior one.
 
-    Used when re-ranking re-discovers dimensions: the committee already placed the
-    PRIOR run's dimensions into importance tiers, and this maps each NEW dimension
-    onto the prior dimension it is the *same concept* as, so that tier placement
-    (and the cached scores) can carry forward. It is a pure identity judgment —
-    not a re-discovery and not a weighting — so it never decides what matters, only
-    what is the same. The bar is deliberately high: only assert a match when the
-    two dimensions mean the same thing; when unsure, do not match.
+    On a re-rank, maps each NEW dimension onto the prior dimension it is the *same
+    concept* as, so tier placement and cached scores carry forward. A pure identity
+    judgment, never a weighting. High bar: match only when they mean the same thing.
     """
 
     new_key: str = Field(
@@ -247,14 +227,10 @@ class DimensionMatch(BaseModel):
 
 
 class DimensionMatchReport(BaseModel):
-    """The set of high-confidence identity matches from new dimensions to prior ones.
-
-    One entry per confidently-matched NEW dimension, at most (strictly one-to-one:
-    a given new_key or old_key appears at most once). New dimensions with no
-    confident match are simply absent — they are the genuinely-new axes that will
-    start in Ignore for the committee to triage. Absence is the safe default: a
-    missed match merely costs a re-drag, while a wrong match would silently move a
-    committee's tier intent onto the wrong concept.
+    """The high-confidence identity matches from new dimensions to prior ones,
+    strictly one-to-one. Unmatched new dimensions are absent — they start in Ignore
+    for the committee to triage. Absence is safe (a missed match costs a re-drag; a
+    wrong match would move tier intent onto the wrong concept).
     """
 
     matches: list[DimensionMatch] = Field(

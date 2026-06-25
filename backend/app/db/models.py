@@ -104,20 +104,18 @@ class Application(TimestampMixin, Base):
     )
     # Immutable record of why the deterministic rules excluded the applicant.
     hard_filter_reasons: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
-    # Hash of the machine findings (reasons + AI flags) captured when a human
-    # last set the status. Null unless status_source == human. Used to detect
-    # staleness: if the current findings hash differs, there are new findings
-    # since the human's review.
+    # Hash of the machine findings (reasons + AI flags) when a human last set the
+    # status. Null unless status_source == human. A differing current hash means
+    # there are new findings since the human's review (staleness).
     reviewed_fingerprint: Mapped[str | None] = mapped_column(String(64))
 
 
 class ApplicationAIResult(TimestampMixin, Base):
     """Cached AI analysis for one application and analysis kind.
 
-    ``cache_key`` is a hash of the application content + model + prompt version,
-    so re-running an unchanged application with the same model/prompt reuses the
-    stored result instead of paying for another call. ``output`` holds the
-    validated structured-output JSON; usage/cost are kept for auditability.
+    ``cache_key`` hashes application content + model + prompt version, so an
+    unchanged application reuses the stored result. ``output`` holds the validated
+    structured-output JSON; usage/cost are kept for auditability.
     """
 
     __tablename__ = "application_ai_results"
@@ -129,14 +127,13 @@ class ApplicationAIResult(TimestampMixin, Base):
     kind: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     cache_key: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     model_id: Mapped[str] = mapped_column(String(200), nullable=False)
-    # The prompt version this result was produced under. Hashed into cache_key for
-    # cache hits, but also stored plainly so cost estimates can prefer usage from
-    # the current prompt version and fall back to earlier ones. Nullable: rows
-    # written before this column have an unknown version.
+    # The prompt version this result was produced under. Hashed into cache_key, but
+    # also stored plainly so cost estimates can prefer current-version usage.
+    # Nullable: rows written before this column have an unknown version.
     prompt_version: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     output: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    # The model's free-text reasoning alongside the structured output, kept for the
-    # admin "Raw AI output" view. Nullable: not every provider surfaces it.
+    # The model's free-text reasoning, for the admin "Raw AI output" view. Nullable:
+    # not every provider surfaces it.
     narrative: Mapped[str | None] = mapped_column(Text, nullable=True)
     input_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -158,9 +155,8 @@ class SyncRun(TimestampMixin, Base):
     eligible_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     filtered_out_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     # Hash of the import-relevant settings (sheet id + hard-filter thresholds +
-    # disabled rules) at import time. Lets the dashboard flag Import as out of
-    # date when settings change after a sync — a re-import would reclassify
-    # eligibility. Null on rows imported before this column existed.
+    # disabled rules) at import time, so the dashboard can flag Import out of date
+    # when settings change. Null on rows imported before this column existed.
     settings_fingerprint: Mapped[str | None] = mapped_column(String(64))
     notes: Mapped[str | None] = mapped_column(Text)
 

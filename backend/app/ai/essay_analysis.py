@@ -1,13 +1,9 @@
-"""Essay analysis: per-candidate extraction of what applicants said in their
-four essays, normalized into a fixed schema (SPEC "Essay Analysis (Milestone 6)").
+"""Essay analysis: per-candidate extraction of what applicants said in their four
+essays, normalized into a fixed schema (SPEC "Essay Analysis").
 
-This pass is purely informational. Unlike the quality-flag pass, it never touches
-an application's eligibility status — it extracts facts for the committee to read
-and for the milestone 7 ranker to consume. Evaluation against discovered criteria
-is the ranker's job, so this pass extracts what was said and does not judge it.
-
-The work runs through the shared cached, cost-capped engine in ``analysis.py``
-with ``kind="essay_analysis"``.
+Purely informational — it never touches eligibility status. It extracts what was
+said for the committee and the ranker; evaluation is the ranker's job. Runs through
+the shared cached engine with ``kind="essay_analysis"``.
 """
 
 from __future__ import annotations
@@ -42,10 +38,8 @@ Do not penalize brief, awkward, translated, or non-native English answers — ca
 
 
 def build_prompt(application: Application) -> str:
-    """Assemble the essay-analysis input from the candidate's four essays.
-
-    Only the essays are sent — this pass is about essay content, not the
-    structured form fields (those stay available to the ranker from the source).
+    """Assemble the essay-analysis input from the candidate's four essays. Only the
+    essays are sent; structured form fields stay available to the ranker elsewhere.
     """
     essays = extract_essays(application.raw_row or {})
 
@@ -75,10 +69,8 @@ Return the structured analysis directly."""
 
 def applications_to_analyze(db: Session) -> list[Application]:
     """The applications the essay-analysis pass should analyze: eligible only.
-
-    There is no value in summarizing essays for rules- or AI-disqualified
-    applicants — the committee ranks the eligible pool. (Quality flags use a
-    broader scope because they can *change* status; essay analysis cannot.)
+    No value in summarizing essays for disqualified applicants — the committee ranks
+    the eligible pool. (Quality flags use a broader scope; they can change status.)
     """
     return list(
         db.scalars(
@@ -95,9 +87,8 @@ def estimate_essay_analysis(db: Session, settings: AppSettings) -> dict[str, obj
         applications=applications_to_analyze(db),
         kind=KIND,
         model_id=settings.ai.first_pass_model,
-        # Fallback only — used when there is no real usage to learn from yet.
-        # Essays make this pass heavier on input than quality flags; the estimate
-        # self-tunes from real usage once a run has happened.
+        # Fallback only (no real usage yet). Essays make this heavier on input than
+        # quality flags; the estimate self-tunes once a run has happened.
         fallback_input_tokens=3200,
         fallback_output_tokens=600,
     )

@@ -1,25 +1,18 @@
-"""Screening-run persistence (milestone 7).
+"""Screening-run persistence.
 
-A ``ScreeningRun`` holds the run-scoped products of pattern discovery: the
-discovered ``PoolPatternReport``. The per-candidate dimension scores are *not*
-stored here — they live in ``ApplicationAIResult`` rows under
-``kind = "dimension_scoring:<dimension_key>"``, so a dimension's **key** is the
-join back to a candidate's score. Across a re-rank, a matched dimension's key is
-rewritten to its prior key (``adopt_matched_keys``), so both its tier placement
-and its cached score carry forward by key alone — no separate identity to
-maintain (see SPEC "Pattern Discovery And Dimension Scoring"). The table existed
-unused before milestone 7; here is where it first gets wired.
+A ``ScreeningRun`` holds the discovered ``PoolPatternReport``. Per-candidate
+scores are NOT stored here — they live in ``ApplicationAIResult`` rows under
+``kind = "dimension_scoring:<dimension_key>"``, so a dimension's **key** joins
+back to a candidate's score. A matched dimension's key is rewritten to its prior
+key (``adopt_matched_keys``) across a re-rank, so its tier placement and cached
+score both carry forward by key alone (see SPEC "Pattern Discovery And Dimension
+Scoring"). "The current run" is the most recent one.
 
-Milestone 7 keeps the lifecycle minimal: rediscovering patterns creates a new
-run, and "the current run" is simply the most recent one. Weights, answers, and
-rankings accrete onto the same run in milestones 8-9.
-
-Weights are **derived from the tier layout**, never proposed by the AI: the run
-stores ``criteria.tiers`` (working tiers only — see ``weights_from_tiers``) and
-``criteria.weights`` is recomputed from it. A fresh run opens with empty tiers, so
-every dimension is unplaced and the derived weights fall back to a uniform
-equal-weight baseline until the committee tiers. Discovering the axes is the AI's
-job; deciding what matters is the committee's (milestone 9's tier-list).
+Weights are derived from the tier layout, never proposed by the AI: the run stores
+``criteria.tiers`` (working tiers only) and recomputes ``criteria.weights`` from
+it. A fresh run opens with empty tiers → uniform equal-weight baseline until the
+committee tiers. Discovering the axes is the AI's job; deciding what matters is the
+committee's.
 """
 
 from __future__ import annotations
@@ -34,19 +27,12 @@ from app.db.models import Application, ApplicationStatus, ScreeningRun
 
 
 def pool_fingerprint(db: Session) -> str:
-    """A stable hash of the eligible pool's inputs.
-
-    The Rank chain (essays → criteria → scores) is a pure function of the
-    eligible pool, so if this fingerprint is unchanged since the last completed
-    run, re-running would only re-pay for an identical result — discovery is
-    nondeterministic, so it would even churn the dimensions and force a needless
-    full re-score. We gate on this to block a no-op Rank.
+    """A stable hash of the eligible pool's inputs, used to block a no-op Rank.
 
     Built from the sorted ``raw_row_hash`` of every eligible application, which
-    captures the three things that should trigger a re-rank: a new applicant (new
-    hash present), an edited application (its hash changes), and an eligibility
-    flip (an app enters or leaves the eligible set). Status *source* and AI
-    outputs are deliberately excluded — they don't change what the pool says.
+    captures the three things that should trigger a re-rank: a new applicant, an
+    edited application (its hash changes), and an eligibility flip. Status source
+    and AI outputs are excluded — they don't change what the pool says.
     """
     hashes = db.scalars(
         select(Application.raw_row_hash)
@@ -61,21 +47,16 @@ def adopt_matched_keys(
     report: PoolPatternReport, new_to_old: dict[str, str]
 ) -> PoolPatternReport:
     """Rewrite a freshly-discovered dimension's **key** to its matched prior key,
-    keeping all the new content (name, definition, why_it_differentiates).
+    keeping the new content (name, definition, why_it_differentiates).
 
-    The dimension key is a stable cross-run *identity*, not committee-facing text.
-    When the match pass judges a new dimension to be the same concept as a prior
-    one, we adopt the prior key so everything keyed on it — the tier placements
-    AND the per-dimension score cache — carries forward by key alone, with no
-    separate identity to maintain. We keep the *new* descriptions because
-    discovery just re-read this pool, so its wording is the current, accurate one;
-    only the opaque identifier is borrowed from the past.
+    The key is a stable cross-run identity, not committee-facing text. Adopting the
+    prior key carries everything keyed on it — tier placements AND the score cache —
+    forward by key alone. The new descriptions are kept because discovery just
+    re-read this pool, so its wording is current; only the identifier is borrowed.
 
-    A new dimension with no match keeps its fresh key (→ a cache miss → scored).
-    Guard: never adopt a key already taken by another dimension in this report —
-    that would create a duplicate key. (Reuse is lost for that one dimension, but
-    the report stays structurally valid; this only triggers in the rare case the
-    LLM re-coins an old key string for a different, unmatched concept.)
+    An unmatched dimension keeps its fresh key (→ cache miss → scored). Guard: never
+    adopt a key already taken by another dimension here (would duplicate); rare,
+    only if the LLM re-coins an old key for a different concept.
     """
     taken: set[str] = set()
     dims = []
@@ -100,14 +81,11 @@ def create_run(
 ) -> ScreeningRun:
     """Persist a freshly discovered pattern report as a new screening run.
 
-    ``tier_layout`` carries the committee's prior placements forward across a
-    re-rank (see ``carry_forward_layout``); when omitted, the run opens with the
-    default all-Ignore layout. Either way the run stores its tiers explicitly and
-    derives ``weights`` from them, so the layout is the single source of truth.
-    ``new_dimension_keys`` are the unmatched new dimensions (parked in Ignore) to
-    flag in the UI; empty on a first run. (Matched dimensions have already had
-    their keys rewritten to the prior keys by ``adopt_matched_keys`` before this,
-    so their tiers and cached scores carry forward by key alone.)
+    ``tier_layout`` carries prior placements forward across a re-rank (see
+    ``carry_forward_layout``); omitted → the default all-Ignore layout. Either way
+    the run stores tiers explicitly and derives ``weights`` from them.
+    ``new_dimension_keys`` are the unmatched new dimensions to flag in the UI; empty
+    on a first run.
     """
     layout = tier_layout if tier_layout is not None else default_tier_layout()
     dimension_keys = [d.key for d in report.dimensions]
@@ -116,12 +94,10 @@ def create_run(
         status="patterns_discovered",
         criteria={
             "pattern_report": report.model_dump(mode="json"),
-            # Fingerprint of the eligible pool this run was built from, so the next
-            # Rank can detect an unchanged pool and skip a no-op re-run.
+            # Lets the next Rank detect an unchanged pool and skip a no-op re-run.
             "pool_fingerprint": pool_fingerprint(db),
-            # The tier layout is the source of truth; weights are derived from it
-            # (the ranking engine reads weights, never tiers). A fresh all-Ignore
-            # board derives uniform weights = the equal-weight baseline.
+            # Tiers are the source of truth; weights are derived from them. A fresh
+            # all-Ignore board derives uniform weights (the equal-weight baseline).
             "tiers": layout,
             "weights": weights_from_tiers(dimension_keys, layout),
             "new_dimension_keys": new_dimension_keys or [],
@@ -142,10 +118,8 @@ def get_current_run(db: Session) -> ScreeningRun | None:
 
 
 def ranking_is_current(db: Session, run: ScreeningRun | None) -> bool:
-    """True when ``run`` was built from the current eligible pool — i.e. its
-    stored ``pool_fingerprint`` matches the pool now. A no-op Rank is blocked on
-    this. False if there is no run, or the run predates fingerprinting (so it can
-    always be brought current by re-running once).
+    """True when ``run``'s stored ``pool_fingerprint`` matches the pool now (the
+    no-op Rank gate). False if there is no run, or the run predates fingerprinting.
     """
     if run is None:
         return False
@@ -164,16 +138,13 @@ def current_pattern_report(run: ScreeningRun) -> PoolPatternReport | None:
 
 
 def dimension_weights(run: ScreeningRun) -> dict[str, float]:
-    """The run's per-dimension weights. ``create_run`` and ``set_tiers`` always
-    write a complete map (derived from the tier layout), so this is a plain read.
-    """
+    """The run's per-dimension weights (always a complete map, derived from tiers)."""
     return {k: float(v) for k, v in ((run.criteria or {}).get("weights") or {}).items()}
 
 
-# The opening working tiers (most→least important). Empty, so every dimension is
-# "ignored" by absence until the committee drags it into one — nothing influences
-# the ranking until a human has weighed in ("the human decides what matters"). The
-# Ignore zone is not stored; it is synthesized for display from whatever is unplaced.
+# The opening working tiers (most→least important), empty so every dimension is
+# "ignored" by absence until the committee tiers it. The Ignore zone is never
+# stored; it's synthesized for display from whatever is unplaced.
 DEFAULT_WORKING_TIERS: list[dict] = [
     {"id": "tier-s", "label": "S-Tier", "dimension_keys": []},
     {"id": "tier-a", "label": "A-Tier", "dimension_keys": []},
@@ -187,20 +158,13 @@ IGNORE_TIER_LABEL = "Ignore"
 
 def default_tier_layout() -> list[dict]:
     """The opening *stored* layout: the empty working tiers, no Ignore tier.
-
-    "Ignored" is the absence of a placement, so an opening board (everything
-    unplaced) is just the empty working tiers; ``weights_from_tiers`` then falls
-    back to uniform, giving the equal-weight baseline until the committee tiers.
+    ``weights_from_tiers`` then falls back to the uniform equal-weight baseline.
     """
     return [dict(t, dimension_keys=list(t["dimension_keys"])) for t in DEFAULT_WORKING_TIERS]
 
 
 def stored_tiers(run: ScreeningRun) -> list[dict]:
-    """The run's stored *working* tiers (no Ignore zone), or the default when unset.
-
-    Only working tiers are ever stored (``set_tiers`` strips the Ignore zone the UI
-    sends; ``create_run`` writes working tiers only), so this is a plain read.
-    """
+    """The run's stored *working* tiers (no Ignore zone), or the default when unset."""
     stored = (run.criteria or {}).get("tiers")
     if stored:
         return [dict(t) for t in stored]
@@ -208,9 +172,8 @@ def stored_tiers(run: ScreeningRun) -> list[dict]:
 
 
 def display_tiers(run: ScreeningRun) -> list[dict]:
-    """The working tiers plus a synthesized Ignore zone holding every dimension not
-    placed in a working tier — the shape the tier-list UI renders. The Ignore zone
-    is derived here, never stored, so 'ignored' always means exactly 'unplaced'.
+    """The working tiers plus a synthesized Ignore zone of every unplaced dimension
+    — the shape the tier-list UI renders. The Ignore zone is derived, never stored.
     """
     working = stored_tiers(run)
     report = current_pattern_report(run)
@@ -229,27 +192,21 @@ def carry_forward_layout(
     old_tiers: list[dict],
     prior_keys: set[str],
 ) -> tuple[list[dict], list[str]]:
-    """Build the new run's *working*-tier layout by carrying old placements forward.
+    """Build the new run's working-tier layout by carrying old placements forward.
 
     Runs *after* ``adopt_matched_keys``, so a matched dimension already shares its
-    prior counterpart's key — carry-forward is therefore pure key equality, no
-    match map needed. ``old_tiers`` is the prior run's working tiers (no Ignore
-    zone — that's derived); ``prior_keys`` is every dimension key the prior run
-    had (working *and* Ignored), which is what tells "matched" from "new". Three
-    cases per new dimension:
-      - its key is in a prior working tier → carried into that tier;
-      - its key was a prior dimension that sat in Ignore (in ``prior_keys`` but not
-        in any working tier) → left unplaced (the committee's "ignore" decision
-        carries forward), and NOT flagged new — they already weighed in on it;
-      - its key is not a prior key at all → left unplaced AND flagged new, so the
-        committee triages a dimension they have never seen.
-    "Unplaced" means weight 0 ("ignored"), so it cannot influence the ranking
-    until the committee acts. The distinction is *was it a prior dimension* — not
-    which tier it sat in — so a prior-Ignored survivor is never mislabeled new.
+    prior key — carry-forward is pure key equality. ``prior_keys`` is every key the
+    prior run had (working *and* Ignored), which distinguishes "matched" from "new".
+    Three cases per new dimension:
+      - key in a prior working tier → carried into that tier;
+      - key was a prior dimension that sat in Ignore → left unplaced (carrying the
+        committee's "ignore" forward), NOT flagged new — they already weighed in;
+      - key not a prior key at all → left unplaced AND flagged new to triage.
+    The distinction is *was it a prior dimension*, so a prior-Ignored survivor is
+    never mislabeled new.
 
-    Returns ``(working_tiers, new_dimension_keys)`` where ``new_dimension_keys`` is
-    only the genuinely-new (unmatched) keys, for "new" badging in the UI. Falls
-    back to the empty default working tiers when there is no prior layout (a first run).
+    Returns ``(working_tiers, new_dimension_keys)`` — the latter only the genuinely
+    new keys. Falls back to the empty default tiers on a first run.
     """
     if not old_tiers:
         return default_tier_layout(), []
@@ -270,14 +227,11 @@ def carry_forward_layout(
     new_dimension_keys: list[str] = []
     for dim in new_report.dimensions:
         if dim.key not in prior_keys:
-            # Not a prior dimension at all: genuinely new. Unplaced (ignored by
-            # absence) and flagged so the committee triages it.
+            # Genuinely new: unplaced and flagged for triage.
             new_dimension_keys.append(dim.key)
             continue
-        # A prior dimension (its key was adopted on match). If it sat in a working
-        # tier, carry that placement forward; if it was in Ignore, leave it
-        # unplaced — carrying the committee's "ignore" decision forward — but it is
-        # NOT new: they already weighed in on it, so it gets no badge.
+        # A prior dimension (key adopted on match). Carry its working-tier placement
+        # forward; if it was in Ignore, leave it unplaced — no badge.
         target = key_to_tier.get(dim.key)
         if target is not None and target in by_id:
             by_id[target]["dimension_keys"].append(dim.key)
@@ -288,21 +242,17 @@ def carry_forward_layout(
 def weights_from_tiers(
     dimension_keys: list[str], tier_layout: list[dict]
 ) -> dict[str, float]:
-    """Derive per-dimension weights from a tier layout — the pure heart of M9.
+    """Derive per-dimension weights from a tier layout.
 
-    The layout holds only *working* tiers (most→least important); "ignored" is the
-    absence of a placement, not a stored tier. Working tiers are weighted by
-    position, top to bottom: with ``n`` tiers the top gets ``n``, the next ``n-1`` …
-    down to ``1``; equal within a tier. A dimension in **no** tier has weight ``0``
-    — it does not influence fit. Only keys in ``dimension_keys`` are returned, so a
-    stale tier entry naming a dropped dimension is ignored.
+    Working tiers are weighted by position top→bottom: with ``n`` tiers the top
+    gets ``n``, the next ``n-1`` … down to ``1``; equal within a tier. A dimension
+    in no tier has weight ``0``. Only keys in ``dimension_keys`` are returned, so a
+    stale entry naming a dropped dimension is ignored.
 
-    If *no* dimension ends up with a positive weight — nothing placed (the opening
-    default, where every dimension is "ignored" by absence), or no tiers at all —
-    fit would be zero for everyone and the ranking would collapse to an arbitrary
-    order. The committee can't have meant "rank on nothing," so this falls back to
-    uniform weights: an empty board ranks on the equal-weight baseline until
-    something is tiered.
+    If no dimension carries positive weight (empty board, or no tiers), fit would be
+    zero for everyone and the ranking would collapse to an arbitrary order — so this
+    falls back to uniform weights (the equal-weight baseline) until something is
+    tiered.
     """
     keys = set(dimension_keys)
     tier_count = len(tier_layout)
@@ -314,13 +264,10 @@ def weights_from_tiers(
             if key in keys:
                 placed[key] = weight
 
-    # Unplaced = ignored, weight 0. (A dimension the committee never moved out of
-    # the Ignore zone, or one just added.)
+    # Unplaced = ignored, weight 0.
     weights = {key: placed.get(key, 0.0) for key in dimension_keys}
 
-    # Nothing carries positive weight (empty board, or no tiers): fall back to
-    # uniform so the opening ranking is the equal-weight baseline rather than an
-    # all-zero, arbitrarily-ordered collapse.
+    # Nothing weighted (empty board or no tiers): fall back to uniform.
     if not any(w > 0.0 for w in weights.values()):
         return {key: 1.0 for key in dimension_keys}
 
@@ -335,21 +282,14 @@ def set_tiers(
 ) -> ScreeningRun:
     """Persist a new tier layout and the weights derived from it.
 
-    The layout is the source of truth; ``criteria.weights`` is recomputed from it
-    so the ranking engine (which reads ``weights``) stays untouched. Validates that
-    every placed key is a real dimension of this run.
+    Validates that every placed key is a real dimension of this run. Only working
+    tiers are stored — the UI's Ignore zone is dropped before persisting (an empty
+    layout just means everything is ignored → uniform fallback).
 
-    Only *working* tiers are stored — the UI sends an Ignore zone for display, but
-    "ignored" is the absence of a placement, so the incoming Ignore tier is dropped
-    before persisting. There is therefore no "must have an Ignore tier" invariant:
-    an empty layout simply means everything is ignored (weight 0 → uniform fallback).
-
-    ``new_dimension_keys`` ("unacknowledged new dimensions") is also recomputed: a
-    dimension stays flagged "new" only while it is *still unplaced* and *not in*
-    ``acknowledged_keys``. So a new dimension clears its badge two ways, both folded
-    here — placing it in a working tier (no longer unplaced), or the committee
-    explicitly acknowledging it in place (badge ✕ / "mark all reviewed", which sends
-    the key in ``acknowledged_keys``). Re-discovery is the only thing that re-flags.
+    ``new_dimension_keys`` is recomputed: a dimension stays flagged "new" only while
+    still unplaced AND not in ``acknowledged_keys``. So a badge clears two ways —
+    placing the dimension in a working tier, or explicit acknowledgement (badge ✕ /
+    "mark all reviewed"). Only re-discovery re-flags.
     """
     report = current_pattern_report(run)
     valid_keys = {d.key for d in report.dimensions} if report is not None else set()
@@ -365,9 +305,7 @@ def set_tiers(
     ]
     weights = weights_from_tiers(sorted(valid_keys), working)
 
-    # Recompute the still-"new" set. Start from the run's current unacknowledged
-    # new keys, drop any the committee acknowledged, and drop any now placed in a
-    # working tier (placement is itself an acknowledgement).
+    # Recompute the still-"new" set: drop any acknowledged or now placed in a tier.
     placed = {key for t in working for key in t.get("dimension_keys", [])}
     acknowledged = set(acknowledged_keys or ())
     prior_new = (run.criteria or {}).get("new_dimension_keys", [])
