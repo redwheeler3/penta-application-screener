@@ -198,7 +198,13 @@ class DimensionScore(BaseModel):
         description="Short quote or field reference grounding the score. No full essays. Empty if nothing stated.",
     )
     confidence: ScoreConfidence = Field(
-        description="How well-supported this score is by the available text.",
+        description=(
+            "How well the evidence pins down the applicant's TRUE standing on "
+            "this dimension — not how sure you are about what they wrote. A "
+            "dimension the applicant did not address is LOW confidence even when "
+            "you are certain it went unmentioned: silence is weak evidence, since "
+            "they may have the strength and simply not have stated it."
+        ),
     )
 
 
