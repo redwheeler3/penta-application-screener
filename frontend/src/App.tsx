@@ -382,6 +382,17 @@ function bandClass(band: string): string {
   return band.toLowerCase().replace(/[^a-z]+/g, "-");
 }
 
+// A single dimension SCORE (0..1) as a qualitative band + CSS modifier. This is
+// what the committee reads on each contribution line — the applicant's strength
+// on that axis, NOT how confident the model was (a low score held with high
+// confidence is still a weakness). Buckets mirror the confidence colour ramp
+// (strong→green, moderate→blue, weak→amber) so the colour now tracks merit.
+function scoreBand(score: number): { label: string; cls: string } {
+  if (score >= 0.66) return { label: "Strong", cls: "score-strong" };
+  if (score >= 0.33) return { label: "Moderate", cls: "score-moderate" };
+  return { label: "Weak", cls: "score-weak" };
+}
+
 // Percent complete (0–100) for a quality-flag run, used for both the label text
 // and the progress-bar width so the two never drift apart.
 function qfPercent(progress: { processed: number; total: number }): number {
@@ -2127,14 +2138,17 @@ export function App() {
                                 </span>
                               </div>
                               <div className="ranking-contributions">
-                                {topContributions.map((c) => (
-                                  <p key={c.dimension_key} className="ranking-contribution">
-                                    <span className={`ranking-contribution-label conf-${c.confidence}`}>
-                                      {c.name} ({c.confidence.charAt(0).toUpperCase() + c.confidence.slice(1)}){c.rationale ? ":" : ""}
-                                    </span>
-                                    {c.rationale ? ` ${c.rationale}` : null}
-                                  </p>
-                                ))}
+                                {topContributions.map((c) => {
+                                  const sb = scoreBand(c.score);
+                                  return (
+                                    <p key={c.dimension_key} className="ranking-contribution">
+                                      <span className={`ranking-contribution-label ${sb.cls}`}>
+                                        {c.name} ({sb.label}){c.rationale ? ":" : ""}
+                                      </span>
+                                      {c.rationale ? ` ${c.rationale}` : null}
+                                    </p>
+                                  );
+                                })}
                               </div>
                             </div>
                           </div>
