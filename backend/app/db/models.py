@@ -157,6 +157,11 @@ class SyncRun(TimestampMixin, Base):
     unchanged_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     eligible_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     filtered_out_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Hash of the import-relevant settings (sheet id + hard-filter thresholds +
+    # disabled rules) at import time. Lets the dashboard flag Import as out of
+    # date when settings change after a sync — a re-import would reclassify
+    # eligibility. Null on rows imported before this column existed.
+    settings_fingerprint: Mapped[str | None] = mapped_column(String(64))
     notes: Mapped[str | None] = mapped_column(Text)
 
 

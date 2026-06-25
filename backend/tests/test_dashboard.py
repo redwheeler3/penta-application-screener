@@ -57,6 +57,7 @@ async def test_workflow_flags_track_progress() -> None:
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow == {
             "synced": False,
+            "importCurrent": True,
             "qualityChecksRun": False,
             "essaysAnalyzed": False,
             "patternsDiscovered": False,
@@ -148,6 +149,67 @@ async def test_ranking_current_tracks_pool_not_coverage() -> None:
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow["rankingCurrent"] is False
+
+
+@pytest.mark.anyio
+async def test_import_current_tracks_settings_fingerprint() -> None:
+    """importCurrent is False once the import-relevant settings change.
+
+    A SyncRun stamped with the settings at import time stays "current" until the
+    live settings diverge; then Import flags amber so the operator re-imports to
+    reclassify eligibility. A null fingerprint (pre-column rows) reads as current.
+    """
+    from app.db.models import SyncRun
+    from app.schemas.settings import AppSettings
+    from app.services.application_import import settings_fingerprint
+    from app.services.settings import save_app_settings
+
+    app, db = _logged_in_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        settings = AppSettings(google_sheet_id="sheet-1", min_children=1)
+        save_app_settings(db, settings)
+        db.add(SyncRun(
+            source_sheet_id="sheet-1",
+            settings_fingerprint=settings_fingerprint(settings),
+        ))
+        db.commit()
+        workflow = (await client.get("/dashboard")).json()["workflow"]
+        assert workflow["importCurrent"] is True
+
+        # Change a hard-filter setting -> the latest sync's fingerprint no longer
+        # matches -> Import is out of date.
+        save_app_settings(db, AppSettings(google_sheet_id="sheet-1", min_children=2))
+        workflow = (await client.get("/dashboard")).json()["workflow"]
+        assert workflow["importCurrent"] is False
+
+
+@pytest.mark.anyio
+async def test_import_current_ignores_non_filter_settings() -> None:
+    """Changing settings that don't affect eligibility (pet limits, AI cap) must
+    NOT flag Import amber — only hard-filter inputs do."""
+    from app.db.models import SyncRun
+    from app.schemas.settings import AppSettings
+    from app.services.application_import import settings_fingerprint
+    from app.services.settings import save_app_settings
+
+    app, db = _logged_in_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        settings = AppSettings(google_sheet_id="sheet-1", max_dogs=1)
+        save_app_settings(db, settings)
+        db.add(SyncRun(
+            source_sheet_id="sheet-1",
+            settings_fingerprint=settings_fingerprint(settings),
+        ))
+        db.commit()
+
+        # Bump a pet limit and the AI cap — neither is a hard filter.
+        changed = AppSettings(google_sheet_id="sheet-1", max_dogs=3)
+        changed.ai.spending_cap_usd = 5.0
+        save_app_settings(db, changed)
+        workflow = (await client.get("/dashboard")).json()["workflow"]
+        assert workflow["importCurrent"] is True
 
 
 @pytest.mark.anyio

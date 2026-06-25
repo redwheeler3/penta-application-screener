@@ -79,6 +79,32 @@ def extract_essays(row: dict[str, Any]) -> list[dict[str, str]]:
     return essays
 
 
+def settings_fingerprint(settings: AppSettings) -> str:
+    """Stable hash of the settings that determine import eligibility.
+
+    Covers the sheet id and every hard-filter input (the thresholds + disabled
+    rules) — exactly the settings whose change would reclassify who is eligible
+    on a re-import. Deliberately EXCLUDES pet limits and the AI spending cap:
+    pets are an AI quality-flag concern (the Screen step), not a hard filter, and
+    the cap never affects import. Stamped on each SyncRun so the dashboard can
+    flag Import as out of date when the live settings no longer match.
+    """
+    basis = json.dumps(
+        {
+            "google_sheet_id": settings.google_sheet_id,
+            "income_min": settings.income_min,
+            "income_max": settings.income_max,
+            "min_adult_age": settings.min_adult_age,
+            "max_child_age": settings.max_child_age,
+            "min_children": settings.min_children,
+            "max_children": settings.max_children,
+            "disabled_rules": sorted(settings.disabled_rules),
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()
+
+
 def import_applications_from_rows(
     db: Session,
     *,
@@ -176,6 +202,7 @@ def import_applications_from_rows(
         unchanged_count=unchanged_count,
         eligible_count=counts[ApplicationStatus.ELIGIBLE],
         filtered_out_count=counts[ApplicationStatus.INELIGIBLE],
+        settings_fingerprint=settings_fingerprint(settings),
     )
     db.add(sync_run)
     db.commit()

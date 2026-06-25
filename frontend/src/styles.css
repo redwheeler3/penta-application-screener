@@ -399,22 +399,6 @@ h1 {
   font-size: 0.92rem;
 }
 
-.setup-callout {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 18px;
-  padding: 14px 16px;
-  border: 1px solid #fed7aa;
-  border-radius: 8px;
-  background: #fff7ed;
-  color: #9a3412;
-}
-
-.setup-callout strong {
-  color: #ea580c;
-}
-
 /* Toast */
 /* Fixed bottom-right stack; individual toasts flow within it (newest on top,
    sync error pinned at the bottom by document order). */
@@ -612,11 +596,6 @@ h1 {
 
   .settings-summary {
     grid-template-columns: 1fr;
-  }
-
-  .setup-callout {
-    align-items: flex-start;
-    flex-direction: column;
   }
 
   .toast {
