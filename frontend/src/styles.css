@@ -1975,14 +1975,20 @@ h1 {
 .tier-chip-new-badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.15rem;
+  gap: 0.2rem;
   margin-left: 0.1rem;
-  padding: 0.05rem 0.3rem 0.05rem 0.35rem;
+  padding: 0 0.2rem 0 0.4rem;
+  /* Fixed height + line-height:1 so the badge box is identical regardless of
+     whether the chip's label wraps to two lines; align to the chip's first line. */
+  height: 16px;
+  align-self: flex-start;
+  margin-top: 1px;
   border-radius: 999px;
   background: #f59e0b;
   color: #fff;
   font-size: 0.62rem;
   font-weight: 700;
+  line-height: 1;
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
@@ -1994,36 +2000,42 @@ h1 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.25);
-  color: #fff;
-  font-size: 0.7rem;
-  line-height: 1;
+  /* Solid white circle with an amber ✕ — high contrast against the amber badge,
+     so it stays legible at small size (a thin white ✕ on translucent white got lost). */
+  background: #fff;
+  color: #b45309;
   cursor: pointer;
 }
 
 .tier-chip-new-dismiss:hover {
-  background: rgba(255, 255, 255, 0.45);
+  background: #fffbeb;
+  color: #92400e;
 }
 
 /* Bulk "Mark all reviewed" on the Ignore row — clears every new badge at once. */
 .tier-mark-reviewed {
-  margin-left: 0.5rem;
-  padding: 0.1rem 0.5rem;
-  border: 1px solid #fcd34d;
-  border-radius: 999px;
-  background: #fffbeb;
-  color: #92400e;
-  font-size: 0.72rem;
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .tier-mark-reviewed:hover {
-  background: #fef3c7;
+  background: rgba(17, 24, 39, 0.05);
+  color: var(--ink);
 }
 

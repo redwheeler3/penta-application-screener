@@ -607,7 +607,7 @@ function ChipBody(props: {
                 props.onDismiss!();
               }}
             >
-              ×
+              <X size={10} strokeWidth={3} />
             </button>
           ) : null}
         </span>
@@ -682,22 +682,6 @@ function TierRow(props: {
             onChange={(e) => props.onRename(e.target.value)}
           />
         )}
-        {/* Bulk-acknowledge the new dimensions sitting in Ignore. Only shows on the
-            Ignore row when at least one new dimension is parked there. */}
-        {tier.ignore
-          ? (() => {
-              const newHere = tier.dimension_keys.filter((k) => props.newKeys.has(k));
-              return newHere.length > 0 ? (
-                <button
-                  type="button"
-                  className="tier-mark-reviewed"
-                  onClick={() => props.onAcknowledge(newHere)}
-                >
-                  {newHere.length} new · Mark all reviewed
-                </button>
-              ) : null;
-            })()
-          : null}
         {!tier.ignore ? (
           <div className="tier-controls">
             <button type="button" className="stepper-button" aria-label="Move tier up"
@@ -735,6 +719,21 @@ function TierRow(props: {
               );
             })
           )}
+          {/* Bulk-acknowledge the new dimensions in this (Ignore) row — flows after
+              the chips it acts on. Only shows when at least one new flag is here. */}
+          {(() => {
+            const newHere = tier.dimension_keys.filter((k) => props.newKeys.has(k));
+            return tier.ignore && newHere.length > 0 ? (
+              <button
+                type="button"
+                className="tier-mark-reviewed"
+                onClick={() => props.onAcknowledge(newHere)}
+              >
+                <Check size={13} />
+                Clear all {newHere.length} new flag{newHere.length === 1 ? "" : "s"}
+              </button>
+            ) : null;
+          })()}
         </div>
       </SortableContext>
     </div>
