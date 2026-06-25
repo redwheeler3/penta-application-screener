@@ -7,16 +7,17 @@ import { TierList, TierSummaryForPrint } from "./TierList";
 // The current run's discovered criteria — the axes scoring rates each candidate
 // on. Shown above the list and the shortlist, not when a candidate is open.
 export function CriteriaPanel(props: { screeningRun: ScreeningRunState; tiers: Tier[] | null }): ReactNode {
-  // Order criteria most→least important by tier position (Ignore last; discovery
-  // order within a tier), falling back to discovery order.
+  // Order criteria most→least important by tier position (Ignore last), then
+  // alphabetically by name within a tier — matching the tier list's chip order.
   const rankOf = new Map<string, number>();
   (props.tiers ?? []).forEach((tier, tierIdx) => {
     tier.dimension_keys.forEach((key) => rankOf.set(key, tierIdx));
   });
-  const orderedDimensions = [...props.screeningRun.dimensions].sort(
-    (a, b) =>
-      (rankOf.get(a.key) ?? Number.MAX_SAFE_INTEGER) - (rankOf.get(b.key) ?? Number.MAX_SAFE_INTEGER),
-  );
+  const orderedDimensions = [...props.screeningRun.dimensions].sort((a, b) => {
+    const tierDelta =
+      (rankOf.get(a.key) ?? Number.MAX_SAFE_INTEGER) - (rankOf.get(b.key) ?? Number.MAX_SAFE_INTEGER);
+    return tierDelta !== 0 ? tierDelta : a.name.localeCompare(b.name);
+  });
   return (
     <details className="dimensions-panel">
       <summary>Screening criteria ({props.screeningRun.dimensions.length})</summary>
