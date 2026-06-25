@@ -261,3 +261,59 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
     # No screening run yet -> scoring coverage is absent, not zero.
     assert "candidatesScored" not in coverage
 
+
+@pytest.mark.anyio
+async def test_scoring_coverage_requires_every_dimension_key() -> None:
+    """A candidate counts as scored only when it has a cached row for EVERY
+    dimension key. Scores live per (candidate, dimension) now, so a candidate
+    scored on some dimensions but not all (e.g. mid carry-forward) must read as
+    not-yet-complete, not done."""
+    from app.ai.analysis import cache_key
+    from app.ai.dimension_scoring import kind_for_dimension
+    from app.schemas.settings import AppSettings
+
+    app, db = _logged_in_app()
+    model = AppSettings().ai.first_pass_model
+
+    a = Application(
+        primary_email="a@x.com", applicant_name="A", raw_row={"q": "1"}, raw_row_hash="ha",
+        normalized={}, status=ApplicationStatus.ELIGIBLE, hard_filter_reasons=[],
+    )
+    db.add(a)
+    # A run with two dimensions.
+    db.add(ScreeningRun(name="Run", criteria={
+        "pattern_report": {
+            "summary": "s",
+            "dimensions": [
+                {"key": "community", "name": "Community", "definition": "d", "why_it_differentiates": "w"},
+                {"key": "skills", "name": "Skills", "definition": "d", "why_it_differentiates": "w"},
+            ],
+        },
+    }))
+    db.commit()
+
+    # Score only ONE of the two dimensions -> incomplete.
+    db.add(ApplicationAIResult(
+        application_id=a.id, kind=kind_for_dimension("community"),
+        cache_key=cache_key(application=a, kind=kind_for_dimension("community"), model_id=model),
+        model_id=model, output={"score": 0.7, "confidence": "high", "rationale": "", "evidence": "", "dimension_key": "community"},
+    ))
+    db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        coverage = (await client.get("/dashboard")).json()["coverage"]
+    assert coverage["candidatesScored"] == {"cached": 0, "inScope": 1}  # partial = not done
+
+    # Score the second dimension too -> complete.
+    db.add(ApplicationAIResult(
+        application_id=a.id, kind=kind_for_dimension("skills"),
+        cache_key=cache_key(application=a, kind=kind_for_dimension("skills"), model_id=model),
+        model_id=model, output={"score": 0.5, "confidence": "low", "rationale": "", "evidence": "", "dimension_key": "skills"},
+    ))
+    db.commit()
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        coverage = (await client.get("/dashboard")).json()["coverage"]
+    assert coverage["candidatesScored"] == {"cached": 1, "inScope": 1}
+

@@ -1266,6 +1266,13 @@ h1 {
   margin: 0.1rem 0;
 }
 
+.qf-confirm-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.74rem;
+  font-style: italic;
+  opacity: 0.75;
+}
+
 .qf-confirm-actions {
   display: flex;
   gap: 0.5rem;
