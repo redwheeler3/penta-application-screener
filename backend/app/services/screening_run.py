@@ -308,7 +308,10 @@ def weights_from_tiers(
 
 
 def set_tiers(
-    db: Session, run: ScreeningRun, tier_layout: list[dict]
+    db: Session,
+    run: ScreeningRun,
+    tier_layout: list[dict],
+    acknowledged_keys: list[str] | None = None,
 ) -> ScreeningRun:
     """Persist a new tier layout and the weights derived from it.
 
@@ -320,6 +323,13 @@ def set_tiers(
     "ignored" is the absence of a placement, so the incoming Ignore tier is dropped
     before persisting. There is therefore no "must have an Ignore tier" invariant:
     an empty layout simply means everything is ignored (weight 0 → uniform fallback).
+
+    ``new_dimension_keys`` ("unacknowledged new dimensions") is also recomputed: a
+    dimension stays flagged "new" only while it is *still unplaced* and *not in*
+    ``acknowledged_keys``. So a new dimension clears its badge two ways, both folded
+    here — placing it in a working tier (no longer unplaced), or the committee
+    explicitly acknowledging it in place (badge ✕ / "mark all reviewed", which sends
+    the key in ``acknowledged_keys``). Re-discovery is the only thing that re-flags.
     """
     report = current_pattern_report(run)
     valid_keys = {d.key for d in report.dimensions} if report is not None else set()
@@ -334,8 +344,25 @@ def set_tiers(
         if not t.get("ignore")
     ]
     weights = weights_from_tiers(sorted(valid_keys), working)
+
+    # Recompute the still-"new" set. Start from the run's current unacknowledged
+    # new keys, drop any the committee acknowledged, and drop any now placed in a
+    # working tier (placement is itself an acknowledgement).
+    placed = {key for t in working for key in t.get("dimension_keys", [])}
+    acknowledged = set(acknowledged_keys or ())
+    prior_new = (run.criteria or {}).get("new_dimension_keys", [])
+    surviving_new = [
+        k for k in prior_new
+        if k in valid_keys and k not in acknowledged and k not in placed
+    ]
+
     # criteria is a JSON column; reassign a new dict so SQLAlchemy sees the change.
-    run.criteria = {**(run.criteria or {}), "tiers": working, "weights": weights}
+    run.criteria = {
+        **(run.criteria or {}),
+        "tiers": working,
+        "weights": weights,
+        "new_dimension_keys": surviving_new,
+    }
     db.commit()
     db.refresh(run)
     return run

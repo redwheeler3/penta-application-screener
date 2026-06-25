@@ -226,6 +226,9 @@ type RankingState = {
   weights: Record<string, number>;
   scoredCount: number;
   candidates: RankedCandidate[];
+  // Unacknowledged new dimensions — recomputed on every tier save, so badges
+  // clear in the same round-trip when a dimension is placed or acknowledged.
+  newDimensionKeys: string[];
 };
 
 // One importance tier in the M9 tier-list. Dimensions in the same tier weigh
@@ -578,12 +581,37 @@ const tierCollisionDetection: CollisionDetection = (args) => {
 // in Ignore until the committee triages it, so the badge says "decide where this
 // goes." The badge shows wherever the chip is, but in practice a new dimension
 // starts in Ignore and the badge clears once dragged into a working tier.
-function ChipBody(props: { label: string; dragging?: boolean; isNew?: boolean }): ReactNode {
+function ChipBody(props: {
+  label: string;
+  dragging?: boolean;
+  isNew?: boolean;
+  onDismiss?: () => void;
+}): ReactNode {
   return (
     <span className={`tier-chip${props.dragging ? " tier-chip-overlay" : ""}${props.isNew ? " tier-chip-new" : ""}`}>
       <GripVertical size={12} className="tier-chip-grip" />
       {props.label}
-      {props.isNew ? <span className="tier-chip-new-badge">New</span> : null}
+      {props.isNew ? (
+        <span className="tier-chip-new-badge">
+          New
+          {props.onDismiss ? (
+            <button
+              type="button"
+              className="tier-chip-new-dismiss"
+              aria-label="Mark reviewed"
+              title="Mark reviewed — keep in Ignore"
+              // Stop pointerdown so the dnd-kit drag sensor never starts on the ✕.
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onDismiss!();
+              }}
+            >
+              ×
+            </button>
+          ) : null}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -592,7 +620,12 @@ function ChipBody(props: { label: string; dragging?: boolean; isNew?: boolean })
 // While dragging, the original is hidden (opacity 0) and a DragOverlay copy
 // follows the cursor freely across tiers — see TierList. That overlay is why the
 // drag isn't clipped to its tier's box.
-function DimensionChip(props: { dimKey: string; label: string; isNew?: boolean }): ReactNode {
+function DimensionChip(props: {
+  dimKey: string;
+  label: string;
+  isNew?: boolean;
+  onDismiss?: () => void;
+}): ReactNode {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: props.dimKey });
   const style = {
@@ -604,7 +637,7 @@ function DimensionChip(props: { dimKey: string; label: string; isNew?: boolean }
   };
   return (
     <span ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <ChipBody label={props.label} isNew={props.isNew} />
+      <ChipBody label={props.label} isNew={props.isNew} onDismiss={props.onDismiss} />
     </span>
   );
 }
@@ -622,6 +655,8 @@ function TierRow(props: {
   onMoveDown: () => void;
   onRemove: () => void;
   onRename: (label: string) => void;
+  // Acknowledge "new" dimensions in place (badge ✕ / "mark all reviewed").
+  onAcknowledge: (keys: string[]) => void;
 }): ReactNode {
   const { tier, isOver } = props;
   // The droppable is the WHOLE row (controls + chips), not just the chips column,
@@ -647,6 +682,22 @@ function TierRow(props: {
             onChange={(e) => props.onRename(e.target.value)}
           />
         )}
+        {/* Bulk-acknowledge the new dimensions sitting in Ignore. Only shows on the
+            Ignore row when at least one new dimension is parked there. */}
+        {tier.ignore
+          ? (() => {
+              const newHere = tier.dimension_keys.filter((k) => props.newKeys.has(k));
+              return newHere.length > 0 ? (
+                <button
+                  type="button"
+                  className="tier-mark-reviewed"
+                  onClick={() => props.onAcknowledge(newHere)}
+                >
+                  {newHere.length} new · Mark all reviewed
+                </button>
+              ) : null;
+            })()
+          : null}
         {!tier.ignore ? (
           <div className="tier-controls">
             <button type="button" className="stepper-button" aria-label="Move tier up"
@@ -669,16 +720,20 @@ function TierRow(props: {
           {tier.dimension_keys.length === 0 ? (
             <span className="tier-empty">Drag criteria here</span>
           ) : (
-            tier.dimension_keys.map((key) => (
+            tier.dimension_keys.map((key) => {
               // "New" badge only while the dimension is still parked in Ignore;
               // dragging it into a working tier triages it, so the badge clears.
-              <DimensionChip
-                key={key}
-                dimKey={key}
-                label={props.labelFor(key)}
-                isNew={props.newKeys.has(key) && Boolean(tier.ignore)}
-              />
-            ))
+              const isNew = props.newKeys.has(key) && Boolean(tier.ignore);
+              return (
+                <DimensionChip
+                  key={key}
+                  dimKey={key}
+                  label={props.labelFor(key)}
+                  isNew={isNew}
+                  onDismiss={isNew ? () => props.onAcknowledge([key]) : undefined}
+                />
+              );
+            })
           )}
         </div>
       </SortableContext>
@@ -693,6 +748,7 @@ function TierList(props: {
   tiers: Tier[];
   labelFor: (key: string) => string;
   newKeys: Set<string>;
+  onAcknowledge: (keys: string[]) => void;
   onChange: (next: Tier[]) => void;
 }): ReactNode {
   const { tiers, onChange } = props;
@@ -805,6 +861,7 @@ function TierList(props: {
             onMoveDown={() => moveTier(idx, 1)}
             onRemove={() => removeTier(tier.id)}
             onRename={(label) => renameTier(tier.id, label)}
+            onAcknowledge={props.onAcknowledge}
           />
         ))}
         {ignore ? (
@@ -819,6 +876,7 @@ function TierList(props: {
             onMoveDown={() => {}}
             onRemove={() => {}}
             onRename={() => {}}
+            onAcknowledge={props.onAcknowledge}
           />
         ) : null}
         {/* The floating copy that follows the cursor freely across tiers — this
@@ -1390,13 +1448,13 @@ export function App() {
   // M9: persist a new tier layout. The PUT returns the freshly re-sorted ranking,
   // so tiers and order update together in one round-trip. Optimistically set the
   // tiers so the drag feels instant; reconcile from the response.
-  async function saveTiers(next: Tier[]) {
+  async function saveTiers(next: Tier[], acknowledgedKeys: string[] = []) {
     setTiers(next);
     const response = await fetch(`${apiBaseUrl}/screening/tiers`, {
       method: "PUT",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tiers: next }),
+      body: JSON.stringify({ tiers: next, acknowledged_keys: acknowledgedKeys }),
     });
     if (response.ok) {
       setRanking(await response.json());
@@ -1404,6 +1462,14 @@ export function App() {
       showError("Could not update the tiers.");
       openRanking(); // reconcile back to the server's truth on failure
     }
+  }
+
+  // Acknowledge "new" dimensions in place (badge ✕ / "mark all reviewed") — they
+  // drop out of new_dimension_keys without moving. Persists via the same tiers
+  // PUT, sending the current layout unchanged plus the acknowledged keys.
+  async function acknowledgeNewDimensions(keys: string[]) {
+    if (!tiers || keys.length === 0) return;
+    await saveTiers(tiers, keys);
   }
 
   // Human override of an application's status (any committee member). The backend
@@ -2026,7 +2092,10 @@ export function App() {
                     labelFor={(key) =>
                       screeningRun.dimensions.find((d) => d.key === key)?.name ?? key
                     }
-                    newKeys={new Set(screeningRun.newDimensionKeys)}
+                    // Read from ranking (refreshed on every save) so badges clear
+                    // immediately when a dimension is placed or acknowledged.
+                    newKeys={new Set(ranking.newDimensionKeys)}
+                    onAcknowledge={acknowledgeNewDimensions}
                     onChange={saveTiers}
                   />
                 ) : null}
