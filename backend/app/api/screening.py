@@ -27,6 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import ScreeningResult, SpendingCapExceeded, enforce_cap
+from app.ai.dimension_matching import match_dimensions
 from app.ai.dimension_scoring import (
     applications_to_score,
     estimate_scoring_without_dimensions,
@@ -54,13 +55,15 @@ from app.domain.ranking import (
 )
 from app.schemas.settings import AppSettings
 from app.services.screening_run import (
+    carry_forward_layout,
     create_run,
     current_pattern_report,
     dimension_weights,
+    display_tiers,
     get_current_run,
     ranking_is_current,
     set_tiers,
-    tiers,
+    stored_tiers,
 )
 from app.services.settings import get_app_settings
 
@@ -104,6 +107,10 @@ def _run_payload(db: Session) -> dict[str, Any] | None:
         "status": run.status,
         "summary": report.summary,
         "dimensions": report.model_dump(mode="json")["dimensions"],
+        # Dimensions that appeared on the last re-discovery with no confident match
+        # to a prior dimension — parked in Ignore for the committee to triage, and
+        # flagged "new" in the tier-list UI. Empty on a first run.
+        "newDimensionKeys": (run.criteria or {}).get("new_dimension_keys", []),
     }
 
 
@@ -230,25 +237,53 @@ def rank_run(
         total_cost += essay_tally.cost_usd
 
         # Phase 2: find criteria (one synthesis call; starts a fresh run).
+        # Capture the PRIOR run and its tier layout before discovery, so we can
+        # carry the committee's placements forward onto the new dimensions.
+        prior_run = get_current_run(db)
+        prior_report = current_pattern_report(prior_run) if prior_run else None
+        prior_tiers = stored_tiers(prior_run) if prior_run else []
+
         yield json.dumps({"type": "phase", "phase": "criteria"}) + "\n"
         pool = eligible_applications(db)
         try:
+            # Pass 1: blind re-discovery — never sees the prior dimensions.
             report, narrative, discovery_cost = discover_patterns(
                 db, provider, applications=pool, settings=settings
             )
+            # Pass 2: identity-match the new dimensions onto the prior ones (high
+            # bar, one-to-one) so tiers + scores carry forward. Skipped on a first
+            # run (no prior report) — match_dimensions returns an empty map.
+            new_to_old: dict[str, str] = {}
+            match_cost = 0.0
+            if prior_report is not None:
+                new_to_old, _match_narrative, match_cost = match_dimensions(
+                    provider, old=prior_report, new=report, settings=settings
+                )
         except Exception as exc:  # noqa: BLE001 — surface provider failure to the client
             yield json.dumps(
                 {"type": "error", "phase": "criteria",
                  "message": f"Finding criteria failed: {type(exc).__name__}: {exc}"}
             ) + "\n"
             return
+        # Carry the prior placements forward; unmatched new dimensions land in
+        # Ignore and are flagged "new". A first run (no prior tiers) opens with the
+        # default all-Ignore layout and nothing flagged.
+        layout, new_dimension_keys = carry_forward_layout(
+            new_report=report, old_tiers=prior_tiers, new_to_old=new_to_old
+        )
         create_run(
             db, report=report, model_id=settings.ai.synthesis_model,
-            narrative=narrative, cost_usd=discovery_cost,
+            narrative=narrative, cost_usd=discovery_cost + match_cost,
+            tier_layout=layout, new_dimension_keys=new_dimension_keys,
         )
-        total_cost += discovery_cost
+        total_cost += discovery_cost + match_cost
         yield json.dumps(
-            {"type": "criteria_done", "dimensions": len(report.dimensions)}
+            {
+                "type": "criteria_done",
+                "dimensions": len(report.dimensions),
+                "carriedForward": len(new_to_old),
+                "newDimensions": len(new_dimension_keys),
+            }
         ) + "\n"
 
         # Phase 3: score every eligible candidate against the new dimensions.
@@ -400,7 +435,7 @@ def get_tiers(
     run = get_current_run(db)
     if run is None or current_pattern_report(run) is None:
         raise HTTPException(status_code=409, detail="Discover patterns before tiering.")
-    return {"tiers": tiers(run)}
+    return {"tiers": display_tiers(run)}
 
 
 @router.put("/tiers")
