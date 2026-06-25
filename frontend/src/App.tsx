@@ -246,6 +246,10 @@ type ScreeningRunState = {
   status: string;
   summary: string;
   dimensions: PoolDimension[];
+  // Dimensions that appeared on the last re-discovery with no confident match to a
+  // prior one — they start in Ignore and are badged "new" until the committee
+  // triages them. Empty on a first run.
+  newDimensionKeys: string[];
 };
 
 // A notification toast. Success toasts auto-dismiss; error toasts persist until
@@ -569,12 +573,17 @@ const tierCollisionDetection: CollisionDetection = (args) => {
 };
 
 // The visual chip (used both in place and inside the DragOverlay). `dragging`
-// adds the lifted look for the floating overlay copy.
-function ChipBody(props: { label: string; dragging?: boolean }): ReactNode {
+// adds the lifted look for the floating overlay copy. `isNew` marks a dimension
+// that appeared on the last re-discovery with no match to a prior one — it sits
+// in Ignore until the committee triages it, so the badge says "decide where this
+// goes." The badge shows wherever the chip is, but in practice a new dimension
+// starts in Ignore and the badge clears once dragged into a working tier.
+function ChipBody(props: { label: string; dragging?: boolean; isNew?: boolean }): ReactNode {
   return (
-    <span className={`tier-chip${props.dragging ? " tier-chip-overlay" : ""}`}>
+    <span className={`tier-chip${props.dragging ? " tier-chip-overlay" : ""}${props.isNew ? " tier-chip-new" : ""}`}>
       <GripVertical size={12} className="tier-chip-grip" />
       {props.label}
+      {props.isNew ? <span className="tier-chip-new-badge">New</span> : null}
     </span>
   );
 }
@@ -583,7 +592,7 @@ function ChipBody(props: { label: string; dragging?: boolean }): ReactNode {
 // While dragging, the original is hidden (opacity 0) and a DragOverlay copy
 // follows the cursor freely across tiers — see TierList. That overlay is why the
 // drag isn't clipped to its tier's box.
-function DimensionChip(props: { dimKey: string; label: string }): ReactNode {
+function DimensionChip(props: { dimKey: string; label: string; isNew?: boolean }): ReactNode {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: props.dimKey });
   const style = {
@@ -595,7 +604,7 @@ function DimensionChip(props: { dimKey: string; label: string }): ReactNode {
   };
   return (
     <span ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <ChipBody label={props.label} />
+      <ChipBody label={props.label} isNew={props.isNew} />
     </span>
   );
 }
@@ -605,6 +614,7 @@ function DimensionChip(props: { dimKey: string; label: string }): ReactNode {
 function TierRow(props: {
   tier: Tier;
   labelFor: (key: string) => string;
+  newKeys: Set<string>;
   isOver: boolean;
   canMoveUp: boolean;
   canMoveDown: boolean;
@@ -660,7 +670,14 @@ function TierRow(props: {
             <span className="tier-empty">Drag criteria here</span>
           ) : (
             tier.dimension_keys.map((key) => (
-              <DimensionChip key={key} dimKey={key} label={props.labelFor(key)} />
+              // "New" badge only while the dimension is still parked in Ignore;
+              // dragging it into a working tier triages it, so the badge clears.
+              <DimensionChip
+                key={key}
+                dimKey={key}
+                label={props.labelFor(key)}
+                isNew={props.newKeys.has(key) && Boolean(tier.ignore)}
+              />
             ))
           )}
         </div>
@@ -675,6 +692,7 @@ function TierRow(props: {
 function TierList(props: {
   tiers: Tier[];
   labelFor: (key: string) => string;
+  newKeys: Set<string>;
   onChange: (next: Tier[]) => void;
 }): ReactNode {
   const { tiers, onChange } = props;
@@ -779,6 +797,7 @@ function TierList(props: {
             key={tier.id}
             tier={tier}
             labelFor={props.labelFor}
+            newKeys={props.newKeys}
             isOver={overTierId === tier.id}
             canMoveUp={idx > 0}
             canMoveDown={idx < working.length - 1}
@@ -792,6 +811,7 @@ function TierList(props: {
           <TierRow
             tier={ignore}
             labelFor={props.labelFor}
+            newKeys={props.newKeys}
             isOver={overTierId === ignore.id}
             canMoveUp={false}
             canMoveDown={false}
@@ -2006,6 +2026,7 @@ export function App() {
                     labelFor={(key) =>
                       screeningRun.dimensions.find((d) => d.key === key)?.name ?? key
                     }
+                    newKeys={new Set(screeningRun.newDimensionKeys)}
                     onChange={saveTiers}
                   />
                 ) : null}

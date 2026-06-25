@@ -1964,3 +1964,23 @@ h1 {
   flex-shrink: 0;
 }
 
+/* A newly-discovered dimension awaiting triage (sits in Ignore until the
+   committee places it). Amber, matching the "needs attention" accent used for
+   stale workflow steps — silent to the math (weight 0) but loud to the human. */
+.tier-chip-new {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.tier-chip-new-badge {
+  margin-left: 0.1rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
