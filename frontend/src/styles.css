@@ -1642,18 +1642,52 @@ h1 {
 .dimension-score-fill {
   display: block;
   height: 100%;
+  /* Thermometer feel: a floor width so even a near-zero score shows a sliver of
+     its band colour (amber for weak) rather than reading as a blank track. */
+  min-width: 0.5rem;
   background: var(--penta-green);
   border-radius: 999px;
+}
+
+/* Bar fill coloured by score band so the bar's length AND hue both read merit:
+   green strong, blue moderate, amber weak — matching the ranked-row labels. */
+.dimension-score-fill.score-strong {
+  background: #16a34a;
+}
+
+.dimension-score-fill.score-moderate {
+  background: #0284c7;
+}
+
+.dimension-score-fill.score-weak {
+  background: #d97706;
+}
+
+/* The merit verdict in words, coloured to match the bar. This is the signal; the
+   confidence beside it is deliberately neutral so colour never implies merit it
+   doesn't have (a confidently-low score must not read green). */
+.dimension-score-band {
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dimension-score-band.score-strong {
+  color: #166534;
+}
+
+.dimension-score-band.score-moderate {
+  color: #075985;
+}
+
+.dimension-score-band.score-weak {
+  color: #b45309;
 }
 
 .dimension-score-confidence {
   font-size: 0.72rem;
   color: var(--muted);
   white-space: nowrap;
-}
-
-.dimension-score-confidence.confidence-low {
-  color: #b45309;
 }
 
 .dimension-score-rationale {

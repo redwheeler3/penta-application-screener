@@ -172,19 +172,11 @@ type ApplicationDetail = ApplicationSummary & {
   // null = essay-analysis pass not yet run for this application.
   essayAnalysis?: EssayAnalysis | null;
   // This candidate's scores against the current run's discovered dimensions
-  // (milestone 7). null = no run, or not scored under it. Informational only.
-  dimensionScores?: DimensionScore[] | null;
-};
-
-// One candidate's score on one discovered dimension. Mirrors the backend
-// DimensionScore, plus the dimension's display name joined in by the API.
-type DimensionScore = {
-  dimension_key: string;
-  name: string;
-  score: number;
-  rationale: string;
-  evidence: string;
-  confidence: "low" | "medium" | "high";
+  // (milestone 7), ordered by importance to this candidate's ranking (|impact|
+  // descending). These are the candidate's ranking contributions — the same
+  // objects the ranked-list row is a top slice of — so the detail page and the
+  // row tell one story. null = no run, or not scored under it.
+  dimensionScores?: DimensionContribution[] | null;
 };
 
 // The current screening run's discovered dimensions (milestone 7), from
@@ -200,13 +192,16 @@ type PoolDimension = {
 // GET /screening/ranking — pure math over the cached dimension scores, no model
 // call. Mirrors the backend ranking dataclasses.
 
-// How one dimension fed a candidate's fit: the score and the weight applied,
-// plus the grounding kept for the explainable per-row view.
+// How one dimension fed a candidate's fit: the score, the weight applied, and
+// `impact` = weight × (score − pool mean) — the signed amount this dimension
+// moved the candidate relative to the pool. Magnitude ranks "what mattered";
+// sign gives direction. Grounding is kept for the explainable per-row view.
 type DimensionContribution = {
   dimension_key: string;
   name: string;
   score: number;
   weight: number;
+  impact: number;
   confidence: "low" | "medium" | "high";
   rationale: string;
   evidence: string;
@@ -742,7 +737,7 @@ function TierRow(props: {
                   onClick={() => props.onAcknowledge(newHere)}
                 >
                   <Check size={13} />
-                  Clear all {newHere.length} new flag{newHere.length === 1 ? "" : "s"}
+                  Clear all {newHere.length} "NEW" flag{newHere.length === 1 ? "" : "s"}
                 </button>
               </div>
             ) : null;
@@ -2119,11 +2114,15 @@ export function App() {
                 ) : (
                   <ol className="ranking-list">
                     {ranking.candidates.map((candidate) => {
-                      // Lead with the highest-weighted dimensions this candidate
-                      // exhibits — the plain-language "why here", not the number.
+                      // Lead with the dimensions that most moved THIS candidate's
+                      // rank — by |impact| (weight × deviation from the pool mean),
+                      // not raw weight×score. So a heavy strike (low score on a
+                      // weighted axis) surfaces as readily as a strength: the row
+                      // tells both why a candidate ranks high AND where they're weak.
+                      // The score band's colour says which is which.
                       const topContributions = [...candidate.contributions]
                         .filter((c) => c.weight > 0)
-                        .sort((a, b) => b.weight * b.score - a.weight * a.score)
+                        .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
                         .slice(0, 3);
                       return (
                         <li key={candidate.application_id}>
@@ -2276,30 +2275,35 @@ export function App() {
                   <div className="dimension-scores">
                     <h4>Fit dimensions</h4>
                     <p className="dimension-scores-hint">
-                      How this candidate scores on the pool's discovered dimensions. Supporting
-                      detail for ranking — the committee weighs what matters.
+                      Ordered by how much each dimension moved this candidate's ranking —
+                      strengths and weaknesses together, most decisive first. Colour shows the
+                      score: green strong, blue moderate, amber weak.
                     </p>
                     <ul>
-                      {selectedApp.dimensionScores.map((s) => (
-                        <li key={s.dimension_key} className="dimension-score">
-                          <div className="dimension-score-head">
-                            <span className="dimension-score-name">{s.name}</span>
-                            <span className="dimension-score-bar" aria-hidden="true">
-                              <span
-                                className="dimension-score-fill"
-                                style={{ width: `${Math.round(s.score * 100)}%` }}
-                              />
-                            </span>
-                            <span className={`dimension-score-confidence confidence-${s.confidence}`}>
-                              {s.confidence} confidence
-                            </span>
-                          </div>
-                          <p className="dimension-score-rationale">{s.rationale}</p>
-                          {s.evidence ? (
-                            <p className="dimension-score-evidence">{s.evidence}</p>
-                          ) : null}
-                        </li>
-                      ))}
+                      {selectedApp.dimensionScores.map((s) => {
+                        const sb = scoreBand(s.score);
+                        return (
+                          <li key={s.dimension_key} className="dimension-score">
+                            <div className="dimension-score-head">
+                              <span className="dimension-score-name">{s.name}</span>
+                              <span className="dimension-score-bar" aria-hidden="true">
+                                <span
+                                  className={`dimension-score-fill ${sb.cls}`}
+                                  style={{ width: `${Math.round(s.score * 100)}%` }}
+                                />
+                              </span>
+                              <span className={`dimension-score-band ${sb.cls}`}>{sb.label}</span>
+                              <span className="dimension-score-confidence">
+                                {s.confidence} confidence
+                              </span>
+                            </div>
+                            <p className="dimension-score-rationale">{s.rationale}</p>
+                            {s.evidence ? (
+                              <p className="dimension-score-evidence">{s.evidence}</p>
+                            ) : null}
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 ) : null}
