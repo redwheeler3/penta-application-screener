@@ -62,12 +62,24 @@ class CandidateScores:
 class DimensionContribution:
     """How one dimension fed a candidate's fit — score and the weight applied,
     plus the grounding kept for the explainable per-row view.
+
+    ``impact`` is the dimension's signed contribution to how far this candidate
+    sits from the pool average: ``weight · (score − pool_mean)``. This is the
+    exact per-dimension decomposition of ``fit_i − avg_fit`` (the shared ``/ΣW``
+    normalizer drops out, so it is comparable *within* a candidate), so ranking
+    the contributions by ``abs(impact)`` surfaces the dimensions that actually
+    moved this candidate up or down — a heavily-weighted dimension everyone
+    scores the same on has near-zero impact and is correctly demoted, while a
+    big strike (low score on a heavy dimension) ranks high with a negative sign.
+    A weakness can therefore outrank a middling strength, which ``weight·score``
+    could never surface. Sign carries direction; magnitude carries importance.
     """
 
     dimension_key: str
     name: str
     score: float
     weight: float
+    impact: float
     confidence: str
     rationale: str
     evidence: str
@@ -115,12 +127,32 @@ def _band_for(rank: int, total: int) -> str:
     return BANDS[index]
 
 
+def _pool_means(candidates: list[CandidateScores]) -> dict[str, float]:
+    """Mean score per dimension across the whole pool — the baseline each
+    candidate's impact is measured against. A dimension only differentiates to
+    the extent scores deviate from this mean, so impact (and thus what we surface
+    as "what moved this candidate") is inherently pool-relative.
+
+    Averaged over the candidates that actually have the dimension scored, so a
+    candidate missing a dimension does not drag its mean toward zero.
+    """
+    totals: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for candidate in candidates:
+        for s in candidate.scores:
+            totals[s.dimension_key] = totals.get(s.dimension_key, 0.0) + s.score
+            counts[s.dimension_key] = counts.get(s.dimension_key, 0) + 1
+    return {key: totals[key] / counts[key] for key in totals}
+
+
 def _contributions(
-    scores: list[ScoredDimension], weights: dict[str, float]
+    scores: list[ScoredDimension],
+    weights: dict[str, float],
+    means: dict[str, float],
 ) -> list[DimensionContribution]:
-    """All of a candidate's scored dimensions, with the weight applied. Every
-    dimension is kept (even weight 0) so the row explains the full picture; only
-    the fit math skips weight-0 dimensions.
+    """All of a candidate's scored dimensions, with the weight applied and the
+    pool-relative impact computed. Every dimension is kept (even weight 0) so the
+    row explains the full picture; only the fit math skips weight-0 dimensions.
     """
     return [
         DimensionContribution(
@@ -128,6 +160,8 @@ def _contributions(
             name=s.name,
             score=s.score,
             weight=weights.get(s.dimension_key, 0.0),
+            impact=weights.get(s.dimension_key, 0.0)
+            * (s.score - means.get(s.dimension_key, s.score)),
             confidence=s.confidence,
             rationale=s.rationale,
             evidence=s.evidence,
@@ -152,6 +186,7 @@ def rank_candidates(
         key=lambda c: (-_fit(c.scores, weights), c.application_id),
     )
 
+    means = _pool_means(candidates)
     total = len(ordered)
     ranked: list[RankedCandidate] = []
     prev_fit: float | None = None
@@ -171,7 +206,7 @@ def rank_candidates(
                 rank=rank,
                 fit=fit,
                 band=band,
-                contributions=_contributions(candidate.scores, weights),
+                contributions=_contributions(candidate.scores, weights, means),
             )
         )
         prev_fit = fit

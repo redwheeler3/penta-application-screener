@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,8 +15,10 @@ from app.db.models import (
     User,
 )
 from app.db.session import get_db
+from app.domain.ranking import rank_candidates
 from app.domain.status import findings_fingerprint, is_stale, resolve_machine_status
 from app.services.application_import import extract_essays
+from app.services.ranking_view import candidate_scores
 from app.services.screening_run import (
     current_pattern_report,
     dimension_weights,
@@ -334,37 +337,38 @@ def _serialize_detail(app: Application, db: Session) -> dict[str, Any]:
 
 
 def _dimension_scores(db: Session, app: Application) -> list[dict[str, Any]] | None:
-    """The candidate's per-dimension scores under the current run, label-joined.
+    """The candidate's per-dimension scores under the current run, ordered by
+    importance to THIS candidate's ranking.
 
     Returns None when there is no current run or the candidate has no scores for
     its dimension set (the scoring pass keys results on a per-run ``kind``, so a
     stale prior run's scores never leak into a new run's view).
+
+    These are exactly the candidate's ranking ``contributions`` — the ranked-list
+    row is the top slice of this same list — so the detail page and the row tell
+    one story. Ordered by ``abs(impact)`` (``impact = weight · (score −
+    pool_mean)``): the dimensions that most moved this candidate up or down come
+    first, whether they helped or hurt. The score band's colour carries direction
+    (strength vs. weakness); the order carries importance.
+
+    Weight-0 (Ignored) dimensions are dropped: they contribute exactly 0 to fit
+    and 0 impact, so they are irrelevant to the ranking — showing them would only
+    clutter the page with axes the committee chose not to weigh.
     """
     run = get_current_run(db)
     report = current_pattern_report(run) if run is not None else None
     if report is None:
         return None
 
-    # Local import avoids a module-load cycle (dimension_scoring imports schemas
-    # and the engine, not this router, but keep the API layer's deps one-way).
-    from app.ai.dimension_scoring import kind_for
-
-    result = _latest_results(db, kind_for(report), [app.id]).get(app.id)
-    if result is None:
+    weights = dimension_weights(run)
+    ranked = rank_candidates(candidate_scores(db, report), weights)
+    candidate = next((c for c in ranked if c.application_id == app.id), None)
+    if candidate is None:
         return None
 
-    labels = {d.key: d.name for d in report.dimensions}
-    weights = dimension_weights(run)
-    scores = (result.output or {}).get("scores", [])
-    enriched = [
-        {**score, "name": labels.get(score.get("dimension_key"), score.get("dimension_key"))}
-        for score in scores
-    ]
-    # Order by how much each dimension contributed to this candidate's fit under
-    # the committee's current weighting (weight x score, descending) — the same
-    # ordering the ranked-view pills use, so the detail page reads consistently.
-    enriched.sort(
-        key=lambda s: weights.get(s.get("dimension_key"), 0.0) * float(s.get("score", 0.0)),
+    contributions = sorted(
+        (c for c in candidate.contributions if c.weight > 0),
+        key=lambda c: abs(c.impact),
         reverse=True,
     )
-    return enriched
+    return [asdict(c) for c in contributions]

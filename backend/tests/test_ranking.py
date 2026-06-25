@@ -5,6 +5,8 @@ weight-normalized fit, confidence never folded in, relative pool-position bands,
 and a deterministic stable order.
 """
 
+import pytest
+
 from app.domain.ranking import (
     BANDS,
     CandidateScores,
@@ -133,3 +135,44 @@ def test_band_labels_cover_exactly_the_declared_set() -> None:
     candidates = [candidate(i, a=1.0 - i * 0.05) for i in range(12)]
     ranked = rank_candidates(candidates, {"a": 1.0})
     assert {r.band for r in ranked} <= set(BANDS)
+
+
+def _contribution(row, key):
+    return next(c for c in row.contributions if c.dimension_key == key)
+
+
+def test_impact_is_weight_times_deviation_from_pool_mean() -> None:
+    # Pool means: a = (0.2+0.8)/2 = 0.5, b = (0.4+0.6)/2 = 0.5.
+    candidates = [candidate(1, a=0.2, b=0.4), candidate(2, a=0.8, b=0.6)]
+    ranked = rank_candidates(candidates, {"a": 2.0, "b": 1.0})
+    row1 = next(r for r in ranked if r.application_id == 1)
+    # impact = weight · (score − mean): a → 2·(0.2−0.5) = −0.6; b → 1·(0.4−0.5) = −0.1.
+    assert _contribution(row1, "a").impact == pytest.approx(-0.6)
+    assert _contribution(row1, "b").impact == pytest.approx(-0.1)
+
+
+def test_impact_surfaces_a_heavy_weakness_over_a_light_strength() -> None:
+    # The point of impact: a big strike (low score on a heavy dimension) must rank
+    # above a middling strength, which weight×score could never surface.
+    # Pool means: heavy = 0.55, light = 0.55.
+    candidates = [
+        candidate(1, heavy=0.1, light=0.6),  # the candidate we inspect
+        candidate(2, heavy=1.0, light=0.5),
+    ]
+    ranked = rank_candidates(candidates, {"heavy": 5.0, "light": 2.0})
+    row1 = next(r for r in ranked if r.application_id == 1)
+    by_impact = sorted(row1.contributions, key=lambda c: abs(c.impact), reverse=True)
+    # |heavy| = 5·|0.1−0.55| = 2.25 ranks above |light| = 2·|0.6−0.55| = 0.10,
+    # and the heavy one is negative (a weakness).
+    assert by_impact[0].dimension_key == "heavy"
+    assert by_impact[0].impact < 0
+
+
+def test_impact_is_zero_when_everyone_scores_the_pool_mean() -> None:
+    # A dimension nobody deviates on moved nobody's rank — impact 0 regardless of
+    # weight, so it is correctly demoted out of the "what mattered" set.
+    candidates = [candidate(1, a=0.5, b=0.3), candidate(2, a=0.5, b=0.9)]
+    ranked = rank_candidates(candidates, {"a": 10.0, "b": 1.0})
+    row1 = next(r for r in ranked if r.application_id == 1)
+    assert _contribution(row1, "a").impact == 0.0  # heavy but undifferentiated
+    assert _contribution(row1, "b").impact != 0.0
