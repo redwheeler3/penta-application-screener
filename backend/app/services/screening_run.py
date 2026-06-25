@@ -214,13 +214,20 @@ def carry_forward_layout(
     ``old_tiers`` is the prior run's working tiers (no Ignore zone — that's derived).
     Re-uses the committee's prior structure (their renamed/added/reordered tiers),
     placing each new dimension into the working tier its matched old dimension
-    occupied. A new dimension with no match — genuinely new, or a survivor the
-    high-bar match declined — is simply **not placed**: unplaced means weight 0
-    ("ignored"), so it cannot influence the ranking until the committee triages it.
+    occupied. Three cases per new dimension:
+      - matched a prior dimension in a working tier → carried into that tier;
+      - matched a prior dimension that was in Ignore → left unplaced (the
+        committee's "ignore" decision carries forward), and NOT flagged new —
+        they already weighed in on it;
+      - no match to any prior dimension → left unplaced AND flagged new, so the
+        committee triages a dimension they have never seen.
+    "Unplaced" means weight 0 ("ignored"), so it cannot influence the ranking
+    until the committee acts. The key distinction is *matched vs. not* — not which
+    tier the match landed in — so a prior-Ignored survivor is never mislabeled new.
 
     Returns ``(working_tiers, new_dimension_keys)`` where ``new_dimension_keys`` is
-    the unmatched new keys, for "new" badging in the UI. Falls back to the empty
-    default working tiers when there is no prior layout to carry (a first run).
+    only the genuinely-new (unmatched) keys, for "new" badging in the UI. Falls
+    back to the empty default working tiers when there is no prior layout (a first run).
     """
     if not old_tiers:
         return default_tier_layout(), []
@@ -241,12 +248,19 @@ def carry_forward_layout(
     new_dimension_keys: list[str] = []
     for dim in new_report.dimensions:
         old_key = new_to_old.get(dim.key)
-        target = old_key_to_tier.get(old_key) if old_key is not None else None
+        if old_key is None:
+            # No match to ANY prior dimension: genuinely new. Unplaced (ignored
+            # by absence) and flagged so the committee triages it.
+            new_dimension_keys.append(dim.key)
+            continue
+        # Matched a prior dimension. If that dimension was in a working tier,
+        # carry the placement forward. If it was in Ignore (not in the map, since
+        # Ignore isn't stored), leave this one unplaced too — carrying the
+        # committee's "ignore" decision forward — but it is NOT new: they already
+        # weighed in on it, so it gets no badge.
+        target = old_key_to_tier.get(old_key)
         if target is not None and target in by_id:
             by_id[target]["dimension_keys"].append(dim.key)
-        else:
-            # Unmatched: leave it unplaced (ignored by absence) and flag it new.
-            new_dimension_keys.append(dim.key)
 
     return layout, new_dimension_keys
 
