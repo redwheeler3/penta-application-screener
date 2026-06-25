@@ -12,10 +12,12 @@ Milestone 7 keeps the lifecycle minimal: rediscovering patterns creates a new
 run, and "the current run" is simply the most recent one. Weights, answers, and
 rankings accrete onto the same run in milestones 8-9.
 
-Milestone 8 seeds the run with an **equal-weight baseline** (``criteria.weights``,
-one entry per dimension key, all equal). The AI never proposes importance —
-discovering the axes is its job; deciding what matters is the committee's, and
-milestone 9's tier-list is the only thing that moves these weights off equal.
+Weights are **derived from the tier layout**, never proposed by the AI: the run
+stores ``criteria.tiers`` (working tiers only — see ``weights_from_tiers``) and
+``criteria.weights`` is recomputed from it. A fresh run opens with empty tiers, so
+every dimension is unplaced and the derived weights fall back to a uniform
+equal-weight baseline until the committee tiers. Discovering the axes is the AI's
+job; deciding what matters is the committee's (milestone 9's tier-list).
 """
 
 from __future__ import annotations
@@ -27,9 +29,6 @@ from sqlalchemy.orm import Session
 
 from app.ai.schemas import PoolPatternReport
 from app.db.models import Application, ApplicationStatus, ScreeningRun
-
-# Equal-weight baseline: every discovered dimension starts equally important.
-INITIAL_DIMENSION_WEIGHT = 1.0
 
 
 def pool_fingerprint(db: Session) -> str:
@@ -145,17 +144,10 @@ def current_pattern_report(run: ScreeningRun) -> PoolPatternReport | None:
 
 
 def dimension_weights(run: ScreeningRun) -> dict[str, float]:
-    """The run's per-dimension weights, defaulting to equal for any dimension
-    missing from the stored map (e.g. a run created before weights were seeded).
+    """The run's per-dimension weights. ``create_run`` and ``set_tiers`` always
+    write a complete map (derived from the tier layout), so this is a plain read.
     """
-    stored = (run.criteria or {}).get("weights") or {}
-    report = current_pattern_report(run)
-    if report is None:
-        return {k: float(v) for k, v in stored.items()}
-    return {
-        d.key: float(stored.get(d.key, INITIAL_DIMENSION_WEIGHT))
-        for d in report.dimensions
-    }
+    return {k: float(v) for k, v in ((run.criteria or {}).get("weights") or {}).items()}
 
 
 # The opening working tiers (most→least important). Empty, so every dimension is
@@ -186,13 +178,12 @@ def default_tier_layout() -> list[dict]:
 def stored_tiers(run: ScreeningRun) -> list[dict]:
     """The run's stored *working* tiers (no Ignore zone), or the default when unset.
 
-    Tolerates legacy layouts that stored an explicit Ignore tier (pre-refactor or
-    pre-M9 runs) by dropping any tier flagged ``ignore`` — its dimensions become
-    unplaced, which is the same weight-0 meaning.
+    Only working tiers are ever stored (``set_tiers`` strips the Ignore zone the UI
+    sends; ``create_run`` writes working tiers only), so this is a plain read.
     """
     stored = (run.criteria or {}).get("tiers")
     if stored:
-        return [dict(t) for t in stored if not t.get("ignore")]
+        return [dict(t) for t in stored]
     return default_tier_layout() if current_pattern_report(run) is not None else []
 
 
