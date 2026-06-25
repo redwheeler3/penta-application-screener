@@ -23,59 +23,52 @@ import {
 import {
   SortableContext,
   useSortable,
-  horizontalListSortingStrategy,
+  rectSortingStrategy,
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Tier } from "../types";
 
-// Move a dimension into a target tier, optionally before a specific chip. Returns
-// a new tier array; pure so it is easy to reason about and the caller persists it.
-function moveDimensionToTier(
-  tiers: Tier[],
-  dimKey: string,
-  targetTierId: string,
-  beforeKey: string | null,
-): Tier[] {
+// Move a dimension into a target tier (appended at the end). Within-tier order is
+// display-only — a tier weights all its chips equally — so we don't track an insert
+// position. Pure: returns a new tier array that the caller persists.
+function moveDimensionToTier(tiers: Tier[], dimKey: string, targetTierId: string): Tier[] {
   return tiers.map((tier) => {
     const without = tier.dimension_keys.filter((k) => k !== dimKey);
-    if (tier.id !== targetTierId) {
-      return { ...tier, dimension_keys: without };
-    }
-    if (beforeKey && beforeKey !== dimKey) {
-      const at = without.indexOf(beforeKey);
-      if (at >= 0) {
-        return {
-          ...tier,
-          dimension_keys: [...without.slice(0, at), dimKey, ...without.slice(at)],
-        };
-      }
-    }
-    return { ...tier, dimension_keys: [...without, dimKey] };
+    return tier.id === targetTierId ? { ...tier, dimension_keys: [...without, dimKey] } : { ...tier, dimension_keys: without };
   });
 }
 
-function tierIndexOfKey(tiers: Tier[], dimKey: string): number {
-  return tiers.findIndex((t) => t.dimension_keys.includes(dimKey));
+// Collision detection that always resolves to a TIER, never an individual chip.
+//
+// Both tiers and chips are registered droppables, so a naive resolver would pick a
+// chip when the cursor is over one — which makes dnd-kit preview a within-tier
+// insert position and shuffle the other chips around on hover. Within-tier order is
+// display-only (a tier weights all its chips equally; only the tier's position
+// drives the ranking), so we deliberately resolve to the tier alone: a drop just
+// lands the chip in that tier and nothing shuffles while hovering.
+//
+// The tier whose rect contains the dragged chip's *center* wins (midpoint, not
+// corners, so the wide drag overlay doesn't stray into a neighbouring tier). Falls
+// back to the closest tier when the center is outside every row (gap between rows,
+// or keyboard dragging with no moving rect).
+function makeTierCollisionDetection(tierIds: Set<string>): CollisionDetection {
+  return (args) => {
+    const onlyTiers = args.droppableContainers.filter((c) => tierIds.has(String(c.id)));
+    const rect = args.collisionRect;
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const containing = onlyTiers.filter((container) => {
+      const r = args.droppableRects.get(container.id);
+      return r && cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
+    });
+    if (containing.length > 0) {
+      return containing.map((container) => ({ id: container.id }));
+    }
+    // Closest tier only, so `over` is always a tier id even on the fallback path.
+    return closestCorners({ ...args, droppableContainers: onlyTiers });
+  };
 }
-
-// Collision detection: the tier containing the *center of the dragged chip* wins.
-// Using the midpoint (not corners) keeps the wide overlay from straying into the
-// neighbouring tier. Falls back to `closestCorners` when the center is outside
-// every tier (gap between rows, or keyboard dragging with no moving rect).
-const tierCollisionDetection: CollisionDetection = (args) => {
-  const rect = args.collisionRect;
-  const cx = rect.left + rect.width / 2;
-  const cy = rect.top + rect.height / 2;
-  const containing = args.droppableContainers.filter((container) => {
-    const r = args.droppableRects.get(container.id);
-    return r && cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
-  });
-  if (containing.length > 0) {
-    return containing.map((container) => ({ id: container.id }));
-  }
-  return closestCorners(args);
-};
 
 // The visual chip (used in place and inside the DragOverlay). `dragging` adds the
 // lifted overlay look. `isNew` badges a freshly-discovered dimension awaiting
@@ -161,6 +154,10 @@ function TierRow(props: {
   // dead space below the chips). The highlight is driven by the parent's tracked
   // `overTierId` (`isOver`), not this hook's own, which flickers over chips.
   const { setNodeRef } = useDroppable({ id: tier.id });
+  // Display chips alphabetically by label (see the SortableContext note below).
+  const sortedKeys = [...tier.dimension_keys].sort((a, b) =>
+    props.labelFor(a).localeCompare(props.labelFor(b)),
+  );
   return (
     <div
       ref={setNodeRef}
@@ -194,12 +191,17 @@ function TierRow(props: {
           </div>
         ) : null}
       </div>
-      <SortableContext items={tier.dimension_keys} strategy={horizontalListSortingStrategy}>
+      {/* Chips render alphabetically by their displayed label — within-tier order is
+          display-only, so we present it predictably rather than in drag-arrival
+          order. The SortableContext items must match this rendered order, so both
+          read from the same sorted list. rectSortingStrategy (not horizontal)
+          handles chips that wrap onto multiple lines. */}
+      <SortableContext items={sortedKeys} strategy={rectSortingStrategy}>
         <div className="tier-chips">
-          {tier.dimension_keys.length === 0 ? (
+          {sortedKeys.length === 0 ? (
             <span className="tier-empty">Drag criteria here</span>
           ) : (
-            tier.dimension_keys.map((key) => {
+            sortedKeys.map((key) => {
               // "New" badge only while the dimension is still parked in Ignore;
               // dragging it into a working tier triages it, so the badge clears.
               const isNew = props.newKeys.has(key) && Boolean(tier.ignore);
@@ -255,7 +257,12 @@ export function TierSummaryForPrint(props: {
         {filled.map((tier) => (
           <div key={tier.id} className="tier-summary-row">
             <dt>{tier.label}</dt>
-            <dd>{tier.dimension_keys.map((k) => props.labelFor(k)).join(", ")}</dd>
+            <dd>
+              {tier.dimension_keys
+                .map((k) => props.labelFor(k))
+                .sort((a, b) => a.localeCompare(b))
+                .join(", ")}
+            </dd>
           </div>
         ))}
       </dl>
@@ -282,21 +289,17 @@ export function TierList(props: {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  // Resolve which tier an `over.id` refers to: it is either a tier id (pointer
-  // over empty row space) or a chip's dimension key (resolve to its tier).
-  function tierIdForOver(overId: string): string | null {
-    if (tiers.some((t) => t.id === overId)) return overId;
-    const idx = tierIndexOfKey(tiers, overId);
-    return idx >= 0 ? tiers[idx].id : null;
-  }
+  // Resolve collisions to a tier only (never a chip), so hovering never previews a
+  // within-tier reorder and the chips stay put. `over.id` is therefore always a
+  // tier id in the handlers below.
+  const collisionDetection = makeTierCollisionDetection(new Set(tiers.map((t) => t.id)));
 
   function handleDragStart(event: DragStartEvent) {
     setActiveKey(String(event.active.id));
   }
 
   function handleDragOver(event: DragOverEvent) {
-    const { over } = event;
-    setOverTierId(over ? tierIdForOver(String(over.id)) : null);
+    setOverTierId(event.over ? String(event.over.id) : null);
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -304,18 +307,8 @@ export function TierList(props: {
     setActiveKey(null);
     setOverTierId(null);
     if (!over) return;
-    const dimKey = String(active.id);
-    const overId = String(over.id);
-    // over.id is a tier id (dropped on empty row space) or a chip's dimension key.
-    const targetTier = tiers.find((t) => t.id === overId);
-    if (targetTier) {
-      onChange(moveDimensionToTier(tiers, dimKey, targetTier.id, null));
-      return;
-    }
-    const destIdx = tierIndexOfKey(tiers, overId);
-    if (destIdx < 0) return;
-    if (overId === dimKey) return; // dropped on itself, no-op
-    onChange(moveDimensionToTier(tiers, dimKey, tiers[destIdx].id, overId));
+    // `over.id` is always a tier id (see collisionDetection); append into that tier.
+    onChange(moveDimensionToTier(tiers, String(active.id), String(over.id)));
   }
 
   // The Ignore tier sorts last; working tiers keep their order.
@@ -363,7 +356,7 @@ export function TierList(props: {
       </div>
       <DndContext
         sensors={sensors}
-        collisionDetection={tierCollisionDetection}
+        collisionDetection={collisionDetection}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}

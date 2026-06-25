@@ -1919,9 +1919,11 @@ h1 {
   margin-top: 0.4rem;
 }
 
-/* Drop-target highlight while dragging a chip over a row. */
+/* Drop-target highlight while dragging a chip over a row. Forces a solid border so
+   the highlight looks identical over the Ignore zone (which is dashed by default). */
 .tier-row-over {
   border-color: var(--penta-green);
+  border-style: solid;
   box-shadow: 0 0 0 2px var(--penta-green-soft);
 }
 
