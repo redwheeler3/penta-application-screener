@@ -947,7 +947,9 @@ h1 {
   background: white;
   font-size: 0.8rem;
   cursor: pointer;
-  margin-bottom: 1rem;
+  /* No own margin: the .app-detail-actions row centers Back + Print together and
+     supplies the spacing below. A bottom margin here would shift Back up within
+     the centered row, misaligning it from Print. */
 }
 
 .app-detail-header {
@@ -2086,5 +2088,96 @@ h1 {
 .tier-mark-reviewed:hover {
   background: rgba(17, 24, 39, 0.05);
   color: var(--ink);
+}
+
+/* Candidate-detail action row: Back on the left, Print pushed to the right. */
+.app-detail-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+/* Print-only text summary of the importance tiers — hidden on screen (the
+   interactive tier-list serves there), shown only when printing. */
+.tier-summary-print {
+  display: none;
+}
+
+.tier-summary-print h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.tier-summary-print dl {
+  margin: 0 0 1rem;
+}
+
+.tier-summary-print .tier-summary-row {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.15rem 0;
+  font-size: 0.85rem;
+  break-inside: avoid;
+}
+
+.tier-summary-print dt {
+  flex: 0 0 6rem;
+  font-weight: 700;
+}
+
+.tier-summary-print dd {
+  margin: 0;
+}
+
+/* --- Print: turn either open view into a clean, shareable sheet -----------
+   The app is the live tool; print is a point-in-time artifact to hand round.
+   We hide interactive chrome (nav, workflow, the drag tier-list, buttons, raw
+   debug panels) and let the active view — the ranked list or the candidate
+   detail — flow onto the page. No separate report to build or keep in sync. */
+@media print {
+  /* Anything explicitly marked transient (Print buttons, the detail action row). */
+  .no-print {
+    display: none !important;
+  }
+
+  /* App chrome that isn't part of the printed substance. */
+  .topnav,
+  .page-heading,
+  .workflow-bar,
+  .dimensions-panel,
+  .tier-list,
+  .ranking-header > button,
+  .ranking-subhead,
+  .raw-row-section {
+    display: none !important;
+  }
+
+  /* The text tier summary replaces the hidden interactive tier-list in print. */
+  .tier-summary-print {
+    display: block !important;
+  }
+
+  /* Let the page use the full sheet rather than the centered app column, and
+     drop on-screen shadows/wash that waste ink. */
+  :root {
+    background: #fff;
+  }
+  .app-shell {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  .ranking-view {
+    padding: 0;
+  }
+
+  /* Keep each candidate row intact across a page break — never split a
+     candidate's rationale from their name. */
+  .ranking-list > li,
+  .dimension-score {
+    break-inside: avoid;
+  }
 }
 
