@@ -735,14 +735,16 @@ function TierRow(props: {
           {(() => {
             const newHere = tier.dimension_keys.filter((k) => props.newKeys.has(k));
             return tier.ignore && newHere.length > 0 ? (
-              <button
-                type="button"
-                className="tier-mark-reviewed"
-                onClick={() => props.onAcknowledge(newHere)}
-              >
-                <Check size={13} />
-                Clear all {newHere.length} new flag{newHere.length === 1 ? "" : "s"}
-              </button>
+              <div className="tier-mark-reviewed-row">
+                <button
+                  type="button"
+                  className="tier-mark-reviewed"
+                  onClick={() => props.onAcknowledge(newHere)}
+                >
+                  <Check size={13} />
+                  Clear all {newHere.length} new flag{newHere.length === 1 ? "" : "s"}
+                </button>
+              </div>
             ) : null;
           })()}
         </div>
