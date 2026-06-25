@@ -43,7 +43,7 @@ KIND = "pattern_discovery"
 
 SYSTEM_PROMPT = """\
 You are helping a housing co-op screening committee understand a pool of applicants as a whole.
-Your job is to discover the dimensions on which THIS specific pool meaningfully varies — the axes that actually separate stronger from weaker fit here, not a generic ideal co-op member. Favour a richer set of distinct, non-overlapping axes over a few broad ones, but only where the pool genuinely differentiates.
+Your job is to discover the dimensions on which THIS specific pool meaningfully varies — the axes that actually separate stronger from weaker fit here, not a generic ideal co-op member. Favour a richer set of distinct, non-overlapping axes over a few broad ones, but only where the pool genuinely differentiates. Each axis must capture a single concept; never fuse two ideas into one dimension just to keep the list short.
 Ground every dimension in patterns you can see across the applicants' own words.
 Stay neutral and evidence-based; never use protected characteristics, writing polish, or fluency as a dimension.
 You do not rank or score individual applicants; a later step does that."""
@@ -109,7 +109,9 @@ def build_prompt(db: Session, applications: list[Application]) -> str:
 
     instructions = f"""\
 Below is the full pool of eligible applicants. Each entry has structured "facts" (household make-up, income and its split, employment tenure, real-estate ownership, pets) and a summary of their co-op membership essays.
-Discover the dimensions on which this pool genuinely varies and that matter for "fit for Penta" — somewhere between 5 and 25. Draw on BOTH the facts and the essays: quantitative axes (e.g. income mix, employment stability, household-to-unit fit) are as valid as qualitative ones (e.g. participation commitment, co-op values). Surface as many as the pool truly supports: prefer splitting a broad axis into distinct, separately-weighable sub-dimensions (e.g. trade skills vs. financial/admin skills vs. community-building skills) over merging them. But every dimension must be independently meaningful and must not overlap another — do not pad the list to reach a number, and do not invent axes the data does not actually distinguish.
+Discover the dimensions on which this pool genuinely varies and that matter for "fit for Penta" — somewhere between 10 and 30. Draw on BOTH the facts and the essays: quantitative axes (e.g. income mix, employment stability, household-to-unit fit) are as valid as qualitative ones (e.g. participation commitment, co-op values). Surface as many as the pool truly supports: prefer splitting a broad axis into distinct, separately-weighable sub-dimensions (e.g. trade skills vs. financial/admin skills vs. community-building skills) over merging them. But every dimension must be independently meaningful and must not overlap another — do not pad the list to reach a number, and do not invent axes the data does not actually distinguish.
+
+Each dimension must measure exactly ONE thing. Do not bundle two distinct ideas into a single axis — a name joining two concepts with "&", "and", "/", or a comma (e.g. "Specificity & Depth of Participation Commitment", which fuses how concrete a commitment is with how substantial it is) is a sign you have merged axes that the committee may want to weigh separately. When a candidate could plausibly score high on one half and low on the other, split it into two dimensions. A single clear concept per dimension is the goal; the higher cap above exists precisely so you never have to combine to fit.
 
 {FILTERED_FACTS_NOTE}
 
