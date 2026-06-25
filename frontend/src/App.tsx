@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clipboard, GripVertical, ListOrdered, LogIn, LogOut, Plus, RefreshCw, Settings, Sparkles, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clipboard, GripVertical, ListOrdered, LogIn, LogOut, Plus, Printer, RefreshCw, Settings, Sparkles, X } from "lucide-react";
 import { type ReactNode, type SyntheticEvent, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import {
@@ -32,9 +32,8 @@ type CurrentUser = {
   role: "admin" | "member";
 };
 
-// Mirrors the backend AISettings. The UI only edits spending_cap_usd; the other
-// fields are infra/tuning config that we still round-trip so a save never resets
-// them to defaults.
+// Mirrors backend AISettings. The UI only edits spending_cap_usd; the rest are
+// round-tripped so a save never resets them.
 type AISettings = {
   region: string;
   first_pass_model: string;
@@ -67,44 +66,37 @@ type SettingsResponse = {
 type AppStatus = "eligible" | "ineligible";
 type StatusSource = "untouched" | "rules" | "ai" | "human";
 
-// Counts keyed by the real columns; named views (e.g. "Needs review" = source
-// "ai") are composed here in the client, not by the backend.
+// Counts keyed by the real columns; named views are composed client-side.
 type DashboardCounts = {
   submitted: number;
   status: Record<AppStatus, number>;
   source: Record<StatusSource, number>;
 };
 
-// Which screening steps have run, from the backend (persisted), so the ordered
-// workflow gating survives a page reload.
+// Which screening steps have run (persisted), so workflow gating survives a reload.
 type WorkflowState = {
   synced: boolean;
-  // Whether the latest import used the settings as they are now. False when the
-  // import-relevant settings (sheet id, hard-filter thresholds, disabled rules)
-  // changed since the last sync, so the Import step flags amber — a re-import
-  // would reclassify eligibility.
+  // Whether the latest import used the settings as they are now. False flags the
+  // Import step amber: a re-import would reclassify eligibility.
   importCurrent: boolean;
   qualityChecksRun: boolean;
   essaysAnalyzed: boolean;
   patternsDiscovered: boolean;
   candidatesScored: boolean;
-  // Whether the current run was built from the eligible pool as it is now — the
-  // same truth the Rank no-op gate uses. The Rank step's "needs re-run" badge
-  // reads this (not score coverage), so a pool change that leaves coverage full
-  // (e.g. toggling a previously-scored candidate back in) still flags re-rank.
+  // Same truth the Rank no-op gate uses; the "needs re-run" badge reads this (not
+  // score coverage), so a pool change still flags re-rank with full coverage.
   rankingCurrent: boolean;
 };
 
-// Per-AI-step coverage of the current scope, from the dashboard. cached < inScope
-// means the step's results went stale (e.g. a re-sync changed content), so the
-// UI warns rather than showing a misleading done-check. Keys are absent for steps
-// whose coverage isn't computable yet (e.g. scoring before patterns exist).
+// Per-AI-step coverage of the current scope. cached < inScope means results went
+// stale, so the UI warns instead of a misleading done-check. Keys are absent for
+// steps not yet computable (e.g. scoring before patterns exist).
 type Coverage = Partial<
   Record<"qualityChecksRun" | "essaysAnalyzed" | "candidatesScored", { cached: number; inScope: number }>
 >;
 
-// Faceted counts from the list response: each facet reflects the other group's
-// active filter, so option counts stay consistent across the two filter groups.
+// Faceted counts: each facet reflects the other group's active filter, so the two
+// filter groups stay consistent.
 type AppFacets = {
   status: Record<AppStatus, number>;
   source: Record<StatusSource, number>;
@@ -142,8 +134,8 @@ type QualityFlag = {
   evidence: string;
 };
 
-// Neutral factual extraction across the four essays (milestone 6). Mirrors the
-// backend EssayAnalysisReport. Informational only — never affects status.
+// Neutral factual extraction across the four essays. Mirrors backend
+// EssayAnalysisReport. Informational only — never affects status.
 type EssayAnalysis = {
   summary: string;
   household_context: string | null;
@@ -171,16 +163,13 @@ type ApplicationDetail = ApplicationSummary & {
   aiNarrative?: string | null;
   // null = essay-analysis pass not yet run for this application.
   essayAnalysis?: EssayAnalysis | null;
-  // This candidate's scores against the current run's discovered dimensions
-  // (milestone 7), ordered by importance to this candidate's ranking (|impact|
-  // descending). These are the candidate's ranking contributions — the same
-  // objects the ranked-list row is a top slice of — so the detail page and the
-  // row tell one story. null = no run, or not scored under it.
+  // This candidate's scores against the current run's dimensions, by |impact|
+  // descending — the same ranking contributions the ranked-list row slices. null =
+  // no run, or not scored under it.
   dimensionScores?: DimensionContribution[] | null;
 };
 
-// The current screening run's discovered dimensions (milestone 7), from
-// GET /screening/current. null when discovery has not run yet.
+// The current run's discovered dimensions, from GET /screening/current.
 type PoolDimension = {
   key: string;
   name: string;
@@ -188,14 +177,11 @@ type PoolDimension = {
   why_it_differentiates: string;
 };
 
-// --- Ranking (milestone 8). The deterministic ranked shortlist from
-// GET /screening/ranking — pure math over the cached dimension scores, no model
-// call. Mirrors the backend ranking dataclasses.
+// --- Ranking: the deterministic ranked shortlist from GET /screening/ranking,
+// pure math over the cached scores. Mirrors the backend ranking dataclasses.
 
-// How one dimension fed a candidate's fit: the score, the weight applied, and
-// `impact` = weight × (score − pool mean) — the signed amount this dimension
-// moved the candidate relative to the pool. Magnitude ranks "what mattered";
-// sign gives direction. Grounding is kept for the explainable per-row view.
+// How one dimension fed a candidate's fit. `impact` = weight × (score − pool mean):
+// magnitude ranks "what mattered", sign gives direction.
 type DimensionContribution = {
   dimension_key: string;
   name: string;
@@ -221,16 +207,14 @@ type RankingState = {
   weights: Record<string, number>;
   scoredCount: number;
   candidates: RankedCandidate[];
-  // Unacknowledged new dimensions — recomputed on every tier save, so badges
-  // clear in the same round-trip when a dimension is placed or acknowledged.
+  // Unacknowledged new dimensions, recomputed on every tier save so badges clear
+  // in the same round-trip.
   newDimensionKeys: string[];
 };
 
-// One importance tier in the M9 tier-list. Dimensions in the same tier weigh
-// equally; higher tiers weigh more; the Ignore zone weighs 0. The committee
-// defines how many working tiers there are. The backend stores only the working
-// tiers and synthesizes the Ignore zone for display (the one tier with
-// `ignore: true`); working tiers omit the flag, so it is optional here.
+// One importance tier. Same tier → equal weight; higher tiers weigh more; Ignore
+// weighs 0. The backend stores only working tiers and synthesizes the Ignore zone
+// for display (the one with `ignore: true`), so the flag is optional here.
 type Tier = {
   id: string;
   label: string;
@@ -244,9 +228,8 @@ type ScreeningRunState = {
   status: string;
   summary: string;
   dimensions: PoolDimension[];
-  // Dimensions that appeared on the last re-discovery with no confident match to a
-  // prior one — they start in Ignore and are badged "new" until the committee
-  // triages them. Empty on a first run.
+  // New dimensions with no confident match to a prior one — they start in Ignore,
+  // badged "new" until the committee triages them. Empty on a first run.
   newDimensionKeys: string[];
 };
 
@@ -263,16 +246,14 @@ type QualityFlagEstimate = {
   within_cap: boolean;
 };
 
-// Combined cost projection for the Rank chain (essays + criteria + scores), from
-// GET /screening/rank/estimate. `approximate` is always true: the criteria and
-// scoring costs scale with essay output that does not exist until essays run.
+// Combined cost projection for the Rank chain, from GET /screening/rank/estimate.
+// `approximate` is always true: scoring is priced as a whole-pool ceiling.
 type RankEstimate = {
   eligible: number;
   breakdown: {
     essays_usd: number;
     criteria_usd: number;
-    // The dimension identity-match call (carry-forward); 0 on a first run (no
-    // prior dimensions to match, so the pass is skipped).
+    // The dimension identity-match call; 0 on a first run (pass skipped).
     match_usd: number;
     scoring_usd: number;
   };
@@ -281,8 +262,8 @@ type RankEstimate = {
   approximate: boolean;
   cap_usd: number;
   within_cap: boolean;
-  // True when the pool is unchanged since the last run — ranking is already
-  // current, so re-running is blocked (it would only re-spend for the same result).
+  // True when the pool is unchanged — ranking is already current, so re-running is
+  // blocked.
   ranking_current: boolean;
 };
 
@@ -384,11 +365,9 @@ function bandClass(band: string): string {
   return band.toLowerCase().replace(/[^a-z]+/g, "-");
 }
 
-// A single dimension SCORE (0..1) as a qualitative band + CSS modifier. This is
-// what the committee reads on each contribution line — the applicant's strength
-// on that axis, NOT how confident the model was (a low score held with high
-// confidence is still a weakness). Buckets mirror the confidence colour ramp
-// (strong→green, moderate→blue, weak→amber) so the colour now tracks merit.
+// A dimension SCORE (0..1) as a qualitative band + CSS modifier — the applicant's
+// strength on that axis (not the model's confidence). Colour ramp strong→green,
+// moderate→blue, weak→amber.
 function scoreBand(score: number): { label: string; cls: string } {
   if (score >= 0.66) return { label: "Strong", cls: "score-strong" };
   if (score >= 0.33) return { label: "Moderate", cls: "score-moderate" };
@@ -430,60 +409,46 @@ function renderEssayChips(label: string, values: string[]): ReactNode {
   );
 }
 
-// One numbered step in the ordered screening workflow strip. Renders the step
-// button plus a chevron connector to the next step (omitted on the last).
-//
-// The label is always two lines: a title on line 1 and a small fraction on line
-// 2. The fraction is the live "processed/total" while a run streams (`progress`),
-// otherwise the step's coverage "cached/inScope" when known. Both use the same
-// format so a running step and a settled one read identically.
-//
-// AI steps may pass `coverage` (how many in-scope candidates have a current
-// result). When results are incomplete/stale (cached < inScope) the step is NOT
-// treated as done: the badge turns amber and the fraction shows, so "it ran
-// once" can't masquerade as "it's current" after a re-sync.
+// One numbered step in the ordered workflow strip: the step button plus a chevron
+// to the next step (omitted on the last). Line 1 is the title; line 2 is the live
+// "processed/total" while running, else the step's coverage "cached/inScope". When
+// results are stale (cached < inScope) the step is NOT done — the badge turns amber
+// so "it ran once" can't masquerade as "it's current" after a re-sync.
 function WorkflowStep(props: {
   n: number;
   title: string;
   icon: ReactNode;
   done: boolean;
   busy: boolean;
-  // The line-1 verb while running (e.g. "Analyzing essays"). Line 2 is the
-  // live count, taken from `progress` below — not baked into this string.
+  // The line-1 verb while running; line 2's count comes from `progress`.
   busyLabel: string;
   disabled: boolean;
   onClick: () => void;
   last?: boolean;
   coverage?: { cached: number; inScope: number };
   progress?: { processed: number; total: number } | null;
-  // A single persistent value for line 2 when there is no coverage fraction
-  // (e.g. sync's row count, discovery's dimension count). These are not
-  // coverage, so they show as one number, not "n/n".
+  // A single value for line 2 when there's no coverage fraction (e.g. sync's row
+  // count) — shown as one number, not "n/n".
   caption?: string;
-  // Explicit "out of date" signal for steps whose currency isn't captured by
-  // score coverage (Rank: the pool can change while every still-eligible
-  // candidate keeps a cached score). When set, it drives the stale badge instead
-  // of the coverage comparison; the coverage fraction still shows.
+  // Explicit "out of date" signal for steps not captured by score coverage (Rank:
+  // the pool can change while every candidate keeps a cached score). Drives the
+  // stale badge instead of the coverage comparison.
   outOfDate?: boolean;
   // Tooltip shown when stale, overriding the default coverage-based one.
   staleTitle?: string;
-  // Tooltip shown when the step is disabled, explaining why (e.g. "configure a
-  // sheet first"). Lets a disabled step be self-explanatory instead of needing a
-  // separate callout. Stale takes precedence if somehow both apply.
+  // Tooltip explaining why the step is disabled. Stale takes precedence if both apply.
   disabledTitle?: string;
 }): ReactNode {
   const { n, title, icon, done, busy, busyLabel, disabled, onClick, last, coverage, progress, caption, outOfDate, staleTitle, disabledTitle } = props;
-  // Stale only applies once a step has run (done). It's driven by an explicit
-  // out-of-date signal when given (Rank), otherwise by coverage falling short of
-  // the current scope (a run that no longer covers everyone).
+  // Stale only applies once done — from the explicit out-of-date signal when given
+  // (Rank), else coverage falling short of the current scope.
   const stale =
     done &&
     (outOfDate !== undefined
       ? outOfDate
       : coverage !== undefined && coverage.cached < coverage.inScope);
   const showDone = done && !stale;
-  // Line 2 priority: live progress while running, then settled coverage, then a
-  // standalone caption (a single persisted value with no fraction).
+  // Line 2 priority: live progress, then settled coverage, then a standalone caption.
   const fraction = busy
     ? progress
       ? `${progress.processed}/${progress.total}`
@@ -567,13 +532,10 @@ function tierIndexOfKey(tiers: Tier[], dimKey: string): number {
   return tiers.findIndex((t) => t.dimension_keys.includes(dimKey));
 }
 
-// Collision detection for the tier-list: the tier that contains the *center of
-// the dragged chip* wins. This matches how a tier-list feels — the chip itself
-// decides its tier — and, by using the chip's midpoint rather than its corners,
-// avoids the wide drag-overlay straying into the tier above/below during
-// horizontal movement (which plain `closestCorners` allowed). Falls back to
-// `closestCorners` when the center is outside every tier (e.g. in the gap
-// between rows, or keyboard dragging, which has no moving rect to measure).
+// Collision detection: the tier containing the *center of the dragged chip* wins.
+// Using the midpoint (not corners) keeps the wide overlay from straying into the
+// neighbouring tier. Falls back to `closestCorners` when the center is outside
+// every tier (gap between rows, or keyboard dragging with no moving rect).
 const tierCollisionDetection: CollisionDetection = (args) => {
   const rect = args.collisionRect;
   const cx = rect.left + rect.width / 2;
@@ -588,12 +550,9 @@ const tierCollisionDetection: CollisionDetection = (args) => {
   return closestCorners(args);
 };
 
-// The visual chip (used both in place and inside the DragOverlay). `dragging`
-// adds the lifted look for the floating overlay copy. `isNew` marks a dimension
-// that appeared on the last re-discovery with no match to a prior one — it sits
-// in Ignore until the committee triages it, so the badge says "decide where this
-// goes." The badge shows wherever the chip is, but in practice a new dimension
-// starts in Ignore and the badge clears once dragged into a working tier.
+// The visual chip (used in place and inside the DragOverlay). `dragging` adds the
+// lifted overlay look. `isNew` badges a freshly-discovered dimension awaiting
+// triage; the badge clears once it's dragged into a working tier.
 function ChipBody(props: {
   label: string;
   dragging?: boolean;
@@ -629,9 +588,8 @@ function ChipBody(props: {
   );
 }
 
-// A draggable dimension chip (one criterion the committee can place in a tier).
-// While dragging, the original is hidden (opacity 0) and a DragOverlay copy
-// follows the cursor freely across tiers — see TierList. That overlay is why the
+// A draggable dimension chip. While dragging, the original is hidden (opacity 0)
+// and a DragOverlay copy follows the cursor across tiers (see TierList), so the
 // drag isn't clipped to its tier's box.
 function DimensionChip(props: {
   dimKey: string;
@@ -672,12 +630,9 @@ function TierRow(props: {
   onAcknowledge: (keys: string[]) => void;
 }): ReactNode {
   const { tier, isOver } = props;
-  // The droppable is the WHOLE row (controls + chips), not just the chips column,
-  // so its rect covers the full visual tier height — otherwise a taller row (the
-  // left-hand controls make it taller than one line of chips) has dead space
-  // below the chips that doesn't register as part of the tier. The highlight is
-  // driven by the parent's tracked `overTierId` (passed as `isOver`), not this
-  // hook's own `isOver`, which flickers off when the pointer is over a chip.
+  // The droppable is the WHOLE row, so its rect covers the full tier height (no
+  // dead space below the chips). The highlight is driven by the parent's tracked
+  // `overTierId` (`isOver`), not this hook's own, which flickers over chips.
   const { setNodeRef } = useDroppable({ id: tier.id });
   return (
     <div
@@ -755,9 +710,34 @@ function TierRow(props: {
   );
 }
 
+// A print-only text rendering of the importance tiers (the drag TierList is hidden
+// when printing). Gives the printed ranking the context of which dimensions sit in
+// which tier, so a reader sees WHY the order came out as it did.
+function TierSummaryForPrint(props: {
+  tiers: Tier[];
+  labelFor: (key: string) => string;
+}): ReactNode {
+  // Only filled tiers are worth printing; the Ignore zone is kept so a reader sees
+  // what was set aside.
+  const filled = props.tiers.filter((t) => t.dimension_keys.length > 0);
+  if (filled.length === 0) return null;
+  return (
+    <div className="tier-summary-print">
+      <h4>Importance tiers</h4>
+      <dl>
+        {filled.map((tier) => (
+          <div key={tier.id} className="tier-summary-row">
+            <dt>{tier.label}</dt>
+            <dd>{tier.dimension_keys.map((k) => props.labelFor(k)).join(", ")}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 // The tier-list maker. `tiers` is the layout (ordered, with a final Ignore tier);
-// `onChange` persists a new layout. Dimension labels come from the run's
-// discovered dimensions.
+// `onChange` persists a new layout.
 function TierList(props: {
   tiers: Tier[];
   labelFor: (key: string) => string;
@@ -766,9 +746,8 @@ function TierList(props: {
   onChange: (next: Tier[]) => void;
 }): ReactNode {
   const { tiers, onChange } = props;
-  // The chip currently being dragged (for the DragOverlay), and the tier the
-  // pointer is over (drives the highlight — tracked here rather than via each
-  // row's own isOver, which flickers off over nested chips).
+  // The chip being dragged (for the DragOverlay) and the tier the pointer is over
+  // (drives the highlight — tracked here, not via each row's flickering isOver).
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [overTierId, setOverTierId] = useState<string | null>(null);
   const sensors = useSensors(
@@ -905,12 +884,9 @@ function TierList(props: {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
-// Placeholder for the initial render only: the GET /settings fetch on mount
-// overwrites both `draft` and `saved` with the server's values within a moment,
-// and the backend's AppSettings schema is the source of truth for every default
-// (see app/domain/hard_filters.py DEFAULT_* constants). These numbers exist just
-// so the form has a shape before the fetch resolves; if one drifted from the
-// backend, a user would effectively never see it. Do not treat these as canonical.
+// Placeholder for the initial render only — the GET /settings fetch on mount
+// overwrites draft and saved with the server's values (the backend's AppSettings
+// schema is the source of truth for every default). Not canonical.
 const defaultSettings: AppSettings = {
   google_sheet_id: "",
   income_min: 70000,
@@ -954,12 +930,10 @@ const ALL_RULES = [
 export function App() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
-  // The form draft the user edits. Kept separate from `saved` so typing never
-  // affects affordances that must gate on persisted state (Sync button, the setup
-  // callout, panel collapse) until the change is actually saved to the server.
+  // The form draft the user edits. Separate from `saved` so typing never affects
+  // affordances that gate on persisted state until the change is saved.
   const [draft, setDraft] = useState<AppSettings>(defaultSettings);
-  // The last settings persisted on the server — the single source of truth for what
-  // is actually configured. `draft` is reset to this on load and after each save.
+  // The last settings persisted on the server. `draft` resets to this on load/save.
   const [saved, setSaved] = useState<SettingsResponse | null>(null);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
@@ -981,14 +955,11 @@ export function App() {
   const [coverage, setCoverage] = useState<Coverage>({});
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // All workflow notifications surface as bottom-right toasts. Success toasts
-  // auto-dismiss; error toasts persist until dismissed so a failure can't scroll
-  // away unread. Each gets a unique id so several can stack independently.
+  // Workflow notifications surface as bottom-right toasts. Success toasts
+  // auto-dismiss; error toasts persist until dismissed. Unique ids let them stack.
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastSeq = useRef(0);
 
-  // Success toasts auto-dismiss after this long. Long enough to read a cost
-  // figure or count without lingering.
   const TOAST_DURATION_MS = 7000;
 
   function showToast(message: string) {
@@ -1021,39 +992,32 @@ export function App() {
   const [selectedApp, setSelectedApp] = useState<ApplicationDetail | null>(null);
 
   // AI run flows share a shape: estimate (confirmation) -> running -> result.
-  // Success and failure both surface as toasts (see showToast/showError), so no
-  // per-step message state is kept here.
+  // Outcomes surface as toasts, so no per-step message state is kept here.
   const [qfEstimate, setQfEstimate] = useState<QualityFlagEstimate | null>(null);
   const [qfRunning, setQfRunning] = useState(false);
   // Live progress while the run streams: processed/total applications.
   const [qfProgress, setQfProgress] = useState<{ processed: number; total: number } | null>(null);
 
-  // The current run's discovered dimensions, shown above the list once the Rank
-  // chain has run. Refreshed after a rank run / on load.
+  // The current run's discovered dimensions, shown above the list once Rank has run.
   const [screeningRun, setScreeningRun] = useState<ScreeningRunState | null>(null);
 
-  // Rank (the combined essays → criteria → scores chain). One estimate-confirm-
-  // stream flow over all three passes, gated once on the combined cost. The
-  // committee never runs the sub-passes individually, so there is no per-pass
-  // state — just the chain's estimate, running flag, and phase-aware progress.
+  // Rank (the combined essays → criteria → scores chain): one estimate-confirm-stream
+  // flow over all three passes, gated once on the combined cost.
   const [rankEstimate, setRankEstimate] = useState<RankEstimate | null>(null);
   const [rankRunning, setRankRunning] = useState(false);
-  // Live progress while the chain streams. `phase` is which pass is running
-  // (essays / criteria / scores); processed/total drive the bar for the
-  // per-candidate phases (criteria is a single call, so it has no fraction).
+  // Live progress while the chain streams. `phase` is the running pass;
+  // processed/total drive the bar (criteria is a single call, so it has no fraction).
   const [rankProgress, setRankProgress] = useState<
     { phase: "essays" | "criteria" | "scores"; processed: number; total: number } | null
   >(null);
 
-  // Ranking (milestone 8): the deterministic ranked shortlist. `showRanking`
-  // toggles the ranked view on over the applications list; null ranking means
-  // it has not been fetched yet (or the Rank chain has not run).
+  // The deterministic ranked shortlist. `showRanking` toggles the ranked view over
+  // the list; null ranking means not yet fetched.
   const [ranking, setRanking] = useState<RankingState | null>(null);
   const [showRanking, setShowRanking] = useState(false);
 
-  // M9 tier-list: the committee's importance tiers for the current run. Loaded
-  // with the ranking; each edit is persisted (PUT /tiers) and the response is the
-  // freshly re-sorted ranking, so tiers and order stay in lockstep.
+  // The committee's importance tiers for the current run. Each edit persists (PUT
+  // /tiers) and returns the re-sorted ranking, so tiers and order stay in lockstep.
   const [tiers, setTiers] = useState<Tier[] | null>(null);
 
 
@@ -1077,12 +1041,9 @@ export function App() {
     fetchApplications({}, 1, "");
   }, [user]);
 
-  // The current screening run's dimensions, if discovery has run. Refreshed
-  // after discovery so the dimensions panel appears without a reload. Returns the
-  // promise so callers can await it before rendering anything that resolves
-  // dimension keys to names (the tier list's labelFor reads screeningRun.
-  // dimensions — open the ranking before this lands and labels fall back to raw
-  // internal keys until it does).
+  // The current run's dimensions, if discovery has run. Returns the promise so
+  // callers can await it before rendering anything that resolves dimension keys to
+  // names (the tier list's labelFor reads screeningRun.dimensions).
   function refreshScreeningRun() {
     return fetch(`${apiBaseUrl}/screening/current`, { credentials: "include" })
       .then((response) => (response.ok ? response.json() : null))
@@ -1364,19 +1325,16 @@ export function App() {
     setQfRunning(false);
   }
 
-  // Rank: the combined essays → criteria → scores chain (milestones 6-8). One
-  // estimate-confirm-stream flow over all three passes. The cost is projected and
-  // cap-checked as a single combined number server-side, so the one button keeps
-  // the same hard cost gate the individual passes had.
+  // Rank: the combined essays → criteria → scores chain. One estimate-confirm-stream
+  // flow, cap-checked as a single combined number server-side.
   async function requestRankEstimate() {
-    // Close the flagging confirmation if open, so only one card shows at a time.
+    // Close the flagging confirmation so only one card shows at a time.
     setQfEstimate(null);
     const response = await fetch(`${apiBaseUrl}/screening/rank/estimate`, { credentials: "include" });
     if (response.ok) {
       const estimate: RankEstimate = await response.json();
-      // Always open the confirmation card, even when the pool is unchanged (the
-      // backend would block the run as a no-op). The card explains there's
-      // nothing to re-rank and disables Confirm, instead of a transient toast.
+      // Always open the card, even when unchanged: it explains there's nothing to
+      // re-rank and disables Confirm, instead of a transient toast.
       setRankEstimate(estimate);
     } else {
       showError("Could not load the AI cost estimate for ranking.");
@@ -1409,8 +1367,7 @@ export function App() {
             if (!line.trim()) continue;
             const event = JSON.parse(line);
             if (event.type === "phase") {
-              // A new pass started: reset the bar to its total (criteria, a single
-              // call, has no total — show an indeterminate bar for it).
+              // New pass: reset the bar to its total (criteria is one call → no total).
               setRankProgress({ phase: event.phase, processed: 0, total: event.total ?? 0 });
             } else if (event.type === "progress") {
               setRankProgress({ phase: event.phase, processed: event.processed, total: event.total });
@@ -1426,12 +1383,9 @@ export function App() {
             }
           }
         }
-        // The chain replaced the dimensions and scores, so refresh the run, the
-        // dashboard (workflow gating), the open candidate, and any open ranking.
-        // Await the run refresh before reopening the ranking: the tier list's
-        // labelFor resolves dimension keys against screeningRun.dimensions, so the
-        // new run's names must be in state before its tiers render — otherwise the
-        // tier chips briefly show raw internal keys.
+        // The chain replaced the dimensions and scores. Await the run refresh before
+        // reopening the ranking, so the tier list's labelFor has the new run's names
+        // before its chips render (else they briefly show raw keys).
         await refreshScreeningRun();
         refreshDashboard();
         if (selectedApp) viewApplication(selectedApp.id);
@@ -1444,9 +1398,8 @@ export function App() {
     setRankRunning(false);
   }
 
-  // Ranking (milestone 8): fetch the deterministic ranked shortlist and open the
-  // ranked view. No cost — pure math over the cached scores — so it just loads.
-  // Also loads the M9 tier layout so the tier-list and the order open together.
+  // Fetch the ranked shortlist and tier layout, and open the ranked view. No cost —
+  // pure math over the cached scores.
   async function openRanking() {
     setSelectedApp(null);
     const [rankRes, tiersRes] = await Promise.all([
@@ -1467,9 +1420,8 @@ export function App() {
     }
   }
 
-  // M9: persist a new tier layout. The PUT returns the freshly re-sorted ranking,
-  // so tiers and order update together in one round-trip. Optimistically set the
-  // tiers so the drag feels instant; reconcile from the response.
+  // Persist a new tier layout. The PUT returns the re-sorted ranking. Optimistically
+  // set the tiers so the drag feels instant; reconcile from the response.
   async function saveTiers(next: Tier[], acknowledgedKeys: string[] = []) {
     setTiers(next);
     const response = await fetch(`${apiBaseUrl}/screening/tiers`, {
@@ -1486,16 +1438,15 @@ export function App() {
     }
   }
 
-  // Acknowledge "new" dimensions in place (badge ✕ / "mark all reviewed") — they
-  // drop out of new_dimension_keys without moving. Persists via the same tiers
-  // PUT, sending the current layout unchanged plus the acknowledged keys.
+  // Acknowledge "new" dimensions in place (badge ✕ / "mark all reviewed") — drop
+  // them from new_dimension_keys without moving, via the same tiers PUT.
   async function acknowledgeNewDimensions(keys: string[]) {
     if (!tiers || keys.length === 0) return;
     await saveTiers(tiers, keys);
   }
 
-  // Human override of an application's status (any committee member). The backend
-  // marks it human-owned and sticky against future machine runs.
+  // Human override of an application's status. The backend marks it human-owned and
+  // sticky against future machine runs.
   async function overrideStatus(id: number, status: AppStatus) {
     const response = await fetch(`${apiBaseUrl}/applications/${id}/status`, {
       method: "PATCH",
@@ -1528,8 +1479,8 @@ export function App() {
   }
 
   const hasGoogleSheetLink = Boolean(saved && resolveSheetId(saved));
-  // Form visibility is an explicit open/closed state, not derived from the field
-  // value — otherwise typing a link would collapse the form before saving.
+  // Explicit open/closed state, not derived from the field value — else typing a
+  // link would collapse the form before saving.
   const showSettingsForm = isSettingsExpanded;
 
   return (
@@ -1586,7 +1537,7 @@ export function App() {
         </section>
       ) : (
         <>
-          <section className="settings-panel" aria-label="Admin settings">
+          <section className="settings-panel no-print" aria-label="Admin settings">
             <div className="settings-panel-header">
               <div>
                 <h2>Settings</h2>
@@ -1785,7 +1736,7 @@ export function App() {
           </section>
 
           <section className="panel">
-            <div className="panel-header">
+            <div className="panel-header no-print">
               <div>
                 <h2>Applications</h2>
               </div>
@@ -1810,10 +1761,8 @@ export function App() {
                   // caption persists the imported row count (not a fraction).
                   disabled={isSyncing || !hasGoogleSheetLink}
                   disabledTitle="Add a Google Sheet link in settings to import."
-                  // Amber when the import-relevant settings changed since the last
-                  // sync: a re-import would reclassify eligibility. (We can't see
-                  // a changed spreadsheet, so green is "probably fresh," but a
-                  // settings change is near-certain grounds to re-import.)
+                  // Amber when import-relevant settings changed since the last sync:
+                  // a re-import would reclassify eligibility.
                   outOfDate={workflow.synced && !workflow.importCurrent}
                   staleTitle="Settings changed since the last import — re-import to apply them."
                   onClick={syncApplications}
@@ -1830,8 +1779,7 @@ export function App() {
                   done={workflow.qualityChecksRun}
                   busy={qfRunning}
                   busyLabel="Screening"
-                  // Gated until a sync has happened; also needs eligible apps and
-                  // no estimate prompt already open.
+                  // Needs a sync, eligible apps, and no estimate prompt open.
                   disabled={
                     !workflow.synced ||
                     qfRunning ||
@@ -1853,14 +1801,12 @@ export function App() {
                   n={3}
                   title="Rank"
                   icon={<Sparkles size={16} />}
-                  // Rank is the essays → criteria → scores chain. It reads as done
-                  // only once the final pass (scoring) has full coverage; coverage
-                  // tracks that last pass so a re-sync correctly shows it stale.
+                  // Done only once the final pass (scoring) has full coverage, which
+                  // coverage tracks so a re-sync correctly shows it stale.
                   done={workflow.candidatesScored}
                   busy={rankRunning}
                   busyLabel="Ranking"
-                  // Gated until screening has run; also needs eligible apps and no
-                  // open estimate.
+                  // Needs screening run, eligible apps, and no open estimate.
                   disabled={
                     !workflow.qualityChecksRun ||
                     rankRunning ||
@@ -1876,10 +1822,8 @@ export function App() {
                   }
                   onClick={requestRankEstimate}
                   coverage={coverage.candidatesScored}
-                  // Rank's currency is the pool fingerprint, not score coverage:
-                  // a pool change (candidate added/edited/eligibility flip) makes
-                  // ranking out of date even when every still-eligible candidate
-                  // keeps a cached score. Mirrors the no-op gate exactly.
+                  // Rank's currency is the pool fingerprint, not score coverage: a
+                  // pool change makes ranking out of date even with full coverage.
                   outOfDate={workflow.candidatesScored && !workflow.rankingCurrent}
                   staleTitle="The applicant pool changed since the last ranking — re-rank to refresh it."
                   progress={rankProgress}
@@ -1887,10 +1831,8 @@ export function App() {
                 />
               </ol>
 
-              {/* Ranked shortlist entry point, sharing the workflow row: once the
-                  Rank chain has run, viewing the shortlist is the natural next
-                  move, so it sits beside the steps rather than on its own line.
-                  Never a gated AI step — viewing the ranking is math, no model. */}
+              {/* Ranked shortlist entry point, beside the steps once Rank has run.
+                  Not a gated AI step — viewing the ranking is math, no model. */}
               {workflow.candidatesScored && !selectedApp ? (
                 showRanking ? (
                   <button type="button" className="secondary-button workflow-shortlist-button" onClick={() => setShowRanking(false)}>
@@ -1931,8 +1873,7 @@ export function App() {
                   ) : null}
                 </div>
                 <div className="qf-confirm-actions">
-                  {/* No run button in the nothing-to-do state — there's nothing to
-                      confirm, so the card is informational and only offers Close. */}
+                  {/* No run button when there's nothing to do — informational, Close only. */}
                   {qfEstimate.to_analyze > 0 ? (
                     <button
                       className="primary-button"
@@ -1957,9 +1898,8 @@ export function App() {
                       `(${Math.round(qfPercent(qfProgress))}%)`
                     : "Starting analysis…"}
                 </div>
-                {/* Until the first progress event arrives, show an indeterminate bar
-                    so the indicator appears instantly on confirm, not seconds later
-                    once the first application finishes. */}
+                {/* Indeterminate bar until the first progress event, so the indicator
+                    appears instantly on confirm. */}
                 <div className="qf-progress-track">
                   {qfProgress ? (
                     <div
@@ -2113,22 +2053,38 @@ export function App() {
                       ranked by overall fit. Drag criteria into importance tiers below to re-rank.
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    className="secondary-button no-print"
+                    onClick={() => window.print()}
+                  >
+                    <Printer size={16} />
+                    Print
+                  </button>
                 </div>
 
                 {/* M9 tier-list: drag criteria into importance tiers; the ranking
                     re-sorts on each edit (deterministic, no model call). */}
                 {tiers && screeningRun ? (
-                  <TierList
-                    tiers={tiers}
-                    labelFor={(key) =>
-                      screeningRun.dimensions.find((d) => d.key === key)?.name ?? key
-                    }
-                    // Read from ranking (refreshed on every save) so badges clear
-                    // immediately when a dimension is placed or acknowledged.
-                    newKeys={new Set(ranking.newDimensionKeys)}
-                    onAcknowledge={acknowledgeNewDimensions}
-                    onChange={saveTiers}
-                  />
+                  <>
+                    <TierList
+                      tiers={tiers}
+                      labelFor={(key) =>
+                        screeningRun.dimensions.find((d) => d.key === key)?.name ?? key
+                      }
+                      // Read from ranking (refreshed on every save) so badges clear
+                      // immediately when a dimension is placed or acknowledged.
+                      newKeys={new Set(ranking.newDimensionKeys)}
+                      onAcknowledge={acknowledgeNewDimensions}
+                      onChange={saveTiers}
+                    />
+                    <TierSummaryForPrint
+                      tiers={tiers}
+                      labelFor={(key) =>
+                        screeningRun.dimensions.find((d) => d.key === key)?.name ?? key
+                      }
+                    />
+                  </>
                 ) : null}
 
                 {ranking.candidates.length === 0 ? (
@@ -2138,12 +2094,9 @@ export function App() {
                 ) : (
                   <ol className="ranking-list">
                     {ranking.candidates.map((candidate) => {
-                      // Lead with the dimensions that most moved THIS candidate's
-                      // rank — by |impact| (weight × deviation from the pool mean),
-                      // not raw weight×score. So a heavy strike (low score on a
-                      // weighted axis) surfaces as readily as a strength: the row
-                      // tells both why a candidate ranks high AND where they're weak.
-                      // The score band's colour says which is which.
+                      // Lead with what most moved this candidate's rank — by |impact|,
+                      // not raw weight×score — so a heavy strike surfaces as readily
+                      // as a strength. The score band's colour says which is which.
                       const topContributions = [...candidate.contributions]
                         .filter((c) => c.weight > 0)
                         .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
@@ -2189,10 +2142,20 @@ export function App() {
               );
               return (
               <div className="app-detail">
-                <button className="back-button" onClick={() => setSelectedApp(null)}>
-                  <ChevronLeft size={16} />
-                  <span>Back to list</span>
-                </button>
+                <div className="app-detail-actions no-print">
+                  <button className="back-button" onClick={() => setSelectedApp(null)}>
+                    <ChevronLeft size={16} />
+                    <span>Back to list</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => window.print()}
+                  >
+                    <Printer size={16} />
+                    Print
+                  </button>
+                </div>
                 <div className="app-detail-header">
                   <h3>{selectedApp.applicantName || selectedApp.primaryEmail}</h3>
                   <span className={`status-badge status-${selectedApp.status}`}>
