@@ -1071,9 +1071,13 @@ export function App() {
   }, [user]);
 
   // The current screening run's dimensions, if discovery has run. Refreshed
-  // after discovery so the dimensions panel appears without a reload.
+  // after discovery so the dimensions panel appears without a reload. Returns the
+  // promise so callers can await it before rendering anything that resolves
+  // dimension keys to names (the tier list's labelFor reads screeningRun.
+  // dimensions — open the ranking before this lands and labels fall back to raw
+  // internal keys until it does).
   function refreshScreeningRun() {
-    fetch(`${apiBaseUrl}/screening/current`, { credentials: "include" })
+    return fetch(`${apiBaseUrl}/screening/current`, { credentials: "include" })
       .then((response) => (response.ok ? response.json() : null))
       .then((payload: ScreeningRunState | null) => setScreeningRun(payload))
       .catch(() => setScreeningRun(null));
@@ -1417,7 +1421,11 @@ export function App() {
         }
         // The chain replaced the dimensions and scores, so refresh the run, the
         // dashboard (workflow gating), the open candidate, and any open ranking.
-        refreshScreeningRun();
+        // Await the run refresh before reopening the ranking: the tier list's
+        // labelFor resolves dimension keys against screeningRun.dimensions, so the
+        // new run's names must be in state before its tiers render — otherwise the
+        // tier chips briefly show raw internal keys.
+        await refreshScreeningRun();
         refreshDashboard();
         if (selectedApp) viewApplication(selectedApp.id);
         if (showRanking) openRanking();
