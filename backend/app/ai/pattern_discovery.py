@@ -196,15 +196,11 @@ def discover_patterns(
     identical either way.
     """
     model_id = settings.ai.synthesis_model
-    prompt = build_prompt(db, applications, seeds=seeds)
-    if on_delta is not None:
-        result = provider.structured_output_streaming(
-            model_id=model_id, schema=PoolPatternReport, prompt=prompt,
-            system_prompt=SYSTEM_PROMPT, on_delta=on_delta,
-        )
-    else:
-        result = provider.structured_output(
-            model_id=model_id, schema=PoolPatternReport, prompt=prompt,
-            system_prompt=SYSTEM_PROMPT,
-        )
+    result = provider.structured_output(
+        model_id=model_id,
+        schema=PoolPatternReport,
+        prompt=build_prompt(db, applications, seeds=seeds),
+        system_prompt=SYSTEM_PROMPT,
+        on_delta=on_delta,
+    )
     return result.output, result.narrative, cost_usd(result.model_id, result.usage)
