@@ -70,6 +70,7 @@ The full pool of eligible applicants is in the `<applicant_pool>` block below. E
 
 ## How to judge
 Each dimension must measure exactly ONE thing. The decisive test is OPPOSING EVIDENCE: if a single subject could plausibly score HIGH on one part of a dimension and LOW on another part, you have bundled two axes — split them. To see the test working in a neutral setting unrelated to housing: a restaurant rating called "good value" reads as one idea but fuses (a) price fairness with (b) portion size — an expensive place serving huge plates scores high on one and low on the other, so a single "value" number averages to a misleading "moderate" and HIDES which one actually varies. Two ratings, not one. Apply that same seam-finding to whatever axes THIS pool actually presents — do not import the example's subject matter; it is only there to illustrate the move. Watch for the seam even when a name reads as one idea; a name joining concepts with "&", "and", "/", or a comma is just the most obvious case. A single clear concept per dimension is the goal; the higher cap above exists precisely so you never have to combine to fit.
+One exception to splitting: never split a concept into applicant-vs-co-applicant versions (e.g. "applicant's trade skills" vs. "co-applicant's"). They apply jointly — assess each concept across both adults together. This is only about that pair; dimensions about other household members (e.g. school-age children using shared spaces) are fine.
 
 {FILTERED_FACTS_NOTE}
 
