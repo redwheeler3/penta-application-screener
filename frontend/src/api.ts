@@ -111,6 +111,18 @@ export function saveTiers(next: Tier[], acknowledgedKeys: string[]): Promise<Res
   });
 }
 
+// Persist discovery seeds for the current run. Each field is optional so the UI can
+// update favourites without touching proposals (and vice versa). The next Rank reads
+// these from the run, so they take effect on its discovery pass.
+export function saveSeeds(seeds: { favourited_keys?: string[]; proposed_dimensions?: string[] }): Promise<Response> {
+  return fetch(url("/screening/seeds"), {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(seeds),
+  });
+}
+
 export function overrideStatus(id: number, status: string): Promise<Response> {
   return fetch(url(`/applications/${id}/status`), {
     method: "PATCH",

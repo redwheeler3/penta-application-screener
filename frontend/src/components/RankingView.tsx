@@ -1,38 +1,127 @@
-import { Printer } from "lucide-react";
-import { type ReactNode } from "react";
+import { Plus, Printer, Star, X } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { bandClass, scoreBand } from "../format";
 import type { RankingState, ScreeningRunState, Tier } from "../types";
 import { TierList, TierSummaryForPrint } from "./TierList";
 
-// The current run's discovered criteria — the axes scoring rates each candidate
-// on. Shown above the list and the shortlist, not when a candidate is open.
-export function CriteriaPanel(props: { screeningRun: ScreeningRunState; tiers: Tier[] | null }): ReactNode {
+// The current run's discovered criteria — the axes scoring rates each candidate on
+// — plus a composer for steering the NEXT run's discovery: star a dimension to keep
+// it across re-runs (favourite), or describe an axis to propose. Both feed the next
+// Rank's discovery as "strongly consider"; the AI may refine, split, or skip them.
+// Shown above the list and the shortlist, not when a candidate is open.
+export function CriteriaPanel(props: {
+  screeningRun: ScreeningRunState;
+  tiers: Tier[] | null;
+  favouritedKeys: string[];
+  proposedDimensions: string[];
+  onToggleFavourite: (key: string, favourited: boolean) => void;
+  onAddProposal: (text: string) => void;
+  onRemoveProposal: (text: string) => void;
+}): ReactNode {
+  const { screeningRun } = props;
+  // Default to [] so a run persisted before this feature (no seed fields) can't crash.
+  const favouritedKeys = props.favouritedKeys ?? [];
+  const proposedDimensions = props.proposedDimensions ?? [];
+  const favourited = new Set(favouritedKeys);
+  const [draft, setDraft] = useState("");
+
   // Order criteria most→least important by tier position (Ignore last), then
   // alphabetically by name within a tier — matching the tier list's chip order.
   const rankOf = new Map<string, number>();
   (props.tiers ?? []).forEach((tier, tierIdx) => {
     tier.dimension_keys.forEach((key) => rankOf.set(key, tierIdx));
   });
-  const orderedDimensions = [...props.screeningRun.dimensions].sort((a, b) => {
+  const orderedDimensions = [...screeningRun.dimensions].sort((a, b) => {
     const tierDelta =
       (rankOf.get(a.key) ?? Number.MAX_SAFE_INTEGER) - (rankOf.get(b.key) ?? Number.MAX_SAFE_INTEGER);
     return tierDelta !== 0 ? tierDelta : a.name.localeCompare(b.name);
   });
+
+  function submitDraft() {
+    const text = draft.trim();
+    if (!text) return;
+    props.onAddProposal(text);
+    setDraft("");
+  }
+
+  const seedCount = favourited.size + proposedDimensions.length;
+
   return (
     <details className="dimensions-panel">
-      <summary>Screening criteria ({props.screeningRun.dimensions.length})</summary>
-      <p className="dimensions-summary">{props.screeningRun.summary}</p>
+      <summary>Screening criteria ({screeningRun.dimensions.length})</summary>
+      <p className="dimensions-summary">{screeningRun.summary}</p>
       <ul className="dimensions-list">
-        {orderedDimensions.map((dim) => (
-          <li key={dim.key} className="dimension-item">
-            <div className="dimension-head">
-              <span className="dimension-name">{dim.name}</span>
-            </div>
-            <p className="dimension-def">{dim.definition}</p>
-            <p className="dimension-why">{dim.why_it_differentiates}</p>
-          </li>
-        ))}
+        {orderedDimensions.map((dim) => {
+          const isFav = favourited.has(dim.key);
+          return (
+            <li key={dim.key} className="dimension-item">
+              <div className="dimension-head">
+                <button
+                  type="button"
+                  className={`dimension-fav${isFav ? " is-fav" : ""}`}
+                  aria-pressed={isFav}
+                  title={isFav ? "Favourited — kept on re-run" : "Favourite — keep this axis on re-run"}
+                  onClick={() => props.onToggleFavourite(dim.key, !isFav)}
+                >
+                  <Star size={14} fill={isFav ? "currentColor" : "none"} />
+                </button>
+                <span className="dimension-name">{dim.name}</span>
+              </div>
+              <p className="dimension-def">{dim.definition}</p>
+              <p className="dimension-why">{dim.why_it_differentiates}</p>
+            </li>
+          );
+        })}
       </ul>
+
+      <div className="criteria-composer no-print">
+        <h4>Suggest an axis to look for</h4>
+        <p className="criteria-composer-hint">
+          Describe a dimension you want considered. The next Rank offers it to the AI, which may refine, split, or skip
+          it to fit the pool. Star a discovered criterion above to keep it across re-runs.
+        </p>
+        <div className="criteria-composer-row">
+          <input
+            type="text"
+            value={draft}
+            placeholder="e.g. school-age kids who'd use the playground"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submitDraft();
+              }
+            }}
+          />
+          <button type="button" className="secondary-button" onClick={submitDraft} disabled={!draft.trim()}>
+            <Plus size={14} /> Add
+          </button>
+        </div>
+        {proposedDimensions.length > 0 ? (
+          <ul className="criteria-proposals">
+            {proposedDimensions.map((text) => (
+              <li key={text}>
+                <span>{text}</span>
+                <button
+                  type="button"
+                  className="criteria-proposal-remove"
+                  aria-label="Remove proposal"
+                  title="Remove"
+                  onClick={() => props.onRemoveProposal(text)}
+                >
+                  <X size={12} strokeWidth={3} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {seedCount > 0 ? (
+          <p className="criteria-seed-note">
+            Next Rank will offer the AI {seedCount} suggested {seedCount === 1 ? "axis" : "axes"} ({favourited.size}{" "}
+            favourited, {proposedDimensions.length} proposed) — it may refine, split, or skip them.
+          </p>
+        ) : null}
+      </div>
     </details>
   );
 }

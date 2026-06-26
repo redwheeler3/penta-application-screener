@@ -599,3 +599,171 @@ async def test_dimension_scores_null_before_run() -> None:
         # No run at all -> null (the candidate has no scores to surface yet).
         detail = (await client.get(f"/applications/{application.id}")).json()["application"]
         assert detail["dimensionScores"] is None
+
+
+# --- Discovery seeds (favourites + proposed dimensions) ----------------------
+
+
+def _pattern_report_with_requested() -> PoolPatternReport:
+    """A discovery result where the model flagged one dimension as created from a
+    committee request (the auto-favourite signal)."""
+    return PoolPatternReport(
+        summary="Pool varies on commitment and a requested axis.",
+        dimensions=[
+            PoolDimension(
+                key="participation_commitment",
+                name="Participation commitment",
+                definition="Willingness to do shared work.",
+                why_it_differentiates="Some eager, some vague.",
+            ),
+            PoolDimension(
+                key="playground_age_children",
+                name="Playground-age children",
+                definition="Presence of school-age kids who'd use shared play space.",
+                why_it_differentiates="Some households have young kids, some none.",
+                from_committee_request=True,
+            ),
+        ],
+    )
+
+
+def test_build_prompt_unseeded_has_no_requested_section() -> None:
+    # An un-seeded discovery prompt must not carry a REQUESTED AXES section, so the
+    # default blind run is unchanged.
+    from app.ai.pattern_discovery import DiscoverySeeds, build_prompt
+
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    a = add_eligible(db, email="a@x.com", raw_hash="h1")
+    apps = [a]
+    bare = build_prompt(db, apps)
+    assert "REQUESTED AXES" not in bare
+    # An empty seed set is equivalent to no seeds.
+    assert build_prompt(db, apps, seeds=DiscoverySeeds()) == bare
+
+
+def test_build_prompt_includes_favourited_and_proposed_seeds() -> None:
+    from app.ai.pattern_discovery import DiscoverySeeds, build_prompt
+
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    a = add_eligible(db, email="a@x.com", raw_hash="h1")
+    seeds = DiscoverySeeds(
+        favourited=[{"name": "Conflict Mediation", "definition": "Resolves disputes."}],
+        proposed=["school-age kids who'd use the playground"],
+    )
+    prompt = build_prompt(db, [a], seeds=seeds)
+    assert "REQUESTED AXES" in prompt
+    assert "Conflict Mediation: Resolves disputes." in prompt
+    assert "school-age kids who'd use the playground" in prompt
+    # The model is told to flag what it creates from a request.
+    assert "from_committee_request" in prompt
+
+
+@pytest.mark.anyio
+async def test_proposed_dimension_seeds_discovery_then_clears_and_auto_favourites() -> None:
+    # A proposed axis is fed to discovery; the model returns a dimension flagged
+    # from_committee_request. After the run: the proposal is consumed (cleared) and
+    # the flagged dimension is auto-favourited.
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    a = add_eligible(db, email="a@x.com", raw_hash="h1")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        # First blind run so a run exists to attach seeds to.
+        provider.route("ESSAYS:", an_essay_report())
+        provider.route("APPLICANT POOL:", a_pattern_report())
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/screening/rank/run")
+
+        # Propose an axis between runs.
+        seeds = (await client.put(
+            "/screening/seeds",
+            json={"proposed_dimensions": ["school-age kids who'd use the playground"]},
+        )).json()
+        assert seeds["proposedDimensions"] == ["school-age kids who'd use the playground"]
+        assert seeds["favouritedKeys"] == []
+
+        # Re-run: discovery now returns a report flagging the requested dimension.
+        provider.calls.clear()
+        provider.route("APPLICANT POOL:", _pattern_report_with_requested())
+        provider.route("PRIOR dimensions", DimensionMatchReport(matches=[]))  # match pass
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/screening/rank/run")
+
+        # The proposal text reached the discovery prompt.
+        discovery_prompt = next(c.prompt for c in provider.calls if "APPLICANT POOL:" in c.prompt)
+        assert "school-age kids who'd use the playground" in discovery_prompt
+
+        # After the run: proposal consumed (cleared); flagged dimension auto-favourited.
+        current = (await client.get("/screening/current")).json()
+        assert current["proposedDimensions"] == []
+        assert current["favouritedKeys"] == ["playground_age_children"]
+
+
+@pytest.mark.anyio
+async def test_favourited_dimension_is_re_fed_to_discovery_and_persists() -> None:
+    # A favourited dimension is sent back into the next discovery (by name +
+    # definition) and stays favourited across the re-run.
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    a = add_eligible(db, email="a@x.com", raw_hash="h1")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        provider.route("ESSAYS:", an_essay_report())
+        provider.route("APPLICANT POOL:", a_pattern_report())
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/screening/rank/run")
+
+        # Favourite an existing dimension.
+        seeds = (await client.put(
+            "/screening/seeds", json={"favourited_keys": ["participation_commitment"]},
+        )).json()
+        assert seeds["favouritedKeys"] == ["participation_commitment"]
+
+        # Re-run: the favourite recurs (match pass maps it back to its prior key).
+        provider.calls.clear()
+        provider.route("APPLICANT POOL:", a_pattern_report())
+        provider.route(
+            "PRIOR dimensions",
+            DimensionMatchReport(matches=[]),  # same keys, so no rewrite needed
+        )
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/screening/rank/run")
+
+        # The favourite's name + definition were re-fed to discovery.
+        discovery_prompt = next(c.prompt for c in provider.calls if "APPLICANT POOL:" in c.prompt)
+        assert "REQUESTED AXES" in discovery_prompt
+        assert "Participation commitment: Willingness to do shared work." in discovery_prompt
+
+        # It is still favourited after the re-run.
+        current = (await client.get("/screening/current")).json()
+        assert "participation_commitment" in current["favouritedKeys"]
+
+
+@pytest.mark.anyio
+async def test_put_seeds_before_run_is_409() -> None:
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        resp = await client.put("/screening/seeds", json={"proposed_dimensions": ["x"]})
+        assert resp.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_put_seeds_rejects_unknown_favourite_key() -> None:
+    # Favouriting a key that isn't a real dimension is silently dropped (validated
+    # against the run's report), so a stale key can't poison the seed set.
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        provider.route("ESSAYS:", an_essay_report())
+        provider.route("APPLICANT POOL:", a_pattern_report())
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/screening/rank/run")
+
+        seeds = (await client.put(
+            "/screening/seeds",
+            json={"favourited_keys": ["participation_commitment", "not_a_real_key"]},
+        )).json()
+        assert seeds["favouritedKeys"] == ["participation_commitment"]

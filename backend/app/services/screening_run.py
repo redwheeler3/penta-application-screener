@@ -78,6 +78,8 @@ def create_run(
     name: str = "Screening run",
     tier_layout: list[dict] | None = None,
     new_dimension_keys: list[str] | None = None,
+    prior_favourited_keys: list[str] | None = None,
+    match_audit: dict | None = None,
 ) -> ScreeningRun:
     """Persist a freshly discovered pattern report as a new screening run.
 
@@ -86,9 +88,20 @@ def create_run(
     the run stores tiers explicitly and derives ``weights`` from them.
     ``new_dimension_keys`` are the unmatched new dimensions to flag in the UI; empty
     on a first run.
+
+    ``favourited_keys`` (the durable "keep across re-runs" set) is the union of
+    ``prior_favourited_keys`` carried forward (matched dimensions kept their prior
+    key via ``adopt_matched_keys``, so this is plain key equality) and every
+    dimension the model flagged ``from_committee_request`` (a proposed/favourited
+    axis it just realized) — pruned to keys that actually exist in this report.
+    Pending ``proposed_dimensions`` are consumed by the run, so the new run stores
+    an empty list (they are now real dimensions).
     """
     layout = tier_layout if tier_layout is not None else default_tier_layout()
     dimension_keys = [d.key for d in report.dimensions]
+    valid_keys = set(dimension_keys)
+    favourited = {k for k in (prior_favourited_keys or []) if k in valid_keys}
+    favourited |= {d.key for d in report.dimensions if d.from_committee_request}
     run = ScreeningRun(
         name=name,
         status="patterns_discovered",
@@ -101,9 +114,17 @@ def create_run(
             "tiers": layout,
             "weights": weights_from_tiers(dimension_keys, layout),
             "new_dimension_keys": new_dimension_keys or [],
+            # Durable "keep these axes across re-runs"; carried forward + auto-added
+            # for axes the committee requested. Proposals are consumed, so empty here.
+            "favourited_keys": sorted(favourited),
+            "proposed_dimensions": [],
             "discovery_model_id": model_id,
             "discovery_narrative": narrative,
             "discovery_cost_usd": round(cost_usd, 6),
+            # Carry-forward audit: raw pre-adopt discovery dims + the match map +
+            # match narrative, so a re-rank's "what changed" is inspectable (genuine
+            # re-discovery vs. match over-matching). None on a first run (no match).
+            "match_audit": match_audit,
         },
     )
     db.add(run)
@@ -140,6 +161,55 @@ def current_pattern_report(run: ScreeningRun) -> PoolPatternReport | None:
 def dimension_weights(run: ScreeningRun) -> dict[str, float]:
     """The run's per-dimension weights (always a complete map, derived from tiers)."""
     return {k: float(v) for k, v in ((run.criteria or {}).get("weights") or {}).items()}
+
+
+def favourited_keys(run: ScreeningRun) -> list[str]:
+    """Dimension keys the committee favourited — kept (re-fed to discovery) across
+    re-runs. Only keys still present in the run's report are returned.
+    """
+    report = current_pattern_report(run)
+    valid = {d.key for d in report.dimensions} if report is not None else set()
+    return [k for k in (run.criteria or {}).get("favourited_keys", []) if k in valid]
+
+
+def proposed_dimensions(run: ScreeningRun) -> list[str]:
+    """Pending free-text axes a member proposed, awaiting the next Rank to realize
+    them. Cleared once a run consumes them (they become real dimensions).
+    """
+    return list((run.criteria or {}).get("proposed_dimensions", []))
+
+
+def set_seeds(
+    db: Session,
+    run: ScreeningRun,
+    *,
+    favourited_keys: list[str] | None = None,
+    proposed_dimensions: list[str] | None = None,
+) -> ScreeningRun:
+    """Persist the committee's discovery seeds between runs: which existing
+    dimensions are favourited and which free-text axes are proposed. Each arg is
+    applied only when provided, so the caller can update one without touching the
+    other. Favourites are validated against the run's real dimension keys.
+    """
+    criteria = dict(run.criteria or {})
+    if favourited_keys is not None:
+        report = current_pattern_report(run)
+        valid = {d.key for d in report.dimensions} if report is not None else set()
+        criteria["favourited_keys"] = sorted({k for k in favourited_keys if k in valid})
+    if proposed_dimensions is not None:
+        # Trim blanks/whitespace and dedupe while preserving order.
+        seen: set[str] = set()
+        cleaned: list[str] = []
+        for text in proposed_dimensions:
+            t = text.strip()
+            if t and t not in seen:
+                seen.add(t)
+                cleaned.append(t)
+        criteria["proposed_dimensions"] = cleaned
+    run.criteria = criteria  # reassign so SQLAlchemy tracks the JSON change
+    db.commit()
+    db.refresh(run)
+    return run
 
 
 # The opening working tiers (most→least important), empty so every dimension is

@@ -12,6 +12,7 @@ The model describes the axes, never ranks anyone; scoring and ranking build on t
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -24,6 +25,24 @@ from app.ai.schemas import EssayAnalysisReport, PoolPatternReport
 from app.db.models import Application, ApplicationAIResult, ApplicationStatus
 from app.schemas.settings import AppSettings
 from app.services.application_import import extract_essays
+
+
+@dataclass(frozen=True)
+class DiscoverySeeds:
+    """Axes the committee asked discovery to strongly consider (not a mandate).
+
+    ``favourited`` are existing dimensions to keep across re-runs, sent as their
+    current name + definition. ``proposed`` are free-text descriptions a member
+    wrote. Both are folded into the prompt the same way; the model may refine,
+    split, merge, or skip them, and flags each dimension it creates from a request
+    with ``from_committee_request`` so the caller can auto-favourite it.
+    """
+
+    favourited: list[dict[str, str]] = field(default_factory=list)  # {name, definition}
+    proposed: list[str] = field(default_factory=list)
+
+    def is_empty(self) -> bool:
+        return not self.favourited and not self.proposed
 
 # Rough per-candidate token weight for the pre-run estimate only (the real call is
 # priced from actual usage). Tuned to the SPEC's observed ~$0.07-0.11 for a
@@ -94,13 +113,34 @@ def _candidate_digest(application: Application, essay_report: dict | None) -> di
     return digest
 
 
-def build_prompt(db: Session, applications: list[Application]) -> str:
+def _seeds_block(seeds: DiscoverySeeds) -> str:
+    """The committee-requested axes, rendered as a prompt section. Empty string when
+    there are no seeds, so an un-seeded run's prompt is byte-identical to before.
+    """
+    if seeds.is_empty():
+        return ""
+    lines: list[str] = []
+    for d in seeds.favourited:
+        lines.append(f'- {d["name"]}: {d["definition"]}')
+    for text in seeds.proposed:
+        lines.append(f"- {text}")
+    requested = "\n".join(lines)
+    return f"""\
+
+The committee has asked you to STRONGLY CONSIDER the following axes. For each one, include a dimension that captures it — refining the wording, splitting it into several dimensions, or merging overlapping ones as the one-concept-per-dimension rule demands. Omit a requested axis ONLY if this pool genuinely does not vary on it (say so is not required, just leave it out). A requested axis is still bound by every rule above: grounded in the applicants' words, single-concept, neutral, never a protected characteristic. Set ``from_committee_request: true`` on every dimension you create from a request below (and on each piece if you split one); leave it false for axes you discover on your own.
+
+REQUESTED AXES:
+{requested}
+"""
+
+
+def build_prompt(db: Session, applications: list[Application], *, seeds: DiscoverySeeds | None = None) -> str:
     reports = _essay_reports(db, [app.id for app in applications])
     digests = [_candidate_digest(app, reports.get(app.id)) for app in applications]
 
     instructions = f"""\
 Below is the full pool of eligible applicants. Each entry has structured "facts" (household make-up, income and its split, employment tenure, real-estate ownership, pets) and a summary of their co-op membership essays.
-Discover the dimensions on which this pool genuinely varies and that matter for "fit for Penta" — somewhere between 15 and 30. Draw on BOTH the facts and the essays: quantitative axes (e.g. income mix, employment stability, household-to-unit fit) are as valid as qualitative ones (e.g. participation commitment, co-op values). Surface as many as the pool truly supports: prefer splitting a broad axis into distinct, separately-weighable sub-dimensions (e.g. trade skills vs. financial/admin skills vs. community-building skills) over merging them. But every dimension must be independently meaningful and must not overlap another — do not pad the list to reach a number, and do not invent axes the data does not actually distinguish.
+Discover the dimensions on which this pool genuinely varies and that matter for "fit for Penta" — somewhere between 10 and 30. Draw on BOTH the facts and the essays: quantitative axes (e.g. income mix, employment stability, household-to-unit fit) are as valid as qualitative ones (e.g. participation commitment, co-op values). Surface as many as the pool truly supports: prefer splitting a broad axis into distinct, separately-weighable sub-dimensions (e.g. trade skills vs. financial/admin skills vs. community-building skills) over merging them. But every dimension must be independently meaningful and must not overlap another — do not pad the list to reach a number, and do not invent axes the data does not actually distinguish.
 
 Each dimension must measure exactly ONE thing. The decisive test is OPPOSING EVIDENCE: if a single applicant could plausibly score HIGH on one part of a dimension and LOW on another part, you have bundled two axes — split them. For example, "participation commitment" looks like one concept but fuses (a) operational/hands-on participation — work hours, maintenance shifts, committees — with (b) social/relational contribution — warmth, conversation, an ethic of care; an applicant who says "we're happy to pay for repairs, hands-on work isn't us, but I'd bring warmth and good conversation" is strong on one and weak on the other, so a single score averages to a misleading "moderate" and HIDES the very thing the committee needs to see. These are two dimensions. Watch for this conceptual seam even when the name reads as one idea; a name joining concepts with "&", "and", "/", or a comma is just the most obvious case. A single clear concept per dimension is the goal; the higher cap above exists precisely so you never have to combine to fit.
 
@@ -118,8 +158,9 @@ Also write a 2-4 sentence neutral summary of what most distinguishes strong from
 
 Do not score or name individual applicants. Describe the axes, not the people."""
 
+    seeds_block = _seeds_block(seeds) if seeds is not None else ""
     pool_json = json.dumps(digests, indent=2, default=str)
-    return f"{instructions}\n\nAPPLICANT POOL:\n{pool_json}"
+    return f"{instructions}{seeds_block}\n\nAPPLICANT POOL:\n{pool_json}"
 
 
 def estimate_discovery(applications: list[Application], settings: AppSettings) -> float:
@@ -140,15 +181,20 @@ def discover_patterns(
     *,
     applications: list[Application],
     settings: AppSettings,
+    seeds: DiscoverySeeds | None = None,
 ) -> tuple[PoolPatternReport, str | None, float]:
     """Run the single pool-level discovery call on the synthesis model. Returns the
     report, the reasoning narrative (kept for the debug view), and the priced cost.
+
+    ``seeds`` are committee-requested axes to strongly consider (favourited +
+    proposed); the model flags any dimension it creates from one so the caller can
+    auto-favourite it. None/empty means a fully blind discovery (the default).
     """
     model_id = settings.ai.synthesis_model
     result = provider.structured_output(
         model_id=model_id,
         schema=PoolPatternReport,
-        prompt=build_prompt(db, applications),
+        prompt=build_prompt(db, applications, seeds=seeds),
         system_prompt=SYSTEM_PROMPT,
     )
     return result.output, result.narrative, cost_usd(result.model_id, result.usage)
