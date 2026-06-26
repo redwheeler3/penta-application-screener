@@ -524,10 +524,11 @@ async def test_tiers_before_run_is_409() -> None:
 
 
 @pytest.mark.anyio
-async def test_rank_blocks_no_op_rerun_on_unchanged_pool() -> None:
-    # After a Rank run, re-ranking an unchanged pool is a no-op the backend
-    # blocks (it would only re-spend for an identical result). A pool change must
-    # re-enable it.
+async def test_rank_flags_unchanged_pool_but_allows_rerun() -> None:
+    # After a Rank run, the estimate flags an unchanged pool as already current (so
+    # the UI can say nothing requires a re-run). But a re-run is NOT blocked:
+    # categorization is non-deterministic, so a member may deliberately re-run for a
+    # fresh set of criteria. The confirmation card is the gate, not the server.
     app, db, provider = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
     provider.route("ESSAYS:", an_essay_report())
@@ -538,16 +539,9 @@ async def test_rank_blocks_no_op_rerun_on_unchanged_pool() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         await stream_events(client, "/screening/rank/run")
 
-        # Pool unchanged → estimate flags it current, and a re-run is blocked.
+        # Pool unchanged → estimate flags it current, but the re-run still succeeds.
         estimate = (await client.get("/screening/rank/estimate")).json()
         assert estimate["ranking_current"] is True
-        assert (await client.post("/screening/rank/run")).status_code == 409
-
-        # A new eligible applicant changes the pool fingerprint → ranking can run.
-        b = add_eligible(db, email="b@x.com", raw_hash="h2")
-        provider.route(f'"applicant_id": {b.id}', a_scoring_report())
-        estimate2 = (await client.get("/screening/rank/estimate")).json()
-        assert estimate2["ranking_current"] is False
         assert (await client.post("/screening/rank/run")).status_code == 200
 
 
