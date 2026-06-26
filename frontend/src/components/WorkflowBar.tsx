@@ -295,20 +295,18 @@ export function WorkflowBar(props: {
               // categorization is non-deterministic, so a re-run gives a fresh set
               // of criteria for the committee to weigh.
               <p>
-                Ranking is already up to date for this applicant pool — nothing requires a re-run. You can still re-run
-                to get a fresh take on the criteria: finding them is non-deterministic, so a new run may surface
-                different distinguishing dimensions.
+                Ranking is already up to date. You can re-run for a fresh take on the criteria (finding them is
+                non-deterministic). Estimated cost <strong>~${rankEstimate.estimated_usd.toFixed(4)}</strong> (cap $
+                {rankEstimate.cap_usd.toFixed(2)}).
               </p>
             ) : (
               <p>
                 This summarizes essays, finds the criteria that distinguish this pool, and scores all{" "}
                 {rankEstimate.eligible} eligible applicant{rankEstimate.eligible === 1 ? "" : "s"} against them.
+                Estimated cost <strong>~${rankEstimate.estimated_usd.toFixed(4)}</strong> (cap $
+                {rankEstimate.cap_usd.toFixed(2)}).
               </p>
             )}
-            <p>
-              Estimated cost <strong>~${rankEstimate.estimated_usd.toFixed(4)}</strong> (cap $
-              {rankEstimate.cap_usd.toFixed(2)}).
-            </p>
             <ul className="qf-confirm-breakdown">
               <li>
                 Summarize essays ~${rankEstimate.breakdown.essays_usd.toFixed(4)}
@@ -318,14 +316,8 @@ export function WorkflowBar(props: {
               {rankEstimate.breakdown.match_usd > 0 ? (
                 <li>Match criteria to the prior run ~${rankEstimate.breakdown.match_usd.toFixed(4)}</li>
               ) : null}
-              <li>Score against criteria ~${rankEstimate.breakdown.scoring_usd.toFixed(4)} (max)</li>
+              <li>Score against criteria ~${rankEstimate.breakdown.scoring_usd.toFixed(4)}</li>
             </ul>
-            {rankEstimate.breakdown.match_usd > 0 ? (
-              <p className="qf-confirm-note">
-                Scoring is an upper bound — criteria carried over from the prior run reuse their scores, so the actual
-                cost is usually lower.
-              </p>
-            ) : null}
             {!rankEstimate.within_cap ? (
               <p className="qf-confirm-warn">
                 Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
