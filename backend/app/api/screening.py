@@ -189,16 +189,10 @@ def rank_run(
     if not eligible_applications(db):
         raise HTTPException(status_code=409, detail="No eligible applications to rank.")
 
-    # Block a no-op re-run: an unchanged pool means the ranking is already current,
-    # and re-running would only re-spend for an identical result (discovery is
-    # nondeterministic, so it would even churn criteria and force a full re-score).
-    if ranking_is_current(db, get_current_run(db)):
-        raise HTTPException(
-            status_code=409,
-            detail="Ranking is already current for this applicant pool. "
-            "Sync new or changed applications before re-ranking.",
-        )
-
+    # An unchanged pool needs no re-rank, but we no longer block one: discovery is
+    # nondeterministic, so re-running deliberately gives the committee a fresh set of
+    # criteria. The confirmation card is the gate (it flags that nothing requires a
+    # re-run); a member who confirms here has opted in on purpose.
     estimate = _rank_estimate(db, settings)
     try:
         enforce_cap(estimate, settings.ai.spending_cap_usd)

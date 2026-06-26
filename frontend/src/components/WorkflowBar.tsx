@@ -291,57 +291,58 @@ export function WorkflowBar(props: {
           <div className="qf-confirm-body">
             <strong>Rank the candidates?</strong>
             {rankEstimate.ranking_current ? (
+              // Nothing changed in the pool, but re-ranking is still allowed: the
+              // categorization is non-deterministic, so a re-run gives a fresh set
+              // of criteria for the committee to weigh.
               <p>
-                Ranking is already up to date for this applicant pool. Sync new or changed applications, or move someone
-                in or out of the eligible pool, to re-rank.
+                Ranking is already up to date for this applicant pool — nothing requires a re-run. You can still re-run
+                to get a fresh take on the criteria: finding them is non-deterministic, so a new run may surface
+                different distinguishing dimensions.
               </p>
             ) : (
-              <>
-                <p>
-                  This summarizes essays, finds the criteria that distinguish this pool, and scores all{" "}
-                  {rankEstimate.eligible} eligible applicant{rankEstimate.eligible === 1 ? "" : "s"} against them.
-                  Estimated cost <strong>~${rankEstimate.estimated_usd.toFixed(4)}</strong> (cap $
-                  {rankEstimate.cap_usd.toFixed(2)}).
-                </p>
-                <ul className="qf-confirm-breakdown">
-                  <li>
-                    Summarize essays ~${rankEstimate.breakdown.essays_usd.toFixed(4)}
-                    {rankEstimate.essays_cached > 0 ? ` (${rankEstimate.essays_cached} cached)` : ""}
-                  </li>
-                  <li>Find distinguishing criteria ~${rankEstimate.breakdown.criteria_usd.toFixed(4)}</li>
-                  {rankEstimate.breakdown.match_usd > 0 ? (
-                    <li>Match criteria to the prior run ~${rankEstimate.breakdown.match_usd.toFixed(4)}</li>
-                  ) : null}
-                  <li>Score against criteria ~${rankEstimate.breakdown.scoring_usd.toFixed(4)} (max)</li>
-                </ul>
-                {rankEstimate.breakdown.match_usd > 0 ? (
-                  <p className="qf-confirm-note">
-                    Scoring is an upper bound — criteria carried over from the prior run reuse their scores, so the
-                    actual cost is usually lower.
-                  </p>
-                ) : null}
-              </>
+              <p>
+                This summarizes essays, finds the criteria that distinguish this pool, and scores all{" "}
+                {rankEstimate.eligible} eligible applicant{rankEstimate.eligible === 1 ? "" : "s"} against them.
+              </p>
             )}
-            {!rankEstimate.ranking_current && !rankEstimate.within_cap ? (
+            <p>
+              Estimated cost <strong>~${rankEstimate.estimated_usd.toFixed(4)}</strong> (cap $
+              {rankEstimate.cap_usd.toFixed(2)}).
+            </p>
+            <ul className="qf-confirm-breakdown">
+              <li>
+                Summarize essays ~${rankEstimate.breakdown.essays_usd.toFixed(4)}
+                {rankEstimate.essays_cached > 0 ? ` (${rankEstimate.essays_cached} cached)` : ""}
+              </li>
+              <li>Find distinguishing criteria ~${rankEstimate.breakdown.criteria_usd.toFixed(4)}</li>
+              {rankEstimate.breakdown.match_usd > 0 ? (
+                <li>Match criteria to the prior run ~${rankEstimate.breakdown.match_usd.toFixed(4)}</li>
+              ) : null}
+              <li>Score against criteria ~${rankEstimate.breakdown.scoring_usd.toFixed(4)} (max)</li>
+            </ul>
+            {rankEstimate.breakdown.match_usd > 0 ? (
+              <p className="qf-confirm-note">
+                Scoring is an upper bound — criteria carried over from the prior run reuse their scores, so the actual
+                cost is usually lower.
+              </p>
+            ) : null}
+            {!rankEstimate.within_cap ? (
               <p className="qf-confirm-warn">
                 Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
               </p>
             ) : null}
           </div>
           <div className="qf-confirm-actions">
-            {/* No run button when ranking is already current — informational, Close only. */}
-            {!rankEstimate.ranking_current ? (
-              <button
-                className="primary-button"
-                type="button"
-                onClick={props.onRunRank}
-                disabled={props.rankRunning || !rankEstimate.within_cap}
-              >
-                {props.rankRunning ? "Running" : "Confirm & run"}
-              </button>
-            ) : null}
+            <button
+              className="primary-button"
+              type="button"
+              onClick={props.onRunRank}
+              disabled={props.rankRunning || !rankEstimate.within_cap}
+            >
+              {props.rankRunning ? "Running" : "Confirm & run"}
+            </button>
             <button className="secondary-button" type="button" onClick={props.onCancelRank}>
-              {rankEstimate.ranking_current ? "Close" : "Cancel"}
+              Cancel
             </button>
           </div>
         </div>
