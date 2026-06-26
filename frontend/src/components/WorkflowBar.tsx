@@ -1,5 +1,6 @@
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, ListOrdered, RefreshCw, Sparkles } from "lucide-react";
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
 import { qfPercent } from "../format";
 import type {
   Coverage,
@@ -113,6 +114,9 @@ export function WorkflowBar(props: {
   rankRunning: boolean;
   rankEstimate: RankEstimate | null;
   rankProgress: RankProgress | null;
+  // The model's live reasoning during the criteria phase (discovery + match),
+  // streamed; shown as "thinking" since that call has no per-item progress.
+  criteriaThinking: string;
   // Committee discovery seeds the next Rank will offer the AI, for the card note.
   favouritedCount: number;
   proposedCount: number;
@@ -396,8 +400,37 @@ export function WorkflowBar(props: {
               <div className="qf-progress-fill qf-progress-fill-indeterminate" />
             )}
           </div>
+          {/* During the criteria phase (discovery + match — one long opaque call,
+              no per-item progress) show the model's live reasoning so the wait
+              reads as active work, not a hang. */}
+          {rankProgress?.phase === "criteria" ? (
+            <CriteriaThinking text={props.criteriaThinking} />
+          ) : null}
         </div>
       ) : null}
     </>
+  );
+}
+
+// Auto-scrolling panel for the streamed discovery/match reasoning. Before the first
+// delta arrives it shows an expectation line, so the wait is framed even if the
+// model is briefly silent at the start.
+function CriteriaThinking(props: { text: string }): ReactNode {
+  const boxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // Keep the newest text in view as it streams in.
+    if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
+  }, [props.text]);
+  return (
+    <div className="criteria-thinking">
+      <div className="criteria-thinking-caption">
+        Reading the whole pool and reasoning about what distinguishes it — usually 1–3 minutes.
+      </div>
+      {props.text ? (
+        <div className="criteria-thinking-stream" ref={boxRef}>
+          <ReactMarkdown>{props.text}</ReactMarkdown>
+        </div>
+      ) : null}
+    </div>
   );
 }

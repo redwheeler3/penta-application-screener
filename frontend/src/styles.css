@@ -1318,6 +1318,55 @@ h1 {
   animation: qf-progress-slide 1.1s ease-in-out infinite;
 }
 
+/* Live "thinking" panel for the criteria phase (streamed model reasoning). */
+.criteria-thinking {
+  margin-top: 0.6rem;
+}
+
+.criteria-thinking-caption {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin-bottom: 0.4rem;
+}
+
+.criteria-thinking-stream {
+  max-height: 9rem;
+  overflow-y: auto;
+  padding: 0.5rem 0.65rem;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #334155;
+  word-break: break-word;
+}
+
+/* Compact the streamed markdown so headers/lists/paragraphs don't balloon the
+   small panel with default block margins. */
+.criteria-thinking-stream > :first-child {
+  margin-top: 0;
+}
+.criteria-thinking-stream > :last-child {
+  margin-bottom: 0;
+}
+.criteria-thinking-stream p,
+.criteria-thinking-stream ul,
+.criteria-thinking-stream ol {
+  margin: 0.3rem 0;
+}
+.criteria-thinking-stream ul,
+.criteria-thinking-stream ol {
+  padding-left: 1.1rem;
+}
+.criteria-thinking-stream h1,
+.criteria-thinking-stream h2,
+.criteria-thinking-stream h3,
+.criteria-thinking-stream h4 {
+  font-size: 0.82rem;
+  margin: 0.5rem 0 0.2rem;
+}
+
 @keyframes qf-progress-slide {
   0% {
     margin-left: -30%;

@@ -260,6 +260,29 @@ async def test_rank_chain_runs_essays_criteria_scores() -> None:
 
 
 @pytest.mark.anyio
+async def test_criteria_phase_streams_thinking_deltas() -> None:
+    # The discovery (and match) call streams the model's reasoning as
+    # criteria_thinking events, so the UI can show live "thinking" during the
+    # otherwise-opaque multi-minute call. The MockProvider emits fixed deltas.
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    provider.route("ESSAYS:", an_essay_report())
+    provider.route("APPLICANT POOL:", a_pattern_report())
+    provider.route("applicant_id", a_scoring_report())
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        events = await stream_events(client, "/screening/rank/run")
+
+        thinking = [e for e in events if e["type"] == "criteria_thinking"]
+        assert thinking, "expected streamed criteria_thinking deltas"
+        # Deltas arrive between the criteria phase announcement and its completion.
+        types = [e["type"] for e in events]
+        assert types.index("phase") < types.index("criteria_thinking")
+        assert "".join(e["text"] for e in thinking)  # non-empty reasoning text
+
+
+@pytest.mark.anyio
 async def test_tiers_reweight_and_resort_the_ranking() -> None:
     app, db, provider = setup_app(role=UserRole.MEMBER)
     # Two candidates who each lead on a different dimension, so the weighting
