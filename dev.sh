@@ -12,7 +12,7 @@ echo "Running migrations..."
 (cd "$REPO_ROOT/backend" && uv run alembic upgrade head)
 
 echo "Starting backend on http://localhost:8000 ..."
-(cd "$REPO_ROOT/backend" && uv run fastapi dev app/main.py) &
+(cd "$REPO_ROOT/backend" && uv run fastapi dev --host localhost app/main.py) &
 
 echo "Starting frontend on http://localhost:5173 ..."
 (cd "$REPO_ROOT/frontend" && npm run dev) &
