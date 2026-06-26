@@ -50,21 +50,12 @@ class AIProvider(Protocol):
         schema: type[SchemaT],
         prompt: str,
         system_prompt: str | None = None,
-    ) -> AIResult: ...
-
-    def structured_output_streaming(
-        self,
-        *,
-        model_id: str,
-        schema: type[SchemaT],
-        prompt: str,
-        system_prompt: str | None = None,
-        on_delta: DeltaSink,
+        on_delta: DeltaSink | None = None,
     ) -> AIResult:
-        """Like ``structured_output``, but invokes ``on_delta`` with each chunk of the
-        model's reasoning text as it streams. Returns the same ``AIResult`` (final
-        validated output + usage), so callers get live progress AND the result from
-        one call. Used for the long single-call passes (discovery, match) where a
-        per-item progress fraction is impossible — the streamed text is the progress.
+        """Run ``prompt`` and return its output validated against ``schema`` (plus
+        usage for pricing). When ``on_delta`` is given, it is called with each chunk
+        of the model's reasoning text as it streams — for live "thinking" UI on the
+        long single-call passes (discovery, match) where a per-item progress fraction
+        is impossible. Most callers omit it; the result is identical either way.
         """
         ...

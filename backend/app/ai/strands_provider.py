@@ -65,58 +65,34 @@ class StrandsProvider:
         schema: type[SchemaT],
         prompt: str,
         system_prompt: str | None = None,
+        on_delta: DeltaSink | None = None,
     ) -> AIResult:
-        # Imported lazily for the same reason as the model above.
+        # One path for every call: drain Strands' (async) streaming API to completion
+        # in a private event loop on the calling thread. A spike confirmed this is
+        # safe at the worker-pool's ~50-wide fan-out (each thread gets its own loop
+        # via asyncio.run). Callers that don't want the deltas simply pass no sink;
+        # the only difference is whether on_delta fires. (Why some short/fast calls
+        # emit no deltas at all — the model returning one chunk under load — is a
+        # known open question parked for observability, not a correctness issue: the
+        # structured output + usage always come back.)
         from strands import Agent
 
-        agent = Agent(
-            model=self._model_for(model_id),
-            system_prompt=system_prompt,
-        )
-        result = agent(prompt, structured_output_model=schema)
-
-        usage_data = result.metrics.accumulated_usage
-        return AIResult(
-            output=result.structured_output,
-            usage=Usage(
-                input_tokens=usage_data["inputTokens"],
-                output_tokens=usage_data["outputTokens"],
-            ),
-            model_id=model_id,
-            narrative=_conversation_narrative(agent.messages),
-        )
-
-    def structured_output_streaming(
-        self,
-        *,
-        model_id: str,
-        schema: type[SchemaT],
-        prompt: str,
-        system_prompt: str | None = None,
-        on_delta: DeltaSink,
-    ) -> AIResult:
-        # Strands' streaming API is async; bridge it to our sync interface by running
-        # the stream to completion in a private event loop on this thread. Discovery
-        # and match run on the request's stream thread (not the worker pool), so a
-        # local loop here is clean and self-contained.
-        from strands import Agent
-
+        sink = on_delta or (lambda _text: None)
         agent = Agent(model=self._model_for(model_id), system_prompt=system_prompt)
 
-        async def run() -> object:
+        async def drain() -> object:
             final = None
             async for event in agent.stream_async(prompt, structured_output_model=schema):
                 if not isinstance(event, dict):
                     continue
                 data = event.get("data")
                 if isinstance(data, str) and data:
-                    on_delta(data)  # a chunk of reasoning text
-                result = event.get("result")
-                if result is not None:
-                    final = result  # the terminal AgentResult
+                    sink(data)  # a chunk of reasoning text
+                if event.get("result") is not None:
+                    final = event["result"]  # the terminal AgentResult
             return final
 
-        result = asyncio.run(run())
+        result = asyncio.run(drain())
         if result is None:  # no terminal result event — should not happen
             raise RuntimeError("Streaming call produced no result event.")
 

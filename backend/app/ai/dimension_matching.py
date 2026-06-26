@@ -86,17 +86,13 @@ def match_dimensions(
     if not old.dimensions or not new.dimensions:
         return {}, None, 0.0
 
-    prompt = build_prompt(old, new)
-    if on_delta is not None:
-        result = provider.structured_output_streaming(
-            model_id=settings.ai.first_pass_model, schema=DimensionMatchReport,
-            prompt=prompt, system_prompt=SYSTEM_PROMPT, on_delta=on_delta,
-        )
-    else:
-        result = provider.structured_output(
-            model_id=settings.ai.first_pass_model, schema=DimensionMatchReport,
-            prompt=prompt, system_prompt=SYSTEM_PROMPT,
-        )
+    result = provider.structured_output(
+        model_id=settings.ai.first_pass_model,
+        schema=DimensionMatchReport,
+        prompt=build_prompt(old, new),
+        system_prompt=SYSTEM_PROMPT,
+        on_delta=on_delta,
+    )
     report: DimensionMatchReport = result.output
 
     old_keys = {d.key for d in old.dimensions}
