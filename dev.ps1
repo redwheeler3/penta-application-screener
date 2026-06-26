@@ -47,6 +47,10 @@ function Stop-ProcessTree {
 }
 
 try {
+    Write-Host "To use the API docs (http://localhost:8000/docs), first sign in here:"
+    Write-Host "  http://localhost:8000/auth/google/login"
+    Write-Host ""
+
     Write-Host "Starting backend on http://localhost:8000 ..."
     $backend = Start-Process -NoNewWindow -PassThru -WorkingDirectory "$PSScriptRoot\backend" `
         -FilePath "uv" -ArgumentList "run", "fastapi", "dev", "--host", "localhost", "app/main.py"
