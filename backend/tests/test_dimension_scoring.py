@@ -206,9 +206,14 @@ def test_assembled_report_fills_omitted_dimension_with_placeholder() -> None:
     assert scores["skills"].score == 0.0  # placeholder for the omitted one
 
 
-def test_ceiling_estimate_prices_whole_pool_times_dimensions() -> None:
+def test_ceiling_estimate_prices_per_candidate_call() -> None:
+    # The pre-discovery estimate models one scoring CALL per candidate: a per-call
+    # input (shared facts+essays, the fallback constant before a prompt exists) plus
+    # per-dimension output × the assumed dimension count. NOT a per-(candidate,
+    # dimension) input cost — that was the carry-forward-skew bug.
     from app.ai.dimension_scoring import (
-        SCORING_FALLBACK_INPUT_TOKENS,
+        ASSUMED_DIMENSIONS_FIRST_RUN,
+        SCORING_FALLBACK_INPUT_TOKENS_PER_CANDIDATE,
         SCORING_FALLBACK_OUTPUT_TOKENS,
         estimate_dimension_scoring,
     )
@@ -220,15 +225,16 @@ def test_ceiling_estimate_prices_whole_pool_times_dimensions() -> None:
     add_eligible(db, email="b@x.com", raw_hash="h2")
     settings = AppSettings()
 
-    # No run yet → assumes the first-run dimension count; ceiling assumes nothing
-    # cached, so it prices every (candidate × dimension) pair at the fallback.
+    # No run yet → fallback per-candidate input + per-dimension output × the
+    # first-run dimension count; ceiling assumes nothing cached.
     est = estimate_dimension_scoring(db, settings)
-    from app.ai.dimension_scoring import ASSUMED_DIMENSIONS_FIRST_RUN
-
-    per_dim = cost_usd(
+    per_candidate = cost_usd(
         settings.ai.first_pass_model,
-        Usage(SCORING_FALLBACK_INPUT_TOKENS, SCORING_FALLBACK_OUTPUT_TOKENS),
+        Usage(
+            SCORING_FALLBACK_INPUT_TOKENS_PER_CANDIDATE,
+            SCORING_FALLBACK_OUTPUT_TOKENS * ASSUMED_DIMENSIONS_FIRST_RUN,
+        ),
     )
-    expected = round(per_dim * 2 * ASSUMED_DIMENSIONS_FIRST_RUN, 4)
+    expected = round(per_candidate * 2, 4)
     assert est["estimated_usd"] == expected
     assert est["to_analyze"] == 2  # candidates (the ceiling assumes none cached)
