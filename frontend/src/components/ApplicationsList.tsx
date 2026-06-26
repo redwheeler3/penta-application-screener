@@ -66,8 +66,8 @@ export function ApplicationsList(props: {
             {sourceOptions.map((opt) => (
               <button
                 key={opt.label}
-                className={`tab-button ${appFilter.status_source === opt.value ? "active" : ""}`}
-                onClick={() => props.onApplyFilter({ ...appFilter, status_source: opt.value })}
+                className={`tab-button ${appFilter.statusSource === opt.value ? "active" : ""}`}
+                onClick={() => props.onApplyFilter({ ...appFilter, statusSource: opt.value })}
               >
                 {opt.label} ({opt.count})
               </button>
@@ -86,7 +86,7 @@ export function ApplicationsList(props: {
       {applications.length === 0 ? (
         <div className="empty-state">
           <p>
-            {appFilter.status || appFilter.status_source
+            {appFilter.status || appFilter.statusSource
               ? "No applications match this filter."
               : "No applications imported yet."}
           </p>

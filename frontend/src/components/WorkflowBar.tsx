@@ -144,19 +144,19 @@ export function WorkflowBar(props: {
         <ol className="workflow-steps">
           <WorkflowStep
             n={1}
-            title="Import"
+            title="Sync"
             icon={<RefreshCw size={16} />}
             done={workflow.synced}
             busy={props.isSyncing}
-            busyLabel="Importing"
+            busyLabel="Syncing"
             // Step 1 is always available once a sheet is configured. The caption
-            // persists the imported row count (not a fraction).
+            // persists the synced row count (not a fraction).
             disabled={props.isSyncing || props.importConfirm || !props.hasGoogleSheetLink}
-            disabledTitle="Add a Google Sheet link in settings to import."
-            // Amber when import-relevant settings changed since the last sync: a
-            // re-import would reclassify eligibility.
+            disabledTitle="Add a Google Sheet link in settings to sync."
+            // Amber when sync-relevant settings changed since the last sync: a
+            // re-sync would reclassify eligibility.
             outOfDate={workflow.synced && !workflow.importCurrent}
-            staleTitle="Settings changed since the last import — re-import to apply them."
+            staleTitle="Settings changed since the last sync — re-sync to apply them."
             onClick={props.onRequestImport}
             caption={
               workflow.synced && dashboardCounts.submitted > 0 ? `${dashboardCounts.submitted} rows` : undefined
@@ -238,10 +238,10 @@ export function WorkflowBar(props: {
       {props.importConfirm ? (
         <div className="qf-confirm">
           <div className="qf-confirm-body">
-            <strong>Import applications?</strong>
+            <strong>Sync applications?</strong>
             {workflow.synced ? (
               <p>
-                Re-import from the Google Sheet. New and changed applications are reclassified against the current
+                Re-sync from the Google Sheet. New and changed applications are reclassified against the current
                 settings; existing decisions are preserved.
               </p>
             ) : (
@@ -250,7 +250,7 @@ export function WorkflowBar(props: {
           </div>
           <div className="qf-confirm-actions">
             <button className="primary-button" type="button" onClick={props.onConfirmImport} disabled={props.isSyncing}>
-              {props.isSyncing ? "Importing" : "Confirm & import"}
+              {props.isSyncing ? "Syncing" : "Confirm & sync"}
             </button>
             <button className="secondary-button" type="button" onClick={props.onCancelImport}>
               Cancel
@@ -263,7 +263,7 @@ export function WorkflowBar(props: {
         <div className="qf-confirm">
           <div className="qf-confirm-body">
             <strong>Run AI quality checks?</strong>
-            {qfEstimate.to_analyze === 0 ? (
+            {qfEstimate.toAnalyze === 0 ? (
               <p>
                 Screening is already up to date — all {qfEstimate.cached} eligible applicant
                 {qfEstimate.cached === 1 ? " has" : "s have"} been checked. Sync new or changed applications to screen
@@ -271,12 +271,12 @@ export function WorkflowBar(props: {
               </p>
             ) : (
               <p>
-                Analyze {qfEstimate.to_analyze} eligible applicant{qfEstimate.to_analyze === 1 ? "" : "s"}
+                Analyze {qfEstimate.toAnalyze} eligible applicant{qfEstimate.toAnalyze === 1 ? "" : "s"}
                 {qfEstimate.cached > 0 ? ` (${qfEstimate.cached} already cached)` : ""}. Estimated cost{" "}
-                <strong>${qfEstimate.estimated_usd.toFixed(4)}</strong> (cap ${qfEstimate.cap_usd.toFixed(2)}).
+                <strong>${qfEstimate.estimatedUsd.toFixed(4)}</strong> (cap ${qfEstimate.capUsd.toFixed(2)}).
               </p>
             )}
-            {qfEstimate.to_analyze > 0 && !qfEstimate.within_cap ? (
+            {qfEstimate.toAnalyze > 0 && !qfEstimate.withinCap ? (
               <p className="qf-confirm-warn">
                 Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
               </p>
@@ -284,18 +284,18 @@ export function WorkflowBar(props: {
           </div>
           <div className="qf-confirm-actions">
             {/* No run button when there's nothing to do — informational, Close only. */}
-            {qfEstimate.to_analyze > 0 ? (
+            {qfEstimate.toAnalyze > 0 ? (
               <button
                 className="primary-button"
                 type="button"
                 onClick={props.onRunQualityFlags}
-                disabled={props.qfRunning || !qfEstimate.within_cap}
+                disabled={props.qfRunning || !qfEstimate.withinCap}
               >
                 {props.qfRunning ? "Running" : "Confirm & run"}
               </button>
             ) : null}
             <button className="secondary-button" type="button" onClick={props.onCancelQualityFlags}>
-              {qfEstimate.to_analyze === 0 ? "Close" : "Cancel"}
+              {qfEstimate.toAnalyze === 0 ? "Close" : "Cancel"}
             </button>
           </div>
         </div>
@@ -324,33 +324,33 @@ export function WorkflowBar(props: {
         <div className="qf-confirm">
           <div className="qf-confirm-body">
             <strong>Rank the candidates?</strong>
-            {rankEstimate.ranking_current ? (
+            {rankEstimate.rankingCurrent ? (
               // Nothing changed in the pool, but re-ranking is still allowed: the
               // categorization is non-deterministic, so a re-run gives a fresh set
               // of criteria for the committee to weigh.
               <p>
                 Ranking is already up to date. You can re-run for a fresh take on the criteria (finding them is
-                non-deterministic). Estimated cost <strong>~${rankEstimate.estimated_usd.toFixed(4)}</strong> (cap $
-                {rankEstimate.cap_usd.toFixed(2)}).
+                non-deterministic). Estimated cost <strong>~${rankEstimate.estimatedUsd.toFixed(4)}</strong> (cap $
+                {rankEstimate.capUsd.toFixed(2)}).
               </p>
             ) : (
               <p>
                 This summarizes essays, finds the criteria that distinguish this pool, and scores all{" "}
                 {rankEstimate.eligible} eligible applicant{rankEstimate.eligible === 1 ? "" : "s"} against them.
-                Estimated cost <strong>~${rankEstimate.estimated_usd.toFixed(4)}</strong> (cap $
-                {rankEstimate.cap_usd.toFixed(2)}).
+                Estimated cost <strong>~${rankEstimate.estimatedUsd.toFixed(4)}</strong> (cap $
+                {rankEstimate.capUsd.toFixed(2)}).
               </p>
             )}
             <ul className="qf-confirm-breakdown">
               <li>
-                Summarize essays ~${rankEstimate.breakdown.essays_usd.toFixed(4)}
-                {rankEstimate.essays_cached > 0 ? ` (${rankEstimate.essays_cached} cached)` : ""}
+                Summarize essays ~${rankEstimate.breakdown.essaysUsd.toFixed(4)}
+                {rankEstimate.essaysCached > 0 ? ` (${rankEstimate.essaysCached} cached)` : ""}
               </li>
-              <li>Find distinguishing criteria ~${rankEstimate.breakdown.criteria_usd.toFixed(4)}</li>
-              {rankEstimate.breakdown.match_usd > 0 ? (
-                <li>Match criteria to the prior run ~${rankEstimate.breakdown.match_usd.toFixed(4)}</li>
+              <li>Find distinguishing criteria ~${rankEstimate.breakdown.criteriaUsd.toFixed(4)}</li>
+              {rankEstimate.breakdown.matchUsd > 0 ? (
+                <li>Match criteria to the prior run ~${rankEstimate.breakdown.matchUsd.toFixed(4)}</li>
               ) : null}
-              <li>Score against criteria ~${rankEstimate.breakdown.scoring_usd.toFixed(4)}</li>
+              <li>Score against criteria ~${rankEstimate.breakdown.scoringUsd.toFixed(4)}</li>
             </ul>
             {props.favouritedCount + props.proposedCount > 0 ? (
               <p className="qf-confirm-note">
@@ -359,7 +359,7 @@ export function WorkflowBar(props: {
                 {props.proposedCount} proposed) — it may refine, split, or skip them.
               </p>
             ) : null}
-            {!rankEstimate.within_cap ? (
+            {!rankEstimate.withinCap ? (
               <p className="qf-confirm-warn">
                 Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
               </p>
@@ -370,7 +370,7 @@ export function WorkflowBar(props: {
               className="primary-button"
               type="button"
               onClick={props.onRunRank}
-              disabled={props.rankRunning || !rankEstimate.within_cap}
+              disabled={props.rankRunning || !rankEstimate.withinCap}
             >
               {props.rankRunning ? "Running" : "Confirm & run"}
             </button>

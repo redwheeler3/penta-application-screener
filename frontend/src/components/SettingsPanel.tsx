@@ -44,18 +44,18 @@ export function SettingsPanel(props: {
           <div className="settings-summary">
             <div>
               <span>Google Sheet</span>
-              {saved.google_sheet_title && saved.google_sheet_url ? (
-                <a className="sheet-reference" href={saved.google_sheet_url} target="_blank" rel="noreferrer">
-                  {saved.google_sheet_title}
+              {saved.googleSheetTitle && saved.googleSheetUrl ? (
+                <a className="sheet-reference" href={saved.googleSheetUrl} target="_blank" rel="noreferrer">
+                  {saved.googleSheetTitle}
                 </a>
               ) : (
-                <strong>{saved.settings.google_sheet_id}</strong>
+                <strong>{saved.settings.googleSheetId}</strong>
               )}
             </div>
             <div>
               <span>Income range</span>
               <strong>
-                {`$${saved.settings.income_min.toLocaleString()} – $${saved.settings.income_max.toLocaleString()}`}
+                {`$${saved.settings.incomeMin.toLocaleString()} – $${saved.settings.incomeMax.toLocaleString()}`}
               </strong>
             </div>
           </div>
@@ -64,13 +64,13 @@ export function SettingsPanel(props: {
             <label>
               <span>Google Sheet link</span>
               <input
-                value={draft.google_sheet_id}
-                onChange={(event) => setDraft({ ...draft, google_sheet_id: event.target.value })}
+                value={draft.googleSheetId}
+                onChange={(event) => setDraft({ ...draft, googleSheetId: event.target.value })}
                 placeholder="Paste the response spreadsheet link"
               />
-              {saved?.google_sheet_title && saved.google_sheet_url ? (
-                <a className="sheet-reference" href={saved.google_sheet_url} target="_blank" rel="noreferrer">
-                  {saved.google_sheet_title}
+              {saved?.googleSheetTitle && saved.googleSheetUrl ? (
+                <a className="sheet-reference" href={saved.googleSheetUrl} target="_blank" rel="noreferrer">
+                  {saved.googleSheetTitle}
                 </a>
               ) : null}
             </label>
@@ -79,8 +79,8 @@ export function SettingsPanel(props: {
               <input
                 type="number"
                 min="0"
-                value={draft.income_min}
-                onChange={(event) => setDraft({ ...draft, income_min: Number(event.target.value) })}
+                value={draft.incomeMin}
+                onChange={(event) => setDraft({ ...draft, incomeMin: Number(event.target.value) })}
               />
             </label>
             <label>
@@ -88,8 +88,8 @@ export function SettingsPanel(props: {
               <input
                 type="number"
                 min="0"
-                value={draft.income_max}
-                onChange={(event) => setDraft({ ...draft, income_max: Number(event.target.value) })}
+                value={draft.incomeMax}
+                onChange={(event) => setDraft({ ...draft, incomeMax: Number(event.target.value) })}
               />
             </label>
             <label>
@@ -98,8 +98,8 @@ export function SettingsPanel(props: {
                 type="number"
                 min="1"
                 max="100"
-                value={draft.min_adult_age}
-                onChange={(event) => setDraft({ ...draft, min_adult_age: Number(event.target.value) })}
+                value={draft.minAdultAge}
+                onChange={(event) => setDraft({ ...draft, minAdultAge: Number(event.target.value) })}
               />
             </label>
             <label>
@@ -108,8 +108,8 @@ export function SettingsPanel(props: {
                 type="number"
                 min="0"
                 max="100"
-                value={draft.max_child_age}
-                onChange={(event) => setDraft({ ...draft, max_child_age: Number(event.target.value) })}
+                value={draft.maxChildAge}
+                onChange={(event) => setDraft({ ...draft, maxChildAge: Number(event.target.value) })}
               />
             </label>
             <label>
@@ -118,8 +118,8 @@ export function SettingsPanel(props: {
                 type="number"
                 min="0"
                 max="20"
-                value={draft.min_children}
-                onChange={(event) => setDraft({ ...draft, min_children: Number(event.target.value) })}
+                value={draft.minChildren}
+                onChange={(event) => setDraft({ ...draft, minChildren: Number(event.target.value) })}
               />
             </label>
             <label>
@@ -128,8 +128,8 @@ export function SettingsPanel(props: {
                 type="number"
                 min="0"
                 max="20"
-                value={draft.max_children}
-                onChange={(event) => setDraft({ ...draft, max_children: Number(event.target.value) })}
+                value={draft.maxChildren}
+                onChange={(event) => setDraft({ ...draft, maxChildren: Number(event.target.value) })}
               />
             </label>
             <label>
@@ -138,8 +138,8 @@ export function SettingsPanel(props: {
                 type="number"
                 min="0"
                 max="10"
-                value={draft.max_dogs}
-                onChange={(event) => setDraft({ ...draft, max_dogs: Number(event.target.value) })}
+                value={draft.maxDogs}
+                onChange={(event) => setDraft({ ...draft, maxDogs: Number(event.target.value) })}
               />
             </label>
             <label>
@@ -148,15 +148,15 @@ export function SettingsPanel(props: {
                 type="number"
                 min="0"
                 max="10"
-                value={draft.max_cats}
-                onChange={(event) => setDraft({ ...draft, max_cats: Number(event.target.value) })}
+                value={draft.maxCats}
+                onChange={(event) => setDraft({ ...draft, maxCats: Number(event.target.value) })}
               />
             </label>
             <label className="checkbox-label">
               <input
                 type="checkbox"
-                checked={draft.allow_other_pets}
-                onChange={(event) => setDraft({ ...draft, allow_other_pets: event.target.checked })}
+                checked={draft.allowOtherPets}
+                onChange={(event) => setDraft({ ...draft, allowOtherPets: event.target.checked })}
               />
               <span>Allow other pets</span>
             </label>
@@ -168,12 +168,12 @@ export function SettingsPanel(props: {
                   <label key={rule.id} className="checkbox-label rule-toggle">
                     <input
                       type="checkbox"
-                      checked={!draft.disabled_rules.includes(rule.id)}
+                      checked={!draft.disabledRules.includes(rule.id)}
                       onChange={(event) => {
                         const disabled = event.target.checked
-                          ? draft.disabled_rules.filter((r) => r !== rule.id)
-                          : [...draft.disabled_rules, rule.id];
-                        setDraft({ ...draft, disabled_rules: disabled });
+                          ? draft.disabledRules.filter((r) => r !== rule.id)
+                          : [...draft.disabledRules, rule.id];
+                        setDraft({ ...draft, disabledRules: disabled });
                       }}
                     />
                     <span>{rule.label}</span>
@@ -192,9 +192,9 @@ export function SettingsPanel(props: {
                   type="number"
                   min="0"
                   step="0.01"
-                  value={draft.ai.spending_cap_usd}
+                  value={draft.ai.spendingCapUsd}
                   onChange={(event) =>
-                    setDraft({ ...draft, ai: { ...draft.ai, spending_cap_usd: Number(event.target.value) } })
+                    setDraft({ ...draft, ai: { ...draft.ai, spendingCapUsd: Number(event.target.value) } })
                   }
                 />
               </label>

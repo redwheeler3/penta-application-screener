@@ -1,9 +1,7 @@
-import json
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -16,12 +14,24 @@ from app.ai.quality_flags import (
     screen_quality_flags,
 )
 from app.api.dependencies import get_ai_provider, require_current_user
+from app.api.problems import Problem
 from app.db.models import User
 from app.db.session import get_db
+from app.schemas.events import (
+    ItemErrorEvent,
+    PhaseEvent,
+    ProgressEvent,
+    QualityFlagSummary,
+    emit,
+)
+from app.schemas.quality_flags import QualityFlagEstimate
 from app.schemas.settings import AppSettings
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/quality-flags", tags=["quality-flags"])
+
+# The single phase name for this one-pass job (rank uses essays/criteria/scores).
+PHASE = "screen"
 
 
 @dataclass
@@ -52,16 +62,22 @@ class RunTally:
             self.flagged += 1
 
 
-@router.get("/estimate")
+@router.get("/estimate", response_model=QualityFlagEstimate)
 def estimate(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
+) -> QualityFlagEstimate:
     settings: AppSettings = get_app_settings(db)
     result = estimate_quality_flags(db, settings)
-    result["cap_usd"] = settings.ai.spending_cap_usd
-    result["within_cap"] = float(result["estimated_usd"]) <= settings.ai.spending_cap_usd
-    return result
+    estimated_usd = float(result["estimated_usd"])
+    return QualityFlagEstimate(
+        total=int(result["total"]),
+        to_analyze=int(result["to_analyze"]),
+        cached=int(result["cached"]),
+        estimated_usd=estimated_usd,
+        cap_usd=settings.ai.spending_cap_usd,
+        within_cap=estimated_usd <= settings.ai.spending_cap_usd,
+    )
 
 
 @router.post("/run")
@@ -84,8 +100,8 @@ def run(
     # Block a no-op re-run: nothing uncached means every result is a cache hit
     # reproducing identical output. Mirrors the Rank chain's pool-fingerprint gate.
     if int(estimate_result["to_analyze"]) == 0:
-        raise HTTPException(
-            status_code=409,
+        raise Problem(
+            "unchanged_pool",
             detail="Screening is already up to date for these applicants. "
             "Sync new or changed applications before re-screening.",
         )
@@ -94,13 +110,19 @@ def run(
         enforce_cap(estimate_result, settings.ai.spending_cap_usd)
     except SpendingCapExceeded as exc:
         # 402 Payment Required: the run was blocked by the configured cap.
-        raise HTTPException(status_code=402, detail=str(exc)) from exc
+        raise Problem(
+            "cap_exceeded",
+            detail=str(exc),
+            cap_usd=settings.ai.spending_cap_usd,
+            estimated_usd=float(estimate_result["estimated_usd"]),
+        ) from exc
 
     applications = applications_to_analyze(db)
 
     def stream() -> Iterator[str]:
         total = len(applications)
         tally = RunTally()
+        yield emit(PhaseEvent(phase=PHASE, total=total))
         results = screen_quality_flags(
             db,
             provider,
@@ -111,27 +133,24 @@ def run(
         for processed, result in enumerate(results, start=1):
             tally.add(result)
             if result.failed:
-                # Surface the failed application, then keep streaming the rest.
-                yield json.dumps(
-                    {
-                        "type": "error",
-                        "applicationId": result.application.id,
-                        "message": result.error,
-                    }
-                ) + "\n"
-            yield json.dumps(
-                {"type": "progress", "processed": processed, "total": total, "flagged": tally.flagged}
-            ) + "\n"
+                # Surface the failed application (non-fatal), then keep streaming.
+                yield emit(
+                    ItemErrorEvent(
+                        phase=PHASE,
+                        application_id=result.application.id,
+                        message=result.error,
+                    )
+                )
+            yield emit(ProgressEvent(phase=PHASE, processed=processed, total=total))
 
-        yield json.dumps(
-            {
-                "type": "summary",
-                "analyzed": tally.analyzed,
-                "cached": tally.cached,
-                "flagged": tally.flagged,
-                "failed": tally.failed,
-                "totalCostUsd": round(tally.cost_usd, 4),
-            }
-        ) + "\n"
+        yield emit(
+            QualityFlagSummary(
+                analyzed=tally.analyzed,
+                cached=tally.cached,
+                flagged=tally.flagged,
+                failed=tally.failed,
+                total_cost_usd=round(tally.cost_usd, 4),
+            )
+        )
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")

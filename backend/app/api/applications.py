@@ -1,12 +1,12 @@
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_current_user
+from app.api.problems import Problem
 from app.db.models import (
     Application,
     ApplicationAIResult,
@@ -17,6 +17,16 @@ from app.db.models import (
 from app.db.session import get_db
 from app.domain.ranking import rank_candidates
 from app.domain.status import findings_fingerprint, is_stale, resolve_machine_status
+from app.schemas.applications import (
+    ApplicationDetail,
+    ApplicationEnvelope,
+    ApplicationListResponse,
+    ApplicationSummary,
+    DimensionContributionOut,
+    EssayAnalysisOut,
+    Facets,
+    QualityFlagOut,
+)
 from app.services.application_import import extract_essays
 from app.services.ranking_view import candidate_scores
 from app.services.screening_run import (
@@ -24,6 +34,7 @@ from app.services.screening_run import (
     dimension_weights,
     get_current_run,
 )
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
@@ -40,18 +51,20 @@ _NORMALIZED_SORTS = {
 }
 
 
-@router.get("")
+@router.get("", response_model=ApplicationListResponse)
 def list_applications(
     status: str | None = Query(None, pattern="^(eligible|ineligible)$"),
-    status_source: str | None = Query(None, pattern="^(untouched|rules|ai|human)$"),
+    status_source: str | None = Query(
+        None, alias="statusSource", pattern="^(untouched|rules|ai|human)$"
+    ),
     search: str | None = Query(None, max_length=200),
     sort: str | None = Query(None, pattern="^(applicant|co_applicant|children|income|status)$"),
     direction: str = Query("asc", pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=1, le=100),
+    page_size: int = Query(25, alias="pageSize", ge=1, le=100),
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
+) -> ApplicationListResponse:
     # Filters mirror the real columns; named views are composed client-side.
     status_cond = (
         Application.status == ApplicationStatus(status) if status else None
@@ -107,15 +120,15 @@ def list_applications(
         "source": _facet_counts(db, source_facet, Application.status_source, StatusSource),
     }
 
-    return {
-        "applications": [
+    return ApplicationListResponse(
+        applications=[
             _serialize_summary(app, flags=flags_by_app.get(app.id)) for app in applications
         ],
-        "total": total,
-        "page": page,
-        "pageSize": page_size,
-        "facets": facets,
-    }
+        total=total,
+        page=page,
+        page_size=page_size,
+        facets=Facets(status=facets["status"], source=facets["source"]),
+    )
 
 
 def _facet_counts(db: Session, base_query, column, enum_cls) -> dict[str, int]:
@@ -142,33 +155,30 @@ def _sort_key(value: Any, descending: bool) -> tuple[int, Any]:
     return (0, value)
 
 
-@router.get("/{application_id}")
+@router.get("/{application_id}", response_model=ApplicationEnvelope)
 def get_application(
     application_id: int,
     _: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
+) -> ApplicationEnvelope:
     application = db.get(Application, application_id)
     if application is None:
-        raise HTTPException(status_code=404, detail="Application not found.")
+        raise Problem("not_found", detail="Application not found.")
 
-    result: dict[str, Any] = {
-        "application": _serialize_detail(application, db)
-    }
-    return result
+    return ApplicationEnvelope(application=_serialize_detail(application, db))
 
 
 class StatusOverride(BaseModel):
     status: ApplicationStatus
 
 
-@router.patch("/{application_id}/status")
+@router.patch("/{application_id}/status", response_model=ApplicationEnvelope)
 def override_status(
     application_id: int,
     body: StatusOverride,
     _: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
+) -> ApplicationEnvelope:
     """Human override of an application's status.
 
     Any committee member may set status. Sets status_source to human (sticky against
@@ -177,7 +187,7 @@ def override_status(
     """
     application = db.get(Application, application_id)
     if application is None:
-        raise HTTPException(status_code=404, detail="Application not found.")
+        raise Problem("not_found", detail="Application not found.")
 
     flags = _latest_flags(db, [application_id]).get(application_id)
     application.status = body.status
@@ -188,17 +198,15 @@ def override_status(
     db.commit()
     db.refresh(application)
 
-    return {
-        "application": _serialize_detail(application, db)
-    }
+    return ApplicationEnvelope(application=_serialize_detail(application, db))
 
 
-@router.delete("/{application_id}/status")
+@router.delete("/{application_id}/status", response_model=ApplicationEnvelope)
 def clear_status_override(
     application_id: int,
     _: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
+) -> ApplicationEnvelope:
     """Remove a human override, handing the decision back to the machine.
 
     Recomputes status from the *current* findings (rules then AI), so the result can
@@ -207,7 +215,7 @@ def clear_status_override(
     """
     application = db.get(Application, application_id)
     if application is None:
-        raise HTTPException(status_code=404, detail="Application not found.")
+        raise Problem("not_found", detail="Application not found.")
 
     if application.status_source == StatusSource.HUMAN:
         flags = _latest_flags(db, [application_id]).get(application_id)
@@ -221,32 +229,30 @@ def clear_status_override(
         db.commit()
         db.refresh(application)
 
-    return {
-        "application": _serialize_detail(application, db)
-    }
+    return ApplicationEnvelope(application=_serialize_detail(application, db))
 
 
 def _serialize_summary(
     app: Application, flags: list[dict[str, Any]] | None = None
-) -> dict[str, Any]:
+) -> ApplicationSummary:
     normalized = app.normalized or {}
-    return {
-        "id": app.id,
-        "primaryEmail": app.primary_email,
-        "applicantName": app.applicant_name,
-        "coApplicantName": app.co_applicant_name,
-        "status": app.status.value,
-        "statusSource": app.status_source.value,
-        "stale": is_stale(app, flags),
-        "hardFilterReasons": app.hard_filter_reasons,
-        "childCount": normalized.get("child_count"),
-        "householdIncome": normalized.get("household_income"),
+    return ApplicationSummary(
+        id=app.id,
+        primary_email=app.primary_email,
+        applicant_name=app.applicant_name,
+        co_applicant_name=app.co_applicant_name,
+        status=app.status.value,
+        status_source=app.status_source.value,
+        stale=is_stale(app, flags),
+        hard_filter_reasons=app.hard_filter_reasons,
+        child_count=normalized.get("child_count"),
+        household_income=normalized.get("household_income"),
         # null = quality-flag pass not run; int = flag count (0 = ran clean).
-        "flagCount": None if flags is None else len(flags),
+        flag_count=None if flags is None else len(flags),
         # Distinct flag categories from the latest pass, for the list REASON cell.
-        "flagCategories": None if flags is None else _distinct_categories(flags),
-        "createdAt": app.created_at.isoformat() if app.created_at else None,
-    }
+        flag_categories=None if flags is None else _distinct_categories(flags),
+        created_at=app.created_at.isoformat() if app.created_at else None,
+    )
 
 
 def _distinct_categories(flags: list[dict[str, Any]]) -> list[str]:
@@ -291,40 +297,47 @@ def _latest_results(
     return latest
 
 
-def _serialize_detail(app: Application, db: Session) -> dict[str, Any]:
+def _serialize_detail(app: Application, db: Session) -> ApplicationDetail:
     # The raw source row and AI narrative are shown to any committee member: they're
     # trusted screeners, and these just back the data the member already sees.
     flag_result = _latest_results(db, "quality_flags", [app.id]).get(app.id)
     flags = (flag_result.output or {}).get("flags", []) if flag_result else None
-    detail = _serialize_summary(app, flags=flags)
+    summary = _serialize_summary(app, flags=flags)
     # What the machine would decide from the current findings, whoever owns status
     # now — lets the UI show the live automatic verdict (the result of clearing an
     # override) without re-deriving the rules client-side.
     auto_status, auto_source = resolve_machine_status(
         has_reasons=bool(app.hard_filter_reasons), has_ai_flags=bool(flags)
     )
-    detail["autoStatus"] = auto_status.value
-    detail["autoStatusSource"] = auto_source.value
-    detail["normalized"] = app.normalized
-    detail["essays"] = extract_essays(app.raw_row or {})
-    detail["qualityFlags"] = flags
-    detail["rawRow"] = app.raw_row
-    if flag_result is not None:
-        detail["aiNarrative"] = flag_result.narrative
 
     # Essay analysis: informational, never affects status. null = not yet run. No
     # narrative — an A/B run showed it doesn't change the extracted fields (see SPEC
     # "Essay Analysis"), so the structured output is the whole product.
     essay_result = _latest_results(db, "essay_analysis", [app.id]).get(app.id)
-    detail["essayAnalysis"] = essay_result.output if essay_result else None
 
-    # This candidate's scores against the current run's dimensions, joined to their
-    # labels. null = no run, or not scored under it.
-    detail["dimensionScores"] = _dimension_scores(db, app)
-    return detail
+    return ApplicationDetail(
+        **summary.model_dump(),
+        auto_status=auto_status.value,
+        auto_status_source=auto_source.value,
+        normalized=app.normalized,
+        essays=extract_essays(app.raw_row or {}),
+        quality_flags=(
+            [QualityFlagOut(**f) for f in flags] if flags is not None else None
+        ),
+        raw_row=app.raw_row,
+        ai_narrative=flag_result.narrative if flag_result is not None else None,
+        essay_analysis=(
+            EssayAnalysisOut(**essay_result.output) if essay_result else None
+        ),
+        # This candidate's scores against the current run's dimensions, joined to
+        # their labels. null = no run, or not scored under it.
+        dimension_scores=_dimension_scores(db, app),
+    )
 
 
-def _dimension_scores(db: Session, app: Application) -> list[dict[str, Any]] | None:
+def _dimension_scores(
+    db: Session, app: Application
+) -> list[DimensionContributionOut] | None:
     """The candidate's per-dimension scores under the current run, ordered by
     importance to THIS candidate's ranking.
 
@@ -351,4 +364,4 @@ def _dimension_scores(db: Session, app: Application) -> list[dict[str, Any]] | N
         key=lambda c: abs(c.impact),
         reverse=True,
     )
-    return [asdict(c) for c in contributions]
+    return [DimensionContributionOut(**asdict(c)) for c in contributions]

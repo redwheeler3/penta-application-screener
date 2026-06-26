@@ -121,7 +121,7 @@ export function CandidateDetail(props: {
             {app.dimensionScores.map((s) => {
               const sb = scoreBand(s.score);
               return (
-                <li key={s.dimension_key} className="dimension-score">
+                <li key={s.dimensionKey} className="dimension-score">
                   <div className="dimension-score-head">
                     <span className="dimension-score-name">{s.name}</span>
                     <span className="dimension-score-bar" aria-hidden="true">
@@ -186,12 +186,12 @@ export function CandidateDetail(props: {
             </p>
             <p className="essay-analysis-summary">{app.essayAnalysis.summary}</p>
             <dl className="essay-analysis-fields">
-              {renderEssayText("Household", app.essayAnalysis.household_context)}
-              {renderEssayText("Employment", app.essayAnalysis.employment_background)}
-              {renderEssayText("Prior co-op experience", app.essayAnalysis.prior_co_op_experience)}
-              {renderEssayChips("Skills offered", app.essayAnalysis.skills_offered)}
-              {renderEssayChips("Stated contributions", app.essayAnalysis.stated_contributions)}
-              {renderEssayChips("Motivations", app.essayAnalysis.stated_motivations)}
+              {renderEssayText("Household", app.essayAnalysis.householdContext)}
+              {renderEssayText("Employment", app.essayAnalysis.employmentBackground)}
+              {renderEssayText("Prior co-op experience", app.essayAnalysis.priorCoOpExperience)}
+              {renderEssayChips("Skills offered", app.essayAnalysis.skillsOffered)}
+              {renderEssayChips("Stated contributions", app.essayAnalysis.statedContributions)}
+              {renderEssayChips("Motivations", app.essayAnalysis.statedMotivations)}
               {renderEssayChips("Interests", app.essayAnalysis.interests)}
               {renderEssayChips("Values", app.essayAnalysis.values)}
             </dl>

@@ -13,6 +13,12 @@ from app.db.models import (
     User,
 )
 from app.db.session import get_db
+from app.schemas.dashboard import (
+    CoverageEntry,
+    DashboardCounts,
+    DashboardResponse,
+    WorkflowState,
+)
 from app.services.application_import import settings_fingerprint
 from app.services.settings import get_app_settings
 
@@ -35,11 +41,11 @@ from app.services.screening_run import (
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
-@router.get("")
+@router.get("", response_model=DashboardResponse)
 def read_dashboard(
     _: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> dict:
+) -> DashboardResponse:
     settings = get_app_settings(db)
     total = db.scalar(select(func.count()).select_from(Application)) or 0
 
@@ -47,38 +53,38 @@ def read_dashboard(
     by_status = _count_by(db, Application.status)
     by_source = _count_by(db, Application.status_source)
 
-    return {
-        "settingsComplete": bool(settings.google_sheet_id),
-        "counts": {
-            "submitted": total,
-            "status": {s.value: by_status.get(s, 0) for s in ApplicationStatus},
-            "source": {s.value: by_source.get(s, 0) for s in StatusSource},
-        },
+    return DashboardResponse(
+        settings_complete=bool(settings.google_sheet_id),
+        counts=DashboardCounts(
+            submitted=total,
+            status={s.value: by_status.get(s, 0) for s in ApplicationStatus},
+            source={s.value: by_source.get(s, 0) for s in StatusSource},
+        ),
         # Whether each step has run, from persisted data so workflow gating survives
         # a reload. Sync is "done" once any application exists; the AI steps once any
         # result of their kind exists.
-        "workflow": {
-            "synced": total > 0,
+        workflow=WorkflowState(
+            synced=total > 0,
             # Whether the latest import used the settings as they are now. Changed
             # import-relevant settings flag Import amber (a re-import would
             # reclassify eligibility). We can't detect a changed spreadsheet, so this
             # is "probably fresh," not a guarantee. Null fingerprint reads as current.
-            "importCurrent": _import_is_current(db, settings),
-            "qualityChecksRun": _kind_exists(db, "quality_flags"),
-            "essaysAnalyzed": _kind_exists(db, "essay_analysis"),
+            import_current=_import_is_current(db, settings),
+            quality_checks_run=_kind_exists(db, "quality_flags"),
+            essays_analyzed=_kind_exists(db, "essay_analysis"),
             # Pattern discovery is a screening run, not a per-application result.
-            "patternsDiscovered": _run_exists(db),
+            patterns_discovered=_run_exists(db),
             # Scoring kinds are per-dimension, so match by prefix.
-            "candidatesScored": _kind_prefix_exists(db, "dimension_scoring:"),
+            candidates_scored=_kind_prefix_exists(db, "dimension_scoring:"),
             # Same truth the Rank no-op gate uses, so the "needs re-run" badge and
             # the Rank button agree even when every candidate has a cached score.
-            "rankingCurrent": ranking_is_current(db, get_current_run(db), settings),
-        },
-        # Per-AI-step coverage of the current scope: {cached, inScope}. A step whose
-        # results predate a re-sync goes stale (cached < inScope) even though it ran,
-        # so the UI warns instead of showing a misleading done-check.
-        "coverage": _coverage(db, settings),
-    }
+            ranking_current=ranking_is_current(db, get_current_run(db), settings),
+        ),
+        # Per-AI-step coverage of the current scope. A step whose results predate a
+        # re-sync goes stale (cached < inScope) even though it ran, so the UI warns
+        # instead of showing a misleading done-check.
+        coverage=_coverage(db, settings),
+    )
 
 
 def _import_is_current(db: Session, settings) -> bool:
@@ -92,10 +98,10 @@ def _import_is_current(db: Session, settings) -> bool:
     return latest.settings_fingerprint == settings_fingerprint(settings)
 
 
-def _coverage(db: Session, settings) -> dict[str, dict[str, int]]:
+def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
     model = settings.ai.first_pass_model
 
-    def covered(applications, kind: str, prompt_version: str) -> dict[str, int]:
+    def covered(applications, kind: str, prompt_version: str) -> CoverageEntry:
         cached = sum(
             1
             for app in applications
@@ -110,7 +116,7 @@ def _coverage(db: Session, settings) -> dict[str, dict[str, int]]:
             )
             is not None
         )
-        return {"cached": cached, "inScope": len(applications)}
+        return CoverageEntry(cached=cached, in_scope=len(applications))
 
     result = {
         "qualityChecksRun": covered(
@@ -145,10 +151,9 @@ def _coverage(db: Session, settings) -> dict[str, dict[str, int]]:
                 for kind in kinds
             )
         )
-        result["candidatesScored"] = {
-            "cached": fully_scored,
-            "inScope": len(applications),
-        }
+        result["candidatesScored"] = CoverageEntry(
+            cached=fully_scored, in_scope=len(applications)
+        )
     return result
 
 

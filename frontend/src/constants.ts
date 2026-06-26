@@ -87,23 +87,23 @@ export const SOURCE_DESCRIPTIONS: Record<StatusSource, string> = {
 // overwrites draft and saved with the server's values (the backend's AppSettings
 // schema is the source of truth for every default). Not canonical.
 export const defaultSettings: AppSettings = {
-  google_sheet_id: "",
-  income_min: 70000,
-  income_max: 150000,
-  min_adult_age: 18,
-  max_child_age: 17,
-  min_children: 1,
-  max_children: 4,
-  max_dogs: 1,
-  max_cats: 1,
-  allow_other_pets: false,
-  disabled_rules: [],
+  googleSheetId: "",
+  incomeMin: 70000,
+  incomeMax: 150000,
+  minAdultAge: 18,
+  maxChildAge: 17,
+  minChildren: 1,
+  maxChildren: 4,
+  maxDogs: 1,
+  maxCats: 1,
+  allowOtherPets: false,
+  disabledRules: [],
   ai: {
     region: "us-west-2",
-    first_pass_model: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    synthesis_model: "us.anthropic.claude-sonnet-4-6",
-    spending_cap_usd: 1.0,
-    max_workers: 50,
+    firstPassModel: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    synthesisModel: "us.anthropic.claude-sonnet-4-6",
+    spendingCapUsd: 1.0,
+    maxWorkers: 50,
   },
 };
 

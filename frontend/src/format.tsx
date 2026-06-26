@@ -34,7 +34,7 @@ export function qfPercent(progress: { processed: number; total: number }): numbe
 // The configured sheet id from a server response: prefer the resolved URL, falling
 // back to the bare id. Returns "" when no sheet is configured.
 export function resolveSheetId(payload: SettingsResponse): string {
-  return payload.google_sheet_url || payload.settings.google_sheet_id;
+  return payload.googleSheetUrl || payload.settings.googleSheetId;
 }
 
 export function formatArrayItem(item: unknown): string {
@@ -72,10 +72,28 @@ export function formatFieldValue(value: unknown, key?: string): ReactNode {
   return String(value);
 }
 
-export function formatErrorDetail(detail: unknown): string {
-  if (typeof detail === "string") return detail;
-  if (detail == null) return "";
-  return JSON.stringify(detail, null, 2);
+// An RFC 9457 problem+json body (the backend's one error shape). `code` is the
+// stable machine identifier the UI can branch on; `detail`/`title` are human text.
+export type Problem = {
+  type: string;
+  title: string;
+  status: number;
+  code: string;
+  detail?: string;
+  instance?: string;
+  [key: string]: unknown; // extension members, e.g. capUsd
+};
+
+// Read a problem+json error body off a failed Response, returning a human message
+// (detail, falling back to title). Returns null if the body isn't a problem (e.g.
+// a network/HTML error), so callers can fall back to a status-based message.
+export async function readProblem(response: Response): Promise<string | null> {
+  try {
+    const body = (await response.json()) as Partial<Problem>;
+    return body.detail ?? body.title ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // Render one essay-analysis prose field as a dt/dd row, omitted when the model

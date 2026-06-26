@@ -1,29 +1,28 @@
-"""Screening API: the Rank chain and the deterministic ranked shortlist.
+"""Ranking API: the Rank chain and the deterministic ranked shortlist.
 
 Flow the UI drives:
-  1. GET  /screening/rank/estimate — combined cost projection for the chain.
-  2. POST /screening/rank/run — summarize essays → find criteria → score every
-     eligible applicant, streaming phase/progress/summary as NDJSON. The cap is
-     enforced once over the COMBINED cost before any model call.
-  3. GET  /screening/current — the current run's criteria + summary.
-  4. GET  /screening/ranking — the ranked shortlist (math over cached scores).
-  5. GET/PUT /screening/tiers — the committee's importance-tier weighting.
+  1. GET  /ranking/estimate — combined cost projection for the chain.
+  2. POST /ranking/run — summarize essays → find criteria → score every eligible
+     applicant, streaming phase/progress/summary as NDJSON. The cap is enforced
+     once over the COMBINED cost before any model call.
+  3. GET  /ranking/current — the current run's criteria + summary.
+  4. GET  /ranking — the ranked shortlist (math over cached scores).
+  5. GET/PUT /ranking/tiers — the committee's importance-tier weighting.
+  6. PUT  /ranking/seeds — discovery seeds (favourites + proposals) for next run.
 
 The committee never runs the three sub-passes individually, so they're exposed as
 one Rank step; the passes stay separate underneath (distinct schemas, cache kinds,
 status behavior).
 """
 
-import json
 import queue
 import threading
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import ScreeningResult, SpendingCapExceeded, enforce_cap
@@ -46,11 +45,35 @@ from app.ai.pattern_discovery import (
 )
 from app.ai.provider import AIProvider
 from app.api.dependencies import get_ai_provider, require_current_user
+from app.api.problems import Problem
 from app.db.models import User
 from app.db.session import get_db
 from app.domain.ranking import rank_candidates
-from app.services.ranking_view import candidate_scores
+from app.schemas.applications import DimensionContributionOut
+from app.schemas.events import (
+    NoticeEvent,
+    PhaseEvent,
+    ProgressEvent,
+    RankSummary,
+    ThinkingEvent,
+    emit,
+)
+from app.schemas.events import ErrorEvent as StreamErrorEvent
+from app.schemas.ranking import (
+    CurrentRunResponse,
+    PoolDimensionOut,
+    RankedCandidateOut,
+    RankEstimateBreakdown,
+    RankEstimateResponse,
+    RankingResponse,
+    SeedsResponse,
+    SeedsUpdate,
+    TierLayoutUpdate,
+    TierOut,
+    TiersResponse,
+)
 from app.schemas.settings import AppSettings
+from app.services.ranking_view import candidate_scores
 from app.services.screening_run import (
     adopt_matched_keys,
     carry_forward_layout,
@@ -68,7 +91,11 @@ from app.services.screening_run import (
 )
 from app.services.settings import get_app_settings
 
-router = APIRouter(prefix="/screening", tags=["screening"])
+router = APIRouter(prefix="/ranking", tags=["ranking"])
+
+# Phase names for the rank stream (every event carries one, so the client's
+# stream switch is uniform across this job and the quality-flags job).
+ESSAYS, CRITERIA, SCORES = "essays", "criteria", "scores"
 
 
 @dataclass
@@ -93,7 +120,7 @@ class RunTally:
         self.cost_usd += result.outcome.cost_usd
 
 
-def _run_payload(db: Session) -> dict[str, Any] | None:
+def _run_payload(db: Session) -> CurrentRunResponse | None:
     """The current run's discovered pattern report, shaped for the UI."""
     run = get_current_run(db)
     if run is None:
@@ -101,28 +128,37 @@ def _run_payload(db: Session) -> dict[str, Any] | None:
     report = current_pattern_report(run)
     if report is None:
         return None
-    return {
-        "runId": run.id,
-        "name": run.name,
-        "status": run.status,
-        "summary": report.summary,
-        "dimensions": report.model_dump(mode="json")["dimensions"],
+    return CurrentRunResponse(
+        run_id=run.id,
+        name=run.name,
+        status=run.status,
+        summary=report.summary,
+        dimensions=[
+            PoolDimensionOut(
+                key=d.key,
+                name=d.name,
+                definition=d.definition,
+                why_it_differentiates=d.why_it_differentiates,
+                from_committee_request=d.from_committee_request,
+            )
+            for d in report.dimensions
+        ],
         # New dimensions with no confident match to a prior one — parked in Ignore,
         # flagged "new" in the UI. Empty on a first run.
-        "newDimensionKeys": (run.criteria or {}).get("new_dimension_keys", []),
+        new_dimension_keys=(run.criteria or {}).get("new_dimension_keys", []),
         # Committee discovery seeds: favourited dimension keys (kept across re-runs)
         # and pending free-text proposals (fed to the next Rank, then consumed).
-        "favouritedKeys": favourited_keys(run),
-        "proposedDimensions": proposed_dimensions(run),
-    }
+        favourited_keys=favourited_keys(run),
+        proposed_dimensions=proposed_dimensions(run),
+    )
 
 
-@router.get("/current")
+@router.get("/current", response_model=CurrentRunResponse | None)
 def current(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any] | None:
-    """The current screening run's dimensions, or null if none discovered yet."""
+) -> CurrentRunResponse | None:
+    """The current ranking run's dimensions, or null if none discovered yet."""
     return _run_payload(db)
 
 
@@ -164,24 +200,37 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     }
 
 
-@router.get("/rank/estimate")
+@router.get("/estimate", response_model=RankEstimateResponse)
 def rank_estimate(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
+) -> RankEstimateResponse:
     settings: AppSettings = get_app_settings(db)
     if not eligible_applications(db):
-        raise HTTPException(status_code=409, detail="No eligible applications to rank.")
+        raise Problem("no_eligible_applications", detail="No eligible applications to rank.")
     result = _rank_estimate(db, settings)
-    result["cap_usd"] = settings.ai.spending_cap_usd
-    result["within_cap"] = result["estimated_usd"] <= settings.ai.spending_cap_usd
-    # When the pool is unchanged, the ranking is already current; the UI uses this
-    # to say "up to date" instead of offering to spend.
-    result["ranking_current"] = ranking_is_current(db, get_current_run(db), settings)
-    return result
+    cap = settings.ai.spending_cap_usd
+    breakdown = result["breakdown"]
+    return RankEstimateResponse(
+        eligible=result["eligible"],
+        breakdown=RankEstimateBreakdown(
+            essays_usd=breakdown["essays_usd"],
+            criteria_usd=breakdown["criteria_usd"],
+            match_usd=breakdown["match_usd"],
+            scoring_usd=breakdown["scoring_usd"],
+        ),
+        essays_cached=result["essays_cached"],
+        estimated_usd=result["estimated_usd"],
+        approximate=result["approximate"],
+        cap_usd=cap,
+        within_cap=result["estimated_usd"] <= cap,
+        # When the pool is unchanged, the ranking is already current; the UI uses
+        # this to say "up to date" instead of offering to spend.
+        ranking_current=ranking_is_current(db, get_current_run(db), settings),
+    )
 
 
-@router.post("/rank/run")
+@router.post("/run")
 def rank_run(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
@@ -197,7 +246,7 @@ def rank_run(
     """
     settings: AppSettings = get_app_settings(db)
     if not eligible_applications(db):
-        raise HTTPException(status_code=409, detail="No eligible applications to rank.")
+        raise Problem("no_eligible_applications", detail="No eligible applications to rank.")
 
     # An unchanged pool needs no re-rank, but we no longer block one: discovery is
     # nondeterministic, so re-running deliberately gives the committee a fresh set of
@@ -207,14 +256,19 @@ def rank_run(
     try:
         enforce_cap(estimate, settings.ai.spending_cap_usd)
     except SpendingCapExceeded as exc:
-        raise HTTPException(status_code=402, detail=str(exc)) from exc
+        raise Problem(
+            "cap_exceeded",
+            detail=str(exc),
+            cap_usd=settings.ai.spending_cap_usd,
+            estimated_usd=float(estimate["estimated_usd"]),
+        ) from exc
 
     def stream() -> Iterator[str]:
         total_cost = 0.0
 
         # Phase 1: summarize essays (informational; never touches status).
         essays = applications_to_analyze(db)
-        yield json.dumps({"type": "phase", "phase": "essays", "total": len(essays)}) + "\n"
+        yield emit(PhaseEvent(phase=ESSAYS, total=len(essays)))
         essay_tally = RunTally()
         for processed, result in enumerate(
             screen_essays(
@@ -224,9 +278,7 @@ def rank_run(
             start=1,
         ):
             essay_tally.add(result)
-            yield json.dumps(
-                {"type": "progress", "phase": "essays", "processed": processed, "total": len(essays)}
-            ) + "\n"
+            yield emit(ProgressEvent(phase=ESSAYS, processed=processed, total=len(essays)))
         total_cost += essay_tally.cost_usd
 
         # Phase 2: find criteria (one synthesis call; starts a fresh run).
@@ -249,7 +301,7 @@ def rank_run(
             proposed=proposed_dimensions(prior_run) if prior_run else [],
         )
 
-        yield json.dumps({"type": "phase", "phase": "criteria"}) + "\n"
+        yield emit(PhaseEvent(phase=CRITERIA))
         pool = eligible_applications(db)
         # Discovery and match are single multi-minute model calls with no per-item
         # progress, so we STREAM their reasoning text as live "thinking". The
@@ -295,15 +347,17 @@ def rank_run(
             text = delta_queue.get()
             if text is None:
                 break
-            yield json.dumps({"type": "criteria_thinking", "text": text}) + "\n"
+            yield emit(ThinkingEvent(phase=CRITERIA, text=text))
         worker.join()
 
         if "error" in criteria_outcome:
             exc = criteria_outcome["error"]
-            yield json.dumps(
-                {"type": "error", "phase": "criteria",
-                 "message": f"Finding criteria failed: {type(exc).__name__}: {exc}"}
-            ) + "\n"
+            yield emit(
+                StreamErrorEvent(
+                    phase=CRITERIA,
+                    message=f"Finding criteria failed: {type(exc).__name__}: {exc}",
+                )
+            )
             return
         report, narrative, discovery_cost, new_to_old, match_narrative, match_cost = (
             criteria_outcome["ok"]
@@ -341,18 +395,18 @@ def rank_run(
             match_audit=match_audit,
         )
         total_cost += discovery_cost + match_cost
-        yield json.dumps(
-            {
-                "type": "criteria_done",
-                "dimensions": len(report.dimensions),
-                "carriedForward": len(new_to_old),
-                "newDimensions": len(new_dimension_keys),
-            }
-        ) + "\n"
+        yield emit(
+            NoticeEvent(
+                phase=CRITERIA,
+                dimensions=len(report.dimensions),
+                carried_forward=len(new_to_old),
+                new_dimensions=len(new_dimension_keys),
+            )
+        )
 
         # Phase 3: score every eligible candidate against the new dimensions.
         to_score = applications_to_score(db)
-        yield json.dumps({"type": "phase", "phase": "scores", "total": len(to_score)}) + "\n"
+        yield emit(PhaseEvent(phase=SCORES, total=len(to_score)))
         score_tally = RunTally()
         for processed, result in enumerate(
             score_dimensions(
@@ -362,20 +416,17 @@ def rank_run(
             start=1,
         ):
             score_tally.add(result)
-            yield json.dumps(
-                {"type": "progress", "phase": "scores", "processed": processed, "total": len(to_score)}
-            ) + "\n"
+            yield emit(ProgressEvent(phase=SCORES, processed=processed, total=len(to_score)))
         total_cost += score_tally.cost_usd
 
-        yield json.dumps(
-            {
-                "type": "summary",
-                "dimensions": len(report.dimensions),
-                "scored": score_tally.analyzed + score_tally.cached,
-                "failed": essay_tally.failed + score_tally.failed,
-                "totalCostUsd": round(total_cost, 4),
-            }
-        ) + "\n"
+        yield emit(
+            RankSummary(
+                dimensions=len(report.dimensions),
+                scored=score_tally.analyzed + score_tally.cached,
+                failed=essay_tally.failed + score_tally.failed,
+                total_cost_usd=round(total_cost, 4),
+            )
+        )
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")
 
@@ -387,32 +438,45 @@ def rank_run(
 # labels, and hands flat values to the pure ``rank_candidates`` domain function.
 
 
-def _ranking_payload(db: Session, run) -> dict[str, Any]:
+def _ranking_payload(db: Session, run) -> RankingResponse:
     """The ranked-shortlist response for a run. Shared by ``/ranking`` and the
     tier-edit endpoint, so a tier change returns the re-sorted list in one
     round-trip.
     """
     weights = dimension_weights(run)
     ranked = rank_candidates(candidate_scores(db, run), weights)
-    return {
-        "runId": run.id,
-        "weights": weights,
-        "scoredCount": len(ranked),
-        "candidates": [asdict(c) for c in ranked],
+    return RankingResponse(
+        run_id=run.id,
+        weights=weights,
+        scored_count=len(ranked),
+        candidates=[
+            RankedCandidateOut(
+                application_id=c.application_id,
+                name=c.name,
+                rank=c.rank,
+                fit=c.fit,
+                band=c.band,
+                contributions=[
+                    DimensionContributionOut(**asdict(contribution))
+                    for contribution in c.contributions
+                ],
+            )
+            for c in ranked
+        ],
         # Recomputed each save so the tier-list refreshes "New" badges in the same
         # round-trip (placing or acknowledging a dimension clears it).
-        "newDimensionKeys": (run.criteria or {}).get("new_dimension_keys", []),
+        new_dimension_keys=(run.criteria or {}).get("new_dimension_keys", []),
         # Discovery seeds, so the criteria composer stays in sync after a tier/seed save.
-        "favouritedKeys": favourited_keys(run),
-        "proposedDimensions": proposed_dimensions(run),
-    }
+        favourited_keys=favourited_keys(run),
+        proposed_dimensions=proposed_dimensions(run),
+    )
 
 
-@router.get("/ranking")
+@router.get("", response_model=RankingResponse)
 def ranking(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
+) -> RankingResponse:
     """The deterministic ranked shortlist for the current run.
 
     Ranks every scored eligible candidate by the weight-normalized average of its
@@ -422,7 +486,7 @@ def ranking(
     run = get_current_run(db)
     report = current_pattern_report(run) if run is not None else None
     if report is None:
-        raise HTTPException(status_code=409, detail="Discover patterns before ranking.")
+        raise Problem("run_required", detail="Discover patterns before ranking.")
     return _ranking_payload(db, run)
 
 
@@ -432,51 +496,37 @@ def ranking(
 # layout (see ``weights_from_tiers``) and the ranking re-sorts. Pure persistence.
 
 
-class TierModel(BaseModel):
-    id: str
-    label: str
-    dimension_keys: list[str] = Field(default_factory=list)
-    ignore: bool = False
-
-
-class TierLayoutUpdate(BaseModel):
-    tiers: list[TierModel]
-    # Keys the committee acknowledged as "reviewed" this save (badge ✕ / "mark all
-    # reviewed") — they drop out of new_dimension_keys even if left in Ignore.
-    acknowledged_keys: list[str] = Field(default_factory=list)
-
-
-@router.get("/tiers")
+@router.get("/tiers", response_model=TiersResponse)
 def get_tiers(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
+) -> TiersResponse:
     """The current run's tier layout (or the default single-tier layout if the
     committee has not tiered yet). 409 before a run exists.
     """
     run = get_current_run(db)
     if run is None or current_pattern_report(run) is None:
-        raise HTTPException(status_code=409, detail="Discover patterns before tiering.")
-    return {"tiers": display_tiers(run)}
+        raise Problem("run_required", detail="Discover patterns before tiering.")
+    return TiersResponse(tiers=[TierOut(**t) for t in display_tiers(run)])
 
 
-@router.put("/tiers")
+@router.put("/tiers", response_model=RankingResponse)
 def update_tiers(
     body: TierLayoutUpdate,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
+) -> RankingResponse:
     """Persist a new tier layout, derive weights from it, and return the freshly
-    re-sorted ranking. Unknown dimension keys are rejected (400).
+    re-sorted ranking. Unknown dimension keys are rejected (422).
     """
     run = get_current_run(db)
     if run is None or current_pattern_report(run) is None:
-        raise HTTPException(status_code=409, detail="Discover patterns before tiering.")
+        raise Problem("run_required", detail="Discover patterns before tiering.")
     layout = [t.model_dump() for t in body.tiers]
     try:
         set_tiers(db, run, layout, acknowledged_keys=body.acknowledged_keys)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise Problem("unknown_dimension_key", detail=str(exc)) from exc
     return _ranking_payload(db, run)
 
 
@@ -485,34 +535,28 @@ def update_tiers(
 # Between runs, the committee can favourite existing dimensions (keep them across
 # re-runs) and propose free-text axes. Both steer the NEXT Rank's discovery, then:
 # favourites persist; proposals are consumed when a run realizes them. No model
-# call here — just persistence; the seeds take effect on the next /rank/run.
+# call here — just persistence; the seeds take effect on the next /ranking/run.
 
 
-class SeedsUpdate(BaseModel):
-    # Both optional so the UI can update one without clobbering the other.
-    favourited_keys: list[str] | None = None
-    proposed_dimensions: list[str] | None = None
-
-
-@router.put("/seeds")
+@router.put("/seeds", response_model=SeedsResponse)
 def update_seeds(
     body: SeedsUpdate,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
+) -> SeedsResponse:
     """Persist the committee's discovery seeds for the current run (favourited
     dimension keys + pending proposals). Returns the current seed state. 409 before
     a run exists — there are no dimensions to favourite and nowhere to store yet.
     """
     run = get_current_run(db)
     if run is None or current_pattern_report(run) is None:
-        raise HTTPException(status_code=409, detail="Discover patterns before adding seeds.")
+        raise Problem("run_required", detail="Discover patterns before adding seeds.")
     set_seeds(
         db, run,
         favourited_keys=body.favourited_keys,
         proposed_dimensions=body.proposed_dimensions,
     )
-    return {
-        "favouritedKeys": favourited_keys(run),
-        "proposedDimensions": proposed_dimensions(run),
-    }
+    return SeedsResponse(
+        favourited_keys=favourited_keys(run),
+        proposed_dimensions=proposed_dimensions(run),
+    )

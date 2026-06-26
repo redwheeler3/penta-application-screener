@@ -220,7 +220,7 @@ async def test_ai_flag_sets_needs_review_status_and_filter() -> None:
         assert by_email["clean@x.com"]["flagCount"] == 0
 
         # Needs-review queue is the AI-source bucket.
-        needs_review = await client.get("/applications", params={"status_source": "ai"})
+        needs_review = await client.get("/applications", params={"statusSource": "ai"})
         body = needs_review.json()
         assert body["total"] == 1
         assert body["applications"][0]["primaryEmail"] == "flag@x.com"
@@ -452,6 +452,6 @@ async def test_estimate_reports_cap_and_within_cap() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["to_analyze"] == 1
-    assert body["cap_usd"] == 1.0
-    assert body["within_cap"] is True
+    assert body["toAnalyze"] == 1
+    assert body["capUsd"] == 1.0
+    assert body["withinCap"] is True

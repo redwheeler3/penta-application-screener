@@ -3,7 +3,7 @@ import { type ReactNode, type SyntheticEvent, useEffect, useRef, useState } from
 import { HouseIcon } from "./HouseIcon";
 import * as api from "./api";
 import { defaultSettings } from "./constants";
-import { formatErrorDetail, resolveSheetId } from "./format";
+import { readProblem, resolveSheetId } from "./format";
 import type {
   ApplicationDetail,
   ApplicationSummary,
@@ -162,7 +162,7 @@ export function App() {
   function applySettingsResponse(payload: SettingsResponse) {
     const sheetId = resolveSheetId(payload);
     setSaved(payload);
-    setDraft({ ...payload.settings, google_sheet_id: sheetId });
+    setDraft({ ...payload.settings, googleSheetId: sheetId });
     // First-run setup: open the form when there's no sheet configured yet.
     if (!sheetId) setIsSettingsExpanded(true);
   }
@@ -254,23 +254,20 @@ export function App() {
       const response = await api.syncApplications();
       if (response.ok) {
         const payload: {
-          syncRun: { rowCount: number; importedCount: number; updatedCount: number; unchangedCount: number };
+          rowCount: number;
+          importedCount: number;
+          updatedCount: number;
+          unchangedCount: number;
         } = await response.json();
-        const { rowCount, importedCount, updatedCount, unchangedCount } = payload.syncRun;
+        const { rowCount, importedCount, updatedCount, unchangedCount } = payload;
         showToast(
           `Synced ${rowCount} rows: ${importedCount} imported, ${updatedCount} updated, ${unchangedCount} unchanged.`,
         );
         refreshDashboard();
         loadApplications({ page: 1 });
       } else {
-        let detail = `Sync failed (HTTP ${response.status}).`;
-        try {
-          const payload = await response.json();
-          if (payload.detail) detail = `Sync failed: ${formatErrorDetail(payload.detail)}`;
-        } catch {
-          // response body wasn't JSON
-        }
-        showError(detail);
+        const problem = await readProblem(response);
+        showError(problem ? `Sync failed: ${problem}` : `Sync failed (HTTP ${response.status}).`);
       }
     } catch (error) {
       showError(
@@ -304,8 +301,8 @@ export function App() {
     try {
       const response = await api.runQualityFlags();
       if (!response.ok || !response.body) {
-        const payload = await response.json().catch(() => null);
-        showError(payload?.detail ? `Flagging failed: ${formatErrorDetail(payload.detail)}` : "Flagging failed.");
+        const problem = await readProblem(response);
+        showError(problem ? `Flagging failed: ${problem}` : "Flagging failed.");
       } else {
         await api.streamNdjson(response.body, (event) => {
           if (event.type === "progress") {
@@ -353,8 +350,8 @@ export function App() {
     try {
       const response = await api.runRank();
       if (!response.ok || !response.body) {
-        const payload = await response.json().catch(() => null);
-        showError(payload?.detail ? `Ranking failed: ${formatErrorDetail(payload.detail)}` : "Ranking failed.");
+        const problem = await readProblem(response);
+        showError(problem ? `Ranking failed: ${problem}` : "Ranking failed.");
       } else {
         await api.streamNdjson(response.body, (event) => {
           if (event.type === "phase") {
@@ -362,10 +359,11 @@ export function App() {
             setRankProgress({ phase: event.phase, processed: 0, total: event.total ?? 0 });
           } else if (event.type === "progress") {
             setRankProgress({ phase: event.phase, processed: event.processed, total: event.total });
-          } else if (event.type === "criteria_thinking") {
+          } else if (event.type === "thinking") {
             // Live model reasoning during discovery + match; append as it streams.
             setCriteriaThinking((prior) => prior + event.text);
           } else if (event.type === "error") {
+            // Fatal phase failure (e.g. the criteria thread crashed); ends the stream.
             showError(event.message || "Ranking failed.");
           } else if (event.type === "summary") {
             const failedNote = event.failed ? ` ${event.failed} failed and were skipped.` : "";
@@ -404,10 +402,8 @@ export function App() {
       if (tiersRes.ok) setTiers((await tiersRes.json()).tiers);
       setShowRanking(true);
     } else {
-      const payload = await rankRes.json().catch(() => null);
-      showError(
-        payload?.detail ? `Could not load the ranking: ${formatErrorDetail(payload.detail)}` : "Could not load the ranking.",
-      );
+      const problem = await readProblem(rankRes);
+      showError(problem ? `Could not load the ranking: ${problem}` : "Could not load the ranking.");
     }
   }
 
@@ -443,8 +439,8 @@ export function App() {
     };
     setScreeningRun(optimistic);
     const response = await api.saveSeeds({
-      favourited_keys: next.favouritedKeys,
-      proposed_dimensions: next.proposedDimensions,
+      favouritedKeys: next.favouritedKeys,
+      proposedDimensions: next.proposedDimensions,
     });
     if (response.ok) {
       const echoed: { favouritedKeys: string[]; proposedDimensions: string[] } = await response.json();

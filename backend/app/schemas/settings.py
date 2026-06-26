@@ -1,6 +1,8 @@
 import re
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import Field, field_validator
+
+from app.schemas.base import BridgeModel, ResponseModel
 
 # Threshold defaults are owned by the domain layer (the single source of truth);
 # the settings schema references them so a default can't drift between the two.
@@ -24,7 +26,7 @@ def google_sheet_url_from_id(sheet_id: str) -> str:
     return f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit"
 
 
-class AISettings(BaseModel):
+class AISettings(BridgeModel):
     """Admin-only AI provider configuration.
 
     Model IDs are Bedrock inference profile IDs (the ``us.`` / ``global.``
@@ -44,7 +46,7 @@ class AISettings(BaseModel):
     max_workers: int = Field(default=50, ge=1, le=100)
 
 
-class AppSettings(BaseModel):
+class AppSettings(BridgeModel):
     google_sheet_id: str = Field(default="", max_length=2000)
     income_min: int = Field(default=DEFAULT_MIN_INCOME, ge=0)
     income_max: int = Field(default=DEFAULT_MAX_INCOME, ge=0)
@@ -73,7 +75,7 @@ class AppSettings(BaseModel):
         return spreadsheet_reference
 
 
-class SettingsResponse(BaseModel):
+class SettingsResponse(ResponseModel):
     settings: AppSettings
     google_sheet_url: str = ""
     google_sheet_title: str | None = None
