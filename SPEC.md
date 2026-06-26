@@ -723,9 +723,9 @@ The repo should include a `.gitignore` before implementation.
 
 ## Reports
 
-The primary final report format should be Google Docs.
+**The report format is the browser's print-to-PDF of the ranked view (milestone 10, shipped).** The committee opens the ranking and clicks **Print**; the print stylesheet hides the interactive chrome (`no-print` — the workflow strip, tier-list maker, settings, filters) and renders a clean, committee-ready artifact: the ranked shortlist with each candidate's band and rationale, plus a text **importance-tiers summary** (`TierSummaryForPrint`) so a reader sees which dimensions sat in which tier and *why* the order came out as it did. The candidate detail page is independently printable too.
 
-Generated report links should be stored in the app database and associated with the relevant screening run.
+This replaced the originally-planned Google Docs report generation. Print-to-PDF needs no Docs/Drive write scopes, no second OAuth consent, no generated-file storage or folder management, and no "regenerate on change" story — the document is always a live render of current state. The committee can save the PDF, print it, or share it through their own channels. (A Google Docs export could return later if a committee wants an editable, collaboratively-commentable artifact — but the print path covers the MVP need.)
 
 ## MVP Shape
 
@@ -746,7 +746,7 @@ Local OAuth redirect URLs may use localhost, such as:
 
 The app should connect directly to Google Sheets in read-only mode for application import/sync. Google login and Google Sheets API access should be requested together at login because Sheets access is required for the app's core workflow.
 
-It is acceptable to request Google Docs/Drive write permissions early so later report generation can create Google Docs without a second consent/setup pass.
+Reports ship as browser print-to-PDF (see "Reports"), so no Google Docs/Drive write permissions are needed — the app's only Google scopes are login + Sheets read-only.
 
 Once user management exists, Google login should be restricted to invited/approved email addresses.
 
@@ -767,20 +767,12 @@ AI provider/model configuration is part of settings, which are currently login-o
 
 Manual Google Sheet link or ID entry in Admin settings is good enough for MVP. A future Drive picker/browse flow is optional.
 
-Initial Google scopes should use the minimum set that supports MVP plus reports:
+Google scopes are the minimum set the workflow needs:
 
 - basic Google login profile/email
 - Google Sheets read-only
-- Google Docs create/edit
-- Google Drive file creation/management for files created by the app
 
-Generated Google Docs reports should be created in the MVP report folder:
-
-- `https://drive.google.com/drive/u/0/folders/1ymZE9c-_puF-3nxwexPYRdsU5iD00jRb`
-
-When report content changes, regenerating a fresh Google Doc is acceptable for MVP.
-
-Google Docs report generation should remain a later MVP milestone after ranked shortlist generation works.
+No Docs/Drive scopes are requested: reports ship as browser print-to-PDF (see "Reports"), which needs no write access or generated-file storage. (If a Google Docs export is added later, it would add Docs create/edit + Drive file scopes then.)
 
 The repo should include a Google Cloud/OAuth setup checklist before implementation so setup is reproducible across computers.
 
@@ -806,7 +798,7 @@ Overall MVP target demo:
 - Generate AI essay summaries for eligible applications
 - Surface AI pattern questions
 - Produce a ranked shortlist
-- Generate a Google Docs report
+- Print the ranked view to a committee-ready PDF
 
 Initial technical direction:
 
@@ -843,12 +835,12 @@ Suggested implementation milestones:
 7. Pool pattern discovery and per-candidate dimension scoring (read-only surfacing) — the AI foundation for ranking.
 8. Deterministic ranked list: equal-weight baseline over the cached dimension scores. (A configurable shortlist line was later removed — the stack rank is read top-down.)
 9. Interactive weighting via a tier-list maker: the committee drags discovered dimensions into self-defined importance tiers (+ an Ignore zone), and the ranking re-sorts instantly. Deterministic — no model call.
-10. Google Docs report generation.
+10. Committee-ready report via browser print-to-PDF of the ranked view (replaced the originally-planned Google Docs generation — see "Reports").
 11. Multi-member screening and merged shortlist comparison.
 
-The old milestone 7 ("pattern discovery, narrowing questions, previews, undo, ranked shortlist") was a single oversized step; it is now split across milestones 7–9, which pushed report generation to 10 and multi-member to 11. The split keeps each slice independently reviewable: 7 derisks the AI foundation (do discovered dimensions and per-candidate scores look right?) before 8–9 build the interactive ranking on top.
+The old milestone 7 ("pattern discovery, narrowing questions, previews, undo, ranked shortlist") was a single oversized step; it is now split across milestones 7–9, which pushed report to 10 and multi-member to 11. The split keeps each slice independently reviewable: 7 derisks the AI foundation (do discovered dimensions and per-candidate scores look right?) before 8–9 build the interactive ranking on top.
 
-Milestones 1–9 are complete and proven end-to-end against real Bedrock (sync → quality flags → essays → discover ~14–16 fact-aware dimensions → score the pool → rank with the tier-list weighting). M8 delivered the deterministic ranked list (weighted average over the M7 `DimensionScore`s, equal-weight baseline, relative bands); M9 layered the tier-list maker on top (the committee drags criteria into S/A/B/Ignore tiers and the list re-sorts — no model call). **The next milestone is 10: Google Docs report generation.** M9 fast-follows (see the M9 design section): (1) **tier carry-forward on re-rank** — *complete (Phases 1–5)*: blind-discovery + identity-match two-pass, auto-applied high-confidence carry-forward, all-Ignore default, new-dimension badging with in-place acknowledge, **and per-dimension score reuse** (matched dimensions adopt the prior key, so unchanged axes reuse their cached scores by key; only new/unmatched ones are re-scored) with a whole-pool ceiling estimate; (2) add-a-dimension mid-tiering (now cheap — adding one axis scores just that dimension); (3) surface weak spots in the ranked list — **done** (two fixes: a label bug — rows showed *confidence* coloured high→green, not the *score* — and a selection bug — rows chose dimensions by `weight×score`, which only ever picks strengths. Now contributions are selected/ordered by `abs(impact)` where `impact = weight × (score − pool_mean)`, coloured by score band, so a heavy strike surfaces as readily as a strength; the candidate detail page shares the same contribution objects and ordering); (4) the AI Criteria Coach. Carry-forward's match pass is the first model call added to the re-rank path; the deterministic re-sort on a tier edit still makes no model call.
+Milestones 1–10 are complete and proven end-to-end against real Bedrock (sync → quality flags → essays → discover ~14–16 fact-aware dimensions → score the pool → rank with the tier-list weighting → print a committee-ready PDF). M8 delivered the deterministic ranked list (weighted average over the M7 `DimensionScore`s, equal-weight baseline, relative bands); M9 layered the tier-list maker on top (the committee drags criteria into S/A/B/Ignore tiers and the list re-sorts — no model call); M10 shipped the report as browser print-to-PDF of the ranked view (see "Reports"), replacing the originally-planned Google Docs generation. **The next milestone is 11: multi-member screening and merged shortlist comparison.** M9 fast-follows (see the M9 design section): (1) **tier carry-forward on re-rank** — *complete (Phases 1–5)*: blind-discovery + identity-match two-pass, auto-applied high-confidence carry-forward, all-Ignore default, new-dimension badging with in-place acknowledge, **and per-dimension score reuse** (matched dimensions adopt the prior key, so unchanged axes reuse their cached scores by key; only new/unmatched ones are re-scored) with a whole-pool ceiling estimate; (2) add-a-dimension mid-tiering (now cheap — adding one axis scores just that dimension); (3) surface weak spots in the ranked list — **done** (two fixes: a label bug — rows showed *confidence* coloured high→green, not the *score* — and a selection bug — rows chose dimensions by `weight×score`, which only ever picks strengths. Now contributions are selected/ordered by `abs(impact)` where `impact = weight × (score − pool_mean)`, coloured by score band, so a heavy strike surfaces as readily as a strength; the candidate detail page shares the same contribution objects and ordering); (4) the AI Criteria Coach. Carry-forward's match pass is the first model call added to the re-rank path; the deterministic re-sort on a tier edit still makes no model call.
 
 Milestone 5 (AI quality flags) also delivered the shared AI foundation originally listed under milestone 6: the provider-agnostic interface (Strands + Amazon Bedrock, with a deterministic mock for tests), cached per-application analysis keyed on content hash + model + prompt version, a token pricing table, cost estimate, per-run spending cap, member-accessible quality-check runs, and raw-debug access via the candidate detail page. Milestone 6 is therefore now scoped to essay analysis and committee-ready summaries on top of that foundation.
 
@@ -864,9 +856,12 @@ What exists and works (all committed):
 - **Tiers model:** the run stores only *working* tiers; "ignored" = absence of a placement (weight 0). `display_tiers` synthesizes the Ignore zone for the UI; `set_tiers` strips it on save. Re-rank carries the committee's tier placements forward by LLM identity-match (high bar, auto-applied); unmatched dims park in Ignore badged "New" until placed or acknowledged.
 - Per-**dimension** scoring cache `kind = "dimension_scoring:<dimension_key>"` (one row per candidate × dimension); matched dimensions adopt the prior key (`adopt_matched_keys`), so unchanged dimensions reuse their scores by key across re-ranks and only new/unmatched ones are scored. Estimate self-tunes across keys via the `dimension_scoring:` prefix and prices a whole-pool ceiling (it runs before discovery, so it can't know carry-forward savings). The thread-pool/session core is `run_in_pool` (shared by `screen_applications` and `score_dimensions`).
 - Frontend: three single-verb workflow steps (Import → Screen → Rank) + a "View ranking" action; the ranked view hosts the `@dnd-kit` tier-list maker (drag criteria into S/A/B/Ignore tiers → instant re-sort), amber "New" badges with per-badge ✕ + "Clear all N new flags" action, and confidence-colored per-driver rationale lines.
-- 141 backend tests pass; frontend typechecks and builds.
+- **Reports (M10): browser print-to-PDF of the ranked view** (see "Reports"). A `Print` button on the ranked view and the candidate detail page; an `@media print` stylesheet hides interactive chrome (`no-print`) and `TierSummaryForPrint` renders the importance tiers as text. No Docs/Drive scopes, no generated-file storage — the PDF is a live render. This replaced the originally-planned Google Docs generation.
+- 150 backend tests pass; frontend typechecks and builds.
 
-The next milestone is **10: Google Docs report generation**. M9 fast-follow status: (1) tier carry-forward on re-rank — **complete (Phases 1–5)**: functionally done + per-dimension score reuse (matched dimensions adopt the prior key, cache keyed by dimension key) + ceiling estimate; a real-Bedrock re-rank to confirm the cost win in the wild is the remaining check; (2) add-a-dimension mid-tiering; (3) surface weak spots in the ranked list — **done** (contributions selected/ordered by `abs(impact)` = `weight × (score − pool_mean)` and coloured by score band, so a heavy strike surfaces alongside strengths; detail page shares the same objects + ordering); (4) AI Criteria Coach.
+The next milestone is **11: multi-member screening and merged shortlist comparison**. M9 fast-follow status: (1) tier carry-forward on re-rank — **complete (Phases 1–5)**: functionally done + per-dimension score reuse (matched dimensions adopt the prior key, cache keyed by dimension key) + ceiling estimate, confirmed in the wild now that re-running an unchanged pool is allowed (see "re-run" note below); (2) add-a-dimension mid-tiering; (3) surface weak spots in the ranked list — **done** (contributions selected/ordered by `abs(impact)` = `weight × (score − pool_mean)` and coloured by score band, so a heavy strike surfaces alongside strengths; detail page shares the same objects + ordering); (4) AI Criteria Coach.
+
+Note: the no-op Rank/Screen gates below were later relaxed — re-running Rank on an unchanged pool is now **allowed** (the categorization is non-deterministic, so a member may want a fresh set of criteria; the confirmation card explains nothing requires a re-run but offers it anyway). Every workflow step — including **Import** — now opens a confirmation card before acting.
 
 Decisions locked (don't re-litigate):
 - **LLM extracts scored features; ranking is deterministic math.** M8 weighted sum, M9 re-weight-and-re-sort — no model call per answer.
@@ -916,12 +911,13 @@ Still open for later AI milestones:
 2. Define structured output schemas for narrowing questions, evidence audit, and report sections (the quality-flag, essay-analysis, and — in milestone 7 — pattern-discovery and dimension-scoring schemas exist; `app/ai/schemas.py` is the shared home).
 3. Define the first small eval/fixture strategy for AI schema consistency.
 
-### Before Reporting
+### Reporting (M10 shipped as print-to-PDF; refinements open)
 
-1. Define the Google Docs report outline.
-2. Decide whether reports include recommended candidates only, near-misses, filtered-out counts, or filtered-out details.
-3. Decide the amount of applicant personal/contact detail appropriate for MOMI reports.
-4. Define the tone and format of recommendation and `why not selected` explanations.
+The report is now the browser print of the ranked view (see "Reports"), so the format question is resolved. What the printed artifact contains is whatever the ranked view shows — the stack-ranked candidates with band + rationale, plus the text importance-tiers summary. Open refinements, if a committee wants more than the live render:
+
+1. Decide whether the print should include near-misses, filtered-out counts, or filtered-out details (currently it prints the ranked eligible pool only).
+2. Decide the amount of applicant personal/contact detail appropriate for MOMI reports (the ranked view leads with name + rationale, not contact info).
+3. Define the tone/format of an explicit recommendation and `why not selected` explanation, if one is wanted beyond the per-candidate rationale lines.
 
 ### Before Multi-Member V2
 
