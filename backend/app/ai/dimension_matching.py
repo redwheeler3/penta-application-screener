@@ -20,6 +20,51 @@ from app.schemas.settings import AppSettings
 
 KIND = "dimension_matching"  # for logging / the debug view; not a cached per-app kind
 
+SYSTEM_PROMPT = """\
+You are reconciling two lists of "dimensions" — axes along which a pool of housing co-op applicants varies. One list is from a PRIOR analysis, one is freshly discovered from the same (slightly changed) pool. They overlap heavily but the wording may differ and some axes may be genuinely new or gone.
+Your only job is to identify which NEW dimension means the SAME THING as which PRIOR dimension — a pure identity match. You do not invent dimensions, rank them, or judge which matter.
+Match only when you are confident the two describe the same underlying concept, judging by their definitions, not just similar words. When in doubt, do NOT match: a missed match is harmless, a wrong match corrupts a human's earlier decision. Every match must be one-to-one."""
+
+# Static instruction text. Hoisted to a module constant to match the cached passes'
+# layout (prompt text at the top, data appended in build_prompt). Uncached pass: there
+# is NO PROMPT_VERSION here — the match call goes through provider.structured_output
+# directly, so nothing gates a cache. See the .clinerules "derived, not hand-bumped" gem.
+_INSTRUCTIONS = """\
+## Task
+Reconcile two dimension lists for the same applicant pool: identify which NEW dimension means the SAME underlying concept as which PRIOR dimension.
+
+## Inputs
+The two lists, in the `<prior_dimensions>` and `<new_dimensions>` blocks below.
+
+## How to judge
+Judge by the definitions, not by whether the keys or names look alike. Match only when confident the two describe the same underlying concept; when in doubt, do NOT match (a missed match is harmless, a wrong match corrupts a human's earlier decision).
+
+## Output
+Return the high-confidence identity matches: for each NEW dimension that clearly means the same thing as a PRIOR dimension, one entry with its new_key and the matching old_key. Omit any NEW dimension you are not confident maps to a specific PRIOR dimension — those are treated as genuinely new. Matches must be strictly one-to-one (no prior or new dimension used twice)."""
+
+
+def _dimensions_block(tag: str, report: PoolPatternReport) -> str:
+    """A compact JSON list of a report's dimensions, wrapped in an XML tag for the
+    prompt. Keys are included so the model can return them, but it matches on
+    meaning, not wording.
+    """
+    dims = [
+        {"key": d.key, "name": d.name, "definition": d.definition}
+        for d in report.dimensions
+    ]
+    return f"<{tag}>\n{json.dumps(dims, indent=2, default=str)}\n</{tag}>"
+
+
+def build_prompt(old: PoolPatternReport, new: PoolPatternReport) -> str:
+    return (
+        f"{_INSTRUCTIONS}"
+        f"\n\n{_dimensions_block('prior_dimensions', old)}"
+        f"\n\n{_dimensions_block('new_dimensions', new)}"
+    )
+
+
+# --- Cost estimation (non-prompt) ---
+
 # Flat token weight to fold the single match call's (small) cost into the pre-run
 # Rank estimate. A generous flat guess, not self-tuning (the pass is uncached and
 # runs at most once per re-rank).
@@ -37,33 +82,6 @@ def estimate_match(settings: AppSettings) -> float:
         settings.ai.first_pass_model,
         Usage(input_tokens=MATCH_INPUT_TOKENS, output_tokens=MATCH_OUTPUT_TOKENS),
     )
-
-SYSTEM_PROMPT = """\
-You are reconciling two lists of "dimensions" — axes along which a pool of housing co-op applicants varies. One list is from a PRIOR analysis, one is freshly discovered from the same (slightly changed) pool. They overlap heavily but the wording may differ and some axes may be genuinely new or gone.
-Your only job is to identify which NEW dimension means the SAME THING as which PRIOR dimension — a pure identity match. You do not invent dimensions, rank them, or judge which matter.
-Match only when you are confident the two describe the same underlying concept, judging by their definitions, not just similar words. When in doubt, do NOT match: a missed match is harmless, a wrong match corrupts a human's earlier decision. Every match must be one-to-one."""
-
-
-def _dimensions_block(label: str, report: PoolPatternReport) -> str:
-    """A compact JSON list of a report's dimensions for the prompt. Keys are
-    included so the model can return them, but it matches on meaning, not wording.
-    """
-    dims = [
-        {"key": d.key, "name": d.name, "definition": d.definition}
-        for d in report.dimensions
-    ]
-    return f"{label}:\n{json.dumps(dims, indent=2, default=str)}"
-
-
-def build_prompt(old: PoolPatternReport, new: PoolPatternReport) -> str:
-    return f"""\
-Below are two dimension lists for the same applicant pool.
-
-{_dimensions_block("PRIOR dimensions", old)}
-
-{_dimensions_block("NEW dimensions", new)}
-
-Return the high-confidence identity matches: for each NEW dimension that clearly means the same thing as a PRIOR dimension, one entry with its new_key and the matching old_key. Judge by the definitions, not by whether the keys or names look alike. Omit any NEW dimension you are not confident maps to a specific PRIOR dimension — those are treated as genuinely new. Matches must be strictly one-to-one (no prior or new dimension used twice)."""
 
 
 def match_dimensions(

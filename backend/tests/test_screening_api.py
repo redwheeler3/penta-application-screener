@@ -144,8 +144,8 @@ async def test_full_flow_rank_then_detail() -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         # The Rank chain summarizes essays, finds criteria, then scores.
-        provider.route("ESSAYS:", an_essay_report())
-        provider.route("APPLICANT POOL:", a_pattern_report())
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", a_pattern_report())
         provider.route(f'"applicant_id": {application.id}', a_scoring_report())
         summary = next(
             e
@@ -192,8 +192,8 @@ async def test_ranking_orders_pool_and_seeds_equal_weights() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         # Drive the whole chain; bind each candidate's scores by the applicant_id
         # marker in the scoring prompt (scoring fans out concurrently).
-        provider.route("ESSAYS:", an_essay_report())
-        provider.route("APPLICANT POOL:", a_pattern_report())
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", a_pattern_report())
         provider.route(f'"applicant_id": {weak.id}', _scoring_report(commitment=0.2, skills=0.2))
         provider.route(f'"applicant_id": {strong.id}', _scoring_report(commitment=0.9, skills=0.9))
         await stream_events(client, "/screening/rank/run")
@@ -229,11 +229,11 @@ async def test_rank_chain_runs_essays_criteria_scores() -> None:
     weak = add_eligible(db, email="weak@x.com", raw_hash="h1")
     strong = add_eligible(db, email="strong@x.com", raw_hash="h2")
 
-    # Route by prompt content: the essay prompt carries "ESSAYS:", discovery
-    # carries "APPLICANT POOL:", scoring carries "DIMENSIONS:". Scores are bound
+    # Route by prompt content: the essay prompt carries "<essays>", discovery
+    # carries "<applicant_pool>", scoring carries "DIMENSIONS:". Scores are bound
     # to each applicant by the applicant_id marker in the scoring prompt.
-    provider.route("ESSAYS:", an_essay_report())
-    provider.route("APPLICANT POOL:", a_pattern_report())
+    provider.route("<essays>", an_essay_report())
+    provider.route("<applicant_pool>", a_pattern_report())
     provider.route(
         f'"applicant_id": {weak.id}', _scoring_report(commitment=0.2, skills=0.2)
     )
@@ -266,8 +266,8 @@ async def test_criteria_phase_streams_thinking_deltas() -> None:
     # otherwise-opaque multi-minute call. The MockProvider emits fixed deltas.
     app, db, provider = setup_app(role=UserRole.MEMBER)
     add_eligible(db, email="a@x.com", raw_hash="h1")
-    provider.route("ESSAYS:", an_essay_report())
-    provider.route("APPLICANT POOL:", a_pattern_report())
+    provider.route("<essays>", an_essay_report())
+    provider.route("<applicant_pool>", a_pattern_report())
     provider.route("applicant_id", a_scoring_report())
 
     transport = ASGITransport(app=app)
@@ -290,8 +290,8 @@ async def test_tiers_reweight_and_resort_the_ranking() -> None:
     commit_lead = add_eligible(db, email="commit@x.com", raw_hash="h1")
     skills_lead = add_eligible(db, email="skills@x.com", raw_hash="h2")
 
-    provider.route("ESSAYS:", an_essay_report())
-    provider.route("APPLICANT POOL:", a_pattern_report())
+    provider.route("<essays>", an_essay_report())
+    provider.route("<applicant_pool>", a_pattern_report())
     provider.route(
         f'"applicant_id": {commit_lead.id}', _scoring_report(commitment=0.9, skills=0.1)
     )
@@ -332,8 +332,8 @@ async def test_tiers_ignore_drops_then_revives_a_dimension() -> None:
     app, db, provider = setup_app(role=UserRole.MEMBER)
     commit_lead = add_eligible(db, email="commit@x.com", raw_hash="h1")
     skills_lead = add_eligible(db, email="skills@x.com", raw_hash="h2")
-    provider.route("ESSAYS:", an_essay_report())
-    provider.route("APPLICANT POOL:", a_pattern_report())
+    provider.route("<essays>", an_essay_report())
+    provider.route("<applicant_pool>", a_pattern_report())
     provider.route(
         f'"applicant_id": {commit_lead.id}', _scoring_report(commitment=0.9, skills=0.1)
     )
@@ -373,8 +373,8 @@ async def test_tiers_ignore_drops_then_revives_a_dimension() -> None:
 async def test_tiers_reject_unknown_dimension_key() -> None:
     app, db, provider = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
-    provider.route("ESSAYS:", an_essay_report())
-    provider.route("APPLICANT POOL:", a_pattern_report())
+    provider.route("<essays>", an_essay_report())
+    provider.route("<applicant_pool>", a_pattern_report())
     provider.route(f'"applicant_id": {a.id}', a_scoring_report())
 
     transport = ASGITransport(app=app)
@@ -423,8 +423,8 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         # First run: discover v1 dimensions, score, then the committee tiers
         # participation_commitment into S-Tier.
-        provider.route("ESSAYS:", an_essay_report())
-        provider.route("APPLICANT POOL:", a_pattern_report())
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", a_pattern_report())
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/screening/rank/run")
         await client.put(
@@ -442,10 +442,10 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
         # v2 dimensions. The match pass maps stated_participation -> the prior
         # participation_commitment (same concept); financial_stability is new.
         add_eligible(db, email="b@x.com", raw_hash="h2")
-        provider.route("ESSAYS:", an_essay_report())
-        provider.route("APPLICANT POOL:", a_pattern_report_v2())
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", a_pattern_report_v2())
         provider.route(
-            "PRIOR dimensions",
+            "<prior_dimensions>",
             DimensionMatchReport(
                 matches=[DimensionMatch(new_key="stated_participation", old_key="participation_commitment")]
             ),
@@ -513,8 +513,8 @@ async def test_tiers_without_ignore_zone_means_everything_ignored() -> None:
     a working tier is valid, and dimensions left out are weight 0 (ignored)."""
     app, db, provider = setup_app(role=UserRole.MEMBER)
     add_eligible(db, email="a@x.com", raw_hash="h1")
-    provider.route("ESSAYS:", an_essay_report())
-    provider.route("APPLICANT POOL:", a_pattern_report())
+    provider.route("<essays>", an_essay_report())
+    provider.route("<applicant_pool>", a_pattern_report())
     provider.route("applicant_id", a_scoring_report())
 
     transport = ASGITransport(app=app)
@@ -554,8 +554,8 @@ async def test_rank_flags_unchanged_pool_but_allows_rerun() -> None:
     # fresh set of criteria. The confirmation card is the gate, not the server.
     app, db, provider = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
-    provider.route("ESSAYS:", an_essay_report())
-    provider.route("APPLICANT POOL:", a_pattern_report())
+    provider.route("<essays>", an_essay_report())
+    provider.route("<applicant_pool>", a_pattern_report())
     provider.route(f'"applicant_id": {a.id}', a_scoring_report())
 
     transport = ASGITransport(app=app)
@@ -659,7 +659,7 @@ def test_build_prompt_unseeded_has_no_requested_section() -> None:
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
     apps = [a]
     bare = build_prompt(db, apps)
-    assert "REQUESTED AXES" not in bare
+    assert "<requested_axes>" not in bare
     # An empty seed set is equivalent to no seeds.
     assert build_prompt(db, apps, seeds=DiscoverySeeds()) == bare
 
@@ -674,7 +674,7 @@ def test_build_prompt_includes_favourited_and_proposed_seeds() -> None:
         proposed=["school-age kids who'd use the playground"],
     )
     prompt = build_prompt(db, [a], seeds=seeds)
-    assert "REQUESTED AXES" in prompt
+    assert "<requested_axes>" in prompt
     assert "Conflict Mediation: Resolves disputes." in prompt
     assert "school-age kids who'd use the playground" in prompt
     # The model is told to flag what it creates from a request.
@@ -692,8 +692,8 @@ async def test_proposed_dimension_seeds_discovery_then_clears_and_auto_favourite
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         # First blind run so a run exists to attach seeds to.
-        provider.route("ESSAYS:", an_essay_report())
-        provider.route("APPLICANT POOL:", a_pattern_report())
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", a_pattern_report())
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/screening/rank/run")
 
@@ -707,13 +707,13 @@ async def test_proposed_dimension_seeds_discovery_then_clears_and_auto_favourite
 
         # Re-run: discovery now returns a report flagging the requested dimension.
         provider.calls.clear()
-        provider.route("APPLICANT POOL:", _pattern_report_with_requested())
-        provider.route("PRIOR dimensions", DimensionMatchReport(matches=[]))  # match pass
+        provider.route("<applicant_pool>", _pattern_report_with_requested())
+        provider.route("<prior_dimensions>", DimensionMatchReport(matches=[]))  # match pass
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/screening/rank/run")
 
         # The proposal text reached the discovery prompt.
-        discovery_prompt = next(c.prompt for c in provider.calls if "APPLICANT POOL:" in c.prompt)
+        discovery_prompt = next(c.prompt for c in provider.calls if "<applicant_pool>" in c.prompt)
         assert "school-age kids who'd use the playground" in discovery_prompt
 
         # After the run: proposal consumed (cleared); flagged dimension auto-favourited.
@@ -731,8 +731,8 @@ async def test_favourited_dimension_is_re_fed_to_discovery_and_persists() -> Non
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        provider.route("ESSAYS:", an_essay_report())
-        provider.route("APPLICANT POOL:", a_pattern_report())
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", a_pattern_report())
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/screening/rank/run")
 
@@ -744,17 +744,17 @@ async def test_favourited_dimension_is_re_fed_to_discovery_and_persists() -> Non
 
         # Re-run: the favourite recurs (match pass maps it back to its prior key).
         provider.calls.clear()
-        provider.route("APPLICANT POOL:", a_pattern_report())
+        provider.route("<applicant_pool>", a_pattern_report())
         provider.route(
-            "PRIOR dimensions",
+            "<prior_dimensions>",
             DimensionMatchReport(matches=[]),  # same keys, so no rewrite needed
         )
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/screening/rank/run")
 
         # The favourite's name + definition were re-fed to discovery.
-        discovery_prompt = next(c.prompt for c in provider.calls if "APPLICANT POOL:" in c.prompt)
-        assert "REQUESTED AXES" in discovery_prompt
+        discovery_prompt = next(c.prompt for c in provider.calls if "<applicant_pool>" in c.prompt)
+        assert "<requested_axes>" in discovery_prompt
         assert "Participation commitment: Willingness to do shared work." in discovery_prompt
 
         # It is still favourited after the re-run.
@@ -780,8 +780,8 @@ async def test_put_seeds_rejects_unknown_favourite_key() -> None:
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        provider.route("ESSAYS:", an_essay_report())
-        provider.route("APPLICANT POOL:", a_pattern_report())
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", a_pattern_report())
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/screening/rank/run")
 
