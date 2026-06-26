@@ -78,7 +78,15 @@ class StrandsProvider:
         from strands import Agent
 
         sink = on_delta or (lambda _text: None)
-        agent = Agent(model=self._model_for(model_id), system_prompt=system_prompt)
+        # callback_handler=None suppresses Strands' default PrintingCallbackHandler,
+        # which would otherwise echo streamed reasoning to stdout. The UI is the
+        # intended surface for that text (via sink -> the NDJSON stream); the terminal
+        # echo is just noise.
+        agent = Agent(
+            model=self._model_for(model_id),
+            system_prompt=system_prompt,
+            callback_handler=None,
+        )
 
         async def drain() -> object:
             final = None
