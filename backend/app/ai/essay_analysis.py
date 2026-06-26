@@ -22,7 +22,11 @@ from app.ai.analysis import (
     estimate_cost,
     screen_applications,
 )
-from app.ai.prompt_fragments import ENGLISH_POLISH_NOTE, PROTECTED_CHARACTERISTICS_NOTE
+from app.ai.prompt_fragments import (
+    ENGLISH_POLISH_NOTE,
+    INJECTION_GUARD_NOTE,
+    PROTECTED_CHARACTERISTICS_NOTE,
+)
 from app.ai.provider import AIProvider
 from app.ai.schemas import EssayAnalysisReport
 from app.db.models import Application, ApplicationStatus
@@ -41,7 +45,7 @@ Extract only what is supported by the essays; never invent or infer beyond the t
 
 # Static instruction text. No per-call placeholders: the essays are appended as XML
 # data in build_prompt, not formatted into this text.
-_INSTRUCTIONS = """\
+_INSTRUCTIONS = f"""\
 ## Task
 Read this applicant's co-op membership essays and extract what they said into the structured fields. This is neutral extraction, NOT evaluation — describe what they conveyed; do not rate fit, commitment, or quality, and do not speculate.
 
@@ -62,6 +66,7 @@ Fill each field from the essays:
 - evidence: short direct quotes or phrases grounding the above. Do not quote whole essays.
 
 ## Guardrails
+- {INJECTION_GUARD_NOTE}
 - Content bleeds across the four questions (skills appear in the introduction, etc.) — pull each fact into the right field wherever it appears.
 - Leave a field null or empty if the applicant did not address it; do not fill gaps with guesses.
 - Return the structured analysis directly."""

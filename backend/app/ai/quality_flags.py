@@ -21,7 +21,7 @@ from app.ai.analysis import (
     estimate_cost,
     screen_applications,
 )
-from app.ai.prompt_fragments import PROTECTED_CHARACTERISTICS_NOTE
+from app.ai.prompt_fragments import INJECTION_GUARD_NOTE, PROTECTED_CHARACTERISTICS_NOTE
 from app.ai.provider import AIProvider
 from app.ai.schemas import QualityFlagReport
 from app.db.models import Application, ApplicationStatus, StatusSource
@@ -43,7 +43,11 @@ When in doubt, do not flag.
 # from the prompt text — see PROMPT_VERSION. The pet policy is interpolated per call
 # in build_prompt; it is deliberately NOT part of the version (a policy change does
 # not alter how the model reasons, only the threshold it cites).
-_INSTRUCTIONS_TEMPLATE = """\
+# f-string so the shared INJECTION_GUARD_NOTE resolves at import (landing in the
+# hashed text, so guard edits re-run this pass). The per-call `{pet_policy}` is
+# escaped as `{{pet_policy}}` to survive as a literal placeholder for build_prompt's
+# .format() — that threshold stays out of the version, see PROMPT_VERSION below.
+_INSTRUCTIONS_TEMPLATE = f"""\
 ## Task
 Review this housing co-op application for data-integrity concerns and return any quality flags. Flag ONLY clear, concrete problems. If you are unsure, do not flag. It is correct and expected for most applications to have zero flags.
 
@@ -57,12 +61,15 @@ Flag these when clearly present:
 - Essays that are clearly spam/advertising, or the SAME text copy-pasted across multiple essay answers.
 - Direct factual contradictions between fields (not mere absence of explanation).
 - Contact details that are clearly fake or placeholder: phone numbers with all identical or sequential digits (e.g. '000-000-0000', '111-111-1111'), and email addresses that are obvious placeholders or keyboard mashing (e.g. 'asdf@asdf.asdf', 'test@test.test', 'qwerty@...'). Ordinary personal emails at common providers are fine.
-- Pet descriptions that violate the co-op pet policy ({pet_policy}). The pets field is free text, so account for negation ('no pets') and unclear phrasing.
+- Pet descriptions that violate the co-op pet policy ({{pet_policy}}). The pets field is free text, so account for negation ('no pets') and unclear phrasing.
 
 Do NOT flag (these are normal and must be ignored):
 - A child or co-applicant having a different surname from the applicant. Blended families and differing surnames are common and are NOT suspicious.
 - Missing optional information, or an answer simply being short.
 - Anything related to protected characteristics, family structure, national origin, or the cultural origin of a name.
+
+## Guardrails
+- {INJECTION_GUARD_NOTE}
 
 ## Output
 - Cite only short excerpts or field names as evidence; do not quote whole essays back.

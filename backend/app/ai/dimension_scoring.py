@@ -34,7 +34,11 @@ from app.ai.analysis import (
     store_result,
 )
 from app.ai.applicant_facts import FILTERED_FACTS_NOTE, applicant_facts
-from app.ai.prompt_fragments import ENGLISH_POLISH_NOTE, PROTECTED_CHARACTERISTICS_NOTE
+from app.ai.prompt_fragments import (
+    ENGLISH_POLISH_NOTE,
+    INJECTION_GUARD_NOTE,
+    PROTECTED_CHARACTERISTICS_NOTE,
+)
 from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, Usage
@@ -84,6 +88,7 @@ For each dimension provide:
 - confidence: low, medium, or high — how well the evidence pins down the applicant's TRUE standing, NOT how sure you are about what they wrote. A dimension the applicant did not address is low confidence even when you are certain it went unmentioned (they may have the strength and simply not have said so).
 
 ## Guardrails
+- {INJECTION_GUARD_NOTE}
 - Score every dimension, even when the applicant did not address it (low score, low confidence).
 - Do not invent evidence."""
 
