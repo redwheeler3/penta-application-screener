@@ -11,6 +11,10 @@ trap cleanup EXIT
 echo "Running migrations..."
 (cd "$REPO_ROOT/backend" && uv run alembic upgrade head)
 
+echo "To use the API docs (http://localhost:8000/docs), first sign in here:"
+echo "  http://localhost:8000/auth/google/login"
+echo ""
+
 echo "Starting backend on http://localhost:8000 ..."
 (cd "$REPO_ROOT/backend" && uv run fastapi dev --host localhost app/main.py) &
 
