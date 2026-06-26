@@ -1582,13 +1582,109 @@ h1 {
 
 .dimension-head {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .dimension-name {
   font-weight: 600;
+}
+
+/* ★ favourite toggle on a discovered criterion (keep it across re-runs). */
+.dimension-fav {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--muted);
+  border-radius: 4px;
+  line-height: 0;
+}
+
+.dimension-fav:hover {
+  color: var(--penta-green);
+}
+
+.dimension-fav.is-fav {
+  color: #d97706; /* amber star when favourited */
+}
+
+/* The "suggest an axis" composer below the criteria list. */
+.criteria-composer {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #ddd6fe;
+}
+
+.criteria-composer h4 {
+  margin: 0 0 0.2rem;
+  font-size: 0.9rem;
+}
+
+.criteria-composer-hint {
+  margin: 0 0 0.6rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.criteria-composer-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.criteria-composer-row input {
+  flex: 1;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.criteria-proposals {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.criteria-proposals li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  border-radius: 6px;
+  font-size: 0.82rem;
+}
+
+.criteria-proposal-remove {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--muted);
+  line-height: 0;
+}
+
+.criteria-proposal-remove:hover {
+  color: #dc2626;
+}
+
+.criteria-seed-note {
+  margin: 0.6rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
 }
 
 .dimension-def {

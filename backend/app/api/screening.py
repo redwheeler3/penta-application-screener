@@ -37,6 +37,7 @@ from app.ai.essay_analysis import (
     screen_essays,
 )
 from app.ai.pattern_discovery import (
+    DiscoverySeeds,
     discover_patterns,
     eligible_applications,
     estimate_discovery,
@@ -55,8 +56,11 @@ from app.services.screening_run import (
     current_pattern_report,
     dimension_weights,
     display_tiers,
+    favourited_keys,
     get_current_run,
+    proposed_dimensions,
     ranking_is_current,
+    set_seeds,
     set_tiers,
     stored_tiers,
 )
@@ -104,6 +108,10 @@ def _run_payload(db: Session) -> dict[str, Any] | None:
         # New dimensions with no confident match to a prior one — parked in Ignore,
         # flagged "new" in the UI. Empty on a first run.
         "newDimensionKeys": (run.criteria or {}).get("new_dimension_keys", []),
+        # Committee discovery seeds: favourited dimension keys (kept across re-runs)
+        # and pending free-text proposals (fed to the next Rank, then consumed).
+        "favouritedKeys": favourited_keys(run),
+        "proposedDimensions": proposed_dimensions(run),
     }
 
 
@@ -225,21 +233,36 @@ def rank_run(
         prior_run = get_current_run(db)
         prior_report = current_pattern_report(prior_run) if prior_run else None
         prior_tiers = stored_tiers(prior_run) if prior_run else []
+        # Committee discovery seeds: favourited dimensions (resolved to name +
+        # definition from the prior report) plus pending free-text proposals. These
+        # steer discovery toward axes the committee asked for; an empty seed set
+        # leaves discovery fully blind (the default first-run behaviour).
+        prior_favourites = favourited_keys(prior_run) if prior_run else []
+        seeds = DiscoverySeeds(
+            favourited=[
+                {"name": d.name, "definition": d.definition}
+                for d in (prior_report.dimensions if prior_report else [])
+                if d.key in set(prior_favourites)
+            ],
+            proposed=proposed_dimensions(prior_run) if prior_run else [],
+        )
 
         yield json.dumps({"type": "phase", "phase": "criteria"}) + "\n"
         pool = eligible_applications(db)
         try:
-            # Pass 1: blind re-discovery — never sees the prior dimensions.
+            # Pass 1: re-discovery, blind except for the committee's seeds (favourited
+            # + proposed axes). With no seeds this is fully blind, as before.
             report, narrative, discovery_cost = discover_patterns(
-                db, provider, applications=pool, settings=settings
+                db, provider, applications=pool, settings=settings, seeds=seeds
             )
             # Pass 2: identity-match the new dimensions onto the prior ones (high
             # bar, one-to-one) so tiers + scores carry forward. Skipped on a first
             # run (no prior report) — match_dimensions returns an empty map.
             new_to_old: dict[str, str] = {}
+            match_narrative: str | None = None
             match_cost = 0.0
             if prior_report is not None:
-                new_to_old, _match_narrative, match_cost = match_dimensions(
+                new_to_old, match_narrative, match_cost = match_dimensions(
                     provider, old=prior_report, new=report, settings=settings
                 )
         except Exception as exc:  # noqa: BLE001 — surface provider failure to the client
@@ -248,6 +271,19 @@ def rank_run(
                  "message": f"Finding criteria failed: {type(exc).__name__}: {exc}"}
             ) + "\n"
             return
+        # Audit trail for the carry-forward: what discovery ACTUALLY emitted (its own
+        # keys, before adopt_matched_keys rewrites matched ones to prior keys) and how
+        # the match pass mapped it. Without this the stored report only shows the
+        # rewritten result, so we can't tell genuine re-discovery from match over-
+        # matching. (Exposed in the admin debug view.)
+        match_audit = {
+            "raw_discovery_dimensions": [
+                {"key": d.key, "name": d.name, "from_committee_request": d.from_committee_request}
+                for d in report.dimensions
+            ],
+            "new_to_old": new_to_old,
+            "match_narrative": match_narrative,
+        }
         # Adopt the prior key for every matched dimension (keeping new descriptions)
         # so its tier placement and cached score carry forward by key alone.
         report = adopt_matched_keys(report, new_to_old)
@@ -261,6 +297,11 @@ def rank_run(
             db, report=report, model_id=settings.ai.synthesis_model,
             narrative=narrative, cost_usd=discovery_cost + match_cost,
             tier_layout=layout, new_dimension_keys=new_dimension_keys,
+            # Carry prior favourites forward (by key, post-match); create_run unions
+            # in any dimension the model flagged from_committee_request and clears
+            # the consumed proposals.
+            prior_favourited_keys=prior_favourites,
+            match_audit=match_audit,
         )
         total_cost += discovery_cost + match_cost
         yield json.dumps(
@@ -324,6 +365,9 @@ def _ranking_payload(db: Session, run) -> dict[str, Any]:
         # Recomputed each save so the tier-list refreshes "New" badges in the same
         # round-trip (placing or acknowledging a dimension clears it).
         "newDimensionKeys": (run.criteria or {}).get("new_dimension_keys", []),
+        # Discovery seeds, so the criteria composer stays in sync after a tier/seed save.
+        "favouritedKeys": favourited_keys(run),
+        "proposedDimensions": proposed_dimensions(run),
     }
 
 
@@ -397,3 +441,41 @@ def update_tiers(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _ranking_payload(db, run)
+
+
+# --- Discovery seeds ---------------------------------------------------------
+#
+# Between runs, the committee can favourite existing dimensions (keep them across
+# re-runs) and propose free-text axes. Both steer the NEXT Rank's discovery, then:
+# favourites persist; proposals are consumed when a run realizes them. No model
+# call here — just persistence; the seeds take effect on the next /rank/run.
+
+
+class SeedsUpdate(BaseModel):
+    # Both optional so the UI can update one without clobbering the other.
+    favourited_keys: list[str] | None = None
+    proposed_dimensions: list[str] | None = None
+
+
+@router.put("/seeds")
+def update_seeds(
+    body: SeedsUpdate,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Persist the committee's discovery seeds for the current run (favourited
+    dimension keys + pending proposals). Returns the current seed state. 409 before
+    a run exists — there are no dimensions to favourite and nowhere to store yet.
+    """
+    run = get_current_run(db)
+    if run is None or current_pattern_report(run) is None:
+        raise HTTPException(status_code=409, detail="Discover patterns before adding seeds.")
+    set_seeds(
+        db, run,
+        favourited_keys=body.favourited_keys,
+        proposed_dimensions=body.proposed_dimensions,
+    )
+    return {
+        "favouritedKeys": favourited_keys(run),
+        "proposedDimensions": proposed_dimensions(run),
+    }

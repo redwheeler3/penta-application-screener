@@ -132,6 +132,15 @@ class PoolDimension(BaseModel):
             "varies across candidates here, not a generic ideal."
         )
     )
+    from_committee_request: bool = Field(
+        default=False,
+        description=(
+            "Set true ONLY for a dimension you created in response to a committee "
+            "request (a favourited or proposed axis the prompt asked you to "
+            "consider). A dimension you discovered on your own stays false. If one "
+            "request splits into several dimensions, mark each of them true."
+        ),
+    )
 
 
 class PoolPatternReport(BaseModel):

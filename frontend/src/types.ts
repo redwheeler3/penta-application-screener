@@ -187,6 +187,9 @@ export type RankingState = {
   // Unacknowledged new dimensions, recomputed on every tier save so badges clear
   // in the same round-trip.
   newDimensionKeys: string[];
+  // Discovery seeds, echoed so the composer stays in sync after a tier/seed save.
+  favouritedKeys: string[];
+  proposedDimensions: string[];
 };
 
 // One importance tier. Same tier → equal weight; higher tiers weigh more; Ignore
@@ -208,6 +211,10 @@ export type ScreeningRunState = {
   // New dimensions with no confident match to a prior one — they start in Ignore,
   // badged "new" until the committee triages them. Empty on a first run.
   newDimensionKeys: string[];
+  // Discovery seeds (see api): favourited dimension keys kept across re-runs, and
+  // pending free-text proposals fed to the next Rank then consumed.
+  favouritedKeys: string[];
+  proposedDimensions: string[];
 };
 
 // A notification toast. Success toasts auto-dismiss; error toasts persist until

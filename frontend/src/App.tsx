@@ -420,6 +420,50 @@ export function App() {
     await saveTiers(tiers, keys);
   }
 
+  // Persist discovery seeds (favourites + proposals) for the current run. Both feed
+  // the NEXT Rank's discovery. Optimistically update screeningRun (where the
+  // composer reads seed state) for instant feedback; reconcile from the response.
+  async function saveSeeds(next: { favouritedKeys?: string[]; proposedDimensions?: string[] }) {
+    if (!screeningRun) return;
+    const optimistic = {
+      ...screeningRun,
+      ...(next.favouritedKeys !== undefined ? { favouritedKeys: next.favouritedKeys } : {}),
+      ...(next.proposedDimensions !== undefined ? { proposedDimensions: next.proposedDimensions } : {}),
+    };
+    setScreeningRun(optimistic);
+    const response = await api.saveSeeds({
+      favourited_keys: next.favouritedKeys,
+      proposed_dimensions: next.proposedDimensions,
+    });
+    if (response.ok) {
+      const echoed: { favouritedKeys: string[]; proposedDimensions: string[] } = await response.json();
+      setScreeningRun((run) =>
+        run ? { ...run, favouritedKeys: echoed.favouritedKeys, proposedDimensions: echoed.proposedDimensions } : run,
+      );
+    } else {
+      showError("Could not save the suggested criteria.");
+      refreshScreeningRun(); // reconcile back to server truth
+    }
+  }
+
+  function toggleFavourite(key: string, favourited: boolean) {
+    if (!screeningRun) return;
+    const current = screeningRun.favouritedKeys;
+    const nextKeys = favourited ? [...current, key] : current.filter((k) => k !== key);
+    saveSeeds({ favouritedKeys: nextKeys });
+  }
+
+  function addProposal(text: string) {
+    if (!screeningRun) return;
+    if (screeningRun.proposedDimensions.includes(text)) return;
+    saveSeeds({ proposedDimensions: [...screeningRun.proposedDimensions, text] });
+  }
+
+  function removeProposal(text: string) {
+    if (!screeningRun) return;
+    saveSeeds({ proposedDimensions: screeningRun.proposedDimensions.filter((t) => t !== text) });
+  }
+
   // Human override of an application's status. The backend marks it human-owned and
   // sticky against future machine runs.
   async function overrideStatus(id: number, status: AppStatus) {
@@ -538,6 +582,8 @@ export function App() {
               rankRunning={rankRunning}
               rankEstimate={rankEstimate}
               rankProgress={rankProgress}
+              favouritedCount={screeningRun?.favouritedKeys.length ?? 0}
+              proposedCount={screeningRun?.proposedDimensions.length ?? 0}
               onRequestRank={requestRankEstimate}
               onRunRank={runRank}
               onCancelRank={() => setRankEstimate(null)}
@@ -547,7 +593,17 @@ export function App() {
               onHideRanking={() => setShowRanking(false)}
             />
 
-            {screeningRun && !selectedApp ? <CriteriaPanel screeningRun={screeningRun} tiers={tiers} /> : null}
+            {screeningRun && !selectedApp ? (
+              <CriteriaPanel
+                screeningRun={screeningRun}
+                tiers={tiers}
+                favouritedKeys={screeningRun.favouritedKeys}
+                proposedDimensions={screeningRun.proposedDimensions}
+                onToggleFavourite={toggleFavourite}
+                onAddProposal={addProposal}
+                onRemoveProposal={removeProposal}
+              />
+            ) : null}
 
             {showRanking && !selectedApp && ranking ? (
               <RankingView

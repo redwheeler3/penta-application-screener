@@ -113,6 +113,9 @@ export function WorkflowBar(props: {
   rankRunning: boolean;
   rankEstimate: RankEstimate | null;
   rankProgress: RankProgress | null;
+  // Committee discovery seeds the next Rank will offer the AI, for the card note.
+  favouritedCount: number;
+  proposedCount: number;
   onRequestRank: () => void;
   onRunRank: () => void;
   onCancelRank: () => void;
@@ -345,6 +348,13 @@ export function WorkflowBar(props: {
               ) : null}
               <li>Score against criteria ~${rankEstimate.breakdown.scoring_usd.toFixed(4)}</li>
             </ul>
+            {props.favouritedCount + props.proposedCount > 0 ? (
+              <p className="qf-confirm-note">
+                Offering the AI {props.favouritedCount + props.proposedCount} suggested{" "}
+                {props.favouritedCount + props.proposedCount === 1 ? "axis" : "axes"} ({props.favouritedCount} favourited,{" "}
+                {props.proposedCount} proposed) — it may refine, split, or skip them.
+              </p>
+            ) : null}
             {!rankEstimate.within_cap ? (
               <p className="qf-confirm-warn">
                 Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
