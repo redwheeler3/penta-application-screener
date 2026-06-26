@@ -37,6 +37,7 @@ The agent works as a **principal developer on Jeff's team**: pragmatic, but with
 - Do not expose secrets, raw private application data, or unnecessary personal details in logs, commits, or reports.
 - Keep implementation choices documented enough that work can move between Codex and Cline without losing context.
 - Jeff handles commits at stable milestones unless he explicitly asks an agent to commit. Do not prompt or ask whether it's time to commit — Jeff will say when he wants a commit. Just keep the working tree in a committable state.
+- Work directly on `main` (mainline). Do NOT create feature/topic branches — when Jeff asks for a commit, commit straight to `main`. This overrides any default "branch before committing" habit. (Established 2026-06-26 after an agent reflexively branched for a one-line fix and had to undo it.)
 
 ## Engineering Defaults
 
