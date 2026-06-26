@@ -177,7 +177,7 @@ def rank_estimate(
     result["within_cap"] = result["estimated_usd"] <= settings.ai.spending_cap_usd
     # When the pool is unchanged, the ranking is already current; the UI uses this
     # to say "up to date" instead of offering to spend.
-    result["ranking_current"] = ranking_is_current(db, get_current_run(db))
+    result["ranking_current"] = ranking_is_current(db, get_current_run(db), settings)
     return result
 
 
@@ -331,7 +331,7 @@ def rank_run(
             new_report=report, old_tiers=prior_tiers, prior_keys=prior_keys
         )
         create_run(
-            db, report=report, model_id=settings.ai.synthesis_model,
+            db, report=report, settings=settings, model_id=settings.ai.synthesis_model,
             narrative=narrative, cost_usd=discovery_cost + match_cost,
             tier_layout=layout, new_dimension_keys=new_dimension_keys,
             # Carry prior favourites forward (by key, post-match); create_run unions

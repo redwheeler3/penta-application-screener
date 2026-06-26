@@ -24,8 +24,6 @@ from app.ai.dimension_scoring import (
     applications_to_score,
     kind_for_dimension,
 )
-from app.ai.essay_analysis import PROMPT_VERSION as ESSAY_PROMPT_VERSION
-from app.ai.essay_analysis import applications_to_analyze as essay_scope
 from app.ai.quality_flags import PROMPT_VERSION as QUALITY_PROMPT_VERSION
 from app.ai.quality_flags import applications_to_analyze as quality_scope
 from app.services.screening_run import (
@@ -74,7 +72,7 @@ def read_dashboard(
             "candidatesScored": _kind_prefix_exists(db, "dimension_scoring:"),
             # Same truth the Rank no-op gate uses, so the "needs re-run" badge and
             # the Rank button agree even when every candidate has a cached score.
-            "rankingCurrent": ranking_is_current(db, get_current_run(db)),
+            "rankingCurrent": ranking_is_current(db, get_current_run(db), settings),
         },
         # Per-AI-step coverage of the current scope: {cached, inScope}. A step whose
         # results predate a re-sync goes stale (cached < inScope) even though it ran,
@@ -118,9 +116,9 @@ def _coverage(db: Session, settings) -> dict[str, dict[str, int]]:
         "qualityChecksRun": covered(
             quality_scope(db), "quality_flags", QUALITY_PROMPT_VERSION
         ),
-        "essaysAnalyzed": covered(
-            essay_scope(db), "essay_analysis", ESSAY_PROMPT_VERSION
-        ),
+        # Essay coverage is intentionally NOT surfaced: essays are a sub-phase of
+        # Rank, not a workflow step, and an essay-prompt change already ambers Rank
+        # via the run's rank-inputs fingerprint. No separate badge needed.
     }
     # Scoring coverage is only meaningful against the current run. A candidate
     # counts as scored once it has a cached row for EVERY dimension key, so partial

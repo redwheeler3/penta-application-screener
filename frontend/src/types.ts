@@ -69,7 +69,7 @@ export type WorkflowState = {
 // stale, so the UI warns instead of a misleading done-check. Keys are absent for
 // steps not yet computable (e.g. scoring before patterns exist).
 export type Coverage = Partial<
-  Record<"qualityChecksRun" | "essaysAnalyzed" | "candidatesScored", { cached: number; inScope: number }>
+  Record<"qualityChecksRun" | "candidatesScored", { cached: number; inScope: number }>
 >;
 
 // Faceted counts: each facet reflects the other group's active filter, so the two
