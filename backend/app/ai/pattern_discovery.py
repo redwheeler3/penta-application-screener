@@ -45,11 +45,6 @@ class DiscoverySeeds:
     def is_empty(self) -> bool:
         return not self.favourited and not self.proposed
 
-# Rough per-candidate token weight for the pre-run estimate only (the real call is
-# priced from actual usage). Tuned to the SPEC's observed ~$0.07-0.11 for a
-# ~32-candidate pool on the synthesis model.
-_DISCOVERY_INPUT_TOKENS_PER_CANDIDATE = 600
-_DISCOVERY_OUTPUT_TOKENS = 2000
 
 # Not a cached per-application "kind"; named for the admin debug view / logging.
 KIND = "pattern_discovery"
@@ -62,34 +57,43 @@ Ground every dimension in patterns you can see across the applicants' own words.
 You do not rank or score individual applicants; a later step does that."""
 
 
-def eligible_applications(db: Session) -> list[Application]:
-    """The pool pattern discovery reasons over: eligible applications only."""
-    return list(
-        db.scalars(
-            select(Application)
-            .where(Application.status == ApplicationStatus.ELIGIBLE)
-            .order_by(Application.id)
-        ).all()
-    )
+# Static instruction text. Uncached pass: there is NO PROMPT_VERSION here — discovery
+# calls provider.structured_output directly, so nothing gates a cache. The shared
+# FILTERED_FACTS_NOTE is interpolated at import. See the .clinerules "derived, not
+# hand-bumped" gem.
+_INSTRUCTIONS = f"""\
+## Task
+Discover the dimensions on which this applicant pool genuinely varies and that matter for "fit for Penta" — somewhere between 10 and 30. Draw on BOTH the facts and the essays: quantitative axes (e.g. income mix, employment stability, household-to-unit fit) are as valid as qualitative ones (e.g. participation commitment, co-op values). Surface as many as the pool truly supports: prefer splitting a broad axis into distinct, separately-weighable sub-dimensions (e.g. trade skills vs. financial/admin skills vs. community-building skills) over merging them. But every dimension must be independently meaningful and must not overlap another — do not pad the list to reach a number, and do not invent axes the data does not actually distinguish.
+
+## Inputs
+The full pool of eligible applicants is in the `<applicant_pool>` block below. Each entry has structured "facts" (household make-up, income and its split, employment tenure, real-estate ownership, pets) and a summary of their co-op membership essays.
+
+## How to judge
+Each dimension must measure exactly ONE thing. The decisive test is OPPOSING EVIDENCE: if a single subject could plausibly score HIGH on one part of a dimension and LOW on another part, you have bundled two axes — split them. To see the test working in a neutral setting unrelated to housing: a restaurant rating called "good value" reads as one idea but fuses (a) price fairness with (b) portion size — an expensive place serving huge plates scores high on one and low on the other, so a single "value" number averages to a misleading "moderate" and HIDES which one actually varies. Two ratings, not one. Apply that same seam-finding to whatever axes THIS pool actually presents — do not import the example's subject matter; it is only there to illustrate the move. Watch for the seam even when a name reads as one idea; a name joining concepts with "&", "and", "/", or a comma is just the most obvious case. A single clear concept per dimension is the goal; the higher cap above exists precisely so you never have to combine to fit.
+
+{FILTERED_FACTS_NOTE}
+
+## Output
+For each dimension provide:
+- key: a stable snake_case identifier (e.g. participation_commitment)
+- name: a short committee-facing label
+- definition: 1-2 neutral sentences on what it measures
+- why_it_differentiates: what actually varies across THESE applicants on this axis
+
+Also write a 2-4 sentence neutral summary of what most distinguishes strong from weak fit across this pool.
+
+## Guardrails
+- Do NOT assign importance or weight to the dimensions. Discovering which axes exist is your job; deciding how much each matters is the committee's, and they do it later. Treat every dimension as equally important here.
+- Do not score or name individual applicants. Describe the axes, not the people."""
 
 
-def _essay_reports(db: Session, application_ids: list[int]) -> dict[int, dict]:
-    """Most recent essay-analysis output per application, as raw JSON dicts.
-    Discovery prefers this digest over raw essays (shorter, already cross-cut);
-    applications without one fall back to raw essays in the prompt.
-    """
-    if not application_ids:
-        return {}
-    query = (
-        select(ApplicationAIResult)
-        .where(ApplicationAIResult.kind == ESSAY_ANALYSIS_KIND)
-        .where(ApplicationAIResult.application_id.in_(application_ids))
-        .order_by(ApplicationAIResult.created_at)
-    )
-    latest: dict[int, dict] = {}
-    for result in db.scalars(query):
-        latest[result.application_id] = result.output
-    return latest
+def build_prompt(db: Session, applications: list[Application], *, seeds: DiscoverySeeds | None = None) -> str:
+    reports = _essay_reports(db, [app.id for app in applications])
+    digests = [_candidate_digest(app, reports.get(app.id)) for app in applications]
+
+    seeds_block = _seeds_block(seeds) if seeds is not None else ""
+    pool_json = json.dumps(digests, indent=2, default=str)
+    return f"{_INSTRUCTIONS}{seeds_block}\n\n<applicant_pool>\n{pool_json}\n</applicant_pool>"
 
 
 def _candidate_digest(application: Application, essay_report: dict | None) -> dict:
@@ -128,40 +132,51 @@ def _seeds_block(seeds: DiscoverySeeds) -> str:
     requested = "\n".join(lines)
     return f"""\
 
-The committee has asked you to STRONGLY CONSIDER the following axes. For each one, include a dimension that captures it — refining the wording, splitting it into several dimensions, or merging overlapping ones as the one-concept-per-dimension rule demands. Omit a requested axis ONLY if this pool genuinely does not vary on it (say so is not required, just leave it out). A requested axis is still bound by every rule above: grounded in the applicants' words, single-concept, neutral, never a protected characteristic. Set ``from_committee_request: true`` on every dimension you create from a request below (and on each piece if you split one); leave it false for axes you discover on your own.
+The committee has asked you to STRONGLY CONSIDER the axes in the `<requested_axes>` block. For each one, include a dimension that captures it — refining the wording, splitting it into several dimensions, or merging overlapping ones as the one-concept-per-dimension rule demands. Omit a requested axis ONLY if this pool genuinely does not vary on it (say so is not required, just leave it out). A requested axis is still bound by every rule above: grounded in the applicants' words, single-concept, neutral, never a protected characteristic. Set ``from_committee_request: true`` on every dimension you create from a request (and on each piece if you split one); leave it false for axes you discover on your own.
 
-REQUESTED AXES:
+<requested_axes>
 {requested}
+</requested_axes>
 """
 
 
-def build_prompt(db: Session, applications: list[Application], *, seeds: DiscoverySeeds | None = None) -> str:
-    reports = _essay_reports(db, [app.id for app in applications])
-    digests = [_candidate_digest(app, reports.get(app.id)) for app in applications]
+def _essay_reports(db: Session, application_ids: list[int]) -> dict[int, dict]:
+    """Most recent essay-analysis output per application, as raw JSON dicts.
+    Discovery prefers this digest over raw essays (shorter, already cross-cut);
+    applications without one fall back to raw essays in the prompt.
+    """
+    if not application_ids:
+        return {}
+    query = (
+        select(ApplicationAIResult)
+        .where(ApplicationAIResult.kind == ESSAY_ANALYSIS_KIND)
+        .where(ApplicationAIResult.application_id.in_(application_ids))
+        .order_by(ApplicationAIResult.created_at)
+    )
+    latest: dict[int, dict] = {}
+    for result in db.scalars(query):
+        latest[result.application_id] = result.output
+    return latest
 
-    instructions = f"""\
-Below is the full pool of eligible applicants. Each entry has structured "facts" (household make-up, income and its split, employment tenure, real-estate ownership, pets) and a summary of their co-op membership essays.
-Discover the dimensions on which this pool genuinely varies and that matter for "fit for Penta" — somewhere between 10 and 30. Draw on BOTH the facts and the essays: quantitative axes (e.g. income mix, employment stability, household-to-unit fit) are as valid as qualitative ones (e.g. participation commitment, co-op values). Surface as many as the pool truly supports: prefer splitting a broad axis into distinct, separately-weighable sub-dimensions (e.g. trade skills vs. financial/admin skills vs. community-building skills) over merging them. But every dimension must be independently meaningful and must not overlap another — do not pad the list to reach a number, and do not invent axes the data does not actually distinguish.
 
-Each dimension must measure exactly ONE thing. The decisive test is OPPOSING EVIDENCE: if a single subject could plausibly score HIGH on one part of a dimension and LOW on another part, you have bundled two axes — split them. To see the test working in a neutral setting unrelated to housing: a restaurant rating called "good value" reads as one idea but fuses (a) price fairness with (b) portion size — an expensive place serving huge plates scores high on one and low on the other, so a single "value" number averages to a misleading "moderate" and HIDES which one actually varies. Two ratings, not one. Apply that same seam-finding to whatever axes THIS pool actually presents — do not import the example's subject matter; it is only there to illustrate the move. Watch for the seam even when a name reads as one idea; a name joining concepts with "&", "and", "/", or a comma is just the most obvious case. A single clear concept per dimension is the goal; the higher cap above exists precisely so you never have to combine to fit.
+def eligible_applications(db: Session) -> list[Application]:
+    """The pool pattern discovery reasons over: eligible applications only."""
+    return list(
+        db.scalars(
+            select(Application)
+            .where(Application.status == ApplicationStatus.ELIGIBLE)
+            .order_by(Application.id)
+        ).all()
+    )
 
-{FILTERED_FACTS_NOTE}
 
-For each dimension provide:
-- key: a stable snake_case identifier (e.g. participation_commitment)
-- name: a short committee-facing label
-- definition: 1-2 neutral sentences on what it measures
-- why_it_differentiates: what actually varies across THESE applicants on this axis
+# --- Cost estimation (non-prompt) ---
 
-Do NOT assign importance or weight to the dimensions. Discovering which axes exist is your job; deciding how much each matters is the committee's, and they do it later. Treat every dimension as equally important here.
-
-Also write a 2-4 sentence neutral summary of what most distinguishes strong from weak fit across this pool.
-
-Do not score or name individual applicants. Describe the axes, not the people."""
-
-    seeds_block = _seeds_block(seeds) if seeds is not None else ""
-    pool_json = json.dumps(digests, indent=2, default=str)
-    return f"{instructions}{seeds_block}\n\nAPPLICANT POOL:\n{pool_json}"
+# Rough per-candidate token weight for the pre-run estimate only (the real call is
+# priced from actual usage). Tuned to the SPEC's observed ~$0.07-0.11 for a
+# ~32-candidate pool on the synthesis model.
+_DISCOVERY_INPUT_TOKENS_PER_CANDIDATE = 600
+_DISCOVERY_OUTPUT_TOKENS = 2000
 
 
 def estimate_discovery(applications: list[Application], settings: AppSettings) -> float:

@@ -39,13 +39,16 @@ Extract only what is supported by the essays; never invent or infer beyond the t
 {PROTECTED_CHARACTERISTICS_NOTE}
 {ENGLISH_POLISH_NOTE}"""
 
-# Static instruction template (no per-application interpolation; the essays are
-# appended as JSON in build_prompt). Held as a constant so the cache version derives
-# from the prompt text — see PROMPT_VERSION.
+# Static instruction text. No per-call placeholders: the essays are appended as XML
+# data in build_prompt, not formatted into this text.
 _INSTRUCTIONS = """\
-Read this applicant's co-op membership essays and extract what they said into the structured fields.
-This is neutral extraction, NOT evaluation — describe what they conveyed; do not rate fit, commitment, or quality, and do not speculate.
+## Task
+Read this applicant's co-op membership essays and extract what they said into the structured fields. This is neutral extraction, NOT evaluation — describe what they conveyed; do not rate fit, commitment, or quality, and do not speculate.
 
+## Inputs
+The applicant's four co-op membership essay answers, in the `<essays>` block below.
+
+## Output
 Fill each field from the essays:
 - summary: a 2-4 sentence neutral digest across all four answers.
 - household_context: who is in the household, as introduced. Null if not stated.
@@ -58,12 +61,13 @@ Fill each field from the essays:
 - stated_contributions: ways they said they would be a valuable member.
 - evidence: short direct quotes or phrases grounding the above. Do not quote whole essays.
 
-Content bleeds across the four questions (skills appear in the introduction, etc.) — pull each fact into the right field wherever it appears. Leave a field null or empty if the applicant did not address it; do not fill gaps with guesses.
+## Guardrails
+- Content bleeds across the four questions (skills appear in the introduction, etc.) — pull each fact into the right field wherever it appears.
+- Leave a field null or empty if the applicant did not address it; do not fill gaps with guesses.
+- Return the structured analysis directly."""
 
-Return the structured analysis directly."""
-
-# Derived from the static prompt text; auto-invalidates this pass's cache on any
-# edit to the template or system prompt. See derive_prompt_version.
+# Cached pass: version derives from the static prompt text and gates this pass's
+# cache. See derive_prompt_version and the .clinerules "derived, not hand-bumped" gem.
 PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 
 
@@ -73,7 +77,7 @@ def build_prompt(application: Application) -> str:
     """
     essays = extract_essays(application.raw_row or {})
     essays_json = json.dumps(essays, indent=2, default=str)
-    return f"{_INSTRUCTIONS}\n\nESSAYS:\n{essays_json}"
+    return f"{_INSTRUCTIONS}\n\n<essays>\n{essays_json}\n</essays>"
 
 
 def applications_to_analyze(db: Session) -> list[Application]:

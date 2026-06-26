@@ -44,11 +44,13 @@ When in doubt, do not flag.
 # in build_prompt; it is deliberately NOT part of the version (a policy change does
 # not alter how the model reasons, only the threshold it cites).
 _INSTRUCTIONS_TEMPLATE = """\
-Review this housing co-op application for data-integrity concerns and return any quality flags.
-Flag ONLY clear, concrete problems.
-If you are unsure, do not flag.
-It is correct and expected for most applications to have zero flags.
+## Task
+Review this housing co-op application for data-integrity concerns and return any quality flags. Flag ONLY clear, concrete problems. If you are unsure, do not flag. It is correct and expected for most applications to have zero flags.
 
+## Inputs
+The applicant's normalized form fields in the `<fields>` block, and their four essay answers in the `<essays>` block, below.
+
+## How to judge
 Flag these when clearly present:
 - Names that are obviously placeholders or fake (e.g. 'Baby', 'TBD', 'Test', 'asdf', 'N/A'). A real-looking name is NEVER a flag.
 - Essays that are essentially non-responsive: empty, 'n/a', a single word, or a single short fragment. Brief-but-genuine answers are fine.
@@ -62,13 +64,15 @@ Do NOT flag (these are normal and must be ignored):
 - Missing optional information, or an answer simply being short.
 - Anything related to protected characteristics, family structure, national origin, or the cultural origin of a name.
 
-Cite only short excerpts or field names as evidence; do not quote whole essays back.
+## Output
+- Cite only short excerpts or field names as evidence; do not quote whole essays back.
+- Before returning the structured flags, briefly explain your reasoning as Markdown. Then return the structured flags."""
 
-Before returning the structured flags, briefly explain your reasoning as Markdown. Then return the structured flags."""
-
-# Derived from the static prompt text: any edit to the template or system prompt
-# (including a shared fragment they embed) changes this, re-running exactly this
-# pass's cache. No manual bumping. See derive_prompt_version.
+# Cached pass: version derives from the static prompt text and gates this pass's
+# cache. We hash the TEMPLATE (with the literal `{pet_policy}` placeholder), not the
+# filled prompt — so the pet policy threshold stays out of the version (a policy
+# change doesn't alter how the model reasons, only the number it cites). See
+# derive_prompt_version and the .clinerules "derived, not hand-bumped" gem.
 PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS_TEMPLATE)
 
 
@@ -103,7 +107,10 @@ def build_prompt(application: Application, settings: AppSettings) -> str:
 
     fields_json = json.dumps(fields, indent=2, default=str)
     essays_json = json.dumps(essays, indent=2, default=str)
-    return f"{instructions}\n\nFIELDS:\n{fields_json}\n\nESSAYS:\n{essays_json}"
+    return (
+        f"{instructions}\n\n<fields>\n{fields_json}\n</fields>"
+        f"\n\n<essays>\n{essays_json}\n</essays>"
+    )
 
 
 def applications_to_analyze(db: Session) -> list[Application]:

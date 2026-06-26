@@ -62,31 +62,45 @@ Confidence measures how well your evidence pins down the applicant's TRUE standi
 You are scoring this one applicant, not ranking them against others."""
 
 
-def kind_for_dimension(dimension_key: str) -> str:
-    """The cache ``kind`` for one dimension's score, keyed by the dimension key.
+# Static instruction text. The shared FILTERED_FACTS_NOTE is interpolated at import
+# (it's a constant, not per-application data), so it lands inside the hashed string —
+# editing the note re-runs this pass too. No per-call placeholders here: the applicant
+# and dimensions are appended as XML data in build_prompt, not formatted into this text.
+_INSTRUCTIONS = f"""\
+## Task
+Score this applicant on EACH of the dimensions in the `<dimensions>` block, returning exactly one entry per dimension. Judge from BOTH the applicant's structured facts and their essays, using whichever the dimension draws on.
 
-    Cross-run reuse rides on the key: ``adopt_matched_keys`` rewrites a matched
-    re-discovered dimension to the prior key, so it hits the same cache. Cache
-    identity is the key, NOT the definition text (the match pass vouches the concept
-    is the same) — editing a definition would need a new key to force a re-score.
-    """
-    return f"{KIND_PREFIX}:{dimension_key}"
+## Inputs
+The dimensions to score in the `<dimensions>` block, and the applicant's evidence (structured facts, essay-analysis digest, and raw essays) in the `<applicant>` block, below.
+
+{FILTERED_FACTS_NOTE}
+
+## Output
+For each dimension provide:
+- dimension_key: the dimension's key, exactly as given
+- score: 0..1 for how strongly this applicant exhibits it, judged only on stated evidence
+- rationale: one neutral sentence from the applicant's facts or words
+- evidence: a short quote or field reference (empty string if there is nothing relevant)
+- confidence: low, medium, or high — how well the evidence pins down the applicant's TRUE standing, NOT how sure you are about what they wrote. A dimension the applicant did not address is low confidence even when you are certain it went unmentioned (they may have the strength and simply not have said so).
+
+## Guardrails
+- Score every dimension, even when the applicant did not address it (low score, low confidence).
+- Do not invent evidence."""
+
+# Cached pass: version derives from the static prompt text and gates the per-dimension
+# cache. See derive_prompt_version and the .clinerules "derived, not hand-bumped" gem.
+PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 
 
-def _essay_reports(db: Session, application_ids: list[int]) -> dict[int, dict]:
-    """Most recent essay-analysis output per application, as raw JSON dicts."""
-    if not application_ids:
-        return {}
-    query = (
-        select(ApplicationAIResult)
-        .where(ApplicationAIResult.kind == ESSAY_ANALYSIS_KIND)
-        .where(ApplicationAIResult.application_id.in_(application_ids))
-        .order_by(ApplicationAIResult.created_at)
+def build_prompt(
+    application: Application,
+    dimensions: list[PoolDimension],
+    essay_report: dict | None,
+) -> str:
+    return (
+        f"{_INSTRUCTIONS}\n\n<dimensions>\n{_dimensions_block(dimensions)}\n</dimensions>"
+        f"\n\n<applicant>\n{_applicant_block(application, essay_report)}\n</applicant>"
     )
-    latest: dict[int, dict] = {}
-    for result in db.scalars(query):
-        latest[result.application_id] = result.output
-    return latest
 
 
 def _dimensions_block(dimensions: list[PoolDimension]) -> str:
@@ -118,43 +132,31 @@ def _applicant_block(application: Application, essay_report: dict | None) -> str
     return json.dumps(payload, indent=2, default=str)
 
 
-# Static instruction template; ``{filtered_facts_note}`` is the only fill (a shared
-# constant, not per-application data), so the formatted text is identical for every
-# applicant. Held as a module constant so the cache version derives from the prompt
-# text — and folding the note in via .format keeps it inside the hash, so editing
-# FILTERED_FACTS_NOTE re-runs this pass too. See PROMPT_VERSION.
-_INSTRUCTIONS_TEMPLATE = """\
-Score this applicant on EACH of the dimensions below, returning exactly one entry per dimension.
-Judge from BOTH the applicant's structured facts and their essays, using whichever the dimension draws on.
+def kind_for_dimension(dimension_key: str) -> str:
+    """The cache ``kind`` for one dimension's score, keyed by the dimension key.
 
-{filtered_facts_note}
-
-For each dimension provide:
-- dimension_key: the dimension's key, exactly as given
-- score: 0..1 for how strongly this applicant exhibits it, judged only on stated evidence
-- rationale: one neutral sentence from the applicant's facts or words
-- evidence: a short quote or field reference (empty string if there is nothing relevant)
-- confidence: low, medium, or high — how well the evidence pins down the applicant's TRUE standing, NOT how sure you are about what they wrote. A dimension the applicant did not address is low confidence even when you are certain it went unmentioned (they may have the strength and simply not have said so).
-
-Score every dimension, even when the applicant did not address it (low score, low confidence). Do not invent evidence."""
-
-_INSTRUCTIONS = _INSTRUCTIONS_TEMPLATE.format(filtered_facts_note=FILTERED_FACTS_NOTE)
-
-# Derived from the static prompt text (system + instructions, the latter already
-# carrying FILTERED_FACTS_NOTE); auto-invalidates this pass's per-dimension cache on
-# any edit. See derive_prompt_version.
-PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
+    Cross-run reuse rides on the key: ``adopt_matched_keys`` rewrites a matched
+    re-discovered dimension to the prior key, so it hits the same cache. Cache
+    identity is the key, NOT the definition text (the match pass vouches the concept
+    is the same) — editing a definition would need a new key to force a re-score.
+    """
+    return f"{KIND_PREFIX}:{dimension_key}"
 
 
-def build_prompt(
-    application: Application,
-    dimensions: list[PoolDimension],
-    essay_report: dict | None,
-) -> str:
-    return (
-        f"{_INSTRUCTIONS}\n\nDIMENSIONS:\n{_dimensions_block(dimensions)}"
-        f"\n\nAPPLICANT:\n{_applicant_block(application, essay_report)}"
+def _essay_reports(db: Session, application_ids: list[int]) -> dict[int, dict]:
+    """Most recent essay-analysis output per application, as raw JSON dicts."""
+    if not application_ids:
+        return {}
+    query = (
+        select(ApplicationAIResult)
+        .where(ApplicationAIResult.kind == ESSAY_ANALYSIS_KIND)
+        .where(ApplicationAIResult.application_id.in_(application_ids))
+        .order_by(ApplicationAIResult.created_at)
     )
+    latest: dict[int, dict] = {}
+    for result in db.scalars(query):
+        latest[result.application_id] = result.output
+    return latest
 
 
 def applications_to_score(db: Session) -> list[Application]:
