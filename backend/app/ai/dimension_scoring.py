@@ -28,11 +28,13 @@ from app.ai.analysis import (
     AnalysisOutcome,
     ScreeningResult,
     cached_outcome,
+    derive_prompt_version,
     observed_avg_tokens,
     run_in_pool,
     store_result,
 )
 from app.ai.applicant_facts import FILTERED_FACTS_NOTE, applicant_facts
+from app.ai.prompt_fragments import ENGLISH_POLISH_NOTE, PROTECTED_CHARACTERISTICS_NOTE
 from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, Usage
@@ -51,12 +53,13 @@ from app.services.screening_run import current_pattern_report, get_current_run
 
 KIND_PREFIX = "dimension_scoring"
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT = f"""\
 You are helping a housing co-op screening committee score one applicant against a fixed set of dimensions the committee cares about.
 Score only on evidence in the applicant's own words; never infer a guess.
 Confidence measures how well your evidence pins down the applicant's TRUE standing on a dimension — NOT how sure you are about what they wrote. When an applicant simply did not address a dimension, score it low but with LOW confidence: silence is weak evidence, because they may well have that strength and just not have mentioned it. Being certain they omitted it is not the same as being confident they lack it. Reserve high confidence for dimensions the applicant gave substantial, direct evidence on.
-Do not penalize brief, awkward, translated, or non-native English answers for writing polish — judge substance.
-Stay neutral and never use protected characteristics. You are scoring this one applicant, not ranking them against others."""
+{ENGLISH_POLISH_NOTE}
+{PROTECTED_CHARACTERISTICS_NOTE}
+You are scoring this one applicant, not ranking them against others."""
 
 
 def kind_for_dimension(dimension_key: str) -> str:
@@ -115,16 +118,16 @@ def _applicant_block(application: Application, essay_report: dict | None) -> str
     return json.dumps(payload, indent=2, default=str)
 
 
-def build_prompt(
-    application: Application,
-    dimensions: list[PoolDimension],
-    essay_report: dict | None,
-) -> str:
-    instructions = f"""\
+# Static instruction template; ``{filtered_facts_note}`` is the only fill (a shared
+# constant, not per-application data), so the formatted text is identical for every
+# applicant. Held as a module constant so the cache version derives from the prompt
+# text — and folding the note in via .format keeps it inside the hash, so editing
+# FILTERED_FACTS_NOTE re-runs this pass too. See PROMPT_VERSION.
+_INSTRUCTIONS_TEMPLATE = """\
 Score this applicant on EACH of the dimensions below, returning exactly one entry per dimension.
 Judge from BOTH the applicant's structured facts and their essays, using whichever the dimension draws on.
 
-{FILTERED_FACTS_NOTE}
+{filtered_facts_note}
 
 For each dimension provide:
 - dimension_key: the dimension's key, exactly as given
@@ -135,8 +138,21 @@ For each dimension provide:
 
 Score every dimension, even when the applicant did not address it (low score, low confidence). Do not invent evidence."""
 
+_INSTRUCTIONS = _INSTRUCTIONS_TEMPLATE.format(filtered_facts_note=FILTERED_FACTS_NOTE)
+
+# Derived from the static prompt text (system + instructions, the latter already
+# carrying FILTERED_FACTS_NOTE); auto-invalidates this pass's per-dimension cache on
+# any edit. See derive_prompt_version.
+PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
+
+
+def build_prompt(
+    application: Application,
+    dimensions: list[PoolDimension],
+    essay_report: dict | None,
+) -> str:
     return (
-        f"{instructions}\n\nDIMENSIONS:\n{_dimensions_block(dimensions)}"
+        f"{_INSTRUCTIONS}\n\nDIMENSIONS:\n{_dimensions_block(dimensions)}"
         f"\n\nAPPLICANT:\n{_applicant_block(application, essay_report)}"
     )
 
@@ -181,7 +197,8 @@ def _avg_output_tokens_per_dimension(db: Session, model_id: str) -> int:
     Input is NOT — see ``estimate_dimension_scoring`` for why.
     """
     observed = observed_avg_tokens(
-        db, kind=KIND_PREFIX, model_id=model_id, kind_prefix=f"{KIND_PREFIX}:"
+        db, kind=KIND_PREFIX, model_id=model_id, prompt_version=PROMPT_VERSION,
+        kind_prefix=f"{KIND_PREFIX}:",
     )
     return observed[1] if observed is not None else SCORING_FALLBACK_OUTPUT_TOKENS
 
@@ -263,6 +280,7 @@ def _to_score_dimensions(
             kind=kind_for_dimension(dim.key),
             schema=DimensionScore,
             model_id=model_id,
+            prompt_version=PROMPT_VERSION,
         )
         if outcome is None:
             to_score.append(dim)
@@ -361,6 +379,7 @@ def score_dimensions(
                 continue
             outcome = store_result(
                 db, application, kind=kind_for_dimension(dim.key), model_id=model_id,
+                prompt_version=PROMPT_VERSION,
                 result=AIResult(
                     output=score, usage=share, model_id=result.model_id,
                     narrative=result.narrative,

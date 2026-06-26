@@ -19,8 +19,14 @@ from app.services.settings import get_app_settings
 # Scope + cache-key helpers reused from the passes themselves, so "coverage" counts
 # exactly what a re-run would process (never a parallel definition that could drift).
 from app.ai.analysis import cache_key
-from app.ai.dimension_scoring import applications_to_score, kind_for_dimension
+from app.ai.dimension_scoring import (
+    PROMPT_VERSION as SCORING_PROMPT_VERSION,
+    applications_to_score,
+    kind_for_dimension,
+)
+from app.ai.essay_analysis import PROMPT_VERSION as ESSAY_PROMPT_VERSION
 from app.ai.essay_analysis import applications_to_analyze as essay_scope
+from app.ai.quality_flags import PROMPT_VERSION as QUALITY_PROMPT_VERSION
 from app.ai.quality_flags import applications_to_analyze as quality_scope
 from app.services.screening_run import (
     current_pattern_report,
@@ -91,14 +97,17 @@ def _import_is_current(db: Session, settings) -> bool:
 def _coverage(db: Session, settings) -> dict[str, dict[str, int]]:
     model = settings.ai.first_pass_model
 
-    def covered(applications, kind: str) -> dict[str, int]:
+    def covered(applications, kind: str, prompt_version: str) -> dict[str, int]:
         cached = sum(
             1
             for app in applications
             if db.scalar(
                 select(ApplicationAIResult.id).where(
                     ApplicationAIResult.cache_key
-                    == cache_key(application=app, kind=kind, model_id=model)
+                    == cache_key(
+                        application=app, kind=kind, model_id=model,
+                        prompt_version=prompt_version,
+                    )
                 )
             )
             is not None
@@ -106,8 +115,12 @@ def _coverage(db: Session, settings) -> dict[str, dict[str, int]]:
         return {"cached": cached, "inScope": len(applications)}
 
     result = {
-        "qualityChecksRun": covered(quality_scope(db), "quality_flags"),
-        "essaysAnalyzed": covered(essay_scope(db), "essay_analysis"),
+        "qualityChecksRun": covered(
+            quality_scope(db), "quality_flags", QUALITY_PROMPT_VERSION
+        ),
+        "essaysAnalyzed": covered(
+            essay_scope(db), "essay_analysis", ESSAY_PROMPT_VERSION
+        ),
     }
     # Scoring coverage is only meaningful against the current run. A candidate
     # counts as scored once it has a cached row for EVERY dimension key, so partial
@@ -124,7 +137,10 @@ def _coverage(db: Session, settings) -> dict[str, dict[str, int]]:
                 db.scalar(
                     select(ApplicationAIResult.id).where(
                         ApplicationAIResult.cache_key
-                        == cache_key(application=app, kind=kind, model_id=model)
+                        == cache_key(
+                            application=app, kind=kind, model_id=model,
+                            prompt_version=SCORING_PROMPT_VERSION,
+                        )
                     )
                 )
                 is not None

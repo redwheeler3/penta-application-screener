@@ -222,6 +222,7 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
     """
     from app.ai.analysis import cache_key
     from app.ai.essay_analysis import KIND as ESSAY_KIND
+    from app.ai.essay_analysis import PROMPT_VERSION as ESSAY_VERSION
     from app.schemas.settings import AppSettings
 
     app, db = _logged_in_app()
@@ -242,7 +243,7 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
     # a: current result (cache key computed from its present content + model).
     db.add(ApplicationAIResult(
         application_id=a.id, kind=ESSAY_KIND,
-        cache_key=cache_key(application=a, kind=ESSAY_KIND, model_id=model),
+        cache_key=cache_key(application=a, kind=ESSAY_KIND, model_id=model, prompt_version=ESSAY_VERSION),
         model_id=model, output={"summary": "x"},
     ))
     # b: a result keyed to OLD content -> does not match its current hash -> stale.
@@ -269,6 +270,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     scored on some dimensions but not all (e.g. mid carry-forward) must read as
     not-yet-complete, not done."""
     from app.ai.analysis import cache_key
+    from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_VERSION
     from app.ai.dimension_scoring import kind_for_dimension
     from app.schemas.settings import AppSettings
 
@@ -295,7 +297,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     # Score only ONE of the two dimensions -> incomplete.
     db.add(ApplicationAIResult(
         application_id=a.id, kind=kind_for_dimension("community"),
-        cache_key=cache_key(application=a, kind=kind_for_dimension("community"), model_id=model),
+        cache_key=cache_key(application=a, kind=kind_for_dimension("community"), model_id=model, prompt_version=SCORING_VERSION),
         model_id=model, output={"score": 0.7, "confidence": "high", "rationale": "", "evidence": "", "dimension_key": "community"},
     ))
     db.commit()
@@ -308,7 +310,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     # Score the second dimension too -> complete.
     db.add(ApplicationAIResult(
         application_id=a.id, kind=kind_for_dimension("skills"),
-        cache_key=cache_key(application=a, kind=kind_for_dimension("skills"), model_id=model),
+        cache_key=cache_key(application=a, kind=kind_for_dimension("skills"), model_id=model, prompt_version=SCORING_VERSION),
         model_id=model, output={"score": 0.5, "confidence": "low", "rationale": "", "evidence": "", "dimension_key": "skills"},
     ))
     db.commit()

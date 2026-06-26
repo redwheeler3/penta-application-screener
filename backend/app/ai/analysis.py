@@ -26,11 +26,26 @@ from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, Usage
 from app.db.models import Application, ApplicationAIResult
 
-# Folded into cache_key. Bump when a CACHED per-application prompt/schema changes
-# (quality flags, essay analysis, dimension scoring) so stale results aren't reused.
-# Do NOT bump for the pattern-discovery prompt: discovery is uncached and a change
-# self-invalidates downstream (new dimensions → new keys → new scoring cache kind).
-PROMPT_VERSION = "10"
+# Length of the derived prompt-version hash (hex chars). Must fit the
+# ApplicationAIResult.prompt_version column (String(20)); 12 is ample to avoid
+# collisions across the handful of prompts an app ever has.
+_PROMPT_VERSION_LEN = 12
+
+
+def derive_prompt_version(*parts: str | None) -> str:
+    """A cache version derived from a prompt's STATIC text (its instruction template
+    plus system prompt), not hand-bumped.
+
+    Each cached pass computes this once at import over its own static prompt and
+    passes it into the engine, so editing that prompt — or a shared fragment it
+    folds in — changes only that pass's version and re-runs only its cache. Pass the
+    *static template* (placeholders for per-application or per-settings data), never
+    the per-application prompt: applicant content is already covered by the
+    application's ``raw_row_hash`` in the cache key, and including it would make every
+    applicant a distinct "version".
+    """
+    basis = "\x00".join(p or "" for p in parts)
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:_PROMPT_VERSION_LEN]
 
 
 class SpendingCapExceeded(Exception):
@@ -53,16 +68,22 @@ class AnalysisOutcome:
     narrative: str | None = None
 
 
-def cache_key(*, application: Application, kind: str, model_id: str) -> str:
+def cache_key(
+    *, application: Application, kind: str, model_id: str, prompt_version: str
+) -> str:
     """Stable key over application content, kind, model, and prompt version. An
     unchanged application reuses its result; a new model or prompt version misses.
+
+    ``prompt_version`` is the calling pass's ``derive_prompt_version(...)`` — passed
+    in rather than read from a global so each pass's cache turns over independently
+    when only its own prompt changed.
     """
     basis = json.dumps(
         {
             "raw_hash": application.raw_row_hash,
             "kind": kind,
             "model_id": model_id,
-            "prompt_version": PROMPT_VERSION,
+            "prompt_version": prompt_version,
         },
         sort_keys=True,
     )
@@ -79,6 +100,7 @@ def estimate_cost(
     applications: list[Application],
     kind: str,
     model_id: str,
+    prompt_version: str,
     fallback_input_tokens: int,
     fallback_output_tokens: int,
     usage_kind_prefix: str | None = None,
@@ -97,10 +119,11 @@ def estimate_cost(
     uncached = [
         app
         for app in applications
-        if _cached_result(db, app, kind, model_id) is None
+        if _cached_result(db, app, kind, model_id, prompt_version) is None
     ]
     avg_input_tokens, avg_output_tokens = observed_avg_tokens(
-        db, kind=kind, model_id=model_id, kind_prefix=usage_kind_prefix
+        db, kind=kind, model_id=model_id, prompt_version=prompt_version,
+        kind_prefix=usage_kind_prefix,
     ) or (fallback_input_tokens, fallback_output_tokens)
     # Price one average call, then scale by the uncached count.
     per_call = cost_usd(
@@ -115,16 +138,18 @@ def estimate_cost(
 
 
 def observed_avg_tokens(
-    db: Session, *, kind: str, model_id: str, kind_prefix: str | None = None
+    db: Session, *, kind: str, model_id: str, prompt_version: str,
+    kind_prefix: str | None = None,
 ) -> tuple[int, int] | None:
     """Average input/output tokens from this model's recent real calls.
 
     Matches the exact ``kind``, or every kind with ``kind_prefix`` when given (see
-    ``estimate_cost``). Prefers the current ``PROMPT_VERSION``, else the most recent
-    usage from any version. Returns None only with no usage history at all.
+    ``estimate_cost``). Prefers the calling pass's current ``prompt_version``, else
+    the most recent usage from any version. Returns None only with no usage history
+    at all.
     """
     current = _avg_tokens_query(
-        db, kind=kind, model_id=model_id, prompt_version=PROMPT_VERSION, kind_prefix=kind_prefix
+        db, kind=kind, model_id=model_id, prompt_version=prompt_version, kind_prefix=kind_prefix
     )
     if current is not None:
         return current
@@ -166,13 +191,14 @@ def cached_outcome(
     kind: str,
     schema: type[BaseModel],
     model_id: str,
+    prompt_version: str,
 ) -> AnalysisOutcome | None:
     """The stored outcome for this application, or None if not yet analyzed.
 
     Read-only half of analysis; touches the session, so the parallel path calls it
     on the main thread to decide which applications still need a model call.
     """
-    existing = _cached_result(db, application, kind, model_id)
+    existing = _cached_result(db, application, kind, model_id, prompt_version)
     if existing is None:
         return None
     return AnalysisOutcome(
@@ -189,6 +215,7 @@ def store_result(
     *,
     kind: str,
     model_id: str,
+    prompt_version: str,
     result: AIResult,
 ) -> AnalysisOutcome:
     """Price a fresh model result, persist it, and return its outcome.
@@ -200,9 +227,12 @@ def store_result(
     record = ApplicationAIResult(
         application_id=application.id,
         kind=kind,
-        cache_key=cache_key(application=application, kind=kind, model_id=model_id),
+        cache_key=cache_key(
+            application=application, kind=kind, model_id=model_id,
+            prompt_version=prompt_version,
+        ),
         model_id=result.model_id,
-        prompt_version=PROMPT_VERSION,
+        prompt_version=prompt_version,
         output=result.output.model_dump(mode="json"),
         narrative=result.narrative,
         input_tokens=result.usage.input_tokens,
@@ -227,6 +257,7 @@ def analyze_application(
     kind: str,
     schema: type[BaseModel],
     model_id: str,
+    prompt_version: str,
     prompt: str,
     system_prompt: str | None = None,
 ) -> AnalysisOutcome:
@@ -235,7 +266,10 @@ def analyze_application(
     The sequential single-application path. Caching is checked before any cap, so
     reusing stored results is always free.
     """
-    cached = cached_outcome(db, application, kind=kind, schema=schema, model_id=model_id)
+    cached = cached_outcome(
+        db, application, kind=kind, schema=schema, model_id=model_id,
+        prompt_version=prompt_version,
+    )
     if cached is not None:
         return cached
 
@@ -245,7 +279,10 @@ def analyze_application(
         prompt=prompt,
         system_prompt=system_prompt,
     )
-    return store_result(db, application, kind=kind, model_id=model_id, result=result)
+    return store_result(
+        db, application, kind=kind, model_id=model_id,
+        prompt_version=prompt_version, result=result,
+    )
 
 
 @dataclass(frozen=True)
@@ -296,6 +333,7 @@ def screen_applications(
     kind: str,
     schema: type[BaseModel],
     model_id: str,
+    prompt_version: str,
     build_prompt: Callable[[Application], str],
     system_prompt: str | None = None,
     max_workers: int,
@@ -325,7 +363,8 @@ def screen_applications(
     pending: list[tuple[Application, str]] = []
     for application in applications:
         cached = cached_outcome(
-            db, application, kind=kind, schema=schema, model_id=model_id
+            db, application, kind=kind, schema=schema, model_id=model_id,
+            prompt_version=prompt_version,
         )
         if cached is not None:
             yield finish(application, cached)
@@ -348,7 +387,8 @@ def screen_applications(
             yield ScreeningResult(application=application, outcome=None, error=str(error))
             continue
         outcome = store_result(
-            db, application, kind=kind, model_id=model_id, result=result
+            db, application, kind=kind, model_id=model_id,
+            prompt_version=prompt_version, result=result,
         )
         yield finish(application, outcome)
 
@@ -363,9 +403,12 @@ def enforce_cap(estimate: dict[str, object], cap_usd: float) -> None:
 
 
 def _cached_result(
-    db: Session, application: Application, kind: str, model_id: str
+    db: Session, application: Application, kind: str, model_id: str, prompt_version: str
 ) -> ApplicationAIResult | None:
-    key = cache_key(application=application, kind=kind, model_id=model_id)
+    key = cache_key(
+        application=application, kind=kind, model_id=model_id,
+        prompt_version=prompt_version,
+    )
     return db.scalar(
         select(ApplicationAIResult).where(ApplicationAIResult.cache_key == key)
     )
