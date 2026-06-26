@@ -152,37 +152,74 @@ def applications_to_score(db: Session) -> list[Application]:
     )
 
 
-# Fallback PER-DIMENSION token weight, used only on the very first scoring run
-# (before any real usage exists); after that the estimate self-tunes from actual
-# usage via the ``dimension_scoring:`` prefix. One stored row is one dimension's
-# split share of a batched call, so these are ~(whole-call ÷ dimensions-per-call).
-SCORING_FALLBACK_INPUT_TOKENS = 350
-SCORING_FALLBACK_OUTPUT_TOKENS = 130
+# Per-DIMENSION output tokens — used to price the estimate. Output is genuinely
+# per-dimension (each dimension emits its own score + rationale + evidence), so the
+# split rows learn it honestly; this fallback is for the first run only.
+SCORING_FALLBACK_OUTPUT_TOKENS = 160
+
+# Per-CANDIDATE input tokens when no real prompt is available to measure (the
+# pre-discovery first-Rank estimate). One scoring call sends the candidate's full
+# facts + essays ONCE regardless of how many dimensions it scores, so input is a
+# per-call constant, not per-dimension — see estimate_dimension_scoring.
+SCORING_FALLBACK_INPUT_TOKENS_PER_CANDIDATE = 2900
 
 # Dimensions assumed per candidate before any discovery, so the first-Rank ceiling
 # estimate has a count to multiply by.
 ASSUMED_DIMENSIONS_FIRST_RUN = 15
 
+# Token approximation for a built prompt when we have one but no tokenizer: ~4 chars
+# per token (matches observed ~2,980 chars/4 vs. ~2,880 real input on this pool).
+_CHARS_PER_TOKEN = 4
 
-def _avg_tokens_per_dimension(db: Session, model_id: str) -> tuple[int, int]:
-    """Average (input, output) tokens of one stored per-dimension scoring row,
-    learned from real usage across every dimension set (the ``dimension_scoring:``
-    prefix), or the fallback constants when there is no history yet."""
-    return observed_avg_tokens(
+
+def _avg_output_tokens_per_dimension(db: Session, model_id: str) -> int:
+    """Average OUTPUT tokens of one stored per-dimension scoring row, learned across
+    every dimension set (the ``dimension_scoring:`` prefix), or the fallback.
+
+    Only output is learned this way: output is genuinely per-dimension (each emits
+    its own score + rationale + evidence), so the split rows measure it honestly.
+    Input is NOT — see ``estimate_dimension_scoring`` for why.
+    """
+    observed = observed_avg_tokens(
         db, kind=KIND_PREFIX, model_id=model_id, kind_prefix=f"{KIND_PREFIX}:"
-    ) or (SCORING_FALLBACK_INPUT_TOKENS, SCORING_FALLBACK_OUTPUT_TOKENS)
+    )
+    return observed[1] if observed is not None else SCORING_FALLBACK_OUTPUT_TOKENS
+
+
+def _per_candidate_input_tokens(db: Session, report: PoolPatternReport | None) -> int:
+    """Input tokens for one candidate's scoring call. Input is a per-CALL constant —
+    the candidate's full facts + essays are sent once regardless of how many
+    dimensions the call scores — so we measure it from a real built prompt (~chars/4)
+    rather than from the stored per-dimension rows, whose input was split by however
+    many dimensions each historical call happened to score (a single-dimension
+    carry-forward call would otherwise attribute the whole ~2.9k-token prompt to one
+    row and poison the average). Falls back to a constant before discovery exists.
+    """
+    if report is None:
+        return SCORING_FALLBACK_INPUT_TOKENS_PER_CANDIDATE
+    candidates = applications_to_score(db)
+    if not candidates:
+        return SCORING_FALLBACK_INPUT_TOKENS_PER_CANDIDATE
+    sample = candidates[0]
+    essay_report = _essay_reports(db, [sample.id]).get(sample.id)
+    prompt = build_prompt(sample, report.dimensions, essay_report)
+    return len(prompt) // _CHARS_PER_TOKEN
 
 
 def estimate_dimension_scoring(
     db: Session, settings: AppSettings
 ) -> dict[str, object]:
     """Pre-run scoring estimate as a full-pool ceiling: price as if every eligible
-    candidate scores every dimension.
+    candidate scores every dimension in one call.
 
-    Runs before discovery, so it can't know how many dimensions carry forward — and
-    under-counting would erode the cap guarantee, so we price the worst case. The
-    actual run comes in under this as carry-forward reuse kicks in. Dimension count
-    comes from the current run, or a constant on a first run.
+    Models the real cost shape of a scoring call: a per-candidate INPUT cost (the
+    shared facts + essays, sent once per call — measured from a real prompt) plus a
+    per-DIMENSION OUTPUT cost (each dimension's score + rationale + evidence, learned
+    from usage) times the dimension count. This is immune to carry-forward skew: a
+    past run that scored only one uncached dimension per candidate no longer inflates
+    the estimate (the old per-row average treated the whole shared prompt as a single
+    dimension's cost). Runs before discovery, so it prices the worst case — every
+    candidate scores every dimension; carry-forward reuse brings the actual under it.
     """
     model_id = settings.ai.first_pass_model
     candidates = applications_to_score(db)
@@ -190,14 +227,16 @@ def estimate_dimension_scoring(
     report = current_pattern_report(run) if run is not None else None
     dims_per_candidate = len(report.dimensions) if report else ASSUMED_DIMENSIONS_FIRST_RUN
 
-    avg_in, avg_out = _avg_tokens_per_dimension(db, model_id)
-    per_dimension = cost_usd(model_id, Usage(input_tokens=avg_in, output_tokens=avg_out))
-    pairs = len(candidates) * dims_per_candidate
+    input_tokens = _per_candidate_input_tokens(db, report)
+    output_tokens = _avg_output_tokens_per_dimension(db, model_id) * dims_per_candidate
+    per_candidate = cost_usd(
+        model_id, Usage(input_tokens=input_tokens, output_tokens=output_tokens)
+    )
     return {
         "total": len(candidates),
         "to_analyze": len(candidates),  # ceiling: assume none cached
         "cached": 0,
-        "estimated_usd": round(per_dimension * pairs, 4),
+        "estimated_usd": round(per_candidate * len(candidates), 4),
     }
 
 
