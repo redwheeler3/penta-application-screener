@@ -133,7 +133,7 @@ async def test_rank_requires_login() -> None:
     app, _, _ = setup_app(role=None)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        assert (await client.post("/screening/rank/run")).status_code == 401
+        assert (await client.post("/ranking/run")).status_code == 401
 
 
 @pytest.mark.anyio
@@ -149,7 +149,7 @@ async def test_full_flow_rank_then_detail() -> None:
         provider.route(f'"applicant_id": {application.id}', a_scoring_report())
         summary = next(
             e
-            for e in await stream_events(client, "/screening/rank/run")
+            for e in await stream_events(client, "/ranking/run")
             if e["type"] == "summary"
         )
         assert summary["dimensions"] == 2
@@ -157,7 +157,7 @@ async def test_full_flow_rank_then_detail() -> None:
         assert summary["failed"] == 0
 
         # The current run reflects the freshly found criteria.
-        current = (await client.get("/screening/current")).json()
+        current = (await client.get("/ranking/current")).json()
         assert len(current["dimensions"]) == 2
 
         # Scores surface on the candidate detail, joined to dimension names, and
@@ -167,7 +167,7 @@ async def test_full_flow_rank_then_detail() -> None:
         assert detail["statusSource"] == "untouched"
         scores = detail["dimensionScores"]
         assert len(scores) == 2
-        by_key = {s["dimension_key"]: s for s in scores}
+        by_key = {s["dimensionKey"]: s for s in scores}
         assert by_key["participation_commitment"]["name"] == "Participation commitment"
         assert by_key["participation_commitment"]["score"] == 0.8
         assert by_key["skills_offered"]["confidence"] == "low"
@@ -179,7 +179,7 @@ async def test_ranking_before_discovery_is_409() -> None:
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        assert (await client.get("/screening/ranking")).status_code == 409
+        assert (await client.get("/ranking")).status_code == 409
 
 
 @pytest.mark.anyio
@@ -196,9 +196,9 @@ async def test_ranking_orders_pool_and_seeds_equal_weights() -> None:
         provider.route("<applicant_pool>", a_pattern_report())
         provider.route(f'"applicant_id": {weak.id}', _scoring_report(commitment=0.2, skills=0.2))
         provider.route(f'"applicant_id": {strong.id}', _scoring_report(commitment=0.9, skills=0.9))
-        await stream_events(client, "/screening/rank/run")
+        await stream_events(client, "/ranking/run")
 
-        ranking = (await client.get("/screening/ranking")).json()
+        ranking = (await client.get("/ranking")).json()
 
         # Equal-weight baseline: both dimensions weight 1.0, no AI-proposed weight.
         assert ranking["weights"] == {
@@ -207,7 +207,7 @@ async def test_ranking_orders_pool_and_seeds_equal_weights() -> None:
         }
         # Strong candidate leads; fit is the plain average under equal weights.
         candidates = ranking["candidates"]
-        assert [c["application_id"] for c in candidates] == [strong.id, weak.id]
+        assert [c["applicationId"] for c in candidates] == [strong.id, weak.id]
         assert candidates[0]["fit"] == 0.9
         assert candidates[0]["band"] == "Strong fit"
 
@@ -243,7 +243,7 @@ async def test_rank_chain_runs_essays_criteria_scores() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        events = await stream_events(client, "/screening/rank/run")
+        events = await stream_events(client, "/ranking/run")
 
         # The three phases are announced in order.
         phases = [e["phase"] for e in events if e["type"] == "phase"]
@@ -255,8 +255,8 @@ async def test_rank_chain_runs_essays_criteria_scores() -> None:
         assert summary["failed"] == 0
 
         # The chain produced a current run and a full ranking, strong above weak.
-        ranking = (await client.get("/screening/ranking")).json()
-        assert [c["application_id"] for c in ranking["candidates"]] == [strong.id, weak.id]
+        ranking = (await client.get("/ranking")).json()
+        assert [c["applicationId"] for c in ranking["candidates"]] == [strong.id, weak.id]
 
 
 @pytest.mark.anyio
@@ -272,13 +272,13 @@ async def test_criteria_phase_streams_thinking_deltas() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        events = await stream_events(client, "/screening/rank/run")
+        events = await stream_events(client, "/ranking/run")
 
-        thinking = [e for e in events if e["type"] == "criteria_thinking"]
-        assert thinking, "expected streamed criteria_thinking deltas"
+        thinking = [e for e in events if e["type"] == "thinking"]
+        assert thinking, "expected streamed thinking deltas"
         # Deltas arrive between the criteria phase announcement and its completion.
         types = [e["type"] for e in events]
-        assert types.index("phase") < types.index("criteria_thinking")
+        assert types.index("phase") < types.index("thinking")
         assert "".join(e["text"] for e in thinking)  # non-empty reasoning text
 
 
@@ -301,29 +301,29 @@ async def test_tiers_reweight_and_resort_the_ranking() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await stream_events(client, "/screening/rank/run")
+        await stream_events(client, "/ranking/run")
 
         # Default layout: S / A / B working tiers (empty) + Ignore, with every
         # dimension starting in Ignore — the committee drags them out to weigh in.
         # Displayed layout: S / A / B working tiers (empty) + a synthesized Ignore
         # zone holding every dimension, since nothing is placed yet.
-        default = (await client.get("/screening/tiers")).json()["tiers"]
+        default = (await client.get("/ranking/tiers")).json()["tiers"]
         working = [t for t in default if not t.get("ignore")]
         assert [t["label"] for t in working] == ["S-Tier", "A-Tier", "B-Tier"]
-        assert all(t["dimension_keys"] == [] for t in working)
+        assert all(t["dimensionKeys"] == [] for t in working)
         ignore = next(t for t in default if t.get("ignore"))
-        assert set(ignore["dimension_keys"]) == {"participation_commitment", "skills_offered"}
+        assert set(ignore["dimensionKeys"]) == {"participation_commitment", "skills_offered"}
 
         # Put skills above commitment: skills_lead should now top the ranking.
         layout = {
             "tiers": [
-                {"id": "t1", "label": "Top", "dimension_keys": ["skills_offered"], "ignore": False},
-                {"id": "t2", "label": "Lower", "dimension_keys": ["participation_commitment"], "ignore": False},
-                {"id": "ignore", "label": "Ignore", "dimension_keys": [], "ignore": True},
+                {"id": "t1", "label": "Top", "dimensionKeys": ["skills_offered"], "ignore": False},
+                {"id": "t2", "label": "Lower", "dimensionKeys": ["participation_commitment"], "ignore": False},
+                {"id": "ignore", "label": "Ignore", "dimensionKeys": [], "ignore": True},
             ]
         }
-        ranking = (await client.put("/screening/tiers", json=layout)).json()
-        assert ranking["candidates"][0]["application_id"] == skills_lead.id
+        ranking = (await client.put("/ranking/tiers", json=layout)).json()
+        assert ranking["candidates"][0]["applicationId"] == skills_lead.id
         assert ranking["weights"] == {"skills_offered": 2.0, "participation_commitment": 1.0}
 
 
@@ -343,29 +343,29 @@ async def test_tiers_ignore_drops_then_revives_a_dimension() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await stream_events(client, "/screening/rank/run")
+        await stream_events(client, "/ranking/run")
 
         # Ignore commitment entirely: only skills counts, so skills_lead leads on
         # fit 0.9 vs 0.1 — decisive, not a tiebreak.
         ignore_commit = {
             "tiers": [
-                {"id": "t1", "label": "Top", "dimension_keys": ["skills_offered"], "ignore": False},
-                {"id": "ignore", "label": "Ignore", "dimension_keys": ["participation_commitment"], "ignore": True},
+                {"id": "t1", "label": "Top", "dimensionKeys": ["skills_offered"], "ignore": False},
+                {"id": "ignore", "label": "Ignore", "dimensionKeys": ["participation_commitment"], "ignore": True},
             ]
         }
-        ranking = (await client.put("/screening/tiers", json=ignore_commit)).json()
-        assert ranking["candidates"][0]["application_id"] == skills_lead.id
+        ranking = (await client.put("/ranking/tiers", json=ignore_commit)).json()
+        assert ranking["candidates"][0]["applicationId"] == skills_lead.id
         assert ranking["weights"]["participation_commitment"] == 0.0
         assert ranking["candidates"][0]["fit"] == 0.9
 
         # Revive it back into a tier: it counts again.
         revive = {
             "tiers": [
-                {"id": "t1", "label": "Top", "dimension_keys": ["skills_offered", "participation_commitment"], "ignore": False},
-                {"id": "ignore", "label": "Ignore", "dimension_keys": [], "ignore": True},
+                {"id": "t1", "label": "Top", "dimensionKeys": ["skills_offered", "participation_commitment"], "ignore": False},
+                {"id": "ignore", "label": "Ignore", "dimensionKeys": [], "ignore": True},
             ]
         }
-        ranking2 = (await client.put("/screening/tiers", json=revive)).json()
+        ranking2 = (await client.put("/ranking/tiers", json=revive)).json()
         assert ranking2["weights"]["participation_commitment"] == 1.0
 
 
@@ -379,14 +379,14 @@ async def test_tiers_reject_unknown_dimension_key() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await stream_events(client, "/screening/rank/run")
+        await stream_events(client, "/ranking/run")
         bad = {
             "tiers": [
-                {"id": "t1", "label": "Top", "dimension_keys": ["not_a_real_dimension"], "ignore": False},
-                {"id": "ignore", "label": "Ignore", "dimension_keys": [], "ignore": True},
+                {"id": "t1", "label": "Top", "dimensionKeys": ["not_a_real_dimension"], "ignore": False},
+                {"id": "ignore", "label": "Ignore", "dimensionKeys": [], "ignore": True},
             ]
         }
-        assert (await client.put("/screening/tiers", json=bad)).status_code == 400
+        assert (await client.put("/ranking/tiers", json=bad)).status_code == 400  # unknown_dimension_key
 
 
 def a_pattern_report_v2() -> PoolPatternReport:
@@ -426,14 +426,14 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
         provider.route("<essays>", an_essay_report())
         provider.route("<applicant_pool>", a_pattern_report())
         provider.route("applicant_id", a_scoring_report())
-        await stream_events(client, "/screening/rank/run")
+        await stream_events(client, "/ranking/run")
         await client.put(
-            "/screening/tiers",
+            "/ranking/tiers",
             json={
                 "tiers": [
-                    {"id": "tier-s", "label": "S-Tier", "dimension_keys": ["participation_commitment"], "ignore": False},
-                    {"id": "tier-a", "label": "A-Tier", "dimension_keys": ["skills_offered"], "ignore": False},
-                    {"id": "ignore", "label": "Ignore", "dimension_keys": [], "ignore": True},
+                    {"id": "tier-s", "label": "S-Tier", "dimensionKeys": ["participation_commitment"], "ignore": False},
+                    {"id": "tier-a", "label": "A-Tier", "dimensionKeys": ["skills_offered"], "ignore": False},
+                    {"id": "ignore", "label": "Ignore", "dimensionKeys": [], "ignore": True},
                 ]
             },
         )
@@ -451,42 +451,42 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
             ),
         )
         provider.route("applicant_id", _scoring_report_v2())
-        events = await stream_events(client, "/screening/rank/run")
+        events = await stream_events(client, "/ranking/run")
 
-        criteria_done = next(e for e in events if e["type"] == "criteria_done")
+        criteria_done = next(e for e in events if e["type"] == "notice")
         assert criteria_done["carriedForward"] == 1
         assert criteria_done["newDimensions"] == 1
 
-        layout = (await client.get("/screening/tiers")).json()["tiers"]
+        layout = (await client.get("/ranking/tiers")).json()["tiers"]
         by_label = {t["label"]: t for t in layout}
         # The matched dimension ADOPTED the prior key and kept the prior S-Tier
         # placement — so the placement carries forward by key, no separate identity.
-        assert by_label["S-Tier"]["dimension_keys"] == ["participation_commitment"]
+        assert by_label["S-Tier"]["dimensionKeys"] == ["participation_commitment"]
         # The genuinely-new dimension is unplaced -> shows in the synthesized Ignore zone.
         ignore = next(t for t in layout if t.get("ignore"))
-        assert "financial_stability" in ignore["dimension_keys"]
+        assert "financial_stability" in ignore["dimensionKeys"]
 
-        current = (await client.get("/screening/current")).json()
+        current = (await client.get("/ranking/current")).json()
         assert current["newDimensionKeys"] == ["financial_stability"]
         # Key adopted, but the NEW content is kept (fresh discovery wording).
         by_key = {d["key"]: d for d in current["dimensions"]}
         assert by_key["participation_commitment"]["name"] == "Stated participation"
 
         # Acknowledge the new dimension in place (badge ✕ / "mark all reviewed"):
-        # keep the layout unchanged, send the key in acknowledged_keys. It drops
+        # keep the layout unchanged, send the key in acknowledgedKeys. It drops
         # out of new_dimension_keys without being placed in a working tier.
         ack = await client.put(
-            "/screening/tiers",
-            json={"tiers": layout, "acknowledged_keys": ["financial_stability"]},
+            "/ranking/tiers",
+            json={"tiers": layout, "acknowledgedKeys": ["financial_stability"]},
         )
         assert ack.status_code == 200
         assert ack.json()["newDimensionKeys"] == []
         # And it stuck: still unplaced (in Ignore), just no longer flagged.
-        current = (await client.get("/screening/current")).json()
+        current = (await client.get("/ranking/current")).json()
         assert current["newDimensionKeys"] == []
-        layout2 = (await client.get("/screening/tiers")).json()["tiers"]
+        layout2 = (await client.get("/ranking/tiers")).json()["tiers"]
         ignore2 = next(t for t in layout2 if t.get("ignore"))
-        assert "financial_stability" in ignore2["dimension_keys"]
+        assert "financial_stability" in ignore2["dimensionKeys"]
 
 
 def _scoring_report_v2() -> DimensionScoringReport:
@@ -519,19 +519,19 @@ async def test_tiers_without_ignore_zone_means_everything_ignored() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await stream_events(client, "/screening/rank/run")
+        await stream_events(client, "/ranking/run")
         only_working = {
             "tiers": [
-                {"id": "t1", "label": "Top", "dimension_keys": ["participation_commitment"], "ignore": False},
+                {"id": "t1", "label": "Top", "dimensionKeys": ["participation_commitment"], "ignore": False},
             ]
         }
-        ranking = (await client.put("/screening/tiers", json=only_working)).json()
+        ranking = (await client.put("/ranking/tiers", json=only_working)).json()
         # commitment is placed (weight 1); skills is unplaced -> ignored (weight 0).
         assert ranking["weights"] == {"participation_commitment": 1.0, "skills_offered": 0.0}
         # The displayed layout synthesizes the Ignore zone with the unplaced dim.
-        layout = (await client.get("/screening/tiers")).json()["tiers"]
+        layout = (await client.get("/ranking/tiers")).json()["tiers"]
         ignore = next(t for t in layout if t.get("ignore"))
-        assert ignore["dimension_keys"] == ["skills_offered"]
+        assert ignore["dimensionKeys"] == ["skills_offered"]
 
 
 @pytest.mark.anyio
@@ -540,9 +540,9 @@ async def test_tiers_before_run_is_409() -> None:
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        assert (await client.get("/screening/tiers")).status_code == 409
+        assert (await client.get("/ranking/tiers")).status_code == 409
         assert (
-            await client.put("/screening/tiers", json={"tiers": []})
+            await client.put("/ranking/tiers", json={"tiers": []})
         ).status_code == 409
 
 
@@ -560,12 +560,12 @@ async def test_rank_flags_unchanged_pool_but_allows_rerun() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await stream_events(client, "/screening/rank/run")
+        await stream_events(client, "/ranking/run")
 
         # Pool unchanged → estimate flags it current, but the re-run still succeeds.
-        estimate = (await client.get("/screening/rank/estimate")).json()
-        assert estimate["ranking_current"] is True
-        assert (await client.post("/screening/rank/run")).status_code == 200
+        estimate = (await client.get("/ranking/estimate")).json()
+        assert estimate["rankingCurrent"] is True
+        assert (await client.post("/ranking/run")).status_code == 200
 
 
 @pytest.mark.anyio
@@ -575,11 +575,11 @@ async def test_rank_estimate_combines_three_passes() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        estimate = (await client.get("/screening/rank/estimate")).json()
+        estimate = (await client.get("/ranking/estimate")).json()
         b = estimate["breakdown"]
         # Total is the sum of the three pass projections, and flagged approximate.
-        assert estimate["estimated_usd"] == pytest.approx(
-            b["essays_usd"] + b["criteria_usd"] + b["scoring_usd"], abs=1e-4
+        assert estimate["estimatedUsd"] == pytest.approx(
+            b["essaysUsd"] + b["criteriaUsd"] + b["scoringUsd"], abs=1e-4
         )
         assert estimate["approximate"] is True
         assert estimate["eligible"] == 1
@@ -590,8 +590,8 @@ async def test_rank_with_no_eligible_is_409() -> None:
     app, _, _ = setup_app(role=UserRole.MEMBER)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        assert (await client.get("/screening/rank/estimate")).status_code == 409
-        assert (await client.post("/screening/rank/run")).status_code == 409
+        assert (await client.get("/ranking/estimate")).status_code == 409
+        assert (await client.post("/ranking/run")).status_code == 409
 
 
 @pytest.mark.anyio
@@ -609,7 +609,7 @@ async def test_rank_over_cap_fails_fast() -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         # No provider results queued: a 402 must come before any model call.
-        assert (await client.post("/screening/rank/run")).status_code == 402
+        assert (await client.post("/ranking/run")).status_code == 402
 
 
 @pytest.mark.anyio
@@ -695,12 +695,12 @@ async def test_proposed_dimension_seeds_discovery_then_clears_and_auto_favourite
         provider.route("<essays>", an_essay_report())
         provider.route("<applicant_pool>", a_pattern_report())
         provider.route("applicant_id", a_scoring_report())
-        await stream_events(client, "/screening/rank/run")
+        await stream_events(client, "/ranking/run")
 
         # Propose an axis between runs.
         seeds = (await client.put(
-            "/screening/seeds",
-            json={"proposed_dimensions": ["school-age kids who'd use the playground"]},
+            "/ranking/seeds",
+            json={"proposedDimensions": ["school-age kids who'd use the playground"]},
         )).json()
         assert seeds["proposedDimensions"] == ["school-age kids who'd use the playground"]
         assert seeds["favouritedKeys"] == []
@@ -710,14 +710,14 @@ async def test_proposed_dimension_seeds_discovery_then_clears_and_auto_favourite
         provider.route("<applicant_pool>", _pattern_report_with_requested())
         provider.route("<prior_dimensions>", DimensionMatchReport(matches=[]))  # match pass
         provider.route("applicant_id", a_scoring_report())
-        await stream_events(client, "/screening/rank/run")
+        await stream_events(client, "/ranking/run")
 
         # The proposal text reached the discovery prompt.
         discovery_prompt = next(c.prompt for c in provider.calls if "<applicant_pool>" in c.prompt)
         assert "school-age kids who'd use the playground" in discovery_prompt
 
         # After the run: proposal consumed (cleared); flagged dimension auto-favourited.
-        current = (await client.get("/screening/current")).json()
+        current = (await client.get("/ranking/current")).json()
         assert current["proposedDimensions"] == []
         assert current["favouritedKeys"] == ["playground_age_children"]
 
@@ -734,11 +734,11 @@ async def test_favourited_dimension_is_re_fed_to_discovery_and_persists() -> Non
         provider.route("<essays>", an_essay_report())
         provider.route("<applicant_pool>", a_pattern_report())
         provider.route("applicant_id", a_scoring_report())
-        await stream_events(client, "/screening/rank/run")
+        await stream_events(client, "/ranking/run")
 
         # Favourite an existing dimension.
         seeds = (await client.put(
-            "/screening/seeds", json={"favourited_keys": ["participation_commitment"]},
+            "/ranking/seeds", json={"favouritedKeys": ["participation_commitment"]},
         )).json()
         assert seeds["favouritedKeys"] == ["participation_commitment"]
 
@@ -750,7 +750,7 @@ async def test_favourited_dimension_is_re_fed_to_discovery_and_persists() -> Non
             DimensionMatchReport(matches=[]),  # same keys, so no rewrite needed
         )
         provider.route("applicant_id", a_scoring_report())
-        await stream_events(client, "/screening/rank/run")
+        await stream_events(client, "/ranking/run")
 
         # The favourite's name + definition were re-fed to discovery.
         discovery_prompt = next(c.prompt for c in provider.calls if "<applicant_pool>" in c.prompt)
@@ -758,7 +758,7 @@ async def test_favourited_dimension_is_re_fed_to_discovery_and_persists() -> Non
         assert "Participation commitment: Willingness to do shared work." in discovery_prompt
 
         # It is still favourited after the re-run.
-        current = (await client.get("/screening/current")).json()
+        current = (await client.get("/ranking/current")).json()
         assert "participation_commitment" in current["favouritedKeys"]
 
 
@@ -768,7 +768,7 @@ async def test_put_seeds_before_run_is_409() -> None:
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        resp = await client.put("/screening/seeds", json={"proposed_dimensions": ["x"]})
+        resp = await client.put("/ranking/seeds", json={"proposedDimensions": ["x"]})
         assert resp.status_code == 409
 
 
@@ -783,10 +783,10 @@ async def test_put_seeds_rejects_unknown_favourite_key() -> None:
         provider.route("<essays>", an_essay_report())
         provider.route("<applicant_pool>", a_pattern_report())
         provider.route("applicant_id", a_scoring_report())
-        await stream_events(client, "/screening/rank/run")
+        await stream_events(client, "/ranking/run")
 
         seeds = (await client.put(
-            "/screening/seeds",
-            json={"favourited_keys": ["participation_commitment", "not_a_real_key"]},
+            "/ranking/seeds",
+            json={"favouritedKeys": ["participation_commitment", "not_a_real_key"]},
         )).json()
         assert seeds["favouritedKeys"] == ["participation_commitment"]

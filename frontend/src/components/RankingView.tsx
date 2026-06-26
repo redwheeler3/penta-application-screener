@@ -29,7 +29,7 @@ export function CriteriaPanel(props: {
   // alphabetically by name within a tier — matching the tier list's chip order.
   const rankOf = new Map<string, number>();
   (props.tiers ?? []).forEach((tier, tierIdx) => {
-    tier.dimension_keys.forEach((key) => rankOf.set(key, tierIdx));
+    tier.dimensionKeys.forEach((key) => rankOf.set(key, tierIdx));
   });
   const orderedDimensions = [...screeningRun.dimensions].sort((a, b) => {
     const tierDelta =
@@ -68,7 +68,7 @@ export function CriteriaPanel(props: {
                 <span className="dimension-name">{dim.name}</span>
               </div>
               <p className="dimension-def">{dim.definition}</p>
-              <p className="dimension-why">{dim.why_it_differentiates}</p>
+              <p className="dimension-why">{dim.whyItDifferentiates}</p>
             </li>
           );
         })}
@@ -187,8 +187,8 @@ export function RankingView(props: {
               .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
               .slice(0, 3);
             return (
-              <li key={candidate.application_id}>
-                <div className="ranking-row" onClick={() => props.onSelectApplication(candidate.application_id)}>
+              <li key={candidate.applicationId}>
+                <div className="ranking-row" onClick={() => props.onSelectApplication(candidate.applicationId)}>
                   <span className="ranking-rank">#{candidate.rank}</span>
                   <div className="ranking-main">
                     <div className="ranking-name-row">
@@ -199,7 +199,7 @@ export function RankingView(props: {
                       {topContributions.map((c) => {
                         const sb = scoreBand(c.score);
                         return (
-                          <p key={c.dimension_key} className="ranking-contribution">
+                          <p key={c.dimensionKey} className="ranking-contribution">
                             <span className={`ranking-contribution-label ${sb.cls}`}>
                               {c.name} ({sb.label}){c.rationale ? ":" : ""}
                             </span>

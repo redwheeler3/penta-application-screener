@@ -9,35 +9,35 @@ export type CurrentUser = {
   role: "admin" | "member";
 };
 
-// Mirrors backend AISettings. The UI only edits spending_cap_usd; the rest are
+// Mirrors backend AISettings. The UI only edits spendingCapUsd; the rest are
 // round-tripped so a save never resets them.
 export type AISettings = {
   region: string;
-  first_pass_model: string;
-  synthesis_model: string;
-  spending_cap_usd: number;
-  max_workers: number;
+  firstPassModel: string;
+  synthesisModel: string;
+  spendingCapUsd: number;
+  maxWorkers: number;
 };
 
 export type AppSettings = {
-  google_sheet_id: string;
-  income_min: number;
-  income_max: number;
-  min_adult_age: number;
-  max_child_age: number;
-  min_children: number;
-  max_children: number;
-  max_dogs: number;
-  max_cats: number;
-  allow_other_pets: boolean;
-  disabled_rules: string[];
+  googleSheetId: string;
+  incomeMin: number;
+  incomeMax: number;
+  minAdultAge: number;
+  maxChildAge: number;
+  minChildren: number;
+  maxChildren: number;
+  maxDogs: number;
+  maxCats: number;
+  allowOtherPets: boolean;
+  disabledRules: string[];
   ai: AISettings;
 };
 
 export type SettingsResponse = {
   settings: AppSettings;
-  google_sheet_url: string;
-  google_sheet_title: string | null;
+  googleSheetUrl: string;
+  googleSheetTitle: string | null;
 };
 
 export type AppStatus = "eligible" | "ineligible";
@@ -115,14 +115,14 @@ export type QualityFlag = {
 // EssayAnalysisReport. Informational only — never affects status.
 export type EssayAnalysis = {
   summary: string;
-  household_context: string | null;
-  employment_background: string | null;
+  householdContext: string | null;
+  employmentBackground: string | null;
   interests: string[];
   values: string[];
-  skills_offered: string[];
-  prior_co_op_experience: string | null;
-  stated_motivations: string[];
-  stated_contributions: string[];
+  skillsOffered: string[];
+  priorCoOpExperience: string | null;
+  statedMotivations: string[];
+  statedContributions: string[];
   evidence: string[];
 };
 
@@ -146,21 +146,21 @@ export type ApplicationDetail = ApplicationSummary & {
   dimensionScores?: DimensionContribution[] | null;
 };
 
-// The current run's discovered dimensions, from GET /screening/current.
+// The current run's discovered dimensions, from GET /ranking/current.
 export type PoolDimension = {
   key: string;
   name: string;
   definition: string;
-  why_it_differentiates: string;
+  whyItDifferentiates: string;
 };
 
-// --- Ranking: the deterministic ranked shortlist from GET /screening/ranking,
+// --- Ranking: the deterministic ranked shortlist from GET /ranking,
 // pure math over the cached scores. Mirrors the backend ranking dataclasses.
 
 // How one dimension fed a candidate's fit. `impact` = weight × (score − pool mean):
 // magnitude ranks "what mattered", sign gives direction.
 export type DimensionContribution = {
-  dimension_key: string;
+  dimensionKey: string;
   name: string;
   score: number;
   weight: number;
@@ -171,7 +171,7 @@ export type DimensionContribution = {
 };
 
 export type RankedCandidate = {
-  application_id: number;
+  applicationId: number;
   name: string | null;
   rank: number; // 1-based position
   fit: number; // 0..1 weighted average — supporting detail, not the headline
@@ -198,7 +198,7 @@ export type RankingState = {
 export type Tier = {
   id: string;
   label: string;
-  dimension_keys: string[];
+  dimensionKeys: string[];
   ignore?: boolean;
 };
 
@@ -223,39 +223,39 @@ export type Toast = { id: number; message: string; variant: "success" | "error" 
 
 export type QualityFlagEstimate = {
   total: number;
-  to_analyze: number;
+  toAnalyze: number;
   cached: number;
-  estimated_usd: number;
-  cap_usd: number;
-  within_cap: boolean;
+  estimatedUsd: number;
+  capUsd: number;
+  withinCap: boolean;
 };
 
-// Combined cost projection for the Rank chain, from GET /screening/rank/estimate.
+// Combined cost projection for the Rank chain, from GET /ranking/estimate.
 // `approximate` is always true: scoring is priced as a whole-pool ceiling.
 export type RankEstimate = {
   eligible: number;
   breakdown: {
-    essays_usd: number;
-    criteria_usd: number;
+    essaysUsd: number;
+    criteriaUsd: number;
     // The dimension identity-match call; 0 on a first run (pass skipped).
-    match_usd: number;
-    scoring_usd: number;
+    matchUsd: number;
+    scoringUsd: number;
   };
-  essays_cached: number;
-  estimated_usd: number;
+  essaysCached: number;
+  estimatedUsd: number;
   approximate: boolean;
-  cap_usd: number;
-  within_cap: boolean;
-  // True when the pool is unchanged — ranking is already current, so re-running is
-  // blocked.
-  ranking_current: boolean;
+  capUsd: number;
+  withinCap: boolean;
+  // True when the pool is unchanged — ranking is already current. Re-running is
+  // still allowed (discovery is non-deterministic), but the UI flags it.
+  rankingCurrent: boolean;
 };
 
 export type SortKey = "applicant" | "co_applicant" | "children" | "income" | "status";
 export type SortState = { key: SortKey; direction: "asc" | "desc" } | null;
 
 // The filter that the applications list / facets are keyed on.
-export type AppFilter = { status?: AppStatus; status_source?: StatusSource };
+export type AppFilter = { status?: AppStatus; statusSource?: StatusSource };
 
 // Live progress emitted by the streaming Rank chain.
 export type RankProgress = { phase: "essays" | "criteria" | "scores"; processed: number; total: number };

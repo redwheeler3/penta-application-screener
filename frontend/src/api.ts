@@ -67,14 +67,14 @@ export function fetchApplications(args: {
 }): Promise<ApplicationsResponse> {
   const params = new URLSearchParams();
   if (args.filter.status) params.set("status", args.filter.status);
-  if (args.filter.status_source) params.set("status_source", args.filter.status_source);
+  if (args.filter.statusSource) params.set("statusSource", args.filter.statusSource);
   if (args.search) params.set("search", args.search);
   if (args.sort) {
     params.set("sort", args.sort.key);
     params.set("direction", args.sort.direction);
   }
   params.set("page", String(args.page));
-  params.set("page_size", String(args.pageSize));
+  params.set("pageSize", String(args.pageSize));
   return getJson<ApplicationsResponse>(`/applications?${params}`);
 }
 
@@ -86,36 +86,36 @@ export function syncApplications(): Promise<Response> {
   return fetch(url("/sync/applications"), { method: "POST", credentials: "include" });
 }
 
-export const fetchScreeningCurrent = () => fetch(url("/screening/current"), { credentials: "include" });
+export const fetchScreeningCurrent = () => fetch(url("/ranking/current"), { credentials: "include" });
 
 export const fetchQualityFlagsEstimate = () => fetch(url("/quality-flags/estimate"), { credentials: "include" });
 export const runQualityFlags = () => fetch(url("/quality-flags/run"), { method: "POST", credentials: "include" });
 
-export const fetchRankEstimate = () => fetch(url("/screening/rank/estimate"), { credentials: "include" });
-export const runRank = () => fetch(url("/screening/rank/run"), { method: "POST", credentials: "include" });
+export const fetchRankEstimate = () => fetch(url("/ranking/estimate"), { credentials: "include" });
+export const runRank = () => fetch(url("/ranking/run"), { method: "POST", credentials: "include" });
 
 export function fetchRanking(): Promise<Response> {
-  return fetch(url("/screening/ranking"), { credentials: "include" });
+  return fetch(url("/ranking"), { credentials: "include" });
 }
 
 export function fetchTiers(): Promise<Response> {
-  return fetch(url("/screening/tiers"), { credentials: "include" });
+  return fetch(url("/ranking/tiers"), { credentials: "include" });
 }
 
 export function saveTiers(next: Tier[], acknowledgedKeys: string[]): Promise<Response> {
-  return fetch(url("/screening/tiers"), {
+  return fetch(url("/ranking/tiers"), {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tiers: next, acknowledged_keys: acknowledgedKeys }),
+    body: JSON.stringify({ tiers: next, acknowledgedKeys }),
   });
 }
 
 // Persist discovery seeds for the current run. Each field is optional so the UI can
 // update favourites without touching proposals (and vice versa). The next Rank reads
 // these from the run, so they take effect on its discovery pass.
-export function saveSeeds(seeds: { favourited_keys?: string[]; proposed_dimensions?: string[] }): Promise<Response> {
-  return fetch(url("/screening/seeds"), {
+export function saveSeeds(seeds: { favouritedKeys?: string[]; proposedDimensions?: string[] }): Promise<Response> {
+  return fetch(url("/ranking/seeds"), {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },

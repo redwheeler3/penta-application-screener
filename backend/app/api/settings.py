@@ -3,6 +3,7 @@ from googleapiclient.errors import HttpError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_current_user
+from app.api.problems import Problem
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.db.models import User
@@ -50,8 +51,9 @@ def update_settings(
     db: Session = Depends(get_db),
 ) -> SettingsResponse:
     if settings.income_max < settings.income_min:
-        from fastapi import HTTPException
-
-        raise HTTPException(status_code=422, detail="Income maximum must be greater than or equal to income minimum.")
+        raise Problem(
+            "invalid_settings",
+            detail="Income maximum must be greater than or equal to income minimum.",
+        )
 
     return build_settings_response(db, user, save_app_settings(db, settings))

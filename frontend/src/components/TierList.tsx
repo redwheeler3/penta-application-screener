@@ -34,8 +34,8 @@ import type { Tier } from "../types";
 // position. Pure: returns a new tier array that the caller persists.
 function moveDimensionToTier(tiers: Tier[], dimKey: string, targetTierId: string): Tier[] {
   return tiers.map((tier) => {
-    const without = tier.dimension_keys.filter((k) => k !== dimKey);
-    return tier.id === targetTierId ? { ...tier, dimension_keys: [...without, dimKey] } : { ...tier, dimension_keys: without };
+    const without = tier.dimensionKeys.filter((k) => k !== dimKey);
+    return tier.id === targetTierId ? { ...tier, dimensionKeys: [...without, dimKey] } : { ...tier, dimensionKeys: without };
   });
 }
 
@@ -155,7 +155,7 @@ function TierRow(props: {
   // `overTierId` (`isOver`), not this hook's own, which flickers over chips.
   const { setNodeRef } = useDroppable({ id: tier.id });
   // Display chips alphabetically by label (see the SortableContext note below).
-  const sortedKeys = [...tier.dimension_keys].sort((a, b) =>
+  const sortedKeys = [...tier.dimensionKeys].sort((a, b) =>
     props.labelFor(a).localeCompare(props.labelFor(b)),
   );
   return (
@@ -219,7 +219,7 @@ function TierRow(props: {
           {/* Bulk-acknowledge the new dimensions in this (Ignore) row — flows after
               the chips it acts on. Only shows when at least one new flag is here. */}
           {(() => {
-            const newHere = tier.dimension_keys.filter((k) => props.newKeys.has(k));
+            const newHere = tier.dimensionKeys.filter((k) => props.newKeys.has(k));
             return tier.ignore && newHere.length > 0 ? (
               <div className="tier-mark-reviewed-row">
                 <button
@@ -248,7 +248,7 @@ export function TierSummaryForPrint(props: {
 }): ReactNode {
   // Only filled tiers are worth printing; the Ignore zone is kept so a reader sees
   // what was set aside.
-  const filled = props.tiers.filter((t) => t.dimension_keys.length > 0);
+  const filled = props.tiers.filter((t) => t.dimensionKeys.length > 0);
   if (filled.length === 0) return null;
   return (
     <div className="tier-summary-print">
@@ -258,7 +258,7 @@ export function TierSummaryForPrint(props: {
           <div key={tier.id} className="tier-summary-row">
             <dt>{tier.label}</dt>
             <dd>
-              {tier.dimension_keys
+              {tier.dimensionKeys
                 .map((k) => props.labelFor(k))
                 .sort((a, b) => a.localeCompare(b))
                 .join(", ")}
@@ -334,7 +334,7 @@ export function TierList(props: {
       .filter((t) => t.id !== id)
       .map((t) =>
         t.id === target.id
-          ? { ...t, dimension_keys: [...t.dimension_keys, ...removed.dimension_keys] }
+          ? { ...t, dimensionKeys: [...t.dimensionKeys, ...removed.dimensionKeys] }
           : t,
       );
     onChange(next);
@@ -342,7 +342,7 @@ export function TierList(props: {
   function addTier() {
     // Insert a new empty tier just above the Ignore zone.
     const id = `tier-${tiers.length}-${working.length}`;
-    const newTier: Tier = { id, label: `Tier ${working.length + 1}`, dimension_keys: [], ignore: false };
+    const newTier: Tier = { id, label: `Tier ${working.length + 1}`, dimensionKeys: [], ignore: false };
     onChange(ignore ? [...working, newTier, ignore] : [...working, newTier]);
   }
 
