@@ -15,6 +15,8 @@ status behavior).
 """
 
 import json
+import queue
+import threading
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -249,28 +251,63 @@ def rank_run(
 
         yield json.dumps({"type": "phase", "phase": "criteria"}) + "\n"
         pool = eligible_applications(db)
-        try:
-            # Pass 1: re-discovery, blind except for the committee's seeds (favourited
-            # + proposed axes). With no seeds this is fully blind, as before.
-            report, narrative, discovery_cost = discover_patterns(
-                db, provider, applications=pool, settings=settings, seeds=seeds
-            )
-            # Pass 2: identity-match the new dimensions onto the prior ones (high
-            # bar, one-to-one) so tiers + scores carry forward. Skipped on a first
-            # run (no prior report) — match_dimensions returns an empty map.
-            new_to_old: dict[str, str] = {}
-            match_narrative: str | None = None
-            match_cost = 0.0
-            if prior_report is not None:
-                new_to_old, match_narrative, match_cost = match_dimensions(
-                    provider, old=prior_report, new=report, settings=settings
+        # Discovery and match are single multi-minute model calls with no per-item
+        # progress, so we STREAM their reasoning text as live "thinking". The
+        # provider invokes on_delta from inside the call; a generator can't yield
+        # from a callback, so the work runs on a worker thread that pushes deltas
+        # onto a queue, and this generator drains the queue into NDJSON lines.
+        # A None sentinel marks the work done; the worker stashes its outcome/error.
+        delta_queue: "queue.Queue[str | None]" = queue.Queue()
+        criteria_outcome: dict[str, Any] = {}
+
+        def on_delta(text: str) -> None:
+            delta_queue.put(text)
+
+        def do_criteria() -> None:
+            try:
+                # Pass 1: re-discovery, blind except for the committee's seeds. With
+                # no seeds this is fully blind, as before.
+                report, narrative, discovery_cost = discover_patterns(
+                    db, provider, applications=pool, settings=settings, seeds=seeds,
+                    on_delta=on_delta,
                 )
-        except Exception as exc:  # noqa: BLE001 — surface provider failure to the client
+                # Pass 2: identity-match new dimensions onto the prior ones so tiers +
+                # scores carry forward. Skipped on a first run (no prior report).
+                new_to_old: dict[str, str] = {}
+                match_narrative: str | None = None
+                match_cost = 0.0
+                if prior_report is not None:
+                    new_to_old, match_narrative, match_cost = match_dimensions(
+                        provider, old=prior_report, new=report, settings=settings,
+                        on_delta=on_delta,
+                    )
+                criteria_outcome["ok"] = (
+                    report, narrative, discovery_cost, new_to_old, match_narrative, match_cost
+                )
+            except Exception as exc:  # noqa: BLE001 — surfaced to the client below
+                criteria_outcome["error"] = exc
+            finally:
+                delta_queue.put(None)  # signal completion
+
+        worker = threading.Thread(target=do_criteria, daemon=True)
+        worker.start()
+        while True:
+            text = delta_queue.get()
+            if text is None:
+                break
+            yield json.dumps({"type": "criteria_thinking", "text": text}) + "\n"
+        worker.join()
+
+        if "error" in criteria_outcome:
+            exc = criteria_outcome["error"]
             yield json.dumps(
                 {"type": "error", "phase": "criteria",
                  "message": f"Finding criteria failed: {type(exc).__name__}: {exc}"}
             ) + "\n"
             return
+        report, narrative, discovery_cost, new_to_old, match_narrative, match_cost = (
+            criteria_outcome["ok"]
+        )
         # Audit trail for the carry-forward: what discovery ACTUALLY emitted (its own
         # keys, before adopt_matched_keys rewrites matched ones to prior keys) and how
         # the match pass mapped it. Without this the stored report only shows the

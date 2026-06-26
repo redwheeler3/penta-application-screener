@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 
 from app.ai.pricing import cost_usd
-from app.ai.provider import AIProvider
+from app.ai.provider import AIProvider, DeltaSink
 from app.ai.schemas import DimensionMatchReport, PoolPatternReport
 from app.schemas.settings import AppSettings
 
@@ -72,22 +72,31 @@ def match_dimensions(
     old: PoolPatternReport,
     new: PoolPatternReport,
     settings: AppSettings,
+    on_delta: DeltaSink | None = None,
 ) -> tuple[dict[str, str], str | None, float]:
     """Map new dimension keys to prior ones at a high confidence bar.
 
     Returns ``(new_key -> old_key, narrative, cost_usd)``. The result is sanitized
     to strictly one-to-one over real keys, so a duplicate or unknown key can't
     corrupt the carry-forward. An empty map (first run, or no matches) is common.
+
+    ``on_delta``, when given, streams the model's reasoning text as it generates,
+    so the criteria phase's live "thinking" continues through the match call too.
     """
     if not old.dimensions or not new.dimensions:
         return {}, None, 0.0
 
-    result = provider.structured_output(
-        model_id=settings.ai.first_pass_model,
-        schema=DimensionMatchReport,
-        prompt=build_prompt(old, new),
-        system_prompt=SYSTEM_PROMPT,
-    )
+    prompt = build_prompt(old, new)
+    if on_delta is not None:
+        result = provider.structured_output_streaming(
+            model_id=settings.ai.first_pass_model, schema=DimensionMatchReport,
+            prompt=prompt, system_prompt=SYSTEM_PROMPT, on_delta=on_delta,
+        )
+    else:
+        result = provider.structured_output(
+            model_id=settings.ai.first_pass_model, schema=DimensionMatchReport,
+            prompt=prompt, system_prompt=SYSTEM_PROMPT,
+        )
     report: DimensionMatchReport = result.output
 
     old_keys = {d.key for d in old.dimensions}

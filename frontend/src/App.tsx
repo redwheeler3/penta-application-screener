@@ -118,6 +118,10 @@ export function App() {
   const [rankEstimate, setRankEstimate] = useState<RankEstimate | null>(null);
   const [rankRunning, setRankRunning] = useState(false);
   const [rankProgress, setRankProgress] = useState<RankProgress | null>(null);
+  // The model's live reasoning during the criteria (discovery + match) phase — a
+  // single multi-minute call with no per-item progress, so we show the streamed
+  // "thinking" text instead of a bare spinner.
+  const [criteriaThinking, setCriteriaThinking] = useState("");
 
   // The deterministic ranked shortlist. `showRanking` toggles the ranked view over
   // the list; null ranking means not yet fetched.
@@ -345,6 +349,7 @@ export function App() {
     setRankRunning(true);
     setRankEstimate(null);
     setRankProgress(null);
+    setCriteriaThinking("");
     try {
       const response = await api.runRank();
       if (!response.ok || !response.body) {
@@ -357,6 +362,9 @@ export function App() {
             setRankProgress({ phase: event.phase, processed: 0, total: event.total ?? 0 });
           } else if (event.type === "progress") {
             setRankProgress({ phase: event.phase, processed: event.processed, total: event.total });
+          } else if (event.type === "criteria_thinking") {
+            // Live model reasoning during discovery + match; append as it streams.
+            setCriteriaThinking((prior) => prior + event.text);
           } else if (event.type === "error") {
             showError(event.message || "Ranking failed.");
           } else if (event.type === "summary") {
@@ -369,18 +377,21 @@ export function App() {
           }
         });
         // The chain replaced the dimensions and scores. Await the run refresh before
-        // reopening the ranking, so the tier list's labelFor has the new run's names
+        // opening the ranking, so the tier list's labelFor has the new run's names
         // before its chips render (else they briefly show raw keys).
         await refreshScreeningRun();
         refreshDashboard();
-        if (selectedApp) viewApplication(selectedApp.id);
-        if (showRanking) openRanking();
+        // Land the user directly in the ranked view — the ranking is the whole point
+        // of the run, and the "View ranking" button was easy to miss. openRanking
+        // clears any open candidate and loads the ranking + tiers.
+        await openRanking();
       }
     } catch (error) {
       showError(error instanceof Error ? `Ranking error: ${error.message}` : "Ranking error.");
     }
     setRankProgress(null);
     setRankRunning(false);
+    setCriteriaThinking("");
   }
 
   // Fetch the ranked shortlist and tier layout, and open the ranked view. No cost —
@@ -582,6 +593,7 @@ export function App() {
               rankRunning={rankRunning}
               rankEstimate={rankEstimate}
               rankProgress={rankProgress}
+              criteriaThinking={criteriaThinking}
               favouritedCount={screeningRun?.favouritedKeys.length ?? 0}
               proposedCount={screeningRun?.proposedDimensions.length ?? 0}
               onRequestRank={requestRankEstimate}

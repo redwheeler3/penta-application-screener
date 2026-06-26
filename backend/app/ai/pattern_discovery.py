@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.ai.applicant_facts import FILTERED_FACTS_NOTE, applicant_facts
 from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
 from app.ai.pricing import cost_usd
-from app.ai.provider import AIProvider, Usage
+from app.ai.provider import AIProvider, DeltaSink, Usage
 from app.ai.schemas import EssayAnalysisReport, PoolPatternReport
 from app.db.models import Application, ApplicationAIResult, ApplicationStatus
 from app.schemas.settings import AppSettings
@@ -182,6 +182,7 @@ def discover_patterns(
     applications: list[Application],
     settings: AppSettings,
     seeds: DiscoverySeeds | None = None,
+    on_delta: DeltaSink | None = None,
 ) -> tuple[PoolPatternReport, str | None, float]:
     """Run the single pool-level discovery call on the synthesis model. Returns the
     report, the reasoning narrative (kept for the debug view), and the priced cost.
@@ -189,12 +190,21 @@ def discover_patterns(
     ``seeds`` are committee-requested axes to strongly consider (favourited +
     proposed); the model flags any dimension it creates from one so the caller can
     auto-favourite it. None/empty means a fully blind discovery (the default).
+
+    ``on_delta``, when given, streams the model's reasoning text as it generates —
+    the live "thinking" for this otherwise-opaque multi-minute call. The result is
+    identical either way.
     """
     model_id = settings.ai.synthesis_model
-    result = provider.structured_output(
-        model_id=model_id,
-        schema=PoolPatternReport,
-        prompt=build_prompt(db, applications, seeds=seeds),
-        system_prompt=SYSTEM_PROMPT,
-    )
+    prompt = build_prompt(db, applications, seeds=seeds)
+    if on_delta is not None:
+        result = provider.structured_output_streaming(
+            model_id=model_id, schema=PoolPatternReport, prompt=prompt,
+            system_prompt=SYSTEM_PROMPT, on_delta=on_delta,
+        )
+    else:
+        result = provider.structured_output(
+            model_id=model_id, schema=PoolPatternReport, prompt=prompt,
+            system_prompt=SYSTEM_PROMPT,
+        )
     return result.output, result.narrative, cost_usd(result.model_id, result.usage)

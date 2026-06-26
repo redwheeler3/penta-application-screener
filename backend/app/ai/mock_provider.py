@@ -108,3 +108,21 @@ class MockProvider:
             if not self.results:
                 raise AssertionError("MockProvider had no queued result for this call.")
             return self.results.pop(0)
+
+    def structured_output_streaming(
+        self,
+        *,
+        model_id: str,
+        schema: type[SchemaT],
+        prompt: str,
+        system_prompt: str | None = None,
+        on_delta,
+    ) -> AIResult:
+        # Deterministic stand-in: emit a couple of fixed deltas so tests can assert
+        # the streaming wiring fires, then return the same routed/queued result the
+        # non-streaming path would.
+        on_delta("Thinking… ")
+        on_delta("considering the pool.")
+        return self.structured_output(
+            model_id=model_id, schema=schema, prompt=prompt, system_prompt=system_prompt
+        )
