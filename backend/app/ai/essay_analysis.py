@@ -18,9 +18,11 @@ from app.ai.analysis import (
     AnalysisOutcome,
     ScreeningResult,
     analyze_application,
+    derive_prompt_version,
     estimate_cost,
     screen_applications,
 )
+from app.ai.prompt_fragments import ENGLISH_POLISH_NOTE, PROTECTED_CHARACTERISTICS_NOTE
 from app.ai.provider import AIProvider
 from app.ai.schemas import EssayAnalysisReport
 from app.db.models import Application, ApplicationStatus
@@ -29,21 +31,18 @@ from app.services.application_import import extract_essays
 
 KIND = "essay_analysis"
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT = f"""\
 You are a careful assistant helping a housing co-op screening committee read applicant essays.
 Your job is to extract and neutrally summarize WHAT each applicant said — not to judge how good it is.
 You never decide eligibility, fit, or whether someone should be interviewed; a later step does the judging.
-Extract only what is supported by the essays; never invent or infer beyond the text, and never speculate about protected characteristics.
-Do not penalize brief, awkward, translated, or non-native English answers — capture their substance regardless of writing polish."""
+Extract only what is supported by the essays; never invent or infer beyond the text.
+{PROTECTED_CHARACTERISTICS_NOTE}
+{ENGLISH_POLISH_NOTE}"""
 
-
-def build_prompt(application: Application) -> str:
-    """Assemble the essay-analysis input from the candidate's four essays. Only the
-    essays are sent; structured form fields stay available to the ranker elsewhere.
-    """
-    essays = extract_essays(application.raw_row or {})
-
-    instructions = """\
+# Static instruction template (no per-application interpolation; the essays are
+# appended as JSON in build_prompt). Held as a constant so the cache version derives
+# from the prompt text — see PROMPT_VERSION.
+_INSTRUCTIONS = """\
 Read this applicant's co-op membership essays and extract what they said into the structured fields.
 This is neutral extraction, NOT evaluation — describe what they conveyed; do not rate fit, commitment, or quality, and do not speculate.
 
@@ -63,8 +62,18 @@ Content bleeds across the four questions (skills appear in the introduction, etc
 
 Return the structured analysis directly."""
 
+# Derived from the static prompt text; auto-invalidates this pass's cache on any
+# edit to the template or system prompt. See derive_prompt_version.
+PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
+
+
+def build_prompt(application: Application) -> str:
+    """Assemble the essay-analysis input from the candidate's four essays. Only the
+    essays are sent; structured form fields stay available to the ranker elsewhere.
+    """
+    essays = extract_essays(application.raw_row or {})
     essays_json = json.dumps(essays, indent=2, default=str)
-    return f"{instructions}\n\nESSAYS:\n{essays_json}"
+    return f"{_INSTRUCTIONS}\n\nESSAYS:\n{essays_json}"
 
 
 def applications_to_analyze(db: Session) -> list[Application]:
@@ -87,6 +96,7 @@ def estimate_essay_analysis(db: Session, settings: AppSettings) -> dict[str, obj
         applications=applications_to_analyze(db),
         kind=KIND,
         model_id=settings.ai.first_pass_model,
+        prompt_version=PROMPT_VERSION,
         # Fallback only (no real usage yet). Essays make this heavier on input than
         # quality flags; the estimate self-tunes once a run has happened.
         fallback_input_tokens=3200,
@@ -109,6 +119,7 @@ def analyze_one(
         kind=KIND,
         schema=EssayAnalysisReport,
         model_id=settings.ai.first_pass_model,
+        prompt_version=PROMPT_VERSION,
         prompt=build_prompt(application),
         system_prompt=SYSTEM_PROMPT,
     )
@@ -132,6 +143,7 @@ def screen_essays(
         kind=KIND,
         schema=EssayAnalysisReport,
         model_id=settings.ai.first_pass_model,
+        prompt_version=PROMPT_VERSION,
         build_prompt=build_prompt,
         system_prompt=SYSTEM_PROMPT,
         max_workers=max_workers,

@@ -3,10 +3,10 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import (
-    PROMPT_VERSION,
     SpendingCapExceeded,
     analyze_application,
     cache_key,
+    derive_prompt_version,
     enforce_cap,
     estimate_cost,
 )
@@ -18,6 +18,9 @@ from app.db.models import Application, ApplicationAIResult, ApplicationStatus, B
 
 MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 KIND = "quality_flags"
+# A representative derived version for the engine tests (the real passes derive their
+# own from their prompt text; the engine itself is agnostic to which string it is).
+VERSION = derive_prompt_version("test-system-prompt", "test-instructions")
 
 
 def make_session() -> Session:
@@ -94,10 +97,10 @@ def test_sonnet_46_not_shadowed_by_sonnet_4() -> None:
 def test_cache_key_changes_with_model_and_content() -> None:
     db = make_session()
     app = make_application(db)
-    base = cache_key(application=app, kind=KIND, model_id=MODEL)
+    base = cache_key(application=app, kind=KIND, model_id=MODEL, prompt_version=VERSION)
 
     app.raw_row_hash = "different"
-    assert cache_key(application=app, kind=KIND, model_id=MODEL) != base
+    assert cache_key(application=app, kind=KIND, model_id=MODEL, prompt_version=VERSION) != base
 
 
 # --- analyze: cache miss then hit ---
@@ -110,7 +113,7 @@ def test_analyze_calls_provider_then_caches() -> None:
 
     first = analyze_application(
         db, provider, application=app, kind=KIND, schema=QualityFlagReport,
-        model_id=MODEL, prompt="analyze",
+        model_id=MODEL, prompt_version=VERSION, prompt="analyze",
     )
     assert first.cached is False
     assert first.cost_usd > 0
@@ -120,7 +123,7 @@ def test_analyze_calls_provider_then_caches() -> None:
     # Second call: no queued result, so a provider call would raise — proving cache hit.
     second = analyze_application(
         db, provider, application=app, kind=KIND, schema=QualityFlagReport,
-        model_id=MODEL, prompt="analyze",
+        model_id=MODEL, prompt_version=VERSION, prompt="analyze",
     )
     assert second.cached is True
     assert len(provider.calls) == 1
@@ -137,11 +140,11 @@ def test_estimate_excludes_cached_applications() -> None:
     provider.queue(clean_report(), model_id=MODEL)
     analyze_application(
         db, provider, application=app1, kind=KIND, schema=QualityFlagReport,
-        model_id=MODEL, prompt="analyze",
+        model_id=MODEL, prompt_version=VERSION, prompt="analyze",
     )
 
     est = estimate_cost(
-        db, applications=[app1, app2], kind=KIND, model_id=MODEL,
+        db, applications=[app1, app2], kind=KIND, model_id=MODEL, prompt_version=VERSION,
         fallback_input_tokens=600, fallback_output_tokens=120,
     )
     assert est["total"] == 2
@@ -154,7 +157,7 @@ def test_estimate_uses_fallback_with_no_history() -> None:
     app = make_application(db, email="a@x.com", raw_hash="h1")
 
     est = estimate_cost(
-        db, applications=[app], kind=KIND, model_id=MODEL,
+        db, applications=[app], kind=KIND, model_id=MODEL, prompt_version=VERSION,
         fallback_input_tokens=1_000_000, fallback_output_tokens=0,
     )
     # With no prior calls, the per-call cost is the fallback tokens at the model
@@ -171,12 +174,12 @@ def test_estimate_prefers_observed_usage_over_fallback() -> None:
     provider.queue(clean_report(), model_id=MODEL, input_tokens=1_000_000, output_tokens=0)
     analyze_application(
         db, provider, application=analyzed, kind=KIND, schema=QualityFlagReport,
-        model_id=MODEL, prompt="analyze",
+        model_id=MODEL, prompt_version=VERSION, prompt="analyze",
     )
 
     # Fallback is absurdly large; if it were used the estimate would explode.
     est = estimate_cost(
-        db, applications=[analyzed, pending], kind=KIND, model_id=MODEL,
+        db, applications=[analyzed, pending], kind=KIND, model_id=MODEL, prompt_version=VERSION,
         fallback_input_tokens=999_000_000, fallback_output_tokens=999_000_000,
     )
     assert est["to_analyze"] == 1  # only `pending` is uncached
@@ -207,7 +210,7 @@ def test_estimate_falls_back_to_earlier_prompt_version_usage() -> None:
 
     # `app` is uncached under the CURRENT prompt version, so it counts as work.
     est = estimate_cost(
-        db, applications=[app], kind=KIND, model_id=MODEL,
+        db, applications=[app], kind=KIND, model_id=MODEL, prompt_version=VERSION,
         fallback_input_tokens=999_000_000, fallback_output_tokens=999_000_000,
     )
     assert est["to_analyze"] == 1
@@ -234,6 +237,20 @@ def test_default_spending_cap_is_one_dollar() -> None:
 def test_prompt_version_is_part_of_key() -> None:
     db = make_session()
     app = make_application(db)
-    key = cache_key(application=app, kind=KIND, model_id=MODEL)
-    # Sanity: the documented prompt version constant participates in the hash.
-    assert isinstance(PROMPT_VERSION, str) and key
+    key = cache_key(application=app, kind=KIND, model_id=MODEL, prompt_version=VERSION)
+    # A different prompt version must miss the cache: the version is in the hash, so
+    # editing a prompt re-runs that pass rather than reusing a stale result.
+    other = cache_key(application=app, kind=KIND, model_id=MODEL, prompt_version="different")
+    assert key != other
+
+
+def test_derive_prompt_version_changes_when_prompt_text_changes() -> None:
+    # The whole point of the derived version: any edit to the prompt text yields a
+    # new version (so the cache turns over), and identical text is stable (so an
+    # unrelated edit elsewhere doesn't needlessly re-run a pass).
+    base = derive_prompt_version("system", "instructions")
+    assert base == derive_prompt_version("system", "instructions")
+    assert base != derive_prompt_version("system", "instructions changed")
+    assert base != derive_prompt_version("system changed", "instructions")
+    # Fits the ApplicationAIResult.prompt_version column (String(20)).
+    assert len(base) <= 20

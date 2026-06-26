@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.applicant_facts import FILTERED_FACTS_NOTE, applicant_facts
 from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
+from app.ai.prompt_fragments import PROTECTED_CHARACTERISTICS_NOTE
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, DeltaSink, Usage
 from app.ai.schemas import EssayAnalysisReport, PoolPatternReport
@@ -53,11 +54,11 @@ _DISCOVERY_OUTPUT_TOKENS = 2000
 # Not a cached per-application "kind"; named for the admin debug view / logging.
 KIND = "pattern_discovery"
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT = f"""\
 You are helping a housing co-op screening committee understand a pool of applicants as a whole.
 Your job is to discover the dimensions on which THIS specific pool meaningfully varies — the axes that actually separate stronger from weaker fit here, not a generic ideal co-op member. Favour a richer set of distinct, non-overlapping axes over a few broad ones, but only where the pool genuinely differentiates. Each axis must capture a single concept; never fuse two ideas into one dimension just to keep the list short.
 Ground every dimension in patterns you can see across the applicants' own words.
-Stay neutral and evidence-based; never use protected characteristics, writing polish, or fluency as a dimension.
+{PROTECTED_CHARACTERISTICS_NOTE} Never make writing polish or fluency a dimension.
 You do not rank or score individual applicants; a later step does that."""
 
 
@@ -142,7 +143,7 @@ def build_prompt(db: Session, applications: list[Application], *, seeds: Discove
 Below is the full pool of eligible applicants. Each entry has structured "facts" (household make-up, income and its split, employment tenure, real-estate ownership, pets) and a summary of their co-op membership essays.
 Discover the dimensions on which this pool genuinely varies and that matter for "fit for Penta" — somewhere between 10 and 30. Draw on BOTH the facts and the essays: quantitative axes (e.g. income mix, employment stability, household-to-unit fit) are as valid as qualitative ones (e.g. participation commitment, co-op values). Surface as many as the pool truly supports: prefer splitting a broad axis into distinct, separately-weighable sub-dimensions (e.g. trade skills vs. financial/admin skills vs. community-building skills) over merging them. But every dimension must be independently meaningful and must not overlap another — do not pad the list to reach a number, and do not invent axes the data does not actually distinguish.
 
-Each dimension must measure exactly ONE thing. The decisive test is OPPOSING EVIDENCE: if a single applicant could plausibly score HIGH on one part of a dimension and LOW on another part, you have bundled two axes — split them. For example, "participation commitment" looks like one concept but fuses (a) operational/hands-on participation — work hours, maintenance shifts, committees — with (b) social/relational contribution — warmth, conversation, an ethic of care; an applicant who says "we're happy to pay for repairs, hands-on work isn't us, but I'd bring warmth and good conversation" is strong on one and weak on the other, so a single score averages to a misleading "moderate" and HIDES the very thing the committee needs to see. These are two dimensions. Watch for this conceptual seam even when the name reads as one idea; a name joining concepts with "&", "and", "/", or a comma is just the most obvious case. A single clear concept per dimension is the goal; the higher cap above exists precisely so you never have to combine to fit.
+Each dimension must measure exactly ONE thing. The decisive test is OPPOSING EVIDENCE: if a single subject could plausibly score HIGH on one part of a dimension and LOW on another part, you have bundled two axes — split them. To see the test working in a neutral setting unrelated to housing: a restaurant rating called "good value" reads as one idea but fuses (a) price fairness with (b) portion size — an expensive place serving huge plates scores high on one and low on the other, so a single "value" number averages to a misleading "moderate" and HIDES which one actually varies. Two ratings, not one. Apply that same seam-finding to whatever axes THIS pool actually presents — do not import the example's subject matter; it is only there to illustrate the move. Watch for the seam even when a name reads as one idea; a name joining concepts with "&", "and", "/", or a comma is just the most obvious case. A single clear concept per dimension is the goal; the higher cap above exists precisely so you never have to combine to fit.
 
 {FILTERED_FACTS_NOTE}
 
