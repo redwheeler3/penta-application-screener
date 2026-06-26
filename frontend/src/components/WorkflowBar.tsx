@@ -424,7 +424,7 @@ function CriteriaThinking(props: { text: string }): ReactNode {
   return (
     <div className="criteria-thinking">
       <div className="criteria-thinking-caption">
-        Reading the whole pool and reasoning about what distinguishes it — usually 1–3 minutes.
+        Reading the whole pool and reasoning about what distinguishes it — this can take up to 5 minutes.
       </div>
       {props.text ? (
         <div className="criteria-thinking-stream" ref={boxRef}>
