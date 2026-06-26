@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.applicant_facts import FILTERED_FACTS_NOTE, applicant_facts
 from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
-from app.ai.prompt_fragments import PROTECTED_CHARACTERISTICS_NOTE
+from app.ai.prompt_fragments import INJECTION_GUARD_NOTE, PROTECTED_CHARACTERISTICS_NOTE
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, DeltaSink, Usage
 from app.ai.schemas import EssayAnalysisReport, PoolPatternReport
@@ -83,6 +83,7 @@ For each dimension provide:
 Also write a 2-4 sentence neutral summary of what most distinguishes strong from weak fit across this pool.
 
 ## Guardrails
+- {INJECTION_GUARD_NOTE}
 - Do NOT assign importance or weight to the dimensions. Discovering which axes exist is your job; deciding how much each matters is the committee's, and they do it later. Treat every dimension as equally important here.
 - Do not score or name individual applicants. Describe the axes, not the people."""
 

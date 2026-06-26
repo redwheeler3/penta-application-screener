@@ -230,8 +230,8 @@ async def test_rank_chain_runs_essays_criteria_scores() -> None:
     strong = add_eligible(db, email="strong@x.com", raw_hash="h2")
 
     # Route by prompt content: the essay prompt carries "<essays>", discovery
-    # carries "<applicant_pool>", scoring carries "DIMENSIONS:". Scores are bound
-    # to each applicant by the applicant_id marker in the scoring prompt.
+    # carries "<applicant_pool>", scoring is bound to each applicant by the
+    # applicant_id marker.
     provider.route("<essays>", an_essay_report())
     provider.route("<applicant_pool>", a_pattern_report())
     provider.route(

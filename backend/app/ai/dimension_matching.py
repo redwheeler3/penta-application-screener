@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 
 from app.ai.pricing import cost_usd
+from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider, DeltaSink
 from app.ai.schemas import DimensionMatchReport, PoolPatternReport
 from app.schemas.settings import AppSettings
@@ -29,7 +30,10 @@ Match only when you are confident the two describe the same underlying concept, 
 # layout (prompt text at the top, data appended in build_prompt). Uncached pass: there
 # is NO PROMPT_VERSION here — the match call goes through provider.structured_output
 # directly, so nothing gates a cache. See the .clinerules "derived, not hand-bumped" gem.
-_INSTRUCTIONS = """\
+# Carries the injection guard even though its inputs are dimension definitions, not raw
+# human text: those definitions originated in member-proposed free text, laundered one
+# step through discovery — so we guard it like every other prompt (see .clinerules).
+_INSTRUCTIONS = f"""\
 ## Task
 Reconcile two dimension lists for the same applicant pool: identify which NEW dimension means the SAME underlying concept as which PRIOR dimension.
 
@@ -40,7 +44,10 @@ The two lists, in the `<prior_dimensions>` and `<new_dimensions>` blocks below.
 Judge by the definitions, not by whether the keys or names look alike. Match only when confident the two describe the same underlying concept; when in doubt, do NOT match (a missed match is harmless, a wrong match corrupts a human's earlier decision).
 
 ## Output
-Return the high-confidence identity matches: for each NEW dimension that clearly means the same thing as a PRIOR dimension, one entry with its new_key and the matching old_key. Omit any NEW dimension you are not confident maps to a specific PRIOR dimension — those are treated as genuinely new. Matches must be strictly one-to-one (no prior or new dimension used twice)."""
+Return the high-confidence identity matches: for each NEW dimension that clearly means the same thing as a PRIOR dimension, one entry with its new_key and the matching old_key. Omit any NEW dimension you are not confident maps to a specific PRIOR dimension — those are treated as genuinely new. Matches must be strictly one-to-one (no prior or new dimension used twice).
+
+## Guardrails
+- {INJECTION_GUARD_NOTE}"""
 
 
 def _dimensions_block(tag: str, report: PoolPatternReport) -> str:
