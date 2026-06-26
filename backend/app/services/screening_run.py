@@ -24,15 +24,19 @@ from sqlalchemy.orm import Session
 
 from app.ai.schemas import PoolPatternReport
 from app.db.models import Application, ApplicationStatus, ScreeningRun
+from app.schemas.settings import AppSettings
 
 
 def pool_fingerprint(db: Session) -> str:
-    """A stable hash of the eligible pool's inputs, used to block a no-op Rank.
+    """A stable hash of the eligible pool's inputs.
 
     Built from the sorted ``raw_row_hash`` of every eligible application, which
-    captures the three things that should trigger a re-rank: a new applicant, an
-    edited application (its hash changes), and an eligibility flip. Status source
+    captures the three pool changes that should trigger a re-rank: a new applicant,
+    an edited application (its hash changes), and an eligibility flip. Status source
     and AI outputs are excluded — they don't change what the pool says.
+
+    This is the *pool* half of the rank-inputs fingerprint; ``rank_inputs_fingerprint``
+    combines it with the prompt + model identity of the passes a Rank runs.
     """
     hashes = db.scalars(
         select(Application.raw_row_hash)
@@ -40,6 +44,40 @@ def pool_fingerprint(db: Session) -> str:
         .order_by(Application.raw_row_hash)
     ).all()
     basis = "\n".join(hashes)
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
+
+
+def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
+    """A stable hash of everything a Rank's output depends on, used to detect when a
+    re-rank would produce something different — which drives the "Rank out of date"
+    badge.
+
+    Combines the pool fingerprint with the **prompt identity and model** of every
+    pass the Rank chain runs (essays → discovery + match → scoring). So a re-rank is
+    flagged current only when the pool, all four prompts, AND both models are
+    unchanged since the run was created — editing any rank-chain prompt or switching
+    a model now correctly shows Rank as stale, not just a pool change. (quality_flags
+    is the separate Screen step, not part of Rank, so it is deliberately excluded.)
+
+    Prompt versions are imported lazily: the AI passes import this module, so a
+    top-level import would be circular (matches the existing local-import pattern in
+    ``estimate_match``).
+    """
+    from app.ai.dimension_matching import PROMPT_VERSION as MATCH_V
+    from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_V
+    from app.ai.essay_analysis import PROMPT_VERSION as ESSAY_V
+    from app.ai.pattern_discovery import PROMPT_VERSION as DISCOVERY_V
+
+    parts = [
+        pool_fingerprint(db),
+        f"essay:{ESSAY_V}",
+        f"discovery:{DISCOVERY_V}",
+        f"match:{MATCH_V}",
+        f"scoring:{SCORING_V}",
+        f"first_pass_model:{settings.ai.first_pass_model}",
+        f"synthesis_model:{settings.ai.synthesis_model}",
+    ]
+    basis = "\n".join(parts)
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
 
 
@@ -72,6 +110,7 @@ def create_run(
     db: Session,
     *,
     report: PoolPatternReport,
+    settings: AppSettings,
     model_id: str,
     narrative: str | None,
     cost_usd: float,
@@ -107,8 +146,10 @@ def create_run(
         status="patterns_discovered",
         criteria={
             "pattern_report": report.model_dump(mode="json"),
-            # Lets the next Rank detect an unchanged pool and skip a no-op re-run.
-            "pool_fingerprint": pool_fingerprint(db),
+            # Everything this run's ranking depends on — pool + rank-chain prompt and
+            # model identity. The next Rank compares it to flag the run "out of date"
+            # when the pool, any rank-chain prompt, or a model has changed.
+            "rank_inputs_fingerprint": rank_inputs_fingerprint(db, settings),
             # Tiers are the source of truth; weights are derived from them. A fresh
             # all-Ignore board derives uniform weights (the equal-weight baseline).
             "tiers": layout,
@@ -138,16 +179,21 @@ def get_current_run(db: Session) -> ScreeningRun | None:
     return db.scalar(select(ScreeningRun).order_by(ScreeningRun.id.desc()).limit(1))
 
 
-def ranking_is_current(db: Session, run: ScreeningRun | None) -> bool:
-    """True when ``run``'s stored ``pool_fingerprint`` matches the pool now (the
-    no-op Rank gate). False if there is no run, or the run predates fingerprinting.
+def ranking_is_current(db: Session, run: ScreeningRun | None, settings: AppSettings) -> bool:
+    """True when ``run``'s stored rank-inputs fingerprint matches the inputs now —
+    i.e. the pool, every rank-chain prompt, and both models are unchanged, so a
+    re-rank would be a no-op. Drives the "Rank out of date" badge.
+
+    False if there is no run, or the run predates rank-inputs fingerprinting (older
+    runs stored only ``pool_fingerprint``; treat them as stale so the first re-rank
+    re-stamps them with the richer fingerprint).
     """
     if run is None:
         return False
-    stored = (run.criteria or {}).get("pool_fingerprint")
+    stored = (run.criteria or {}).get("rank_inputs_fingerprint")
     if not stored:
         return False
-    return stored == pool_fingerprint(db)
+    return stored == rank_inputs_fingerprint(db, settings)
 
 
 def current_pattern_report(run: ScreeningRun) -> PoolPatternReport | None:

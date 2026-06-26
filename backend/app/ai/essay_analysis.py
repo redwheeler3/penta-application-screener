@@ -72,7 +72,8 @@ Fill each field from the essays:
 - Return the structured analysis directly."""
 
 # Cached pass: version derives from the static prompt text and gates this pass's
-# cache. See derive_prompt_version and the .clinerules "derived, not hand-bumped" gem.
+# cache (see derive_prompt_version). Also folded into the run's rank-inputs
+# fingerprint so a prompt edit shows Rank as out of date.
 PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 
 

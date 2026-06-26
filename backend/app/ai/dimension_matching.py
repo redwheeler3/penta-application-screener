@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 
+from app.ai.analysis import derive_prompt_version
 from app.ai.pricing import cost_usd
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider, DeltaSink
@@ -27,12 +28,10 @@ Your only job is to identify which NEW dimension means the SAME THING as which P
 Match only when you are confident the two describe the same underlying concept, judging by their definitions, not just similar words. When in doubt, do NOT match: a missed match is harmless, a wrong match corrupts a human's earlier decision. Every match must be one-to-one."""
 
 # Static instruction text. Hoisted to a module constant to match the cached passes'
-# layout (prompt text at the top, data appended in build_prompt). Uncached pass: there
-# is NO PROMPT_VERSION here — the match call goes through provider.structured_output
-# directly, so nothing gates a cache. See the .clinerules "derived, not hand-bumped" gem.
+# layout (prompt text at the top, data appended in build_prompt).
 # Carries the injection guard even though its inputs are dimension definitions, not raw
 # human text: those definitions originated in member-proposed free text, laundered one
-# step through discovery — so we guard it like every other prompt (see .clinerules).
+# step through discovery — so we guard it like every other prompt.
 _INSTRUCTIONS = f"""\
 ## Task
 Reconcile two dimension lists for the same applicant pool: identify which NEW dimension means the SAME underlying concept as which PRIOR dimension.
@@ -48,6 +47,12 @@ Return the high-confidence identity matches: for each NEW dimension that clearly
 
 ## Guardrails
 - {INJECTION_GUARD_NOTE}"""
+
+# Prompt identity, derived from the static prompt text. This pass is UNCACHED, but it
+# still has a version: it is folded into the run's rank-inputs fingerprint (see
+# rank_inputs_fingerprint in services/screening_run.py) so editing this prompt makes
+# Rank show "out of date".
+PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 
 
 def _dimensions_block(tag: str, report: PoolPatternReport) -> str:

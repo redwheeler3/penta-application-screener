@@ -115,17 +115,19 @@ async def test_workflow_flags_track_progress() -> None:
 
 
 @pytest.mark.anyio
-async def test_ranking_current_tracks_pool_not_coverage() -> None:
-    """rankingCurrent follows the eligible pool fingerprint, not score coverage.
+async def test_ranking_current_tracks_rank_inputs() -> None:
+    """rankingCurrent follows the rank-inputs fingerprint: the eligible pool AND the
+    rank-chain prompt/model identity, not score coverage.
 
-    This is the green/yellow reconciliation: the Rank step's "needs re-run" badge
-    must agree with the no-op gate. A pool change (here: a new eligible applicant)
-    makes ranking not current even though the run still exists — coverage alone
-    would miss it.
+    This is the green/yellow reconciliation — the Rank "needs re-run" badge must
+    agree with the no-op gate — extended so a rank-chain PROMPT change also flags
+    re-rank, not just a pool change. Coverage alone would miss both.
     """
-    from app.services.screening_run import pool_fingerprint
+    from app.schemas.settings import AppSettings
+    from app.services.screening_run import rank_inputs_fingerprint
 
     app, db = _logged_in_app()
+    settings = AppSettings()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         db.add(Application(
@@ -134,8 +136,12 @@ async def test_ranking_current_tracks_pool_not_coverage() -> None:
         ))
         db.commit()
 
-        # A run whose fingerprint matches the current eligible pool -> current.
-        db.add(ScreeningRun(name="Run", criteria={"pool_fingerprint": pool_fingerprint(db)}))
+        # A run whose fingerprint matches the current pool + prompts + models -> current.
+        run = ScreeningRun(
+            name="Run",
+            criteria={"rank_inputs_fingerprint": rank_inputs_fingerprint(db, settings)},
+        )
+        db.add(run)
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow["rankingCurrent"] is True
@@ -146,6 +152,21 @@ async def test_ranking_current_tracks_pool_not_coverage() -> None:
             primary_email="b@x.com", applicant_name="B", raw_row={}, raw_row_hash="h2",
             normalized={}, status=ApplicationStatus.ELIGIBLE, hard_filter_reasons=[],
         ))
+        db.commit()
+        workflow = (await client.get("/dashboard")).json()["workflow"]
+        assert workflow["rankingCurrent"] is False
+
+        # Restore the pool, then prove a rank-chain PROMPT change alone also flips it:
+        # re-stamp the run as current, then perturb the stored fingerprint as if a
+        # prompt had changed. The dashboard recomputes from live prompts -> mismatch.
+        db.delete(db.get(Application, 2))
+        db.commit()
+        run.criteria = {"rank_inputs_fingerprint": rank_inputs_fingerprint(db, settings)}
+        db.add(run)
+        db.commit()
+        assert (await client.get("/dashboard")).json()["workflow"]["rankingCurrent"] is True
+        run.criteria = {"rank_inputs_fingerprint": "stale-prompt-version"}
+        db.add(run)
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow["rankingCurrent"] is False
@@ -221,14 +242,14 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
     UI must surface instead of showing a misleading done-check.
     """
     from app.ai.analysis import cache_key
-    from app.ai.essay_analysis import KIND as ESSAY_KIND
-    from app.ai.essay_analysis import PROMPT_VERSION as ESSAY_VERSION
+    from app.ai.quality_flags import KIND as QUALITY_KIND
+    from app.ai.quality_flags import PROMPT_VERSION as QUALITY_VERSION
     from app.schemas.settings import AppSettings
 
     app, db = _logged_in_app()
     model = AppSettings().ai.first_pass_model
 
-    # Two eligible applicants in essay-analysis scope.
+    # Two eligible applicants in quality-flags scope.
     a = Application(
         primary_email="a@x.com", applicant_name="A", raw_row={"q": "1"}, raw_row_hash="ha",
         normalized={}, status=ApplicationStatus.ELIGIBLE, hard_filter_reasons=[],
@@ -242,14 +263,14 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
 
     # a: current result (cache key computed from its present content + model).
     db.add(ApplicationAIResult(
-        application_id=a.id, kind=ESSAY_KIND,
-        cache_key=cache_key(application=a, kind=ESSAY_KIND, model_id=model, prompt_version=ESSAY_VERSION),
-        model_id=model, output={"summary": "x"},
+        application_id=a.id, kind=QUALITY_KIND,
+        cache_key=cache_key(application=a, kind=QUALITY_KIND, model_id=model, prompt_version=QUALITY_VERSION),
+        model_id=model, output={"flags": []},
     ))
     # b: a result keyed to OLD content -> does not match its current hash -> stale.
     db.add(ApplicationAIResult(
-        application_id=b.id, kind=ESSAY_KIND, cache_key="stale-key",
-        model_id=model, output={"summary": "y"},
+        application_id=b.id, kind=QUALITY_KIND, cache_key="stale-key",
+        model_id=model, output={"flags": []},
     ))
     db.commit()
 
@@ -258,7 +279,7 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
         coverage = (await client.get("/dashboard")).json()["coverage"]
 
     # 2 in scope, only a is current.
-    assert coverage["essaysAnalyzed"] == {"cached": 1, "inScope": 2}
+    assert coverage["qualityChecksRun"] == {"cached": 1, "inScope": 2}
     # No screening run yet -> scoring coverage is absent, not zero.
     assert "candidatesScored" not in coverage
 

@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.analysis import derive_prompt_version
 from app.ai.applicant_facts import FILTERED_FACTS_NOTE, applicant_facts
 from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE, PROTECTED_CHARACTERISTICS_NOTE
@@ -57,10 +58,7 @@ Ground every dimension in patterns you can see across the applicants' own words.
 You do not rank or score individual applicants; a later step does that."""
 
 
-# Static instruction text. Uncached pass: there is NO PROMPT_VERSION here — discovery
-# calls provider.structured_output directly, so nothing gates a cache. The shared
-# FILTERED_FACTS_NOTE is interpolated at import. See the .clinerules "derived, not
-# hand-bumped" gem.
+# Static instruction text. The shared FILTERED_FACTS_NOTE is interpolated at import.
 _INSTRUCTIONS = f"""\
 ## Task
 Discover the dimensions on which this applicant pool genuinely varies and that matter for "fit for Penta" — somewhere between 10 and 30. Draw on BOTH the facts and the essays: quantitative axes (e.g. income mix, employment stability, household-to-unit fit) are as valid as qualitative ones (e.g. participation commitment, co-op values). Surface as many as the pool truly supports: prefer splitting a broad axis into distinct, separately-weighable sub-dimensions (e.g. trade skills vs. financial/admin skills vs. community-building skills) over merging them. But every dimension must be independently meaningful and must not overlap another — do not pad the list to reach a number, and do not invent axes the data does not actually distinguish.
@@ -87,6 +85,13 @@ Also write a 2-4 sentence neutral summary of what most distinguishes strong from
 - {INJECTION_GUARD_NOTE}
 - Do NOT assign importance or weight to the dimensions. Discovering which axes exist is your job; deciding how much each matters is the committee's, and they do it later. Treat every dimension as equally important here.
 - Do not score or name individual applicants. Describe the axes, not the people."""
+
+# Prompt identity, derived from the static prompt text. This pass is UNCACHED (it
+# calls provider.structured_output directly, so nothing gates a per-application
+# cache), but it still has a version: it is folded into the run's rank-inputs
+# fingerprint (see rank_inputs_fingerprint in services/screening_run.py) so editing
+# this prompt makes Rank show "out of date".
+PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 
 
 def build_prompt(db: Session, applications: list[Application], *, seeds: DiscoverySeeds | None = None) -> str:

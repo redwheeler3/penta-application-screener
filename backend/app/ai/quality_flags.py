@@ -76,10 +76,10 @@ Do NOT flag (these are normal and must be ignored):
 - Before returning the structured flags, briefly explain your reasoning as Markdown. Then return the structured flags."""
 
 # Cached pass: version derives from the static prompt text and gates this pass's
-# cache. We hash the TEMPLATE (with the literal `{pet_policy}` placeholder), not the
-# filled prompt — so the pet policy threshold stays out of the version (a policy
-# change doesn't alter how the model reasons, only the number it cites). See
-# derive_prompt_version and the .clinerules "derived, not hand-bumped" gem.
+# cache (see derive_prompt_version). We hash the TEMPLATE (with the literal
+# `{pet_policy}` placeholder), not the filled prompt — so the pet policy threshold
+# stays out of the version (a policy change doesn't alter how the model reasons, only
+# the number it cites).
 PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS_TEMPLATE)
 
 
