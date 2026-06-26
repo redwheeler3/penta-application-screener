@@ -587,6 +587,19 @@ The pipeline now makes real, non-deterministic model judgments (discovery, scori
 
 **Pillar 2 — Match/discovery audit.** Make `match_audit` inspectable rather than a SQLite spelunk: per re-rank, show raw-discovery dimensions vs. what survived, the match map + narrative, and the **carry-forward rate** (matched / total). A persistently near-100% carry-forward rate is the smell that the match pass is over-matching and the model tier (Haiku) is too eager — exactly the question that motivated this milestone. This pillar is what lets us answer it on every future run.
 
+> **NOT YET SURFACED (deliberate — owned by this milestone).** `match_audit` is **persisted on every re-rank but exposed nowhere** — no API payload, no UI. This was a conscious decision: rather than bolt a one-off viewer onto the favourite/propose feature, the surfacing waits for M11 so it lands consistently alongside the cost/metrics/eval views. Until then, the only way to read it is a direct DB query, e.g.:
+> ```bash
+> cd backend && uv run python -c "
+> import json, sqlite3
+> db = sqlite3.connect('data/penta_screener.db')
+> rid, crit = db.execute('SELECT id, criteria FROM screening_runs ORDER BY id DESC LIMIT 1').fetchone()
+> a = json.loads(crit)['match_audit']; m = a['new_to_old']
+> for d in a['raw_discovery_dimensions']:
+>     print(f\"  {d['key']:42s} -> {m.get(d['key']) or '*** NEW ***'}\")
+> "
+> ```
+> Building the API endpoint + admin viewer for this is a concrete, ready-to-pick-up task whenever M11 starts.
+
 **Pillar 3 — Operational metrics.** Pipeline health, not output quality: run counts, per-pass latency, cache hit rates (we already isolate cached vs. fresh in `RunTally`), dimension counts over time, and failure/retry rates per pass.
 
 **Pillar 4 — Quality evals (property/consistency first).** The biggest build, and deliberately **not** golden-set or LLM-judge to start. Property-based, deterministic checks that need no hand-labeling and run repeatably against a frozen pool: schema conformance; one-concept-per-dimension heuristics (e.g. flag names joining concepts with "&"/"and"/"/"); no protected attributes used as a dimension; score **stability** across repeated runs on the same pool (how much does a re-run churn dimensions/scores?); and match-rate sanity bands. These catch structural regressions and over-matching cheaply. Golden-set and LLM-as-judge are explicitly deferred as later layers once the property suite exists and we know what's worth hand-labeling.
