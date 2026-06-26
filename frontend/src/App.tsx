@@ -64,6 +64,10 @@ export function App() {
   });
   const [coverage, setCoverage] = useState<Coverage>({});
   const [isSyncing, setIsSyncing] = useState(false);
+  // Whether the Import confirmation card is open. Import has no cost (a Sheet pull,
+  // no model calls), so it's a plain confirm — just friction so a click doesn't
+  // immediately re-import, matching the Screen/Rank cards.
+  const [importConfirm, setImportConfirm] = useState(false);
 
   // Workflow notifications surface as bottom-right toasts. Success toasts
   // auto-dismiss; error toasts persist until dismissed. Unique ids let them stack.
@@ -232,7 +236,15 @@ export function App() {
     setIsSavingSettings(false);
   }
 
+  // Open the Import confirmation. Close the other cards so only one shows at a time.
+  function requestImport() {
+    setQfEstimate(null);
+    setRankEstimate(null);
+    setImportConfirm(true);
+  }
+
   async function syncApplications() {
+    setImportConfirm(false);
     setIsSyncing(true);
     try {
       const response = await api.syncApplications();
@@ -270,6 +282,7 @@ export function App() {
   // the user first seeing the estimate and confirming (SPEC cost control).
   async function requestQualityFlagsEstimate() {
     setRankEstimate(null); // only one card shows at a time
+    setImportConfirm(false);
     const response = await api.fetchQualityFlagsEstimate();
     if (response.ok) {
       // Always open the card — even a $0 no-op states there's nothing to do and
@@ -317,6 +330,7 @@ export function App() {
 
   async function requestRankEstimate() {
     setQfEstimate(null); // only one card shows at a time
+    setImportConfirm(false);
     const response = await api.fetchRankEstimate();
     if (response.ok) {
       // Always open the card, even when unchanged: it explains there's nothing to
@@ -511,7 +525,10 @@ export function App() {
               dashboardCounts={dashboardCounts}
               hasGoogleSheetLink={hasGoogleSheetLink}
               isSyncing={isSyncing}
-              onSync={syncApplications}
+              importConfirm={importConfirm}
+              onRequestImport={requestImport}
+              onConfirmImport={syncApplications}
+              onCancelImport={() => setImportConfirm(false)}
               qfRunning={qfRunning}
               qfEstimate={qfEstimate}
               qfProgress={qfProgress}

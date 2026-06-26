@@ -100,7 +100,10 @@ export function WorkflowBar(props: {
   dashboardCounts: DashboardCounts;
   hasGoogleSheetLink: boolean;
   isSyncing: boolean;
-  onSync: () => void;
+  importConfirm: boolean;
+  onRequestImport: () => void;
+  onConfirmImport: () => void;
+  onCancelImport: () => void;
   qfRunning: boolean;
   qfEstimate: QualityFlagEstimate | null;
   qfProgress: { processed: number; total: number } | null;
@@ -141,13 +144,13 @@ export function WorkflowBar(props: {
             busyLabel="Importing"
             // Step 1 is always available once a sheet is configured. The caption
             // persists the imported row count (not a fraction).
-            disabled={props.isSyncing || !props.hasGoogleSheetLink}
+            disabled={props.isSyncing || props.importConfirm || !props.hasGoogleSheetLink}
             disabledTitle="Add a Google Sheet link in settings to import."
             // Amber when import-relevant settings changed since the last sync: a
             // re-import would reclassify eligibility.
             outOfDate={workflow.synced && !workflow.importCurrent}
             staleTitle="Settings changed since the last import — re-import to apply them."
-            onClick={props.onSync}
+            onClick={props.onRequestImport}
             caption={
               workflow.synced && dashboardCounts.submitted > 0 ? `${dashboardCounts.submitted} rows` : undefined
             }
@@ -224,6 +227,30 @@ export function WorkflowBar(props: {
           )
         ) : null}
       </div>
+
+      {props.importConfirm ? (
+        <div className="qf-confirm">
+          <div className="qf-confirm-body">
+            <strong>Import applications?</strong>
+            {workflow.synced ? (
+              <p>
+                Re-import from the Google Sheet. New and changed applications are reclassified against the current
+                settings; existing decisions are preserved.
+              </p>
+            ) : (
+              <p>Pull the applications from the configured Google Sheet and screen them against the current settings.</p>
+            )}
+          </div>
+          <div className="qf-confirm-actions">
+            <button className="primary-button" type="button" onClick={props.onConfirmImport} disabled={props.isSyncing}>
+              {props.isSyncing ? "Importing" : "Confirm & import"}
+            </button>
+            <button className="secondary-button" type="button" onClick={props.onCancelImport}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {qfEstimate ? (
         <div className="qf-confirm">
