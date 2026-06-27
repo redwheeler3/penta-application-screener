@@ -97,14 +97,6 @@ button {
   margin: 28px 0 24px;
 }
 
-.eyebrow {
-  margin: 0 0 6px;
-  color: var(--penta-green-dark);
-  font-size: 0.92rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
 h1,
 h2,
 p {
@@ -246,13 +238,6 @@ h1 {
   opacity: 0.72;
 }
 
-/* Green-accented secondary button: same family, but green text + tinted border
-   at rest so it carries a little more presence (e.g. "Edit settings"). */
-.secondary-button-accent {
-  border-color: #bbf7d0;
-  color: var(--penta-green-dark);
-}
-
 .secondary-button.is-busy:disabled {
   cursor: wait;
 }
@@ -275,65 +260,12 @@ h1 {
 /* Mirror the .panel structure so the header gets the same edge-to-edge green
    row: no padding on the container (overflow clips the header to the radius),
    padding lives on the header and body sections. */
-.settings-panel {
-  overflow: hidden;
-  margin-bottom: 18px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.06);
-}
-
-.settings-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px 20px;
-  border-bottom: 1px solid var(--line);
-  background: linear-gradient(90deg, #dcfce7, #fff);
-}
-
+/* Settings is now the content of the Settings tab; the surrounding .panel supplies
+   the card, so this is just a body wrapper. */
 .settings-panel-body {
   display: grid;
   gap: 18px;
   padding: 20px;
-}
-
-.settings-summary {
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
-  gap: 12px;
-}
-
-.settings-summary > div {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.settings-summary span {
-  color: var(--penta-green-dark);
-  font-size: 0.78rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.settings-summary strong,
-.settings-summary .sheet-reference {
-  min-width: 0;
-  color: var(--ink);
-  font-size: 0.9rem;
-  font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.settings-summary .sheet-reference:hover {
-  color: var(--penta-green-dark);
-  text-decoration: underline;
 }
 
 .settings-form {
@@ -478,34 +410,6 @@ h1 {
   text-transform: uppercase;
 }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.stat-card {
-  padding: 18px;
-  border: 1px solid var(--line);
-  border-top: 3px solid var(--penta-green);
-  border-radius: 8px;
-  background: var(--surface);
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
-}
-
-.stat-card span {
-  display: block;
-  margin-bottom: 10px;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.stat-card strong {
-  color: var(--ink);
-  font-size: 2rem;
-}
-
 .panel {
   overflow: hidden;
   border: 1px solid var(--line);
@@ -514,49 +418,25 @@ h1 {
   box-shadow: 0 12px 28px rgba(17, 24, 39, 0.06);
 }
 
-.panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px 20px;
-  border-bottom: 1px solid var(--line);
-  background: linear-gradient(90deg, #dcfce7, #fff);
-}
-
-.panel-header > div > span {
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-
-.panel-header .panel-kicker {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 0.92rem;
-  color: var(--penta-green-dark);
-}
-
 /* The ordered screening workflow, in its own full-width band below the title.
    At five steps it no longer fits beside the heading, so it gets a dedicated
    row where the steps lay out left-to-right (wrapping as a group only when the
    viewport is genuinely narrow). */
+/* Standalone global-actions card, directly under the title and above the tab row.
+   Its own rounded/bordered card (was previously the top band of the results panel). */
 .workflow-bar {
   padding: 14px 20px;
-  border-bottom: 1px solid var(--line);
-  background: var(--page);
-  /* The steps sit left; the "View shortlist" action (when present) sits right on
-     the same row. Wraps to its own line on narrow widths. */
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.06);
+  /* The steps sit left; any trailing action sits right on the same row. Wraps to
+     its own line on narrow widths. */
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.75rem;
-}
-
-/* Push the shortlist action to the right edge of the workflow row. margin-left
-   auto keeps it right-aligned even when the steps wrap above it. */
-.workflow-shortlist-button {
-  margin-left: auto;
 }
 
 .empty-state {
@@ -576,25 +456,7 @@ h1 {
     margin: 20px 0 18px;
   }
 
-  .panel-header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .stats-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .settings-form {
-    grid-template-columns: 1fr;
-  }
-
-  .settings-panel-header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .settings-summary {
     grid-template-columns: 1fr;
   }
 
@@ -617,7 +479,55 @@ h1 {
 
 .app-tabs {
   display: flex;
+  align-items: center;
   gap: 0.25rem;
+}
+
+/* The view tab row sits between the workflow card and the content panel. The tabs
+   are folder tabs: the active one is flush with the panel below (no gap, shared
+   bottom edge) so it reads as connected to its content. */
+.view-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.25rem;
+  margin: 1rem 0 0;
+  padding: 0 0.5rem;
+  /* Overlap the panel's top border so the active tab can paint over it. */
+  position: relative;
+  z-index: 1;
+}
+
+/* The view tabs are folder tabs: square bottom corners, no bottom border, and they
+   sit on the panel's top edge. (Scoped to .view-tabs so the filter pills elsewhere
+   keep their pill look.) */
+.view-tabs .tab-button {
+  margin-bottom: -1px;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  /* Larger than the filter pills below so the primary navigation reads as primary,
+     not on a par with the busy filter row. */
+  padding: 0.5rem 0.95rem;
+  font-size: 0.9rem;
+}
+
+/* Active view tab: white like the panel, no bottom border, so it merges into the
+   content card below. A green top bar keeps the "selected" signal. */
+.view-tabs .tab-button.active {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+  font-weight: 600;
+  border-top: 2px solid var(--penta-green);
+  border-bottom-color: var(--surface);
+}
+
+/* Settings is config, not a third data view — push it to the right, set apart from
+   the data tabs, with the gear icon flagging its different nature. */
+.tab-button-settings {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
 }
 
 /* Filter group: a labeled axis (Status / Decided by) of combinable tabs */
@@ -1594,82 +1504,144 @@ h1 {
 }
 
 /* Pattern discovery + dimension scoring (milestone 7) */
-.dimensions-panel {
-  /* Horizontal margin matches the inset the panel's other children use (the
-     panel itself has no padding), so the criteria card doesn't run edge-to-edge
-     above the list/shortlist. */
-  margin: 1rem 1.25rem;
-  border: 1px solid #ddd6fe;
-  border-radius: 8px;
-  background: #f5f3ff;
-  padding: 0.75rem 1rem;
-  font-size: 0.85rem;
-}
-
-.dimensions-panel summary {
-  cursor: pointer;
+/* Criteria header above the tier-list: the framing line + the "Add your own"
+   toggle. The criteria themselves now live as the tier chips below, so there's no
+   separate criteria card — just this slim header introducing them. */
+.criteria-head-title {
+  margin: 0.5rem 0 0;
+  font-size: 0.95rem;
   font-weight: 600;
 }
 
+/* The AI summary, clamped to two lines by default with a "More…" affordance at the
+   end of the second line so people know it's clickable (the whole block is the
+   button). Clamping keeps the tiers high on the page instead of pushed down by six
+   lines of grey text. */
 .dimensions-summary {
-  margin: 0.6rem 0 0;
-  line-height: 1.5;
-}
-
-.dimensions-list {
-  list-style: none;
-  margin: 0.75rem 0 0;
+  position: relative;
+  display: block;
+  margin: 0.4rem 0 0;
   padding: 0;
-  display: grid;
-  gap: 0.6rem;
-}
-
-.dimension-item {
-  border-top: 1px solid #ddd6fe;
-  padding-top: 0.55rem;
-}
-
-.dimension-head {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.dimension-name {
-  font-weight: 600;
-}
-
-/* ★ favourite toggle on a discovered criterion (keep it across re-runs). */
-.dimension-fav {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.1rem;
   border: none;
   background: none;
+  text-align: left;
+  width: 100%;
   cursor: pointer;
+  line-height: 1.5;
+  font: inherit;
+  font-size: 0.85rem;
   color: var(--muted);
-  border-radius: 4px;
-  line-height: 0;
 }
 
-.dimension-fav:hover {
+.dimensions-summary-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.dimensions-summary.is-expanded .dimensions-summary-text {
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
+/* Collapsed: pin "More…" to the bottom-right of the clamped block, over a fade so
+   it doesn't collide with the clamped text. */
+.dimensions-summary-toggle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding-left: 2.5rem;
+  background: linear-gradient(to right, transparent, var(--surface) 1.5rem);
+  font-weight: 600;
   color: var(--penta-green);
 }
 
-.dimension-fav.is-fav {
-  color: #d97706; /* amber star when favourited */
+/* Expanded: the toggle ("Less") flows inline at the end of the text. */
+.dimensions-summary.is-expanded .dimensions-summary-toggle {
+  position: static;
+  padding-left: 0.25rem;
+  background: none;
 }
 
-/* The "suggest an axis" composer below the criteria list. */
+.dimensions-summary:hover .dimensions-summary-text {
+  color: var(--ink);
+}
+
+/* Description-panel title: the criterion name as a small heading. */
+.dimension-name {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+
+/* Tier list + description side by side. The tier column flexes to fill; the
+   description takes a fixed-ish right column. Collapses to a single column on
+   narrow viewports (description drops below). */
+.criteria-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  /* Breathing room between the summary text above and the tiers box. */
+  margin-top: 0.85rem;
+}
+
+.criteria-layout-tiers {
+  flex: 1;
+  min-width: 0;
+}
+
+/* On-demand description pane for the chip the user tapped. The bulky text lives
+   here, shown one at a time, rather than inline on every chip. In the side-by-side
+   layout it's the right column and sticks in view as the tier list scrolls. */
+.criteria-detail {
+  flex: 0 0 15rem;
+  /* Content-height (not stretched to the tier list), so a short description doesn't
+     leave a tall empty white panel — and sticky keeps it in view while scrolling. */
+  align-self: flex-start;
+  position: sticky;
+  top: 1rem;
+  padding: 0.75rem 0.85rem;
+  background: #fff;
+  border: 1px solid #ddd6fe;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+/* Resting state of the always-visible panel (nothing selected): quieter than a
+   filled card — dashed border, no fill — so it reads as a prompt, not content. */
+.criteria-detail-empty {
+  background: none;
+  border-style: dashed;
+  border-color: var(--line);
+}
+
+.criteria-detail-placeholder {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .criteria-layout {
+    flex-direction: column;
+  }
+  .criteria-detail {
+    flex-basis: auto;
+    width: 100%;
+    position: static;
+  }
+}
+
+/* The "add your own" composer, revealed by the header toggle. */
 .criteria-composer {
-  margin-top: 1rem;
+  /* Sits between the tier-list head and the first tier row when "Add criterion" is
+     open; needs symmetric breathing room so the input isn't cramped against the
+     first tier below it. */
+  margin: 0.25rem 0 1.1rem;
   padding-top: 0.85rem;
   border-top: 1px solid #ddd6fe;
-}
-
-.criteria-composer h4 {
-  margin: 0 0 0.2rem;
-  font-size: 0.9rem;
 }
 
 .criteria-composer-hint {
@@ -1736,16 +1708,12 @@ h1 {
   line-height: 1.45;
 }
 
+/* Description-panel definition body: what the criterion measures. Inherits the
+   panel's 0.85rem so the title/body sizes feel intentional, not mismatched. */
 .dimension-def {
-  margin: 0.3rem 0 0;
-  line-height: 1.45;
-}
-
-.dimension-why {
-  margin: 0.25rem 0 0;
+  margin: 0.35rem 0 0;
+  line-height: 1.5;
   color: var(--muted);
-  font-size: 0.8rem;
-  line-height: 1.45;
 }
 
 /* Per-candidate scores on the detail page */
@@ -1883,7 +1851,6 @@ h1 {
   margin: 0.25rem 0 0;
   color: var(--muted);
   font-size: 0.85rem;
-  max-width: 40rem;
   line-height: 1.45;
 }
 
@@ -1906,7 +1873,7 @@ h1 {
 
 .ranking-list {
   list-style: none;
-  margin: 0;
+  margin: 1.25rem 0 0;
   padding: 0;
   display: grid;
   gap: 0.5rem;
@@ -1930,7 +1897,8 @@ h1 {
 .ranking-rank {
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-  color: var(--muted);
+  font-size: 1rem;
+  color: var(--ink);
   min-width: 2.5rem;
 }
 
@@ -2042,9 +2010,23 @@ h1 {
   color: var(--muted);
 }
 
+/* The two "+ Add" actions (criterion / tier) grouped at the right of the head. */
+.tier-list-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
 .tier-add {
   padding: 0.3rem 0.6rem;
   font-size: 0.78rem;
+}
+
+/* "Add criterion" while its composer is open: hold the green-tint look so the button
+   reads as active/toggled-on (clicking again closes the composer). */
+.tier-add[aria-expanded="true"] {
+  border-color: var(--penta-green);
+  background: var(--penta-green-soft);
+  color: var(--penta-green-dark);
 }
 
 /* Each tier is a row: a label/controls header on the left of a chip area. Higher
@@ -2125,20 +2107,67 @@ h1 {
 .tier-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.3rem 0.6rem;
+  gap: 0.15rem;
+  padding: 0.25rem 0.45rem;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface);
   font-size: 0.8rem;
   font-weight: 500;
-  cursor: grab;
   user-select: none;
   box-shadow: 0 1px 2px rgba(17, 24, 39, 0.05);
 }
 
-.tier-chip:active {
+/* The whole chip is the drag handle (and a click opens its description), so it
+   shows the grab cursor across its full area. */
+.tier-chip-draggable {
+  cursor: grab;
+}
+
+.tier-chip-draggable:active {
   cursor: grabbing;
+}
+
+.tier-chip-draggable:hover {
+  border-color: var(--penta-green);
+}
+
+.tier-chip-label {
+  padding: 0.05rem 0.1rem;
+}
+
+/* The criterion whose description is currently open in the side panel. */
+.tier-chip-open {
+  border-color: var(--penta-green);
+  box-shadow: 0 0 0 1px var(--penta-green);
+}
+
+/* ★ favourite toggle on a chip (keep this axis across re-runs). */
+.tier-chip-fav {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--muted);
+  border-radius: 4px;
+  line-height: 0;
+}
+
+.tier-chip-fav:hover {
+  color: var(--penta-green);
+}
+
+.tier-chip-fav.is-fav {
+  color: #d97706; /* amber star when favourited */
+}
+
+/* The kept-star shown on the DragOverlay copy so a favourited chip looks the same
+   while being dragged. */
+.tier-chip-fav-icon {
+  color: #d97706;
+  flex-shrink: 0;
 }
 
 /* The floating DragOverlay copy: lifted off the page and showing the grabbing
@@ -2293,7 +2322,9 @@ h1 {
   .topnav,
   .page-heading,
   .workflow-bar,
-  .dimensions-panel,
+  .criteria-head-title,
+  .dimensions-summary,
+  .criteria-detail,
   .tier-list,
   .ranking-header > button,
   .ranking-subhead,

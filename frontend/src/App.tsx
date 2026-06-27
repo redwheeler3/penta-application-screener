@@ -1,5 +1,5 @@
-import { LogIn, LogOut } from "lucide-react";
-import { type ReactNode, type SyntheticEvent, useEffect, useRef, useState } from "react";
+import { LogIn, LogOut, Settings } from "lucide-react";
+import { type SyntheticEvent, useEffect, useRef, useState } from "react";
 import { HouseIcon } from "./HouseIcon";
 import * as api from "./api";
 import { defaultSettings } from "./constants";
@@ -28,7 +28,7 @@ import type {
 } from "./types";
 import { ApplicationsList } from "./components/ApplicationsList";
 import { CandidateDetail } from "./components/CandidateDetail";
-import { CriteriaPanel, RankingView } from "./components/RankingView";
+import { RankingView } from "./components/RankingView";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Toasts } from "./components/Toasts";
 import { WorkflowBar } from "./components/WorkflowBar";
@@ -44,7 +44,6 @@ export function App() {
   const [draft, setDraft] = useState<AppSettings>(defaultSettings);
   // The last settings persisted on the server. `draft` resets to this on load/save.
   const [saved, setSaved] = useState<SettingsResponse | null>(null);
-  const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState("");
 
@@ -123,10 +122,12 @@ export function App() {
   // "thinking" text instead of a bare spinner.
   const [criteriaThinking, setCriteriaThinking] = useState("");
 
-  // The deterministic ranked shortlist. `showRanking` toggles the ranked view over
-  // the list; null ranking means not yet fetched.
+  // The deterministic ranked shortlist; null ranking means not yet fetched. The
+  // results area is split into two peer tabs — the applications list and the ranking
+  // — with `activeTab` choosing which is shown (a candidate detail drills in over
+  // either). The Ranking tab only appears once a run exists (see the tab strip).
   const [ranking, setRanking] = useState<RankingResponse | null>(null);
-  const [showRanking, setShowRanking] = useState(false);
+  const [activeTab, setActiveTab] = useState<"applications" | "ranking" | "settings">("applications");
 
   // The committee's importance tiers for the current run. Each edit persists (PUT
   // /tiers) and returns the re-sorted ranking, so tiers and order stay in lockstep.
@@ -163,8 +164,9 @@ export function App() {
     const sheetId = resolveSheetId(payload);
     setSaved(payload);
     setDraft({ ...payload.settings, googleSheetId: sheetId });
-    // First-run setup: open the form when there's no sheet configured yet.
-    if (!sheetId) setIsSettingsExpanded(true);
+    // First-run setup: land on the Settings tab when there's no sheet configured
+    // yet, so setup is front-and-centre.
+    if (!sheetId) setActiveTab("settings");
   }
 
   function refreshDashboard() {
@@ -229,9 +231,6 @@ export function App() {
     if (response.ok) {
       const payload: SettingsResponse = await response.json();
       applySettingsResponse(payload);
-      // Collapse the form after a successful save (applySettingsResponse keeps it
-      // open only when no sheet is configured yet).
-      if (resolveSheetId(payload)) setIsSettingsExpanded(false);
       setSettingsMessage("Settings saved.");
       refreshDashboard();
     } else {
@@ -400,7 +399,7 @@ export function App() {
     if (rankRes.ok) {
       setRanking(await rankRes.json());
       if (tiersRes.ok) setTiers((await tiersRes.json()).tiers);
-      setShowRanking(true);
+      setActiveTab("ranking");
     } else {
       const problem = await readProblem(rankRes);
       showError(problem ? `Could not load the ranking: ${problem}` : "Could not load the ranking.");
@@ -552,82 +551,108 @@ export function App() {
         </section>
       ) : (
         <>
-          <SettingsPanel
-            draft={draft}
-            setDraft={setDraft}
-            saved={saved}
-            isExpanded={isSettingsExpanded}
-            onToggleExpanded={() => setIsSettingsExpanded((expanded) => !expanded)}
-            isSaving={isSavingSettings}
-            message={settingsMessage}
-            onSubmit={saveSettings}
+          {/* Global actions first (workflow acts on the whole dataset regardless of
+              tab), then the tab row, then the active tab's content. */}
+          <WorkflowBar
+            workflow={workflow}
+            coverage={coverage}
+            dashboardCounts={dashboardCounts}
+            hasGoogleSheetLink={hasGoogleSheetLink}
+            isSyncing={isSyncing}
+            importConfirm={importConfirm}
+            onRequestImport={requestImport}
+            onConfirmImport={syncApplications}
+            onCancelImport={() => setImportConfirm(false)}
+            screeningRunning={screeningRunning}
+            screeningEstimate={screeningEstimate}
+            screeningProgress={screeningProgress}
+            onRequestScreening={requestScreeningEstimate}
+            onRunScreening={runScreening}
+            onCancelScreening={() => setScreeningEstimate(null)}
+            rankRunning={rankRunning}
+            rankEstimate={rankEstimate}
+            rankProgress={rankProgress}
+            criteriaThinking={criteriaThinking}
+            favouritedCount={rankingRun?.favouritedKeys.length ?? 0}
+            proposedCount={rankingRun?.proposedDimensions.length ?? 0}
+            onRequestRank={requestRankEstimate}
+            onRunRank={runRank}
+            onCancelRank={() => setRankEstimate(null)}
           />
 
-          <section className="panel">
-            <div className="panel-header no-print">
-              <div>
-                <h2>Applications</h2>
-              </div>
-            </div>
-
-            <WorkflowBar
-              workflow={workflow}
-              coverage={coverage}
-              dashboardCounts={dashboardCounts}
-              hasGoogleSheetLink={hasGoogleSheetLink}
-              isSyncing={isSyncing}
-              importConfirm={importConfirm}
-              onRequestImport={requestImport}
-              onConfirmImport={syncApplications}
-              onCancelImport={() => setImportConfirm(false)}
-              screeningRunning={screeningRunning}
-              screeningEstimate={screeningEstimate}
-              screeningProgress={screeningProgress}
-              onRequestScreening={requestScreeningEstimate}
-              onRunScreening={runScreening}
-              onCancelScreening={() => setScreeningEstimate(null)}
-              rankRunning={rankRunning}
-              rankEstimate={rankEstimate}
-              rankProgress={rankProgress}
-              criteriaThinking={criteriaThinking}
-              favouritedCount={rankingRun?.favouritedKeys.length ?? 0}
-              proposedCount={rankingRun?.proposedDimensions.length ?? 0}
-              onRequestRank={requestRankEstimate}
-              onRunRank={runRank}
-              onCancelRank={() => setRankEstimate(null)}
-              showRanking={showRanking}
-              selectedAppOpen={Boolean(selectedApp)}
-              onOpenRanking={openRanking}
-              onHideRanking={() => setShowRanking(false)}
-            />
-
-            {rankingRun && !selectedApp ? (
-              <CriteriaPanel
-                rankingRun={rankingRun}
-                tiers={tiers}
-                favouritedKeys={rankingRun.favouritedKeys}
-                proposedDimensions={rankingRun.proposedDimensions}
-                onToggleFavourite={toggleFavourite}
-                onAddProposal={addProposal}
-                onRemoveProposal={removeProposal}
-              />
+          {/* Tab row: the two data views on the left, Settings set apart on the
+              right (config, not a third data view). */}
+          <div className="view-tabs no-print" role="tablist" aria-label="Views">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "applications" && !selectedApp}
+              className={`tab-button${activeTab === "applications" && !selectedApp ? " active" : ""}`}
+              onClick={() => {
+                setSelectedApp(null);
+                setActiveTab("applications");
+              }}
+            >
+              Applications
+            </button>
+            {/* The Ranking tab only appears once a run exists. Clicking it loads/
+                reconciles the ranking + tiers from the server (pure math, no cost). */}
+            {rankingRun ? (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "ranking" && !selectedApp}
+                className={`tab-button${activeTab === "ranking" && !selectedApp ? " active" : ""}`}
+                onClick={openRanking}
+              >
+                Ranking
+              </button>
             ) : null}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "settings" && !selectedApp}
+              className={`tab-button tab-button-settings${activeTab === "settings" && !selectedApp ? " active" : ""}`}
+              onClick={() => {
+                setSelectedApp(null);
+                setActiveTab("settings");
+              }}
+            >
+              <Settings size={14} />
+              <span>Settings</span>
+            </button>
+          </div>
 
-            {showRanking && !selectedApp && ranking ? (
-              <RankingView
-                ranking={ranking}
-                rankingRun={rankingRun}
-                tiers={tiers}
-                onSaveTiers={(next) => saveTiers(next)}
-                onAcknowledgeNew={acknowledgeNewDimensions}
-                onSelectApplication={viewApplication}
-              />
-            ) : selectedApp ? (
+          <section className="panel">
+            {selectedApp ? (
               <CandidateDetail
                 app={selectedApp}
                 onBack={() => setSelectedApp(null)}
                 onOverrideStatus={overrideStatus}
                 onClearOverride={clearStatusOverride}
+              />
+            ) : activeTab === "settings" ? (
+              <SettingsPanel
+                draft={draft}
+                setDraft={setDraft}
+                saved={saved}
+                isSaving={isSavingSettings}
+                message={settingsMessage}
+                onSubmit={saveSettings}
+              />
+            ) : activeTab === "ranking" && ranking ? (
+              <RankingView
+                ranking={ranking}
+                rankingRun={rankingRun}
+                tiers={tiers}
+                favouritedKeys={rankingRun?.favouritedKeys ?? []}
+                proposedDimensions={rankingRun?.proposedDimensions ?? []}
+                onSaveTiers={(next) => saveTiers(next)}
+                onAcknowledgeNew={acknowledgeNewDimensions}
+                onToggleFavourite={toggleFavourite}
+                onAddProposal={addProposal}
+                onRemoveProposal={removeProposal}
+                onSelectApplication={viewApplication}
               />
             ) : (
               <ApplicationsList
