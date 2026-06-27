@@ -62,7 +62,7 @@ def test_no_tiers_falls_back_to_uniform() -> None:
 
 
 def test_empty_working_tiers_fall_back_to_uniform() -> None:
-    # The opening default: S/A/B exist but are empty, so nothing is placed. No
+    # The opening default: Critical/Important/Minor exist but are empty, so nothing is placed. No
     # dimension carries positive weight -> uniform baseline, not an all-zero collapse.
     layout = [tier("tier-s", []), tier("tier-a", []), tier("tier-b", [])]
     assert weights_from_tiers(KEYS, layout) == {"a": 1.0, "b": 1.0, "c": 1.0, "d": 1.0}
@@ -128,7 +128,7 @@ def test_adopt_never_creates_a_duplicate_key() -> None:
 
 
 def test_carry_forward_places_matches_and_flags_only_genuinely_new() -> None:
-    # Prior run: 'a' in S-Tier (working), 'b' in Ignore (absent from stored tiers).
+    # Prior run: 'a' in the Critical tier (working), 'b' in Ignore (absent from stored tiers).
     old_tiers = [tier("tier-s", ["a"]), tier("tier-a", []), tier("tier-b", [])]
     prior_keys = {"a", "b"}
     # After adoption: 'a' (working match), 'b' (matched a prior-IGNORED dim),
@@ -140,7 +140,7 @@ def test_carry_forward_places_matches_and_flags_only_genuinely_new() -> None:
     )
 
     placed = {t["id"]: t["dimension_keys"] for t in layout}
-    # 'a' carried into S-Tier (its prior working tier).
+    # 'a' carried into the Critical tier (its prior working tier).
     assert placed["tier-s"] == ["a"]
     # 'b' was a prior-Ignored dim -> left unplaced (ignore decision carried) ...
     all_placed = {k for keys in placed.values() for k in keys}

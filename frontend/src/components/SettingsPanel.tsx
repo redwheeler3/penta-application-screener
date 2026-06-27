@@ -1,65 +1,24 @@
-import { Settings } from "lucide-react";
 import { type ReactNode, type SyntheticEvent } from "react";
 import { ALL_RULES } from "../constants";
-import { resolveSheetId } from "../format";
 import type { AppSettings, SettingsResponse } from "../types";
 
 export function SettingsPanel(props: {
   draft: AppSettings;
   setDraft: (next: AppSettings) => void;
   saved: SettingsResponse | null;
-  isExpanded: boolean;
-  onToggleExpanded: () => void;
   isSaving: boolean;
   message: string;
   onSubmit: (event: SyntheticEvent<HTMLFormElement>) => void;
 }): ReactNode {
-  const { draft, setDraft, saved, isExpanded } = props;
-  const hasGoogleSheetLink = Boolean(saved && resolveSheetId(saved));
-  // Explicit open/closed state, not derived from the field value — else typing a
-  // link would collapse the form before saving.
-  const showSettingsForm = isExpanded;
+  const { draft, setDraft, saved } = props;
 
   return (
     <section className="settings-panel no-print" aria-label="Admin settings">
-      <div className="settings-panel-header">
-        <div>
-          <h2>Settings</h2>
-        </div>
-        {hasGoogleSheetLink ? (
-          <button className="secondary-button secondary-button-accent" type="button" onClick={props.onToggleExpanded}>
-            <Settings size={16} />
-            <span>{isExpanded ? "Hide settings" : "Edit settings"}</span>
-          </button>
-        ) : null}
-      </div>
-
       <div className="settings-panel-body">
-        {/* Render nothing until the GET /settings fetch resolves. Before it does,
-            `saved` is null and the summary condition below is false, so the panel
-            would briefly fall through to the full form — a flash of the expanded
-            form on every load. Gating on `saved` avoids it; the first-run case (no
-            sheet) still opens the form, since `saved` is set then with an empty id. */}
-        {!saved ? null : hasGoogleSheetLink && !showSettingsForm ? (
-          <div className="settings-summary">
-            <div>
-              <span>Google Sheet</span>
-              {saved.googleSheetTitle && saved.googleSheetUrl ? (
-                <a className="sheet-reference" href={saved.googleSheetUrl} target="_blank" rel="noreferrer">
-                  {saved.googleSheetTitle}
-                </a>
-              ) : (
-                <strong>{saved.settings.googleSheetId}</strong>
-              )}
-            </div>
-            <div>
-              <span>Income range</span>
-              <strong>
-                {`$${saved.settings.incomeMin.toLocaleString()} – $${saved.settings.incomeMax.toLocaleString()}`}
-              </strong>
-            </div>
-          </div>
-        ) : (
+        {/* Rendered as the Settings tab's content: the form shows directly (you
+            navigated here to view/edit config), no summary/expand dance. Still gate
+            on `saved` so we don't flash the form before GET /settings resolves. */}
+        {!saved ? null : (
           <form className="settings-form" onSubmit={props.onSubmit}>
             <label>
               <span>Google Sheet link</span>

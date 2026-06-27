@@ -303,13 +303,13 @@ async def test_tiers_reweight_and_resort_the_ranking() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         await stream_events(client, "/ranking/run")
 
-        # Default layout: S / A / B working tiers (empty) + Ignore, with every
-        # dimension starting in Ignore — the committee drags them out to weigh in.
-        # Displayed layout: S / A / B working tiers (empty) + a synthesized Ignore
-        # zone holding every dimension, since nothing is placed yet.
+        # Default layout: Critical / Important / Minor working tiers (empty) + Ignore,
+        # with every dimension starting in Ignore — the committee drags them out to
+        # weigh in. Displayed layout: Critical / Important / Minor working tiers (empty)
+        # + a synthesized Ignore zone holding every dimension, since nothing is placed yet.
         default = (await client.get("/ranking/tiers")).json()["tiers"]
         working = [t for t in default if not t.get("ignore")]
-        assert [t["label"] for t in working] == ["S-Tier", "A-Tier", "B-Tier"]
+        assert [t["label"] for t in working] == ["Critical", "Important", "Minor"]
         assert all(t["dimensionKeys"] == [] for t in working)
         ignore = next(t for t in default if t.get("ignore"))
         assert set(ignore["dimensionKeys"]) == {"participation_commitment", "skills_offered"}
@@ -422,7 +422,7 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         # First run: discover v1 dimensions, score, then the committee tiers
-        # participation_commitment into S-Tier.
+        # participation_commitment into the Critical tier.
         provider.route("<essays>", an_essay_report())
         provider.route("<applicant_pool>", a_pattern_report())
         provider.route("applicant_id", a_scoring_report())
@@ -431,8 +431,8 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
             "/ranking/tiers",
             json={
                 "tiers": [
-                    {"id": "tier-s", "label": "S-Tier", "dimensionKeys": ["participation_commitment"], "ignore": False},
-                    {"id": "tier-a", "label": "A-Tier", "dimensionKeys": ["skills_offered"], "ignore": False},
+                    {"id": "tier-s", "label": "Critical", "dimensionKeys": ["participation_commitment"], "ignore": False},
+                    {"id": "tier-a", "label": "Important", "dimensionKeys": ["skills_offered"], "ignore": False},
                     {"id": "ignore", "label": "Ignore", "dimensionKeys": [], "ignore": True},
                 ]
             },
@@ -459,9 +459,9 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
 
         layout = (await client.get("/ranking/tiers")).json()["tiers"]
         by_label = {t["label"]: t for t in layout}
-        # The matched dimension ADOPTED the prior key and kept the prior S-Tier
+        # The matched dimension ADOPTED the prior key and kept the prior Critical
         # placement — so the placement carries forward by key, no separate identity.
-        assert by_label["S-Tier"]["dimensionKeys"] == ["participation_commitment"]
+        assert by_label["Critical"]["dimensionKeys"] == ["participation_commitment"]
         # The genuinely-new dimension is unplaced -> shows in the synthesized Ignore zone.
         ignore = next(t for t in layout if t.get("ignore"))
         assert "financial_stability" in ignore["dimensionKeys"]

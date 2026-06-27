@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, ChevronLeft, ChevronRight, ListOrdered, RefreshCw, Sparkles } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, RefreshCw, Sparkles } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import { screeningPercent } from "../format";
@@ -123,10 +123,6 @@ export function WorkflowBar(props: {
   onRequestRank: () => void;
   onRunRank: () => void;
   onCancelRank: () => void;
-  showRanking: boolean;
-  selectedAppOpen: boolean;
-  onOpenRanking: () => void;
-  onHideRanking: () => void;
 }): ReactNode {
   const {
     workflow,
@@ -217,22 +213,8 @@ export function WorkflowBar(props: {
             last
           />
         </ol>
-
-        {/* Ranked shortlist entry point, beside the steps once Rank has run.
-            Not a gated AI step — viewing the ranking is math, no model. */}
-        {workflow.candidatesScored && !props.selectedAppOpen ? (
-          props.showRanking ? (
-            <button type="button" className="secondary-button workflow-shortlist-button" onClick={props.onHideRanking}>
-              <ChevronLeft size={16} />
-              <span>Back to applications</span>
-            </button>
-          ) : (
-            <button type="button" className="primary-button workflow-shortlist-button" onClick={props.onOpenRanking}>
-              <ListOrdered size={16} />
-              <span>View ranking</span>
-            </button>
-          )
-        ) : null}
+        {/* The ranked shortlist now has its own "Ranking" tab in the panel header,
+            so there's no entry-point button here. */}
       </div>
 
       {props.importConfirm ? (

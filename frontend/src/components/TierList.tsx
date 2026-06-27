@@ -4,7 +4,7 @@
 // tiers weigh more, Ignore weighs 0. Layout edits are the source of truth — the
 // backend derives weights and re-sorts. Drag uses @dnd-kit; final placement is
 // computed on drop (no live re-parenting).
-import { Check, ChevronDown, ChevronUp, GripVertical, Plus, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, GripVertical, Plus, Star, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import {
   DndContext,
@@ -70,19 +70,77 @@ function makeTierCollisionDetection(tierIds: Set<string>): CollisionDetection {
   };
 }
 
-// The visual chip (used in place and inside the DragOverlay). `dragging` adds the
-// lifted overlay look. `isNew` badges a freshly-discovered dimension awaiting
-// triage; the badge clears once it's dragged into a working tier.
+// The visual-only chip shell used inside the DragOverlay (the copy that follows the
+// cursor). The in-place interactive chip is `DimensionChip` below; this just mirrors
+// its look while dragging. `isFav` shows the kept-star so the dragged copy matches.
 function ChipBody(props: {
   label: string;
   dragging?: boolean;
   isNew?: boolean;
-  onDismiss?: () => void;
+  isFav?: boolean;
 }): ReactNode {
   return (
     <span className={`tier-chip${props.dragging ? " tier-chip-overlay" : ""}${props.isNew ? " tier-chip-new" : ""}`}>
       <GripVertical size={12} className="tier-chip-grip" />
-      {props.label}
+      <span className="tier-chip-label">{props.label}</span>
+      {props.isFav ? <Star size={12} className="tier-chip-fav-icon" fill="currentColor" /> : null}
+      {props.isNew ? <span className="tier-chip-new-badge">New</span> : null}
+    </span>
+  );
+}
+
+// An interactive dimension chip: the ONE place a criterion lives now (the separate
+// criteria cloud is gone). The WHOLE chip is draggable (as it was originally); a
+// plain click — which the drag sensor's 4px activation distance lets through without
+// starting a drag — opens its description. Picking it up to drag also opens the
+// description (see handleDragStart). The ★ keeps it across re-runs. While dragging,
+// the original is hidden (opacity 0) and a DragOverlay copy follows the cursor.
+function DimensionChip(props: {
+  dimKey: string;
+  label: string;
+  isNew?: boolean;
+  isFav: boolean;
+  isOpen: boolean;
+  onDismiss?: () => void;
+  onToggleFav: () => void;
+  onOpen: () => void;
+}): ReactNode {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: props.dimKey });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    // Hide the in-place chip entirely while it's the active drag; the overlay
+    // copy is what the user sees moving.
+    opacity: isDragging ? 0 : 1,
+  };
+  return (
+    <span
+      ref={setNodeRef}
+      style={style}
+      className={`tier-chip tier-chip-draggable${props.isNew ? " tier-chip-new" : ""}${props.isOpen ? " tier-chip-open" : ""}`}
+      // The whole chip carries the drag listeners; a click that doesn't move opens
+      // the description (the 4px activation distance distinguishes click from drag).
+      {...attributes}
+      {...listeners}
+      onClick={props.onOpen}
+    >
+      <GripVertical size={12} className="tier-chip-grip" />
+      <span className="tier-chip-label">{props.label}</span>
+      <button
+        type="button"
+        className={`tier-chip-fav${props.isFav ? " is-fav" : ""}`}
+        aria-pressed={props.isFav}
+        title={props.isFav ? "Favourited — kept on re-run" : "Favourite — keep this axis on re-run"}
+        // Stop the drag sensor and the chip's open-on-click from firing on the ★.
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          props.onToggleFav();
+        }}
+      >
+        <Star size={12} fill={props.isFav ? "currentColor" : "none"} />
+      </button>
       {props.isNew ? (
         <span className="tier-chip-new-badge">
           New
@@ -92,7 +150,6 @@ function ChipBody(props: {
               className="tier-chip-new-dismiss"
               aria-label="Mark reviewed"
               title="Mark reviewed — keep in Ignore"
-              // Stop pointerdown so the dnd-kit drag sensor never starts on the ✕.
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
@@ -108,37 +165,14 @@ function ChipBody(props: {
   );
 }
 
-// A draggable dimension chip. While dragging, the original is hidden (opacity 0)
-// and a DragOverlay copy follows the cursor across tiers (see TierList), so the
-// drag isn't clipped to its tier's box.
-function DimensionChip(props: {
-  dimKey: string;
-  label: string;
-  isNew?: boolean;
-  onDismiss?: () => void;
-}): ReactNode {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: props.dimKey });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    // Hide the in-place chip entirely while it's the active drag; the overlay
-    // copy is what the user sees moving.
-    opacity: isDragging ? 0 : 1,
-  };
-  return (
-    <span ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <ChipBody label={props.label} isNew={props.isNew} onDismiss={props.onDismiss} />
-    </span>
-  );
-}
-
 // One tier row: a droppable target (so chips can land on empty space) wrapping a
 // sortable context of its chips, plus tier controls.
 function TierRow(props: {
   tier: Tier;
   labelFor: (key: string) => string;
   newKeys: Set<string>;
+  favourited: Set<string>;
+  openKey: string | null;
   isOver: boolean;
   canMoveUp: boolean;
   canMoveDown: boolean;
@@ -148,6 +182,8 @@ function TierRow(props: {
   onRename: (label: string) => void;
   // Acknowledge "new" dimensions in place (badge ✕ / "mark all reviewed").
   onAcknowledge: (keys: string[]) => void;
+  onToggleFav: (key: string, favourited: boolean) => void;
+  onOpen: (key: string) => void;
 }): ReactNode {
   const { tier, isOver } = props;
   // The droppable is the WHOLE row, so its rect covers the full tier height (no
@@ -205,13 +241,18 @@ function TierRow(props: {
               // "New" badge only while the dimension is still parked in Ignore;
               // dragging it into a working tier triages it, so the badge clears.
               const isNew = props.newKeys.has(key) && Boolean(tier.ignore);
+              const isFav = props.favourited.has(key);
               return (
                 <DimensionChip
                   key={key}
                   dimKey={key}
                   label={props.labelFor(key)}
                   isNew={isNew}
+                  isFav={isFav}
+                  isOpen={props.openKey === key}
                   onDismiss={isNew ? () => props.onAcknowledge([key]) : undefined}
+                  onToggleFav={() => props.onToggleFav(key, !isFav)}
+                  onOpen={() => props.onOpen(key)}
                 />
               );
             })
@@ -276,8 +317,17 @@ export function TierList(props: {
   tiers: Tier[];
   labelFor: (key: string) => string;
   newKeys: Set<string>;
+  favourited: Set<string>;
+  openKey: string | null;
+  // "Add criterion" toggle + its composer, owned by the parent. Rendered here so the
+  // two "+ Add" actions (criterion / tier) sit together above the chips they act on.
+  addOpen: boolean;
+  onToggleAdd: () => void;
+  composer: ReactNode;
   onAcknowledge: (keys: string[]) => void;
   onChange: (next: Tier[]) => void;
+  onToggleFav: (key: string, favourited: boolean) => void;
+  onOpen: (key: string) => void;
 }): ReactNode {
   const { tiers, onChange } = props;
   // The chip being dragged (for the DragOverlay) and the tier the pointer is over
@@ -295,7 +345,11 @@ export function TierList(props: {
   const collisionDetection = makeTierCollisionDetection(new Set(tiers.map((t) => t.id)));
 
   function handleDragStart(event: DragStartEvent) {
-    setActiveKey(String(event.active.id));
+    const key = String(event.active.id);
+    setActiveKey(key);
+    // Picking a chip up also shows its description (drag and read aren't separate
+    // actions). onOpen just sets the selection, so this is safe to fire every time.
+    props.onOpen(key);
   }
 
   function handleDragOver(event: DragOverEvent) {
@@ -315,6 +369,7 @@ export function TierList(props: {
   const working = tiers.filter((t) => !t.ignore);
   const ignore = tiers.find((t) => t.ignore);
   const activeLabel = activeKey ? props.labelFor(activeKey) : null;
+  const activeFav = activeKey ? props.favourited.has(activeKey) : false;
 
   function renameTier(id: string, label: string) {
     onChange(tiers.map((t) => (t.id === id ? { ...t, label } : t)));
@@ -350,10 +405,21 @@ export function TierList(props: {
     <div className="tier-list">
       <div className="tier-list-head">
         <span className="tier-list-title">Importance tiers</span>
-        <button type="button" className="secondary-button tier-add" onClick={addTier}>
-          <Plus size={14} /> Add tier
-        </button>
+        <div className="tier-list-actions no-print">
+          <button
+            type="button"
+            className="secondary-button tier-add"
+            aria-expanded={props.addOpen}
+            onClick={props.onToggleAdd}
+          >
+            <Plus size={14} /> Add criterion
+          </button>
+          <button type="button" className="secondary-button tier-add" onClick={addTier}>
+            <Plus size={14} /> Add tier
+          </button>
+        </div>
       </div>
+      {props.addOpen ? props.composer : null}
       <DndContext
         sensors={sensors}
         collisionDetection={collisionDetection}
@@ -367,6 +433,8 @@ export function TierList(props: {
             tier={tier}
             labelFor={props.labelFor}
             newKeys={props.newKeys}
+            favourited={props.favourited}
+            openKey={props.openKey}
             isOver={overTierId === tier.id}
             canMoveUp={idx > 0}
             canMoveDown={idx < working.length - 1}
@@ -375,6 +443,8 @@ export function TierList(props: {
             onRemove={() => removeTier(tier.id)}
             onRename={(label) => renameTier(tier.id, label)}
             onAcknowledge={props.onAcknowledge}
+            onToggleFav={props.onToggleFav}
+            onOpen={props.onOpen}
           />
         ))}
         {ignore ? (
@@ -382,6 +452,8 @@ export function TierList(props: {
             tier={ignore}
             labelFor={props.labelFor}
             newKeys={props.newKeys}
+            favourited={props.favourited}
+            openKey={props.openKey}
             isOver={overTierId === ignore.id}
             canMoveUp={false}
             canMoveDown={false}
@@ -390,12 +462,14 @@ export function TierList(props: {
             onRemove={() => {}}
             onRename={() => {}}
             onAcknowledge={props.onAcknowledge}
+            onToggleFav={props.onToggleFav}
+            onOpen={props.onOpen}
           />
         ) : null}
         {/* The floating copy that follows the cursor freely across tiers — this
             is what makes cross-tier drag smooth instead of clipped to a row. */}
         <DragOverlay>
-          {activeLabel ? <ChipBody label={activeLabel} dragging /> : null}
+          {activeLabel ? <ChipBody label={activeLabel} dragging isFav={activeFav} /> : null}
         </DragOverlay>
       </DndContext>
     </div>

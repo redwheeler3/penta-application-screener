@@ -1,128 +1,93 @@
-import { Plus, Printer, Star, X } from "lucide-react";
+import { Plus, Printer, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { bandClass, scoreBand } from "../format";
-import type { RankingResponse, CurrentRunResponse, Tier } from "../types";
+import type { RankingResponse, CurrentRunResponse, PoolDimension, Tier } from "../types";
 import { TierList, TierSummaryForPrint } from "./TierList";
 
-// The current run's discovered criteria — the axes scoring rates each candidate on
-// — plus a composer for steering the NEXT run's discovery: star a dimension to keep
-// it across re-runs (favourite), or describe an axis to propose. Both feed the next
-// Rank's discovery as "strongly consider"; the AI may refine, split, or skip them.
-// Shown above the list and the shortlist, not when a candidate is open.
-export function CriteriaPanel(props: {
-  rankingRun: CurrentRunResponse;
-  tiers: Tier[] | null;
-  favouritedKeys: string[];
+// The always-visible description pane beside the tiers. Shows the tapped criterion's
+// name + definition (the bulky text, kept out of the chips themselves); when nothing
+// is selected it shows a short prompt so the column never reads as broken/empty.
+function CriteriaDetail(props: { dim: PoolDimension | null }): ReactNode {
+  if (!props.dim) {
+    return (
+      <div className="criteria-detail criteria-detail-empty" role="region" aria-label="Criterion description">
+        <p className="criteria-detail-placeholder">Tap a criterion to read what it measures.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="criteria-detail" role="region" aria-label={`${props.dim.name} — what it measures`}>
+      <span className="dimension-name">{props.dim.name}</span>
+      <p className="dimension-def">{props.dim.definition}</p>
+    </div>
+  );
+}
+
+// The "add your own" composer + the pending-proposal list + the seed-count note.
+// Steers the NEXT run's discovery: a proposal (free text) or a ★ favourite both feed
+// the next Rank as "strongly consider"; the AI may refine, split, or skip them.
+function CriteriaComposer(props: {
+  favouritedCount: number;
   proposedDimensions: string[];
-  onToggleFavourite: (key: string, favourited: boolean) => void;
   onAddProposal: (text: string) => void;
   onRemoveProposal: (text: string) => void;
 }): ReactNode {
-  const { rankingRun } = props;
-  // Default to [] so a run persisted before this feature (no seed fields) can't crash.
-  const favouritedKeys = props.favouritedKeys ?? [];
-  const proposedDimensions = props.proposedDimensions ?? [];
-  const favourited = new Set(favouritedKeys);
   const [draft, setDraft] = useState("");
-
-  // Order criteria most→least important by tier position (Ignore last), then
-  // alphabetically by name within a tier — matching the tier list's chip order.
-  const rankOf = new Map<string, number>();
-  (props.tiers ?? []).forEach((tier, tierIdx) => {
-    tier.dimensionKeys.forEach((key) => rankOf.set(key, tierIdx));
-  });
-  const orderedDimensions = [...rankingRun.dimensions].sort((a, b) => {
-    const tierDelta =
-      (rankOf.get(a.key) ?? Number.MAX_SAFE_INTEGER) - (rankOf.get(b.key) ?? Number.MAX_SAFE_INTEGER);
-    return tierDelta !== 0 ? tierDelta : a.name.localeCompare(b.name);
-  });
-
+  const seedCount = props.favouritedCount + props.proposedDimensions.length;
   function submitDraft() {
     const text = draft.trim();
     if (!text) return;
     props.onAddProposal(text);
     setDraft("");
   }
-
-  const seedCount = favourited.size + proposedDimensions.length;
-
   return (
-    <details className="dimensions-panel">
-      <summary>Screening criteria ({rankingRun.dimensions.length})</summary>
-      <p className="dimensions-summary">{rankingRun.summary}</p>
-      <ul className="dimensions-list">
-        {orderedDimensions.map((dim) => {
-          const isFav = favourited.has(dim.key);
-          return (
-            <li key={dim.key} className="dimension-item">
-              <div className="dimension-head">
-                <button
-                  type="button"
-                  className={`dimension-fav${isFav ? " is-fav" : ""}`}
-                  aria-pressed={isFav}
-                  title={isFav ? "Favourited — kept on re-run" : "Favourite — keep this axis on re-run"}
-                  onClick={() => props.onToggleFavourite(dim.key, !isFav)}
-                >
-                  <Star size={14} fill={isFav ? "currentColor" : "none"} />
-                </button>
-                <span className="dimension-name">{dim.name}</span>
-              </div>
-              <p className="dimension-def">{dim.definition}</p>
-              <p className="dimension-why">{dim.whyItDifferentiates}</p>
-            </li>
-          );
-        })}
-      </ul>
-
-      <div className="criteria-composer no-print">
-        <h4>Suggest an axis to look for</h4>
-        <p className="criteria-composer-hint">
-          Describe a dimension you want considered. The next Rank offers it to the AI, which may refine, split, or skip
-          it to fit the pool. Star a discovered criterion above to keep it across re-runs.
-        </p>
-        <div className="criteria-composer-row">
-          <input
-            type="text"
-            value={draft}
-            placeholder="e.g. school-age kids who'd use the playground"
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                submitDraft();
-              }
-            }}
-          />
-          <button type="button" className="secondary-button" onClick={submitDraft} disabled={!draft.trim()}>
-            <Plus size={14} /> Add
-          </button>
-        </div>
-        {proposedDimensions.length > 0 ? (
-          <ul className="criteria-proposals">
-            {proposedDimensions.map((text) => (
-              <li key={text}>
-                <span>{text}</span>
-                <button
-                  type="button"
-                  className="criteria-proposal-remove"
-                  aria-label="Remove proposal"
-                  title="Remove"
-                  onClick={() => props.onRemoveProposal(text)}
-                >
-                  <X size={12} strokeWidth={3} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {seedCount > 0 ? (
-          <p className="criteria-seed-note">
-            Next Rank will offer the AI {seedCount} suggested {seedCount === 1 ? "axis" : "axes"} ({favourited.size}{" "}
-            favourited, {proposedDimensions.length} proposed) — it may refine, split, or skip them.
-          </p>
-        ) : null}
+    <div className="criteria-composer no-print">
+      <p className="criteria-composer-hint">
+        Describe a dimension you want considered. Re-ranking offers it to the AI, which may refine, split, or skip
+        it to fit the pool.
+      </p>
+      <div className="criteria-composer-row">
+        <input
+          type="text"
+          value={draft}
+          placeholder="e.g. school-age kids who'd use the playground"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submitDraft();
+            }
+          }}
+        />
+        <button type="button" className="secondary-button" onClick={submitDraft} disabled={!draft.trim()}>
+          <Plus size={14} /> Add
+        </button>
       </div>
-    </details>
+      {props.proposedDimensions.length > 0 ? (
+        <ul className="criteria-proposals">
+          {props.proposedDimensions.map((text) => (
+            <li key={text}>
+              <span>{text}</span>
+              <button
+                type="button"
+                className="criteria-proposal-remove"
+                aria-label="Remove proposal"
+                title="Remove"
+                onClick={() => props.onRemoveProposal(text)}
+              >
+                <X size={12} strokeWidth={3} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {seedCount > 0 ? (
+        <p className="criteria-seed-note">
+          Next Rank will offer the AI {seedCount} suggested {seedCount === 1 ? "axis" : "axes"} ({props.favouritedCount}{" "}
+          favourited, {props.proposedDimensions.length} proposed) — it may refine, split, or skip them.
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -132,12 +97,30 @@ export function RankingView(props: {
   ranking: RankingResponse;
   rankingRun: CurrentRunResponse | null;
   tiers: Tier[] | null;
+  favouritedKeys: string[];
+  proposedDimensions: string[];
   onSaveTiers: (next: Tier[]) => void;
   onAcknowledgeNew: (keys: string[]) => void;
+  onToggleFavourite: (key: string, favourited: boolean) => void;
+  onAddProposal: (text: string) => void;
+  onRemoveProposal: (text: string) => void;
   onSelectApplication: (id: number) => void;
 }): ReactNode {
   const { ranking, rankingRun, tiers } = props;
   const labelFor = (key: string) => rankingRun?.dimensions.find((d) => d.key === key)?.name ?? key;
+  // Default to [] so a run persisted before the seed feature can't crash.
+  const favourited = new Set(props.favouritedKeys ?? []);
+  const proposedDimensions = props.proposedDimensions ?? [];
+  // Which criterion's description is open (one at a time, shown below the tiers), and
+  // whether the "add your own" composer is revealed. The criteria now live as the
+  // tier chips — these drive the on-demand reading/adding that used to be a separate
+  // panel.
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  // The AI summary is long; clamp it to a couple of lines with a "more" toggle so it
+  // doesn't push the tiers (the actual control) down the page.
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
+  const openDim = openKey ? rankingRun?.dimensions.find((d) => d.key === openKey) ?? null : null;
 
   return (
     <div className="ranking-view">
@@ -145,8 +128,8 @@ export function RankingView(props: {
         <div>
           <h3>Candidate ranking</h3>
           <p className="ranking-subhead">
-            {ranking.scoredCount} candidate{ranking.scoredCount === 1 ? "" : "s"} scored, ranked by overall fit. Drag
-            criteria into importance tiers below to re-rank.
+            Drag criteria into importance tiers to re-rank; tap a criterion to read what it measures, or star it
+            to keep it when you re-rank.
           </p>
         </div>
         <button type="button" className="secondary-button no-print" onClick={() => window.print()}>
@@ -155,19 +138,61 @@ export function RankingView(props: {
         </button>
       </div>
 
-      {/* Tier-list: drag criteria into importance tiers; the ranking re-sorts on
-          each edit (deterministic, no model call). */}
+      {/* Tier-list: drag criteria into importance tiers; the ranking re-sorts on each
+          edit (deterministic, no model call). The criteria's descriptions, ★ favourite,
+          and "add your own" composer are folded in here (no separate criteria panel). */}
       {tiers && rankingRun ? (
         <>
-          <TierList
-            tiers={tiers}
-            labelFor={labelFor}
-            // Read from ranking (refreshed on every save) so badges clear
-            // immediately when a dimension is placed or acknowledged.
-            newKeys={new Set(ranking.newDimensionKeys)}
-            onAcknowledge={props.onAcknowledgeNew}
-            onChange={props.onSaveTiers}
-          />
+          <p className="criteria-head-title no-print">
+            This ranking weighs {rankingRun.dimensions.length} criteria
+          </p>
+          {rankingRun.summary ? (
+            <button
+              type="button"
+              className={`dimensions-summary no-print${summaryExpanded ? " is-expanded" : ""}`}
+              aria-expanded={summaryExpanded}
+              onClick={() => setSummaryExpanded((v) => !v)}
+              title={summaryExpanded ? "Show less" : "Show more"}
+            >
+              <span className="dimensions-summary-text">{rankingRun.summary}</span>
+              <span className="dimensions-summary-toggle">{summaryExpanded ? " Less" : " More…"}</span>
+            </button>
+          ) : null}
+          {/* Tier list + the always-visible description side by side: the description
+              sits to the RIGHT of the tiers (not below, where it scrolled out of
+              view) so tapping a chip shows its text without leaving the dragger. The
+              "Add criterion" composer + "Add tier" both live in the tier-list head. */}
+          <div className="criteria-layout">
+            <div className="criteria-layout-tiers">
+              <TierList
+                tiers={tiers}
+                labelFor={labelFor}
+                // Read from ranking (refreshed on every save) so badges clear
+                // immediately when a dimension is placed or acknowledged.
+                newKeys={new Set(ranking.newDimensionKeys)}
+                favourited={favourited}
+                openKey={openKey}
+                addOpen={addOpen}
+                onToggleAdd={() => setAddOpen((v) => !v)}
+                composer={
+                  <CriteriaComposer
+                    favouritedCount={favourited.size}
+                    proposedDimensions={proposedDimensions}
+                    onAddProposal={props.onAddProposal}
+                    onRemoveProposal={props.onRemoveProposal}
+                  />
+                }
+                onAcknowledge={props.onAcknowledgeNew}
+                onChange={props.onSaveTiers}
+                onToggleFav={props.onToggleFavourite}
+                // Selecting a criterion just sets it (never toggles back to empty),
+                // so a click that also nudges the drag sensor can't end up clearing
+                // the panel — and the description stays put when re-tapped.
+                onOpen={(key) => setOpenKey(key)}
+              />
+            </div>
+            <CriteriaDetail dim={openDim} />
+          </div>
           <TierSummaryForPrint tiers={tiers} labelFor={labelFor} />
         </>
       ) : null}

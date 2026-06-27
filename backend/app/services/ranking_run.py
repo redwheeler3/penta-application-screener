@@ -262,9 +262,9 @@ def set_seeds(
 # "ignored" by absence until the committee tiers it. The Ignore zone is never
 # stored; it's synthesized for display from whatever is unplaced.
 DEFAULT_WORKING_TIERS: list[dict] = [
-    {"id": "tier-s", "label": "S-Tier", "dimension_keys": []},
-    {"id": "tier-a", "label": "A-Tier", "dimension_keys": []},
-    {"id": "tier-b", "label": "B-Tier", "dimension_keys": []},
+    {"id": "tier-s", "label": "Critical", "dimension_keys": []},
+    {"id": "tier-a", "label": "Important", "dimension_keys": []},
+    {"id": "tier-b", "label": "Minor", "dimension_keys": []},
 ]
 
 # The synthesized Ignore zone's identity (display only; never persisted).
