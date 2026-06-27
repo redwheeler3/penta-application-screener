@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.ai.dimension_scoring import applications_to_score, kind_for_dimension
 from app.db.models import ApplicationAIResult
 from app.domain.ranking import CandidateScores, ScoredDimension
-from app.services.screening_run import current_pattern_report
+from app.services.ranking_run import current_dimension_report
 
 
 def candidate_scores(db: Session, run) -> list[CandidateScores]:
@@ -31,7 +31,7 @@ def candidate_scores(db: Session, run) -> list[CandidateScores]:
     picked up transparently. A candidate with no scored dimensions at all is
     skipped (nothing to rank on).
     """
-    report = current_pattern_report(run)
+    report = current_dimension_report(run)
     applications = applications_to_score(db)
     by_id = {app.id: app for app in applications}
 

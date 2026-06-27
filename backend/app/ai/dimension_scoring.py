@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.analysis import (
     AnalysisOutcome,
-    ScreeningResult,
+    PassResult,
     cached_outcome,
     derive_prompt_version,
     observed_avg_tokens,
@@ -47,13 +47,13 @@ from app.ai.schemas import (
     DimensionScoringReport,
     EssayAnalysisReport,
     PoolDimension,
-    PoolPatternReport,
+    PoolDimensionReport,
     ScoreConfidence,
 )
 from app.db.models import Application, ApplicationAIResult, ApplicationStatus
 from app.schemas.settings import AppSettings
 from app.services.application_import import extract_essays
-from app.services.screening_run import current_pattern_report, get_current_run
+from app.services.ranking_run import current_dimension_report, get_current_run
 
 KIND_PREFIX = "dimension_scoring"
 
@@ -211,7 +211,7 @@ def _avg_output_tokens_per_dimension(db: Session, model_id: str) -> int:
     return observed[1] if observed is not None else SCORING_FALLBACK_OUTPUT_TOKENS
 
 
-def _per_candidate_input_tokens(db: Session, report: PoolPatternReport | None) -> int:
+def _per_candidate_input_tokens(db: Session, report: PoolDimensionReport | None) -> int:
     """Input tokens for one candidate's scoring call. Input is a per-CALL constant —
     the candidate's full facts + essays are sent once regardless of how many
     dimensions the call scores — so we measure it from a real built prompt (~chars/4)
@@ -249,7 +249,7 @@ def estimate_dimension_scoring(
     model_id = settings.ai.first_pass_model
     candidates = applications_to_score(db)
     run = get_current_run(db)
-    report = current_pattern_report(run) if run is not None else None
+    report = current_dimension_report(run) if run is not None else None
     dims_per_candidate = len(report.dimensions) if report else ASSUMED_DIMENSIONS_FIRST_RUN
 
     input_tokens = _per_candidate_input_tokens(db, report)
@@ -272,7 +272,7 @@ estimate_scoring_without_dimensions = estimate_dimension_scoring
 def _to_score_dimensions(
     db: Session,
     application: Application,
-    report: PoolPatternReport,
+    report: PoolDimensionReport,
     model_id: str,
 ) -> tuple[list[PoolDimension], dict[str, DimensionScore]]:
     """Split a candidate's dimensions into (to-score, cached) by per-key cache hit.
@@ -310,7 +310,7 @@ def _split_usage(usage: Usage, parts: int) -> Usage:
 
 
 def _assemble(
-    report: PoolPatternReport,
+    report: PoolDimensionReport,
     cached: dict[str, DimensionScore],
     fresh: dict[str, DimensionScore],
 ) -> DimensionScoringReport:
@@ -333,10 +333,10 @@ def score_dimensions(
     provider: AIProvider,
     *,
     applications: list[Application],
-    report: PoolPatternReport,
+    report: PoolDimensionReport,
     settings: AppSettings,
     max_workers: int,
-) -> Iterator[ScreeningResult]:
+) -> Iterator[PassResult]:
     """Score every candidate, reusing cached per-dimension scores and batching each
     candidate's uncached dimensions into one model call.
 
@@ -368,10 +368,10 @@ def score_dimensions(
         plans, call=call, max_workers=max_workers
     ):
         if error is not None:
-            yield ScreeningResult(application=application, outcome=None, error=str(error))
+            yield PassResult(application=application, outcome=None, error=str(error))
             continue
         if result is None:  # fully cached
-            yield ScreeningResult(
+            yield PassResult(
                 application=application,
                 outcome=AnalysisOutcome(
                     output=_assemble(report, cached, {}), cost_usd=0.0, cached=True
@@ -394,7 +394,7 @@ def score_dimensions(
                 ),
             )
             call_cost += outcome.cost_usd
-        yield ScreeningResult(
+        yield PassResult(
             application=application,
             outcome=AnalysisOutcome(
                 output=_assemble(report, cached, fresh), cost_usd=call_cost, cached=False

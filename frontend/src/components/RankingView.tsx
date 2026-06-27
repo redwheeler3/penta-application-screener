@@ -1,7 +1,7 @@
 import { Plus, Printer, Star, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { bandClass, scoreBand } from "../format";
-import type { RankingState, ScreeningRunState, Tier } from "../types";
+import type { RankingResponse, CurrentRunResponse, Tier } from "../types";
 import { TierList, TierSummaryForPrint } from "./TierList";
 
 // The current run's discovered criteria — the axes scoring rates each candidate on
@@ -10,7 +10,7 @@ import { TierList, TierSummaryForPrint } from "./TierList";
 // Rank's discovery as "strongly consider"; the AI may refine, split, or skip them.
 // Shown above the list and the shortlist, not when a candidate is open.
 export function CriteriaPanel(props: {
-  screeningRun: ScreeningRunState;
+  rankingRun: CurrentRunResponse;
   tiers: Tier[] | null;
   favouritedKeys: string[];
   proposedDimensions: string[];
@@ -18,7 +18,7 @@ export function CriteriaPanel(props: {
   onAddProposal: (text: string) => void;
   onRemoveProposal: (text: string) => void;
 }): ReactNode {
-  const { screeningRun } = props;
+  const { rankingRun } = props;
   // Default to [] so a run persisted before this feature (no seed fields) can't crash.
   const favouritedKeys = props.favouritedKeys ?? [];
   const proposedDimensions = props.proposedDimensions ?? [];
@@ -31,7 +31,7 @@ export function CriteriaPanel(props: {
   (props.tiers ?? []).forEach((tier, tierIdx) => {
     tier.dimensionKeys.forEach((key) => rankOf.set(key, tierIdx));
   });
-  const orderedDimensions = [...screeningRun.dimensions].sort((a, b) => {
+  const orderedDimensions = [...rankingRun.dimensions].sort((a, b) => {
     const tierDelta =
       (rankOf.get(a.key) ?? Number.MAX_SAFE_INTEGER) - (rankOf.get(b.key) ?? Number.MAX_SAFE_INTEGER);
     return tierDelta !== 0 ? tierDelta : a.name.localeCompare(b.name);
@@ -48,8 +48,8 @@ export function CriteriaPanel(props: {
 
   return (
     <details className="dimensions-panel">
-      <summary>Screening criteria ({screeningRun.dimensions.length})</summary>
-      <p className="dimensions-summary">{screeningRun.summary}</p>
+      <summary>Screening criteria ({rankingRun.dimensions.length})</summary>
+      <p className="dimensions-summary">{rankingRun.summary}</p>
       <ul className="dimensions-list">
         {orderedDimensions.map((dim) => {
           const isFav = favourited.has(dim.key);
@@ -129,15 +129,15 @@ export function CriteriaPanel(props: {
 // The ranked shortlist: a decision surface, not a browse table. The order IS the
 // product — read top-down. The band label and rationale lead; numbers are detail.
 export function RankingView(props: {
-  ranking: RankingState;
-  screeningRun: ScreeningRunState | null;
+  ranking: RankingResponse;
+  rankingRun: CurrentRunResponse | null;
   tiers: Tier[] | null;
   onSaveTiers: (next: Tier[]) => void;
   onAcknowledgeNew: (keys: string[]) => void;
   onSelectApplication: (id: number) => void;
 }): ReactNode {
-  const { ranking, screeningRun, tiers } = props;
-  const labelFor = (key: string) => screeningRun?.dimensions.find((d) => d.key === key)?.name ?? key;
+  const { ranking, rankingRun, tiers } = props;
+  const labelFor = (key: string) => rankingRun?.dimensions.find((d) => d.key === key)?.name ?? key;
 
   return (
     <div className="ranking-view">
@@ -157,7 +157,7 @@ export function RankingView(props: {
 
       {/* Tier-list: drag criteria into importance tiers; the ranking re-sorts on
           each edit (deterministic, no model call). */}
-      {tiers && screeningRun ? (
+      {tiers && rankingRun ? (
         <>
           <TierList
             tiers={tiers}

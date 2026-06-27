@@ -24,7 +24,7 @@ class ApplicationStatus(StrEnum):
 class StatusSource(StrEnum):
     UNTOUCHED = "untouched"  # passed rules, AI didn't flag (or hasn't run)
     RULES = "rules"  # deterministic filters set it ineligible (high trust)
-    AI = "ai"  # AI quality pass set it ineligible (low trust — needs review)
+    AI = "ai"  # AI screening pass set it ineligible (low trust — needs review)
     HUMAN = "human"  # a person set the status, either direction
 
 
@@ -129,8 +129,7 @@ class ApplicationAIResult(TimestampMixin, Base):
     model_id: Mapped[str] = mapped_column(String(200), nullable=False)
     # The prompt version this result was produced under. Hashed into cache_key, but
     # also stored plainly so cost estimates can prefer current-version usage.
-    # Nullable: rows written before this column have an unknown version.
-    prompt_version: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    prompt_version: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     output: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     # The model's free-text reasoning, for the admin "Raw AI output" view. Nullable:
     # not every provider surfaces it.
@@ -156,13 +155,13 @@ class SyncRun(TimestampMixin, Base):
     filtered_out_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     # Hash of the import-relevant settings (sheet id + hard-filter thresholds +
     # disabled rules) at import time, so the dashboard can flag Import out of date
-    # when settings change. Null on rows imported before this column existed.
-    settings_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    # when settings change.
+    settings_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
 
 
-class ScreeningRun(TimestampMixin, Base):
-    __tablename__ = "screening_runs"
+class RankingRun(TimestampMixin, Base):
+    __tablename__ = "ranking_runs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)

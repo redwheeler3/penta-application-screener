@@ -24,7 +24,7 @@ class Essay(ResponseModel):
     answer: str
 
 
-class QualityFlagOut(ResponseModel):
+class ScreeningFlagOut(ResponseModel):
     category: str
     severity: str
     summary: str
@@ -71,7 +71,7 @@ class ApplicationSummary(ResponseModel):
     hard_filter_reasons: list[HardFilterReason] = []
     child_count: int | None = None
     household_income: int | None = None
-    # null = quality-flag pass not run; int = flag count (0 = ran clean).
+    # null = screening pass not run; int = flag count (0 = ran clean).
     flag_count: int | None = None
     flag_categories: list[str] | None = None
     created_at: str | None = None
@@ -82,7 +82,7 @@ class ApplicationDetail(ApplicationSummary):
     auto_status_source: str
     normalized: dict[str, Any] | None = None
     essays: list[Essay] = []
-    quality_flags: list[QualityFlagOut] | None = None
+    flags: list[ScreeningFlagOut] | None = None
     raw_row: dict[str, Any] | None = None
     ai_narrative: str | None = None
     essay_analysis: EssayAnalysisOut | None = None

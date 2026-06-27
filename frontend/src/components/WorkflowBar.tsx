@@ -1,12 +1,12 @@
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, ListOrdered, RefreshCw, Sparkles } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
-import { qfPercent } from "../format";
+import { screeningPercent } from "../format";
 import type {
   Coverage,
   DashboardCounts,
-  QualityFlagEstimate,
-  RankEstimate,
+  ScreeningEstimateResponse,
+  RankEstimateResponse,
   RankProgress,
   WorkflowState,
 } from "../types";
@@ -105,14 +105,14 @@ export function WorkflowBar(props: {
   onRequestImport: () => void;
   onConfirmImport: () => void;
   onCancelImport: () => void;
-  qfRunning: boolean;
-  qfEstimate: QualityFlagEstimate | null;
-  qfProgress: { processed: number; total: number } | null;
-  onRequestQualityFlags: () => void;
-  onRunQualityFlags: () => void;
-  onCancelQualityFlags: () => void;
+  screeningRunning: boolean;
+  screeningEstimate: ScreeningEstimateResponse | null;
+  screeningProgress: { processed: number; total: number } | null;
+  onRequestScreening: () => void;
+  onRunScreening: () => void;
+  onCancelScreening: () => void;
   rankRunning: boolean;
-  rankEstimate: RankEstimate | null;
+  rankEstimate: RankEstimateResponse | null;
   rankProgress: RankProgress | null;
   // The model's live reasoning during the criteria phase (discovery + match),
   // streamed; shown as "thinking" since that call has no per-item progress.
@@ -132,8 +132,8 @@ export function WorkflowBar(props: {
     workflow,
     coverage,
     dashboardCounts,
-    qfEstimate,
-    qfProgress,
+    screeningEstimate,
+    screeningProgress,
     rankEstimate,
     rankProgress,
   } = props;
@@ -166,12 +166,12 @@ export function WorkflowBar(props: {
             n={2}
             title="Screen"
             icon={<Sparkles size={16} />}
-            done={workflow.qualityChecksRun}
-            busy={props.qfRunning}
+            done={workflow.screened}
+            busy={props.screeningRunning}
             busyLabel="Screening"
             // Needs a sync, eligible apps, and no estimate prompt open.
             disabled={
-              !workflow.synced || props.qfRunning || qfEstimate !== null || dashboardCounts.status.eligible === 0
+              !workflow.synced || props.screeningRunning || screeningEstimate !== null || dashboardCounts.status.eligible === 0
             }
             disabledTitle={
               !workflow.synced
@@ -180,9 +180,9 @@ export function WorkflowBar(props: {
                   ? "No eligible applicants to screen."
                   : undefined
             }
-            onClick={props.onRequestQualityFlags}
-            coverage={coverage.qualityChecksRun}
-            progress={qfProgress}
+            onClick={props.onRequestScreening}
+            coverage={coverage.screened}
+            progress={screeningProgress}
           />
           <WorkflowStep
             n={3}
@@ -195,13 +195,13 @@ export function WorkflowBar(props: {
             busyLabel="Ranking"
             // Needs screening run, eligible apps, and no open estimate.
             disabled={
-              !workflow.qualityChecksRun ||
+              !workflow.screened ||
               props.rankRunning ||
               rankEstimate !== null ||
               dashboardCounts.status.eligible === 0
             }
             disabledTitle={
-              !workflow.qualityChecksRun
+              !workflow.screened
                 ? "Run Screen first."
                 : dashboardCounts.status.eligible === 0
                   ? "No eligible applicants to rank."
@@ -236,8 +236,8 @@ export function WorkflowBar(props: {
       </div>
 
       {props.importConfirm ? (
-        <div className="qf-confirm">
-          <div className="qf-confirm-body">
+        <div className="run-confirm">
+          <div className="run-confirm-body">
             <strong>Sync applications?</strong>
             {workflow.synced ? (
               <p>
@@ -248,7 +248,7 @@ export function WorkflowBar(props: {
               <p>Pull the applications from the configured Google Sheet and screen them against the current settings.</p>
             )}
           </div>
-          <div className="qf-confirm-actions">
+          <div className="run-confirm-actions">
             <button className="primary-button" type="button" onClick={props.onConfirmImport} disabled={props.isSyncing}>
               {props.isSyncing ? "Syncing" : "Confirm & sync"}
             </button>
@@ -259,70 +259,70 @@ export function WorkflowBar(props: {
         </div>
       ) : null}
 
-      {qfEstimate ? (
-        <div className="qf-confirm">
-          <div className="qf-confirm-body">
-            <strong>Run AI quality checks?</strong>
-            {qfEstimate.toAnalyze === 0 ? (
+      {screeningEstimate ? (
+        <div className="run-confirm">
+          <div className="run-confirm-body">
+            <strong>Run AI screening?</strong>
+            {screeningEstimate.toAnalyze === 0 ? (
               <p>
-                Screening is already up to date — all {qfEstimate.cached} eligible applicant
-                {qfEstimate.cached === 1 ? " has" : "s have"} been checked. Sync new or changed applications to screen
+                Screening is already up to date — all {screeningEstimate.cached} eligible applicant
+                {screeningEstimate.cached === 1 ? " has" : "s have"} been checked. Sync new or changed applications to screen
                 again.
               </p>
             ) : (
               <p>
-                Analyze {qfEstimate.toAnalyze} eligible applicant{qfEstimate.toAnalyze === 1 ? "" : "s"}
-                {qfEstimate.cached > 0 ? ` (${qfEstimate.cached} already cached)` : ""}. Estimated cost{" "}
-                <strong>${qfEstimate.estimatedUsd.toFixed(4)}</strong> (cap ${qfEstimate.capUsd.toFixed(2)}).
+                Analyze {screeningEstimate.toAnalyze} eligible applicant{screeningEstimate.toAnalyze === 1 ? "" : "s"}
+                {screeningEstimate.cached > 0 ? ` (${screeningEstimate.cached} already cached)` : ""}. Estimated cost{" "}
+                <strong>${screeningEstimate.estimatedUsd.toFixed(4)}</strong> (cap ${screeningEstimate.capUsd.toFixed(2)}).
               </p>
             )}
-            {qfEstimate.toAnalyze > 0 && !qfEstimate.withinCap ? (
-              <p className="qf-confirm-warn">
+            {screeningEstimate.toAnalyze > 0 && !screeningEstimate.withinCap ? (
+              <p className="run-confirm-warn">
                 Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
               </p>
             ) : null}
           </div>
-          <div className="qf-confirm-actions">
+          <div className="run-confirm-actions">
             {/* No run button when there's nothing to do — informational, Close only. */}
-            {qfEstimate.toAnalyze > 0 ? (
+            {screeningEstimate.toAnalyze > 0 ? (
               <button
                 className="primary-button"
                 type="button"
-                onClick={props.onRunQualityFlags}
-                disabled={props.qfRunning || !qfEstimate.withinCap}
+                onClick={props.onRunScreening}
+                disabled={props.screeningRunning || !screeningEstimate.withinCap}
               >
-                {props.qfRunning ? "Running" : "Confirm & run"}
+                {props.screeningRunning ? "Running" : "Confirm & run"}
               </button>
             ) : null}
-            <button className="secondary-button" type="button" onClick={props.onCancelQualityFlags}>
-              {qfEstimate.toAnalyze === 0 ? "Close" : "Cancel"}
+            <button className="secondary-button" type="button" onClick={props.onCancelScreening}>
+              {screeningEstimate.toAnalyze === 0 ? "Close" : "Cancel"}
             </button>
           </div>
         </div>
       ) : null}
-      {props.qfRunning ? (
-        <div className="qf-progress">
-          <div className="qf-progress-label">
-            {qfProgress
-              ? `Analyzing applications… ${qfProgress.processed}/${qfProgress.total} ` +
-                `(${Math.round(qfPercent(qfProgress))}%)`
+      {props.screeningRunning ? (
+        <div className="run-progress">
+          <div className="run-progress-label">
+            {screeningProgress
+              ? `Analyzing applications… ${screeningProgress.processed}/${screeningProgress.total} ` +
+                `(${Math.round(screeningPercent(screeningProgress))}%)`
               : "Starting analysis…"}
           </div>
           {/* Indeterminate bar until the first progress event, so the indicator
               appears instantly on confirm. */}
-          <div className="qf-progress-track">
-            {qfProgress ? (
-              <div className="qf-progress-fill" style={{ width: `${qfPercent(qfProgress)}%` }} />
+          <div className="run-progress-track">
+            {screeningProgress ? (
+              <div className="run-progress-fill" style={{ width: `${screeningPercent(screeningProgress)}%` }} />
             ) : (
-              <div className="qf-progress-fill qf-progress-fill-indeterminate" />
+              <div className="run-progress-fill run-progress-fill-indeterminate" />
             )}
           </div>
         </div>
       ) : null}
 
       {rankEstimate ? (
-        <div className="qf-confirm">
-          <div className="qf-confirm-body">
+        <div className="run-confirm">
+          <div className="run-confirm-body">
             <strong>Rank the candidates?</strong>
             {rankEstimate.rankingCurrent ? (
               // Nothing changed in the pool, but re-ranking is still allowed: the
@@ -341,7 +341,7 @@ export function WorkflowBar(props: {
                 {rankEstimate.capUsd.toFixed(2)}).
               </p>
             )}
-            <ul className="qf-confirm-breakdown">
+            <ul className="run-confirm-breakdown">
               <li>
                 Summarize essays ~${rankEstimate.breakdown.essaysUsd.toFixed(4)}
                 {rankEstimate.essaysCached > 0 ? ` (${rankEstimate.essaysCached} cached)` : ""}
@@ -353,19 +353,19 @@ export function WorkflowBar(props: {
               <li>Score against criteria ~${rankEstimate.breakdown.scoringUsd.toFixed(4)}</li>
             </ul>
             {props.favouritedCount + props.proposedCount > 0 ? (
-              <p className="qf-confirm-note">
+              <p className="run-confirm-note">
                 Offering the AI {props.favouritedCount + props.proposedCount} suggested{" "}
                 {props.favouritedCount + props.proposedCount === 1 ? "axis" : "axes"} ({props.favouritedCount} favourited,{" "}
                 {props.proposedCount} proposed) — it may refine, split, or skip them.
               </p>
             ) : null}
             {!rankEstimate.withinCap ? (
-              <p className="qf-confirm-warn">
+              <p className="run-confirm-warn">
                 Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
               </p>
             ) : null}
           </div>
-          <div className="qf-confirm-actions">
+          <div className="run-confirm-actions">
             <button
               className="primary-button"
               type="button"
@@ -381,23 +381,23 @@ export function WorkflowBar(props: {
         </div>
       ) : null}
       {props.rankRunning ? (
-        <div className="qf-progress">
-          <div className="qf-progress-label">
+        <div className="run-progress">
+          <div className="run-progress-label">
             {rankProgress
               ? rankProgress.phase === "criteria"
                 ? "Finding criteria across the pool…"
                 : `${rankProgress.phase === "essays" ? "Summarizing essays" : "Scoring candidates"}… ` +
                   `${rankProgress.processed}/${rankProgress.total}` +
-                  (rankProgress.total ? ` (${Math.round(qfPercent(rankProgress))}%)` : "")
+                  (rankProgress.total ? ` (${Math.round(screeningPercent(rankProgress))}%)` : "")
               : "Starting…"}
           </div>
-          <div className="qf-progress-track">
+          <div className="run-progress-track">
             {/* Criteria is a single call with no fraction, so it shows the
                 indeterminate bar; the per-candidate phases show real width. */}
             {rankProgress && rankProgress.phase !== "criteria" && rankProgress.total ? (
-              <div className="qf-progress-fill" style={{ width: `${qfPercent(rankProgress)}%` }} />
+              <div className="run-progress-fill" style={{ width: `${screeningPercent(rankProgress)}%` }} />
             ) : (
-              <div className="qf-progress-fill qf-progress-fill-indeterminate" />
+              <div className="run-progress-fill run-progress-fill-indeterminate" />
             )}
           </div>
           {/* During the criteria phase (discovery + match — one long opaque call,

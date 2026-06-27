@@ -1,8 +1,8 @@
-"""create initial tables
+"""baseline schema
 
-Revision ID: 265a2a6c616c
+Revision ID: 2f0eebed8538
 Revises: 
-Create Date: 2026-06-07 15:15:35.525300
+Create Date: 2026-06-26 16:30:29.320622
 """
 
 from collections.abc import Sequence
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = '265a2a6c616c'
+revision: str = '2f0eebed8538'
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -36,14 +36,17 @@ def upgrade() -> None:
     sa.Column('raw_row', sa.JSON(), nullable=False),
     sa.Column('raw_row_hash', sa.String(length=64), nullable=False),
     sa.Column('normalized', sa.JSON(), nullable=False),
-    sa.Column('hard_filter_status', sa.Enum('eligible', 'filtered_out', name='hardfilterstatus'), nullable=False),
+    sa.Column('status', sa.Enum('eligible', 'ineligible', name='applicationstatus'), nullable=False),
+    sa.Column('status_source', sa.Enum('untouched', 'rules', 'ai', 'human', name='statussource'), nullable=False),
     sa.Column('hard_filter_reasons', sa.JSON(), nullable=False),
+    sa.Column('reviewed_fingerprint', sa.String(length=64), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_applications_hard_filter_status'), 'applications', ['hard_filter_status'], unique=False)
     op.create_index(op.f('ix_applications_primary_email'), 'applications', ['primary_email'], unique=True)
+    op.create_index(op.f('ix_applications_status'), 'applications', ['status'], unique=False)
+    op.create_index(op.f('ix_applications_status_source'), 'applications', ['status_source'], unique=False)
     op.create_table('sync_runs',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('source_sheet_id', sa.String(length=255), nullable=False),
@@ -51,8 +54,10 @@ def upgrade() -> None:
     sa.Column('duplicate_count', sa.Integer(), nullable=False),
     sa.Column('imported_count', sa.Integer(), nullable=False),
     sa.Column('updated_count', sa.Integer(), nullable=False),
+    sa.Column('unchanged_count', sa.Integer(), nullable=False),
     sa.Column('eligible_count', sa.Integer(), nullable=False),
     sa.Column('filtered_out_count', sa.Integer(), nullable=False),
+    sa.Column('settings_fingerprint', sa.String(length=64), nullable=False),
     sa.Column('notes', sa.Text(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
@@ -72,6 +77,27 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
     op.create_index(op.f('ix_users_google_subject'), 'users', ['google_subject'], unique=True)
+    op.create_table('application_ai_results',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('application_id', sa.Integer(), nullable=False),
+    sa.Column('kind', sa.String(length=80), nullable=False),
+    sa.Column('cache_key', sa.String(length=64), nullable=False),
+    sa.Column('model_id', sa.String(length=200), nullable=False),
+    sa.Column('prompt_version', sa.String(length=20), nullable=False),
+    sa.Column('output', sa.JSON(), nullable=False),
+    sa.Column('narrative', sa.Text(), nullable=True),
+    sa.Column('input_tokens', sa.Integer(), nullable=False),
+    sa.Column('output_tokens', sa.Integer(), nullable=False),
+    sa.Column('cost_usd', sa.Float(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.ForeignKeyConstraint(['application_id'], ['applications.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_application_ai_results_application_id'), 'application_ai_results', ['application_id'], unique=False)
+    op.create_index(op.f('ix_application_ai_results_cache_key'), 'application_ai_results', ['cache_key'], unique=True)
+    op.create_index(op.f('ix_application_ai_results_kind'), 'application_ai_results', ['kind'], unique=False)
+    op.create_index(op.f('ix_application_ai_results_prompt_version'), 'application_ai_results', ['prompt_version'], unique=False)
     op.create_table('google_credentials',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
@@ -82,7 +108,7 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('user_id')
     )
-    op.create_table('screening_runs',
+    op.create_table('ranking_runs',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('owner_user_id', sa.Integer(), nullable=True),
@@ -100,15 +126,22 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # ### commands auto generated by Alembic - please adjust! ###
-    op.drop_table('screening_runs')
+    op.drop_table('ranking_runs')
     op.drop_table('google_credentials')
+    op.drop_index(op.f('ix_application_ai_results_prompt_version'), table_name='application_ai_results')
+    op.drop_index(op.f('ix_application_ai_results_kind'), table_name='application_ai_results')
+    op.drop_index(op.f('ix_application_ai_results_cache_key'), table_name='application_ai_results')
+    op.drop_index(op.f('ix_application_ai_results_application_id'), table_name='application_ai_results')
+    op.drop_table('application_ai_results')
     op.drop_index(op.f('ix_users_google_subject'), table_name='users')
     op.drop_index(op.f('ix_users_email'), table_name='users')
     op.drop_table('users')
     op.drop_table('sync_runs')
+    op.drop_index(op.f('ix_applications_status_source'), table_name='applications')
+    op.drop_index(op.f('ix_applications_status'), table_name='applications')
     op.drop_index(op.f('ix_applications_primary_email'), table_name='applications')
-    op.drop_index(op.f('ix_applications_hard_filter_status'), table_name='applications')
     op.drop_table('applications')
     op.drop_index(op.f('ix_admin_settings_key'), table_name='admin_settings')
     op.drop_table('admin_settings')
     # ### end Alembic commands ###
+

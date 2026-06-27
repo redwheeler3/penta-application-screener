@@ -93,18 +93,18 @@ export function CandidateDetail(props: {
           </ul>
         </div>
       ) : null}
-      {app.qualityFlags && app.qualityFlags.length > 0 ? (
-        <div className="quality-flags">
-          <strong>AI quality flags</strong>
-          <p className="quality-flags-hint">
+      {app.flags && app.flags.length > 0 ? (
+        <div className="flags-panel">
+          <strong>Screening flags</strong>
+          <p className="flags-hint">
             The AI raised these. Decide for yourself which matter — set the status above.
           </p>
           <ul>
-            {app.qualityFlags.map((flag, i) => (
-              <li key={i} className={`quality-flag quality-flag-${flag.severity}`}>
-                <span className="quality-flag-category">{FLAG_CATEGORY_LABELS[flag.category] ?? flag.category}</span>
-                <span className="quality-flag-summary">{flag.summary}</span>
-                {flag.evidence ? <span className="quality-flag-evidence">{flag.evidence}</span> : null}
+            {app.flags.map((flag, i) => (
+              <li key={i} className={`flag flag-${flag.severity}`}>
+                <span className="flag-category">{FLAG_CATEGORY_LABELS[flag.category] ?? flag.category}</span>
+                <span className="flag-summary">{flag.summary}</span>
+                {flag.evidence ? <span className="flag-evidence">{flag.evidence}</span> : null}
               </li>
             ))}
           </ul>
@@ -171,7 +171,7 @@ export function CandidateDetail(props: {
       ) : null}
       {app.aiNarrative ? (
         <details className="raw-row-section">
-          <summary>Raw AI narrative (quality flags)</summary>
+          <summary>Raw AI narrative (screening)</summary>
           <div className="ai-narrative">
             <ReactMarkdown>{app.aiNarrative}</ReactMarkdown>
           </div>

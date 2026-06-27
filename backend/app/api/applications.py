@@ -25,12 +25,12 @@ from app.schemas.applications import (
     DimensionContributionOut,
     EssayAnalysisOut,
     Facets,
-    QualityFlagOut,
+    ScreeningFlagOut,
 )
 from app.services.application_import import extract_essays
 from app.services.ranking_view import candidate_scores
-from app.services.screening_run import (
-    current_pattern_report,
+from app.services.ranking_run import (
+    current_dimension_report,
     dimension_weights,
     get_current_run,
 )
@@ -247,7 +247,7 @@ def _serialize_summary(
         hard_filter_reasons=app.hard_filter_reasons,
         child_count=normalized.get("child_count"),
         household_income=normalized.get("household_income"),
-        # null = quality-flag pass not run; int = flag count (0 = ran clean).
+        # null = screening pass not run; int = flag count (0 = ran clean).
         flag_count=None if flags is None else len(flags),
         # Distinct flag categories from the latest pass, for the list REASON cell.
         flag_categories=None if flags is None else _distinct_categories(flags),
@@ -267,11 +267,11 @@ def _distinct_categories(flags: list[dict[str, Any]]) -> list[str]:
 def _latest_flags(
     db: Session, application_ids: list[int] | None = None
 ) -> dict[int, list[dict[str, Any]]]:
-    """Flags from each application's most recent quality-flag result, as
+    """Flags from each application's most recent screening result, as
     {application_id: flag_list}. Applications with no result are absent. Pass
     application_ids to scope the query to one page.
     """
-    latest = _latest_results(db, "quality_flags", application_ids)
+    latest = _latest_results(db, "screening", application_ids)
     return {
         app_id: (result.output or {}).get("flags", [])
         for app_id, result in latest.items()
@@ -300,7 +300,7 @@ def _latest_results(
 def _serialize_detail(app: Application, db: Session) -> ApplicationDetail:
     # The raw source row and AI narrative are shown to any committee member: they're
     # trusted screeners, and these just back the data the member already sees.
-    flag_result = _latest_results(db, "quality_flags", [app.id]).get(app.id)
+    flag_result = _latest_results(db, "screening", [app.id]).get(app.id)
     flags = (flag_result.output or {}).get("flags", []) if flag_result else None
     summary = _serialize_summary(app, flags=flags)
     # What the machine would decide from the current findings, whoever owns status
@@ -321,8 +321,8 @@ def _serialize_detail(app: Application, db: Session) -> ApplicationDetail:
         auto_status_source=auto_source.value,
         normalized=app.normalized,
         essays=extract_essays(app.raw_row or {}),
-        quality_flags=(
-            [QualityFlagOut(**f) for f in flags] if flags is not None else None
+        flags=(
+            [ScreeningFlagOut(**f) for f in flags] if flags is not None else None
         ),
         raw_row=app.raw_row,
         ai_narrative=flag_result.narrative if flag_result is not None else None,
@@ -349,7 +349,7 @@ def _dimension_scores(
     contribute nothing to the ranking.
     """
     run = get_current_run(db)
-    report = current_pattern_report(run) if run is not None else None
+    report = current_dimension_report(run) if run is not None else None
     if report is None:
         return None
 

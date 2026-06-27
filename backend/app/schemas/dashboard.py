@@ -18,7 +18,7 @@ class DashboardCounts(ResponseModel):
 class WorkflowState(ResponseModel):
     synced: bool
     import_current: bool
-    quality_checks_run: bool
+    screened: bool
     essays_analyzed: bool
     patterns_discovered: bool
     candidates_scored: bool

@@ -7,8 +7,8 @@ The layout holds only *working* tiers (most→least important). "Ignored" is the
 absence of a placement, not a stored tier — a dimension in no tier has weight 0.
 """
 
-from app.ai.schemas import PoolDimension, PoolPatternReport
-from app.services.screening_run import (
+from app.ai.schemas import PoolDimension, PoolDimensionReport
+from app.services.ranking_run import (
     adopt_matched_keys,
     carry_forward_layout,
     weights_from_tiers,
@@ -17,8 +17,8 @@ from app.services.screening_run import (
 KEYS = ["a", "b", "c", "d"]
 
 
-def report(*keys: str) -> PoolPatternReport:
-    return PoolPatternReport(
+def report(*keys: str) -> PoolDimensionReport:
+    return PoolDimensionReport(
         summary="s",
         dimensions=[
             PoolDimension(key=k, name=k, definition="d", why_it_differentiates="w")
@@ -90,7 +90,7 @@ def test_stale_key_in_layout_is_ignored() -> None:
 
 
 def test_adopt_rewrites_matched_key_keeps_new_content() -> None:
-    new = PoolPatternReport(
+    new = PoolDimensionReport(
         summary="s",
         dimensions=[
             PoolDimension(

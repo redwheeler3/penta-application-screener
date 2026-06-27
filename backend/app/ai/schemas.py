@@ -28,7 +28,7 @@ class FlagSeverity(StrEnum):
     NOTABLE = "notable"
 
 
-class QualityFlag(BaseModel):
+class ScreeningFlag(BaseModel):
     category: FlagCategory
     severity: FlagSeverity = Field(
         description="info for minor notes; notable for things the screener should review",
@@ -39,14 +39,14 @@ class QualityFlag(BaseModel):
     )
 
 
-class QualityFlagReport(BaseModel):
-    """The complete set of informational quality flags for one application.
+class ScreeningReport(BaseModel):
+    """The complete set of informational screening flags for one application.
 
     Empty ``flags`` means the integrity pass found nothing of concern. Flags are
     never disqualifying — they only surface things for the screener to review.
     """
 
-    flags: list[QualityFlag] = Field(default_factory=list)
+    flags: list[ScreeningFlag] = Field(default_factory=list)
 
 
 class EssayAnalysisReport(BaseModel):
@@ -143,7 +143,7 @@ class PoolDimension(BaseModel):
     )
 
 
-class PoolPatternReport(BaseModel):
+class PoolDimensionReport(BaseModel):
     """Pool-level discovery: the differentiating dimensions for THIS pool.
 
     Run-scoped, not per-candidate. It does not rank, score, or weight anyone —

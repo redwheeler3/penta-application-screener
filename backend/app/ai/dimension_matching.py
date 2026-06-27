@@ -17,7 +17,7 @@ from app.ai.analysis import derive_prompt_version
 from app.ai.pricing import cost_usd
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider, DeltaSink
-from app.ai.schemas import DimensionMatchReport, PoolPatternReport
+from app.ai.schemas import DimensionMatchReport, PoolDimensionReport
 from app.schemas.settings import AppSettings
 
 KIND = "dimension_matching"  # for logging / the debug view; not a cached per-app kind
@@ -50,12 +50,12 @@ Return the high-confidence identity matches: for each NEW dimension that clearly
 
 # Prompt identity, derived from the static prompt text. This pass is UNCACHED, but it
 # still has a version: it is folded into the run's rank-inputs fingerprint (see
-# rank_inputs_fingerprint in services/screening_run.py) so editing this prompt makes
+# rank_inputs_fingerprint in services/ranking_run.py) so editing this prompt makes
 # Rank show "out of date".
 PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 
 
-def _dimensions_block(tag: str, report: PoolPatternReport) -> str:
+def _dimensions_block(tag: str, report: PoolDimensionReport) -> str:
     """A compact JSON list of a report's dimensions, wrapped in an XML tag for the
     prompt. Keys are included so the model can return them, but it matches on
     meaning, not wording.
@@ -67,7 +67,7 @@ def _dimensions_block(tag: str, report: PoolPatternReport) -> str:
     return f"<{tag}>\n{json.dumps(dims, indent=2, default=str)}\n</{tag}>"
 
 
-def build_prompt(old: PoolPatternReport, new: PoolPatternReport) -> str:
+def build_prompt(old: PoolDimensionReport, new: PoolDimensionReport) -> str:
     return (
         f"{_INSTRUCTIONS}"
         f"\n\n{_dimensions_block('prior_dimensions', old)}"
@@ -99,8 +99,8 @@ def estimate_match(settings: AppSettings) -> float:
 def match_dimensions(
     provider: AIProvider,
     *,
-    old: PoolPatternReport,
-    new: PoolPatternReport,
+    old: PoolDimensionReport,
+    new: PoolDimensionReport,
     settings: AppSettings,
     on_delta: DeltaSink | None = None,
 ) -> tuple[dict[str, str], str | None, float]:

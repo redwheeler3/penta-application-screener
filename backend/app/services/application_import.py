@@ -85,7 +85,7 @@ def settings_fingerprint(settings: AppSettings) -> str:
     Covers the sheet id and every hard-filter input (the thresholds + disabled
     rules) — exactly the settings whose change would reclassify who is eligible
     on a re-import. Deliberately EXCLUDES pet limits and the AI spending cap:
-    pets are an AI quality-flag concern (the Screen step), not a hard filter, and
+    pets are an AI screening concern (the Screen step), not a hard filter, and
     the cap never affects import. Stamped on each SyncRun so the dashboard can
     flag Import as out of date when the live settings no longer match.
     """
@@ -395,7 +395,7 @@ def reason_to_payload(reason: FilterReason) -> dict[str, Any]:
 
 
 def _has_ai_flags(db: Session, application: Application) -> bool:
-    """Whether the application's most recent quality-flag pass found any flags.
+    """Whether the application's most recent screening pass found any flags.
 
     A new application (no id yet) cannot have prior AI results.
     """
@@ -405,7 +405,7 @@ def _has_ai_flags(db: Session, application: Application) -> bool:
         select(ApplicationAIResult)
         .where(
             ApplicationAIResult.application_id == application.id,
-            ApplicationAIResult.kind == "quality_flags",
+            ApplicationAIResult.kind == "screening",
         )
         .order_by(ApplicationAIResult.created_at.desc())
     )

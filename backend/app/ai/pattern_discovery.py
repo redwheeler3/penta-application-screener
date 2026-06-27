@@ -23,7 +23,7 @@ from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE, PROTECTED_CHARACTERISTICS_NOTE
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, DeltaSink, Usage
-from app.ai.schemas import EssayAnalysisReport, PoolPatternReport
+from app.ai.schemas import EssayAnalysisReport, PoolDimensionReport
 from app.db.models import Application, ApplicationAIResult, ApplicationStatus
 from app.schemas.settings import AppSettings
 from app.services.application_import import extract_essays
@@ -89,7 +89,7 @@ Also write a 2-4 sentence neutral summary of what most distinguishes strong from
 # Prompt identity, derived from the static prompt text. This pass is UNCACHED (it
 # calls provider.structured_output directly, so nothing gates a per-application
 # cache), but it still has a version: it is folded into the run's rank-inputs
-# fingerprint (see rank_inputs_fingerprint in services/screening_run.py) so editing
+# fingerprint (see rank_inputs_fingerprint in services/ranking_run.py) so editing
 # this prompt makes Rank show "out of date".
 PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 
@@ -206,7 +206,7 @@ def discover_patterns(
     settings: AppSettings,
     seeds: DiscoverySeeds | None = None,
     on_delta: DeltaSink | None = None,
-) -> tuple[PoolPatternReport, str | None, float]:
+) -> tuple[PoolDimensionReport, str | None, float]:
     """Run the single pool-level discovery call on the synthesis model. Returns the
     report, the reasoning narrative (kept for the debug view), and the priced cost.
 
@@ -221,7 +221,7 @@ def discover_patterns(
     model_id = settings.ai.synthesis_model
     result = provider.structured_output(
         model_id=model_id,
-        schema=PoolPatternReport,
+        schema=PoolDimensionReport,
         prompt=build_prompt(db, applications, seeds=seeds),
         system_prompt=SYSTEM_PROMPT,
         on_delta=on_delta,

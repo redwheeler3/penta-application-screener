@@ -1,5 +1,5 @@
-"""Quality-flag analysis: the informational AI integrity pass over eligible
-applications (SPEC "AI Quality Flags").
+"""Screening: the informational AI integrity pass over eligible
+applications (SPEC "AI Screening (Integrity Flags)").
 
 Flags are never disqualifying — they surface things a human screener should be aware
 of. Builds the per-application prompt and runs it via the shared engine.
@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.analysis import (
     AnalysisOutcome,
-    ScreeningResult,
+    PassResult,
     analyze_application,
     derive_prompt_version,
     estimate_cost,
@@ -23,13 +23,13 @@ from app.ai.analysis import (
 )
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE, PROTECTED_CHARACTERISTICS_NOTE
 from app.ai.provider import AIProvider
-from app.ai.schemas import QualityFlagReport
+from app.ai.schemas import ScreeningReport
 from app.db.models import Application, ApplicationStatus, StatusSource
 from app.domain.status import apply_machine_status
 from app.schemas.settings import AppSettings
 from app.services.application_import import extract_essays
 
-KIND = "quality_flags"
+KIND = "screening"
 
 SYSTEM_PROMPT = f"""\
 You are a careful assistant helping a housing co-op screening committee review applications for data-integrity concerns.
@@ -49,7 +49,7 @@ When in doubt, do not flag.
 # .format() — that threshold stays out of the version, see PROMPT_VERSION below.
 _INSTRUCTIONS_TEMPLATE = f"""\
 ## Task
-Review this housing co-op application for data-integrity concerns and return any quality flags. Flag ONLY clear, concrete problems. If you are unsure, do not flag. It is correct and expected for most applications to have zero flags.
+Review this housing co-op application for data-integrity concerns and return any screening flags. Flag ONLY clear, concrete problems. If you are unsure, do not flag. It is correct and expected for most applications to have zero flags.
 
 ## Inputs
 The applicant's normalized form fields in the `<fields>` block, and their four essay answers in the `<essays>` block, below.
@@ -120,8 +120,8 @@ def build_prompt(application: Application, settings: AppSettings) -> str:
     )
 
 
-def applications_to_analyze(db: Session) -> list[Application]:
-    """The applications the quality-flag pass should (re-)analyze: everything except
+def applications_for_screening(db: Session) -> list[Application]:
+    """The applications the screening pass should (re-)analyze: everything except
     those the rules disqualified.
 
     Covers any eligible application plus those a *previous AI pass* marked
@@ -146,10 +146,10 @@ def applications_to_analyze(db: Session) -> list[Application]:
     )
 
 
-def estimate_quality_flags(db: Session, settings: AppSettings) -> dict[str, object]:
+def estimate_screening(db: Session, settings: AppSettings) -> dict[str, object]:
     return estimate_cost(
         db,
-        applications=applications_to_analyze(db),
+        applications=applications_for_screening(db),
         kind=KIND,
         model_id=settings.ai.first_pass_model,
         prompt_version=PROMPT_VERSION,
@@ -168,7 +168,7 @@ def _apply_outcome_status(
     The AI actor sets status unless a human owns the decision (flags still refresh
     for the staleness nudge). Touches the session, so it runs on the ``db`` thread.
     """
-    report: QualityFlagReport = outcome.output
+    report: ScreeningReport = outcome.output
     apply_machine_status(
         application,
         has_reasons=bool(application.hard_filter_reasons),
@@ -189,7 +189,7 @@ def analyze_one(
         provider,
         application=application,
         kind=KIND,
-        schema=QualityFlagReport,
+        schema=ScreeningReport,
         model_id=settings.ai.first_pass_model,
         prompt_version=PROMPT_VERSION,
         prompt=build_prompt(application, settings),
@@ -199,15 +199,15 @@ def analyze_one(
     return outcome
 
 
-def screen_quality_flags(
+def run_screening(
     db: Session,
     provider: AIProvider,
     *,
     applications: list[Application],
     settings: AppSettings,
     max_workers: int,
-) -> Iterator[ScreeningResult]:
-    """Run the quality-flag pass over ``applications`` via the shared screening
+) -> Iterator[PassResult]:
+    """Run the screening pass over ``applications`` via the shared screening
     engine, applying status from each result's flags as it completes.
     """
     return screen_applications(
@@ -215,7 +215,7 @@ def screen_quality_flags(
         provider,
         applications=applications,
         kind=KIND,
-        schema=QualityFlagReport,
+        schema=ScreeningReport,
         model_id=settings.ai.first_pass_model,
         prompt_version=PROMPT_VERSION,
         build_prompt=lambda application: build_prompt(application, settings),

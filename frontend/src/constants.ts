@@ -28,7 +28,7 @@ export const FIELD_LABELS: Record<string, string> = {
 // Normalized fields that should render as currency.
 export const MONEY_FIELDS = new Set(["household_income", "applicant_income", "co_applicant_income"]);
 
-// Human-readable labels for AI quality-flag categories.
+// Human-readable labels for AI screening flag categories.
 export const FLAG_CATEGORY_LABELS: Record<string, string> = {
   placeholder_name: "Placeholder name",
   suspicious_name: "Suspicious name",
@@ -79,7 +79,7 @@ export const SOURCE_LABELS: Record<StatusSource, string> = {
 export const SOURCE_DESCRIPTIONS: Record<StatusSource, string> = {
   untouched: "Passed the deterministic rules; the AI pass raised no flags.",
   rules: "Set ineligible by the deterministic screening rules.",
-  ai: "Flagged by the AI quality pass.",
+  ai: "Flagged by the AI screening pass.",
   human: "Set by a reviewer.",
 };
 

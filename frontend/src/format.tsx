@@ -25,9 +25,9 @@ export function scoreBand(score: number): { label: string; cls: string } {
   return { label: "Weak", cls: "score-weak" };
 }
 
-// Percent complete (0–100) for a quality-flag run, used for both the label text
+// Percent complete (0–100) for a screening run, used for both the label text
 // and the progress-bar width so the two never drift apart.
-export function qfPercent(progress: { processed: number; total: number }): number {
+export function screeningPercent(progress: { processed: number; total: number }): number {
   return (progress.processed / progress.total) * 100;
 }
 

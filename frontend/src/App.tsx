@@ -14,11 +14,11 @@ import type {
   Coverage,
   CurrentUser,
   DashboardCounts,
-  QualityFlagEstimate,
-  RankEstimate,
-  RankingState,
+  ScreeningEstimateResponse,
+  RankEstimateResponse,
+  RankingResponse,
   RankProgress,
-  ScreeningRunState,
+  CurrentRunResponse,
   SettingsResponse,
   SortKey,
   SortState,
@@ -56,7 +56,7 @@ export function App() {
   const [workflow, setWorkflow] = useState<WorkflowState>({
     synced: false,
     importCurrent: true,
-    qualityChecksRun: false,
+    screened: false,
     essaysAnalyzed: false,
     patternsDiscovered: false,
     candidatesScored: false,
@@ -106,16 +106,16 @@ export function App() {
 
   // AI run flows share a shape: estimate (confirmation) -> running -> result.
   // Outcomes surface as toasts, so no per-step message state is kept here.
-  const [qfEstimate, setQfEstimate] = useState<QualityFlagEstimate | null>(null);
-  const [qfRunning, setQfRunning] = useState(false);
-  const [qfProgress, setQfProgress] = useState<{ processed: number; total: number } | null>(null);
+  const [screeningEstimate, setScreeningEstimate] = useState<ScreeningEstimateResponse | null>(null);
+  const [screeningRunning, setScreeningRunning] = useState(false);
+  const [screeningProgress, setScreeningProgress] = useState<{ processed: number; total: number } | null>(null);
 
   // The current run's discovered dimensions, shown above the list once Rank has run.
-  const [screeningRun, setScreeningRun] = useState<ScreeningRunState | null>(null);
+  const [rankingRun, setRankingRun] = useState<CurrentRunResponse | null>(null);
 
   // Rank (the combined essays → criteria → scores chain): one estimate-confirm-stream
   // flow over all three passes, gated once on the combined cost.
-  const [rankEstimate, setRankEstimate] = useState<RankEstimate | null>(null);
+  const [rankEstimate, setRankEstimate] = useState<RankEstimateResponse | null>(null);
   const [rankRunning, setRankRunning] = useState(false);
   const [rankProgress, setRankProgress] = useState<RankProgress | null>(null);
   // The model's live reasoning during the criteria (discovery + match) phase — a
@@ -125,7 +125,7 @@ export function App() {
 
   // The deterministic ranked shortlist. `showRanking` toggles the ranked view over
   // the list; null ranking means not yet fetched.
-  const [ranking, setRanking] = useState<RankingState | null>(null);
+  const [ranking, setRanking] = useState<RankingResponse | null>(null);
   const [showRanking, setShowRanking] = useState(false);
 
   // The committee's importance tiers for the current run. Each edit persists (PUT
@@ -143,20 +143,20 @@ export function App() {
     if (!user) return;
     api.fetchSettings().then(applySettingsResponse);
     refreshDashboard();
-    refreshScreeningRun();
+    refreshRankingRun();
     loadApplications({ filter: {}, page: 1, search: "" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   // The current run's dimensions, if discovery has run. Returns the promise so
   // callers can await it before rendering anything that resolves dimension keys to
-  // names (the tier list's labelFor reads screeningRun.dimensions).
-  function refreshScreeningRun() {
+  // names (the tier list's labelFor reads rankingRun.dimensions).
+  function refreshRankingRun() {
     return api
-      .fetchScreeningCurrent()
+      .fetchRankingCurrent()
       .then((response) => (response.ok ? response.json() : null))
-      .then((payload: ScreeningRunState | null) => setScreeningRun(payload))
-      .catch(() => setScreeningRun(null));
+      .then((payload: CurrentRunResponse | null) => setRankingRun(payload))
+      .catch(() => setRankingRun(null));
   }
 
   function applySettingsResponse(payload: SettingsResponse) {
@@ -242,7 +242,7 @@ export function App() {
 
   // Open the Import confirmation. Close the other cards so only one shows at a time.
   function requestImport() {
-    setQfEstimate(null);
+    setScreeningEstimate(null);
     setRankEstimate(null);
     setImportConfirm(true);
   }
@@ -281,32 +281,32 @@ export function App() {
 
   // Fetch the cost estimate and show the confirmation prompt. AI never runs without
   // the user first seeing the estimate and confirming (SPEC cost control).
-  async function requestQualityFlagsEstimate() {
+  async function requestScreeningEstimate() {
     setRankEstimate(null); // only one card shows at a time
     setImportConfirm(false);
-    const response = await api.fetchQualityFlagsEstimate();
+    const response = await api.fetchScreeningEstimate();
     if (response.ok) {
       // Always open the card — even a $0 no-op states there's nothing to do and
       // disables Confirm, rather than firing a transient toast.
-      setQfEstimate(await response.json());
+      setScreeningEstimate(await response.json());
     } else {
       showError("Could not load the AI cost estimate for flagging submissions.");
     }
   }
 
-  async function runQualityFlags() {
-    setQfRunning(true);
-    setQfEstimate(null);
-    setQfProgress(null);
+  async function runScreening() {
+    setScreeningRunning(true);
+    setScreeningEstimate(null);
+    setScreeningProgress(null);
     try {
-      const response = await api.runQualityFlags();
+      const response = await api.runScreening();
       if (!response.ok || !response.body) {
         const problem = await readProblem(response);
         showError(problem ? `Flagging failed: ${problem}` : "Flagging failed.");
       } else {
         await api.streamNdjson(response.body, (event) => {
           if (event.type === "progress") {
-            setQfProgress({ processed: event.processed, total: event.total });
+            setScreeningProgress({ processed: event.processed, total: event.total });
           } else if (event.type === "summary") {
             const failedNote = event.failed ? ` ${event.failed} failed and were skipped.` : "";
             showToast(
@@ -325,12 +325,12 @@ export function App() {
     } catch (error) {
       showError(error instanceof Error ? `Flagging error: ${error.message}` : "Flagging error.");
     }
-    setQfProgress(null);
-    setQfRunning(false);
+    setScreeningProgress(null);
+    setScreeningRunning(false);
   }
 
   async function requestRankEstimate() {
-    setQfEstimate(null); // only one card shows at a time
+    setScreeningEstimate(null); // only one card shows at a time
     setImportConfirm(false);
     const response = await api.fetchRankEstimate();
     if (response.ok) {
@@ -377,7 +377,7 @@ export function App() {
         // The chain replaced the dimensions and scores. Await the run refresh before
         // opening the ranking, so the tier list's labelFor has the new run's names
         // before its chips render (else they briefly show raw keys).
-        await refreshScreeningRun();
+        await refreshRankingRun();
         refreshDashboard();
         // Land the user directly in the ranked view — the ranking is the whole point
         // of the run, and the "View ranking" button was easy to miss. openRanking
@@ -428,47 +428,47 @@ export function App() {
   }
 
   // Persist discovery seeds (favourites + proposals) for the current run. Both feed
-  // the NEXT Rank's discovery. Optimistically update screeningRun (where the
+  // the NEXT Rank's discovery. Optimistically update rankingRun (where the
   // composer reads seed state) for instant feedback; reconcile from the response.
   async function saveSeeds(next: { favouritedKeys?: string[]; proposedDimensions?: string[] }) {
-    if (!screeningRun) return;
+    if (!rankingRun) return;
     const optimistic = {
-      ...screeningRun,
+      ...rankingRun,
       ...(next.favouritedKeys !== undefined ? { favouritedKeys: next.favouritedKeys } : {}),
       ...(next.proposedDimensions !== undefined ? { proposedDimensions: next.proposedDimensions } : {}),
     };
-    setScreeningRun(optimistic);
+    setRankingRun(optimistic);
     const response = await api.saveSeeds({
       favouritedKeys: next.favouritedKeys,
       proposedDimensions: next.proposedDimensions,
     });
     if (response.ok) {
       const echoed: { favouritedKeys: string[]; proposedDimensions: string[] } = await response.json();
-      setScreeningRun((run) =>
+      setRankingRun((run) =>
         run ? { ...run, favouritedKeys: echoed.favouritedKeys, proposedDimensions: echoed.proposedDimensions } : run,
       );
     } else {
       showError("Could not save the suggested criteria.");
-      refreshScreeningRun(); // reconcile back to server truth
+      refreshRankingRun(); // reconcile back to server truth
     }
   }
 
   function toggleFavourite(key: string, favourited: boolean) {
-    if (!screeningRun) return;
-    const current = screeningRun.favouritedKeys;
+    if (!rankingRun) return;
+    const current = rankingRun.favouritedKeys;
     const nextKeys = favourited ? [...current, key] : current.filter((k) => k !== key);
     saveSeeds({ favouritedKeys: nextKeys });
   }
 
   function addProposal(text: string) {
-    if (!screeningRun) return;
-    if (screeningRun.proposedDimensions.includes(text)) return;
-    saveSeeds({ proposedDimensions: [...screeningRun.proposedDimensions, text] });
+    if (!rankingRun) return;
+    if (rankingRun.proposedDimensions.includes(text)) return;
+    saveSeeds({ proposedDimensions: [...rankingRun.proposedDimensions, text] });
   }
 
   function removeProposal(text: string) {
-    if (!screeningRun) return;
-    saveSeeds({ proposedDimensions: screeningRun.proposedDimensions.filter((t) => t !== text) });
+    if (!rankingRun) return;
+    saveSeeds({ proposedDimensions: rankingRun.proposedDimensions.filter((t) => t !== text) });
   }
 
   // Human override of an application's status. The backend marks it human-owned and
@@ -580,18 +580,18 @@ export function App() {
               onRequestImport={requestImport}
               onConfirmImport={syncApplications}
               onCancelImport={() => setImportConfirm(false)}
-              qfRunning={qfRunning}
-              qfEstimate={qfEstimate}
-              qfProgress={qfProgress}
-              onRequestQualityFlags={requestQualityFlagsEstimate}
-              onRunQualityFlags={runQualityFlags}
-              onCancelQualityFlags={() => setQfEstimate(null)}
+              screeningRunning={screeningRunning}
+              screeningEstimate={screeningEstimate}
+              screeningProgress={screeningProgress}
+              onRequestScreening={requestScreeningEstimate}
+              onRunScreening={runScreening}
+              onCancelScreening={() => setScreeningEstimate(null)}
               rankRunning={rankRunning}
               rankEstimate={rankEstimate}
               rankProgress={rankProgress}
               criteriaThinking={criteriaThinking}
-              favouritedCount={screeningRun?.favouritedKeys.length ?? 0}
-              proposedCount={screeningRun?.proposedDimensions.length ?? 0}
+              favouritedCount={rankingRun?.favouritedKeys.length ?? 0}
+              proposedCount={rankingRun?.proposedDimensions.length ?? 0}
               onRequestRank={requestRankEstimate}
               onRunRank={runRank}
               onCancelRank={() => setRankEstimate(null)}
@@ -601,12 +601,12 @@ export function App() {
               onHideRanking={() => setShowRanking(false)}
             />
 
-            {screeningRun && !selectedApp ? (
+            {rankingRun && !selectedApp ? (
               <CriteriaPanel
-                screeningRun={screeningRun}
+                rankingRun={rankingRun}
                 tiers={tiers}
-                favouritedKeys={screeningRun.favouritedKeys}
-                proposedDimensions={screeningRun.proposedDimensions}
+                favouritedKeys={rankingRun.favouritedKeys}
+                proposedDimensions={rankingRun.proposedDimensions}
                 onToggleFavourite={toggleFavourite}
                 onAddProposal={addProposal}
                 onRemoveProposal={removeProposal}
@@ -616,7 +616,7 @@ export function App() {
             {showRanking && !selectedApp && ranking ? (
               <RankingView
                 ranking={ranking}
-                screeningRun={screeningRun}
+                rankingRun={rankingRun}
                 tiers={tiers}
                 onSaveTiers={(next) => saveTiers(next)}
                 onAcknowledgeNew={acknowledgeNewDimensions}

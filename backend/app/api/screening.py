@@ -7,11 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.ai.analysis import SpendingCapExceeded, enforce_cap
 from app.ai.provider import AIProvider
-from app.ai.quality_flags import (
-    ScreeningResult,
-    applications_to_analyze,
-    estimate_quality_flags,
-    screen_quality_flags,
+from app.ai.screening import (
+    PassResult,
+    applications_for_screening,
+    estimate_screening,
+    run_screening,
 )
 from app.api.dependencies import get_ai_provider, require_current_user
 from app.api.problems import Problem
@@ -21,14 +21,14 @@ from app.schemas.events import (
     ItemErrorEvent,
     PhaseEvent,
     ProgressEvent,
-    QualityFlagSummary,
+    ScreeningSummary,
     emit,
 )
-from app.schemas.quality_flags import QualityFlagEstimate
+from app.schemas.screening import ScreeningEstimateResponse
 from app.schemas.settings import AppSettings
 from app.services.settings import get_app_settings
 
-router = APIRouter(prefix="/quality-flags", tags=["quality-flags"])
+router = APIRouter(prefix="/screening", tags=["screening"])
 
 # The single phase name for this one-pass job (rank uses essays/criteria/scores).
 PHASE = "screen"
@@ -36,7 +36,7 @@ PHASE = "screen"
 
 @dataclass
 class RunTally:
-    """Running totals for a quality-flag run, fed one screening result at a time
+    """Running totals for a screening run, fed one screening result at a time
     and emitted as the final summary line.
     """
 
@@ -46,7 +46,7 @@ class RunTally:
     failed: int = 0
     cost_usd: float = 0.0
 
-    def add(self, result: ScreeningResult) -> None:
+    def add(self, result: PassResult) -> None:
         if result.failed:
             self.failed += 1
             return
@@ -62,15 +62,15 @@ class RunTally:
             self.flagged += 1
 
 
-@router.get("/estimate", response_model=QualityFlagEstimate)
+@router.get("/estimate", response_model=ScreeningEstimateResponse)
 def estimate(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> QualityFlagEstimate:
+) -> ScreeningEstimateResponse:
     settings: AppSettings = get_app_settings(db)
-    result = estimate_quality_flags(db, settings)
+    result = estimate_screening(db, settings)
     estimated_usd = float(result["estimated_usd"])
-    return QualityFlagEstimate(
+    return ScreeningEstimateResponse(
         total=int(result["total"]),
         to_analyze=int(result["to_analyze"]),
         cached=int(result["cached"]),
@@ -86,7 +86,7 @@ def run(
     db: Session = Depends(get_db),
     provider: AIProvider = Depends(get_ai_provider),
 ) -> StreamingResponse:
-    """Run quality flags over the candidate applications, streaming progress.
+    """Run the screening pass over the candidate applications, streaming progress.
 
     Responds as newline-delimited JSON (NDJSON): one ``{"type":"progress",...}``
     line per application as it finishes, then a final ``{"type":"summary",...}``
@@ -95,7 +95,7 @@ def run(
     """
     settings: AppSettings = get_app_settings(db)
 
-    estimate_result = estimate_quality_flags(db, settings)
+    estimate_result = estimate_screening(db, settings)
 
     # Block a no-op re-run: nothing uncached means every result is a cache hit
     # reproducing identical output. Mirrors the Rank chain's pool-fingerprint gate.
@@ -117,13 +117,13 @@ def run(
             estimated_usd=float(estimate_result["estimated_usd"]),
         ) from exc
 
-    applications = applications_to_analyze(db)
+    applications = applications_for_screening(db)
 
     def stream() -> Iterator[str]:
         total = len(applications)
         tally = RunTally()
         yield emit(PhaseEvent(phase=PHASE, total=total))
-        results = screen_quality_flags(
+        results = run_screening(
             db,
             provider,
             applications=applications,
@@ -144,7 +144,7 @@ def run(
             yield emit(ProgressEvent(phase=PHASE, processed=processed, total=total))
 
         yield emit(
-            QualityFlagSummary(
+            ScreeningSummary(
                 analyzed=tally.analyzed,
                 cached=tally.cached,
                 flagged=tally.flagged,

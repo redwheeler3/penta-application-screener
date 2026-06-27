@@ -31,7 +31,7 @@ class AISettings(BridgeModel):
 
     Model IDs are Bedrock inference profile IDs (the ``us.`` / ``global.``
     prefixed form), not bare on-demand model IDs, which Bedrock requires for
-    these models. The quality-flag pass uses the cheaper first-pass model;
+    these models. The screening pass uses the cheaper first-pass model;
     judgment-heavier milestones will use the synthesis model.
     """
 

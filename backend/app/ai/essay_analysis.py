@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.analysis import (
     AnalysisOutcome,
-    ScreeningResult,
+    PassResult,
     analyze_application,
     derive_prompt_version,
     estimate_cost,
@@ -89,7 +89,7 @@ def build_prompt(application: Application) -> str:
 def applications_to_analyze(db: Session) -> list[Application]:
     """The applications the essay-analysis pass should analyze: eligible only.
     No value in summarizing essays for disqualified applicants — the committee ranks
-    the eligible pool. (Quality flags use a broader scope; they can change status.)
+    the eligible pool. (Screening flags use a broader scope; they can change status.)
     """
     return list(
         db.scalars(
@@ -108,7 +108,7 @@ def estimate_essay_analysis(db: Session, settings: AppSettings) -> dict[str, obj
         model_id=settings.ai.first_pass_model,
         prompt_version=PROMPT_VERSION,
         # Fallback only (no real usage yet). Essays make this heavier on input than
-        # quality flags; the estimate self-tunes once a run has happened.
+        # screening flags; the estimate self-tunes once a run has happened.
         fallback_input_tokens=3200,
         fallback_output_tokens=600,
     )
@@ -142,7 +142,7 @@ def screen_essays(
     applications: list[Application],
     settings: AppSettings,
     max_workers: int,
-) -> Iterator[ScreeningResult]:
+) -> Iterator[PassResult]:
     """Run the essay-analysis pass over ``applications`` via the shared screening
     engine. No ``on_result`` hook: this pass never changes eligibility status.
     """
