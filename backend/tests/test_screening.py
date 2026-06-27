@@ -6,14 +6,14 @@ from sqlalchemy.orm import Session
 
 from app.ai.mock_provider import MockProvider
 from app.ai.provider import AIResult, Usage
-from app.ai.quality_flags import (
+from app.ai.screening import (
     analyze_one,
-    applications_to_analyze,
+    applications_for_screening,
     build_prompt,
-    estimate_quality_flags,
-    screen_quality_flags,
+    estimate_screening,
+    run_screening,
 )
-from app.ai.schemas import FlagCategory, FlagSeverity, QualityFlag, QualityFlagReport
+from app.ai.schemas import FlagCategory, FlagSeverity, ScreeningFlag, ScreeningReport
 from app.db.models import Application, ApplicationStatus, Base, StatusSource
 from app.schemas.settings import AppSettings
 
@@ -49,14 +49,14 @@ def add_application(
     return app
 
 
-def clean() -> QualityFlagReport:
-    return QualityFlagReport(flags=[])
+def clean() -> ScreeningReport:
+    return ScreeningReport(flags=[])
 
 
-def flagged() -> QualityFlagReport:
-    return QualityFlagReport(
+def flagged() -> ScreeningReport:
+    return ScreeningReport(
         flags=[
-            QualityFlag(
+            ScreeningFlag(
                 category=FlagCategory.PLACEHOLDER_NAME,
                 severity=FlagSeverity.NOTABLE,
                 summary="Child name looks like a placeholder.",
@@ -66,7 +66,7 @@ def flagged() -> QualityFlagReport:
     )
 
 
-def test_applications_to_analyze_scope() -> None:
+def test_applications_for_screening_scope() -> None:
     """Eligible and AI-ineligible apps are analyzed so a prompt change can revise
     the verdict either way; rules-ineligible apps are excluded (rules outrank AI).
     Human-owned statuses are included so their flags refresh for the staleness nudge.
@@ -95,7 +95,7 @@ def test_applications_to_analyze_scope() -> None:
         raw_hash="h4",
     )
 
-    emails = {a.primary_email for a in applications_to_analyze(db)}
+    emails = {a.primary_email for a in applications_for_screening(db)}
     assert emails == {"eligible@x.com", "ai-no@x.com", "human-no@x.com"}
 
 
@@ -158,13 +158,13 @@ def test_screen_isolates_a_failed_call() -> None:
             if "Bad One" in prompt:
                 raise RuntimeError("boom")
             return AIResult(
-                output=QualityFlagReport(flags=[]),
+                output=ScreeningReport(flags=[]),
                 usage=Usage(input_tokens=10, output_tokens=5),
                 model_id=model_id,
             )
 
     results = list(
-        screen_quality_flags(
+        run_screening(
             db, FlakyProvider(),
             applications=[good, bad], settings=AppSettings(), max_workers=4,
         )
@@ -198,13 +198,13 @@ def test_screen_runs_calls_concurrently() -> None:
             # if the calls were serialized rather than run together.
             barrier.wait()
             return AIResult(
-                output=QualityFlagReport(flags=[]),
+                output=ScreeningReport(flags=[]),
                 usage=Usage(input_tokens=10, output_tokens=5),
                 model_id=model_id,
             )
 
     results = list(
-        screen_quality_flags(
+        run_screening(
             db, ConcurrentProvider(),
             applications=apps, settings=AppSettings(), max_workers=n,
         )
@@ -234,7 +234,7 @@ def test_estimate_counts_analyzable_excluding_rules_ineligible() -> None:
         raw_hash="h4",
     )
 
-    est = estimate_quality_flags(db, AppSettings())
+    est = estimate_screening(db, AppSettings())
     assert est["total"] == 3
     assert est["to_analyze"] == 3
     assert est["estimated_usd"] >= 0

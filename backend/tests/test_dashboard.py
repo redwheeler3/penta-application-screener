@@ -10,7 +10,7 @@ from app.db.models import (
     ApplicationAIResult,
     ApplicationStatus,
     Base,
-    ScreeningRun,
+    RankingRun,
     User,
     UserRole,
 )
@@ -58,7 +58,7 @@ async def test_workflow_flags_track_progress() -> None:
         assert workflow == {
             "synced": False,
             "importCurrent": True,
-            "qualityChecksRun": False,
+            "screened": False,
             "essaysAnalyzed": False,
             "patternsDiscovered": False,
             "candidatesScored": False,
@@ -74,22 +74,22 @@ async def test_workflow_flags_track_progress() -> None:
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow["synced"] is True
-        assert workflow["qualityChecksRun"] is False
+        assert workflow["screened"] is False
 
         # A quality-flag result exists -> that step is done; essays still not.
         db.add(ApplicationAIResult(
-            application_id=application.id, kind="quality_flags", cache_key="k1",
-            model_id="m", output={"flags": []},
+            application_id=application.id, kind="screening", cache_key="k1",
+            model_id="m", prompt_version="v1", output={"flags": []},
         ))
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
-        assert workflow["qualityChecksRun"] is True
+        assert workflow["screened"] is True
         assert workflow["essaysAnalyzed"] is False
 
         # An essay-analysis result exists -> that step done; M7 steps still not.
         db.add(ApplicationAIResult(
             application_id=application.id, kind="essay_analysis", cache_key="k2",
-            model_id="m", output={"summary": "x"},
+            model_id="m", prompt_version="v1", output={"summary": "x"},
         ))
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
@@ -98,7 +98,7 @@ async def test_workflow_flags_track_progress() -> None:
         assert workflow["candidatesScored"] is False
 
         # A screening run exists -> patterns discovered (it's a run, not a result).
-        db.add(ScreeningRun(name="Run", criteria={}))
+        db.add(RankingRun(name="Run", criteria={}))
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow["patternsDiscovered"] is True
@@ -107,7 +107,7 @@ async def test_workflow_flags_track_progress() -> None:
         # A dimension-scoring result (per-run prefixed kind) -> scoring done.
         db.add(ApplicationAIResult(
             application_id=application.id, kind="dimension_scoring:abc123", cache_key="k3",
-            model_id="m", output={"scores": []},
+            model_id="m", prompt_version="v1", output={"scores": []},
         ))
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
@@ -124,7 +124,7 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
     re-rank, not just a pool change. Coverage alone would miss both.
     """
     from app.schemas.settings import AppSettings
-    from app.services.screening_run import rank_inputs_fingerprint
+    from app.services.ranking_run import rank_inputs_fingerprint
 
     app, db = _logged_in_app()
     settings = AppSettings()
@@ -137,7 +137,7 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
         db.commit()
 
         # A run whose fingerprint matches the current pool + prompts + models -> current.
-        run = ScreeningRun(
+        run = RankingRun(
             name="Run",
             criteria={"rank_inputs_fingerprint": rank_inputs_fingerprint(db, settings)},
         )
@@ -178,7 +178,7 @@ async def test_import_current_tracks_settings_fingerprint() -> None:
 
     A SyncRun stamped with the settings at import time stays "current" until the
     live settings diverge; then Import flags amber so the operator re-imports to
-    reclassify eligibility. A null fingerprint (pre-column rows) reads as current.
+    reclassify eligibility.
     """
     from app.db.models import SyncRun
     from app.schemas.settings import AppSettings
@@ -242,14 +242,14 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
     UI must surface instead of showing a misleading done-check.
     """
     from app.ai.analysis import cache_key
-    from app.ai.quality_flags import KIND as QUALITY_KIND
-    from app.ai.quality_flags import PROMPT_VERSION as QUALITY_VERSION
+    from app.ai.screening import KIND as SCREENING_KIND
+    from app.ai.screening import PROMPT_VERSION as SCREENING_VERSION
     from app.schemas.settings import AppSettings
 
     app, db = _logged_in_app()
     model = AppSettings().ai.first_pass_model
 
-    # Two eligible applicants in quality-flags scope.
+    # Two eligible applicants in screening scope.
     a = Application(
         primary_email="a@x.com", applicant_name="A", raw_row={"q": "1"}, raw_row_hash="ha",
         normalized={}, status=ApplicationStatus.ELIGIBLE, hard_filter_reasons=[],
@@ -263,14 +263,14 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
 
     # a: current result (cache key computed from its present content + model).
     db.add(ApplicationAIResult(
-        application_id=a.id, kind=QUALITY_KIND,
-        cache_key=cache_key(application=a, kind=QUALITY_KIND, model_id=model, prompt_version=QUALITY_VERSION),
-        model_id=model, output={"flags": []},
+        application_id=a.id, kind=SCREENING_KIND,
+        cache_key=cache_key(application=a, kind=SCREENING_KIND, model_id=model, prompt_version=SCREENING_VERSION),
+        model_id=model, prompt_version=SCREENING_VERSION, output={"flags": []},
     ))
     # b: a result keyed to OLD content -> does not match its current hash -> stale.
     db.add(ApplicationAIResult(
-        application_id=b.id, kind=QUALITY_KIND, cache_key="stale-key",
-        model_id=model, output={"flags": []},
+        application_id=b.id, kind=SCREENING_KIND, cache_key="stale-key",
+        model_id=model, prompt_version=SCREENING_VERSION, output={"flags": []},
     ))
     db.commit()
 
@@ -279,7 +279,7 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
         coverage = (await client.get("/dashboard")).json()["coverage"]
 
     # 2 in scope, only a is current.
-    assert coverage["qualityChecksRun"] == {"cached": 1, "inScope": 2}
+    assert coverage["screened"] == {"cached": 1, "inScope": 2}
     # No screening run yet -> scoring coverage is absent, not zero.
     assert "candidatesScored" not in coverage
 
@@ -304,8 +304,8 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     )
     db.add(a)
     # A run with two dimensions.
-    db.add(ScreeningRun(name="Run", criteria={
-        "pattern_report": {
+    db.add(RankingRun(name="Run", criteria={
+        "dimension_report": {
             "summary": "s",
             "dimensions": [
                 {"key": "community", "name": "Community", "definition": "d", "why_it_differentiates": "w"},
@@ -319,7 +319,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     db.add(ApplicationAIResult(
         application_id=a.id, kind=kind_for_dimension("community"),
         cache_key=cache_key(application=a, kind=kind_for_dimension("community"), model_id=model, prompt_version=SCORING_VERSION),
-        model_id=model, output={"score": 0.7, "confidence": "high", "rationale": "", "evidence": "", "dimension_key": "community"},
+        model_id=model, prompt_version=SCORING_VERSION, output={"score": 0.7, "confidence": "high", "rationale": "", "evidence": "", "dimension_key": "community"},
     ))
     db.commit()
 
@@ -332,7 +332,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     db.add(ApplicationAIResult(
         application_id=a.id, kind=kind_for_dimension("skills"),
         cache_key=cache_key(application=a, kind=kind_for_dimension("skills"), model_id=model, prompt_version=SCORING_VERSION),
-        model_id=model, output={"score": 0.5, "confidence": "low", "rationale": "", "evidence": "", "dimension_key": "skills"},
+        model_id=model, prompt_version=SCORING_VERSION, output={"score": 0.5, "confidence": "low", "rationale": "", "evidence": "", "dimension_key": "skills"},
     ))
     db.commit()
 

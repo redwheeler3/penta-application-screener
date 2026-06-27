@@ -29,8 +29,8 @@ def require_current_user(request: Request, db: Session = Depends(get_db)) -> Use
 
 def get_ai_provider(db: Session = Depends(get_db)) -> AIProvider:
     """Real Bedrock-backed provider for the AI screening passes. Overridden in
-    tests with a MockProvider. Shared by the quality-flags and essay-analysis
-    routes so they have one provider construction and one test override point.
+    tests with a MockProvider. Shared by the screening and ranking routes so they
+    have one provider construction and one test override point.
     """
     settings = get_app_settings(db)
     # Size the connection pool to the worker count so concurrent screening calls

@@ -13,11 +13,11 @@ from app.ai.analysis import (
 from app.ai.mock_provider import MockProvider
 from app.ai.pricing import cost_usd, price_for_model
 from app.ai.provider import Usage
-from app.ai.schemas import FlagCategory, FlagSeverity, QualityFlag, QualityFlagReport
+from app.ai.schemas import FlagCategory, FlagSeverity, ScreeningFlag, ScreeningReport
 from app.db.models import Application, ApplicationAIResult, ApplicationStatus, Base
 
 MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-KIND = "quality_flags"
+KIND = "screening"
 # A representative derived version for the engine tests (the real passes derive their
 # own from their prompt text; the engine itself is agnostic to which string it is).
 VERSION = derive_prompt_version("test-system-prompt", "test-instructions")
@@ -44,14 +44,14 @@ def make_application(db: Session, *, email: str = "a@example.com", raw_hash: str
     return app
 
 
-def clean_report() -> QualityFlagReport:
-    return QualityFlagReport(flags=[])
+def clean_report() -> ScreeningReport:
+    return ScreeningReport(flags=[])
 
 
-def flagged_report() -> QualityFlagReport:
-    return QualityFlagReport(
+def flagged_report() -> ScreeningReport:
+    return ScreeningReport(
         flags=[
-            QualityFlag(
+            ScreeningFlag(
                 category=FlagCategory.PLACEHOLDER_NAME,
                 severity=FlagSeverity.NOTABLE,
                 summary="Child name looks like a placeholder.",
@@ -112,7 +112,7 @@ def test_analyze_calls_provider_then_caches() -> None:
     provider.queue(flagged_report(), model_id=MODEL, input_tokens=600, output_tokens=120)
 
     first = analyze_application(
-        db, provider, application=app, kind=KIND, schema=QualityFlagReport,
+        db, provider, application=app, kind=KIND, schema=ScreeningReport,
         model_id=MODEL, prompt_version=VERSION, prompt="analyze",
     )
     assert first.cached is False
@@ -122,7 +122,7 @@ def test_analyze_calls_provider_then_caches() -> None:
 
     # Second call: no queued result, so a provider call would raise — proving cache hit.
     second = analyze_application(
-        db, provider, application=app, kind=KIND, schema=QualityFlagReport,
+        db, provider, application=app, kind=KIND, schema=ScreeningReport,
         model_id=MODEL, prompt_version=VERSION, prompt="analyze",
     )
     assert second.cached is True
@@ -139,7 +139,7 @@ def test_estimate_excludes_cached_applications() -> None:
     provider = MockProvider()
     provider.queue(clean_report(), model_id=MODEL)
     analyze_application(
-        db, provider, application=app1, kind=KIND, schema=QualityFlagReport,
+        db, provider, application=app1, kind=KIND, schema=ScreeningReport,
         model_id=MODEL, prompt_version=VERSION, prompt="analyze",
     )
 
@@ -173,7 +173,7 @@ def test_estimate_prefers_observed_usage_over_fallback() -> None:
     # One prior call recorded 1M input / 0 output tokens of real usage.
     provider.queue(clean_report(), model_id=MODEL, input_tokens=1_000_000, output_tokens=0)
     analyze_application(
-        db, provider, application=analyzed, kind=KIND, schema=QualityFlagReport,
+        db, provider, application=analyzed, kind=KIND, schema=ScreeningReport,
         model_id=MODEL, prompt_version=VERSION, prompt="analyze",
     )
 

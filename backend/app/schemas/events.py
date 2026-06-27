@@ -6,7 +6,7 @@ source of truth for event shapes. Generators emit
 and mirrored by the frontend's discriminated union in ``types.ts``.
 
 Grammar (every event carries ``phase`` so the client's stream switch is identical
-across jobs; quality-flags uses the single phase ``"screen"``):
+across jobs; screening uses the single phase ``"screen"``):
 
     phase      — a pass began (``total`` known for per-item passes)
     progress   — one item finished within a phase
@@ -72,7 +72,7 @@ class ErrorEvent(ResponseModel):
     message: str
 
 
-class QualityFlagSummary(ResponseModel):
+class ScreeningSummary(ResponseModel):
     type: Literal["summary"] = "summary"
     analyzed: int
     cached: int

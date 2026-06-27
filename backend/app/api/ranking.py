@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.ai.analysis import ScreeningResult, SpendingCapExceeded, enforce_cap
+from app.ai.analysis import PassResult, SpendingCapExceeded, enforce_cap
 from app.ai.dimension_matching import estimate_match, match_dimensions
 from app.ai.dimension_scoring import (
     applications_to_score,
@@ -74,11 +74,11 @@ from app.schemas.ranking import (
 )
 from app.schemas.settings import AppSettings
 from app.services.ranking_view import candidate_scores
-from app.services.screening_run import (
+from app.services.ranking_run import (
     adopt_matched_keys,
     carry_forward_layout,
     create_run,
-    current_pattern_report,
+    current_dimension_report,
     dimension_weights,
     display_tiers,
     favourited_keys,
@@ -94,7 +94,7 @@ from app.services.settings import get_app_settings
 router = APIRouter(prefix="/ranking", tags=["ranking"])
 
 # Phase names for the rank stream (every event carries one, so the client's
-# stream switch is uniform across this job and the quality-flags job).
+# stream switch is uniform across this job and the screening job).
 ESSAYS, CRITERIA, SCORES = "essays", "criteria", "scores"
 
 
@@ -107,7 +107,7 @@ class RunTally:
     failed: int = 0
     cost_usd: float = 0.0
 
-    def add(self, result: ScreeningResult) -> None:
+    def add(self, result: PassResult) -> None:
         if result.failed:
             self.failed += 1
             return
@@ -125,7 +125,7 @@ def _run_payload(db: Session) -> CurrentRunResponse | None:
     run = get_current_run(db)
     if run is None:
         return None
-    report = current_pattern_report(run)
+    report = current_dimension_report(run)
     if report is None:
         return None
     return CurrentRunResponse(
@@ -285,7 +285,7 @@ def rank_run(
         # Capture the prior run + tiers before discovery, to carry the committee's
         # placements forward onto the new dimensions.
         prior_run = get_current_run(db)
-        prior_report = current_pattern_report(prior_run) if prior_run else None
+        prior_report = current_dimension_report(prior_run) if prior_run else None
         prior_tiers = stored_tiers(prior_run) if prior_run else []
         # Committee discovery seeds: favourited dimensions (resolved to name +
         # definition from the prior report) plus pending free-text proposals. These
@@ -484,7 +484,7 @@ def ranking(
     math over cached scores.
     """
     run = get_current_run(db)
-    report = current_pattern_report(run) if run is not None else None
+    report = current_dimension_report(run) if run is not None else None
     if report is None:
         raise Problem("run_required", detail="Discover patterns before ranking.")
     return _ranking_payload(db, run)
@@ -505,7 +505,7 @@ def get_tiers(
     committee has not tiered yet). 409 before a run exists.
     """
     run = get_current_run(db)
-    if run is None or current_pattern_report(run) is None:
+    if run is None or current_dimension_report(run) is None:
         raise Problem("run_required", detail="Discover patterns before tiering.")
     return TiersResponse(tiers=[TierOut(**t) for t in display_tiers(run)])
 
@@ -520,7 +520,7 @@ def update_tiers(
     re-sorted ranking. Unknown dimension keys are rejected (422).
     """
     run = get_current_run(db)
-    if run is None or current_pattern_report(run) is None:
+    if run is None or current_dimension_report(run) is None:
         raise Problem("run_required", detail="Discover patterns before tiering.")
     layout = [t.model_dump() for t in body.tiers]
     try:
@@ -549,7 +549,7 @@ def update_seeds(
     a run exists — there are no dimensions to favourite and nowhere to store yet.
     """
     run = get_current_run(db)
-    if run is None or current_pattern_report(run) is None:
+    if run is None or current_dimension_report(run) is None:
         raise Problem("run_required", detail="Discover patterns before adding seeds.")
     set_seeds(
         db, run,

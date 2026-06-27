@@ -21,7 +21,7 @@ from app.ai.schemas import (
     DimensionScore,
     DimensionScoringReport,
     PoolDimension,
-    PoolPatternReport,
+    PoolDimensionReport,
     ScoreConfidence,
 )
 from app.db.models import Application, ApplicationAIResult, ApplicationStatus, Base
@@ -53,8 +53,8 @@ def add_eligible(db: Session, *, email: str, raw_hash: str) -> Application:
     return app
 
 
-def report_with(keys: list[str]) -> PoolPatternReport:
-    return PoolPatternReport(
+def report_with(keys: list[str]) -> PoolDimensionReport:
+    return PoolDimensionReport(
         summary="A pool.",
         dimensions=[
             PoolDimension(

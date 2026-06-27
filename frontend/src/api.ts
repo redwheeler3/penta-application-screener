@@ -10,8 +10,6 @@ import type {
   Coverage,
   CurrentUser,
   DashboardCounts,
-  QualityFlagEstimate,
-  RankEstimate,
   SettingsResponse,
   SortState,
   Tier,
@@ -86,10 +84,10 @@ export function syncApplications(): Promise<Response> {
   return fetch(url("/sync/applications"), { method: "POST", credentials: "include" });
 }
 
-export const fetchScreeningCurrent = () => fetch(url("/ranking/current"), { credentials: "include" });
+export const fetchRankingCurrent = () => fetch(url("/ranking/current"), { credentials: "include" });
 
-export const fetchQualityFlagsEstimate = () => fetch(url("/quality-flags/estimate"), { credentials: "include" });
-export const runQualityFlags = () => fetch(url("/quality-flags/run"), { method: "POST", credentials: "include" });
+export const fetchScreeningEstimate = () => fetch(url("/screening/estimate"), { credentials: "include" });
+export const runScreening = () => fetch(url("/screening/run"), { method: "POST", credentials: "include" });
 
 export const fetchRankEstimate = () => fetch(url("/ranking/estimate"), { credentials: "include" });
 export const runRank = () => fetch(url("/ranking/run"), { method: "POST", credentials: "include" });
@@ -137,7 +135,7 @@ export function clearStatusOverride(id: number): Promise<Response> {
 }
 
 // Read an NDJSON stream, invoking `onEvent` for each parsed line. Used by the
-// quality-flag and Rank runs, which stream progress then a summary.
+// screening and Rank runs, which stream progress then a summary.
 export async function streamNdjson(body: ReadableStream<Uint8Array>, onEvent: (event: any) => void): Promise<void> {
   const reader = body.getReader();
   const decoder = new TextDecoder();

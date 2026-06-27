@@ -184,7 +184,7 @@ export function SettingsPanel(props: {
             <div className="rules-section">
               <h3>AI Screening</h3>
               <p className="rules-hint">
-                The quality-flag run is blocked before it starts if its estimated cost exceeds this cap.
+                The screening run is blocked before it starts if its estimated cost exceeds this cap.
               </p>
               <label>
                 <span>Spending cap (USD per run)</span>

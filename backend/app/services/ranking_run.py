@@ -1,6 +1,6 @@
-"""Screening-run persistence.
+"""Ranking-run persistence.
 
-A ``ScreeningRun`` holds the discovered ``PoolPatternReport``. Per-candidate
+A ``RankingRun`` holds the discovered ``PoolDimensionReport``. Per-candidate
 scores are NOT stored here — they live in ``ApplicationAIResult`` rows under
 ``kind = "dimension_scoring:<dimension_key>"``, so a dimension's **key** joins
 back to a candidate's score. A matched dimension's key is rewritten to its prior
@@ -22,8 +22,8 @@ import hashlib
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.schemas import PoolPatternReport
-from app.db.models import Application, ApplicationStatus, ScreeningRun
+from app.ai.schemas import PoolDimensionReport
+from app.db.models import Application, ApplicationStatus, RankingRun
 from app.schemas.settings import AppSettings
 
 
@@ -56,7 +56,7 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
     pass the Rank chain runs (essays → discovery + match → scoring). So a re-rank is
     flagged current only when the pool, all four prompts, AND both models are
     unchanged since the run was created — editing any rank-chain prompt or switching
-    a model now correctly shows Rank as stale, not just a pool change. (quality_flags
+    a model now correctly shows Rank as stale, not just a pool change. (screening
     is the separate Screen step, not part of Rank, so it is deliberately excluded.)
 
     Prompt versions are imported lazily: the AI passes import this module, so a
@@ -82,8 +82,8 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
 
 
 def adopt_matched_keys(
-    report: PoolPatternReport, new_to_old: dict[str, str]
-) -> PoolPatternReport:
+    report: PoolDimensionReport, new_to_old: dict[str, str]
+) -> PoolDimensionReport:
     """Rewrite a freshly-discovered dimension's **key** to its matched prior key,
     keeping the new content (name, definition, why_it_differentiates).
 
@@ -109,18 +109,18 @@ def adopt_matched_keys(
 def create_run(
     db: Session,
     *,
-    report: PoolPatternReport,
+    report: PoolDimensionReport,
     settings: AppSettings,
     model_id: str,
     narrative: str | None,
     cost_usd: float,
-    name: str = "Screening run",
+    name: str = "Ranking run",
     tier_layout: list[dict] | None = None,
     new_dimension_keys: list[str] | None = None,
     prior_favourited_keys: list[str] | None = None,
     match_audit: dict | None = None,
-) -> ScreeningRun:
-    """Persist a freshly discovered pattern report as a new screening run.
+) -> RankingRun:
+    """Persist a freshly discovered pattern report as a new ranking run.
 
     ``tier_layout`` carries prior placements forward across a re-rank (see
     ``carry_forward_layout``); omitted → the default all-Ignore layout. Either way
@@ -141,11 +141,11 @@ def create_run(
     valid_keys = set(dimension_keys)
     favourited = {k for k in (prior_favourited_keys or []) if k in valid_keys}
     favourited |= {d.key for d in report.dimensions if d.from_committee_request}
-    run = ScreeningRun(
+    run = RankingRun(
         name=name,
         status="patterns_discovered",
         criteria={
-            "pattern_report": report.model_dump(mode="json"),
+            "dimension_report": report.model_dump(mode="json"),
             # Everything this run's ranking depends on — pool + rank-chain prompt and
             # model identity. The next Rank compares it to flag the run "out of date"
             # when the pool, any rank-chain prompt, or a model has changed.
@@ -174,12 +174,12 @@ def create_run(
     return run
 
 
-def get_current_run(db: Session) -> ScreeningRun | None:
-    """The most recent screening run, or None if discovery has never run."""
-    return db.scalar(select(ScreeningRun).order_by(ScreeningRun.id.desc()).limit(1))
+def get_current_run(db: Session) -> RankingRun | None:
+    """The most recent ranking run, or None if discovery has never run."""
+    return db.scalar(select(RankingRun).order_by(RankingRun.id.desc()).limit(1))
 
 
-def ranking_is_current(db: Session, run: ScreeningRun | None, settings: AppSettings) -> bool:
+def ranking_is_current(db: Session, run: RankingRun | None, settings: AppSettings) -> bool:
     """True when ``run``'s stored rank-inputs fingerprint matches the inputs now —
     i.e. the pool, every rank-chain prompt, and both models are unchanged, so a
     re-rank would be a no-op. Drives the "Rank out of date" badge.
@@ -196,29 +196,29 @@ def ranking_is_current(db: Session, run: ScreeningRun | None, settings: AppSetti
     return stored == rank_inputs_fingerprint(db, settings)
 
 
-def current_pattern_report(run: ScreeningRun) -> PoolPatternReport | None:
-    """Parse the stored ``PoolPatternReport`` from a run's criteria, if present."""
-    payload = (run.criteria or {}).get("pattern_report")
+def current_dimension_report(run: RankingRun) -> PoolDimensionReport | None:
+    """Parse the stored ``PoolDimensionReport`` from a run's criteria, if present."""
+    payload = (run.criteria or {}).get("dimension_report")
     if payload is None:
         return None
-    return PoolPatternReport.model_validate(payload)
+    return PoolDimensionReport.model_validate(payload)
 
 
-def dimension_weights(run: ScreeningRun) -> dict[str, float]:
+def dimension_weights(run: RankingRun) -> dict[str, float]:
     """The run's per-dimension weights (always a complete map, derived from tiers)."""
     return {k: float(v) for k, v in ((run.criteria or {}).get("weights") or {}).items()}
 
 
-def favourited_keys(run: ScreeningRun) -> list[str]:
+def favourited_keys(run: RankingRun) -> list[str]:
     """Dimension keys the committee favourited — kept (re-fed to discovery) across
     re-runs. Only keys still present in the run's report are returned.
     """
-    report = current_pattern_report(run)
+    report = current_dimension_report(run)
     valid = {d.key for d in report.dimensions} if report is not None else set()
     return [k for k in (run.criteria or {}).get("favourited_keys", []) if k in valid]
 
 
-def proposed_dimensions(run: ScreeningRun) -> list[str]:
+def proposed_dimensions(run: RankingRun) -> list[str]:
     """Pending free-text axes a member proposed, awaiting the next Rank to realize
     them. Cleared once a run consumes them (they become real dimensions).
     """
@@ -227,11 +227,11 @@ def proposed_dimensions(run: ScreeningRun) -> list[str]:
 
 def set_seeds(
     db: Session,
-    run: ScreeningRun,
+    run: RankingRun,
     *,
     favourited_keys: list[str] | None = None,
     proposed_dimensions: list[str] | None = None,
-) -> ScreeningRun:
+) -> RankingRun:
     """Persist the committee's discovery seeds between runs: which existing
     dimensions are favourited and which free-text axes are proposed. Each arg is
     applied only when provided, so the caller can update one without touching the
@@ -239,7 +239,7 @@ def set_seeds(
     """
     criteria = dict(run.criteria or {})
     if favourited_keys is not None:
-        report = current_pattern_report(run)
+        report = current_dimension_report(run)
         valid = {d.key for d in report.dimensions} if report is not None else set()
         criteria["favourited_keys"] = sorted({k for k in favourited_keys if k in valid})
     if proposed_dimensions is not None:
@@ -279,20 +279,20 @@ def default_tier_layout() -> list[dict]:
     return [dict(t, dimension_keys=list(t["dimension_keys"])) for t in DEFAULT_WORKING_TIERS]
 
 
-def stored_tiers(run: ScreeningRun) -> list[dict]:
+def stored_tiers(run: RankingRun) -> list[dict]:
     """The run's stored *working* tiers (no Ignore zone), or the default when unset."""
     stored = (run.criteria or {}).get("tiers")
     if stored:
         return [dict(t) for t in stored]
-    return default_tier_layout() if current_pattern_report(run) is not None else []
+    return default_tier_layout() if current_dimension_report(run) is not None else []
 
 
-def display_tiers(run: ScreeningRun) -> list[dict]:
+def display_tiers(run: RankingRun) -> list[dict]:
     """The working tiers plus a synthesized Ignore zone of every unplaced dimension
     — the shape the tier-list UI renders. The Ignore zone is derived, never stored.
     """
     working = stored_tiers(run)
-    report = current_pattern_report(run)
+    report = current_dimension_report(run)
     if report is None:
         return working
     placed = {key for t in working for key in t.get("dimension_keys", [])}
@@ -304,7 +304,7 @@ def display_tiers(run: ScreeningRun) -> list[dict]:
 
 def carry_forward_layout(
     *,
-    new_report: PoolPatternReport,
+    new_report: PoolDimensionReport,
     old_tiers: list[dict],
     prior_keys: set[str],
 ) -> tuple[list[dict], list[str]]:
@@ -392,10 +392,10 @@ def weights_from_tiers(
 
 def set_tiers(
     db: Session,
-    run: ScreeningRun,
+    run: RankingRun,
     tier_layout: list[dict],
     acknowledged_keys: list[str] | None = None,
-) -> ScreeningRun:
+) -> RankingRun:
     """Persist a new tier layout and the weights derived from it.
 
     Validates that every placed key is a real dimension of this run. Only working
@@ -407,7 +407,7 @@ def set_tiers(
     placing the dimension in a working tier, or explicit acknowledgement (badge ✕ /
     "mark all reviewed"). Only re-discovery re-flags.
     """
-    report = current_pattern_report(run)
+    report = current_dimension_report(run)
     valid_keys = {d.key for d in report.dimensions} if report is not None else set()
     for tier in tier_layout:
         for key in tier.get("dimension_keys", []):

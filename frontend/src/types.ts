@@ -56,7 +56,7 @@ export type WorkflowState = {
   // Whether the latest import used the settings as they are now. False flags the
   // Import step amber: a re-import would reclassify eligibility.
   importCurrent: boolean;
-  qualityChecksRun: boolean;
+  screened: boolean;
   essaysAnalyzed: boolean;
   patternsDiscovered: boolean;
   candidatesScored: boolean;
@@ -69,7 +69,7 @@ export type WorkflowState = {
 // stale, so the UI warns instead of a misleading done-check. Keys are absent for
 // steps not yet computable (e.g. scoring before patterns exist).
 export type Coverage = Partial<
-  Record<"qualityChecksRun" | "candidatesScored", { cached: number; inScope: number }>
+  Record<"screened" | "candidatesScored", { cached: number; inScope: number }>
 >;
 
 // Faceted counts: each facet reflects the other group's active filter, so the two
@@ -91,7 +91,7 @@ export type ApplicationSummary = {
   hardFilterReasons: Array<{ code: string; message: string; details: Record<string, unknown> }>;
   childCount: number | null;
   householdIncome: number | null;
-  // null = AI quality-flag pass not run; int = flag count (0 = ran clean).
+  // null = AI screening pass not run; int = flag count (0 = ran clean).
   flagCount: number | null;
   // Distinct flag categories from the latest pass (null if not run).
   flagCategories: string[] | null;
@@ -104,7 +104,7 @@ export type Essay = {
   answer: string;
 };
 
-export type QualityFlag = {
+export type ScreeningFlag = {
   category: string;
   severity: "info" | "notable";
   summary: string;
@@ -133,10 +133,10 @@ export type ApplicationDetail = ApplicationSummary & {
   autoStatusSource: StatusSource;
   normalized: Record<string, unknown>;
   essays: Essay[];
-  // null = quality-flag pass not yet run for this application; [] = ran, clean.
-  qualityFlags: QualityFlag[] | null;
+  // null = screening pass not yet run for this application; [] = ran, clean.
+  flags: ScreeningFlag[] | null;
   rawRow?: Record<string, unknown>;
-  // The model's free-text reasoning from the latest quality-flag pass.
+  // The model's free-text reasoning from the latest screening pass.
   aiNarrative?: string | null;
   // null = essay-analysis pass not yet run for this application.
   essayAnalysis?: EssayAnalysis | null;
@@ -179,7 +179,7 @@ export type RankedCandidate = {
   contributions: DimensionContribution[];
 };
 
-export type RankingState = {
+export type RankingResponse = {
   runId: number;
   weights: Record<string, number>;
   scoredCount: number;
@@ -202,7 +202,7 @@ export type Tier = {
   ignore?: boolean;
 };
 
-export type ScreeningRunState = {
+export type CurrentRunResponse = {
   runId: number;
   name: string;
   status: string;
@@ -221,7 +221,7 @@ export type ScreeningRunState = {
 // dismissed (and offer a copy button), so a failure can't scroll away unread.
 export type Toast = { id: number; message: string; variant: "success" | "error" };
 
-export type QualityFlagEstimate = {
+export type ScreeningEstimateResponse = {
   total: number;
   toAnalyze: number;
   cached: number;
@@ -232,7 +232,7 @@ export type QualityFlagEstimate = {
 
 // Combined cost projection for the Rank chain, from GET /ranking/estimate.
 // `approximate` is always true: scoring is priced as a whole-pool ceiling.
-export type RankEstimate = {
+export type RankEstimateResponse = {
   eligible: number;
   breakdown: {
     essaysUsd: number;

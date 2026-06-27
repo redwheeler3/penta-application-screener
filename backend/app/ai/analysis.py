@@ -286,7 +286,7 @@ def analyze_application(
 
 
 @dataclass(frozen=True)
-class ScreeningResult:
+class PassResult:
     """One application's result from a screening pass, streamed as it completes."""
 
     application: Application
@@ -338,25 +338,25 @@ def screen_applications(
     system_prompt: str | None = None,
     max_workers: int,
     on_result: Callable[[Application, AnalysisOutcome], None] | None = None,
-) -> Iterator[ScreeningResult]:
+) -> Iterator[PassResult]:
     """Run a cached AI pass over ``applications``, yielding each result as it
     completes (cached first, then model results in completion order).
 
-    The 1:1 engine behind quality flags and essay analysis — one application, one
+    The 1:1 engine behind screening flags and essay analysis — one application, one
     cached result, one row. Prompts are built and results stored on this thread
     (ORM access); only the model calls run in ``run_in_pool``, so the session is
-    never shared. A failed call yields a ``ScreeningResult`` with an error rather
+    never shared. A failed call yields a ``PassResult`` with an error rather
     than aborting the batch.
 
     ``on_result`` is an optional side effect run per successful outcome on the
-    caller's thread (e.g. quality flags applying status); informational passes omit
+    caller's thread (e.g. screening flags applying status); informational passes omit
     it. (Dimension scoring isn't 1:1 — it has its own path on the same core.)
     """
 
-    def finish(application: Application, outcome: AnalysisOutcome) -> ScreeningResult:
+    def finish(application: Application, outcome: AnalysisOutcome) -> PassResult:
         if on_result is not None:
             on_result(application, outcome)
-        return ScreeningResult(application=application, outcome=outcome)
+        return PassResult(application=application, outcome=outcome)
 
     # Cache lookups and prompt building touch the ORM, so do them here. Cached
     # applications finish immediately; the rest are queued with a prebuilt prompt.
@@ -384,7 +384,7 @@ def screen_applications(
         pending, call=call_model, max_workers=max_workers
     ):
         if error is not None:
-            yield ScreeningResult(application=application, outcome=None, error=str(error))
+            yield PassResult(application=application, outcome=None, error=str(error))
             continue
         outcome = store_result(
             db, application, kind=kind, model_id=model_id,

@@ -7,7 +7,7 @@ from app.db.models import (
     Application,
     ApplicationAIResult,
     ApplicationStatus,
-    ScreeningRun,
+    RankingRun,
     StatusSource,
     SyncRun,
     User,
@@ -30,10 +30,10 @@ from app.ai.dimension_scoring import (
     applications_to_score,
     kind_for_dimension,
 )
-from app.ai.quality_flags import PROMPT_VERSION as QUALITY_PROMPT_VERSION
-from app.ai.quality_flags import applications_to_analyze as quality_scope
-from app.services.screening_run import (
-    current_pattern_report,
+from app.ai.screening import PROMPT_VERSION as SCREENING_PROMPT_VERSION
+from app.ai.screening import applications_for_screening as screening_scope
+from app.services.ranking_run import (
+    current_dimension_report,
     get_current_run,
     ranking_is_current,
 )
@@ -68,11 +68,11 @@ def read_dashboard(
             # Whether the latest import used the settings as they are now. Changed
             # import-relevant settings flag Import amber (a re-import would
             # reclassify eligibility). We can't detect a changed spreadsheet, so this
-            # is "probably fresh," not a guarantee. Null fingerprint reads as current.
+            # is "probably fresh," not a guarantee.
             import_current=_import_is_current(db, settings),
-            quality_checks_run=_kind_exists(db, "quality_flags"),
+            screened=_kind_exists(db, "screening"),
             essays_analyzed=_kind_exists(db, "essay_analysis"),
-            # Pattern discovery is a screening run, not a per-application result.
+            # Pattern discovery is a ranking run, not a per-application result.
             patterns_discovered=_run_exists(db),
             # Scoring kinds are per-dimension, so match by prefix.
             candidates_scored=_kind_prefix_exists(db, "dimension_scoring:"),
@@ -89,11 +89,11 @@ def read_dashboard(
 
 def _import_is_current(db: Session, settings) -> bool:
     """True when the latest import's settings fingerprint matches the live one.
-    Also true if there's no import yet or the sync predates fingerprinting (can't
-    tell, so don't nag). False only when a stored fingerprint differs.
+    Also true if there's no import yet (nothing to be stale). False only when a
+    stored fingerprint differs.
     """
     latest = db.scalar(select(SyncRun).order_by(SyncRun.id.desc()).limit(1))
-    if latest is None or latest.settings_fingerprint is None:
+    if latest is None:
         return True
     return latest.settings_fingerprint == settings_fingerprint(settings)
 
@@ -119,8 +119,8 @@ def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
         return CoverageEntry(cached=cached, in_scope=len(applications))
 
     result = {
-        "qualityChecksRun": covered(
-            quality_scope(db), "quality_flags", QUALITY_PROMPT_VERSION
+        "screened": covered(
+            screening_scope(db), "screening", SCREENING_PROMPT_VERSION
         ),
         # Essay coverage is intentionally NOT surfaced: essays are a sub-phase of
         # Rank, not a workflow step, and an essay-prompt change already ambers Rank
@@ -130,7 +130,7 @@ def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
     # counts as scored once it has a cached row for EVERY dimension key, so partial
     # coverage reads as not-yet-complete.
     run = get_current_run(db)
-    report = current_pattern_report(run) if run is not None else None
+    report = current_dimension_report(run) if run is not None else None
     if report is not None:
         kinds = [kind_for_dimension(d.key) for d in report.dimensions]
         applications = applications_to_score(db)
@@ -178,7 +178,7 @@ def _kind_prefix_exists(db: Session, prefix: str) -> bool:
 
 
 def _run_exists(db: Session) -> bool:
-    return db.scalar(select(ScreeningRun.id).limit(1)) is not None
+    return db.scalar(select(RankingRun.id).limit(1)) is not None
 
 
 def _count_by(db: Session, column) -> dict:
