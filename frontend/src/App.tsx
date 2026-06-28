@@ -45,7 +45,6 @@ export function App() {
   // The last settings persisted on the server. `draft` resets to this on load/save.
   const [saved, setSaved] = useState<SettingsResponse | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [settingsMessage, setSettingsMessage] = useState("");
 
   const [dashboardCounts, setDashboardCounts] = useState<DashboardCounts>({
     submitted: 0,
@@ -226,15 +225,16 @@ export function App() {
   async function saveSettings(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSavingSettings(true);
-    setSettingsMessage("");
     const response = await api.saveSettings(draft);
     if (response.ok) {
       const payload: SettingsResponse = await response.json();
       applySettingsResponse(payload);
-      setSettingsMessage("Settings saved.");
+      setSelectedApp(null);
+      setActiveTab("applications");
       refreshDashboard();
+      requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
     } else {
-      setSettingsMessage("Settings could not be saved.");
+      showError("Settings could not be saved.");
     }
     setIsSavingSettings(false);
   }
@@ -637,7 +637,6 @@ export function App() {
                 setDraft={setDraft}
                 saved={saved}
                 isSaving={isSavingSettings}
-                message={settingsMessage}
                 onSubmit={saveSettings}
               />
             ) : activeTab === "ranking" && ranking ? (

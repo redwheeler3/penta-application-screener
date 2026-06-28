@@ -52,10 +52,10 @@ function WorkflowStep(props: {
   const showDone = done && !stale;
   // Line 2 priority: live progress, then settled coverage, then a standalone caption.
   const fraction = busy
-    ? progress
+    ? progress && progress.total > 0
       ? `${progress.processed}/${progress.total}`
       : null
-    : coverage
+    : coverage && (coverage.cached > 0 || coverage.inScope > 0)
       ? `${coverage.cached}/${coverage.inScope}`
       : caption ?? null;
   return (
@@ -177,7 +177,7 @@ export function WorkflowBar(props: {
                   : undefined
             }
             onClick={props.onRequestScreening}
-            coverage={coverage.screened}
+            coverage={workflow.screened ? coverage.screened : undefined}
             progress={screeningProgress}
           />
           <WorkflowStep
