@@ -57,15 +57,26 @@ try {
 
     Write-Host "Starting frontend on http://localhost:5173 ..."
     $frontend = Start-Process -NoNewWindow -PassThru -WorkingDirectory "$PSScriptRoot\frontend" `
-        -FilePath "pwsh" -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "npm run dev"
+        -FilePath "npm.cmd" -ArgumentList "run", "dev"
 
     Write-Host "Backend PID: $($backend.Id) | Frontend PID: $($frontend.Id)"
     Write-Host "Press Ctrl+C to stop both servers."
 
-    while (-not $backend.HasExited -and -not $frontend.HasExited) {
+    $reportedBackendExit = $false
+    $reportedFrontendExit = $false
+    while (-not $backend.HasExited -or -not $frontend.HasExited) {
         Start-Sleep -Milliseconds 500
         $backend.Refresh()
         $frontend.Refresh()
+
+        if ($backend.HasExited -and -not $reportedBackendExit) {
+            Write-Warning "Backend exited with code $($backend.ExitCode). Frontend will keep running until you stop this script."
+            $reportedBackendExit = $true
+        }
+        if ($frontend.HasExited -and -not $reportedFrontendExit) {
+            Write-Warning "Frontend exited with code $($frontend.ExitCode). Backend will keep running until you stop this script."
+            $reportedFrontendExit = $true
+        }
     }
 } finally {
     Stop-ProcessTree $frontend
