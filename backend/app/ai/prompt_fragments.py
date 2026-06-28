@@ -10,13 +10,6 @@ fact keys) stays co-located with that pass.
 
 from __future__ import annotations
 
-# The neutrality / anti-bias floor every pass shares. Each pass may add its own
-# domain-specific clause around it (e.g. discovery forbids polish *as a dimension*).
-PROTECTED_CHARACTERISTICS_NOTE = (
-    "Stay neutral and evidence-based; never base a judgment on protected "
-    "characteristics, family structure, or national origin."
-)
-
 # Used by every pass that reads applicants' free-text essays. Many applicants are
 # not native English speakers; substance, not prose, is what the committee cares about.
 ENGLISH_POLISH_NOTE = (

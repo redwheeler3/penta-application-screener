@@ -21,7 +21,7 @@ from app.ai.analysis import (
     estimate_cost,
     screen_applications,
 )
-from app.ai.prompt_fragments import INJECTION_GUARD_NOTE, PROTECTED_CHARACTERISTICS_NOTE
+from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider
 from app.ai.schemas import ScreeningReport
 from app.db.models import Application, ApplicationStatus, StatusSource
@@ -36,7 +36,7 @@ You are a careful assistant helping a housing co-op screening committee review a
 You only surface things a human should be aware of; you never make eligibility or acceptance decisions.
 Be conservative: only flag something when there is concrete evidence in the application.
 When in doubt, do not flag.
-{PROTECTED_CHARACTERISTICS_NOTE}"""
+"""
 
 # The static instruction template. Held as a module constant (with a {pet_policy}
 # placeholder for the only per-settings value) so the cache version can be derived
@@ -66,7 +66,7 @@ Flag these when clearly present:
 Do NOT flag (these are normal and must be ignored):
 - A child or co-applicant having a different surname from the applicant. Blended families and differing surnames are common and are NOT suspicious.
 - Missing optional information, or an answer simply being short.
-- Anything related to protected characteristics, family structure, national origin, or the cultural origin of a name.
+- Ordinary household context by itself. Only flag a concrete data-integrity concern; family details are not suspicious on their own.
 
 ## Guardrails
 - {INJECTION_GUARD_NOTE}

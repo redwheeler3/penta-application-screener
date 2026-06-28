@@ -25,7 +25,6 @@ from app.ai.analysis import (
 from app.ai.prompt_fragments import (
     ENGLISH_POLISH_NOTE,
     INJECTION_GUARD_NOTE,
-    PROTECTED_CHARACTERISTICS_NOTE,
 )
 from app.ai.provider import AIProvider
 from app.ai.schemas import EssayAnalysisReport
@@ -40,7 +39,6 @@ You are a careful assistant helping a housing co-op screening committee read app
 Your job is to extract and neutrally summarize WHAT each applicant said — not to judge how good it is.
 You never decide eligibility, fit, or whether someone should be interviewed; a later step does the judging.
 Extract only what is supported by the essays; never invent or infer beyond the text.
-{PROTECTED_CHARACTERISTICS_NOTE}
 {ENGLISH_POLISH_NOTE}"""
 
 # Static instruction text. No per-call placeholders: the essays are appended as XML

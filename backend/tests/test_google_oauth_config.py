@@ -4,6 +4,17 @@ from app.core.config import Settings
 from app.core.google_oauth import load_google_client_config
 
 
+def test_default_google_oauth_scopes_are_minimal_for_login_and_sheets() -> None:
+    scopes = Settings().google_oauth_scopes.split()
+
+    assert scopes == [
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "https://www.googleapis.com/auth/spreadsheets.readonly",
+    ]
+
+
 def test_load_google_client_config_from_env_values() -> None:
     settings = Settings(
         google_client_id="client-id",
@@ -43,4 +54,3 @@ def test_load_google_client_config_from_json_file(tmp_path) -> None:
 
     assert config["client_id"] == "json-client-id"
     assert config["client_secret"] == "json-client-secret"
-
