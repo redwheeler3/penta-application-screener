@@ -7,7 +7,6 @@ export function SettingsPanel(props: {
   setDraft: (next: AppSettings) => void;
   saved: SettingsResponse | null;
   isSaving: boolean;
-  message: string;
   onSubmit: (event: SyntheticEvent<HTMLFormElement>) => void;
 }): ReactNode {
   const { draft, setDraft, saved } = props;
@@ -162,7 +161,6 @@ export function SettingsPanel(props: {
               <button className="primary-button" type="submit" disabled={props.isSaving}>
                 {props.isSaving ? "Saving" : "Save settings"}
               </button>
-              {props.message ? <span>{props.message}</span> : null}
             </div>
           </form>
         )}
