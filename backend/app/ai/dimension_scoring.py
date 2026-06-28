@@ -37,7 +37,6 @@ from app.ai.applicant_facts import FILTERED_FACTS_NOTE, applicant_facts
 from app.ai.prompt_fragments import (
     ENGLISH_POLISH_NOTE,
     INJECTION_GUARD_NOTE,
-    PROTECTED_CHARACTERISTICS_NOTE,
 )
 from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
 from app.ai.pricing import cost_usd
@@ -62,7 +61,6 @@ You are helping a housing co-op screening committee score one applicant against 
 Score only on evidence in the applicant's own words; never infer a guess.
 Confidence measures how well your evidence pins down the applicant's TRUE standing on a dimension — NOT how sure you are about what they wrote. When an applicant simply did not address a dimension, score it low but with LOW confidence: silence is weak evidence, because they may well have that strength and just not have mentioned it. Being certain they omitted it is not the same as being confident they lack it. Reserve high confidence for dimensions the applicant gave substantial, direct evidence on.
 {ENGLISH_POLISH_NOTE}
-{PROTECTED_CHARACTERISTICS_NOTE}
 You are scoring this one applicant, not ranking them against others."""
 
 

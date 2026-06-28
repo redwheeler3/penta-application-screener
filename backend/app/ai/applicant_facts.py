@@ -38,11 +38,7 @@ FILTERED_FACTS_NOTE = (
     "(income within the co-op's band, pets within policy, household size within "
     "the unit). So do NOT treat the pass/fail fact as a differentiator — it is "
     "constant across this pool. Read the structured fields only for the "
-    "variation that REMAINS meaningful among applicants who all already qualify: "
-    "e.g. income mix between applicants, position within the allowed band, "
-    "employment tenure/stability, household make-up relative to the unit. Never "
-    "use age, family structure, or any protected characteristic as a basis for a "
-    "dimension or a score."
+    "variation that REMAINS meaningful among applicants who all already qualify."
 )
 
 

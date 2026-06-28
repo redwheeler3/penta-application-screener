@@ -7,10 +7,8 @@ This checklist documents the planned local MVP setup for Google login and Google
 1. Create a separate Google Cloud project named `Penta Application Screener`.
 2. Configure the OAuth consent screen for testing.
 3. Add Jeff's Google accounts as test users while the app is local/MVP-only.
-4. Enable the APIs needed for the current milestone and planned report milestone:
+4. Enable the API needed for the current MVP:
    - Google Sheets API
-   - Google Docs API
-   - Google Drive API
 
 ## OAuth Client
 
@@ -26,16 +24,14 @@ This checklist documents the planned local MVP setup for Google login and Google
 
 ## Initial Scopes
 
-Use the minimum scopes that support the MVP plus report generation:
+Use the minimum scopes that support Google login and read-only spreadsheet sync:
 
 - `openid`
 - `https://www.googleapis.com/auth/userinfo.email`
 - `https://www.googleapis.com/auth/userinfo.profile`
 - `https://www.googleapis.com/auth/spreadsheets.readonly`
-- `https://www.googleapis.com/auth/documents`
-- `https://www.googleapis.com/auth/drive.file`
 
-These scopes keep login simple, allow read-only application import from Google Sheets, and allow later Google Docs report generation with app-created Drive files.
+These scopes keep login simple and allow read-only application import from Google Sheets. Reports ship as browser print-to-PDF, so the app does not request Google Docs or Drive scopes.
 
 ## Local Environment
 

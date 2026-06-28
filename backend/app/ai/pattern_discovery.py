@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.ai.analysis import derive_prompt_version
 from app.ai.applicant_facts import FILTERED_FACTS_NOTE, applicant_facts
 from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
-from app.ai.prompt_fragments import INJECTION_GUARD_NOTE, PROTECTED_CHARACTERISTICS_NOTE
+from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, DeltaSink, Usage
 from app.ai.schemas import EssayAnalysisReport, PoolDimensionReport
@@ -54,7 +54,7 @@ SYSTEM_PROMPT = f"""\
 You are helping a housing co-op screening committee understand a pool of applicants as a whole.
 Your job is to discover the dimensions on which THIS specific pool meaningfully varies — the axes that actually separate stronger from weaker fit here, not a generic ideal co-op member. Favour a richer set of distinct, non-overlapping axes over a few broad ones, but only where the pool genuinely differentiates. Each axis must capture a single concept; never fuse two ideas into one dimension just to keep the list short.
 Ground every dimension in patterns you can see across the applicants' own words.
-{PROTECTED_CHARACTERISTICS_NOTE} Never make writing polish or fluency a dimension.
+Never make writing polish or fluency a dimension.
 You do not rank or score individual applicants; a later step does that."""
 
 
@@ -139,7 +139,7 @@ def _seeds_block(seeds: DiscoverySeeds) -> str:
     requested = "\n".join(lines)
     return f"""\
 
-The committee has asked you to STRONGLY CONSIDER the axes in the `<requested_axes>` block. For each one, include a dimension that captures it — refining the wording, splitting it into several dimensions, or merging overlapping ones as the one-concept-per-dimension rule demands. Omit a requested axis ONLY if this pool genuinely does not vary on it (say so is not required, just leave it out). A requested axis is still bound by every rule above: grounded in the applicants' words, single-concept, neutral, never a protected characteristic. Set ``from_committee_request: true`` on every dimension you create from a request (and on each piece if you split one); leave it false for axes you discover on your own.
+The committee has asked you to STRONGLY CONSIDER the axes in the `<requested_axes>` block. For each one, include a dimension that captures it — refining the wording, splitting it into several dimensions, or merging overlapping ones as the one-concept-per-dimension rule demands. Omit a requested axis ONLY if this pool genuinely does not vary on it (say so is not required, just leave it out). A requested axis is still bound by every rule above: grounded in the applicants' words, single-concept, neutral, and relevant to the co-op criteria being analyzed. Set ``from_committee_request: true`` on every dimension you create from a request (and on each piece if you split one); leave it false for axes you discover on your own.
 
 <requested_axes>
 {requested}

@@ -33,7 +33,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { Toasts } from "./components/Toasts";
 import { WorkflowBar } from "./components/WorkflowBar";
 
-const TOAST_DURATION_MS = 7000;
+const TOAST_DURATION_MS = 10000;
 
 export function App() {
   const [user, setUser] = useState<CurrentUser | null>(null);

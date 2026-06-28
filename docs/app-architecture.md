@@ -385,7 +385,7 @@ Important dependencies:
 - `sqlalchemy`: ORM used to work with SQLite as Python objects.
 - `alembic`: database migration tool.
 - `authlib`: OAuth client used for Google login.
-- `google-api-python-client`: Google Sheets/Drive/Docs API client.
+- `google-api-python-client`: Google Sheets API client.
 - `google-auth`: Google credential/refresh support.
 - `pydantic-settings`: environment-based settings.
 - `pytest`: tests.
