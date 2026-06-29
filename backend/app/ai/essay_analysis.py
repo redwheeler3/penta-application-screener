@@ -36,16 +36,15 @@ KIND = "essay_analysis"
 
 SYSTEM_PROMPT = f"""\
 You are a careful assistant helping a housing co-op screening committee read applicant essays.
-Your job is to extract and neutrally summarize WHAT each applicant said — not to judge how good it is.
-You never decide eligibility, fit, or whether someone should be interviewed; a later step does the judging.
-Extract only what is supported by the essays; never invent or infer beyond the text.
+Extract and neutrally summarize WHAT each applicant said — never judge quality, fit, eligibility, or interview-worthiness; a later step does that.
+Extract only what the essays support; never invent or infer beyond the text.
 {ENGLISH_POLISH_NOTE}"""
 
 # Static instruction text. No per-call placeholders: the essays are appended as XML
 # data in build_prompt, not formatted into this text.
 _INSTRUCTIONS = f"""\
 ## Task
-Read this applicant's co-op membership essays and extract what they said into the structured fields. This is neutral extraction, NOT evaluation — describe what they conveyed; do not rate fit, commitment, or quality, and do not speculate.
+Extract what this applicant said in their co-op membership essays into the structured fields. Neutral extraction, NOT evaluation — describe what they conveyed; do not rate fit, commitment, or quality, and do not speculate.
 
 ## Inputs
 The applicant's four co-op membership essay answers, in the `<essays>` block below.
