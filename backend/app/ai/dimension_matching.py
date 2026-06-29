@@ -23,9 +23,9 @@ from app.schemas.settings import AppSettings
 KIND = "dimension_matching"  # for logging / the debug view; not a cached per-app kind
 
 SYSTEM_PROMPT = """\
-You are reconciling two lists of "dimensions" — axes along which a pool of housing co-op applicants varies. One list is from a PRIOR analysis, one is freshly discovered from the same (slightly changed) pool. They overlap heavily but the wording may differ and some axes may be genuinely new or gone.
-Your only job is to identify which NEW dimension means the SAME THING as which PRIOR dimension — a pure identity match. You do not invent dimensions, rank them, or judge which matter.
-Match only when you are confident the two describe the same underlying concept, judging by their definitions, not just similar words. When in doubt, do NOT match: a missed match is harmless, a wrong match corrupts a human's earlier decision. Every match must be one-to-one."""
+You are reconciling two lists of "dimensions" — axes along which a pool of housing co-op applicants varies. One is from a PRIOR analysis, one freshly discovered from the same (slightly changed) pool; they overlap heavily but wording may differ and some axes may be new or gone.
+Your only job: identify which NEW dimension means the SAME THING as which PRIOR one — a pure identity match. Do not invent, rank, or judge importance.
+Match by definitions, not similar words, and only when confident. When in doubt, do NOT match: a missed match is harmless, a wrong match corrupts a human's earlier decision. Every match is one-to-one."""
 
 # Static instruction text. Hoisted to a module constant to match the cached passes'
 # layout (prompt text at the top, data appended in build_prompt).
@@ -40,10 +40,10 @@ Reconcile two dimension lists for the same applicant pool: identify which NEW di
 The two lists, in the `<prior_dimensions>` and `<new_dimensions>` blocks below.
 
 ## How to judge
-Judge by the definitions, not by whether the keys or names look alike. Match only when confident the two describe the same underlying concept; when in doubt, do NOT match (a missed match is harmless, a wrong match corrupts a human's earlier decision).
+Judge by the definitions, not by whether the keys or names look alike — see the matching bar above.
 
 ## Output
-Return the high-confidence identity matches: for each NEW dimension that clearly means the same thing as a PRIOR dimension, one entry with its new_key and the matching old_key. Omit any NEW dimension you are not confident maps to a specific PRIOR dimension — those are treated as genuinely new. Matches must be strictly one-to-one (no prior or new dimension used twice).
+Return the high-confidence identity matches: one entry (new_key + matching old_key) per NEW dimension that clearly means the same as a PRIOR one. Omit any you are not confident maps to a specific PRIOR dimension — those are treated as genuinely new. Strictly one-to-one (no prior or new dimension used twice).
 
 ## Guardrails
 - {INJECTION_GUARD_NOTE}"""

@@ -52,23 +52,24 @@ KIND = "pattern_discovery"
 
 SYSTEM_PROMPT = f"""\
 You are helping a housing co-op screening committee understand a pool of applicants as a whole.
-Your job is to discover the dimensions on which THIS specific pool meaningfully varies — the axes that actually separate stronger from weaker fit here, not a generic ideal co-op member. Favour a richer set of distinct, non-overlapping axes over a few broad ones, but only where the pool genuinely differentiates. Each axis must capture a single concept; never fuse two ideas into one dimension just to keep the list short.
-Ground every dimension in patterns you can see across the applicants' own words.
-Never make writing polish or fluency a dimension.
-You do not rank or score individual applicants; a later step does that."""
+Discover the dimensions on which THIS pool meaningfully varies — the axes that separate stronger from weaker fit here, not a generic ideal member. Favour distinct, non-overlapping axes over a few broad ones, but only where the pool genuinely differentiates; each must capture a single concept — never fuse two to shorten the list.
+Ground every dimension in the applicants' own words. Never make writing polish or fluency a dimension.
+You describe axes, not individuals; a later step scores and ranks them."""
 
 
 # Static instruction text. The shared FILTERED_FACTS_NOTE is interpolated at import.
 _INSTRUCTIONS = f"""\
 ## Task
-Discover the dimensions on which this applicant pool genuinely varies and that matter for "fit for Penta" — somewhere between 10 and 30. Draw on BOTH the facts and the essays: quantitative axes (e.g. income mix, employment stability, household-to-unit fit) are as valid as qualitative ones (e.g. participation commitment, co-op values). Surface as many as the pool truly supports: prefer splitting a broad axis into distinct, separately-weighable sub-dimensions (e.g. trade skills vs. financial/admin skills vs. community-building skills) over merging them. But every dimension must be independently meaningful and must not overlap another — do not pad the list to reach a number, and do not invent axes the data does not actually distinguish.
+Discover the dimensions (10-30) on which this pool genuinely varies and that matter for "fit for Penta". Draw on BOTH facts and essays — quantitative axes (income mix, employment stability, household-to-unit fit) count as much as qualitative ones (participation commitment, co-op values). Prefer splitting a broad axis into separately-weighable sub-dimensions (e.g. trade vs. financial/admin vs. community-building skills) over merging. Every dimension must be independently meaningful and non-overlapping — do not pad to a number or invent axes the data does not distinguish.
 
 ## Inputs
-The full pool of eligible applicants is in the `<applicant_pool>` block below. Each entry has structured "facts" (household make-up, income and its split, employment tenure, real-estate ownership, pets) and a summary of their co-op membership essays.
+The eligible applicants are in the `<applicant_pool>` block below — each with structured "facts" (household make-up, income and its split, employment tenure, real-estate ownership, pets) and an essay summary.
 
 ## How to judge
-Each dimension must measure exactly ONE thing. The decisive test is OPPOSING EVIDENCE: if a single subject could plausibly score HIGH on one part of a dimension and LOW on another part, you have bundled two axes — split them. To see the test working in a neutral setting unrelated to housing: a restaurant rating called "good value" reads as one idea but fuses (a) price fairness with (b) portion size — an expensive place serving huge plates scores high on one and low on the other, so a single "value" number averages to a misleading "moderate" and HIDES which one actually varies. Two ratings, not one. Apply that same seam-finding to whatever axes THIS pool actually presents — do not import the example's subject matter; it is only there to illustrate the move. Watch for the seam even when a name reads as one idea; a name joining concepts with "&", "and", "/", or a comma is just the most obvious case. A single clear concept per dimension is the goal; the higher cap above exists precisely so you never have to combine to fit.
-One exception to splitting: never split a concept into applicant-vs-co-applicant versions (e.g. "applicant's trade skills" vs. "co-applicant's"). They apply jointly — assess each concept across both adults together. This is only about that pair; dimensions about other household members (e.g. school-age children using shared spaces) are fine.
+- **One concept per dimension.** Test by OPPOSING EVIDENCE: if one applicant could score HIGH on part of a dimension and LOW on another part, it bundles two axes — split them. (Out-of-domain illustration, do not borrow the subject: a restaurant "good value" fuses price fairness with portion size — a pricey place with huge plates is high on one, low on the other, so one "value" number hides which varies. Two ratings, not one.) Watch for the seam even when the name reads as one idea; "&", "and", "/", or a comma is just the obvious case. The high cap exists so you never combine to fit.
+- **Do not split applicant vs. co-applicant** (e.g. "applicant's trade skills" vs. "co-applicant's"): assess each concept across both adults jointly. This applies only to that pair — axes about other household members (e.g. children using shared spaces) are fine.
+- **Orient so MORE is better fit:** the high end is the desirable end, since scoring (0..1) always counts a higher score toward fit. Recast a "less is better" axis to its positive form (illustration: "frequency of breakdowns" → "mechanical reliability"). The `definition` must state what is measured and which end is high.
+- **"Goldilocks" axes** (best value in the middle, both extremes bad): do not score the raw quantity — at the ideal it reads as a misleading "moderate". Reframe to the underlying fit-concept, one naturally more-is-better judgment of how well the applicant matches the right target (illustration: not "amount of salt" but "seasoned about right"). Split into opposing fit-questions only when the trade-off is a real value the committee should weigh — and phrase each as a condition met-or-not that then levels off, never as "amount of X" (two linear halves average back to a flat line and erase the peak). Eligibility filters already exclude most quantity extremes upstream, so a true interior peak is uncommon — reframe unless the tension is real.
 
 {FILTERED_FACTS_NOTE}
 
@@ -76,7 +77,7 @@ One exception to splitting: never split a concept into applicant-vs-co-applicant
 For each dimension provide:
 - key: a stable snake_case identifier (e.g. participation_commitment)
 - name: a short committee-facing label
-- definition: 1-2 neutral sentences on what it measures
+- definition: 1-2 neutral sentences on what it measures, and which end is the high end
 - why_it_differentiates: what actually varies across THESE applicants on this axis
 
 Also write a 2-4 sentence neutral summary of what most distinguishes strong from weak fit across this pool.
