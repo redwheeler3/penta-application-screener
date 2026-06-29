@@ -23,17 +23,15 @@ function CriteriaDetail(props: { dim: PoolDimension | null }): ReactNode {
   );
 }
 
-// The "add your own" composer + the pending-proposal list + the seed-count note.
+// The "add your own" composer + the pending-proposal list.
 // Steers the NEXT run's discovery: a proposal (free text) or a ★ favourite both feed
 // the next Rank as "strongly consider"; the AI may refine, split, or skip them.
 function CriteriaComposer(props: {
-  favouritedCount: number;
   proposedDimensions: string[];
   onAddProposal: (text: string) => void;
   onRemoveProposal: (text: string) => void;
 }): ReactNode {
   const [draft, setDraft] = useState("");
-  const seedCount = props.favouritedCount + props.proposedDimensions.length;
   function submitDraft() {
     const text = draft.trim();
     if (!text) return;
@@ -80,12 +78,6 @@ function CriteriaComposer(props: {
             </li>
           ))}
         </ul>
-      ) : null}
-      {seedCount > 0 ? (
-        <p className="criteria-seed-note">
-          Next Rank will offer the AI {seedCount} suggested {seedCount === 1 ? "axis" : "axes"} ({props.favouritedCount}{" "}
-          favourited, {props.proposedDimensions.length} proposed) — it may refine, split, or skip them.
-        </p>
       ) : null}
     </div>
   );
@@ -176,7 +168,6 @@ export function RankingView(props: {
                 onToggleAdd={() => setAddOpen((v) => !v)}
                 composer={
                   <CriteriaComposer
-                    favouritedCount={favourited.size}
                     proposedDimensions={proposedDimensions}
                     onAddProposal={props.onAddProposal}
                     onRemoveProposal={props.onRemoveProposal}

@@ -1701,13 +1701,6 @@ h1 {
   color: #dc2626;
 }
 
-.criteria-seed-note {
-  margin: 0.6rem 0 0;
-  color: var(--muted);
-  font-size: 0.78rem;
-  line-height: 1.45;
-}
-
 /* Description-panel definition body: what the criterion measures. Inherits the
    panel's 0.85rem so the title/body sizes feel intentional, not mismatched. */
 .dimension-def {
