@@ -208,6 +208,9 @@ export type CurrentRunResponse = {
   status: string;
   summary: string;
   dimensions: PoolDimension[];
+  // The model's streamed reasoning from the discovery pass (markdown), shown on the
+  // Insights tab. Null for runs from before it was captured.
+  discoveryNarrative: string | null;
   // New dimensions with no confident match to a prior one — they start in Ignore,
   // badged "new" until the committee triages them. Empty on a first run.
   newDimensionKeys: string[];

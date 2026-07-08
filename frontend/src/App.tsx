@@ -670,8 +670,8 @@ export function App() {
                 onRemoveProposal={removeProposal}
                 onSelectApplication={viewApplication}
               />
-            ) : activeTab === "insights" ? (
-              <InsightsView />
+            ) : activeTab === "insights" && rankingRun ? (
+              <InsightsView run={rankingRun} />
             ) : (
               <ApplicationsList
                 applications={applications}

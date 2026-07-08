@@ -1418,6 +1418,8 @@ h1 {
 
 .match-audit-hint {
   color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
   margin: 0 0 0.75rem;
 }
 
@@ -1506,15 +1508,20 @@ h1 {
   padding: 0 0.4rem;
 }
 
-/* Just a label + the .ai-narrative markdown box below it — the box owns its own
-   border/padding, so this wrapper stays unstyled to avoid a double frame. */
-.match-audit-narrative-label {
+/* Small uppercase sub-label used across the Insights panels (Pool summary, Model
+   reasoning, Match reasoning). Sits above its content; the .ai-narrative box (when
+   present) owns its own border/padding, so this wrapper stays unstyled. */
+.insights-label {
   display: block;
   margin-bottom: 0.35rem;
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--muted);
+}
+
+.insights-narrative {
+  margin-top: 1rem;
 }
 
 /* Rendered markdown for the AI narrative. Same boxed container as the raw
@@ -1955,8 +1962,99 @@ h1 {
   line-height: 1.45;
 }
 
+.insights-view {
+  /* Like .ranking-view: .panel has no padding, so the view supplies its own inset. */
+  padding: 1.25rem;
+}
+
 .insights-header {
   margin-bottom: 1rem;
+}
+
+/* Insights subtabs: a secondary level below the folder tabs, so they use a quieter
+   underline style (not the green folder-tab treatment) to read as subordinate. */
+.insights-subtabs {
+  display: flex;
+  gap: 1.25rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 1.25rem;
+}
+
+.insights-subtab {
+  padding: 0 0 0.5rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px; /* overlap the container border so the active underline sits on it */
+}
+
+.insights-subtab:hover {
+  color: var(--ink);
+}
+
+.insights-subtab.active {
+  color: var(--penta-green-dark);
+  border-bottom-color: var(--penta-green);
+  font-weight: 600;
+}
+
+/* Discovery panel: the full pattern-discovery output as a readable trace. */
+.discovery-summary {
+  margin-bottom: 1rem;
+}
+
+.discovery-summary p {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.discovery-dimensions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.discovery-dimension {
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.discovery-dimension-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.discovery-dimension-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.discovery-dimension-def {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.discovery-dimension-why {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.discovery-why-label {
+  font-weight: 600;
 }
 
 .insights-header h3 {

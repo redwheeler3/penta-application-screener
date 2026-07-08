@@ -8,10 +8,10 @@ import type { MatchAuditResponse } from "../types";
 // new dimension onto a prior one, and the derived carry-forward rate — the signal
 // that answers "is the match pass over-matching?" without a SQLite spelunk.
 //
-// Lazily fetches its own data on mount: this is a collapsible debug surface off the
-// ranked view's critical path, so it stays out of the parent's (already large) state
-// and only the members who open it pay for the round-trip.
-export function MatchAuditPanel(props: { defaultOpen?: boolean }): ReactNode {
+// Self-fetches on mount. Rendered as the active Insights subtab, so an absent audit
+// (a first run, or a run from before capture) shows an explicit empty state rather
+// than vanishing — "nothing carried forward" is information, not a broken panel.
+export function MatchAuditPanel(): ReactNode {
   const [audit, setAudit] = useState<MatchAuditResponse | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
 
@@ -25,20 +25,17 @@ export function MatchAuditPanel(props: { defaultOpen?: boolean }): ReactNode {
     };
   }, []);
 
-  // No audit is the common, correct case (first run, or a run from before capture) —
-  // render nothing rather than an empty panel that reads as broken.
-  if (state === "error" || (state === "ready" && audit === null)) return null;
-
-  return (
-    <details className="raw-row-section no-print" open={props.defaultOpen}>
-      <summary>AI carry-forward audit (match pass)</summary>
-      {state === "loading" || audit === null ? (
-        <p className="match-audit-hint">Loading…</p>
-      ) : (
-        <MatchAuditBody audit={audit} />
-      )}
-    </details>
-  );
+  if (state === "loading") return <p className="match-audit-hint">Loading…</p>;
+  if (state === "error") return <p className="match-audit-hint">Couldn’t load the carry-forward audit.</p>;
+  if (audit === null) {
+    return (
+      <p className="match-audit-hint">
+        No carry-forward audit for this run — it’s the first run (nothing to match against) or predates audit
+        capture. Re-rank to populate it.
+      </p>
+    );
+  }
+  return <MatchAuditBody audit={audit} />;
 }
 
 function MatchAuditBody(props: { audit: MatchAuditResponse }): ReactNode {
@@ -53,9 +50,8 @@ function MatchAuditBody(props: { audit: MatchAuditResponse }): ReactNode {
   return (
     <div className="match-audit">
       <p className="match-audit-hint">
-        What pattern discovery emitted this run, and how many dimensions the match pass carried forward from the
-        prior run (reusing their tier placement and cached scores). A persistently high carry-forward rate can mean
-        the match pass is over-matching.
+        Dimensions carried forward reuse their tier placement and cached scores. A persistently high carry-forward
+        rate can mean the match pass is over-matching.
       </p>
 
       <dl className="match-audit-stats">
@@ -116,8 +112,8 @@ function MatchAuditBody(props: { audit: MatchAuditResponse }): ReactNode {
       </table>
 
       {audit.matchNarrative ? (
-        <div className="match-audit-narrative">
-          <span className="match-audit-narrative-label">Match reasoning</span>
+        <div className="insights-narrative">
+          <span className="insights-label">Match reasoning</span>
           {/* Reuse the .ai-narrative markdown box (same as the screening narrative)
               so the match reasoning renders as markdown, not raw text. */}
           <div className="ai-narrative">

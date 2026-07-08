@@ -28,6 +28,10 @@ class CurrentRunResponse(ResponseModel):
     status: str
     summary: str
     dimensions: list[PoolDimensionOut]
+    # The model's streamed reasoning from the discovery pass (markdown), for the
+    # Insights trace. Null for runs from before it was captured / if the provider
+    # surfaced none.
+    discovery_narrative: str | None = None
     new_dimension_keys: list[str] = []
     favourited_keys: list[str] = []
     proposed_dimensions: list[str] = []
