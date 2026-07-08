@@ -156,15 +156,19 @@ export type CostPass = {
   costUsd: number;
 };
 
-export type CostTotals = {
+// The passes triggered by one user-facing run (Screen or Rank), with a subtotal.
+export type CostGroup = {
+  runLabel: string;
   passes: CostPass[];
-  totalCostUsd: number;
+  subtotalUsd: number;
 };
 
 export type CostReport = {
-  // Every dollar ever spent (all passes, all runs) — exact. Unrelated to the per-run
-  // spending cap (which bounds one Rank). Per-run cost is omitted (no run-id stamp).
-  cumulative: CostTotals;
+  // Cumulative AI spend across all runs, grouped by the run that triggers each pass
+  // (Screen vs Rank) — exact. Unrelated to the spending cap (which bounds each single
+  // run). Per-individual-run cost is omitted (cost rows have no run-id stamp).
+  groups: CostGroup[];
+  totalCostUsd: number;
 };
 
 // The current run's discovered dimensions, from GET /ranking/current.

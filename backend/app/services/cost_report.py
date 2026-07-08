@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import ApplicationAIResult, RankingRun
-from app.schemas.insights import CostPass, CostReport, CostTotals
+from app.schemas.insights import CostGroup, CostPass, CostReport
 
 SCREENING = "screening"
 ESSAY = "essay_analysis"
@@ -59,27 +59,46 @@ def _summed(runs: list[RankingRun], key: str) -> float:
     return sum(float((r.criteria or {}).get(key) or 0.0) for r in runs)
 
 
+def _group(run_label: str, passes: list[CostPass]) -> CostGroup:
+    return CostGroup(
+        run_label=run_label,
+        passes=passes,
+        subtotal_usd=round(sum(p.cost_usd for p in passes), 6),
+    )
+
+
 def cost_report(db: Session) -> CostReport:
-    """Cumulative AI spend across all runs, broken down by pass. Exact — a plain sum
-    of every stored cost."""
+    """Cumulative AI spend across all runs, grouped by the run that triggers each pass.
+    Exact — a plain sum of every stored cost.
+
+    Screen runs the screening pass; Rank runs essay analysis → pattern discovery →
+    dimension matching → dimension scoring (essay analysis is part of Rank, not Screen).
+    """
     all_runs = list(db.scalars(select(RankingRun)))
     # A match pass runs only when there's a prior run to match against, so it's absent
     # on first runs; count only runs that actually stored a match cost.
     match_runs = [r for r in all_runs if (r.criteria or {}).get("match_cost_usd")]
-    passes = [
-        _pass("Screening", *_sum_rows(db, ApplicationAIResult.kind == SCREENING)),
-        _pass("Essay analysis", *_sum_rows(db, ApplicationAIResult.kind == ESSAY)),
-        _pass("Dimension scoring", *_sum_rows(db, ApplicationAIResult.kind.startswith(SCORING_PREFIX))),
-        # Discovery and match are separate Bedrock calls (Sonnet vs. Haiku), stored and
-        # attributed separately. Cost-only (no tokens stored). Runs created before the
-        # split fold their match cost into discovery_cost_usd — a minor historical
-        # over-attribution to discovery, not worth resetting real cost history over.
-        _pass("Pattern discovery", len(all_runs), 0, 0, _summed(all_runs, "discovery_cost_usd")),
-        _pass("Dimension matching", len(match_runs), 0, 0, _summed(all_runs, "match_cost_usd")),
-    ]
+
+    screen = _group(
+        "Screen",
+        [_pass("Screening", *_sum_rows(db, ApplicationAIResult.kind == SCREENING))],
+    )
+    rank = _group(
+        "Rank",
+        [
+            _pass("Essay analysis", *_sum_rows(db, ApplicationAIResult.kind == ESSAY)),
+            # Discovery and match are separate Bedrock calls (Sonnet vs. Haiku), stored
+            # and attributed separately. Cost-only (no tokens stored). Runs created
+            # before the split fold their match cost into discovery_cost_usd — a minor
+            # historical over-attribution to discovery, not worth resetting real cost
+            # history over.
+            _pass("Pattern discovery", len(all_runs), 0, 0, _summed(all_runs, "discovery_cost_usd")),
+            _pass("Dimension matching", len(match_runs), 0, 0, _summed(all_runs, "match_cost_usd")),
+            _pass("Dimension scoring", *_sum_rows(db, ApplicationAIResult.kind.startswith(SCORING_PREFIX))),
+        ],
+    )
+    groups = [screen, rank]
     return CostReport(
-        cumulative=CostTotals(
-            passes=passes,
-            total_cost_usd=round(sum(p.cost_usd for p in passes), 6),
-        ),
+        groups=groups,
+        total_cost_usd=round(sum(g.subtotal_usd for g in groups), 6),
     )
