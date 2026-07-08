@@ -14,11 +14,12 @@ class CostPass(ResponseModel):
     caching doesn't read as "caching failed here". Summed from the run-cost ledger."""
 
     pass_label: str
-    calls: int
+    calls: int  # actual (uncached) model calls made — one stored result each
     input_tokens: int
     output_tokens: int
     cost_usd: float
     cacheable: bool = False
+    cached_count: int = 0  # cache reuses, summed from the ledger (0 for non-cacheable)
     cached_saved_usd: float = 0.0
 
 

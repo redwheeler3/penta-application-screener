@@ -48,6 +48,7 @@ def _pass(
     input_tokens: int,
     output_tokens: int,
     cost: float,
+    cached_count: int = 0,
     cached_saved: float = 0.0,
 ) -> CostPass:
     return CostPass(
@@ -57,6 +58,7 @@ def _pass(
         output_tokens=output_tokens,
         cost_usd=round(cost, 6),
         cacheable=label in CACHEABLE_PASSES,
+        cached_count=cached_count,
         cached_saved_usd=round(cached_saved, 6),
     )
 
@@ -89,15 +91,20 @@ def _group(run_label: str, passes: list[CostPass]) -> CostGroup:
     )
 
 
-def _saved_by_pass(db: Session) -> dict[str, float]:
-    """Cumulative cache savings per pass label, summed from the run-cost ledger. Only
-    covers runs since ledgering began (historical reuse was never recorded — the result
-    cache has no hit counter). Fine here: the local DB resets before go-live."""
-    saved: dict[str, float] = {}
+def _cache_by_pass(db: Session) -> dict[str, tuple[int, float]]:
+    """Cumulative cache reuse per pass label — (cached_count, saved_usd) — summed from
+    the run-cost ledger. Only covers runs since ledgering began (historical reuse was
+    never recorded — the result cache has no hit counter). Fine here: the local DB
+    resets before go-live."""
+    agg: dict[str, tuple[int, float]] = {}
     for row in db.scalars(select(RunCostLedger)):
         for p in row.passes:
-            saved[p["label"]] = saved.get(p["label"], 0.0) + float(p.get("cached_saved_usd") or 0.0)
-    return saved
+            count, saved = agg.get(p["label"], (0, 0.0))
+            agg[p["label"]] = (
+                count + int(p.get("cached_count") or 0),
+                saved + float(p.get("cached_saved_usd") or 0.0),
+            )
+    return agg
 
 
 def cost_report(db: Session) -> CostReport:
@@ -112,18 +119,21 @@ def cost_report(db: Session) -> CostReport:
     # A match pass runs only when there's a prior run to match against, so it's absent
     # on first runs; count only runs that actually stored a match cost.
     match_runs = [r for r in all_runs if (r.criteria or {}).get("match_cost_usd")]
-    saved = _saved_by_pass(db)
+    cache = _cache_by_pass(db)  # label → (cached_count, saved_usd)
+
+    def cached(label: str) -> dict:
+        count, saved = cache.get(label, (0, 0.0))
+        return {"cached_count": count, "cached_saved": saved}
 
     screen = _group(
         "Screen",
-        [_pass("Screening", *_sum_rows(db, ApplicationAIResult.kind == SCREENING),
-               cached_saved=saved.get("Screening", 0.0))],
+        [_pass("Screening", *_sum_rows(db, ApplicationAIResult.kind == SCREENING), **cached("Screening"))],
     )
     rank = _group(
         "Rank",
         [
             _pass("Essay analysis", *_sum_rows(db, ApplicationAIResult.kind == ESSAY),
-                  cached_saved=saved.get("Essay analysis", 0.0)),
+                  **cached("Essay analysis")),
             # Discovery and match are separate Bedrock calls (Sonnet vs. Haiku), stored
             # and attributed separately. Cost-only (no tokens stored). Never cacheable.
             # Runs created before the discovery/match cost split fold their match cost
@@ -132,7 +142,7 @@ def cost_report(db: Session) -> CostReport:
             _pass("Pattern discovery", len(all_runs), 0, 0, _summed(all_runs, "discovery_cost_usd")),
             _pass("Dimension matching", len(match_runs), 0, 0, _summed(all_runs, "match_cost_usd")),
             _pass("Dimension scoring", *_sum_rows(db, ApplicationAIResult.kind.startswith(SCORING_PREFIX)),
-                  cached_saved=saved.get("Dimension scoring", 0.0)),
+                  **cached("Dimension scoring")),
         ],
     )
     groups = [screen, rank]

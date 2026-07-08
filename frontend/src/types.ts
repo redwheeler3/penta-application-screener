@@ -150,14 +150,15 @@ export type ApplicationDetail = ApplicationSummary & {
 // inputTokens/outputTokens are 0 for the discovery+match pass (cost-only, no tokens).
 export type CostPass = {
   passLabel: string;
-  calls: number;
+  calls: number; // actual (uncached) model calls made
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
   // cacheable false → this pass always calls fresh (pattern discovery, dimension
-  // matching); the UI shows "—" for its savings, never $0. cachedSavedUsd is summed
-  // from the run-cost ledger.
+  // matching); the UI shows "—" for its savings, never $0. cachedCount/cachedSavedUsd
+  // are summed from the run-cost ledger.
   cacheable: boolean;
+  cachedCount: number;
   cachedSavedUsd: number;
 };
 
