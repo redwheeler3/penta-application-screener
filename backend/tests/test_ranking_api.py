@@ -558,9 +558,12 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
 
         current = (await client.get("/ranking/current")).json()
         assert current["newDimensionKeys"] == ["financial_stability"]
-        # Key adopted, but the NEW content is kept (fresh discovery wording).
+        # A match adopts the prior dimension WHOLESALE — prior key AND prior text —
+        # because it reuses the prior cached score, computed against the prior
+        # definition. So the fresh re-discovered wording ("Stated participation") is
+        # discarded in favour of the prior "Participation commitment".
         by_key = {d["key"]: d for d in current["dimensions"]}
-        assert by_key["participation_commitment"]["name"] == "Stated participation"
+        assert by_key["participation_commitment"]["name"] == "Participation commitment"
 
         # Acknowledge the new dimension in place (badge ✕ / "mark all reviewed"):
         # keep the layout unchanged, send the key in acknowledgedKeys. It drops
