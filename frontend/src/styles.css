@@ -2032,36 +2032,65 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 
+/* Fixed layout + explicit column widths so every table and group lines up: the two
+   money columns are identical width everywhere (Last runs and Total spend both). */
 .cost-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.82rem;
-  margin-top: 1rem;
+  margin-top: 0.75rem;
+}
+
+.cost-col-detail {
+  width: 9rem;
+}
+
+.cost-col-money {
+  width: 8rem;
+}
+
+/* Column header row (the labels above the two money columns). */
+.cost-table thead th {
+  text-align: right;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.cost-table thead th.cost-col-label,
+.cost-table thead th.cost-col-detail {
+  text-align: left;
 }
 
 .cost-table td {
   padding: 0.3rem 0.5rem;
   border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Run group header (Screen / Rank) with its subtotal on the right. */
-.cost-group-head th {
-  text-align: left;
-  padding: 0.3rem 0.5rem;
+/* Run group header row (Screen / Rank) with its subtotals. */
+.cost-group-head td {
   border-bottom: 2px solid var(--line);
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--ink);
-}
-
-.cost-group-head th.cost-num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+  padding-top: 0.75rem;
 }
 
 /* Passes indent under their run group. */
 .cost-pass-name {
-  padding-left: 1.25rem !important;
+  padding-left: 1.5rem !important;
+  color: var(--muted);
+}
+
+.cost-detail {
   color: var(--muted);
 }
 
@@ -2069,6 +2098,11 @@ h1 {
   text-align: right;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
+}
+
+/* The spent column (last) reads as the hard number; saved (its left) stays muted. */
+.cost-group-head .cost-num {
+  color: var(--ink);
 }
 
 /* "Why it differentiates" line under a criterion's description on the Ranking tab. */

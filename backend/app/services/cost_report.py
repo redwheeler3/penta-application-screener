@@ -36,14 +36,28 @@ SCREENING = "screening"
 ESSAY = "essay_analysis"
 SCORING_PREFIX = "dimension_scoring:"
 
+# Passes that can reuse cached results. The others (pattern discovery, dimension
+# matching) always call Bedrock fresh, so a "saved by cache" figure is N/A for them —
+# the UI shows "—", never $0, so structural absence of caching doesn't read as failure.
+CACHEABLE_PASSES = {"Screening", "Essay analysis", "Dimension scoring"}
 
-def _pass(label: str, calls: int, input_tokens: int, output_tokens: int, cost: float) -> CostPass:
+
+def _pass(
+    label: str,
+    calls: int,
+    input_tokens: int,
+    output_tokens: int,
+    cost: float,
+    cached_saved: float = 0.0,
+) -> CostPass:
     return CostPass(
         pass_label=label,
         calls=calls,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost_usd=round(cost, 6),
+        cacheable=label in CACHEABLE_PASSES,
+        cached_saved_usd=round(cached_saved, 6),
     )
 
 
@@ -71,12 +85,25 @@ def _group(run_label: str, passes: list[CostPass]) -> CostGroup:
         run_label=run_label,
         passes=passes,
         subtotal_usd=round(sum(p.cost_usd for p in passes), 6),
+        subtotal_saved_usd=round(sum(p.cached_saved_usd for p in passes), 6),
     )
+
+
+def _saved_by_pass(db: Session) -> dict[str, float]:
+    """Cumulative cache savings per pass label, summed from the run-cost ledger. Only
+    covers runs since ledgering began (historical reuse was never recorded — the result
+    cache has no hit counter). Fine here: the local DB resets before go-live."""
+    saved: dict[str, float] = {}
+    for row in db.scalars(select(RunCostLedger)):
+        for p in row.passes:
+            saved[p["label"]] = saved.get(p["label"], 0.0) + float(p.get("cached_saved_usd") or 0.0)
+    return saved
 
 
 def cost_report(db: Session) -> CostReport:
     """Cumulative AI spend across all runs, grouped by the run that triggers each pass.
-    Exact — a plain sum of every stored cost.
+    Spend is exact (a plain sum of every stored cost); cache savings come from the
+    run-cost ledger (see ``_saved_by_pass``).
 
     Screen runs the screening pass; Rank runs essay analysis → pattern discovery →
     dimension matching → dimension scoring (essay analysis is part of Rank, not Screen).
@@ -85,29 +112,34 @@ def cost_report(db: Session) -> CostReport:
     # A match pass runs only when there's a prior run to match against, so it's absent
     # on first runs; count only runs that actually stored a match cost.
     match_runs = [r for r in all_runs if (r.criteria or {}).get("match_cost_usd")]
+    saved = _saved_by_pass(db)
 
     screen = _group(
         "Screen",
-        [_pass("Screening", *_sum_rows(db, ApplicationAIResult.kind == SCREENING))],
+        [_pass("Screening", *_sum_rows(db, ApplicationAIResult.kind == SCREENING),
+               cached_saved=saved.get("Screening", 0.0))],
     )
     rank = _group(
         "Rank",
         [
-            _pass("Essay analysis", *_sum_rows(db, ApplicationAIResult.kind == ESSAY)),
+            _pass("Essay analysis", *_sum_rows(db, ApplicationAIResult.kind == ESSAY),
+                  cached_saved=saved.get("Essay analysis", 0.0)),
             # Discovery and match are separate Bedrock calls (Sonnet vs. Haiku), stored
-            # and attributed separately. Cost-only (no tokens stored). Runs created
-            # before the split fold their match cost into discovery_cost_usd — a minor
-            # historical over-attribution to discovery, not worth resetting real cost
-            # history over.
+            # and attributed separately. Cost-only (no tokens stored). Never cacheable.
+            # Runs created before the discovery/match cost split fold their match cost
+            # into discovery_cost_usd — a minor historical over-attribution, not worth
+            # resetting real cost history over.
             _pass("Pattern discovery", len(all_runs), 0, 0, _summed(all_runs, "discovery_cost_usd")),
             _pass("Dimension matching", len(match_runs), 0, 0, _summed(all_runs, "match_cost_usd")),
-            _pass("Dimension scoring", *_sum_rows(db, ApplicationAIResult.kind.startswith(SCORING_PREFIX))),
+            _pass("Dimension scoring", *_sum_rows(db, ApplicationAIResult.kind.startswith(SCORING_PREFIX)),
+                  cached_saved=saved.get("Dimension scoring", 0.0)),
         ],
     )
     groups = [screen, rank]
     return CostReport(
         groups=groups,
         total_cost_usd=round(sum(g.subtotal_usd for g in groups), 6),
+        total_saved_usd=round(sum(g.subtotal_saved_usd for g in groups), 6),
     )
 
 
@@ -157,7 +189,9 @@ def _last_run(db: Session, kind: str) -> LastRunCost | None:
         at=row.created_at.isoformat(),
         fresh_usd=row.fresh_usd,
         cached_saved_usd=row.cached_saved_usd,
-        passes=[LastRunPass(**p) for p in row.passes],
+        # cacheable isn't stored on the ledger row (it's a fixed property of the pass),
+        # so derive it here from the pass label.
+        passes=[LastRunPass(**p, cacheable=p["label"] in CACHEABLE_PASSES) for p in row.passes],
     )
 
 

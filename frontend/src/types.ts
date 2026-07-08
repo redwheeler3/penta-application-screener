@@ -154,21 +154,28 @@ export type CostPass = {
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
+  // cacheable false → this pass always calls fresh (pattern discovery, dimension
+  // matching); the UI shows "—" for its savings, never $0. cachedSavedUsd is summed
+  // from the run-cost ledger.
+  cacheable: boolean;
+  cachedSavedUsd: number;
 };
 
-// The passes triggered by one user-facing run (Screen or Rank), with a subtotal.
+// The passes triggered by one user-facing run (Screen or Rank), with subtotals.
 export type CostGroup = {
   runLabel: string;
   passes: CostPass[];
   subtotalUsd: number;
+  subtotalSavedUsd: number;
 };
 
 export type CostReport = {
   // Cumulative AI spend across all runs, grouped by the run that triggers each pass
-  // (Screen vs Rank) — exact. Unrelated to the spending cap (which bounds each single
-  // run). Per-individual-run cost is omitted (cost rows have no run-id stamp).
+  // (Screen vs Rank). Spend is exact; savings come from the ledger (runs since it
+  // began). Unrelated to the spending cap (which bounds each single run).
   groups: CostGroup[];
   totalCostUsd: number;
+  totalSavedUsd: number;
 };
 
 // One pass within a single completed run (GET /ranking/insights/last-runs).
@@ -179,6 +186,7 @@ export type LastRunPass = {
   freshCalls: number;
   cachedCount: number;
   cachedSavedUsd: number;
+  cacheable: boolean;
 };
 
 export type LastRunCost = {
