@@ -306,6 +306,11 @@ class PassResult:
 
     application: Application
     outcome: AnalysisOutcome | None  # None when the model call failed
+    # Optional accounting override for passes where one yielded application result
+    # represents multiple cacheable result rows (dimension scoring).
+    fresh_units: int | None = None
+    cached_units: int | None = None
+    cached_saved_usd: float | None = None
     error: str | None = None
     # The failed call's exception class (fully-qualified), preserved separately
     # from the ``str()``-flattened ``error`` so failure *modes* stay countable

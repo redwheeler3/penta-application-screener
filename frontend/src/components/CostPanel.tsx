@@ -4,14 +4,14 @@ import type { CostReport, LastRunCost, LastRunsReport } from "../types";
 
 // M13 Pillar 1: AI cost, an Insights subtab. Two sections, same column layout so they
 // line up: [ label | uncached | cached | saved by cache | spent ]. Spent is the
-// rightmost hard number; "saved by cache" sits to its left as the softer estimate.
+// rightmost hard number; cache savings sit to its left as the softer estimate.
 //   - Last runs — the most recent Screen and Rank, fresh spend vs. cache savings.
 //   - Cumulative spend — cumulative spend + savings, grouped by run.
 // Passes that can't cache (pattern discovery, dimension matching) show "—" for the
 // cached count and savings, never 0, so structural absence of caching doesn't read as
 // "caching failed".
 const money = (n: number) => `$${n.toFixed(4)}`;
-const savedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : n > 0 ? `~${money(n)}` : money(n));
+const savedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : money(n));
 const cachedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : String(n));
 const PASS_LABELS: Record<"screen" | "rank", Array<{ label: string; cacheable: boolean }>> = {
   screen: [{ label: "Screening", cacheable: true }],
@@ -72,7 +72,7 @@ export function CostPanel(): ReactNode {
                     <td>{run.kind === "screen" ? "Screen" : "Rank"}</td>
                     <td className="cost-num" />
                     <td className="cost-num" />
-                    <td className="cost-num">{run.cachedSavedUsd > 0 ? `~${money(run.cachedSavedUsd)}` : "—"}</td>
+                    <td className="cost-num">{run.cachedSavedUsd > 0 ? money(run.cachedSavedUsd) : "—"}</td>
                     <td className="cost-num">{money(run.freshUsd)}</td>
                   </tr>
                   {run.passes.map((p) => (
@@ -97,9 +97,8 @@ export function CostPanel(): ReactNode {
           <span className="cost-block-total">{`$${cost.totalCostUsd.toFixed(2)}`} spent</span>
         </div>
         <p className="match-audit-hint">
-          Every dollar spent on AI across all runs so far, grouped by the run that triggers each pass. The spending
-          cap limits each individual run before it starts; this is the running total across all of them, with no
-          ceiling of its own.
+          What all Screen and Rank runs have spent on Bedrock, and an estimate of what caching saved by reusing
+          unchanged results.
         </p>
         <table className="cost-table">
           <CostHead />
@@ -109,7 +108,7 @@ export function CostPanel(): ReactNode {
                 <td>{g.runLabel}</td>
                 <td className="cost-num" />
                 <td className="cost-num" />
-                <td className="cost-num">{g.subtotalSavedUsd > 0 ? `~${money(g.subtotalSavedUsd)}` : "—"}</td>
+                <td className="cost-num">{g.subtotalSavedUsd > 0 ? money(g.subtotalSavedUsd) : "—"}</td>
                 <td className="cost-num">{money(g.subtotalUsd)}</td>
               </tr>
               {g.passes.map((p) => (
@@ -160,7 +159,7 @@ function CostHead(): ReactNode {
         <th className="cost-col-label" />
         <th className="cost-col-count">uncached</th>
         <th className="cost-col-count">cached</th>
-        <th className="cost-col-money">saved by cache</th>
+        <th className="cost-col-money">cache savings</th>
         <th className="cost-col-money">spent</th>
       </tr>
     </thead>

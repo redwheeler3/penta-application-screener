@@ -243,6 +243,7 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
         assert by_pass["Essay analysis"]["cachedCount"] == 0
         assert rank["freshUsd"] > 0
         assert rank["cachedSavedUsd"] == 0.0
+        assert by_pass["Dimension scoring"]["freshCalls"] == 2
 
         # Re-rank the unchanged pool: essays + scores are cache hits now.
         provider.route("<essays>", an_essay_report())
@@ -254,10 +255,11 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
         second = (await client.get("/ranking/insights/last-runs")).json()["rank"]
         by_pass2 = {p["label"]: p for p in second["passes"]}
         # Essay + scoring reused from cache → cached counts and a nonzero saving.
-        # Both passes are one call per candidate (scoring batches a candidate's
-        # dimensions into one call), so 1 applicant → 1 cached call each.
         assert by_pass2["Essay analysis"]["cachedCount"] == 1
-        assert by_pass2["Dimension scoring"]["cachedCount"] == 1
+        # Dimension scoring persists one cache row per dimension, matching the
+        # cumulative spend table's unit.
+        assert by_pass2["Dimension scoring"]["cachedCount"] == 2
+        assert by_pass2["Dimension scoring"]["cachedSavedUsd"] > 0.0
         assert second["cachedSavedUsd"] > 0.0
 
 

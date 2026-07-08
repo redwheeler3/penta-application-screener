@@ -150,7 +150,8 @@ export type ApplicationDetail = ApplicationSummary & {
 // inputTokens/outputTokens are 0 for the discovery+match pass (cost-only, no tokens).
 export type CostPass = {
   passLabel: string;
-  calls: number; // actual (uncached) model calls made
+  // Uncached result units; dimension scoring counts per-dimension rows.
+  calls: number;
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
@@ -184,6 +185,7 @@ export type CostReport = {
 export type LastRunPass = {
   label: string;
   freshUsd: number;
+  // Uncached result units; dimension scoring counts per-dimension rows.
   freshCalls: number;
   cachedCount: number;
   cachedSavedUsd: number;
