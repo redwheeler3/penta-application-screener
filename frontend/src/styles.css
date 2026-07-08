@@ -2042,8 +2042,8 @@ h1 {
   margin-top: 0.75rem;
 }
 
-.cost-col-detail {
-  width: 9rem;
+.cost-col-count {
+  width: 6rem;
 }
 
 .cost-col-money {
@@ -2062,8 +2062,7 @@ h1 {
   border-bottom: 1px solid var(--line);
 }
 
-.cost-table thead th.cost-col-label,
-.cost-table thead th.cost-col-detail {
+.cost-table thead th.cost-col-label {
   text-align: left;
 }
 
@@ -2087,10 +2086,6 @@ h1 {
 /* Passes indent under their run group. */
 .cost-pass-name {
   padding-left: 1.5rem !important;
-  color: var(--muted);
-}
-
-.cost-detail {
   color: var(--muted);
 }
 

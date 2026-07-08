@@ -3,14 +3,16 @@ import { fetchCostReport, fetchLastRuns } from "../api";
 import type { CostReport, LastRunCost, LastRunsReport } from "../types";
 
 // M13 Pillar 1: AI cost, an Insights subtab. Two sections, same column layout so they
-// line up: [ label | detail | saved by cache | spent ]. Spent is the rightmost, hard
-// number; "saved by cache" sits to its left as the softer estimate.
+// line up: [ label | uncached | cached | saved by cache | spent ]. Spent is the
+// rightmost hard number; "saved by cache" sits to its left as the softer estimate.
 //   - Last runs — the most recent Screen and Rank, fresh spend vs. cache savings.
 //   - Total, all time — cumulative spend + savings, grouped by run.
-// Passes that can't cache (pattern discovery, dimension matching) show "—" for saved,
-// never $0, so a structural absence of caching doesn't read as "caching failed".
+// Passes that can't cache (pattern discovery, dimension matching) show "—" for the
+// cached count and savings, never 0, so structural absence of caching doesn't read as
+// "caching failed".
 const money = (n: number) => `$${n.toFixed(4)}`;
-const saved = (n: number, cacheable: boolean) => (cacheable ? `~${money(n)}` : "—");
+const savedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : n > 0 ? `~${money(n)}` : money(n));
+const cachedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : String(n));
 
 export function CostPanel(): ReactNode {
   const [cost, setCost] = useState<CostReport | null>(null);
@@ -33,14 +35,13 @@ export function CostPanel(): ReactNode {
 
   const runs = [last.screen, last.rank].filter((r): r is LastRunCost => r !== null);
   const lastSpent = runs.reduce((s, r) => s + r.freshUsd, 0);
-  const lastSaved = runs.reduce((s, r) => s + r.cachedSavedUsd, 0);
 
   return (
     <div className="cost-report">
       <div className="cost-section">
         <div className="cost-block-head">
           <span className="insights-label">Last runs</span>
-          <span className="cost-block-total">{money(lastSpent)} spent</span>
+          <span className="cost-block-total">{`$${lastSpent.toFixed(2)}`} spent</span>
         </div>
         <p className="match-audit-hint">
           What your most recent Screen and Rank each spent on Bedrock, and an estimate of what caching saved by
@@ -50,40 +51,32 @@ export function CostPanel(): ReactNode {
           <p className="match-audit-hint">No runs recorded yet — run Screen or Rank to see per-run cost.</p>
         ) : (
           <table className="cost-table">
-            <thead>
-              <tr>
-                <th className="cost-col-label" />
-                <th className="cost-col-detail" />
-                <th className="cost-col-money">saved by cache</th>
-                <th className="cost-col-money">spent</th>
-              </tr>
-            </thead>
+            <CostHead />
             {[last.screen, last.rank].map((run, i) =>
               run === null ? (
                 <tbody key={i}>
                   <tr className="cost-group-head">
                     <td>{i === 0 ? "Screen" : "Rank"}</td>
-                    <td className="cost-muted">not run yet</td>
-                    <td className="cost-num" />
-                    <td className="cost-num" />
+                    <td className="cost-muted" colSpan={4}>
+                      not run yet
+                    </td>
                   </tr>
                 </tbody>
               ) : (
                 <tbody key={i}>
                   <tr className="cost-group-head">
                     <td>{run.kind === "screen" ? "Screen" : "Rank"}</td>
-                    <td />
+                    <td className="cost-num" />
+                    <td className="cost-num" />
                     <td className="cost-num">{run.cachedSavedUsd > 0 ? `~${money(run.cachedSavedUsd)}` : "—"}</td>
                     <td className="cost-num">{money(run.freshUsd)}</td>
                   </tr>
                   {run.passes.map((p) => (
                     <tr key={p.label}>
                       <td className="cost-pass-name">{p.label}</td>
-                      <td className="cost-detail">
-                        {p.freshCalls > 0 ? `${p.freshCalls} fresh` : "—"}
-                        {p.cachedCount > 0 ? ` / ${p.cachedCount} cached` : ""}
-                      </td>
-                      <td className="cost-num">{saved(p.cachedSavedUsd, p.cacheable)}</td>
+                      <td className="cost-num">{p.freshCalls}</td>
+                      <td className="cost-num">{cachedCell(p.cachedCount, p.cacheable)}</td>
+                      <td className="cost-num">{savedCell(p.cachedSavedUsd, p.cacheable)}</td>
                       <td className="cost-num">{money(p.freshUsd)}</td>
                     </tr>
                   ))}
@@ -105,27 +98,22 @@ export function CostPanel(): ReactNode {
           ceiling of its own.
         </p>
         <table className="cost-table">
-          <thead>
-            <tr>
-              <th className="cost-col-label" />
-              <th className="cost-col-detail" />
-              <th className="cost-col-money">saved by cache</th>
-              <th className="cost-col-money">spent</th>
-            </tr>
-          </thead>
+          <CostHead />
           {cost.groups.map((g) => (
             <tbody key={g.runLabel}>
               <tr className="cost-group-head">
                 <td>{g.runLabel}</td>
-                <td />
+                <td className="cost-num" />
+                <td className="cost-num" />
                 <td className="cost-num">{g.subtotalSavedUsd > 0 ? `~${money(g.subtotalSavedUsd)}` : "—"}</td>
                 <td className="cost-num">{money(g.subtotalUsd)}</td>
               </tr>
               {g.passes.map((p) => (
                 <tr key={p.passLabel}>
                   <td className="cost-pass-name">{p.passLabel}</td>
-                  <td className="cost-detail">{p.calls > 0 ? `${p.calls} call${p.calls === 1 ? "" : "s"}` : "—"}</td>
-                  <td className="cost-num">{saved(p.cachedSavedUsd, p.cacheable)}</td>
+                  <td className="cost-num">{p.calls}</td>
+                  <td className="cost-num">{cachedCell(p.cachedCount, p.cacheable)}</td>
+                  <td className="cost-num">{savedCell(p.cachedSavedUsd, p.cacheable)}</td>
                   <td className="cost-num">{money(p.costUsd)}</td>
                 </tr>
               ))}
@@ -134,5 +122,20 @@ export function CostPanel(): ReactNode {
         </table>
       </div>
     </div>
+  );
+}
+
+// Shared header so both tables carry identical columns and widths.
+function CostHead(): ReactNode {
+  return (
+    <thead>
+      <tr>
+        <th className="cost-col-label" />
+        <th className="cost-col-count">uncached</th>
+        <th className="cost-col-count">cached</th>
+        <th className="cost-col-money">saved by cache</th>
+        <th className="cost-col-money">spent</th>
+      </tr>
+    </thead>
   );
 }
