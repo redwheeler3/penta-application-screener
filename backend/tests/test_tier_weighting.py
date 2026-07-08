@@ -86,36 +86,85 @@ def test_stale_key_in_layout_is_ignored() -> None:
     assert "gone" not in weights
 
 
-# --- adopt_matched_keys: rewrite matched dimensions to the prior key ---
+# --- adopt_matched_keys: matched dims are replaced wholesale by their prior self ---
 
 
-def test_adopt_rewrites_matched_key_keeps_new_content() -> None:
+def test_adopt_replaces_matched_dim_with_prior_text() -> None:
+    # A match reuses the prior dimension's CACHED SCORE, which was computed against
+    # the prior definition. So the prior text must win over the fresh re-discovered
+    # wording — otherwise the committee sees a score labelled with a definition it
+    # was not scored against.
     new = PoolDimensionReport(
         summary="s",
         dimensions=[
             PoolDimension(
-                key="long_term_stability", name="Stability",
+                key="long_term_stability", name="Fresh Name",
                 definition="fresh def", why_it_differentiates="fresh why",
             )
         ],
     )
-    adopted = adopt_matched_keys(new, {"long_term_stability": "long_term_residency"})
+    prior = PoolDimensionReport(
+        summary="s",
+        dimensions=[
+            PoolDimension(
+                key="long_term_residency", name="Prior Name",
+                definition="prior def", why_it_differentiates="prior why",
+            )
+        ],
+    )
+    adopted = adopt_matched_keys(new, {"long_term_stability": "long_term_residency"}, prior)
     dim = adopted.dimensions[0]
     assert dim.key == "long_term_residency"  # adopted the prior key (identity)
-    assert dim.name == "Stability"  # but kept the new content
-    assert dim.definition == "fresh def"
+    assert dim.name == "Prior Name"  # AND the prior text (pairs with cached score)
+    assert dim.definition == "prior def"
+    assert dim.why_it_differentiates == "prior why"
+
+
+def test_adopt_keeps_fresh_committee_flag_on_match() -> None:
+    # from_committee_request is THIS run's provenance (did the committee ask for this
+    # axis now?), not part of the scored concept — so it follows the fresh dim even
+    # when the prior text is adopted, so a newly-requested match still auto-favourites.
+    new = PoolDimensionReport(
+        summary="s",
+        dimensions=[
+            PoolDimension(
+                key="fresh", name="n", definition="d", why_it_differentiates="w",
+                from_committee_request=True,
+            )
+        ],
+    )
+    prior = report("prior")  # from_committee_request defaults False
+    adopted = adopt_matched_keys(new, {"fresh": "prior"}, prior)
+    assert adopted.dimensions[0].key == "prior"
+    assert adopted.dimensions[0].from_committee_request is True
 
 
 def test_adopt_leaves_unmatched_key_alone() -> None:
-    adopted = adopt_matched_keys(report("income_mix"), {})
+    # No prior history at all: nothing to adopt, fresh dim passes through unchanged.
+    adopted = adopt_matched_keys(report("income_mix"), {}, None)
     assert [d.key for d in adopted.dimensions] == ["income_mix"]
+
+
+def test_adopt_unmatched_keeps_fresh_text() -> None:
+    # A match map entry whose target isn't in prior history is treated as unmatched
+    # (defensive), so the fresh dimension is kept as discovered.
+    new = PoolDimensionReport(
+        summary="s",
+        dimensions=[
+            PoolDimension(key="new_axis", name="Fresh", definition="fresh def",
+                          why_it_differentiates="w")
+        ],
+    )
+    adopted = adopt_matched_keys(new, {"new_axis": "not_in_history"}, report("other"))
+    assert adopted.dimensions[0].key == "new_axis"
+    assert adopted.dimensions[0].definition == "fresh def"
 
 
 def test_adopt_never_creates_a_duplicate_key() -> None:
     # If two new dims would both adopt the same prior key (or an adopted key
     # collides with another dim's untouched key), the second keeps its own key.
     new = report("x", "y")
-    adopted = adopt_matched_keys(new, {"x": "shared", "y": "shared"})
+    adopted = adopt_matched_keys(new, {"x": "shared", "y": "shared"}, report("shared"))
     keys = [d.key for d in adopted.dimensions]
     assert keys[0] == "shared"
     assert keys[1] == "y"  # could not also be "shared" — kept its own

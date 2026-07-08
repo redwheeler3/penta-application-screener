@@ -457,9 +457,11 @@ def rank_run(
                 {d.key: d.name for d in match_history.dimensions} if match_history else {}
             ),
         }
-        # Adopt the prior key for every matched dimension (keeping new descriptions)
-        # so its tier placement and cached score carry forward by key alone.
-        report = adopt_matched_keys(report, new_to_old)
+        # For every matched dimension, adopt the prior dimension wholesale (key + text)
+        # from match_history — the same history the match pass matched against — so its
+        # tier placement AND cached score carry forward, and the displayed text stays
+        # the wording that score was computed against.
+        report = adopt_matched_keys(report, new_to_old, match_history)
         # Carry committee intent forward across ALL runs: restore each key's most-recent
         # tier placement; only keys never seen in any run are flagged "new".
         layout, new_dimension_keys = carry_forward_layout(

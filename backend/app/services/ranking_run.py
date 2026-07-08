@@ -3,10 +3,11 @@
 A ``RankingRun`` holds the discovered ``PoolDimensionReport``. Per-candidate
 scores are NOT stored here — they live in ``ApplicationAIResult`` rows under
 ``kind = "dimension_scoring:<dimension_key>"``, so a dimension's **key** joins
-back to a candidate's score. A matched dimension's key is rewritten to its prior
-key (``adopt_matched_keys``) across a re-rank, so its tier placement and cached
-score both carry forward by key alone (see SPEC "Pattern Discovery And Dimension
-Scoring"). "The current run" is the most recent one.
+back to a candidate's score. A matched dimension is replaced wholesale by its
+prior self (key + text) via ``adopt_matched_keys`` across a re-rank, so its tier
+placement, cached score, AND the wording that score was computed against all carry
+forward together (see SPEC "Pattern Discovery And Dimension Scoring"). "The current
+run" is the most recent one.
 
 Weights are derived from the tier layout, never proposed by the AI: the run stores
 ``criteria.tiers`` (working tiers only) and recomputes ``criteria.weights`` from
@@ -82,27 +83,45 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
 
 
 def adopt_matched_keys(
-    report: PoolDimensionReport, new_to_old: dict[str, str]
+    report: PoolDimensionReport,
+    new_to_old: dict[str, str],
+    prior: PoolDimensionReport | None,
 ) -> PoolDimensionReport:
-    """Rewrite a freshly-discovered dimension's **key** to its matched prior key,
-    keeping the new content (name, definition, why_it_differentiates).
+    """Replace a freshly-discovered dimension that matched a prior one with the prior
+    dimension **wholesale** — prior key AND prior text (name, definition,
+    why_it_differentiates) — discarding the fresh wording.
 
-    The key is a stable cross-run identity, not committee-facing text. Adopting the
-    prior key carries everything keyed on it — tier placements AND the score cache —
-    forward by key alone. The new descriptions are kept because discovery just
-    re-read this pool, so its wording is current; only the identifier is borrowed.
+    A matched dimension reuses its cached score (the score cache is keyed by key), and
+    that score was computed by the model reading the PRIOR definition. So the prior
+    text is the only wording consistent with the reused score: swapping in freshly
+    re-discovered wording would show the committee a number scored against a
+    definition it no longer sees. Score and text must move together, so a match
+    freezes both. (Discovery's fresh re-read is genuinely more current, but that only
+    matters for a dimension we re-score — an unmatched one, below.)
 
-    An unmatched dimension keeps its fresh key (→ cache miss → scored). Guard: never
-    adopt a key already taken by another dimension here (would duplicate); rare,
-    only if the LLM re-coins an old key for a different concept.
+    An unmatched dimension keeps its fresh key and fresh text (→ cache miss → scored
+    fresh, so text and score are aligned by construction). Guard: never adopt a key
+    already taken by another dimension here (would duplicate); rare, only if the LLM
+    re-coins an old key for a different concept.
     """
+    prior_by_key = {d.key: d for d in prior.dimensions} if prior is not None else {}
     taken: set[str] = set()
     dims = []
     for dim in report.dimensions:
         old_key = new_to_old.get(dim.key)
-        key = old_key if (old_key is not None and old_key not in taken) else dim.key
-        taken.add(key)
-        dims.append(dim.model_copy(update={"key": key}))
+        matched = old_key is not None and old_key not in taken and old_key in prior_by_key
+        if matched:
+            # Adopt the prior dimension's key AND text (they pair with the cached
+            # score), but keep the FRESH from_committee_request flag — that is this
+            # run's provenance (did the committee ask for this axis now?), not part of
+            # the scored concept, and it drives auto-favouriting in create_run.
+            adopted = prior_by_key[old_key].model_copy(
+                update={"from_committee_request": dim.from_committee_request}
+            )
+        else:
+            adopted = dim  # unmatched → keep fresh key + text (scored fresh below)
+        taken.add(adopted.key)
+        dims.append(adopted)
     return report.model_copy(update={"dimensions": dims})
 
 
