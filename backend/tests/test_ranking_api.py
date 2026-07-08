@@ -172,16 +172,35 @@ async def test_full_flow_rank_then_detail() -> None:
         assert by_key["participation_commitment"]["score"] == 0.8
         assert by_key["skills_offered"]["confidence"] == "low"
 
-        # AI trace rolls up per-pass metadata. This flow ran essays + scoring (not
-        # screening), and scoring is one call per dimension → 2 calls under this run's
-        # 2 dimensions, summed. The Total reconciles the passes.
-        trace = detail["aiTrace"]
-        by_pass = {p["passLabel"]: p for p in trace["passes"]}
-        assert "Screening" not in by_pass  # screening pass wasn't run in this flow
-        assert by_pass["Essay analysis"]["calls"] == 1
-        assert by_pass["Dimension scoring"]["calls"] == 2
-        assert by_pass["Dimension scoring"]["mixedVersions"] is False
-        assert trace["totalTokens"] == sum(p["inputTokens"] + p["outputTokens"] for p in trace["passes"])
+
+@pytest.mark.anyio
+async def test_insights_cost_aggregates_by_pass() -> None:
+    # After a rank, the cost report sums stored spend by pass: essay + scoring from
+    # ApplicationAIResult, discovery from the run. (Screening isn't run in this flow.)
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", a_pattern_report())
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/ranking/run")
+
+        report = (await client.get("/ranking/insights/cost")).json()
+        by_pass = {p["passLabel"]: p for p in report["cumulative"]["passes"]}
+        # Discovery and matching are separate passes (not summed into one).
+        assert "Pattern discovery" in by_pass
+        assert "Dimension matching" in by_pass
+        # This was a first run (no prior report), so no match pass ran → 0 matching cost.
+        assert by_pass["Dimension matching"]["costUsd"] == 0.0
+        assert by_pass["Pattern discovery"]["costUsd"] > 0.0
+        assert by_pass["Dimension scoring"]["calls"] == 2  # 1 applicant × 2 dimensions
+        # Total reconciles the passes.
+        assert report["cumulative"]["totalCostUsd"] == pytest.approx(
+            sum(p["costUsd"] for p in report["cumulative"]["passes"]), abs=1e-6
+        )
+        # Cumulative-only: no per-run figure is surfaced.
+        assert "current" not in report
 
 
 @pytest.mark.anyio

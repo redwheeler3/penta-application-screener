@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from "react";
 import type { CurrentRunResponse } from "../types";
+import { CostPanel } from "./CostPanel";
 import { DiscoveryPanel } from "./DiscoveryPanel";
 import { MatchAuditPanel } from "./MatchAuditPanel";
 
@@ -14,13 +15,14 @@ import { MatchAuditPanel } from "./MatchAuditPanel";
 // as SUBTABS (one at a time) rather than stacked panels — the tab will hold four
 // concerns by the end of M13, and subtabs keep the page short and scannable as they
 // land, instead of a growing scroll of accordions.
-type InsightsTab = "discovery" | "carryForward";
+type InsightsTab = "discovery" | "carryForward" | "cost";
 
 export function InsightsView(props: { run: CurrentRunResponse }): ReactNode {
   const [tab, setTab] = useState<InsightsTab>("discovery");
   const tabs: { id: InsightsTab; label: string }[] = [
     { id: "discovery", label: "Pattern discovery" },
     { id: "carryForward", label: "Carry-forward" },
+    { id: "cost", label: "Cost" },
   ];
   return (
     <div className="insights-view">
@@ -44,7 +46,13 @@ export function InsightsView(props: { run: CurrentRunResponse }): ReactNode {
       </div>
 
       <div className="insights-subtab-body">
-        {tab === "discovery" ? <DiscoveryPanel run={props.run} /> : <MatchAuditPanel />}
+        {tab === "discovery" ? (
+          <DiscoveryPanel run={props.run} />
+        ) : tab === "carryForward" ? (
+          <MatchAuditPanel />
+        ) : (
+          <CostPanel />
+        )}
       </div>
     </div>
   );

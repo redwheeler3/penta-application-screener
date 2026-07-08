@@ -1409,55 +1409,6 @@ h1 {
   max-height: 400px;
 }
 
-/* Per-candidate AI trace (M13): cost/tokens per pass, in a collapsed operator panel. */
-.ai-trace-hint {
-  color: var(--muted);
-  font-size: 0.8rem;
-  line-height: 1.45;
-  margin: 0 0 0.75rem;
-}
-
-.ai-trace-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.78rem;
-}
-
-.ai-trace-table th,
-.ai-trace-table td {
-  text-align: left;
-  padding: 0.35rem 0.5rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.ai-trace-table th {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--muted);
-  font-weight: 600;
-}
-
-.ai-trace-num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.ai-trace-mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.72rem;
-  color: var(--muted);
-}
-
-.ai-trace-mixed {
-  font-style: italic;
-  color: var(--muted);
-}
-
-.ai-trace-table tfoot td {
-  font-weight: 600;
-  border-bottom: none;
-}
 
 /* M13 carry-forward audit (match pass), rendered inside a .raw-row-section
    <details>, so it shares the collapsible debug-panel idiom. */
@@ -2049,6 +2000,44 @@ h1 {
   color: var(--penta-green-dark);
   border-bottom-color: var(--penta-green);
   font-weight: 600;
+}
+
+/* Cost subtab (M13 Pillar 1): cumulative + current-run spend, by pass. */
+.cost-report {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.cost-block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.cost-block-total {
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  margin-top: 0.5rem;
+}
+
+.cost-table td {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.cost-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
 }
 
 /* "Why it differentiates" line under a criterion's description on the Ranking tab. */

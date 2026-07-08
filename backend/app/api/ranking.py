@@ -79,7 +79,9 @@ from app.schemas.ranking import (
     TierOut,
     TiersResponse,
 )
+from app.schemas.insights import CostReport
 from app.schemas.settings import AppSettings
+from app.services.cost_report import cost_report
 from app.services.ranking_view import candidate_scores
 from app.services.ranking_run import (
     adopt_matched_keys,
@@ -187,6 +189,16 @@ def current_match_audit(
     if view is None:
         return None
     return MatchAuditResponse(run_id=run.id, **view)
+
+
+@router.get("/insights/cost", response_model=CostReport)
+def insights_cost(
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> CostReport:
+    """Aggregated AI spend for the Insights tab: cumulative (all runs) and current-run,
+    broken down by pass (M13 Pillar 1)."""
+    return cost_report(db)
 
 
 # --- Rank: the combined essays → criteria → scores chain --------------------
@@ -429,7 +441,7 @@ def rank_run(
         )
         create_run(
             db, report=report, settings=settings, model_id=settings.ai.synthesis_model,
-            narrative=narrative, cost_usd=discovery_cost + match_cost,
+            narrative=narrative, discovery_cost_usd=discovery_cost, match_cost_usd=match_cost,
             tier_layout=layout, new_dimension_keys=new_dimension_keys,
             # Carry prior favourites forward (by key, post-match); create_run unions
             # in any dimension the model flagged from_committee_request and clears
