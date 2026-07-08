@@ -90,6 +90,7 @@ from app.services.cost_report import (
 from app.services.ranking_view import candidate_scores
 from app.services.ranking_run import (
     adopt_matched_keys,
+    all_known_dimensions,
     carry_forward_layout,
     create_run,
     current_dimension_report,
@@ -102,7 +103,7 @@ from app.services.ranking_run import (
     ranking_is_current,
     set_seeds,
     set_tiers,
-    stored_tiers,
+    tier_history,
 )
 from app.services.settings import get_app_settings
 
@@ -338,11 +339,14 @@ def rank_run(
         total_cost += essay_tally.cost_usd
 
         # Phase 2: find criteria (one synthesis call; starts a fresh run).
-        # Capture the prior run + tiers before discovery, to carry the committee's
-        # placements forward onto the new dimensions.
+        # Capture prior state before discovery. Matching and tier carry-forward both
+        # look across ALL prior runs, not just the last: a concept that fell out and
+        # re-surfaces should re-adopt its existing key (reusing its cached scores) and
+        # restore the committee's last tier placement for it. See SPEC "Matching scope".
         prior_run = get_current_run(db)
         prior_report = current_dimension_report(prior_run) if prior_run else None
-        prior_tiers = stored_tiers(prior_run) if prior_run else []
+        match_history = all_known_dimensions(db)  # every dimension ever, one per key
+        scaffold_tiers, tier_by_key, known_keys = tier_history(db)
         # Committee discovery seeds: favourited dimensions (resolved to name +
         # definition from the prior report) plus pending free-text proposals. These
         # steer discovery toward axes the committee asked for; an empty seed set
@@ -379,14 +383,16 @@ def rank_run(
                     db, provider, applications=pool, settings=settings, seeds=seeds,
                     on_delta=on_delta,
                 )
-                # Pass 2: identity-match new dimensions onto the prior ones so tiers +
-                # scores carry forward. Skipped on a first run (no prior report).
+                # Pass 2: identity-match new dimensions onto ALL prior dimensions (not
+                # just the last run) so a re-surfaced concept re-adopts its key rather
+                # than minting a new one — keeping the key count converging and reusing
+                # cached scores. Skipped on the very first run (no history).
                 new_to_old: dict[str, str] = {}
                 match_narrative: str | None = None
                 match_cost = 0.0
-                if prior_report is not None:
+                if match_history is not None:
                     new_to_old, match_narrative, match_cost = match_dimensions(
-                        provider, old=prior_report, new=report, settings=settings,
+                        provider, old=match_history, new=report, settings=settings,
                         on_delta=on_delta,
                     )
                 criteria_outcome["ok"] = (
@@ -434,27 +440,27 @@ def rank_run(
             ],
             "new_to_old": new_to_old,
             "match_narrative": match_narrative,
-            # How many prior dimensions the match pass had to match against. 0 on a
-            # first run (no match pass ran), so the audit viewer can tell a first run
-            # — where carry-forward is N/A — from a genuine zero-match re-run, where a
-            # 0% carry-forward rate is the real "total churn" signal.
-            "prior_dimension_count": len(prior_report.dimensions) if prior_report else 0,
-            # Prior-key → prior-name, so the audit viewer can show a matched dimension's
-            # user-facing prior title next to its key (not just the raw key). Captured
-            # here because after adopt_matched_keys the run's own dimensions carry the
-            # prior key but the NEW name, so the prior name is only knowable now.
+            # How many prior dimensions the match pass matched against — now the full
+            # cross-run history (all known keys), not just the last run. 0 on the very
+            # first run (no history), so the audit viewer can tell a first run — where
+            # carry-forward is N/A — from a genuine zero-match re-run.
+            "prior_dimension_count": len(match_history.dimensions) if match_history else 0,
+            # Prior-key → prior-name (from history), so the audit viewer can show a
+            # matched dimension's user-facing prior title next to its key.
             "prior_dimension_names": (
-                {d.key: d.name for d in prior_report.dimensions} if prior_report else {}
+                {d.key: d.name for d in match_history.dimensions} if match_history else {}
             ),
         }
         # Adopt the prior key for every matched dimension (keeping new descriptions)
         # so its tier placement and cached score carry forward by key alone.
         report = adopt_matched_keys(report, new_to_old)
-        # Carry prior placements forward; unmatched new dimensions land in Ignore,
-        # flagged "new". A first run opens with the default all-Ignore layout.
-        prior_keys = {d.key for d in prior_report.dimensions} if prior_report else set()
+        # Carry committee intent forward across ALL runs: restore each key's most-recent
+        # tier placement; only keys never seen in any run are flagged "new".
         layout, new_dimension_keys = carry_forward_layout(
-            new_report=report, old_tiers=prior_tiers, prior_keys=prior_keys
+            new_report=report,
+            scaffold_tiers=scaffold_tiers,
+            most_recent_tier_by_key=tier_by_key,
+            known_keys=known_keys,
         )
         create_run(
             db, report=report, settings=settings, model_id=settings.ai.synthesis_model,

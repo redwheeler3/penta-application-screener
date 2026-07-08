@@ -22,7 +22,7 @@ import hashlib
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.schemas import PoolDimensionReport
+from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.db.models import Application, ApplicationStatus, RankingRun
 from app.schemas.settings import AppSettings
 
@@ -182,6 +182,37 @@ def create_run(
 def get_current_run(db: Session) -> RankingRun | None:
     """The most recent ranking run, or None if discovery has never run."""
     return db.scalar(select(RankingRun).order_by(RankingRun.id.desc()).limit(1))
+
+
+def all_known_dimensions(db: Session) -> PoolDimensionReport | None:
+    """Every distinct dimension ever discovered, one entry per key (most recent
+    definition kept), as a synthetic report for the identity-match pass.
+
+    The match pass matches a fresh discovery against this whole history, not just the
+    last run — so a concept that fell out of a run and re-surfaced is recognized and
+    RE-ADOPTS its existing key, instead of minting a new one. That keeps the distinct
+    key count converging on the true number of concepts (~20-25) rather than growing a
+    few per run, and (because the score cache is keyed by dimension key) lets those
+    re-adopted keys reuse their cached scores. See SPEC "Matching scope".
+
+    Returns None when no run has ever discovered dimensions.
+    """
+    # Newest run first, so the first time we see a key we take its latest definition.
+    runs = db.scalars(select(RankingRun).order_by(RankingRun.id.desc())).all()
+    latest_by_key: dict[str, PoolDimension] = {}
+    for run in runs:
+        report = current_dimension_report(run)
+        if report is None:
+            continue
+        for dim in report.dimensions:
+            if dim.key not in latest_by_key:
+                latest_by_key[dim.key] = dim
+    if not latest_by_key:
+        return None
+    return PoolDimensionReport(
+        summary="All dimensions discovered across prior runs (identity-match history).",
+        dimensions=list(latest_by_key.values()),
+    )
 
 
 def ranking_is_current(db: Session, run: RankingRun | None, settings: AppSettings) -> bool:
@@ -349,53 +380,84 @@ def display_tiers(run: RankingRun) -> list[dict]:
     ]
 
 
+def tier_history(db: Session) -> tuple[list[dict], dict[str, str], set[str]]:
+    """Committee tier intent across ALL runs, for carrying placements forward.
+
+    Returns ``(scaffold_tiers, most_recent_tier_by_key, known_keys)``:
+      - ``scaffold_tiers`` — the most recent run's working-tier *structure* (ids +
+        labels, no dimensions), used as the board to place onto. Empty if no runs.
+      - ``most_recent_tier_by_key`` — key → the working-tier id it was MOST RECENTLY
+        placed in, across all runs. A key the committee last left in Ignore is absent
+        (Ignore is the absence of a placement), so it restores to unplaced.
+      - ``known_keys`` — every key that has appeared in any run. Absence ⇒ genuinely
+        new (gets the "New" badge); presence ⇒ the committee has seen it, so never
+        badged new even if it fell out for a few runs.
+
+    This is the all-history basis for ``carry_forward_layout``: a placement is durable
+    committee intent that doesn't expire when a dimension drops out and re-surfaces, so
+    we honor the LAST tier they put each key in, from whichever run that was.
+    """
+    runs = db.scalars(select(RankingRun).order_by(RankingRun.id.desc())).all()
+    scaffold: list[dict] = []
+    most_recent_tier_by_key: dict[str, str] = {}
+    known_keys: set[str] = set()
+    # Newest run first: the first placement we see for a key is its most-recent one.
+    # Scaffold from the newest run that has working tiers.
+    for run in runs:
+        report = current_dimension_report(run)
+        if report is not None:
+            known_keys.update(d.key for d in report.dimensions)
+        tiers = stored_tiers(run)
+        if not scaffold and tiers:
+            scaffold = [
+                {"id": t["id"], "label": t["label"], "dimension_keys": []} for t in tiers
+            ]
+        for tier in tiers:
+            for key in tier.get("dimension_keys", []):
+                most_recent_tier_by_key.setdefault(key, tier["id"])
+    return scaffold, most_recent_tier_by_key, known_keys
+
+
 def carry_forward_layout(
     *,
     new_report: PoolDimensionReport,
-    old_tiers: list[dict],
-    prior_keys: set[str],
+    scaffold_tiers: list[dict],
+    most_recent_tier_by_key: dict[str, str],
+    known_keys: set[str],
 ) -> tuple[list[dict], list[str]]:
-    """Build the new run's working-tier layout by carrying old placements forward.
+    """Build the new run's working-tier layout by carrying committee intent forward
+    across ALL runs (see ``tier_history`` for the inputs).
 
     Runs *after* ``adopt_matched_keys``, so a matched dimension already shares its
-    prior key — carry-forward is pure key equality. ``prior_keys`` is every key the
-    prior run had (working *and* Ignored), which distinguishes "matched" from "new".
-    Three cases per new dimension:
-      - key in a prior working tier → carried into that tier;
-      - key was a prior dimension that sat in Ignore → left unplaced (carrying the
-        committee's "ignore" forward), NOT flagged new — they already weighed in;
-      - key not a prior key at all → left unplaced AND flagged new to triage.
-    The distinction is *was it a prior dimension*, so a prior-Ignored survivor is
-    never mislabeled new.
+    prior key — carry-forward is pure key equality. Per new dimension:
+      - key most-recently placed in a working tier (any prior run) → placed there;
+      - key seen before but last left in Ignore → unplaced, NOT flagged new (the
+        committee already weighed it — a durable "ignore");
+      - key never seen in any run → unplaced AND flagged new to triage.
+    "New" means never-seen, not "absent from the last run" — a placement is durable
+    intent that survives a dimension dropping out and re-surfacing.
 
-    Returns ``(working_tiers, new_dimension_keys)`` — the latter only the genuinely
-    new keys. Falls back to the empty default tiers on a first run.
+    Returns ``(working_tiers, new_dimension_keys)``. Falls back to the empty default
+    tiers when no prior run placed anything.
     """
-    if not old_tiers:
+    if not scaffold_tiers:
         return default_tier_layout(), []
 
-    # key -> the id of the working tier it was in (so we can place it there again).
-    key_to_tier: dict[str, str] = {}
-    for tier in old_tiers:
-        for key in tier.get("dimension_keys", []):
-            key_to_tier[key] = tier["id"]
-
-    # Clone the old working-tier structure, emptied of dimensions.
     layout: list[dict] = [
-        {"id": tier["id"], "label": tier["label"], "dimension_keys": []}
-        for tier in old_tiers
+        {"id": t["id"], "label": t["label"], "dimension_keys": []} for t in scaffold_tiers
     ]
     by_id = {tier["id"]: tier for tier in layout}
 
     new_dimension_keys: list[str] = []
     for dim in new_report.dimensions:
-        if dim.key not in prior_keys:
-            # Genuinely new: unplaced and flagged for triage.
+        if dim.key not in known_keys:
+            # Genuinely new (never seen in any run): unplaced and flagged for triage.
             new_dimension_keys.append(dim.key)
             continue
-        # A prior dimension (key adopted on match). Carry its working-tier placement
-        # forward; if it was in Ignore, leave it unplaced — no badge.
-        target = key_to_tier.get(dim.key)
+        # Seen before: restore its most-recent working-tier placement. If it was last
+        # in Ignore (absent from the map), or its tier no longer exists, leave it
+        # unplaced — but never badge it new; the committee already weighed it.
+        target = most_recent_tier_by_key.get(dim.key)
         if target is not None and target in by_id:
             by_id[target]["dimension_keys"].append(dim.key)
 

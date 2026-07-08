@@ -127,22 +127,28 @@ def test_adopt_never_creates_a_duplicate_key() -> None:
 # key; carry-forward is pure key equality against the prior key set.)
 
 
+def placements_from(tiers: list[dict]) -> dict[str, str]:
+    """Build a most_recent_tier_by_key map from working tiers, as tier_history would."""
+    return {key: t["id"] for t in tiers for key in t.get("dimension_keys", [])}
+
+
 def test_carry_forward_places_matches_and_flags_only_genuinely_new() -> None:
-    # Prior run: 'a' in the Critical tier (working), 'b' in Ignore (absent from stored tiers).
-    old_tiers = [tier("tier-s", ["a"]), tier("tier-a", []), tier("tier-b", [])]
-    prior_keys = {"a", "b"}
-    # After adoption: 'a' (working match), 'b' (matched a prior-IGNORED dim),
-    # 'c' is genuinely new (key not among prior keys).
+    # Prior history: 'a' in the Critical tier (working), 'b' in Ignore (absent from
+    # the placement map). Both keys are known; 'c' is genuinely new (never seen).
+    scaffold = [tier("tier-s", ["a"]), tier("tier-a", []), tier("tier-b", [])]
     new = report("a", "b", "c")
 
     layout, new_keys = carry_forward_layout(
-        new_report=new, old_tiers=old_tiers, prior_keys=prior_keys
+        new_report=new,
+        scaffold_tiers=scaffold,
+        most_recent_tier_by_key=placements_from(scaffold),
+        known_keys={"a", "b"},
     )
 
     placed = {t["id"]: t["dimension_keys"] for t in layout}
-    # 'a' carried into the Critical tier (its prior working tier).
+    # 'a' carried into the Critical tier (its most-recent working placement).
     assert placed["tier-s"] == ["a"]
-    # 'b' was a prior-Ignored dim -> left unplaced (ignore decision carried) ...
+    # 'b' was last in Ignore -> left unplaced (ignore decision carried) ...
     all_placed = {k for keys in placed.values() for k in keys}
     assert "b" not in all_placed
     # ... and crucially NOT flagged new: the committee already weighed in on it.
@@ -153,23 +159,51 @@ def test_carry_forward_places_matches_and_flags_only_genuinely_new() -> None:
 
 def test_carry_forward_prior_ignored_dimension_is_not_new() -> None:
     # Regression: a dimension that was in Ignore must never be flagged "new".
-    old_tiers = [tier("tier-s", ["participation"]), tier("tier-a", []), tier("tier-b", [])]
+    scaffold = [tier("tier-s", ["participation"]), tier("tier-a", []), tier("tier-b", [])]
     new = report("participation", "financial_admin")  # financial_admin was Ignored before
-    prior_keys = {"participation", "financial_admin"}
 
     layout, new_keys = carry_forward_layout(
-        new_report=new, old_tiers=old_tiers, prior_keys=prior_keys
+        new_report=new,
+        scaffold_tiers=scaffold,
+        most_recent_tier_by_key=placements_from(scaffold),
+        known_keys={"participation", "financial_admin"},
     )
-    assert new_keys == []  # both prior; neither is new
+    assert new_keys == []  # both known; neither is new
     placed = {t["id"]: t["dimension_keys"] for t in layout}
     assert placed["tier-s"] == ["participation"]
     assert "financial_admin" not in {k for keys in placed.values() for k in keys}
 
 
+def test_carry_forward_restores_placement_from_an_older_run() -> None:
+    # The resurrection case A fixes: a dimension placed Critical several runs ago, gone
+    # since, re-surfaces now. It must restore to Critical and NOT be flagged new — its
+    # placement is durable committee intent that spanned the gap. (tier_history supplies
+    # the most-recent placement + known keys across ALL runs; here we simulate that: the
+    # current scaffold no longer lists 'financial_stability', but history remembers it.)
+    scaffold = [tier("tier-s", []), tier("tier-a", ["participation"]), tier("tier-b", [])]
+    new = report("participation", "financial_stability")
+
+    layout, new_keys = carry_forward_layout(
+        new_report=new,
+        scaffold_tiers=scaffold,
+        # 'financial_stability' was last placed Critical (an older run); 'participation'
+        # is in the current Important tier.
+        most_recent_tier_by_key={"participation": "tier-a", "financial_stability": "tier-s"},
+        known_keys={"participation", "financial_stability"},
+    )
+    placed = {t["id"]: t["dimension_keys"] for t in layout}
+    assert placed["tier-s"] == ["financial_stability"]  # restored to Critical
+    assert placed["tier-a"] == ["participation"]
+    assert new_keys == []  # seen before -> never flagged new
+
+
 def test_carry_forward_first_run_has_no_matches_and_no_flags() -> None:
     # No prior tiers (first run): default empty working tiers, nothing flagged new.
     layout, new_keys = carry_forward_layout(
-        new_report=report("x", "y"), old_tiers=[], prior_keys=set()
+        new_report=report("x", "y"),
+        scaffold_tiers=[],
+        most_recent_tier_by_key={},
+        known_keys=set(),
     )
     assert new_keys == []
     assert all(t["dimension_keys"] == [] for t in layout)
