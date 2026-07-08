@@ -177,6 +177,50 @@ export function CandidateDetail(props: {
           </div>
         </details>
       ) : null}
+      {app.aiTrace ? (
+        <details className="raw-row-section">
+          <summary>AI trace (cost &amp; tokens)</summary>
+          <div className="ai-trace">
+            <p className="ai-trace-hint">
+              What the AI passes cost for this candidate — model, prompt version, calls, and tokens. Inspection
+              detail; it doesn&apos;t affect the ranking.
+            </p>
+            <table className="ai-trace-table">
+              <thead>
+                <tr>
+                  <th>Pass</th>
+                  <th>Model</th>
+                  <th>Version</th>
+                  <th className="ai-trace-num">Calls</th>
+                  <th className="ai-trace-num">Tokens</th>
+                  <th className="ai-trace-num">Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {app.aiTrace.passes.map((p) => (
+                  <tr key={p.passLabel}>
+                    <td>{p.passLabel}</td>
+                    <td className="ai-trace-mono">{p.modelId}</td>
+                    <td className="ai-trace-mono">
+                      {p.mixedVersions ? <span className="ai-trace-mixed">mixed</span> : p.promptVersion}
+                    </td>
+                    <td className="ai-trace-num">{p.calls}</td>
+                    <td className="ai-trace-num">{(p.inputTokens + p.outputTokens).toLocaleString()}</td>
+                    <td className="ai-trace-num">${p.costUsd.toFixed(4)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={4}>Total</td>
+                  <td className="ai-trace-num">{app.aiTrace.totalTokens.toLocaleString()}</td>
+                  <td className="ai-trace-num">${app.aiTrace.totalCostUsd.toFixed(4)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </details>
+      ) : null}
       {app.essayAnalysis ? (
         <details className="raw-row-section">
           <summary>AI essay summary</summary>
