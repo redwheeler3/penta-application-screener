@@ -1409,6 +1409,56 @@ h1 {
   max-height: 400px;
 }
 
+/* Per-candidate AI trace (M13): cost/tokens per pass, in a collapsed operator panel. */
+.ai-trace-hint {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  margin: 0 0 0.75rem;
+}
+
+.ai-trace-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.ai-trace-table th,
+.ai-trace-table td {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.ai-trace-table th {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.ai-trace-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-trace-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.ai-trace-mixed {
+  font-style: italic;
+  color: var(--muted);
+}
+
+.ai-trace-table tfoot td {
+  font-weight: 600;
+  border-bottom: none;
+}
+
 /* M13 carry-forward audit (match pass), rendered inside a .raw-row-section
    <details>, so it shares the collapsible debug-panel idiom. */
 .match-audit {
@@ -2001,59 +2051,15 @@ h1 {
   font-weight: 600;
 }
 
-/* Discovery panel: the full pattern-discovery output as a readable trace. */
-.discovery-summary {
-  margin-bottom: 1rem;
-}
-
-.discovery-summary p {
-  margin: 0.35rem 0 0;
-  font-size: 0.85rem;
-  line-height: 1.5;
-}
-
-.discovery-dimensions {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-}
-
-.discovery-dimension {
-  padding: 0.75rem 0.9rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
-}
-
-.discovery-dimension-head {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.discovery-dimension-name {
-  font-weight: 600;
-  font-size: 0.9rem;
-}
-
-.discovery-dimension-def {
-  margin: 0.35rem 0 0;
+/* "Why it differentiates" line under a criterion's description on the Ranking tab. */
+.dimension-why {
+  margin: 0.5rem 0 0;
   font-size: 0.82rem;
-  line-height: 1.5;
-}
-
-.discovery-dimension-why {
-  margin: 0.4rem 0 0;
-  font-size: 0.8rem;
   line-height: 1.5;
   color: var(--muted);
 }
 
-.discovery-why-label {
+.dimension-why-label {
   font-weight: 600;
 }
 

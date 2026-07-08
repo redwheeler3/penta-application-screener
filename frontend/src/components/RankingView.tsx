@@ -19,6 +19,11 @@ function CriteriaDetail(props: { dim: PoolDimension | null }): ReactNode {
     <div className="criteria-detail" role="region" aria-label={`${props.dim.name} — what it measures`}>
       <span className="dimension-name">{props.dim.name}</span>
       <p className="dimension-def">{props.dim.definition}</p>
+      {props.dim.whyItDifferentiates ? (
+        <p className="dimension-why">
+          <span className="dimension-why-label">Why it differentiates:</span> {props.dim.whyItDifferentiates}
+        </p>
+      ) : null}
     </div>
   );
 }

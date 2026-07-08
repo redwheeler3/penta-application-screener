@@ -172,6 +172,17 @@ async def test_full_flow_rank_then_detail() -> None:
         assert by_key["participation_commitment"]["score"] == 0.8
         assert by_key["skills_offered"]["confidence"] == "low"
 
+        # AI trace rolls up per-pass metadata. This flow ran essays + scoring (not
+        # screening), and scoring is one call per dimension → 2 calls under this run's
+        # 2 dimensions, summed. The Total reconciles the passes.
+        trace = detail["aiTrace"]
+        by_pass = {p["passLabel"]: p for p in trace["passes"]}
+        assert "Screening" not in by_pass  # screening pass wasn't run in this flow
+        assert by_pass["Essay analysis"]["calls"] == 1
+        assert by_pass["Dimension scoring"]["calls"] == 2
+        assert by_pass["Dimension scoring"]["mixedVersions"] is False
+        assert trace["totalTokens"] == sum(p["inputTokens"] + p["outputTokens"] for p in trace["passes"])
+
 
 @pytest.mark.anyio
 async def test_ranking_before_discovery_is_409() -> None:

@@ -18,6 +18,8 @@ from app.db.session import get_db
 from app.domain.ranking import rank_candidates
 from app.domain.status import findings_fingerprint, is_stale, resolve_machine_status
 from app.schemas.applications import (
+    AITraceOut,
+    AITracePassOut,
     ApplicationDetail,
     ApplicationEnvelope,
     ApplicationListResponse,
@@ -332,7 +334,85 @@ def _serialize_detail(app: Application, db: Session) -> ApplicationDetail:
         # This candidate's scores against the current run's dimensions, joined to
         # their labels. null = no run, or not scored under it.
         dimension_scores=_dimension_scores(db, app),
+        # Operator trace: per-pass model/version/tokens/cost, collapsed panel.
+        ai_trace=_ai_trace(db, app),
     )
+
+
+def _ai_trace(db: Session, app: Application) -> AITraceOut | None:
+    """Roll up the candidate's stored AI-call metadata into one per-pass trace.
+
+    Each once-per-candidate pass (screening, essay) is a single row; dimension scoring
+    is summed across its per-dimension rows — but ONLY the dimensions in the current
+    run, not every key ever scored. A re-rank leaves behind rows for renamed/dropped
+    dimensions; counting those would misreport this candidate's scoring cost (and
+    disagree with the Fit dimensions section, which is also current-run-scoped). Reads
+    the latest row per kind so a re-run supersedes prior calls.
+    """
+    latest = _latest_ai_results_by_kind(db, app.id)
+    if not latest:
+        return None
+
+    # Current run's dimension keys → the scoring kinds that count. Empty set when no
+    # run, so scoring rolls up nothing (only screening/essay show).
+    run = get_current_run(db)
+    report = current_dimension_report(run) if run is not None else None
+    current_scoring_kinds = (
+        {f"dimension_scoring:{d.key}" for d in report.dimensions} if report is not None else set()
+    )
+
+    # (pass label, predicate over a result kind) in pipeline order.
+    trace_passes: list[tuple[str, Any]] = [
+        ("Screening", lambda k: k == "screening"),
+        ("Essay analysis", lambda k: k == "essay_analysis"),
+        ("Dimension scoring", lambda k: k in current_scoring_kinds),
+    ]
+
+    passes: list[AITracePassOut] = []
+    for label, matches in trace_passes:
+        rows = [r for kind, r in latest.items() if matches(kind)]
+        if not rows:
+            continue
+        versions = {r.prompt_version for r in rows}
+        models = {r.model_id for r in rows}
+        mixed = len(versions) > 1
+        passes.append(
+            AITracePassOut(
+                pass_label=label,
+                # Rolled-up passes can in principle span models too; surface one when
+                # uniform, else note the divergence in the same way as versions.
+                model_id=next(iter(models)) if len(models) == 1 else "(mixed)",
+                prompt_version=None if mixed else next(iter(versions)),
+                mixed_versions=mixed,
+                calls=len(rows),
+                input_tokens=sum(r.input_tokens for r in rows),
+                output_tokens=sum(r.output_tokens for r in rows),
+                cost_usd=round(sum(r.cost_usd for r in rows), 6),
+            )
+        )
+    if not passes:
+        return None
+    return AITraceOut(
+        passes=passes,
+        total_cost_usd=round(sum(p.cost_usd for p in passes), 6),
+        total_tokens=sum(p.input_tokens + p.output_tokens for p in passes),
+    )
+
+
+def _latest_ai_results_by_kind(
+    db: Session, application_id: int
+) -> dict[str, ApplicationAIResult]:
+    """Every AI result kind for one application, keyed by kind, keeping the most recent
+    row per kind (rows are ordered by created_at, last wins)."""
+    query = (
+        select(ApplicationAIResult)
+        .where(ApplicationAIResult.application_id == application_id)
+        .order_by(ApplicationAIResult.created_at)
+    )
+    latest: dict[str, ApplicationAIResult] = {}
+    for result in db.scalars(query):
+        latest[result.kind] = result
+    return latest
 
 
 def _dimension_scores(
