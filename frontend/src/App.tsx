@@ -28,6 +28,7 @@ import type {
 } from "./types";
 import { ApplicationsList } from "./components/ApplicationsList";
 import { CandidateDetail } from "./components/CandidateDetail";
+import { InsightsView } from "./components/InsightsView";
 import { RankingView } from "./components/RankingView";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Toasts } from "./components/Toasts";
@@ -126,7 +127,7 @@ export function App() {
   // — with `activeTab` choosing which is shown (a candidate detail drills in over
   // either). The Ranking tab only appears once a run exists (see the tab strip).
   const [ranking, setRanking] = useState<RankingResponse | null>(null);
-  const [activeTab, setActiveTab] = useState<"applications" | "ranking" | "settings">("applications");
+  const [activeTab, setActiveTab] = useState<"applications" | "ranking" | "insights" | "settings">("applications");
 
   // The committee's importance tiers for the current run. Each edit persists (PUT
   // /tiers) and returns the re-sorted ranking, so tiers and order stay in lockstep.
@@ -608,6 +609,22 @@ export function App() {
                 Ranking
               </button>
             ) : null}
+            {/* Insights: run-level AI observability (M13). Like Ranking, only shown
+                once a run exists — there's nothing to inspect before then. */}
+            {rankingRun ? (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "insights" && !selectedApp}
+                className={`tab-button${activeTab === "insights" && !selectedApp ? " active" : ""}`}
+                onClick={() => {
+                  setSelectedApp(null);
+                  setActiveTab("insights");
+                }}
+              >
+                Insights
+              </button>
+            ) : null}
             <button
               type="button"
               role="tab"
@@ -653,6 +670,8 @@ export function App() {
                 onRemoveProposal={removeProposal}
                 onSelectApplication={viewApplication}
               />
+            ) : activeTab === "insights" ? (
+              <InsightsView />
             ) : (
               <ApplicationsList
                 applications={applications}

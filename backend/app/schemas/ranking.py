@@ -41,6 +41,15 @@ class RawDiscoveryDimensionOut(ResponseModel):
     from_committee_request: bool = False
 
 
+class PriorDimensionRef(ResponseModel):
+    """The prior dimension a matched new dimension carried forward from: its key and
+    (when known) its user-facing name. ``name`` is null for audits written before the
+    prior-names capture existed."""
+
+    key: str
+    name: str | None = None
+
+
 class MatchAuditResponse(ResponseModel):
     """GET /ranking/current/match-audit — the carry-forward trace for the current
     run (M13 per-run AI legibility). Null when no run exists or the run predates
@@ -52,7 +61,7 @@ class MatchAuditResponse(ResponseModel):
 
     run_id: int
     raw_discovery_dimensions: list[RawDiscoveryDimensionOut]
-    new_to_old: dict[str, str]  # new dimension key → adopted prior key
+    new_to_old: dict[str, PriorDimensionRef]  # new dimension key → the prior dim it adopted
     match_narrative: str | None = None
     prior_dimension_count: int
     discovered_count: int

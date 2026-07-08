@@ -1490,6 +1490,13 @@ h1 {
   font-weight: 600;
 }
 
+/* Fallback when a matched prior dimension's name is unknown (audit written before
+   the prior-names capture) — the key still shows below it. */
+.match-audit-key-unnamed {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .match-audit-tag {
   margin-left: 0.4rem;
   font-size: 0.68rem;
@@ -1499,16 +1506,11 @@ h1 {
   padding: 0 0.4rem;
 }
 
-.match-audit-narrative {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 0.25rem 1rem;
-}
-
+/* Just a label + the .ai-narrative markdown box below it — the box owns its own
+   border/padding, so this wrapper stays unstyled to avoid a double frame. */
 .match-audit-narrative-label {
   display: block;
-  margin-top: 0.75rem;
+  margin-bottom: 0.35rem;
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -1947,6 +1949,21 @@ h1 {
 }
 
 .ranking-subhead {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.insights-header {
+  margin-bottom: 1rem;
+}
+
+.insights-header h3 {
+  margin: 0;
+}
+
+.insights-subhead {
   margin: 0.25rem 0 0;
   color: var(--muted);
   font-size: 0.85rem;

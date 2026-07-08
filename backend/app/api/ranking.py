@@ -409,6 +409,13 @@ def rank_run(
             # — where carry-forward is N/A — from a genuine zero-match re-run, where a
             # 0% carry-forward rate is the real "total churn" signal.
             "prior_dimension_count": len(prior_report.dimensions) if prior_report else 0,
+            # Prior-key → prior-name, so the audit viewer can show a matched dimension's
+            # user-facing prior title next to its key (not just the raw key). Captured
+            # here because after adopt_matched_keys the run's own dimensions carry the
+            # prior key but the NEW name, so the prior name is only knowable now.
+            "prior_dimension_names": (
+                {d.key: d.name for d in prior_report.dimensions} if prior_report else {}
+            ),
         }
         # Adopt the prior key for every matched dimension (keeping new descriptions)
         # so its tier placement and cached score carry forward by key alone.

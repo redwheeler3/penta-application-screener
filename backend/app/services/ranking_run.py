@@ -241,11 +241,19 @@ def match_audit_view(run: RankingRun) -> dict | None:
         return None
     discovered = audit.get("raw_discovery_dimensions", [])
     new_to_old = audit.get("new_to_old", {}) or {}
+    prior_names = audit.get("prior_dimension_names", {}) or {}
     matched = len(new_to_old)
     is_first_run = not audit.get("prior_dimension_count", 0)
+    # Resolve each matched new-key to the prior dimension it adopted: its prior key and
+    # (when known — older audits lack the names map) the prior user-facing name. Lets
+    # the viewer show the prior title alongside the key, mirroring the discovered column.
+    new_to_old_named = {
+        new_key: {"key": old_key, "name": prior_names.get(old_key)}
+        for new_key, old_key in new_to_old.items()
+    }
     return {
         "raw_discovery_dimensions": discovered,
-        "new_to_old": new_to_old,
+        "new_to_old": new_to_old_named,
         "match_narrative": audit.get("match_narrative"),
         "prior_dimension_count": audit.get("prior_dimension_count", 0),
         "discovered_count": len(discovered),
