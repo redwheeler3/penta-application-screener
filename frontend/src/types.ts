@@ -224,7 +224,9 @@ export type CurrentRunResponse = {
 export type MatchAuditResponse = {
   runId: number;
   rawDiscoveryDimensions: { key: string; name: string; fromCommitteeRequest: boolean }[];
-  newToOld: Record<string, string>; // new dimension key → adopted prior key
+  // new dimension key → the prior dimension it adopted (key + prior user-facing name;
+  // name is null for audits written before the prior-names capture).
+  newToOld: Record<string, { key: string; name: string | null }>;
   matchNarrative: string | null;
   priorDimensionCount: number;
   discoveredCount: number;

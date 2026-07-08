@@ -2,7 +2,6 @@ import { Plus, Printer, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { bandClass, scoreBand } from "../format";
 import type { RankingResponse, CurrentRunResponse, PoolDimension, Tier } from "../types";
-import { MatchAuditPanel } from "./MatchAuditPanel";
 import { TierList, TierSummaryForPrint } from "./TierList";
 
 // The always-visible description pane beside the tiers. Shows the tapped criterion's
@@ -186,9 +185,6 @@ export function RankingView(props: {
             <CriteriaDetail dim={openDim} />
           </div>
           <TierSummaryForPrint tiers={tiers} labelFor={labelFor} />
-          {/* Per-run AI legibility: how discovery's dimensions carried forward from
-              the prior run (M13). Collapsed by default; self-fetches when opened. */}
-          <MatchAuditPanel />
         </>
       ) : null}
 

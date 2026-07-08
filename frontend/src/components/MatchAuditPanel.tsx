@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { fetchMatchAudit } from "../api";
 import type { MatchAuditResponse } from "../types";
 
@@ -10,7 +11,7 @@ import type { MatchAuditResponse } from "../types";
 // Lazily fetches its own data on mount: this is a collapsible debug surface off the
 // ranked view's critical path, so it stays out of the parent's (already large) state
 // and only the members who open it pay for the round-trip.
-export function MatchAuditPanel(): ReactNode {
+export function MatchAuditPanel(props: { defaultOpen?: boolean }): ReactNode {
   const [audit, setAudit] = useState<MatchAuditResponse | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
 
@@ -29,7 +30,7 @@ export function MatchAuditPanel(): ReactNode {
   if (state === "error" || (state === "ready" && audit === null)) return null;
 
   return (
-    <details className="raw-row-section no-print">
+    <details className="raw-row-section no-print" open={props.defaultOpen}>
       <summary>AI carry-forward audit (match pass)</summary>
       {state === "loading" || audit === null ? (
         <p className="match-audit-hint">Loading…</p>
@@ -100,7 +101,10 @@ function MatchAuditBody(props: { audit: MatchAuditResponse }): ReactNode {
                 </td>
                 <td>
                   {matchedTo ? (
-                    <span className="match-audit-key">{matchedTo}</span>
+                    <>
+                      {matchedTo.name ?? <span className="match-audit-key-unnamed">(prior dimension)</span>}
+                      <span className="match-audit-key">{matchedTo.key}</span>
+                    </>
                   ) : (
                     <span className="match-audit-new">new</span>
                   )}
@@ -114,7 +118,11 @@ function MatchAuditBody(props: { audit: MatchAuditResponse }): ReactNode {
       {audit.matchNarrative ? (
         <div className="match-audit-narrative">
           <span className="match-audit-narrative-label">Match reasoning</span>
-          <p>{audit.matchNarrative}</p>
+          {/* Reuse the .ai-narrative markdown box (same as the screening narrative)
+              so the match reasoning renders as markdown, not raw text. */}
+          <div className="ai-narrative">
+            <ReactMarkdown>{audit.matchNarrative}</ReactMarkdown>
+          </div>
         </div>
       ) : null}
     </div>

@@ -858,7 +858,11 @@ async def test_match_audit_reports_carry_forward_rate_on_rerun() -> None:
         assert audit["matchedCount"] == 1
         assert audit["newCount"] == 1
         assert audit["carryForwardRate"] == 0.5
-        assert audit["newToOld"] == {"stated_participation": "participation_commitment"}
+        # new_to_old resolves each matched new-key to the prior dimension's key AND its
+        # user-facing name (so the viewer shows the prior title, not just the key).
+        assert audit["newToOld"] == {
+            "stated_participation": {"key": "participation_commitment", "name": "Participation commitment"}
+        }
         # Raw discovery keys are pre-adoption (what discovery actually emitted).
         raw_keys = {d["key"] for d in audit["rawDiscoveryDimensions"]}
         assert raw_keys == {"stated_participation", "financial_stability"}
