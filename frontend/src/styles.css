@@ -1409,6 +1409,112 @@ h1 {
   max-height: 400px;
 }
 
+/* M13 carry-forward audit (match pass), rendered inside a .raw-row-section
+   <details>, so it shares the collapsible debug-panel idiom. */
+.match-audit {
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.match-audit-hint {
+  color: var(--muted);
+  margin: 0 0 0.75rem;
+}
+
+.match-audit-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin: 0 0 0.75rem;
+}
+
+.match-audit-stats div {
+  display: flex;
+  flex-direction: column;
+}
+
+.match-audit-stats dt {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.match-audit-stats dd {
+  margin: 0.1rem 0 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+/* The carry-forward rate is the headline signal; colour it amber/red as it climbs
+   toward the "over-matching" band the SPEC warns about. */
+.match-audit-rate.match-audit-rate-mid {
+  color: #b45309;
+}
+
+.match-audit-rate.match-audit-rate-high {
+  color: #dc2626;
+}
+
+.match-audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.match-audit-table th,
+.match-audit-table td {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.match-audit-table th {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.match-audit-key {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.match-audit-new {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.match-audit-tag {
+  margin-left: 0.4rem;
+  font-size: 0.68rem;
+  color: var(--penta-green-dark);
+  border: 1px solid var(--penta-green);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+}
+
+.match-audit-narrative {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.25rem 1rem;
+}
+
+.match-audit-narrative-label {
+  display: block;
+  margin-top: 0.75rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
 /* Rendered markdown for the AI narrative. Same boxed container as the raw
    sections, but prose typography instead of monospace. */
 .ai-narrative {

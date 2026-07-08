@@ -225,6 +225,40 @@ def proposed_dimensions(run: RankingRun) -> list[str]:
     return list((run.criteria or {}).get("proposed_dimensions", []))
 
 
+def match_audit_view(run: RankingRun) -> dict | None:
+    """The run's carry-forward audit, shaped for the trace viewer, or None when the
+    run predates match-audit capture (older runs stored no audit).
+
+    The stored audit (``criteria.match_audit``) records what discovery *actually*
+    emitted before ``adopt_matched_keys`` rewrote matched keys, plus the new→old map
+    and the match narrative. This adds the derived **carry-forward rate** (matched /
+    discovered) — a persistently near-100% rate is the smell that the match pass is
+    over-matching. ``carry_forward_rate`` is None on a first run, where there were no
+    prior dimensions to match against and the rate is undefined (not zero).
+    """
+    audit = (run.criteria or {}).get("match_audit")
+    if not audit:
+        return None
+    discovered = audit.get("raw_discovery_dimensions", [])
+    new_to_old = audit.get("new_to_old", {}) or {}
+    matched = len(new_to_old)
+    is_first_run = not audit.get("prior_dimension_count", 0)
+    return {
+        "raw_discovery_dimensions": discovered,
+        "new_to_old": new_to_old,
+        "match_narrative": audit.get("match_narrative"),
+        "prior_dimension_count": audit.get("prior_dimension_count", 0),
+        "discovered_count": len(discovered),
+        "matched_count": matched,
+        "new_count": len(discovered) - matched,
+        # Fraction of newly-discovered dimensions the match pass mapped onto a prior
+        # one. None (not 0.0) on a first run — nothing to match against.
+        "carry_forward_rate": (
+            None if is_first_run or not discovered else round(matched / len(discovered), 4)
+        ),
+    }
+
+
 def set_seeds(
     db: Session,
     run: RankingRun,
