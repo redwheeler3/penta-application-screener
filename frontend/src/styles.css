@@ -2006,7 +2006,17 @@ h1 {
 .cost-report {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 2rem;
+}
+
+.cost-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.cost-muted {
+  color: var(--muted);
+  font-weight: 400;
 }
 
 .cost-block-head {

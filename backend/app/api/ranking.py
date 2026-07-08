@@ -79,9 +79,14 @@ from app.schemas.ranking import (
     TierOut,
     TiersResponse,
 )
-from app.schemas.insights import CostReport
+from app.schemas.insights import CostReport, LastRunsReport
 from app.schemas.settings import AppSettings
-from app.services.cost_report import cost_report
+from app.services.cost_report import (
+    cost_report,
+    last_runs_report,
+    ledger_pass,
+    record_run_cost,
+)
 from app.services.ranking_view import candidate_scores
 from app.services.ranking_run import (
     adopt_matched_keys,
@@ -116,15 +121,19 @@ class RunTally:
     cached: int = 0
     failed: int = 0
     cost_usd: float = 0.0
+    # Sum of reused results' ORIGINAL cost — an estimate of what caching saved this run.
+    cached_saved_usd: float = 0.0
 
     def add(self, result: PassResult) -> None:
         if result.failed:
             self.failed += 1
             return
         if result.outcome.cached:
-            # A cache hit made no model call, so it spent nothing on THIS run.
-            # (Its stored cost is the original first-run cost, for auditing only.)
+            # A cache hit made no model call, so it spent nothing on THIS run; its
+            # stored cost is the original first-run cost, so summing it estimates what
+            # regenerating would have cost (what caching saved).
             self.cached += 1
+            self.cached_saved_usd += result.outcome.cost_usd
             return
         self.analyzed += 1
         self.cost_usd += result.outcome.cost_usd
@@ -196,9 +205,17 @@ def insights_cost(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> CostReport:
-    """Aggregated AI spend for the Insights tab: cumulative (all runs) and current-run,
-    broken down by pass (M13 Pillar 1)."""
+    """Cumulative AI spend for the Insights tab, grouped by run (M13 Pillar 1)."""
     return cost_report(db)
+
+
+@router.get("/insights/last-runs", response_model=LastRunsReport)
+def insights_last_runs(
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> LastRunsReport:
+    """The most recent Screen and Rank runs, each with fresh spend + cache savings."""
+    return last_runs_report(db)
 
 
 # --- Rank: the combined essays → criteria → scores chain --------------------
@@ -473,6 +490,40 @@ def rank_run(
             score_tally.add(result)
             yield emit(ProgressEvent(phase=SCORES, processed=processed, total=len(to_score)))
         total_cost += score_tally.cost_usd
+
+        # Persist this run's cost + cache breakdown (the only point the fresh/cached
+        # split is known). Discovery and matching are always fresh calls when a Rank
+        # runs — no caching — so their entries carry no cached counts.
+        record_run_cost(
+            db,
+            kind="rank",
+            passes=[
+                ledger_pass(
+                    "Essay analysis",
+                    fresh_usd=essay_tally.cost_usd,
+                    fresh_calls=essay_tally.analyzed,
+                    cached_count=essay_tally.cached,
+                    cached_saved_usd=essay_tally.cached_saved_usd,
+                ),
+                ledger_pass(
+                    "Pattern discovery",
+                    fresh_usd=discovery_cost, fresh_calls=1,
+                    cached_count=0, cached_saved_usd=0.0,
+                ),
+                ledger_pass(
+                    "Dimension matching",
+                    fresh_usd=match_cost, fresh_calls=1 if match_cost else 0,
+                    cached_count=0, cached_saved_usd=0.0,
+                ),
+                ledger_pass(
+                    "Dimension scoring",
+                    fresh_usd=score_tally.cost_usd,
+                    fresh_calls=score_tally.analyzed,
+                    cached_count=score_tally.cached,
+                    cached_saved_usd=score_tally.cached_saved_usd,
+                ),
+            ],
+        )
 
         yield emit(
             RankSummary(

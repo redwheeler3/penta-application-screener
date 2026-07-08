@@ -160,6 +160,30 @@ class SyncRun(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
 
+class RunCostLedger(TimestampMixin, Base):
+    """One row per completed AI run (a Screen or a Rank), capturing its cost + cache
+    breakdown at write time (M13). This is the only honest source of *per-run* cost:
+    ``ApplicationAIResult`` is a reuse cache with no run-id stamp, so a run's fresh vs.
+    cached split can't be reconstructed after the fact — it must be recorded as the run
+    completes.
+
+    ``kind`` is "screen" or "rank". ``passes`` is a JSON list of per-pass entries,
+    each ``{label, fresh_usd, fresh_calls, cached_count, cached_saved_usd}``:
+      - ``fresh_usd`` / ``fresh_calls`` — actual Bedrock spend + calls this run.
+      - ``cached_count`` — results reused from cache (spent nothing now).
+      - ``cached_saved_usd`` — sum of those reused results' ORIGINAL cost: an estimate
+        of what regenerating them would have cost (what caching saved).
+    """
+
+    __tablename__ = "run_cost_ledger"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # "screen" | "rank"
+    fresh_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    cached_saved_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    passes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+
+
 class RankingRun(TimestampMixin, Base):
     __tablename__ = "ranking_runs"
 

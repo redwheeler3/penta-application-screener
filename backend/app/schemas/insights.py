@@ -39,3 +39,32 @@ class CostReport(ResponseModel):
 
     groups: list[CostGroup]
     total_cost_usd: float
+
+
+class LastRunPass(ResponseModel):
+    """One pass within a single completed run: what it spent fresh vs. reused from cache.
+    ``cached_saved_usd`` is the reused results' original cost — an estimate of what
+    regenerating them would have cost (what caching saved this run)."""
+
+    label: str
+    fresh_usd: float
+    fresh_calls: int
+    cached_count: int
+    cached_saved_usd: float
+
+
+class LastRunCost(ResponseModel):
+    kind: str  # "screen" | "rank"
+    at: str  # ISO timestamp of the run
+    fresh_usd: float
+    cached_saved_usd: float
+    passes: list[LastRunPass]
+
+
+class LastRunsReport(ResponseModel):
+    """GET /ranking/insights/last-runs — the most recent Screen and Rank, each with its
+    fresh spend and cache savings. Either is null if that run type hasn't completed
+    since per-run ledgering began."""
+
+    screen: LastRunCost | None = None
+    rank: LastRunCost | None = None

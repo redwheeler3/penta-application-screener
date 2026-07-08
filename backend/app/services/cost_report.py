@@ -22,8 +22,15 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import ApplicationAIResult, RankingRun
-from app.schemas.insights import CostGroup, CostPass, CostReport
+from app.db.models import ApplicationAIResult, RankingRun, RunCostLedger
+from app.schemas.insights import (
+    CostGroup,
+    CostPass,
+    CostReport,
+    LastRunCost,
+    LastRunPass,
+    LastRunsReport,
+)
 
 SCREENING = "screening"
 ESSAY = "essay_analysis"
@@ -102,3 +109,60 @@ def cost_report(db: Session) -> CostReport:
         groups=groups,
         total_cost_usd=round(sum(g.subtotal_usd for g in groups), 6),
     )
+
+
+# --- Per-run ledger (last Screen / last Rank cost + cache breakdown) --------------
+
+
+def ledger_pass(
+    label: str, *, fresh_usd: float, fresh_calls: int, cached_count: int, cached_saved_usd: float
+) -> dict:
+    """One per-pass ledger entry. Kept as a plain dict — it's serialized straight into
+    the ledger row's JSON ``passes`` column."""
+    return {
+        "label": label,
+        "fresh_usd": round(fresh_usd, 6),
+        "fresh_calls": fresh_calls,
+        "cached_count": cached_count,
+        "cached_saved_usd": round(cached_saved_usd, 6),
+    }
+
+
+def record_run_cost(db: Session, *, kind: str, passes: list[dict]) -> None:
+    """Persist a completed run's cost + cache breakdown (``kind`` = "screen" | "rank").
+    Called as the run's stream finishes — the only point the fresh/cached split is
+    known. Commits its own row so a later failure can't lose it."""
+    db.add(
+        RunCostLedger(
+            kind=kind,
+            fresh_usd=round(sum(p["fresh_usd"] for p in passes), 6),
+            cached_saved_usd=round(sum(p["cached_saved_usd"] for p in passes), 6),
+            passes=passes,
+        )
+    )
+    db.commit()
+
+
+def _last_run(db: Session, kind: str) -> LastRunCost | None:
+    row = db.scalar(
+        select(RunCostLedger)
+        .where(RunCostLedger.kind == kind)
+        .order_by(RunCostLedger.id.desc())
+        .limit(1)
+    )
+    if row is None:
+        return None
+    return LastRunCost(
+        kind=row.kind,
+        at=row.created_at.isoformat(),
+        fresh_usd=row.fresh_usd,
+        cached_saved_usd=row.cached_saved_usd,
+        passes=[LastRunPass(**p) for p in row.passes],
+    )
+
+
+def last_runs_report(db: Session) -> LastRunsReport:
+    """The most recent Screen and the most recent Rank, each with its fresh spend and
+    cache savings. Either is null if that run type hasn't completed since ledgering
+    began."""
+    return LastRunsReport(screen=_last_run(db, "screen"), rank=_last_run(db, "rank"))
