@@ -14,7 +14,7 @@ class CostPass(ResponseModel):
     caching doesn't read as "caching failed here". Summed from the run-cost ledger."""
 
     pass_label: str
-    calls: int  # actual (uncached) model calls made — one stored result each
+    calls: int  # uncached result units; dimension scoring counts per dimension row
     input_tokens: int
     output_tokens: int
     cost_usd: float
@@ -59,8 +59,8 @@ class LastRunPass(ResponseModel):
 
     label: str
     fresh_usd: float
-    fresh_calls: int
-    cached_count: int
+    fresh_calls: int  # uncached result units; dimension scoring counts dimensions
+    cached_count: int  # cached result units, in the same units as fresh_calls
     cached_saved_usd: float
     # Whether this pass can cache at all. Pattern discovery and dimension matching
     # always call fresh, so the UI shows "—" for their savings, not $0.

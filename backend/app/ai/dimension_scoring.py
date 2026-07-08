@@ -273,13 +273,14 @@ def _to_score_dimensions(
     application: Application,
     report: PoolDimensionReport,
     model_id: str,
-) -> tuple[list[PoolDimension], dict[str, DimensionScore]]:
+) -> tuple[list[PoolDimension], dict[str, DimensionScore], float]:
     """Split a candidate's dimensions into (to-score, cached) by per-key cache hit.
-    Returns the dimensions still to score and the cached scores keyed by dimension
-    key, ready to merge.
+    Returns the dimensions still to score, cached scores keyed by dimension key, and
+    the cached rows' original cost for cache-savings accounting.
     """
     to_score: list[PoolDimension] = []
     cached: dict[str, DimensionScore] = {}
+    cached_saved_usd = 0.0
     for dim in report.dimensions:
         outcome = cached_outcome(
             db,
@@ -293,7 +294,8 @@ def _to_score_dimensions(
             to_score.append(dim)
         else:
             cached[dim.key] = DimensionScore.model_validate(outcome.output.model_dump())
-    return to_score, cached
+            cached_saved_usd += outcome.cost_usd
+    return to_score, cached, cached_saved_usd
 
 
 def _split_usage(usage: Usage, parts: int) -> Usage:
@@ -349,11 +351,13 @@ def score_dimensions(
     # dimensions still need scoring, and the cached ones to merge in.
     plans = []
     for application in applications:
-        to_score, cached = _to_score_dimensions(db, application, report, model_id)
-        plans.append((application, to_score, cached))
+        to_score, cached, cached_saved_usd = _to_score_dimensions(
+            db, application, report, model_id
+        )
+        plans.append((application, to_score, cached, cached_saved_usd))
 
     def call(plan):
-        application, to_score, _cached = plan
+        application, to_score, _cached, _cached_saved_usd = plan
         if not to_score:
             return None  # fully cached → no model call
         return provider.structured_output(
@@ -363,7 +367,7 @@ def score_dimensions(
             system_prompt=SYSTEM_PROMPT,
         )
 
-    for (application, to_score, cached), result, error in run_in_pool(
+    for (application, to_score, cached, cached_saved_usd), result, error in run_in_pool(
         plans, call=call, max_workers=max_workers
     ):
         if error is not None:
@@ -383,11 +387,15 @@ def score_dimensions(
                 outcome=AnalysisOutcome(
                     output=_assemble(report, cached, {}), cost_usd=0.0, cached=True
                 ),
+                fresh_units=0,
+                cached_units=len(cached),
+                cached_saved_usd=cached_saved_usd,
             )
             continue
         fresh = {s.dimension_key: s for s in result.output.scores}
         share = _split_usage(result.usage, len(to_score))
         call_cost = 0.0
+        fresh_count = 0
         for dim in to_score:
             score = fresh.get(dim.key)
             if score is None:
@@ -401,9 +409,13 @@ def score_dimensions(
                 ),
             )
             call_cost += outcome.cost_usd
+            fresh_count += 1
         yield PassResult(
             application=application,
             outcome=AnalysisOutcome(
                 output=_assemble(report, cached, fresh), cost_usd=call_cost, cached=False
             ),
+            fresh_units=fresh_count,
+            cached_units=len(cached),
+            cached_saved_usd=cached_saved_usd,
         )

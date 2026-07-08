@@ -320,7 +320,8 @@ export function App() {
         // so new flags/status show immediately after the run.
         refreshDashboard();
         loadApplications({ page: appPage });
-        if (selectedApp) viewApplication(selectedApp.id);
+        setSelectedApp(null);
+        setActiveTab("applications");
       }
     } catch (error) {
       showError(error instanceof Error ? `Flagging error: ${error.message}` : "Flagging error.");

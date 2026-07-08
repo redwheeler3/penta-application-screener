@@ -129,6 +129,12 @@ class RunTally:
         if result.failed:
             self.failed += 1
             return
+        if result.fresh_units is not None or result.cached_units is not None:
+            self.analyzed += result.fresh_units or 0
+            self.cached += result.cached_units or 0
+            self.cached_saved_usd += result.cached_saved_usd or 0.0
+            self.cost_usd += result.outcome.cost_usd
+            return
         if result.outcome.cached:
             # A cache hit made no model call, so it spent nothing on THIS run; its
             # stored cost is the original first-run cost, so summing it estimates what
