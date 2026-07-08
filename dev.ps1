@@ -6,6 +6,15 @@ Start-Process -NoNewWindow -Wait -WorkingDirectory "$PSScriptRoot\backend" `
 
 $backend = $null
 $frontend = $null
+function Resolve-NpmCli {
+    $npm = Get-Command "npm.cmd" -ErrorAction Stop
+    $npmCli = Join-Path (Split-Path -Parent $npm.Source) "node_modules\npm\bin\npm-cli.js"
+    if (-not (Test-Path $npmCli)) {
+        throw "Could not find npm CLI script at $npmCli."
+    }
+    return $npmCli
+}
+
 function Stop-ProcessTree {
     param(
         [System.Diagnostics.Process]$Process
@@ -56,8 +65,11 @@ try {
         -FilePath "uv" -ArgumentList "run", "fastapi", "dev", "--host", "localhost", "app/main.py"
 
     Write-Host "Starting frontend on http://localhost:5173 ..."
+    $node = (Get-Command "node.exe" -ErrorAction Stop).Source
+    $npmCli = Resolve-NpmCli
+    $frontendArgs = "`"$npmCli`" run dev"
     $frontend = Start-Process -NoNewWindow -PassThru -WorkingDirectory "$PSScriptRoot\frontend" `
-        -FilePath "npm.cmd" -ArgumentList "run", "dev"
+        -FilePath $node -ArgumentList $frontendArgs
 
     Write-Host "Backend PID: $($backend.Id) | Frontend PID: $($frontend.Id)"
     Write-Host "Press Ctrl+C to stop both servers."
