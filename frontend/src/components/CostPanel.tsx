@@ -6,13 +6,22 @@ import type { CostReport, LastRunCost, LastRunsReport } from "../types";
 // line up: [ label | uncached | cached | saved by cache | spent ]. Spent is the
 // rightmost hard number; "saved by cache" sits to its left as the softer estimate.
 //   - Last runs — the most recent Screen and Rank, fresh spend vs. cache savings.
-//   - Total, all time — cumulative spend + savings, grouped by run.
+//   - Cumulative spend — cumulative spend + savings, grouped by run.
 // Passes that can't cache (pattern discovery, dimension matching) show "—" for the
 // cached count and savings, never 0, so structural absence of caching doesn't read as
 // "caching failed".
 const money = (n: number) => `$${n.toFixed(4)}`;
 const savedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : n > 0 ? `~${money(n)}` : money(n));
 const cachedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : String(n));
+const PASS_LABELS: Record<"screen" | "rank", Array<{ label: string; cacheable: boolean }>> = {
+  screen: [{ label: "Screening", cacheable: true }],
+  rank: [
+    { label: "Essay analysis", cacheable: true },
+    { label: "Pattern discovery", cacheable: false },
+    { label: "Dimension matching", cacheable: false },
+    { label: "Dimension scoring", cacheable: true },
+  ],
+};
 
 export function CostPanel(): ReactNode {
   const [cost, setCost] = useState<CostReport | null>(null);
@@ -55,12 +64,7 @@ export function CostPanel(): ReactNode {
             {[last.screen, last.rank].map((run, i) =>
               run === null ? (
                 <tbody key={i}>
-                  <tr className="cost-group-head">
-                    <td>{i === 0 ? "Screen" : "Rank"}</td>
-                    <td className="cost-muted" colSpan={4}>
-                      not run yet
-                    </td>
-                  </tr>
+                  {renderEmptyRun(i === 0 ? "screen" : "rank")}
                 </tbody>
               ) : (
                 <tbody key={i}>
@@ -89,7 +93,7 @@ export function CostPanel(): ReactNode {
 
       <div className="cost-section">
         <div className="cost-block-head">
-          <span className="insights-label">Total AI spend, all time</span>
+          <span className="insights-label">Cumulative spend</span>
           <span className="cost-block-total">{`$${cost.totalCostUsd.toFixed(2)}`} spent</span>
         </div>
         <p className="match-audit-hint">
@@ -122,6 +126,29 @@ export function CostPanel(): ReactNode {
         </table>
       </div>
     </div>
+  );
+}
+
+function renderEmptyRun(kind: "screen" | "rank"): ReactNode {
+  return (
+    <>
+      <tr className="cost-group-head">
+        <td>{kind === "screen" ? "Screen" : "Rank"}</td>
+        <td className="cost-num" />
+        <td className="cost-num" />
+        <td className="cost-num">—</td>
+        <td className="cost-num">{money(0)}</td>
+      </tr>
+      {PASS_LABELS[kind].map((p) => (
+        <tr key={p.label}>
+          <td className="cost-pass-name">{p.label}</td>
+          <td className="cost-num">0</td>
+          <td className="cost-num">{cachedCell(0, p.cacheable)}</td>
+          <td className="cost-num">{savedCell(0, p.cacheable)}</td>
+          <td className="cost-num">{money(0)}</td>
+        </tr>
+      ))}
+    </>
   );
 }
 
