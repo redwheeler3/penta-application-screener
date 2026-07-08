@@ -30,8 +30,8 @@ from app.ai.dimension_scoring import (
     applications_to_score,
     kind_for_dimension,
 )
-from app.ai.screening import PROMPT_VERSION as SCREENING_PROMPT_VERSION
 from app.ai.screening import applications_for_screening as screening_scope
+from app.ai.screening import screening_prompt_version
 from app.services.ranking_run import (
     current_dimension_report,
     get_current_run,
@@ -119,8 +119,11 @@ def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
         return CoverageEntry(cached=cached, in_scope=len(applications))
 
     result = {
+        # Screening's version folds in the pet-policy line, so changing the pet limits
+        # drops coverage (cached < inScope) and Screen shows out of date — same as a
+        # prompt edit.
         "screened": covered(
-            screening_scope(db), "screening", SCREENING_PROMPT_VERSION
+            screening_scope(db), "screening", screening_prompt_version(settings)
         ),
         # Essay coverage is intentionally NOT surfaced: essays are a sub-phase of
         # Rank, not a workflow step, and an essay-prompt change already ambers Rank

@@ -243,11 +243,14 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
     """
     from app.ai.analysis import cache_key
     from app.ai.screening import KIND as SCREENING_KIND
-    from app.ai.screening import PROMPT_VERSION as SCREENING_VERSION
+    from app.ai.screening import screening_prompt_version
     from app.schemas.settings import AppSettings
 
     app, db = _logged_in_app()
     model = AppSettings().ai.first_pass_model
+    # Dashboard coverage derives the screening version from settings (it folds in the
+    # pet policy), so match that here or the current-content rows won't be counted.
+    SCREENING_VERSION = screening_prompt_version(AppSettings())
 
     # Two eligible applicants in screening scope.
     a = Application(
