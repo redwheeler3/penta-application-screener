@@ -31,13 +31,31 @@ class AISettings(BridgeModel):
 
     Model IDs are Bedrock inference profile IDs (the ``us.`` / ``global.``
     prefixed form), not bare on-demand model IDs, which Bedrock requires for
-    these models. The screening pass uses the cheaper first-pass model;
-    judgment-heavier milestones will use the synthesis model.
+    these models.
+
+    One model per AI pass, named by the JOB rather than a tier ("first pass" /
+    "synthesis"), so each pass can be tuned independently and the mapping is
+    self-documenting. Today the high-volume per-applicant passes (screening, essay
+    analysis, dimension scoring) default to cheap-and-fast Haiku because call COUNT
+    is what drives their cost (scoring alone is candidates × dimensions), while the
+    two once-per-rank pool-level passes (discovery, matching) default to the
+    stronger Sonnet — cost is trivial there and judgment quality matters.
+
+    ``match_model`` earned its own tier from evidence: on Haiku the identity-match
+    pass over-matched genuinely-drifted concepts (freezing the wrong prior
+    definition onto a reused score, carrying tier intent onto the wrong axis), so it
+    runs on the model already trusted for the HARDER discovery task. Any of these
+    can move to Opus if a real run shows the current default is too weak for the job.
     """
 
     region: str = Field(default="us-west-2")
-    first_pass_model: str = Field(default="us.anthropic.claude-haiku-4-5-20251001-v1:0")
-    synthesis_model: str = Field(default="us.anthropic.claude-sonnet-4-6")
+    _HAIKU = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    _SONNET = "us.anthropic.claude-sonnet-4-6"
+    screening_model: str = Field(default=_HAIKU)
+    essay_analysis_model: str = Field(default=_HAIKU)
+    dimension_scoring_model: str = Field(default=_HAIKU)
+    discovery_model: str = Field(default=_SONNET)
+    match_model: str = Field(default=_SONNET)
     spending_cap_usd: float = Field(default=1.0, ge=0)
     # How many applications to screen concurrently. The model calls are the slow,
     # blocking part; ~300 applicants finish in seconds at this width. The Bedrock

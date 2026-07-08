@@ -194,7 +194,7 @@ def estimate_discovery(applications: list[Application], settings: AppSettings) -
         input_tokens=_DISCOVERY_INPUT_TOKENS_PER_CANDIDATE * len(applications),
         output_tokens=_DISCOVERY_OUTPUT_TOKENS,
     )
-    return cost_usd(settings.ai.synthesis_model, usage)
+    return cost_usd(settings.ai.discovery_model, usage)
 
 
 def discover_patterns(
@@ -217,7 +217,7 @@ def discover_patterns(
     the live "thinking" for this otherwise-opaque multi-minute call. The result is
     identical either way.
     """
-    model_id = settings.ai.synthesis_model
+    model_id = settings.ai.discovery_model
     result = provider.structured_output(
         model_id=model_id,
         schema=PoolDimensionReport,

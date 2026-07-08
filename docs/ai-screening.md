@@ -237,8 +237,10 @@ The frontend surfaces this as a **separate ranked view**, not a re-sort of the b
 AI settings live under `ai` in the admin settings (`app/schemas/settings.py`):
 
 - `region` — Bedrock region (default `us-west-2`).
-- `first_pass_model` — the quality-flag model. Default Claude Haiku 4.5, as a Bedrock inference-profile ID (`us.anthropic...`), which these models require.
-- `synthesis_model` — reserved for heavier, judgment-driven milestones (default Claude Sonnet 4.6). Not used by the quality-flag pass.
+- One model per AI pass, named by the job (all Bedrock inference-profile IDs, `us.anthropic...`, which these models require):
+  - `screening_model`, `essay_analysis_model`, `dimension_scoring_model` — the high-volume per-applicant passes. Default Claude Haiku 4.5: call *count* drives their cost (scoring is candidates × dimensions), so cheap-and-fast wins.
+  - `discovery_model` — the pool-level pattern-discovery call. Default Claude Sonnet 4.6 (cross-document judgment).
+  - `match_model` — the once-per-re-rank dimension identity match. Default Claude Sonnet 4.6; earned its own tier because on Haiku it over-matched drifted concepts. Bump to Opus only if a real run shows Sonnet still over-matching.
 - `spending_cap_usd` — the per-run cost ceiling (default `$1.00`). Editable from the settings form ("AI Screening" section).
 - `max_workers` — screening concurrency and connection-pool size (default `50`). Config-only; not exposed in the UI.
 

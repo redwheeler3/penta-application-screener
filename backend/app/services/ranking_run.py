@@ -55,10 +55,10 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
 
     Combines the pool fingerprint with the **prompt identity and model** of every
     pass the Rank chain runs (essays → discovery + match → scoring). So a re-rank is
-    flagged current only when the pool, all four prompts, AND both models are
-    unchanged since the run was created — editing any rank-chain prompt or switching
-    a model now correctly shows Rank as stale, not just a pool change. (screening
-    is the separate Screen step, not part of Rank, so it is deliberately excluded.)
+    flagged current only when the pool, all four prompts, AND all four rank-chain
+    models are unchanged since the run was created — editing any rank-chain prompt or
+    switching a model now correctly shows Rank as stale, not just a pool change.
+    (screening is the separate Screen step, not part of Rank, so it is excluded.)
 
     Prompt versions are imported lazily: the AI passes import this module, so a
     top-level import would be circular (matches the existing local-import pattern in
@@ -75,8 +75,13 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
         f"discovery:{DISCOVERY_V}",
         f"match:{MATCH_V}",
         f"scoring:{SCORING_V}",
-        f"first_pass_model:{settings.ai.first_pass_model}",
-        f"synthesis_model:{settings.ai.synthesis_model}",
+        # The model of every rank-chain pass — one per pass now, so a change to any
+        # of them ambers Rank. Screening's model is deliberately absent: it's the
+        # separate Screen step, not part of Rank (same reason its prompt is absent).
+        f"essay_model:{settings.ai.essay_analysis_model}",
+        f"discovery_model:{settings.ai.discovery_model}",
+        f"match_model:{settings.ai.match_model}",
+        f"scoring_model:{settings.ai.dimension_scoring_model}",
     ]
     basis = "\n".join(parts)
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]

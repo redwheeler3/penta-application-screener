@@ -102,7 +102,7 @@ def estimate_essay_analysis(db: Session, settings: AppSettings) -> dict[str, obj
         db,
         applications=applications_to_analyze(db),
         kind=KIND,
-        model_id=settings.ai.first_pass_model,
+        model_id=settings.ai.essay_analysis_model,
         prompt_version=PROMPT_VERSION,
         # Fallback only (no real usage yet). Essays make this heavier on input than
         # screening flags; the estimate self-tunes once a run has happened.
@@ -125,7 +125,7 @@ def analyze_one(
         application=application,
         kind=KIND,
         schema=EssayAnalysisReport,
-        model_id=settings.ai.first_pass_model,
+        model_id=settings.ai.essay_analysis_model,
         prompt_version=PROMPT_VERSION,
         prompt=build_prompt(application),
         system_prompt=SYSTEM_PROMPT,
@@ -149,7 +149,7 @@ def screen_essays(
         applications=applications,
         kind=KIND,
         schema=EssayAnalysisReport,
-        model_id=settings.ai.first_pass_model,
+        model_id=settings.ai.essay_analysis_model,
         prompt_version=PROMPT_VERSION,
         build_prompt=build_prompt,
         system_prompt=SYSTEM_PROMPT,

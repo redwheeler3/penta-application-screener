@@ -6,7 +6,8 @@ Discovery re-discovers dimensions *blind*; this pass then answers a narrow ident
 question: which new dimension is the same concept as which old one? It recognizes
 sameness, never weighs importance. The bar is high and the failure asymmetric — a
 missed match costs a re-drag, a wrong match moves tier intent onto the wrong
-concept — so when unsure, do not match. Runs on the first-pass model.
+concept — so when unsure, do not match. Runs on the dedicated ``match_model``
+(defaults to the synthesis tier, not the cheap first-pass model — see AISettings).
 """
 
 from __future__ import annotations
@@ -91,7 +92,7 @@ def estimate_match(settings: AppSettings) -> float:
     from app.ai.provider import Usage
 
     return cost_usd(
-        settings.ai.first_pass_model,
+        settings.ai.match_model,
         Usage(input_tokens=MATCH_INPUT_TOKENS, output_tokens=MATCH_OUTPUT_TOKENS),
     )
 
@@ -117,7 +118,7 @@ def match_dimensions(
         return {}, None, 0.0
 
     result = provider.structured_output(
-        model_id=settings.ai.first_pass_model,
+        model_id=settings.ai.match_model,
         schema=DimensionMatchReport,
         prompt=build_prompt(old, new),
         system_prompt=SYSTEM_PROMPT,
