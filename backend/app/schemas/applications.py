@@ -60,35 +60,6 @@ class DimensionContributionOut(ResponseModel):
     evidence: str
 
 
-class AITracePassOut(ResponseModel):
-    """One pass's AI-call trace metadata for a candidate (M13 per-application
-    legibility). Operator detail — model, prompt version, tokens, cost — surfaced in
-    a collapsed panel, kept off the committee's decision content.
-
-    ``calls`` is 1 for the once-per-candidate passes (screening, essay analysis) and N
-    for dimension scoring (one row per dimension), whose tokens/cost are summed. When a
-    rolled-up pass spans more than one prompt version, ``prompt_version`` is null and
-    ``mixed_versions`` is true — the tell that a re-rank re-scored only some dimensions.
-    """
-
-    pass_label: str  # "Screening", "Essay analysis", "Dimension scoring"
-    model_id: str
-    prompt_version: str | None = None
-    mixed_versions: bool = False
-    calls: int
-    input_tokens: int
-    output_tokens: int
-    cost_usd: float
-
-
-class AITraceOut(ResponseModel):
-    """The candidate's AI-call trace across all passes, plus the summed total."""
-
-    passes: list[AITracePassOut]
-    total_cost_usd: float
-    total_tokens: int
-
-
 class ApplicationSummary(ResponseModel):
     id: int
     primary_email: str
@@ -116,9 +87,6 @@ class ApplicationDetail(ApplicationSummary):
     ai_narrative: str | None = None
     essay_analysis: EssayAnalysisOut | None = None
     dimension_scores: list[DimensionContributionOut] | None = None
-    # Per-pass AI-call trace (model/version/tokens/cost), for the collapsed operator
-    # panel. null when the candidate has no AI results yet.
-    ai_trace: AITraceOut | None = None
 
 
 class ApplicationEnvelope(ResponseModel):

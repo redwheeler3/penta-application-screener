@@ -1,0 +1,85 @@
+"""Cost aggregation for the Insights tab (M13 Pillar 1).
+
+AI spend lives in two places:
+  - ``ApplicationAIResult`` rows — the per-application passes (screening, essay
+    analysis, dimension scoring), with tokens + cost per call.
+  - ``RankingRun.criteria["discovery_cost_usd"]`` — the run-level discovery + match
+    passes, cost only (no token breakdown is stored for them).
+
+Only a **cumulative** figure is surfaced — every dollar ever spent across all runs,
+which is exact. (This is unrelated to the spending cap, which bounds each individual
+run — Screen or Rank — before it starts; the lifetime total has no ceiling of its
+own.) A per-run "what did this run cost" figure is deliberately NOT shown:
+``ApplicationAIResult`` is a cache keyed by (candidate, dimension, prompt-version) for
+reuse, with no run-id stamp, so a
+surviving dimension's rows accumulate across runs and prompt versions — the current
+run's true cost can't be reconstructed after the fact without over-counting. Exact
+per-run cost would need run attribution stamped at write time (a later capture task).
+"""
+
+from __future__ import annotations
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.db.models import ApplicationAIResult, RankingRun
+from app.schemas.insights import CostPass, CostReport, CostTotals
+
+SCREENING = "screening"
+ESSAY = "essay_analysis"
+SCORING_PREFIX = "dimension_scoring:"
+
+
+def _pass(label: str, calls: int, input_tokens: int, output_tokens: int, cost: float) -> CostPass:
+    return CostPass(
+        pass_label=label,
+        calls=calls,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost_usd=round(cost, 6),
+    )
+
+
+def _sum_rows(db: Session, kind_filter) -> tuple[int, int, int, float]:
+    """(calls, input_tokens, output_tokens, cost) over ApplicationAIResult rows
+    matching ``kind_filter`` (a SQLAlchemy where-clause)."""
+    row = db.execute(
+        select(
+            func.count(ApplicationAIResult.id),
+            func.coalesce(func.sum(ApplicationAIResult.input_tokens), 0),
+            func.coalesce(func.sum(ApplicationAIResult.output_tokens), 0),
+            func.coalesce(func.sum(ApplicationAIResult.cost_usd), 0.0),
+        ).where(kind_filter)
+    ).one()
+    return int(row[0]), int(row[1]), int(row[2]), float(row[3])
+
+
+def _summed(runs: list[RankingRun], key: str) -> float:
+    """Summed value of a cost key across runs (cost-only fields; no tokens)."""
+    return sum(float((r.criteria or {}).get(key) or 0.0) for r in runs)
+
+
+def cost_report(db: Session) -> CostReport:
+    """Cumulative AI spend across all runs, broken down by pass. Exact — a plain sum
+    of every stored cost."""
+    all_runs = list(db.scalars(select(RankingRun)))
+    # A match pass runs only when there's a prior run to match against, so it's absent
+    # on first runs; count only runs that actually stored a match cost.
+    match_runs = [r for r in all_runs if (r.criteria or {}).get("match_cost_usd")]
+    passes = [
+        _pass("Screening", *_sum_rows(db, ApplicationAIResult.kind == SCREENING)),
+        _pass("Essay analysis", *_sum_rows(db, ApplicationAIResult.kind == ESSAY)),
+        _pass("Dimension scoring", *_sum_rows(db, ApplicationAIResult.kind.startswith(SCORING_PREFIX))),
+        # Discovery and match are separate Bedrock calls (Sonnet vs. Haiku), stored and
+        # attributed separately. Cost-only (no tokens stored). Runs created before the
+        # split fold their match cost into discovery_cost_usd — a minor historical
+        # over-attribution to discovery, not worth resetting real cost history over.
+        _pass("Pattern discovery", len(all_runs), 0, 0, _summed(all_runs, "discovery_cost_usd")),
+        _pass("Dimension matching", len(match_runs), 0, 0, _summed(all_runs, "match_cost_usd")),
+    ]
+    return CostReport(
+        cumulative=CostTotals(
+            passes=passes,
+            total_cost_usd=round(sum(p.cost_usd for p in passes), 6),
+        ),
+    )

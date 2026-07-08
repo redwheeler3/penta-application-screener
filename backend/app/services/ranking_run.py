@@ -113,7 +113,8 @@ def create_run(
     settings: AppSettings,
     model_id: str,
     narrative: str | None,
-    cost_usd: float,
+    discovery_cost_usd: float,
+    match_cost_usd: float = 0.0,
     name: str = "Ranking run",
     tier_layout: list[dict] | None = None,
     new_dimension_keys: list[str] | None = None,
@@ -161,7 +162,11 @@ def create_run(
             "proposed_dimensions": [],
             "discovery_model_id": model_id,
             "discovery_narrative": narrative,
-            "discovery_cost_usd": round(cost_usd, 6),
+            # Discovery and match are separate Bedrock calls (different models), stored
+            # separately so the cost report can attribute each. match_cost is 0 on a
+            # first run (no match pass ran).
+            "discovery_cost_usd": round(discovery_cost_usd, 6),
+            "match_cost_usd": round(match_cost_usd, 6),
             # Carry-forward audit: raw pre-adopt discovery dims + the match map +
             # match narrative, so a re-rank's "what changed" is inspectable (genuine
             # re-discovery vs. match over-matching). None on a first run (no match).

@@ -7,6 +7,7 @@ import type {
   ApplicationDetail,
   ApplicationSummary,
   AppFacets,
+  CostReport,
   Coverage,
   CurrentUser,
   DashboardCounts,
@@ -90,6 +91,9 @@ export const fetchRankingCurrent = () => fetch(url("/ranking/current"), { creden
 // The current run's carry-forward audit (M13 per-run AI legibility). Null when no
 // run exists or the run predates match-audit capture.
 export const fetchMatchAudit = () => getJson<MatchAuditResponse | null>("/ranking/current/match-audit");
+
+// Aggregated AI spend (M13 Pillar 1): cumulative + current-run, by pass.
+export const fetchCostReport = () => getJson<CostReport>("/ranking/insights/cost");
 
 export const fetchScreeningEstimate = () => fetch(url("/screening/estimate"), { credentials: "include" });
 export const runScreening = () => fetch(url("/screening/run"), { method: "POST", credentials: "include" });

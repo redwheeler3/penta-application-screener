@@ -126,27 +126,6 @@ export type EssayAnalysis = {
   evidence: string[];
 };
 
-// One pass's AI-call trace for a candidate (M13 per-application legibility): model,
-// prompt version, tokens, cost. Operator detail, shown in a collapsed panel.
-export type AITracePass = {
-  passLabel: string;
-  modelId: string;
-  // null (with mixedVersions true) when a rolled-up pass spans >1 prompt version —
-  // the tell that a re-rank re-scored only some dimensions.
-  promptVersion: string | null;
-  mixedVersions: boolean;
-  calls: number; // 1 for screening/essay; N (one per dimension) for scoring
-  inputTokens: number;
-  outputTokens: number;
-  costUsd: number;
-};
-
-export type AITrace = {
-  passes: AITracePass[];
-  totalCostUsd: number;
-  totalTokens: number;
-};
-
 export type ApplicationDetail = ApplicationSummary & {
   // What the machine would decide from the current findings — i.e. the result of
   // clearing a human override. Lets the status control show the automatic verdict.
@@ -165,9 +144,27 @@ export type ApplicationDetail = ApplicationSummary & {
   // descending — the same ranking contributions the ranked-list row slices. null =
   // no run, or not scored under it.
   dimensionScores?: DimensionContribution[] | null;
-  // Per-pass AI-call trace (model/version/tokens/cost), for the collapsed operator
-  // panel. null when the candidate has no AI results yet.
-  aiTrace?: AITrace | null;
+};
+
+// GET /ranking/insights/cost — aggregated AI spend for the Insights tab (M13).
+// inputTokens/outputTokens are 0 for the discovery+match pass (cost-only, no tokens).
+export type CostPass = {
+  passLabel: string;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+};
+
+export type CostTotals = {
+  passes: CostPass[];
+  totalCostUsd: number;
+};
+
+export type CostReport = {
+  // Every dollar ever spent (all passes, all runs) — exact. Unrelated to the per-run
+  // spending cap (which bounds one Rank). Per-run cost is omitted (no run-id stamp).
+  cumulative: CostTotals;
 };
 
 // The current run's discovered dimensions, from GET /ranking/current.
