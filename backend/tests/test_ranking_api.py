@@ -187,20 +187,27 @@ async def test_insights_cost_aggregates_by_pass() -> None:
         await stream_events(client, "/ranking/run")
 
         report = (await client.get("/ranking/insights/cost")).json()
-        by_pass = {p["passLabel"]: p for p in report["cumulative"]["passes"]}
+        groups = {g["runLabel"]: g for g in report["groups"]}
+        # Grouped by triggering run: Screen (screening) and Rank (essay/discovery/
+        # matching/scoring). Essay analysis lives under Rank, not Screen.
+        assert set(groups) == {"Screen", "Rank"}
+        rank_passes = {p["passLabel"]: p for p in groups["Rank"]["passes"]}
+        assert set(rank_passes) == {
+            "Essay analysis", "Pattern discovery", "Dimension matching", "Dimension scoring"
+        }
+        assert [p["passLabel"] for p in groups["Screen"]["passes"]] == ["Screening"]
         # Discovery and matching are separate passes (not summed into one).
-        assert "Pattern discovery" in by_pass
-        assert "Dimension matching" in by_pass
-        # This was a first run (no prior report), so no match pass ran → 0 matching cost.
-        assert by_pass["Dimension matching"]["costUsd"] == 0.0
-        assert by_pass["Pattern discovery"]["costUsd"] > 0.0
-        assert by_pass["Dimension scoring"]["calls"] == 2  # 1 applicant × 2 dimensions
-        # Total reconciles the passes.
-        assert report["cumulative"]["totalCostUsd"] == pytest.approx(
-            sum(p["costUsd"] for p in report["cumulative"]["passes"]), abs=1e-6
+        # First run (no prior report) → no match pass ran → 0 matching cost.
+        assert rank_passes["Dimension matching"]["costUsd"] == 0.0
+        assert rank_passes["Pattern discovery"]["costUsd"] > 0.0
+        assert rank_passes["Dimension scoring"]["calls"] == 2  # 1 applicant × 2 dimensions
+        # Subtotals and total reconcile.
+        assert groups["Rank"]["subtotalUsd"] == pytest.approx(
+            sum(p["costUsd"] for p in groups["Rank"]["passes"]), abs=1e-6
         )
-        # Cumulative-only: no per-run figure is surfaced.
-        assert "current" not in report
+        assert report["totalCostUsd"] == pytest.approx(
+            sum(g["subtotalUsd"] for g in report["groups"]), abs=1e-6
+        )
 
 
 @pytest.mark.anyio

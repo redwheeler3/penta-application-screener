@@ -2026,12 +2026,33 @@ h1 {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.82rem;
-  margin-top: 0.5rem;
+  margin-top: 1rem;
 }
 
 .cost-table td {
   padding: 0.3rem 0.5rem;
   border-bottom: 1px solid var(--line);
+}
+
+/* Run group header (Screen / Rank) with its subtotal on the right. */
+.cost-group-head th {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 2px solid var(--line);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cost-group-head th.cost-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Passes indent under their run group. */
+.cost-pass-name {
+  padding-left: 1.25rem !important;
+  color: var(--muted);
 }
 
 .cost-num {
