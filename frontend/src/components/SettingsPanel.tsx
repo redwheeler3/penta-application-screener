@@ -1,6 +1,13 @@
-import { type ReactNode, type SyntheticEvent } from "react";
+import { type ReactNode, type SyntheticEvent, type WheelEvent } from "react";
 import { ALL_RULES } from "../constants";
 import type { AppSettings, SettingsResponse } from "../types";
+
+// A focused <input type="number"> changes value on mouse-wheel, so scrolling the
+// page over one silently edits it (and you save weird values without noticing).
+// Blurring on wheel drops focus, so the value stays put and the page scrolls
+// normally. (preventDefault is unreliable here — React binds wheel listeners as
+// passive.)
+const blurOnWheel = (event: WheelEvent<HTMLInputElement>) => event.currentTarget.blur();
 
 export function SettingsPanel(props: {
   draft: AppSettings;
@@ -36,6 +43,7 @@ export function SettingsPanel(props: {
               <span>Income minimum</span>
               <input
                 type="number"
+                onWheel={blurOnWheel}
                 min="0"
                 value={draft.incomeMin}
                 onChange={(event) => setDraft({ ...draft, incomeMin: Number(event.target.value) })}
@@ -45,6 +53,7 @@ export function SettingsPanel(props: {
               <span>Income maximum</span>
               <input
                 type="number"
+                onWheel={blurOnWheel}
                 min="0"
                 value={draft.incomeMax}
                 onChange={(event) => setDraft({ ...draft, incomeMax: Number(event.target.value) })}
@@ -54,6 +63,7 @@ export function SettingsPanel(props: {
               <span>Min adult age</span>
               <input
                 type="number"
+                onWheel={blurOnWheel}
                 min="1"
                 max="100"
                 value={draft.minAdultAge}
@@ -64,6 +74,7 @@ export function SettingsPanel(props: {
               <span>Max child age</span>
               <input
                 type="number"
+                onWheel={blurOnWheel}
                 min="0"
                 max="100"
                 value={draft.maxChildAge}
@@ -74,6 +85,7 @@ export function SettingsPanel(props: {
               <span>Min children per unit</span>
               <input
                 type="number"
+                onWheel={blurOnWheel}
                 min="0"
                 max="20"
                 value={draft.minChildren}
@@ -84,6 +96,7 @@ export function SettingsPanel(props: {
               <span>Max children per unit</span>
               <input
                 type="number"
+                onWheel={blurOnWheel}
                 min="0"
                 max="20"
                 value={draft.maxChildren}
@@ -94,6 +107,7 @@ export function SettingsPanel(props: {
               <span>Max dogs</span>
               <input
                 type="number"
+                onWheel={blurOnWheel}
                 min="0"
                 max="10"
                 value={draft.maxDogs}
@@ -104,6 +118,7 @@ export function SettingsPanel(props: {
               <span>Max cats</span>
               <input
                 type="number"
+                onWheel={blurOnWheel}
                 min="0"
                 max="10"
                 value={draft.maxCats}
@@ -148,6 +163,7 @@ export function SettingsPanel(props: {
                 <span>Spending cap (USD per run)</span>
                 <input
                   type="number"
+                onWheel={blurOnWheel}
                   min="0"
                   step="0.01"
                   value={draft.ai.spendingCapUsd}

@@ -25,7 +25,13 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.ai.analysis import PassResult, SpendingCapExceeded, enforce_cap
+from app.ai.analysis import (
+    PassResult,
+    SpendingCapExceeded,
+    enforce_cap,
+    exception_type_name,
+    log,
+)
 from app.ai.dimension_matching import estimate_match, match_dimensions
 from app.ai.dimension_scoring import (
     applications_to_score,
@@ -352,6 +358,10 @@ def rank_run(
 
         if "error" in criteria_outcome:
             exc = criteria_outcome["error"]
+            log.warning(
+                "Rank criteria phase failed: %s",
+                exception_type_name(exc), exc_info=exc,
+            )
             yield emit(
                 StreamErrorEvent(
                     phase=CRITERIA,

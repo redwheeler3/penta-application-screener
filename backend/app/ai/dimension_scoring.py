@@ -29,6 +29,8 @@ from app.ai.analysis import (
     PassResult,
     cached_outcome,
     derive_prompt_version,
+    exception_type_name,
+    log,
     observed_avg_tokens,
     run_in_pool,
     store_result,
@@ -365,7 +367,15 @@ def score_dimensions(
         plans, call=call, max_workers=max_workers
     ):
         if error is not None:
-            yield PassResult(application=application, outcome=None, error=str(error))
+            error_type = exception_type_name(error)
+            log.warning(
+                "Dimension scoring failed for application %s: %s",
+                application.id, error_type, exc_info=error,
+            )
+            yield PassResult(
+                application=application, outcome=None,
+                error=str(error), error_type=error_type,
+            )
             continue
         if result is None:  # fully cached
             yield PassResult(

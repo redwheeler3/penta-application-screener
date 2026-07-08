@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -25,6 +26,20 @@ R = TypeVar("R")
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, Usage
 from app.db.models import Application, ApplicationAIResult
+
+log = logging.getLogger("app.ai")
+
+
+def exception_type_name(exc: BaseException) -> str:
+    """The exception's fully-qualified class name (``module.Qualname``), for
+    attributing a failed AI call to its failure mode. Falls back to the bare
+    name for builtins, whose module (``builtins``) is noise.
+    """
+    cls = type(exc)
+    module = cls.__module__
+    if module in (None, "builtins"):
+        return cls.__qualname__
+    return f"{module}.{cls.__qualname__}"
 
 # Length of the derived prompt-version hash (hex chars). Must fit the
 # ApplicationAIResult.prompt_version column (String(20)); 12 is ample to avoid
@@ -292,6 +307,10 @@ class PassResult:
     application: Application
     outcome: AnalysisOutcome | None  # None when the model call failed
     error: str | None = None
+    # The failed call's exception class (fully-qualified), preserved separately
+    # from the ``str()``-flattened ``error`` so failure *modes* stay countable
+    # (M13 operational metrics). None on success.
+    error_type: str | None = None
 
     @property
     def failed(self) -> bool:
@@ -384,7 +403,15 @@ def screen_applications(
         pending, call=call_model, max_workers=max_workers
     ):
         if error is not None:
-            yield PassResult(application=application, outcome=None, error=str(error))
+            error_type = exception_type_name(error)
+            log.warning(
+                "AI pass %r failed for application %s: %s",
+                kind, application.id, error_type, exc_info=error,
+            )
+            yield PassResult(
+                application=application, outcome=None,
+                error=str(error), error_type=error_type,
+            )
             continue
         outcome = store_result(
             db, application, kind=kind, model_id=model_id,

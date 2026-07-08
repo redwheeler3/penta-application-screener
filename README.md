@@ -25,7 +25,7 @@ The workflow is three single-verb steps — **Import → Screen → Rank** — e
 - Admin-only raw source row and raw AI output debug panels.
 - Human status overrides with stale-finding indicators when machine findings change later.
 
-The next planned milestone (M13) is AI observability and evals: surfacing cost attribution, the match/discovery audit, operational metrics, and property-based quality checks.
+The next planned milestone (M13) is AI observability and evals: a per-pass AI trace viewer (what each pass output, match/discovery audit included), cost attribution, operational metrics, and property-based quality checks. The failure-capture prerequisite (Stage 0) is done.
 
 Current planning lives in [SPEC.md](SPEC.md). Developer architecture notes live in [docs/app-architecture.md](docs/app-architecture.md), with deeper references in [docs/ai-screening.md](docs/ai-screening.md), [docs/api.md](docs/api.md), and [docs/form-field-reference.md](docs/form-field-reference.md). Shared agent guidance lives in [.clinerules](.clinerules), with [AGENTS.md](AGENTS.md) pointing agents there.
 
