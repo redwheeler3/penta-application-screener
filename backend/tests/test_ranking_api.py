@@ -201,12 +201,20 @@ async def test_insights_cost_aggregates_by_pass() -> None:
         assert rank_passes["Dimension matching"]["costUsd"] == 0.0
         assert rank_passes["Pattern discovery"]["costUsd"] > 0.0
         assert rank_passes["Dimension scoring"]["calls"] == 2  # 1 applicant × 2 dimensions
+        # Cacheable passes are marked so; the always-fresh ones are not (UI shows "—").
+        assert rank_passes["Dimension scoring"]["cacheable"] is True
+        assert rank_passes["Essay analysis"]["cacheable"] is True
+        assert rank_passes["Pattern discovery"]["cacheable"] is False
+        assert rank_passes["Dimension matching"]["cacheable"] is False
         # Subtotals and total reconcile.
         assert groups["Rank"]["subtotalUsd"] == pytest.approx(
             sum(p["costUsd"] for p in groups["Rank"]["passes"]), abs=1e-6
         )
         assert report["totalCostUsd"] == pytest.approx(
             sum(g["subtotalUsd"] for g in report["groups"]), abs=1e-6
+        )
+        assert report["totalSavedUsd"] == pytest.approx(
+            sum(g["subtotalSavedUsd"] for g in report["groups"]), abs=1e-6
         )
 
 
