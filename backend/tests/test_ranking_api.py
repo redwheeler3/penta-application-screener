@@ -790,3 +790,75 @@ async def test_put_seeds_rejects_unknown_favourite_key() -> None:
             json={"favouritedKeys": ["participation_commitment", "not_a_real_key"]},
         )).json()
         assert seeds["favouritedKeys"] == ["participation_commitment"]
+
+
+@pytest.mark.anyio
+async def test_match_audit_is_null_before_any_run() -> None:
+    app, _, _ = setup_app(role=UserRole.MEMBER)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        resp = await client.get("/ranking/current/match-audit")
+        assert resp.status_code == 200
+        assert resp.json() is None
+
+
+@pytest.mark.anyio
+async def test_match_audit_first_run_has_null_carry_forward_rate() -> None:
+    # A first run has no prior dimensions to match against, so carry-forward is
+    # undefined (null), not 0 — every dimension is genuinely new.
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", a_pattern_report())
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/ranking/run")
+
+        audit = (await client.get("/ranking/current/match-audit")).json()
+        assert audit["priorDimensionCount"] == 0
+        assert audit["discoveredCount"] == 2
+        assert audit["matchedCount"] == 0
+        assert audit["newCount"] == 2
+        assert audit["carryForwardRate"] is None
+        assert audit["newToOld"] == {}
+
+
+@pytest.mark.anyio
+async def test_match_audit_reports_carry_forward_rate_on_rerun() -> None:
+    # On a re-run the match pass maps one of two new dimensions onto a prior one,
+    # so the carry-forward rate is 1/2 and the audit exposes the raw discovery keys
+    # and the new->old map — the over-matching signal M13 exists to surface.
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", a_pattern_report())
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/ranking/run")
+
+        # Pool changes so a re-rank is allowed; v2 re-discovery, match pass maps
+        # stated_participation -> participation_commitment (financial_stability is new).
+        add_eligible(db, email="b@x.com", raw_hash="h2")
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", a_pattern_report_v2())
+        provider.route(
+            "<prior_dimensions>",
+            DimensionMatchReport(
+                matches=[DimensionMatch(new_key="stated_participation", old_key="participation_commitment")]
+            ),
+        )
+        provider.route("applicant_id", _scoring_report_v2())
+        await stream_events(client, "/ranking/run")
+
+        audit = (await client.get("/ranking/current/match-audit")).json()
+        assert audit["priorDimensionCount"] == 2
+        assert audit["discoveredCount"] == 2
+        assert audit["matchedCount"] == 1
+        assert audit["newCount"] == 1
+        assert audit["carryForwardRate"] == 0.5
+        assert audit["newToOld"] == {"stated_participation": "participation_commitment"}
+        # Raw discovery keys are pre-adoption (what discovery actually emitted).
+        raw_keys = {d["key"] for d in audit["rawDiscoveryDimensions"]}
+        assert raw_keys == {"stated_participation", "financial_stability"}

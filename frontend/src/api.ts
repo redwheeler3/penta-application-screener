@@ -10,6 +10,7 @@ import type {
   Coverage,
   CurrentUser,
   DashboardCounts,
+  MatchAuditResponse,
   SettingsResponse,
   SortState,
   Tier,
@@ -85,6 +86,10 @@ export function syncApplications(): Promise<Response> {
 }
 
 export const fetchRankingCurrent = () => fetch(url("/ranking/current"), { credentials: "include" });
+
+// The current run's carry-forward audit (M13 per-run AI legibility). Null when no
+// run exists or the run predates match-audit capture.
+export const fetchMatchAudit = () => getJson<MatchAuditResponse | null>("/ranking/current/match-audit");
 
 export const fetchScreeningEstimate = () => fetch(url("/screening/estimate"), { credentials: "include" });
 export const runScreening = () => fetch(url("/screening/run"), { method: "POST", credentials: "include" });

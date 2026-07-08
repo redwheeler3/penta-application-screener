@@ -217,6 +217,24 @@ export type CurrentRunResponse = {
   proposedDimensions: string[];
 };
 
+// GET /ranking/current/match-audit — the carry-forward trace for the current run
+// (M13 per-run AI legibility). What discovery ACTUALLY emitted before matched keys
+// were rewritten, how the match pass mapped it onto prior dimensions, and the
+// derived carry-forward rate. Null when no run exists or the run predates capture.
+export type MatchAuditResponse = {
+  runId: number;
+  rawDiscoveryDimensions: { key: string; name: string; fromCommitteeRequest: boolean }[];
+  newToOld: Record<string, string>; // new dimension key → adopted prior key
+  matchNarrative: string | null;
+  priorDimensionCount: number;
+  discoveredCount: number;
+  matchedCount: number;
+  newCount: number;
+  // Fraction matched onto a prior dimension. Null on a first run (undefined, not 0);
+  // a persistently near-1.0 rate on re-runs is the over-matching smell.
+  carryForwardRate: number | null;
+};
+
 // A notification toast. Success toasts auto-dismiss; error toasts persist until
 // dismissed (and offer a copy button), so a failure can't scroll away unread.
 export type Toast = { id: number; message: string; variant: "success" | "error" };

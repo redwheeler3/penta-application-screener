@@ -33,6 +33,34 @@ class CurrentRunResponse(ResponseModel):
     proposed_dimensions: list[str] = []
 
 
+class RawDiscoveryDimensionOut(ResponseModel):
+    """One dimension as discovery emitted it, before matched keys were rewritten."""
+
+    key: str
+    name: str
+    from_committee_request: bool = False
+
+
+class MatchAuditResponse(ResponseModel):
+    """GET /ranking/current/match-audit — the carry-forward trace for the current
+    run (M13 per-run AI legibility). Null when no run exists or the run predates
+    match-audit capture.
+
+    ``carryForwardRate`` is null on a first run (no prior dimensions to match); a
+    persistently near-1.0 rate on re-runs is the over-matching smell.
+    """
+
+    run_id: int
+    raw_discovery_dimensions: list[RawDiscoveryDimensionOut]
+    new_to_old: dict[str, str]  # new dimension key → adopted prior key
+    match_narrative: str | None = None
+    prior_dimension_count: int
+    discovered_count: int
+    matched_count: int
+    new_count: int
+    carry_forward_rate: float | None = None
+
+
 class RankEstimateBreakdown(ResponseModel):
     essays_usd: float
     criteria_usd: float

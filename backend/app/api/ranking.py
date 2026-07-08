@@ -67,6 +67,7 @@ from app.schemas.events import (
 from app.schemas.events import ErrorEvent as StreamErrorEvent
 from app.schemas.ranking import (
     CurrentRunResponse,
+    MatchAuditResponse,
     PoolDimensionOut,
     RankedCandidateOut,
     RankEstimateBreakdown,
@@ -89,6 +90,7 @@ from app.services.ranking_run import (
     display_tiers,
     favourited_keys,
     get_current_run,
+    match_audit_view,
     proposed_dimensions,
     ranking_is_current,
     set_seeds,
@@ -166,6 +168,24 @@ def current(
 ) -> CurrentRunResponse | None:
     """The current ranking run's dimensions, or null if none discovered yet."""
     return _run_payload(db)
+
+
+@router.get("/current/match-audit", response_model=MatchAuditResponse | None)
+def current_match_audit(
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> MatchAuditResponse | None:
+    """The current run's carry-forward audit — what discovery emitted, how the match
+    pass mapped it onto prior dimensions, and the derived carry-forward rate (M13
+    per-run AI legibility). Null when no run exists or the run predates the capture.
+    """
+    run = get_current_run(db)
+    if run is None:
+        return None
+    view = match_audit_view(run)
+    if view is None:
+        return None
+    return MatchAuditResponse(run_id=run.id, **view)
 
 
 # --- Rank: the combined essays → criteria → scores chain --------------------
@@ -384,6 +404,11 @@ def rank_run(
             ],
             "new_to_old": new_to_old,
             "match_narrative": match_narrative,
+            # How many prior dimensions the match pass had to match against. 0 on a
+            # first run (no match pass ran), so the audit viewer can tell a first run
+            # — where carry-forward is N/A — from a genuine zero-match re-run, where a
+            # 0% carry-forward rate is the real "total churn" signal.
+            "prior_dimension_count": len(prior_report.dimensions) if prior_report else 0,
         }
         # Adopt the prior key for every matched dimension (keeping new descriptions)
         # so its tier placement and cached score carry forward by key alone.
