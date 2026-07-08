@@ -100,8 +100,11 @@ export const defaultSettings: AppSettings = {
   disabledRules: [],
   ai: {
     region: "us-west-2",
-    firstPassModel: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    synthesisModel: "us.anthropic.claude-sonnet-4-6",
+    screeningModel: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    essayAnalysisModel: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    dimensionScoringModel: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    discoveryModel: "us.anthropic.claude-sonnet-4-6",
+    matchModel: "us.anthropic.claude-sonnet-4-6",
     spendingCapUsd: 1.0,
     maxWorkers: 50,
   },

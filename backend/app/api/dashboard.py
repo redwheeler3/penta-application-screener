@@ -99,9 +99,12 @@ def _import_is_current(db: Session, settings) -> bool:
 
 
 def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
-    model = settings.ai.first_pass_model
-
-    def covered(applications, kind: str, prompt_version: str) -> CoverageEntry:
+    # Coverage is a cache-hit count, so each pass must be probed under the model it
+    # actually runs on — a cache row's key includes the model. These are separate
+    # settings now, so don't share one variable across passes.
+    def covered(
+        applications, kind: str, prompt_version: str, model: str
+    ) -> CoverageEntry:
         cached = sum(
             1
             for app in applications
@@ -123,7 +126,8 @@ def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
         # drops coverage (cached < inScope) and Screen shows out of date — same as a
         # prompt edit.
         "screened": covered(
-            screening_scope(db), "screening", screening_prompt_version(settings)
+            screening_scope(db), "screening", screening_prompt_version(settings),
+            settings.ai.screening_model,
         ),
         # Essay coverage is intentionally NOT surfaced: essays are a sub-phase of
         # Rank, not a workflow step, and an essay-prompt change already ambers Rank
@@ -145,7 +149,8 @@ def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
                     select(ApplicationAIResult.id).where(
                         ApplicationAIResult.cache_key
                         == cache_key(
-                            application=app, kind=kind, model_id=model,
+                            application=app, kind=kind,
+                            model_id=settings.ai.dimension_scoring_model,
                             prompt_version=SCORING_PROMPT_VERSION,
                         )
                     )

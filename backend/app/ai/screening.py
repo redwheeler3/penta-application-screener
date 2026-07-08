@@ -154,7 +154,7 @@ def estimate_screening(db: Session, settings: AppSettings) -> dict[str, object]:
         db,
         applications=applications_for_screening(db),
         kind=KIND,
-        model_id=settings.ai.first_pass_model,
+        model_id=settings.ai.screening_model,
         prompt_version=screening_prompt_version(settings),
         # Fallback only (no real usage yet). Order-of-magnitude from observed runs;
         # the prompt asks for a Markdown narrative, so output is several hundred tokens.
@@ -193,7 +193,7 @@ def analyze_one(
         application=application,
         kind=KIND,
         schema=ScreeningReport,
-        model_id=settings.ai.first_pass_model,
+        model_id=settings.ai.screening_model,
         prompt_version=screening_prompt_version(settings),
         prompt=build_prompt(application, settings),
         system_prompt=SYSTEM_PROMPT,
@@ -219,7 +219,7 @@ def run_screening(
         applications=applications,
         kind=KIND,
         schema=ScreeningReport,
-        model_id=settings.ai.first_pass_model,
+        model_id=settings.ai.screening_model,
         prompt_version=screening_prompt_version(settings),
         build_prompt=lambda application: build_prompt(application, settings),
         system_prompt=SYSTEM_PROMPT,

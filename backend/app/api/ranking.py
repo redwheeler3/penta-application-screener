@@ -471,7 +471,7 @@ def rank_run(
             known_keys=known_keys,
         )
         create_run(
-            db, report=report, settings=settings, model_id=settings.ai.synthesis_model,
+            db, report=report, settings=settings, model_id=settings.ai.discovery_model,
             narrative=narrative, discovery_cost_usd=discovery_cost, match_cost_usd=match_cost,
             tier_layout=layout, new_dimension_keys=new_dimension_keys,
             # Carry prior favourites forward (by key, post-match); create_run unions

@@ -247,7 +247,7 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
     from app.schemas.settings import AppSettings
 
     app, db = _logged_in_app()
-    model = AppSettings().ai.first_pass_model
+    model = AppSettings().ai.screening_model
     # Dashboard coverage derives the screening version from settings (it folds in the
     # pet policy), so match that here or the current-content rows won't be counted.
     SCREENING_VERSION = screening_prompt_version(AppSettings())
@@ -299,7 +299,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     from app.schemas.settings import AppSettings
 
     app, db = _logged_in_app()
-    model = AppSettings().ai.first_pass_model
+    model = AppSettings().ai.dimension_scoring_model
 
     a = Application(
         primary_email="a@x.com", applicant_name="A", raw_row={"q": "1"}, raw_row_hash="ha",

@@ -13,8 +13,11 @@ export type CurrentUser = {
 // round-tripped so a save never resets them.
 export type AISettings = {
   region: string;
-  firstPassModel: string;
-  synthesisModel: string;
+  screeningModel: string;
+  essayAnalysisModel: string;
+  dimensionScoringModel: string;
+  discoveryModel: string;
+  matchModel: string;
   spendingCapUsd: number;
   maxWorkers: number;
 };

@@ -241,7 +241,7 @@ def estimate_dimension_scoring(
     dimension's cost). Runs before discovery, so it prices the worst case — every
     candidate scores every dimension; carry-forward reuse brings the actual under it.
     """
-    model_id = settings.ai.first_pass_model
+    model_id = settings.ai.dimension_scoring_model
     candidates = applications_to_score(db)
     run = get_current_run(db)
     report = current_dimension_report(run) if run is not None else None
@@ -340,7 +340,7 @@ def score_dimensions(
     Mirrors ``screen_applications``' session discipline: all ORM work on this
     thread, only the model call in a worker via ``run_in_pool``.
     """
-    model_id = settings.ai.first_pass_model
+    model_id = settings.ai.dimension_scoring_model
     essay_reports = _essay_reports(db, [app.id for app in applications])
 
     # Plan each candidate on the main thread (cache lookups touch the ORM): which

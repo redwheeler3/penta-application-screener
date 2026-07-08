@@ -143,7 +143,7 @@ def test_analyze_one_runs_and_caches() -> None:
     db = make_session()
     app = add_application(db, email="a@x.com", status=ApplicationStatus.ELIGIBLE, raw_hash="h1")
     provider = MockProvider()
-    provider.queue(flagged(), model_id=AppSettings().ai.first_pass_model)
+    provider.queue(flagged(), model_id=AppSettings().ai.screening_model)
     settings = AppSettings()
 
     first = analyze_one(db, provider, application=app, settings=settings)

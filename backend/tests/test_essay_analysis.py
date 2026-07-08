@@ -98,7 +98,7 @@ def test_analyze_one_does_not_change_status() -> None:
     db = make_session()
     app = add_application(db, email="a@x.com", status=ApplicationStatus.ELIGIBLE)
     provider = MockProvider()
-    provider.queue(report(), model_id=AppSettings().ai.first_pass_model)
+    provider.queue(report(), model_id=AppSettings().ai.essay_analysis_model)
 
     outcome = analyze_one(db, provider, application=app, settings=AppSettings())
 
@@ -113,7 +113,7 @@ def test_analyze_one_caches() -> None:
     db = make_session()
     app = add_application(db, email="a@x.com")
     provider = MockProvider()
-    provider.queue(report(), model_id=AppSettings().ai.first_pass_model)
+    provider.queue(report(), model_id=AppSettings().ai.essay_analysis_model)
     settings = AppSettings()
 
     first = analyze_one(db, provider, application=app, settings=settings)
@@ -132,7 +132,7 @@ def test_screen_essays_yields_a_result_per_application() -> None:
     apps = [add_application(db, email=f"a{i}@x.com", raw_hash=f"h{i}") for i in range(3)]
     provider = MockProvider()
     for _ in apps:
-        provider.queue(report(), model_id=AppSettings().ai.first_pass_model)
+        provider.queue(report(), model_id=AppSettings().ai.essay_analysis_model)
 
     results = list(
         screen_essays(

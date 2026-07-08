@@ -229,7 +229,7 @@ def test_ceiling_estimate_prices_per_candidate_call() -> None:
     # first-run dimension count; ceiling assumes nothing cached.
     est = estimate_dimension_scoring(db, settings)
     per_candidate = cost_usd(
-        settings.ai.first_pass_model,
+        settings.ai.dimension_scoring_model,
         Usage(
             SCORING_FALLBACK_INPUT_TOKENS_PER_CANDIDATE,
             SCORING_FALLBACK_OUTPUT_TOKENS * ASSUMED_DIMENSIONS_FIRST_RUN,
