@@ -17,17 +17,21 @@ import { MatchAuditPanel } from "./MatchAuditPanel";
 // land, instead of a growing scroll of accordions.
 type InsightsTab = "discovery" | "carryForward" | "cost";
 
-export function InsightsView(props: { run: CurrentRunResponse }): ReactNode {
-  const [tab, setTab] = useState<InsightsTab>("discovery");
-  const tabs: { id: InsightsTab; label: string }[] = [
-    { id: "discovery", label: "Pattern discovery" },
-    { id: "carryForward", label: "Carry-forward" },
-    { id: "cost", label: "Cost" },
-  ];
+export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNode {
+  const [tab, setTab] = useState<InsightsTab>(props.run ? "discovery" : "cost");
+  const tabs: { id: InsightsTab; label: string }[] = props.run
+    ? [
+        { id: "discovery", label: "Pattern discovery" },
+        { id: "carryForward", label: "Carry-forward" },
+        { id: "cost", label: "Cost" },
+      ]
+    : [{ id: "cost", label: "Cost" }];
+  const activeTab = props.run ? tab : "cost";
+
   return (
     <div className="insights-view">
       <div className="insights-header">
-        <h3>AI insights for the current run</h3>
+        <h3>{props.run ? "AI insights for the current run" : "AI insights"}</h3>
       </div>
 
       <div className="insights-subtabs" role="tablist" aria-label="AI insights sections">
@@ -36,8 +40,8 @@ export function InsightsView(props: { run: CurrentRunResponse }): ReactNode {
             key={t.id}
             type="button"
             role="tab"
-            aria-selected={tab === t.id}
-            className={`insights-subtab${tab === t.id ? " active" : ""}`}
+            aria-selected={activeTab === t.id}
+            className={`insights-subtab${activeTab === t.id ? " active" : ""}`}
             onClick={() => setTab(t.id)}
           >
             {t.label}
@@ -46,9 +50,9 @@ export function InsightsView(props: { run: CurrentRunResponse }): ReactNode {
       </div>
 
       <div className="insights-subtab-body">
-        {tab === "discovery" ? (
+        {activeTab === "discovery" && props.run ? (
           <DiscoveryPanel run={props.run} />
-        ) : tab === "carryForward" ? (
+        ) : activeTab === "carryForward" ? (
           <MatchAuditPanel />
         ) : (
           <CostPanel />

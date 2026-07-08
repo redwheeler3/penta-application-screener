@@ -497,6 +497,7 @@ export function App() {
   }
 
   const hasGoogleSheetLink = Boolean(saved && resolveSheetId(saved));
+  const hasInsights = workflow.screened || Boolean(rankingRun);
 
   return (
     <main className="app-shell">
@@ -609,9 +610,9 @@ export function App() {
                 Ranking
               </button>
             ) : null}
-            {/* Insights: run-level AI observability (M13). Like Ranking, only shown
-                once a run exists — there's nothing to inspect before then. */}
-            {rankingRun ? (
+            {/* Insights: Screen produces cost/run telemetry before Rank exists.
+                Rank adds the pattern-discovery and carry-forward subtabs. */}
+            {hasInsights ? (
               <button
                 type="button"
                 role="tab"
@@ -670,7 +671,7 @@ export function App() {
                 onRemoveProposal={removeProposal}
                 onSelectApplication={viewApplication}
               />
-            ) : activeTab === "insights" && rankingRun ? (
+            ) : activeTab === "insights" && hasInsights ? (
               <InsightsView run={rankingRun} />
             ) : (
               <ApplicationsList
