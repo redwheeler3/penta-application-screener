@@ -151,6 +151,7 @@ def _run_payload(db: Session) -> CurrentRunResponse | None:
             )
             for d in report.dimensions
         ],
+        discovery_narrative=(run.criteria or {}).get("discovery_narrative"),
         # New dimensions with no confident match to a prior one — parked in Ignore,
         # flagged "new" in the UI. Empty on a first run.
         new_dimension_keys=(run.criteria or {}).get("new_dimension_keys", []),
