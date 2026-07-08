@@ -25,8 +25,7 @@ export function InsightsView(props: { run: CurrentRunResponse }): ReactNode {
   return (
     <div className="insights-view">
       <div className="insights-header">
-        <h3>AI insights</h3>
-        <p className="insights-subhead">Inspection detail for the current run — not part of the ranking decision.</p>
+        <h3>AI insights for the current run</h3>
       </div>
 
       <div className="insights-subtabs" role="tablist" aria-label="AI insights sections">

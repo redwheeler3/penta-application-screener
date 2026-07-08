@@ -2061,13 +2061,6 @@ h1 {
   margin: 0;
 }
 
-.insights-subhead {
-  margin: 0.25rem 0 0;
-  color: var(--muted);
-  font-size: 0.85rem;
-  line-height: 1.45;
-}
-
 .stepper-button {
   display: inline-flex;
   align-items: center;
