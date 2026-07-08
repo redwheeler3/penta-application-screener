@@ -26,6 +26,7 @@ from app.schemas.events import (
 )
 from app.schemas.screening import ScreeningEstimateResponse
 from app.schemas.settings import AppSettings
+from app.services.cost_report import ledger_pass, record_run_cost
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/screening", tags=["screening"])
@@ -45,6 +46,8 @@ class RunTally:
     flagged: int = 0
     failed: int = 0
     cost_usd: float = 0.0
+    # Sum of reused results' ORIGINAL cost — an estimate of what caching saved this run.
+    cached_saved_usd: float = 0.0
 
     def add(self, result: PassResult) -> None:
         if result.failed:
@@ -52,11 +55,11 @@ class RunTally:
             return
         if result.outcome.cached:
             self.cached += 1
+            # A cache hit spent nothing now; its stored cost is the original first-run
+            # cost, so summing it estimates what regenerating would have cost.
+            self.cached_saved_usd += result.outcome.cost_usd
         else:
             self.analyzed += 1
-            # Only an actual model call spends money now (a cache hit's stored cost
-            # is its original first-run cost, for auditing). Flags still count cached
-            # results below — a cached flag is still a finding.
             self.cost_usd += result.outcome.cost_usd
         if result.outcome.output.flags:
             self.flagged += 1
@@ -142,6 +145,22 @@ def run(
                     )
                 )
             yield emit(ProgressEvent(phase=PHASE, processed=processed, total=total))
+
+        # Persist this run's cost + cache breakdown (the only point the fresh/cached
+        # split is known). Screen is a single pass.
+        record_run_cost(
+            db,
+            kind="screen",
+            passes=[
+                ledger_pass(
+                    "Screening",
+                    fresh_usd=tally.cost_usd,
+                    fresh_calls=tally.analyzed,
+                    cached_count=tally.cached,
+                    cached_saved_usd=tally.cached_saved_usd,
+                )
+            ],
+        )
 
         yield emit(
             ScreeningSummary(

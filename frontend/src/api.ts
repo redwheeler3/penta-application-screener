@@ -11,6 +11,7 @@ import type {
   Coverage,
   CurrentUser,
   DashboardCounts,
+  LastRunsReport,
   MatchAuditResponse,
   SettingsResponse,
   SortState,
@@ -92,8 +93,11 @@ export const fetchRankingCurrent = () => fetch(url("/ranking/current"), { creden
 // run exists or the run predates match-audit capture.
 export const fetchMatchAudit = () => getJson<MatchAuditResponse | null>("/ranking/current/match-audit");
 
-// Aggregated AI spend (M13 Pillar 1): cumulative + current-run, by pass.
+// Aggregated AI spend (M13 Pillar 1): cumulative, grouped by run.
 export const fetchCostReport = () => getJson<CostReport>("/ranking/insights/cost");
+
+// The most recent Screen and Rank runs, each with fresh spend + cache savings.
+export const fetchLastRuns = () => getJson<LastRunsReport>("/ranking/insights/last-runs");
 
 export const fetchScreeningEstimate = () => fetch(url("/screening/estimate"), { credentials: "include" });
 export const runScreening = () => fetch(url("/screening/run"), { method: "POST", credentials: "include" });

@@ -211,6 +211,49 @@ async def test_insights_cost_aggregates_by_pass() -> None:
 
 
 @pytest.mark.anyio
+async def test_last_runs_records_fresh_and_cached_cost() -> None:
+    # A first Rank spends everything fresh; a second Rank on the SAME pool reuses the
+    # essay + scoring caches, so its ledger shows cached counts and a saved estimate.
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", a_pattern_report())
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/ranking/run")
+
+        first = (await client.get("/ranking/insights/last-runs")).json()
+        assert first["screen"] is None  # no Screen run happened
+        rank = first["rank"]
+        by_pass = {p["label"]: p for p in rank["passes"]}
+        assert set(by_pass) == {
+            "Essay analysis", "Pattern discovery", "Dimension matching", "Dimension scoring"
+        }
+        # First run: everything fresh, nothing cached.
+        assert by_pass["Essay analysis"]["freshCalls"] == 1
+        assert by_pass["Essay analysis"]["cachedCount"] == 0
+        assert rank["freshUsd"] > 0
+        assert rank["cachedSavedUsd"] == 0.0
+
+        # Re-rank the unchanged pool: essays + scores are cache hits now.
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", a_pattern_report())
+        provider.route("<prior_dimensions>", DimensionMatchReport(matches=[]))
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/ranking/run")
+
+        second = (await client.get("/ranking/insights/last-runs")).json()["rank"]
+        by_pass2 = {p["label"]: p for p in second["passes"]}
+        # Essay + scoring reused from cache → cached counts and a nonzero saving.
+        # Both passes are one call per candidate (scoring batches a candidate's
+        # dimensions into one call), so 1 applicant → 1 cached call each.
+        assert by_pass2["Essay analysis"]["cachedCount"] == 1
+        assert by_pass2["Dimension scoring"]["cachedCount"] == 1
+        assert second["cachedSavedUsd"] > 0.0
+
+
+@pytest.mark.anyio
 async def test_ranking_before_discovery_is_409() -> None:
     app, db, _ = setup_app(role=UserRole.MEMBER)
     add_eligible(db, email="a@x.com", raw_hash="h1")

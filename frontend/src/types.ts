@@ -171,6 +171,31 @@ export type CostReport = {
   totalCostUsd: number;
 };
 
+// One pass within a single completed run (GET /ranking/insights/last-runs).
+// cachedSavedUsd = reused results' original cost — an estimate of what caching saved.
+export type LastRunPass = {
+  label: string;
+  freshUsd: number;
+  freshCalls: number;
+  cachedCount: number;
+  cachedSavedUsd: number;
+};
+
+export type LastRunCost = {
+  kind: string; // "screen" | "rank"
+  at: string; // ISO timestamp
+  freshUsd: number;
+  cachedSavedUsd: number;
+  passes: LastRunPass[];
+};
+
+// The most recent Screen and Rank, each with fresh spend + cache savings. Either is
+// null if that run type hasn't completed since per-run ledgering began.
+export type LastRunsReport = {
+  screen: LastRunCost | null;
+  rank: LastRunCost | null;
+};
+
 // The current run's discovered dimensions, from GET /ranking/current.
 export type PoolDimension = {
   key: string;
