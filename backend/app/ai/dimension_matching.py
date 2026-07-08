@@ -40,7 +40,7 @@ Reconcile two dimension lists for the same applicant pool: identify which NEW di
 The two lists, in the `<prior_dimensions>` and `<new_dimensions>` blocks below.
 
 ## How to judge
-Judge by the definitions, not by whether the keys or names look alike — see the matching bar above.
+Judge by the definitions, not by whether the keys or names look alike — see the matching bar above. The trap is a pair that shares a name but has DRIFTED to a different concept: reworded same concept → match; genuinely different thing measured → do NOT match, even under a near-identical label. Ask "would these two definitions score the SAME applicant the same way?" — if a plausible applicant would land high on one and low on the other, they are different concepts. (Out-of-domain illustration, do not borrow the subject: prior "engine reliability" vs. new "engine reliability" both about a car's motor → match; but prior "fuel efficiency" vs. new "environmental footprint" both nod at being green, yet a thirsty EV scores low on the first and high on the second → different concept, do not match.)
 
 ## Output
 Return the high-confidence identity matches: one entry (new_key + matching old_key) per NEW dimension that clearly means the same as a PRIOR one. Omit any you are not confident maps to a specific PRIOR dimension — those are treated as genuinely new. Strictly one-to-one (no prior or new dimension used twice).
