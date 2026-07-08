@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import derive_prompt_version
-from app.ai.applicant_facts import FILTERED_FACTS_NOTE, applicant_facts
+from app.ai.applicant_facts import applicant_facts
 from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.pricing import cost_usd
@@ -57,7 +57,7 @@ Ground every dimension in the applicants' own words. Never make writing polish o
 You describe axes, not individuals; a later step scores and ranks them."""
 
 
-# Static instruction text. The shared FILTERED_FACTS_NOTE is interpolated at import.
+# Static instruction text. Shared note fragments are interpolated at import.
 _INSTRUCTIONS = f"""\
 ## Task
 Discover the dimensions (10-30) on which this pool genuinely varies and that matter for "fit for Penta". Draw on BOTH facts and essays — quantitative axes count as much as qualitative ones. Prefer splitting a broad axis into separately-weighable sub-dimensions over merging. Every dimension must be independently meaningful and non-overlapping.
@@ -70,8 +70,6 @@ The eligible applicants are in the `<applicant_pool>` block below — each with 
 - **Do not split applicant vs. co-applicant** (e.g. "applicant's trade skills" vs. "co-applicant's"): assess each concept across both adults jointly. This applies only to that pair — axes about other household members (e.g. children) are fine.
 - **Orient so MORE is better fit, with optional splitting:** the high end is the desirable end, since scoring (0..1) always counts a higher score toward fit. Recast a "less is better" axis to its positive form (illustration: "frequency of breakdowns" → "mechanical reliability"). The `definition` must state what is measured and which end is high. But first check whether the OPPOSITE end carries its own legitimate fit story — if both ends do, don't pick the readier one and bury the other; split into two dimensions. It's OK if they are in conflict with each other, the committee will choose the one they want to score and can ignore the other one.
 - **"Goldilocks" axes** (best value in the middle, both extremes bad): do not score the raw quantity — at the ideal it reads as a misleading "moderate". When the peak comes from ONE quantity judged against a target, reframe to the underlying fit-concept — one naturally more-is-better judgment of how well the applicant matches it (illustration: not "amount of salt" but "seasoned about right"). Eligibility filters exclude most quantity extremes upstream, so this is uncommon.
-
-{FILTERED_FACTS_NOTE}
 
 ## Output
 For each dimension provide:

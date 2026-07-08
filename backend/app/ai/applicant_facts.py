@@ -7,8 +7,7 @@ the identical fact. Included: household composition, income (total + split),
 employment tenure, pets. Excluded: identifiers (names/emails/phones, no screening
 value) and real-estate ownership (a hard filter, so constant across eligible
 applicants). Several included fields are also hard-filter rules everyone passed, so
-the passes read them for *residual* variation, not the pass/fail fact — see
-FILTERED_FACTS_NOTE.
+the passes read them for *residual* variation, not the pass/fail fact.
 """
 
 from __future__ import annotations
@@ -30,17 +29,6 @@ _FACT_KEYS = (
     "co_applicant_employment_start",
     "pets_text",
 )
-
-# Shared prompt fragment both passes use so the model treats already-filtered
-# fields as residual signal, not pass/fail facts.
-FILTERED_FACTS_NOTE = (
-    "Every applicant here already passed the deterministic hard filters "
-    "(income within the co-op's band, pets within policy, household size within "
-    "the unit). So do NOT treat the pass/fail fact as a differentiator — it is "
-    "constant across this pool. Read the structured fields only for the "
-    "variation that REMAINS meaningful among applicants who all already qualify."
-)
-
 
 def applicant_facts(application: Application) -> dict[str, object]:
     """The screening-relevant structured fields for one applicant. Only keys present
