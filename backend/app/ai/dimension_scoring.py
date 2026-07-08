@@ -35,7 +35,7 @@ from app.ai.analysis import (
     run_in_pool,
     store_result,
 )
-from app.ai.applicant_facts import FILTERED_FACTS_NOTE, applicant_facts
+from app.ai.applicant_facts import applicant_facts
 from app.ai.prompt_fragments import (
     ENGLISH_POLISH_NOTE,
     INJECTION_GUARD_NOTE,
@@ -65,18 +65,14 @@ Confidence measures how well your evidence pins down the applicant's TRUE standi
 {ENGLISH_POLISH_NOTE}"""
 
 
-# Static instruction text. The shared FILTERED_FACTS_NOTE is interpolated at import
-# (it's a constant, not per-application data), so it lands inside the hashed string —
-# editing the note re-runs this pass too. No per-call placeholders here: the applicant
-# and dimensions are appended as XML data in build_prompt, not formatted into this text.
+# Static instruction text. No per-call placeholders here: the applicant and
+# dimensions are appended as XML data in build_prompt, not formatted into this text.
 _INSTRUCTIONS = f"""\
 ## Task
 Score this applicant on EACH of the dimensions in the `<dimensions>` block, returning exactly one entry per dimension. Judge from BOTH the applicant's structured facts and their essays, using whichever the dimension draws on.
 
 ## Inputs
 The dimensions to score in the `<dimensions>` block, and the applicant's evidence (structured facts, essay-analysis digest, and raw essays) in the `<applicant>` block, below.
-
-{FILTERED_FACTS_NOTE}
 
 ## Output
 For each dimension provide:
