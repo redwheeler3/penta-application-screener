@@ -74,19 +74,23 @@ Do NOT flag (these are normal and must be ignored):
 - Cite only short excerpts or field names as evidence; do not quote whole essays back.
 - Before returning the structured flags, briefly explain your reasoning as Markdown. Then return the structured flags."""
 
-# Cached pass: version derives from the static prompt text and gates this pass's
-# cache (see derive_prompt_version). We hash the TEMPLATE (with the literal
-# `{pet_policy}` placeholder), not the filled prompt — so the pet policy threshold
-# stays out of the version (a policy change doesn't alter how the model reasons, only
-# the number it cites).
-PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS_TEMPLATE)
-
-
 def _pet_policy_line(settings: AppSettings) -> str:
     parts = [f"at most {settings.max_dogs} dog(s)", f"at most {settings.max_cats} cat(s)"]
     if not settings.allow_other_pets:
         parts.append("no other/exotic pets")
     return "; ".join(parts)
+
+
+# Cached pass: the version gates this pass's cache (see derive_prompt_version). It
+# hashes the static prompt text AND the filled pet-policy line — NOT just the template
+# with its `{pet_policy}` placeholder. The threshold is a genuine judgment input (at
+# "max 1 cat" the model flags a 2-cat applicant; at "max 2" it doesn't), so changing it
+# must miss the cache and show Screen "out of date" — exactly as a prompt edit does.
+# (An earlier version hashed only the template, so a policy change silently reused stale
+# results. This is the documented exception to "per-settings values stay out of the
+# version": they stay out only when they don't change the model's judgment.)
+def screening_prompt_version(settings: AppSettings) -> str:
+    return derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS_TEMPLATE, _pet_policy_line(settings))
 
 
 def build_prompt(application: Application, settings: AppSettings) -> str:
@@ -151,7 +155,7 @@ def estimate_screening(db: Session, settings: AppSettings) -> dict[str, object]:
         applications=applications_for_screening(db),
         kind=KIND,
         model_id=settings.ai.first_pass_model,
-        prompt_version=PROMPT_VERSION,
+        prompt_version=screening_prompt_version(settings),
         # Fallback only (no real usage yet). Order-of-magnitude from observed runs;
         # the prompt asks for a Markdown narrative, so output is several hundred tokens.
         fallback_input_tokens=2800,
@@ -190,7 +194,7 @@ def analyze_one(
         kind=KIND,
         schema=ScreeningReport,
         model_id=settings.ai.first_pass_model,
-        prompt_version=PROMPT_VERSION,
+        prompt_version=screening_prompt_version(settings),
         prompt=build_prompt(application, settings),
         system_prompt=SYSTEM_PROMPT,
     )
@@ -216,7 +220,7 @@ def run_screening(
         kind=KIND,
         schema=ScreeningReport,
         model_id=settings.ai.first_pass_model,
-        prompt_version=PROMPT_VERSION,
+        prompt_version=screening_prompt_version(settings),
         build_prompt=lambda application: build_prompt(application, settings),
         system_prompt=SYSTEM_PROMPT,
         max_workers=max_workers,

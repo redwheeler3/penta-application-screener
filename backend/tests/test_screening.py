@@ -122,6 +122,23 @@ def test_build_prompt_includes_essays_and_pet_policy() -> None:
     assert "no other/exotic pets" in prompt
 
 
+def test_screening_version_changes_with_pet_policy() -> None:
+    # Regression: the pet-policy threshold is a judgment input (max 1 vs 2 cats flips a
+    # 2-cat applicant), so it must be in the version → changing it misses the cache and
+    # shows Screen out of date. Previously the version hashed only the template, so a
+    # policy change silently reused stale results and reported "up to date".
+    from app.ai.screening import screening_prompt_version
+
+    one_cat = AppSettings()
+    one_cat.max_cats = 1
+    two_cats = AppSettings()
+    two_cats.max_cats = 2
+
+    assert screening_prompt_version(one_cat) != screening_prompt_version(two_cats)
+    # Same settings → stable version (still a real cache when nothing changed).
+    assert screening_prompt_version(one_cat) == screening_prompt_version(AppSettings())
+
+
 def test_analyze_one_runs_and_caches() -> None:
     db = make_session()
     app = add_application(db, email="a@x.com", status=ApplicationStatus.ELIGIBLE, raw_hash="h1")
