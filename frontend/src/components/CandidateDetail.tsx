@@ -5,6 +5,158 @@ import { FLAG_CATEGORY_LABELS, REASON_FIELDS, SOURCE_DESCRIPTIONS, SOURCE_LABELS
 import { fieldLabel, formatFieldValue, renderEssayChips, renderEssayText, scoreBand } from "../format";
 import type { ApplicationDetail, AppStatus } from "../types";
 
+type DetailField = {
+  key: string;
+  label: string;
+  value: unknown;
+  normalizedKey?: string;
+};
+
+type DetailSection = {
+  title: string;
+  fields: DetailField[];
+};
+
+type SourceField = {
+  key: string;
+  label?: string;
+  normalizedKey?: string;
+  source?: "raw" | "normalized";
+  consumesRawKeys?: string[];
+};
+
+const CHILD_DETAIL_RAW_KEYS = [
+  "First name [3]",
+  "Last name [3]",
+  "Age [3]",
+  "First name [4]",
+  "Last name [4]",
+  "Age [4]",
+  "First name [5]",
+  "Last name [5]",
+  "Age [5]",
+  "First name [6]",
+  "Last name [6]",
+  "Age [6]",
+];
+
+const HIDDEN_RAW_KEYS = new Set(["Declaration"]);
+
+const SOURCE_SECTIONS: Array<{ title: string; fields: SourceField[] }> = [
+  {
+    title: "Applicant",
+    fields: [
+      { key: "First name", label: "First name", normalizedKey: "applicant_name" },
+      { key: "Last name", label: "Last name", normalizedKey: "applicant_name" },
+      { key: "Age", normalizedKey: "applicant_age" },
+      { key: "Phone number (xxx-xxx-xxxx)", label: "Phone number" },
+      { key: "Email address", label: "Email address", normalizedKey: "applicant_email" },
+    ],
+  },
+  {
+    title: "Co-applicant",
+    fields: [
+      { key: "First name [2]", label: "First name", normalizedKey: "co_applicant_name" },
+      { key: "Last name [2]", label: "Last name", normalizedKey: "co_applicant_name" },
+      { key: "Age [2]", label: "Age", normalizedKey: "co_applicant_age" },
+      { key: "Relationship to applicant" },
+      { key: "Phone number (xxx-xxx-xxxx) [2]", label: "Phone number", normalizedKey: "co_applicant_phone" },
+      { key: "Email address [2]", label: "Email address", normalizedKey: "co_applicant_email" },
+    ],
+  },
+  {
+    title: "Household composition",
+    fields: [
+      { key: "adult_count", label: "Number of adults", normalizedKey: "adult_count", source: "normalized" },
+      {
+        key: "How many children (under 18) will be living in the unit on the move in date?",
+        label: "Number of children",
+        normalizedKey: "child_count",
+      },
+      {
+        key: "child_details",
+        label: "Children",
+        normalizedKey: "child_details",
+        source: "normalized",
+        consumesRawKeys: CHILD_DETAIL_RAW_KEYS,
+      },
+      {
+        key: "If you have a link to a photo of yourself and the members of your household, please include it here.",
+        label: "Household photo link",
+      },
+      { key: "If you have any pets, please describe them here.", label: "Pets", normalizedKey: "pets_text" },
+    ],
+  },
+  {
+    title: "Housing and references",
+    fields: [
+      { key: "Street address" },
+      { key: "Street address 2" },
+      { key: "City" },
+      { key: "Province / State" },
+      { key: "Postal / Zip Code" },
+      { key: "Country" },
+      { key: "Have you lived at your current address for 2 years or more?", label: "Current address 2+ years" },
+      {
+        key: "Do you own real estate (land, house, condominium, etc.)?",
+        label: "Owns real estate",
+        normalizedKey: "has_real_estate",
+      },
+      { key: "Current landlord name" },
+      { key: "Current landlord email address" },
+      { key: "Current landlord phone number (xxx-xxx-xxxx)", label: "Current landlord phone" },
+      { key: "Previous landlord name" },
+      { key: "Previous landlord email address" },
+      { key: "Previous landlord phone number (xxx-xxx-xxxx)", label: "Previous landlord phone" },
+    ],
+  },
+  {
+    title: "Applicant employment",
+    fields: [
+      { key: "Job title" },
+      { key: "Company name" },
+      { key: "Start date at this company", normalizedKey: "applicant_employment_start" },
+      { key: "Name of current manager" },
+      { key: "Phone number (xxx-xxx-xxxx) of current manager", label: "Manager phone" },
+      { key: "Email address of current manager", label: "Manager email" },
+    ],
+  },
+  {
+    title: "Co-applicant employment",
+    fields: [
+      { key: "Job title [2]", label: "Job title" },
+      { key: "Company name [2]", label: "Company name" },
+      {
+        key: "Start date at this company [2]",
+        label: "Start date at this company",
+        normalizedKey: "co_applicant_employment_start",
+      },
+      { key: "Name of current manager [2]", label: "Name of current manager" },
+      { key: "Phone number (xxx-xxx-xxxx) of current manager [2]", label: "Manager phone" },
+      { key: "Email address of current manager [2]", label: "Manager email" },
+    ],
+  },
+  {
+    title: "Income and declaration",
+    fields: [
+      { key: "Total yearly gross income for applicant", normalizedKey: "applicant_income" },
+      { key: "Total yearly gross income for co-applicant", normalizedKey: "co_applicant_income" },
+      {
+        key: "Total yearly gross income for your household (add up all the numbers above)",
+        label: "Total household income",
+        normalizedKey: "household_income",
+      },
+    ],
+  },
+  {
+    title: "Submission",
+    fields: [
+      { key: "Timestamp" },
+      { key: "Email Address", label: "Form submission email", normalizedKey: "form_submission_email" },
+    ],
+  },
+];
+
 export function CandidateDetail(props: {
   app: ApplicationDetail;
   onBack: () => void;
@@ -15,6 +167,7 @@ export function CandidateDetail(props: {
   const flaggedFields = new Set(app.hardFilterReasons.flatMap((reason) => REASON_FIELDS[reason.code] ?? []));
   const isHuman = app.statusSource === "human";
   const autoLabel = STATUS_LABELS[app.autoStatus];
+  const detailSections = buildDetailSections(app);
 
   return (
     <div className="app-detail">
@@ -151,24 +304,25 @@ export function CandidateDetail(props: {
       ) : null}
       <div className="app-detail-fields">
         <h4>Applicant data</h4>
-        <dl>
-          {Object.entries(app.normalized).map(([key, value]) => {
-            const flagged = flaggedFields.has(key);
-            return (
-              <div key={key} className={flagged ? "field-flagged" : undefined}>
-                <dt>{fieldLabel(key)}</dt>
-                <dd>{formatFieldValue(value, key)}</dd>
-              </div>
-            );
-          })}
-        </dl>
+        {detailSections.map((section) => (
+          <section key={section.title} className="app-detail-field-group">
+            <h5>{section.title}</h5>
+            <dl>
+              {section.fields.map((field) => {
+                const flagged = field.normalizedKey
+                  ? flaggedFields.has(field.normalizedKey)
+                  : flaggedFields.has(field.key);
+                return (
+                  <div key={field.key} className={flagged ? "field-flagged" : undefined}>
+                    <dt>{field.label}</dt>
+                    <dd>{formatFieldValue(field.value, field.normalizedKey ?? field.key)}</dd>
+                  </div>
+                );
+              })}
+            </dl>
+          </section>
+        ))}
       </div>
-      {app.rawRow ? (
-        <details className="raw-row-section">
-          <summary>Raw source row</summary>
-          <pre>{JSON.stringify(app.rawRow, null, 2)}</pre>
-        </details>
-      ) : null}
       {app.aiNarrative ? (
         <details className="raw-row-section">
           <summary>Raw AI narrative (screening)</summary>
@@ -200,4 +354,53 @@ export function CandidateDetail(props: {
       ) : null}
     </div>
   );
+}
+
+function buildDetailSections(app: ApplicationDetail): DetailSection[] {
+  const rawRow = app.rawRow ?? {};
+  const normalized = app.normalized ?? {};
+  const usedRawKeys = new Set<string>();
+  const essayKeys = new Set(app.essays.map((essay) => essay.question));
+
+  const sections = SOURCE_SECTIONS.map((section) => {
+    const fields = section.fields
+      .filter((field) => {
+        if (field.source === "normalized") {
+          return Object.prototype.hasOwnProperty.call(normalized, field.normalizedKey ?? field.key);
+        }
+        return Object.prototype.hasOwnProperty.call(rawRow, field.key);
+      })
+      .map((field) => {
+        const isNormalized = field.source === "normalized";
+        if (!isNormalized) usedRawKeys.add(field.key);
+        field.consumesRawKeys?.forEach((key) => usedRawKeys.add(key));
+        return {
+          key: field.key,
+          label: field.label ?? fieldLabel(field.key),
+          value: isNormalized ? normalized[field.normalizedKey ?? field.key] : rawRow[field.key],
+          normalizedKey: field.normalizedKey,
+        };
+      });
+    return { title: section.title, fields };
+  }).filter((section) => section.fields.length > 0);
+
+  const otherRawFields = Object.entries(rawRow)
+    .filter(([key]) => !usedRawKeys.has(key) && !essayKeys.has(key) && !HIDDEN_RAW_KEYS.has(key))
+    .map(([key, value]) => ({
+      key,
+      label: fieldLabel(key),
+      value,
+      normalizedKey: undefined,
+    }));
+
+  if (otherRawFields.length > 0) {
+    const submission = sections.find((section) => section.title === "Submission");
+    if (submission) {
+      submission.fields.push(...otherRawFields);
+    } else {
+      sections.push({ title: "Submission", fields: otherRawFields });
+    }
+  }
+
+  return sections;
 }
