@@ -124,11 +124,16 @@ class RunTally:
     cost_usd: float = 0.0
     # Sum of reused results' ORIGINAL cost — an estimate of what caching saved this run.
     cached_saved_usd: float = 0.0
+    # Count of candidates (one PassResult each) that succeeded — distinct from
+    # analyzed/cached, which count per-dimension UNITS for scoring (a candidate has
+    # N dimensions). "N candidates scored" in the UI reads this, not the unit sum.
+    processed: int = 0
 
     def add(self, result: PassResult) -> None:
         if result.failed:
             self.failed += 1
             return
+        self.processed += 1
         if result.fresh_units is not None or result.cached_units is not None:
             self.analyzed += result.fresh_units or 0
             self.cached += result.cached_units or 0
@@ -542,7 +547,7 @@ def rank_run(
         yield emit(
             RankSummary(
                 dimensions=len(report.dimensions),
-                scored=score_tally.analyzed + score_tally.cached,
+                scored=score_tally.processed,
                 failed=essay_tally.failed + score_tally.failed,
                 total_cost_usd=round(total_cost, 4),
             )
