@@ -1,8 +1,8 @@
 """baseline schema
 
-Revision ID: 2f0eebed8538
+Revision ID: 5d3446b2ca50
 Revises: 
-Create Date: 2026-06-26 16:30:29.320622
+Create Date: 2026-07-09 15:58:33.778083
 """
 
 from collections.abc import Sequence
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = '2f0eebed8538'
+revision: str = '5d3446b2ca50'
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -47,6 +47,17 @@ def upgrade() -> None:
     op.create_index(op.f('ix_applications_primary_email'), 'applications', ['primary_email'], unique=True)
     op.create_index(op.f('ix_applications_status'), 'applications', ['status'], unique=False)
     op.create_index(op.f('ix_applications_status_source'), 'applications', ['status_source'], unique=False)
+    op.create_table('run_cost_ledger',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('kind', sa.String(length=20), nullable=False),
+    sa.Column('fresh_usd', sa.Float(), nullable=False),
+    sa.Column('cached_saved_usd', sa.Float(), nullable=False),
+    sa.Column('passes', sa.JSON(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_run_cost_ledger_kind'), 'run_cost_ledger', ['kind'], unique=False)
     op.create_table('sync_runs',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('source_sheet_id', sa.String(length=255), nullable=False),
@@ -137,6 +148,8 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_users_email'), table_name='users')
     op.drop_table('users')
     op.drop_table('sync_runs')
+    op.drop_index(op.f('ix_run_cost_ledger_kind'), table_name='run_cost_ledger')
+    op.drop_table('run_cost_ledger')
     op.drop_index(op.f('ix_applications_status_source'), table_name='applications')
     op.drop_index(op.f('ix_applications_status'), table_name='applications')
     op.drop_index(op.f('ix_applications_primary_email'), table_name='applications')
