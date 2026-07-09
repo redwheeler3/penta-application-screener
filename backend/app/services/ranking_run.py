@@ -54,17 +54,18 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
     badge.
 
     Combines the pool fingerprint with the **prompt identity and model** of every
-    pass the Rank chain runs (essays → discovery + match → scoring). So a re-rank is
-    flagged current only when the pool, all four prompts, AND all four rank-chain
-    models are unchanged since the run was created — editing any rank-chain prompt or
-    switching a model now correctly shows Rank as stale, not just a pool change.
-    (screening is the separate Screen step, not part of Rank, so it is excluded.)
+    pass the Rank chain runs (essays → discovery + match + reconcile → scoring). So a
+    re-rank is flagged current only when the pool, all five prompts, AND all five
+    rank-chain models are unchanged since the run was created — editing any rank-chain
+    prompt or switching a model now correctly shows Rank as stale, not just a pool
+    change. (screening is the separate Screen step, not part of Rank, so excluded.)
 
     Prompt versions are imported lazily: the AI passes import this module, so a
     top-level import would be circular (matches the existing local-import pattern in
     ``estimate_match``).
     """
     from app.ai.dimension_matching import PROMPT_VERSION as MATCH_V
+    from app.ai.dimension_reconcile import PROMPT_VERSION as RECONCILE_V
     from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_V
     from app.ai.essay_analysis import PROMPT_VERSION as ESSAY_V
     from app.ai.pattern_discovery import PROMPT_VERSION as DISCOVERY_V
@@ -74,6 +75,7 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
         f"essay:{ESSAY_V}",
         f"discovery:{DISCOVERY_V}",
         f"match:{MATCH_V}",
+        f"reconcile:{RECONCILE_V}",
         f"scoring:{SCORING_V}",
         # The model of every rank-chain pass — one per pass now, so a change to any
         # of them ambers Rank. Screening's model is deliberately absent: it's the
@@ -81,6 +83,7 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
         f"essay_model:{settings.ai.essay_analysis_model}",
         f"discovery_model:{settings.ai.discovery_model}",
         f"match_model:{settings.ai.match_model}",
+        f"reconcile_model:{settings.ai.reconcile_model}",
         f"scoring_model:{settings.ai.dimension_scoring_model}",
     ]
     basis = "\n".join(parts)
@@ -130,6 +133,52 @@ def adopt_matched_keys(
     return report.model_copy(update={"dimensions": dims})
 
 
+def revive_dimensions(
+    report: PoolDimensionReport,
+    revive_keys: list[str],
+    prior: PoolDimensionReport | None,
+) -> PoolDimensionReport:
+    """Re-enter each reconcile-revived dropped prior into the report, by its
+    historical key + text (from ``prior`` = the all-history report the reconcile pass
+    judged against).
+
+    Runs *after* ``adopt_matched_keys``, so ``report`` already holds every matched +
+    freshly-discovered dimension. Revived keys are the dropped priors the reconcile
+    pass said the pool still varies on; adding them back under their historical key
+    means their cached scores are reused (score cache is keyed by key) and their tier
+    placement carries forward — identical to any other carried key. A revive_key
+    already present (defensive; the dropped set excludes matched keys) is skipped, so
+    no duplicate.
+    """
+    if not revive_keys or prior is None:
+        return report
+    prior_by_key = {d.key: d for d in prior.dimensions}
+    existing = {d.key for d in report.dimensions}
+    revived = [
+        prior_by_key[k] for k in revive_keys if k in prior_by_key and k not in existing
+    ]
+    if not revived:
+        return report
+    return report.model_copy(update={"dimensions": [*report.dimensions, *revived]})
+
+
+def reconcile_audit_payload(ballot: list[dict], revive_keys: list[str]) -> dict | None:
+    """Shape the reconcile pass's full ballot for storage on the run, or None when the
+    pass didn't run (first run / nothing dropped — an empty ballot).
+
+    Stores every verdict (both revivals and rejections, per SPEC RQ8b), the offered
+    and recovered counts, so ``reconcile_audit_view`` can derive the recovery rate —
+    the over-recovery smell. A zero-recovery run still writes a row (healthy signal).
+    """
+    if not ballot:
+        return None
+    return {
+        "verdicts": ballot,  # [{old_key, revive, reasoning}]
+        "offered_count": len(ballot),
+        "recovered_count": len(revive_keys),
+    }
+
+
 def create_run(
     db: Session,
     *,
@@ -139,11 +188,13 @@ def create_run(
     narrative: str | None,
     discovery_cost_usd: float,
     match_cost_usd: float = 0.0,
+    reconcile_cost_usd: float = 0.0,
     name: str = "Ranking run",
     tier_layout: list[dict] | None = None,
     new_dimension_keys: list[str] | None = None,
     prior_favourited_keys: list[str] | None = None,
     match_audit: dict | None = None,
+    reconcile_audit: dict | None = None,
 ) -> RankingRun:
     """Persist a freshly discovered pattern report as a new ranking run.
 
@@ -191,10 +242,17 @@ def create_run(
             # first run (no match pass ran).
             "discovery_cost_usd": round(discovery_cost_usd, 6),
             "match_cost_usd": round(match_cost_usd, 6),
+            # Reconcile is a third Bedrock call (dropped-dimension second look), priced
+            # separately. 0 on a first run / when nothing dropped (pass skipped).
+            "reconcile_cost_usd": round(reconcile_cost_usd, 6),
             # Carry-forward audit: raw pre-adopt discovery dims + the match map +
             # match narrative, so a re-rank's "what changed" is inspectable (genuine
             # re-discovery vs. match over-matching). None on a first run (no match).
             "match_audit": match_audit,
+            # Reconcile audit: the full ballot (verdict + reasoning per dropped prior)
+            # + offered/recovered counts, so over-recovery is inspectable. None when
+            # the pass didn't run (first run / nothing dropped).
+            "reconcile_audit": reconcile_audit,
         },
     )
     db.add(run)
@@ -327,6 +385,33 @@ def match_audit_view(run: RankingRun) -> dict | None:
     }
 
 
+def reconcile_audit_view(run: RankingRun) -> dict | None:
+    """The run's reconcile audit — the dropped-dimension second look — shaped for the
+    trace viewer, or None when the reconcile pass did not run (first run / nothing
+    dropped / run predates the capture).
+
+    The stored audit (``criteria.reconcile_audit``) is the full ballot: a verdict +
+    reasoning per dropped prior. This adds the derived **recovery rate** (recovered /
+    offered) — the over-recovery smell (RQ8): a persistently high rate means reconcile
+    is reviving too readily under the rationalization pressure the prompt guards
+    against. A zero-recovery run (rate 0.0) is the healthy signal, and still returns a
+    view (the pass ran); only a skipped pass returns None.
+    """
+    audit = (run.criteria or {}).get("reconcile_audit")
+    if not audit:
+        return None
+    offered = audit.get("offered_count", 0)
+    recovered = audit.get("recovered_count", 0)
+    return {
+        "verdicts": audit.get("verdicts", []),  # [{old_key, revive, reasoning}]
+        "offered_count": offered,
+        "recovered_count": recovered,
+        # Fraction of dropped priors reconcile revived. None only if somehow nothing
+        # was offered (defensive; a stored audit always has offered > 0).
+        "recovery_rate": round(recovered / offered, 4) if offered else None,
+    }
+
+
 def set_seeds(
     db: Session,
     run: RankingRun,
@@ -442,12 +527,44 @@ def tier_history(db: Session) -> tuple[list[dict], dict[str, str], set[str]]:
     return scaffold, most_recent_tier_by_key, known_keys
 
 
+def revived_flag_keys(db: Session, run: RankingRun) -> list[str]:
+    """Of ``run``'s flagged keys (``new_dimension_keys`` — the one unacknowledged
+    triage set), those that appeared in an earlier run get the "revived" label (seen
+    before, dropped for at least the immediately-prior run, now back); the rest are
+    genuinely "new" (never seen in any prior run).
+
+    Label only, derived at read time — both kinds share the one stored flagged set,
+    so there is no second field to keep in sync (SPEC "badge is presence-driven,
+    reuses the one existing flags set"). New = flagged − revived, computed by the
+    caller/frontend.
+
+    Note the gap semantics: a flagged key is by construction absent from the
+    immediately-prior run (``carry_forward_layout`` only flags absent-from-prior
+    keys), so "seen in any run before this one" is equivalent to "seen in a run
+    *before the immediately-prior one*" for a flagged key — a revived key genuinely
+    SKIPPED at least the last run. A dimension that persists run-to-run is never
+    flagged, so never labelled revived.
+    """
+    flagged = set((run.criteria or {}).get("new_dimension_keys", []))
+    if not flagged:
+        return []
+    earlier = db.scalars(
+        select(RankingRun).where(RankingRun.id < run.id).order_by(RankingRun.id.desc())
+    ).all()
+    seen_before: set[str] = set()
+    for prior in earlier:
+        report = current_dimension_report(prior)
+        if report is not None:
+            seen_before.update(d.key for d in report.dimensions)
+    return sorted(flagged & seen_before)
+
+
 def carry_forward_layout(
     *,
     new_report: PoolDimensionReport,
     scaffold_tiers: list[dict],
     most_recent_tier_by_key: dict[str, str],
-    known_keys: set[str],
+    immediately_prior_keys: set[str],
 ) -> tuple[list[dict], list[str]]:
     """Build the new run's working-tier layout by carrying committee intent forward
     across ALL runs (see ``tier_history`` for the inputs).
@@ -455,14 +572,23 @@ def carry_forward_layout(
     Runs *after* ``adopt_matched_keys``, so a matched dimension already shares its
     prior key — carry-forward is pure key equality. Per new dimension:
       - key most-recently placed in a working tier (any prior run) → placed there;
-      - key seen before but last left in Ignore → unplaced, NOT flagged new (the
-        committee already weighed it — a durable "ignore");
-      - key never seen in any run → unplaced AND flagged new to triage.
-    "New" means never-seen, not "absent from the last run" — a placement is durable
-    intent that survives a dimension dropping out and re-surfacing.
+      - key seen before but last left in Ignore → unplaced (the committee already
+        weighed it — a durable "ignore");
+      - key never seen in any run → unplaced.
 
-    Returns ``(working_tiers, new_dimension_keys)``. Falls back to the empty default
-    tiers when no prior run placed anything.
+    Two flag states ride on the returned ``flagged_keys`` (the single mutable triage
+    set the UI badges — stored as ``new_dimension_keys``). A key is flagged when it
+    needs the committee's attention, which is a *presence-gap* fact (SPEC "badge is
+    presence-driven"): flag it when it is **absent from the immediately-prior run but
+    present now** — whether it was never seen (a genuinely new axis) OR seen in an
+    earlier run, dropped, and now back (revived). A key that was in the immediately-
+    prior run is continuous in the committee's view → never flagged, however it
+    re-surfaced. The new-vs-revived *label* (amber vs. blue) is derived at read time
+    from history (see ``flag_labels``); this function only decides *whether* to flag.
+    A revived key is BOTH placed (its prior tier restored) AND flagged.
+
+    Returns ``(working_tiers, flagged_keys)``. Falls back to the empty default tiers
+    when no prior run placed anything.
     """
     if not scaffold_tiers:
         return default_tier_layout(), []
@@ -472,20 +598,20 @@ def carry_forward_layout(
     ]
     by_id = {tier["id"]: tier for tier in layout}
 
-    new_dimension_keys: list[str] = []
+    flagged_keys: list[str] = []
     for dim in new_report.dimensions:
-        if dim.key not in known_keys:
-            # Genuinely new (never seen in any run): unplaced and flagged for triage.
-            new_dimension_keys.append(dim.key)
-            continue
-        # Seen before: restore its most-recent working-tier placement. If it was last
-        # in Ignore (absent from the map), or its tier no longer exists, leave it
-        # unplaced — but never badge it new; the committee already weighed it.
+        # Restore the most-recent working-tier placement for any seen-before key
+        # (a never-seen key has none, so it stays unplaced).
         target = most_recent_tier_by_key.get(dim.key)
         if target is not None and target in by_id:
             by_id[target]["dimension_keys"].append(dim.key)
+        # Flag on the presence gap: absent from the immediately-prior run but here now.
+        # Covers both never-seen (new) and dropped-then-back (revived); a key present
+        # in the prior run is continuous and never flagged.
+        if dim.key not in immediately_prior_keys:
+            flagged_keys.append(dim.key)
 
-    return layout, new_dimension_keys
+    return layout, flagged_keys
 
 
 def weights_from_tiers(
@@ -535,10 +661,19 @@ def set_tiers(
     tiers are stored — the UI's Ignore zone is dropped before persisting (an empty
     layout just means everything is ignored → uniform fallback).
 
-    ``new_dimension_keys`` is recomputed: a dimension stays flagged "new" only while
-    still unplaced AND not in ``acknowledged_keys``. So a badge clears two ways —
-    placing the dimension in a working tier, or explicit acknowledgement (badge ✕ /
-    "mark all reviewed"). Only re-discovery re-flags.
+    ``new_dimension_keys`` (the one unacknowledged-flag set — "new" OR "revived") is
+    recomputed by ONE uniform rule: **a flag clears on a member action — an explicit
+    acknowledgement (badge ✕ / "mark all reviewed"), or the member MOVING the chip
+    (its placement differs from what was stored) — but never by carry-forward's own
+    auto-placement.** That single rule yields both behaviors for free:
+      - a *new* key starts unplaced, so the only way it becomes placed is a member
+        drag → cleared (identical to the prior "placement clears" behavior);
+      - a *revived* key starts auto-placed (its prior tier restored), so leaving it
+        put is not a move → it stays flagged until the member explicitly reviews or
+        re-places it (the SPEC RQ4 safeguard: a revived dim silently at weight keeps
+        its badge). Only re-discovery re-flags.
+    Comparing against the *stored* placement (not "is it placed?") is what makes
+    auto-placement not self-clear, with no new-vs-revived branch here.
     """
     report = current_dimension_report(run)
     valid_keys = {d.key for d in report.dimensions} if report is not None else set()
@@ -554,13 +689,21 @@ def set_tiers(
     ]
     weights = weights_from_tiers(sorted(valid_keys), working)
 
-    # Recompute the still-"new" set: drop any acknowledged or now placed in a tier.
-    placed = {key for t in working for key in t.get("dimension_keys", [])}
+    # Recompute the still-flagged set: drop any acknowledged, or moved from where it
+    # was stored (None = unplaced). Auto-placement leaves stored==incoming, so it
+    # doesn't clear; a genuine member move does.
+    def _placement(tiers: list[dict]) -> dict[str, str]:
+        return {key: t["id"] for t in tiers for key in t.get("dimension_keys", [])}
+
+    stored_placement = _placement(stored_tiers(run))
+    incoming_placement = _placement(working)
     acknowledged = set(acknowledged_keys or ())
-    prior_new = (run.criteria or {}).get("new_dimension_keys", [])
-    surviving_new = [
-        k for k in prior_new
-        if k in valid_keys and k not in acknowledged and k not in placed
+    prior_flagged = (run.criteria or {}).get("new_dimension_keys", [])
+    surviving = [
+        k for k in prior_flagged
+        if k in valid_keys
+        and k not in acknowledged
+        and incoming_placement.get(k) == stored_placement.get(k)  # not moved
     ]
 
     # criteria is a JSON column; reassign a new dict so SQLAlchemy sees the change.
@@ -568,7 +711,7 @@ def set_tiers(
         **(run.criteria or {}),
         "tiers": working,
         "weights": weights,
-        "new_dimension_keys": surviving_new,
+        "new_dimension_keys": surviving,
     }
     db.commit()
     db.refresh(run)

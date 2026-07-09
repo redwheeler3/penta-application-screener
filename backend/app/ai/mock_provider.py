@@ -108,8 +108,13 @@ class MockProvider:
             if on_delta is not None:
                 on_delta("Thinking… ")
                 on_delta("considering the pool.")
+            # Content-addressed routing, but schema-aware: a route applies only when
+            # its output matches the REQUESTED schema. Two pool-level passes (discovery,
+            # reconcile) share the ``<applicant_pool>`` block, so substring alone is
+            # ambiguous; the schema disambiguates (PoolDimensionReport vs.
+            # ReconcileReport) without the test having to order routes carefully.
             for substring, result in self.routed.items():
-                if substring in prompt:
+                if substring in prompt and isinstance(result.output, schema):
                     return result
             if not self.results:
                 raise AssertionError("MockProvider had no queued result for this call.")

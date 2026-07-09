@@ -15,6 +15,8 @@ from app.ai.schemas import (
     EssayAnalysisReport,
     PoolDimension,
     PoolDimensionReport,
+    ReconcileReport,
+    ReconcileVerdict,
     ScoreConfidence,
 )
 from app.api.dependencies import get_ai_provider, require_current_user
@@ -249,6 +251,7 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
         provider.route("<essays>", an_essay_report())
         provider.route("<applicant_pool>", a_pattern_report())
         provider.route("<prior_dimensions>", DimensionMatchReport(matches=[]))
+        provider.route("<dropped_dimensions>", ReconcileReport(verdicts=[]))  # revive nothing
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
@@ -540,6 +543,7 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
                 matches=[DimensionMatch(new_key="stated_participation", old_key="participation_commitment")]
             ),
         )
+        provider.route("<dropped_dimensions>", ReconcileReport(verdicts=[]))  # revive nothing
         provider.route("applicant_id", _scoring_report_v2())
         events = await stream_events(client, "/ranking/run")
 
@@ -598,6 +602,97 @@ def _scoring_report_v2() -> DimensionScoringReport:
             ),
         ]
     )
+
+
+@pytest.mark.anyio
+async def test_re_rank_reconcile_recovers_dropped_dimension() -> None:
+    """A dimension the committee tiered, then dropped from the next discovery, is
+    recovered by the reconcile pass: it re-enters the report, restores its prior tier
+    placement, and the reconcile audit records the recovery.
+
+    It is NOT badged 'revived' here — it was in the immediately-prior run, so there is
+    no presence gap (this is the 'recovered but not revived' case from the vocabulary:
+    reconcile salvaged it, but the committee never lost sight of it). The badge needs a
+    genuine gap (present, gone a run, back) — see test_revived_label_needs_a_gap."""
+    app, db, provider = setup_app(role=UserRole.ADMIN)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        # Run 1: discover participation_commitment + skills_offered; score; then the
+        # committee tiers skills_offered into Critical (durable intent).
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", a_pattern_report())
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/ranking/run")
+        await client.put(
+            "/ranking/tiers",
+            json={
+                "tiers": [
+                    {"id": "tier-s", "label": "Critical", "dimensionKeys": ["skills_offered"], "ignore": False},
+                    {"id": "tier-a", "label": "Important", "dimensionKeys": ["participation_commitment"], "ignore": False},
+                    {"id": "ignore", "label": "Ignore", "dimensionKeys": [], "ignore": True},
+                ]
+            },
+        )
+
+        # Run 2 (pool changes): discovery returns ONLY participation_commitment —
+        # skills_offered dropped out. Match maps participation_commitment to its prior
+        # key; skills_offered is the dropped prior, which reconcile revives.
+        add_eligible(db, email="b@x.com", raw_hash="h2")
+        provider.route("<essays>", an_essay_report())
+        provider.route(
+            "<applicant_pool>",
+            PoolDimensionReport(
+                summary="Pool varies on commitment.",
+                dimensions=[
+                    PoolDimension(
+                        key="participation_commitment",
+                        name="Participation commitment",
+                        definition="Willingness to do shared work.",
+                        why_it_differentiates="Some eager, some vague.",
+                    ),
+                ],
+            ),
+        )
+        provider.route(
+            "<prior_dimensions>",
+            DimensionMatchReport(
+                matches=[DimensionMatch(new_key="participation_commitment", old_key="participation_commitment")]
+            ),
+        )
+        # Reconcile is offered skills_offered (dropped) and revives it.
+        provider.route(
+            "<dropped_dimensions>",
+            ReconcileReport(
+                verdicts=[ReconcileVerdict(old_key="skills_offered", revive=True, reasoning="pool still varies on skills")]
+            ),
+        )
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/ranking/run")
+
+        # The revived dimension is back in the run's report, under its historical key.
+        current = (await client.get("/ranking/current")).json()
+        keys = {d["key"] for d in current["dimensions"]}
+        assert "skills_offered" in keys
+        assert "participation_commitment" in keys
+        # It restored its Critical placement (durable committee intent).
+        layout = (await client.get("/ranking/tiers")).json()["tiers"]
+        by_label = {t["label"]: t for t in layout}
+        assert by_label["Critical"]["dimensionKeys"] == ["skills_offered"]
+        # NOT flagged/badged: it was in the immediately-prior run, so no presence gap —
+        # recovered (audit below) but not revived (member never lost it).
+        assert current["newDimensionKeys"] == []
+        assert current["revivedDimensionKeys"] == []
+
+        # The reconcile audit records the ballot and a recovery.
+        audit = (await client.get("/ranking/current/reconcile-audit")).json()
+        assert audit["offeredCount"] == 1
+        assert audit["recoveredCount"] == 1
+        assert audit["recoveryRate"] == 1.0
+        assert audit["verdicts"] == [
+            {"oldKey": "skills_offered", "revive": True, "reasoning": "pool still varies on skills"}
+        ]
 
 
 @pytest.mark.anyio
@@ -802,6 +897,7 @@ async def test_proposed_dimension_seeds_discovery_then_clears_and_auto_favourite
         provider.calls.clear()
         provider.route("<applicant_pool>", _pattern_report_with_requested())
         provider.route("<prior_dimensions>", DimensionMatchReport(matches=[]))  # match pass
+        provider.route("<dropped_dimensions>", ReconcileReport(verdicts=[]))  # revive nothing
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
@@ -842,6 +938,7 @@ async def test_favourited_dimension_is_re_fed_to_discovery_and_persists() -> Non
             "<prior_dimensions>",
             DimensionMatchReport(matches=[]),  # same keys, so no rewrite needed
         )
+        provider.route("<dropped_dimensions>", ReconcileReport(verdicts=[]))  # revive nothing
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
@@ -942,6 +1039,7 @@ async def test_match_audit_reports_carry_forward_rate_on_rerun() -> None:
                 matches=[DimensionMatch(new_key="stated_participation", old_key="participation_commitment")]
             ),
         )
+        provider.route("<dropped_dimensions>", ReconcileReport(verdicts=[]))  # revive nothing
         provider.route("applicant_id", _scoring_report_v2())
         await stream_events(client, "/ranking/run")
 

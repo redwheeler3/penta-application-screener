@@ -33,6 +33,7 @@ from app.ai.analysis import (
     log,
 )
 from app.ai.dimension_matching import estimate_match, match_dimensions
+from app.ai.dimension_reconcile import estimate_reconcile, reconcile_dropped
 from app.ai.dimension_scoring import (
     applications_to_score,
     estimate_dimension_scoring,
@@ -73,6 +74,7 @@ from app.schemas.ranking import (
     RankEstimateBreakdown,
     RankEstimateResponse,
     RankingResponse,
+    ReconcileAuditResponse,
     SeedsResponse,
     SeedsUpdate,
     TierLayoutUpdate,
@@ -101,6 +103,10 @@ from app.services.ranking_run import (
     match_audit_view,
     proposed_dimensions,
     ranking_is_current,
+    reconcile_audit_payload,
+    reconcile_audit_view,
+    revive_dimensions,
+    revived_flag_keys,
     set_seeds,
     set_tiers,
     tier_history,
@@ -175,9 +181,12 @@ def _run_payload(db: Session) -> CurrentRunResponse | None:
             for d in report.dimensions
         ],
         discovery_narrative=(run.criteria or {}).get("discovery_narrative"),
-        # New dimensions with no confident match to a prior one — parked in Ignore,
-        # flagged "new" in the UI. Empty on a first run.
+        # Dimensions absent from the immediately-prior run — parked/placed but flagged
+        # for triage. Empty on a first run.
         new_dimension_keys=(run.criteria or {}).get("new_dimension_keys", []),
+        # Of those flagged keys, the ones seen in an EARLIER run (revived), derived
+        # from history — the frontend colours these blue vs. amber for genuinely-new.
+        revived_dimension_keys=revived_flag_keys(db, run),
         # Committee discovery seeds: favourited dimension keys (kept across re-runs)
         # and pending free-text proposals (fed to the next Rank, then consumed).
         favourited_keys=favourited_keys(run),
@@ -210,6 +219,25 @@ def current_match_audit(
     if view is None:
         return None
     return MatchAuditResponse(run_id=run.id, **view)
+
+
+@router.get("/current/reconcile-audit", response_model=ReconcileAuditResponse | None)
+def current_reconcile_audit(
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> ReconcileAuditResponse | None:
+    """The current run's reconcile audit — the full ballot on dropped dimensions (a
+    verdict + reasoning per offered prior) plus the derived recovery rate (the
+    over-recovery smell, RQ8). Null when the pass didn't run (first run / nothing
+    dropped / run predates capture).
+    """
+    run = get_current_run(db)
+    if run is None:
+        return None
+    view = reconcile_audit_view(run)
+    if view is None:
+        return None
+    return ReconcileAuditResponse(run_id=run.id, **view)
 
 
 @router.get("/insights/cost", response_model=CostReport)
@@ -248,11 +276,20 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     pool = eligible_applications(db)
     discovery_usd = estimate_discovery(pool, settings)
     # A match pass runs only when there is a prior run to match against.
-    match_usd = estimate_match(settings) if get_current_run(db) is not None else 0.0
+    has_prior = get_current_run(db) is not None
+    match_usd = estimate_match(settings) if has_prior else 0.0
+    # Reconcile ceiling: it runs only with a prior run, and prices the WORST case —
+    # the match pass carries nothing forward, so every historical dimension is dropped
+    # and offered. The actual run offers fewer (most match), coming in under this, the
+    # same ceiling stance scoring takes. Zero on a first run (no history).
+    history = all_known_dimensions(db)
+    dropped_ceiling = len(history.dimensions) if history is not None else 0
+    reconcile_usd = estimate_reconcile(dropped_ceiling, pool, settings) if has_prior else 0.0
     scoring = estimate_dimension_scoring(db, settings)
     scoring_usd = float(scoring["estimated_usd"])
     total = round(
-        float(essays["estimated_usd"]) + discovery_usd + match_usd + scoring_usd, 4
+        float(essays["estimated_usd"]) + discovery_usd + match_usd
+        + reconcile_usd + scoring_usd, 4
     )
     return {
         "eligible": len(pool),
@@ -260,11 +297,12 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
             "essays_usd": round(float(essays["estimated_usd"]), 4),
             "criteria_usd": round(discovery_usd, 4),
             "match_usd": round(match_usd, 4),
+            "reconcile_usd": round(reconcile_usd, 4),
             "scoring_usd": round(scoring_usd, 4),
         },
         "essays_cached": essays["cached"],
         "estimated_usd": total,
-        "approximate": True,  # scoring is a ceiling; carry-forward reuse lowers the real cost
+        "approximate": True,  # scoring & reconcile are ceilings; carry-forward reuse lowers the real cost
     }
 
 
@@ -285,6 +323,7 @@ def rank_estimate(
             essays_usd=breakdown["essays_usd"],
             criteria_usd=breakdown["criteria_usd"],
             match_usd=breakdown["match_usd"],
+            reconcile_usd=breakdown["reconcile_usd"],
             scoring_usd=breakdown["scoring_usd"],
         ),
         essays_cached=result["essays_cached"],
@@ -357,7 +396,11 @@ def rank_run(
         prior_run = get_current_run(db)
         prior_report = current_dimension_report(prior_run) if prior_run else None
         match_history = all_known_dimensions(db)  # every dimension ever, one per key
-        scaffold_tiers, tier_by_key, known_keys = tier_history(db)
+        scaffold_tiers, tier_by_key, _known_keys = tier_history(db)
+        # The immediately-prior run's keys: a dimension present here is continuous in
+        # the committee's view (never flagged); one absent-then-present is a presence
+        # gap to flag (new or revived). See carry_forward_layout.
+        immediately_prior_keys = {d.key for d in prior_report.dimensions} if prior_report else set()
         # Committee discovery seeds: favourited dimensions (resolved to name +
         # definition from the prior report) plus pending free-text proposals. These
         # steer discovery toward axes the committee asked for; an empty seed set
@@ -401,13 +444,34 @@ def rank_run(
                 new_to_old: dict[str, str] = {}
                 match_narrative: str | None = None
                 match_cost = 0.0
+                # Pass 3: reconcile the dropped priors — the historical dimensions the
+                # match pass did NOT carry forward. Ask, against the current pool,
+                # "does this pool still vary on it?" and revive only those it does, so a
+                # valued axis isn't silently lost to a nondeterministic discovery run.
+                # Skipped on the first run (no history) or when nothing dropped.
+                revive_keys: list[str] = []
+                reconcile_ballot: list[dict] = []
+                reconcile_narrative: str | None = None
+                reconcile_cost = 0.0
                 if match_history is not None:
                     new_to_old, match_narrative, match_cost = match_dimensions(
                         provider, old=match_history, new=report, settings=settings,
                         on_delta=on_delta,
                     )
+                    dropped = [
+                        d for d in match_history.dimensions
+                        if d.key not in set(new_to_old.values())
+                    ]
+                    revive_keys, reconcile_ballot, reconcile_narrative, reconcile_cost = (
+                        reconcile_dropped(
+                            provider, db, dropped=dropped, applications=pool,
+                            settings=settings, on_delta=on_delta,
+                        )
+                    )
                 criteria_outcome["ok"] = (
-                    report, narrative, discovery_cost, new_to_old, match_narrative, match_cost
+                    report, narrative, discovery_cost, new_to_old, match_narrative,
+                    match_cost, revive_keys, reconcile_ballot, reconcile_narrative,
+                    reconcile_cost,
                 )
             except Exception as exc:  # noqa: BLE001 — surfaced to the client below
                 criteria_outcome["error"] = exc
@@ -436,9 +500,10 @@ def rank_run(
                 )
             )
             return
-        report, narrative, discovery_cost, new_to_old, match_narrative, match_cost = (
-            criteria_outcome["ok"]
-        )
+        (
+            report, narrative, discovery_cost, new_to_old, match_narrative, match_cost,
+            revive_keys, reconcile_ballot, reconcile_narrative, reconcile_cost,
+        ) = criteria_outcome["ok"]
         # Audit trail for the carry-forward: what discovery ACTUALLY emitted (its own
         # keys, before adopt_matched_keys rewrites matched ones to prior keys) and how
         # the match pass mapped it. Without this the stored report only shows the
@@ -467,25 +532,35 @@ def rank_run(
         # tier placement AND cached score carry forward, and the displayed text stays
         # the wording that score was computed against.
         report = adopt_matched_keys(report, new_to_old, match_history)
+        # Re-enter every reconcile-revived dropped prior into the report (by its
+        # historical key + text, so its cached scores are reused where candidates are
+        # unchanged). From here a revived dimension is indistinguishable from any other
+        # carried-forward key: carry_forward_layout restores its placement and scoring
+        # reuses its cached scores. reconcile_audit records the full ballot separately.
+        report = revive_dimensions(report, revive_keys, match_history)
+        reconcile_audit = reconcile_audit_payload(reconcile_ballot, revive_keys)
         # Carry committee intent forward across ALL runs: restore each key's most-recent
-        # tier placement; only keys never seen in any run are flagged "new".
+        # tier placement, and flag every dimension absent from the immediately-prior run
+        # (new OR revived) for triage — the new-vs-revived label is derived at read time.
         layout, new_dimension_keys = carry_forward_layout(
             new_report=report,
             scaffold_tiers=scaffold_tiers,
             most_recent_tier_by_key=tier_by_key,
-            known_keys=known_keys,
+            immediately_prior_keys=immediately_prior_keys,
         )
         create_run(
             db, report=report, settings=settings, model_id=settings.ai.discovery_model,
             narrative=narrative, discovery_cost_usd=discovery_cost, match_cost_usd=match_cost,
+            reconcile_cost_usd=reconcile_cost,
             tier_layout=layout, new_dimension_keys=new_dimension_keys,
             # Carry prior favourites forward (by key, post-match); create_run unions
             # in any dimension the model flagged from_committee_request and clears
             # the consumed proposals.
             prior_favourited_keys=prior_favourites,
             match_audit=match_audit,
+            reconcile_audit=reconcile_audit,
         )
-        total_cost += discovery_cost + match_cost
+        total_cost += discovery_cost + match_cost + reconcile_cost
         yield emit(
             NoticeEvent(
                 phase=CRITERIA,
@@ -588,9 +663,10 @@ def _ranking_payload(db: Session, run) -> RankingResponse:
             )
             for c in ranked
         ],
-        # Recomputed each save so the tier-list refreshes "New" badges in the same
-        # round-trip (placing or acknowledging a dimension clears it).
+        # Recomputed each save so the tier-list refreshes badges in the same
+        # round-trip (moving or acknowledging a flagged dimension clears it).
         new_dimension_keys=(run.criteria or {}).get("new_dimension_keys", []),
+        revived_dimension_keys=revived_flag_keys(db, run),
         # Discovery seeds, so the criteria composer stays in sync after a tier/seed save.
         favourited_keys=favourited_keys(run),
         proposed_dimensions=proposed_dimensions(run),
