@@ -3,6 +3,7 @@ import type { CurrentRunResponse } from "../types";
 import { CostPanel } from "./CostPanel";
 import { DiscoveryPanel } from "./DiscoveryPanel";
 import { MatchAuditPanel } from "./MatchAuditPanel";
+import { ReconcileAuditPanel } from "./ReconcileAuditPanel";
 
 // The run-level AI observability surface (M13). Home for the general, non-applicant-
 // specific audits: what pattern discovery found this run, and how those dimensions
@@ -53,7 +54,16 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
         {activeTab === "discovery" && props.run ? (
           <DiscoveryPanel run={props.run} />
         ) : activeTab === "carryForward" ? (
-          <MatchAuditPanel />
+          <>
+            {/* Two sides of "what changed across runs": the match pass carries
+                surviving dimensions forward; the reconcile pass revives dropped ones
+                the pool still varies on. Shown together under one subtab. */}
+            <MatchAuditPanel />
+            <div className="insights-subsection">
+              <h4 className="insights-subsection-title">Reconcile (dropped-dimension second look)</h4>
+              <ReconcileAuditPanel />
+            </div>
+          </>
         ) : (
           <CostPanel />
         )}

@@ -167,6 +167,7 @@ export function RankingView(props: {
                 // Read from ranking (refreshed on every save) so badges clear
                 // immediately when a dimension is placed or acknowledged.
                 newKeys={new Set(ranking.newDimensionKeys)}
+                revivedKeys={new Set(ranking.revivedDimensionKeys)}
                 favourited={favourited}
                 openKey={openKey}
                 addOpen={addOpen}

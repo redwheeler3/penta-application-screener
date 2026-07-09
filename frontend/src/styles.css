@@ -1542,6 +1542,20 @@ h1 {
   margin-top: 1rem;
 }
 
+/* A second concern within one Insights subtab (e.g. reconcile below match), set off
+   with a rule + heading so the two audits read as related but distinct. */
+.insights-subsection {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.insights-subsection-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
 /* Rendered markdown for the AI narrative. Same boxed container as the raw
    sections, but prose typography instead of monospace. */
 .ai-narrative {
@@ -2491,8 +2505,38 @@ h1 {
   text-transform: uppercase;
 }
 
-/* The ✕ inside the New badge: acknowledge this dimension in place (keep it in
-   Ignore but clear the flag). Kept on its own button so a click doesn't start a
+/* "Revived" chip + badge: a dimension seen in an earlier run, dropped, now back
+   (reconcile confirmed the pool still varies on it). A softer heads-up than "New"
+   (the committee saw it before), so it uses the calm blue of the impact score-band
+   palette's "moderate" rather than the amber "New" alarm. Unlike New, a Revived chip
+   may sit in a working tier (carry-forward auto-restored its placement), so the badge
+   is not gated to the Ignore zone. */
+.tier-chip-revived {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.tier-chip-revived-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: 0.1rem;
+  padding: 0 0.2rem 0 0.4rem;
+  height: 16px;
+  align-self: flex-start;
+  margin-top: 1px;
+  border-radius: 999px;
+  background: #3b82f6;
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* The ✕ inside a badge (New or Revived): acknowledge this dimension in place (clear
+   the flag, keep its placement). Kept on its own button so a click doesn't start a
    drag (pointerdown is stopped in the handler). */
 .tier-chip-new-dismiss {
   display: inline-flex;
