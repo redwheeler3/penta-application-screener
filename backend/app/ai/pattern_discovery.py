@@ -11,22 +11,19 @@ The model describes the axes, never ranks anyone; scoring and ranking build on t
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import derive_prompt_version
-from app.ai.applicant_facts import applicant_facts
-from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
+from app.ai.pool_digest import INPUT_TOKENS_PER_CANDIDATE, pool_digest_block
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, DeltaSink, Usage
-from app.ai.schemas import EssayAnalysisReport, PoolDimensionReport
-from app.db.models import Application, ApplicationAIResult, ApplicationStatus
+from app.ai.schemas import PoolDimensionReport
+from app.db.models import Application, ApplicationStatus
 from app.schemas.settings import AppSettings
-from app.services.application_import import extract_essays
 
 
 @dataclass(frozen=True)
@@ -94,34 +91,9 @@ PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 
 
 def build_prompt(db: Session, applications: list[Application], *, seeds: DiscoverySeeds | None = None) -> str:
-    reports = _essay_reports(db, [app.id for app in applications])
-    digests = [_candidate_digest(app, reports.get(app.id)) for app in applications]
-
     seeds_block = _seeds_block(seeds) if seeds is not None else ""
-    pool_json = json.dumps(digests, indent=2, default=str)
-    return f"{_INSTRUCTIONS}{seeds_block}\n\n<applicant_pool>\n{pool_json}\n</applicant_pool>"
-
-
-def _candidate_digest(application: Application, essay_report: dict | None) -> dict:
-    """One candidate's contribution to the pool prompt: structured facts plus the
-    essay digest (falling back to raw essays), kept compact so the whole pool fits
-    one call. Facts and essays together surface both quantitative and qualitative
-    axes.
-    """
-    digest: dict[str, object] = {
-        "applicant_id": application.id,
-        "facts": applicant_facts(application),
-    }
-    if essay_report is not None:
-        # Validate-and-redump so a stale stored shape can't poison the prompt.
-        report = EssayAnalysisReport.model_validate(essay_report)
-        digest["essay_analysis"] = report.model_dump(mode="json", exclude={"evidence"})
-    else:
-        essays = extract_essays(application.raw_row or {})
-        digest["essays"] = [
-            {"label": e.get("label"), "answer": e.get("answer")} for e in essays
-        ]
-    return digest
+    pool_block = pool_digest_block(db, applications)
+    return f"{_INSTRUCTIONS}{seeds_block}\n\n{pool_block}"
 
 
 def _seeds_block(seeds: DiscoverySeeds) -> str:
@@ -146,25 +118,6 @@ The committee has asked you to STRONGLY CONSIDER the axes in the `<requested_axe
 """
 
 
-def _essay_reports(db: Session, application_ids: list[int]) -> dict[int, dict]:
-    """Most recent essay-analysis output per application, as raw JSON dicts.
-    Discovery prefers this digest over raw essays (shorter, already cross-cut);
-    applications without one fall back to raw essays in the prompt.
-    """
-    if not application_ids:
-        return {}
-    query = (
-        select(ApplicationAIResult)
-        .where(ApplicationAIResult.kind == ESSAY_ANALYSIS_KIND)
-        .where(ApplicationAIResult.application_id.in_(application_ids))
-        .order_by(ApplicationAIResult.created_at)
-    )
-    latest: dict[int, dict] = {}
-    for result in db.scalars(query):
-        latest[result.application_id] = result.output
-    return latest
-
-
 def eligible_applications(db: Session) -> list[Application]:
     """The pool pattern discovery reasons over: eligible applications only."""
     return list(
@@ -178,10 +131,8 @@ def eligible_applications(db: Session) -> list[Application]:
 
 # --- Cost estimation (non-prompt) ---
 
-# Rough per-candidate token weight for the pre-run estimate only (the real call is
-# priced from actual usage). Tuned to the SPEC's observed ~$0.07-0.11 for a
-# ~32-candidate pool on the synthesis model.
-_DISCOVERY_INPUT_TOKENS_PER_CANDIDATE = 600
+# Output token weight for the pre-run estimate only (input is the shared
+# per-candidate pool-digest weight; the real call is priced from actual usage).
 _DISCOVERY_OUTPUT_TOKENS = 2000
 
 
@@ -191,7 +142,7 @@ def estimate_discovery(applications: list[Application], settings: AppSettings) -
     the combined Rank projection.
     """
     usage = Usage(
-        input_tokens=_DISCOVERY_INPUT_TOKENS_PER_CANDIDATE * len(applications),
+        input_tokens=INPUT_TOKENS_PER_CANDIDATE * len(applications),
         output_tokens=_DISCOVERY_OUTPUT_TOKENS,
     )
     return cost_usd(settings.ai.discovery_model, usage)

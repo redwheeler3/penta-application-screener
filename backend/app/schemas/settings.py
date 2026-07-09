@@ -46,6 +46,14 @@ class AISettings(BridgeModel):
     definition onto a reused score, carrying tier intent onto the wrong axis), so it
     runs on the model already trusted for the HARDER discovery task. Any of these
     can move to Opus if a real run shows the current default is too weak for the job.
+
+    ``reconcile_model`` defaults to the synthesis tier for the same reason as match:
+    the reconcile pass (second look at dropped dimensions) carries the SAME
+    rationalization risk — shown "does the pool vary on this?" a weaker model drifts
+    toward yes (over-recovery), the exact failure ``reconcile_audit`` exists to catch.
+    Starting on the model already trusted for the harder discovery judgment, rather
+    than repeating the match pass's Haiku-over-matches lesson; move it cheaper if the
+    audit shows the strong model is overkill for this narrower question.
     """
 
     region: str = Field(default="us-west-2")
@@ -56,6 +64,7 @@ class AISettings(BridgeModel):
     dimension_scoring_model: str = Field(default=_HAIKU)
     discovery_model: str = Field(default=_SONNET)
     match_model: str = Field(default=_SONNET)
+    reconcile_model: str = Field(default=_SONNET)
     spending_cap_usd: float = Field(default=1.0, ge=0)
     # How many applications to screen concurrently. The model calls are the slow,
     # blocking part; ~300 applicants finish in seconds at this width. The Bedrock

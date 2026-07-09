@@ -33,6 +33,10 @@ class CurrentRunResponse(ResponseModel):
     # surfaced none.
     discovery_narrative: str | None = None
     new_dimension_keys: list[str] = []
+    # Subset of new_dimension_keys that are "revived" (seen in an earlier run, dropped,
+    # now back) rather than genuinely new — derived from history at read time. The
+    # frontend colours these blue ("Revived") vs. amber ("New"); new = flagged − revived.
+    revived_dimension_keys: list[str] = []
     favourited_keys: list[str] = []
     proposed_dimensions: list[str] = []
 
@@ -74,10 +78,36 @@ class MatchAuditResponse(ResponseModel):
     carry_forward_rate: float | None = None
 
 
+class ReconcileVerdictOut(ResponseModel):
+    """One dropped-prior verdict from the reconcile pass, for the trace viewer."""
+
+    old_key: str
+    revive: bool
+    reasoning: str
+
+
+class ReconcileAuditResponse(ResponseModel):
+    """GET /ranking/current/reconcile-audit — the dropped-dimension second look for
+    the current run. Null when the reconcile pass didn't run (first run / nothing
+    dropped / run predates capture).
+
+    ``recoveryRate`` (recovered / offered) is the over-recovery smell: a persistently
+    high rate means reconcile is reviving too readily. A zero-recovery run (rate 0.0)
+    is the healthy expected signal.
+    """
+
+    run_id: int
+    verdicts: list[ReconcileVerdictOut]
+    offered_count: int
+    recovered_count: int
+    recovery_rate: float | None = None
+
+
 class RankEstimateBreakdown(ResponseModel):
     essays_usd: float
     criteria_usd: float
     match_usd: float
+    reconcile_usd: float
     scoring_usd: float
 
 
@@ -113,6 +143,7 @@ class RankingResponse(ResponseModel):
     scored_count: int
     candidates: list[RankedCandidateOut]
     new_dimension_keys: list[str] = []
+    revived_dimension_keys: list[str] = []
     favourited_keys: list[str] = []
     proposed_dimensions: list[str] = []
 

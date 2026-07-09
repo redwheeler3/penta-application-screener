@@ -11,6 +11,8 @@ from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.services.ranking_run import (
     adopt_matched_keys,
     carry_forward_layout,
+    reconcile_audit_payload,
+    revive_dimensions,
     weights_from_tiers,
 )
 
@@ -181,17 +183,18 @@ def placements_from(tiers: list[dict]) -> dict[str, str]:
     return {key: t["id"] for t in tiers for key in t.get("dimension_keys", [])}
 
 
-def test_carry_forward_places_matches_and_flags_only_genuinely_new() -> None:
-    # Prior history: 'a' in the Critical tier (working), 'b' in Ignore (absent from
-    # the placement map). Both keys are known; 'c' is genuinely new (never seen).
+def test_carry_forward_places_matches_and_flags_gap_dimensions() -> None:
+    # Prior run: 'a' in the Critical tier (working), 'b' in Ignore. Both were in the
+    # immediately-prior run's report (continuous in the committee's view); 'c' is a
+    # gap dimension (absent from the prior run — new or revived).
     scaffold = [tier("tier-s", ["a"]), tier("tier-a", []), tier("tier-b", [])]
     new = report("a", "b", "c")
 
-    layout, new_keys = carry_forward_layout(
+    layout, flagged_keys = carry_forward_layout(
         new_report=new,
         scaffold_tiers=scaffold,
         most_recent_tier_by_key=placements_from(scaffold),
-        known_keys={"a", "b"},
+        immediately_prior_keys={"a", "b"},
     )
 
     placed = {t["id"]: t["dimension_keys"] for t in layout}
@@ -200,59 +203,108 @@ def test_carry_forward_places_matches_and_flags_only_genuinely_new() -> None:
     # 'b' was last in Ignore -> left unplaced (ignore decision carried) ...
     all_placed = {k for keys in placed.values() for k in keys}
     assert "b" not in all_placed
-    # ... and crucially NOT flagged new: the committee already weighed in on it.
-    assert "b" not in new_keys
-    # Only the genuinely-new dimension is flagged.
-    assert new_keys == ["c"]
+    # ... and NOT flagged: it was present in the prior run, so continuous in view.
+    assert "b" not in flagged_keys
+    # Only the gap dimension (absent from the prior run) is flagged.
+    assert flagged_keys == ["c"]
 
 
-def test_carry_forward_prior_ignored_dimension_is_not_new() -> None:
-    # Regression: a dimension that was in Ignore must never be flagged "new".
+def test_carry_forward_prior_run_dimension_is_not_flagged() -> None:
+    # A dimension present in the immediately-prior run (even if it was in Ignore) is
+    # continuous in the committee's view, so never flagged — new OR revived.
     scaffold = [tier("tier-s", ["participation"]), tier("tier-a", []), tier("tier-b", [])]
-    new = report("participation", "financial_admin")  # financial_admin was Ignored before
+    new = report("participation", "financial_admin")  # financial_admin was Ignored last run
 
-    layout, new_keys = carry_forward_layout(
+    layout, flagged_keys = carry_forward_layout(
         new_report=new,
         scaffold_tiers=scaffold,
         most_recent_tier_by_key=placements_from(scaffold),
-        known_keys={"participation", "financial_admin"},
+        immediately_prior_keys={"participation", "financial_admin"},
     )
-    assert new_keys == []  # both known; neither is new
+    assert flagged_keys == []  # both in the prior run; neither is a gap
     placed = {t["id"]: t["dimension_keys"] for t in layout}
     assert placed["tier-s"] == ["participation"]
     assert "financial_admin" not in {k for keys in placed.values() for k in keys}
 
 
-def test_carry_forward_restores_placement_from_an_older_run() -> None:
-    # The resurrection case A fixes: a dimension placed Critical several runs ago, gone
-    # since, re-surfaces now. It must restore to Critical and NOT be flagged new — its
-    # placement is durable committee intent that spanned the gap. (tier_history supplies
-    # the most-recent placement + known keys across ALL runs; here we simulate that: the
-    # current scaffold no longer lists 'financial_stability', but history remembers it.)
+def test_carry_forward_restores_placement_and_flags_revived() -> None:
+    # The revival case: a dimension placed Critical several runs ago, gone since (absent
+    # from the immediately-prior run), re-surfaces now. It restores to Critical (durable
+    # committee intent spanning the gap) AND is flagged — a presence gap the committee
+    # should see (the "Revived" label is derived separately from history).
     scaffold = [tier("tier-s", []), tier("tier-a", ["participation"]), tier("tier-b", [])]
     new = report("participation", "financial_stability")
 
-    layout, new_keys = carry_forward_layout(
+    layout, flagged_keys = carry_forward_layout(
         new_report=new,
         scaffold_tiers=scaffold,
         # 'financial_stability' was last placed Critical (an older run); 'participation'
         # is in the current Important tier.
         most_recent_tier_by_key={"participation": "tier-a", "financial_stability": "tier-s"},
-        known_keys={"participation", "financial_stability"},
+        # 'financial_stability' is NOT in the immediately-prior run (gone since) -> flagged;
+        # 'participation' is -> not flagged.
+        immediately_prior_keys={"participation"},
     )
     placed = {t["id"]: t["dimension_keys"] for t in layout}
     assert placed["tier-s"] == ["financial_stability"]  # restored to Critical
     assert placed["tier-a"] == ["participation"]
-    assert new_keys == []  # seen before -> never flagged new
+    assert flagged_keys == ["financial_stability"]  # gap -> flagged (revived)
 
 
 def test_carry_forward_first_run_has_no_matches_and_no_flags() -> None:
-    # No prior tiers (first run): default empty working tiers, nothing flagged new.
-    layout, new_keys = carry_forward_layout(
+    # No prior tiers (first run): default empty working tiers, nothing flagged.
+    layout, flagged_keys = carry_forward_layout(
         new_report=report("x", "y"),
         scaffold_tiers=[],
         most_recent_tier_by_key={},
-        known_keys=set(),
+        immediately_prior_keys=set(),
     )
-    assert new_keys == []
+    assert flagged_keys == []
     assert all(t["dimension_keys"] == [] for t in layout)
+
+
+# --- revive_dimensions: re-enter reconcile-revived dropped priors -------------
+
+
+def test_revive_dimensions_adds_prior_dimension_by_key_and_text() -> None:
+    # The report (post-adopt) has 'a'; reconcile revived 'b' from history. 'b' re-enters
+    # under its historical key + text, so its cached scores/placement carry forward.
+    current = report("a")
+    history = PoolDimensionReport(
+        summary="hist",
+        dimensions=[
+            PoolDimension(key="b", name="B name", definition="B def", why_it_differentiates="w"),
+            PoolDimension(key="c", name="C", definition="d", why_it_differentiates="w"),
+        ],
+    )
+    revived = revive_dimensions(current, ["b"], history)
+    keys = [d.key for d in revived.dimensions]
+    assert keys == ["a", "b"]  # 'b' appended, 'c' (not revived) left out
+    b = next(d for d in revived.dimensions if d.key == "b")
+    assert b.name == "B name" and b.definition == "B def"  # historical text, for score alignment
+
+
+def test_revive_dimensions_skips_duplicates_and_empty() -> None:
+    current = report("a", "b")
+    history = report("a", "b")
+    # 'a' already present → not duplicated; empty revive list → unchanged object.
+    assert [d.key for d in revive_dimensions(current, ["a"], history).dimensions] == ["a", "b"]
+    assert revive_dimensions(current, [], history) is current
+    assert revive_dimensions(current, ["a"], None) is current
+
+
+# --- reconcile_audit_payload: full ballot storage ----------------------------
+
+
+def test_reconcile_audit_payload_records_ballot_and_counts() -> None:
+    ballot = [
+        {"old_key": "x", "revive": True, "reasoning": "pool varies"},
+        {"old_key": "y", "revive": False, "reasoning": "flat"},
+    ]
+    payload = reconcile_audit_payload(ballot, ["x"])
+    assert payload == {"verdicts": ballot, "offered_count": 2, "recovered_count": 1}
+
+
+def test_reconcile_audit_payload_none_when_pass_skipped() -> None:
+    # Empty ballot = the pass didn't run (first run / nothing dropped) → no audit row.
+    assert reconcile_audit_payload([], []) is None

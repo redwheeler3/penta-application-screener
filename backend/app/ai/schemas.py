@@ -249,3 +249,50 @@ class DimensionMatchReport(BaseModel):
             "not confident maps to a specific prior dimension."
         ),
     )
+
+
+class ReconcileVerdict(BaseModel):
+    """The reconcile pass's judgment on ONE dropped prior dimension: does the live
+    pool vary on it, so it should be pulled back into the run?
+
+    Reconcile runs *after* match (SPEC "Automatic Reconcile Of Dropped Dimensions").
+    The match pass carries forward dimensions that re-surfaced on their own; reconcile
+    takes the priors that did NOT re-surface and asks, against the current pool, "does
+    this axis still meaningfully vary here?" — a fresh, skeptical look, NOT a
+    re-assertion of prior intent. A flat or inapplicable axis is a ``revive: false``.
+    """
+
+    old_key: str = Field(
+        description="The key of the dropped prior dimension this verdict is about.",
+    )
+    revive: bool = Field(
+        description=(
+            "True ONLY if the live pool genuinely VARIES on this axis — candidates "
+            "spread out on it, so it would move the ranking. A flat axis (everyone "
+            "similar) or one that does not apply to this pool is false. Default to "
+            "false: 'no' is the expected answer for most dropped dimensions, since "
+            "fresh discovery already declined to name them."
+        ),
+    )
+    reasoning: str = Field(
+        description=(
+            "One neutral sentence on whether THIS pool varies on the axis, grounded "
+            "in the pool you were shown. Required for both verdicts — a 'no' should "
+            "say why (flat / not present / not applicable)."
+        ),
+    )
+
+
+class ReconcileReport(BaseModel):
+    """The reconcile pass's full ballot: one verdict per dropped prior dimension.
+
+    Unlike ``DimensionMatchReport`` (matches only, omissions implicit), reconcile
+    returns an entry for EVERY offered prior — the reasoning on both revivals and
+    rejections is the audit trail (``reconcile_audit``), and lets a spot-check see
+    why an axis was or wasn't revived without re-running the pass.
+    """
+
+    verdicts: list[ReconcileVerdict] = Field(
+        default_factory=list,
+        description="One verdict per dropped prior dimension you were shown.",
+    )
