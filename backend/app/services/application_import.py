@@ -13,7 +13,6 @@ from app.domain.hard_filters import FilterReason, RulesConfig, evaluate_hard_fil
 from app.domain.status import apply_machine_status
 from app.schemas.settings import AppSettings
 
-
 EMAIL_ALIASES = ["email address", "applicant email", "email"]
 APPLICANT_NAME_ALIASES = ["applicant name", "name", "applicant full name"]
 CO_APPLICANT_NAME_ALIASES = ["co-applicant name", "co applicant name"]

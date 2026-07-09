@@ -53,8 +53,10 @@ def test_unplaced_keys_are_zero() -> None:
     # 'c' and 'd' are in no working tier -> ignored by absence -> weight 0.
     layout = [tier("t1", ["a", "b"])]
     weights = weights_from_tiers(KEYS, layout)
-    assert weights["a"] == 1.0 and weights["b"] == 1.0  # one tier
-    assert weights["c"] == 0.0 and weights["d"] == 0.0
+    assert weights["a"] == 1.0  # one tier
+    assert weights["b"] == 1.0
+    assert weights["c"] == 0.0
+    assert weights["d"] == 0.0
 
 
 def test_no_tiers_falls_back_to_uniform() -> None:
@@ -76,7 +78,9 @@ def test_one_placed_dimension_is_not_uniform() -> None:
     layout = [tier("tier-s", ["a"]), tier("tier-a", []), tier("tier-b", [])]
     weights = weights_from_tiers(KEYS, layout)
     assert weights["a"] == 3.0  # three working tiers -> top weight 3
-    assert weights["b"] == 0.0 and weights["c"] == 0.0 and weights["d"] == 0.0
+    assert weights["b"] == 0.0
+    assert weights["c"] == 0.0
+    assert weights["d"] == 0.0
 
 
 def test_stale_key_in_layout_is_ignored() -> None:
@@ -281,7 +285,8 @@ def test_revive_dimensions_adds_prior_dimension_by_key_and_text() -> None:
     keys = [d.key for d in revived.dimensions]
     assert keys == ["a", "b"]  # 'b' appended, 'c' (not revived) left out
     b = next(d for d in revived.dimensions if d.key == "b")
-    assert b.name == "B name" and b.definition == "B def"  # historical text, for score alignment
+    assert b.name == "B name"  # historical text, for score alignment
+    assert b.definition == "B def"
 
 
 def test_revive_dimensions_skips_duplicates_and_empty() -> None:

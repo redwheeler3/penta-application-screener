@@ -345,7 +345,7 @@ def run_in_pool(
             item = futures[future]
             try:
                 yield item, future.result(), None
-            except Exception as exc:  # noqa: BLE001 — one item's failure is isolated
+            except Exception as exc:
                 yield item, None, exc
 
 

@@ -8,15 +8,15 @@ from app.domain.status import (
 
 
 def make_app(**kwargs) -> Application:
-    defaults = dict(
-        primary_email="a@x.com",
-        raw_row={},
-        raw_row_hash="h",
-        normalized={},
-        status=ApplicationStatus.ELIGIBLE,
-        status_source=StatusSource.UNTOUCHED,
-        hard_filter_reasons=[],
-    )
+    defaults = {
+        "primary_email": "a@x.com",
+        "raw_row": {},
+        "raw_row_hash": "h",
+        "normalized": {},
+        "status": ApplicationStatus.ELIGIBLE,
+        "status_source": StatusSource.UNTOUCHED,
+        "hard_filter_reasons": [],
+    }
     defaults.update(kwargs)
     return Application(**defaults)
 
@@ -66,7 +66,7 @@ def test_staleness_only_for_human_and_changed_findings() -> None:
     # Same findings -> not stale.
     assert is_stale(app, flags) is False
     # New finding -> stale.
-    assert is_stale(app, flags + [{"category": "fake_contact"}]) is True
+    assert is_stale(app, [*flags, {"category": "fake_contact"}]) is True
 
 
 def test_machine_owned_status_is_never_stale() -> None:

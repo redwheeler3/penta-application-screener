@@ -36,12 +36,12 @@ from app.ai.analysis import (
     store_result,
 )
 from app.ai.applicant_facts import applicant_facts
+from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
+from app.ai.pricing import cost_usd
 from app.ai.prompt_fragments import (
     ENGLISH_POLISH_NOTE,
     INJECTION_GUARD_NOTE,
 )
-from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
-from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, Usage
 from app.ai.schemas import (
     DimensionScore,

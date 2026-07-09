@@ -1,5 +1,5 @@
-from httpx2 import ASGITransport, AsyncClient
 import pytest
+from httpx2 import ASGITransport, AsyncClient
 
 from app.main import create_app
 

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.mock_provider import MockProvider
 from app.ai.provider import AIResult, Usage
+from app.ai.schemas import FlagCategory, FlagSeverity, ScreeningFlag, ScreeningReport
 from app.ai.screening import (
     analyze_one,
     applications_for_screening,
@@ -12,7 +13,6 @@ from app.ai.screening import (
     estimate_screening,
     run_screening,
 )
-from app.ai.schemas import FlagCategory, FlagSeverity, ScreeningFlag, ScreeningReport
 from app.db.models import Application, ApplicationStatus, Base, StatusSource
 from app.schemas.settings import AppSettings
 

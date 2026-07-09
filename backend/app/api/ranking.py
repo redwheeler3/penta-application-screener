@@ -57,6 +57,7 @@ from app.db.models import User
 from app.db.session import get_db
 from app.domain.ranking import rank_candidates
 from app.schemas.applications import DimensionContributionOut
+from app.schemas.events import ErrorEvent as StreamErrorEvent
 from app.schemas.events import (
     NoticeEvent,
     PhaseEvent,
@@ -65,7 +66,7 @@ from app.schemas.events import (
     ThinkingEvent,
     emit,
 )
-from app.schemas.events import ErrorEvent as StreamErrorEvent
+from app.schemas.insights import CostReport, LastRunsReport
 from app.schemas.ranking import (
     CurrentRunResponse,
     MatchAuditResponse,
@@ -81,7 +82,6 @@ from app.schemas.ranking import (
     TierOut,
     TiersResponse,
 )
-from app.schemas.insights import CostReport, LastRunsReport
 from app.schemas.settings import AppSettings
 from app.services.cost_report import (
     cost_report,
@@ -89,7 +89,6 @@ from app.services.cost_report import (
     ledger_pass,
     record_run_cost,
 )
-from app.services.ranking_view import candidate_scores
 from app.services.ranking_run import (
     adopt_matched_keys,
     all_known_dimensions,
@@ -111,6 +110,7 @@ from app.services.ranking_run import (
     set_tiers,
     tier_history,
 )
+from app.services.ranking_view import candidate_scores
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/ranking", tags=["ranking"])
@@ -423,7 +423,7 @@ def rank_run(
         # from a callback, so the work runs on a worker thread that pushes deltas
         # onto a queue, and this generator drains the queue into NDJSON lines.
         # A None sentinel marks the work done; the worker stashes its outcome/error.
-        delta_queue: "queue.Queue[str | None]" = queue.Queue()
+        delta_queue: queue.Queue[str | None] = queue.Queue()
         criteria_outcome: dict[str, Any] = {}
 
         def on_delta(text: str) -> None:
@@ -473,7 +473,7 @@ def rank_run(
                     match_cost, revive_keys, reconcile_ballot, reconcile_narrative,
                     reconcile_cost,
                 )
-            except Exception as exc:  # noqa: BLE001 — surfaced to the client below
+            except Exception as exc:
                 criteria_outcome["error"] = exc
             finally:
                 delta_queue.put(None)  # signal completion
@@ -502,7 +502,9 @@ def rank_run(
             return
         (
             report, narrative, discovery_cost, new_to_old, match_narrative, match_cost,
-            revive_keys, reconcile_ballot, reconcile_narrative, reconcile_cost,
+            # reconcile's narrative is streamed live + its per-verdict reasoning is in the
+            # audit, so the returned narrative isn't re-persisted here.
+            revive_keys, reconcile_ballot, _reconcile_narrative, reconcile_cost,
         ) = criteria_outcome["ok"]
         # Audit trail for the carry-forward: what discovery ACTUALLY emitted (its own
         # keys, before adopt_matched_keys rewrites matched ones to prior keys) and how
