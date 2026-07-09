@@ -31,7 +31,7 @@ from app.services.application_import import extract_essays
 
 KIND = "screening"
 
-SYSTEM_PROMPT = f"""\
+SYSTEM_PROMPT = """\
 You are a careful assistant helping a housing co-op screening committee review applications for data-integrity concerns.
 You surface things a human should be aware of; you never make eligibility or acceptance decisions.
 Be conservative: flag only on concrete evidence. When in doubt, do not flag.

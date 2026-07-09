@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Application, ApplicationAIResult, ApplicationStatus, SyncRun
-from app.domain.hard_filters import FilterReason, FilterStatus, RulesConfig, evaluate_hard_filters
+from app.domain.hard_filters import FilterReason, RulesConfig, evaluate_hard_filters
 from app.domain.status import apply_machine_status
 from app.schemas.settings import AppSettings
 

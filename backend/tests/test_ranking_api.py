@@ -982,7 +982,7 @@ async def test_proposed_dimension_seeds_discovery_then_clears_and_auto_favourite
     # from_committee_request. After the run: the proposal is consumed (cleared) and
     # the flagged dimension is auto-favourited.
     app, db, provider = setup_app(role=UserRole.MEMBER)
-    a = add_eligible(db, email="a@x.com", raw_hash="h1")
+    add_eligible(db, email="a@x.com", raw_hash="h1")
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -1023,7 +1023,7 @@ async def test_favourited_dimension_is_re_fed_to_discovery_and_persists() -> Non
     # A favourited dimension is sent back into the next discovery (by name +
     # definition) and stays favourited across the re-run.
     app, db, provider = setup_app(role=UserRole.MEMBER)
-    a = add_eligible(db, email="a@x.com", raw_hash="h1")
+    add_eligible(db, email="a@x.com", raw_hash="h1")
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:

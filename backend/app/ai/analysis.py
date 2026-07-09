@@ -19,13 +19,13 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-# Work item / result types for run_in_pool.
-T = TypeVar("T")
-R = TypeVar("R")
-
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, Usage
 from app.db.models import Application, ApplicationAIResult
+
+# Work item / result types for run_in_pool.
+T = TypeVar("T")
+R = TypeVar("R")
 
 log = logging.getLogger("app.ai")
 
