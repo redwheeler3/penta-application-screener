@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import require_current_user
 from app.api.problems import Problem
 from app.core.config import get_settings
-from app.db.session import get_db
 from app.db.models import User
+from app.db.session import get_db
 from app.schemas.settings import AppSettings, SettingsResponse, google_sheet_url_from_id
 from app.services.google_credentials import get_google_token
 from app.services.google_sheets import fetch_sheet_title

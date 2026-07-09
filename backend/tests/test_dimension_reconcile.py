@@ -94,7 +94,10 @@ def test_reconcile_skipped_when_nothing_dropped() -> None:
     revive_keys, ballot, narrative, cost = reconcile_dropped(
         provider, db, dropped=[], applications=[app], settings=AppSettings()
     )
-    assert revive_keys == [] and ballot == [] and narrative is None and cost == 0.0
+    assert revive_keys == []
+    assert ballot == []
+    assert narrative is None
+    assert cost == 0.0
     assert provider.calls == []  # the model was never called
 
 
@@ -104,7 +107,8 @@ def test_reconcile_skipped_when_no_applications() -> None:
     _, _, _, cost = reconcile_dropped(
         provider, db, dropped=_dropped("a"), applications=[], settings=AppSettings()
     )
-    assert cost == 0.0 and provider.calls == []
+    assert cost == 0.0
+    assert provider.calls == []
 
 
 def test_estimate_reconcile_zero_when_nothing_dropped() -> None:

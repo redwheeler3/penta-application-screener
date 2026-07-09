@@ -484,9 +484,7 @@ def display_tiers(run: RankingRun) -> list[dict]:
         return working
     placed = {key for t in working for key in t.get("dimension_keys", [])}
     ignored = [d.key for d in report.dimensions if d.key not in placed]
-    return working + [
-        {"id": IGNORE_TIER_ID, "label": IGNORE_TIER_LABEL, "dimension_keys": ignored, "ignore": True}
-    ]
+    return [*working, {"id": IGNORE_TIER_ID, "label": IGNORE_TIER_LABEL, "dimension_keys": ignored, "ignore": True}]
 
 
 def tier_history(db: Session) -> tuple[list[dict], dict[str, str], set[str]]:
@@ -644,7 +642,7 @@ def weights_from_tiers(
 
     # Nothing weighted (empty board or no tiers): fall back to uniform.
     if not any(w > 0.0 for w in weights.values()):
-        return {key: 1.0 for key in dimension_keys}
+        return dict.fromkeys(dimension_keys, 1.0)
 
     return weights
 

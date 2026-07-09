@@ -2,6 +2,18 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+# Scope + cache-key helpers reused from the passes themselves, so "coverage" counts
+# exactly what a re-run would process (never a parallel definition that could drift).
+from app.ai.analysis import cache_key
+from app.ai.dimension_scoring import (
+    PROMPT_VERSION as SCORING_PROMPT_VERSION,
+)
+from app.ai.dimension_scoring import (
+    applications_to_score,
+    kind_for_dimension,
+)
+from app.ai.screening import applications_for_screening as screening_scope
+from app.ai.screening import screening_prompt_version
 from app.api.dependencies import require_current_user
 from app.db.models import (
     Application,
@@ -20,23 +32,12 @@ from app.schemas.dashboard import (
     WorkflowState,
 )
 from app.services.application_import import settings_fingerprint
-from app.services.settings import get_app_settings
-
-# Scope + cache-key helpers reused from the passes themselves, so "coverage" counts
-# exactly what a re-run would process (never a parallel definition that could drift).
-from app.ai.analysis import cache_key
-from app.ai.dimension_scoring import (
-    PROMPT_VERSION as SCORING_PROMPT_VERSION,
-    applications_to_score,
-    kind_for_dimension,
-)
-from app.ai.screening import applications_for_screening as screening_scope
-from app.ai.screening import screening_prompt_version
 from app.services.ranking_run import (
     current_dimension_report,
     get_current_run,
     ranking_is_current,
 )
+from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -191,4 +192,4 @@ def _run_exists(db: Session) -> bool:
 
 def _count_by(db: Session, column) -> dict:
     rows = db.execute(select(column, func.count()).group_by(column)).all()
-    return {value: count for value, count in rows}
+    return dict(rows)

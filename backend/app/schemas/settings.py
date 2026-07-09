@@ -2,8 +2,6 @@ import re
 
 from pydantic import Field, field_validator
 
-from app.schemas.base import BridgeModel, ResponseModel
-
 # Threshold defaults are owned by the domain layer (the single source of truth);
 # the settings schema references them so a default can't drift between the two.
 from app.domain.hard_filters import (
@@ -14,7 +12,7 @@ from app.domain.hard_filters import (
     DEFAULT_MIN_CHILDREN,
     DEFAULT_MIN_INCOME,
 )
-
+from app.schemas.base import BridgeModel, ResponseModel
 
 SHEETS_URL_ID_PATTERN = re.compile(r"/spreadsheets/d/([a-zA-Z0-9-_]+)")
 SHEETS_OPEN_ID_PATTERN = re.compile(r"[?&]id=([a-zA-Z0-9-_]+)")

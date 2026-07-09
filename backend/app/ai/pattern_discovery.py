@@ -18,8 +18,8 @@ from sqlalchemy.orm import Session
 
 from app.ai.analysis import derive_prompt_version
 from app.ai.pool_digest import INPUT_TOKENS_PER_CANDIDATE, pool_digest_block
-from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.pricing import cost_usd
+from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider, DeltaSink, Usage
 from app.ai.schemas import PoolDimensionReport
 from app.db.models import Application, ApplicationStatus

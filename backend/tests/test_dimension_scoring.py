@@ -111,7 +111,8 @@ def test_scores_all_dimensions_and_does_not_touch_status() -> None:
     provider.queue(a_scoring_report(keys))
     results = run_scores(db, provider, [app1], report, settings)
 
-    assert len(results) == 1 and not results[0].failed
+    assert len(results) == 1
+    assert not results[0].failed
     # One row stored per (candidate, dimension key).
     rows = db.scalars(select(ApplicationAIResult)).all()
     assert len(rows) == 2

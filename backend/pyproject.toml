@@ -28,11 +28,41 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.ruff]
-# Deliberately conservative to start: Ruff's default rule set (pyflakes F +
-# pycodestyle E4/E7/E9) catches the real defects — unused imports/vars, misplaced
-# imports, f-strings with no placeholders — without E501 (line length) or I (import
-# sorting), which would churn dozens of pre-existing files (prompt strings run long,
-# imports aren't Ruff-sorted) for no correctness gain. Widen to E501/I in a dedicated
-# pass later if we want them, so that reformatting noise stays out of feature diffs.
 target-version = "py313"
+# `ruff format` is deliberately NOT adopted: the codebase is already consistently
+# hand-formatted, and running the formatter would rewrite ~50 files / ~1500 lines of
+# pure style (comprehension/arg-wrap normalization, not just width) — burying git
+# blame with no correctness gain. Lint (below) catches the defects; formatting stays
+# manual. Adopt the formatter later as its own "format the world" commit if wanted.
+
+[tool.ruff.lint]
+# A curated set, not "everything". We enable the rule families that genuinely improve
+# THIS codebase and explicitly ignore the ones that fight its stack (FastAPI, Pydantic)
+# or its deliberate choices (Unicode math glyphs, long prompt strings). Each ignore
+# below is a considered decision, not an oversight.
+select = [
+    "E4", "E7", "E9", "F",  # default: real defects (unused, misplaced imports, etc.)
+    "I",    # import sorting
+    "UP",   # pyupgrade: modern syntax for our Python floor
+    "C4",   # flake8-comprehensions: drop unnecessary comprehensions/dict()/list()
+    "PT",   # flake8-pytest-style: better test idioms (e.g. split composite asserts)
+    "RUF",  # Ruff-specific correctness (unused noqa, unused unpacked vars, ...)
+]
+ignore = [
+    # E501 (line length) is intentionally OFF: the AI-prompt modules hold single string
+    # lines of 200-800 chars that MUST NOT wrap (wrapping changes the bytes the model
+    # sees / forces ugly concatenation). Line length on real code is the formatter's job
+    # (`ruff format` leaves strings alone), not a lint gate — so E501 isn't in `select`.
+    "B008",     # FastAPI idiom: `= Depends(...)` / `= Query(...)` in arg defaults is correct.
+    "RUF012",   # Pydantic deep-copies mutable field defaults per instance; the rule targets plain classes.
+    "RUF002",   # Deliberate `×` / `−` (real math glyphs) in formula docstrings — not typos.
+    "RUF003",   # Same, in comments.
+    "N818",     # Renaming SpendingCapExceeded/Problem to *Error is a public rename not worth the ripple.
+    "UP047",    # PEP 695 `def f[T]()` — keep classic TypeVars, consistent with provider.py's SchemaT.
+]
+
+[tool.ruff.lint.per-file-ignores]
+# `user: User = Depends(require_current_user)` MUST stay in the signature to enforce
+# auth even when the body doesn't read it — so unused-argument is wrong for the API layer.
+"app/api/*" = ["ARG001"]
 

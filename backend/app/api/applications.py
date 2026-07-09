@@ -2,6 +2,7 @@ from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -28,13 +29,12 @@ from app.schemas.applications import (
     ScreeningFlagOut,
 )
 from app.services.application_import import extract_essays
-from app.services.ranking_view import candidate_scores
 from app.services.ranking_run import (
     current_dimension_report,
     dimension_weights,
     get_current_run,
 )
-from pydantic import BaseModel
+from app.services.ranking_view import candidate_scores
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
@@ -137,7 +137,7 @@ def _facet_counts(db: Session, base_query, column, enum_cls) -> dict[str, int]:
     rows = db.execute(
         base_query.with_only_columns(column, func.count()).group_by(column)
     ).all()
-    counts = {value: count for value, count in rows}
+    counts = dict(rows)
     # Keys may come back as the enum or its value depending on the driver.
     result = {}
     for member in enum_cls:

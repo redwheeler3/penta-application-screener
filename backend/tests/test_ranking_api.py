@@ -891,7 +891,7 @@ async def test_rank_with_no_eligible_is_409() -> None:
 
 @pytest.mark.anyio
 async def test_rank_over_cap_fails_fast() -> None:
-    app, db, provider = setup_app(role=UserRole.MEMBER)
+    app, db, _provider = setup_app(role=UserRole.MEMBER)
     add_eligible(db, email="a@x.com", raw_hash="h1")
 
     # Force the combined estimate over the cap by setting a tiny cap.
@@ -950,7 +950,7 @@ def test_build_prompt_unseeded_has_no_requested_section() -> None:
     # default blind run is unchanged.
     from app.ai.pattern_discovery import DiscoverySeeds, build_prompt
 
-    app, db, _ = setup_app(role=UserRole.MEMBER)
+    _app, db, _ = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
     apps = [a]
     bare = build_prompt(db, apps)
@@ -962,7 +962,7 @@ def test_build_prompt_unseeded_has_no_requested_section() -> None:
 def test_build_prompt_includes_favourited_and_proposed_seeds() -> None:
     from app.ai.pattern_discovery import DiscoverySeeds, build_prompt
 
-    app, db, _ = setup_app(role=UserRole.MEMBER)
+    _app, db, _ = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
     seeds = DiscoverySeeds(
         favourited=[{"name": "Conflict Mediation", "definition": "Resolves disputes."}],
