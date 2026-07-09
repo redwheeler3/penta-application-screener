@@ -73,18 +73,27 @@ function makeTierCollisionDetection(tierIds: Set<string>): CollisionDetection {
 // The visual-only chip shell used inside the DragOverlay (the copy that follows the
 // cursor). The in-place interactive chip is `DimensionChip` below; this just mirrors
 // its look while dragging. `isFav` shows the kept-star so the dragged copy matches.
+// A chip's triage badge: "new" (never seen — amber alarm, always in Ignore) or
+// "revived" (seen before, dropped, now back — blue heads-up, may be auto-placed in a
+// working tier). null when the chip needs no attention. Both are the SAME flag
+// underneath (see revived_flag_keys); this is only the display label + colour.
+type ChipBadge = "new" | "revived" | null;
+
 function ChipBody(props: {
   label: string;
   dragging?: boolean;
-  isNew?: boolean;
+  badge?: ChipBadge;
   isFav?: boolean;
 }): ReactNode {
+  const badgeClass =
+    props.badge === "new" ? " tier-chip-new" : props.badge === "revived" ? " tier-chip-revived" : "";
   return (
-    <span className={`tier-chip${props.dragging ? " tier-chip-overlay" : ""}${props.isNew ? " tier-chip-new" : ""}`}>
+    <span className={`tier-chip${props.dragging ? " tier-chip-overlay" : ""}${badgeClass}`}>
       <GripVertical size={12} className="tier-chip-grip" />
       <span className="tier-chip-label">{props.label}</span>
       {props.isFav ? <Star size={12} className="tier-chip-fav-icon" fill="currentColor" /> : null}
-      {props.isNew ? <span className="tier-chip-new-badge">New</span> : null}
+      {props.badge === "new" ? <span className="tier-chip-new-badge">New</span> : null}
+      {props.badge === "revived" ? <span className="tier-chip-revived-badge">Revived</span> : null}
     </span>
   );
 }
@@ -98,7 +107,7 @@ function ChipBody(props: {
 function DimensionChip(props: {
   dimKey: string;
   label: string;
-  isNew?: boolean;
+  badge?: ChipBadge;
   isFav: boolean;
   isOpen: boolean;
   onDismiss?: () => void;
@@ -114,11 +123,13 @@ function DimensionChip(props: {
     // copy is what the user sees moving.
     opacity: isDragging ? 0 : 1,
   };
+  const badgeClass =
+    props.badge === "new" ? " tier-chip-new" : props.badge === "revived" ? " tier-chip-revived" : "";
   return (
     <span
       ref={setNodeRef}
       style={style}
-      className={`tier-chip tier-chip-draggable${props.isNew ? " tier-chip-new" : ""}${props.isOpen ? " tier-chip-open" : ""}`}
+      className={`tier-chip tier-chip-draggable${badgeClass}${props.isOpen ? " tier-chip-open" : ""}`}
       // The whole chip carries the drag listeners; a click that doesn't move opens
       // the description (the 4px activation distance distinguishes click from drag).
       {...attributes}
@@ -141,15 +152,19 @@ function DimensionChip(props: {
       >
         <Star size={12} fill={props.isFav ? "currentColor" : "none"} />
       </button>
-      {props.isNew ? (
-        <span className="tier-chip-new-badge">
-          New
+      {props.badge ? (
+        <span className={props.badge === "new" ? "tier-chip-new-badge" : "tier-chip-revived-badge"}>
+          {props.badge === "new" ? "New" : "Revived"}
           {props.onDismiss ? (
             <button
               type="button"
               className="tier-chip-new-dismiss"
               aria-label="Mark reviewed"
-              title="Mark reviewed — keep in Ignore"
+              title={
+                props.badge === "new"
+                  ? "Mark reviewed — keep in Ignore"
+                  : "Mark reviewed — keep this placement"
+              }
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
@@ -171,6 +186,7 @@ function TierRow(props: {
   tier: Tier;
   labelFor: (key: string) => string;
   newKeys: Set<string>;
+  revivedKeys: Set<string>;
   favourited: Set<string>;
   openKey: string | null;
   isOver: boolean;
@@ -238,38 +254,51 @@ function TierRow(props: {
             <span className="tier-empty">Drag criteria here</span>
           ) : (
             sortedKeys.map((key) => {
-              // "New" badge only while the dimension is still parked in Ignore;
-              // dragging it into a working tier triages it, so the badge clears.
-              const isNew = props.newKeys.has(key) && Boolean(tier.ignore);
+              // Badge kind, both from the ONE flagged set (props.newKeys) with the
+              // revived subset split out for its label/colour:
+              //  - "revived" (seen before, back after a gap): shows in ANY tier,
+              //    because carry-forward auto-places it into its restored tier and we
+              //    still want it flagged there (RQ4 — a revived dim silently at weight
+              //    is the most important to surface).
+              //  - "new" (never seen): only while still parked in Ignore, as before —
+              //    a member dragging it to a working tier triages it, clearing the flag.
+              const flagged = props.newKeys.has(key);
+              const revived = props.revivedKeys.has(key);
+              const badge: ChipBadge = revived
+                ? "revived"
+                : flagged && tier.ignore
+                  ? "new"
+                  : null;
               const isFav = props.favourited.has(key);
               return (
                 <DimensionChip
                   key={key}
                   dimKey={key}
                   label={props.labelFor(key)}
-                  isNew={isNew}
+                  badge={badge}
                   isFav={isFav}
                   isOpen={props.openKey === key}
-                  onDismiss={isNew ? () => props.onAcknowledge([key]) : undefined}
+                  onDismiss={badge ? () => props.onAcknowledge([key]) : undefined}
                   onToggleFav={() => props.onToggleFav(key, !isFav)}
                   onOpen={() => props.onOpen(key)}
                 />
               );
             })
           )}
-          {/* Bulk-acknowledge the new dimensions in this (Ignore) row — flows after
-              the chips it acts on. Only shows when at least one new flag is here. */}
+          {/* Bulk-acknowledge the flagged dimensions in this (Ignore) row — flows
+              after the chips it acts on. Only shows when at least one flag is here.
+              Covers both "new" and any "revived" chips that landed back in Ignore. */}
           {(() => {
-            const newHere = tier.dimensionKeys.filter((k) => props.newKeys.has(k));
-            return tier.ignore && newHere.length > 0 ? (
+            const flaggedHere = tier.dimensionKeys.filter((k) => props.newKeys.has(k));
+            return tier.ignore && flaggedHere.length > 0 ? (
               <div className="tier-mark-reviewed-row">
                 <button
                   type="button"
                   className="tier-mark-reviewed"
-                  onClick={() => props.onAcknowledge(newHere)}
+                  onClick={() => props.onAcknowledge(flaggedHere)}
                 >
                   <Check size={13} />
-                  Clear all {newHere.length} "NEW" flag{newHere.length === 1 ? "" : "s"}
+                  Clear all {flaggedHere.length} flag{flaggedHere.length === 1 ? "" : "s"}
                 </button>
               </div>
             ) : null;
@@ -317,6 +346,7 @@ export function TierList(props: {
   tiers: Tier[];
   labelFor: (key: string) => string;
   newKeys: Set<string>;
+  revivedKeys: Set<string>;
   favourited: Set<string>;
   openKey: string | null;
   // "Add criterion" toggle + its composer, owned by the parent. Rendered here so the
@@ -433,6 +463,7 @@ export function TierList(props: {
             tier={tier}
             labelFor={props.labelFor}
             newKeys={props.newKeys}
+            revivedKeys={props.revivedKeys}
             favourited={props.favourited}
             openKey={props.openKey}
             isOver={overTierId === tier.id}
@@ -452,6 +483,7 @@ export function TierList(props: {
             tier={ignore}
             labelFor={props.labelFor}
             newKeys={props.newKeys}
+            revivedKeys={props.revivedKeys}
             favourited={props.favourited}
             openKey={props.openKey}
             isOver={overTierId === ignore.id}

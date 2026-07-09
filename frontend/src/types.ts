@@ -248,9 +248,12 @@ export type RankingResponse = {
   weights: Record<string, number>;
   scoredCount: number;
   candidates: RankedCandidate[];
-  // Unacknowledged new dimensions, recomputed on every tier save so badges clear
-  // in the same round-trip.
+  // Unacknowledged flagged dimensions (new OR revived), recomputed on every tier save
+  // so badges clear in the same round-trip.
   newDimensionKeys: string[];
+  // Subset of newDimensionKeys that are "revived" (seen in an earlier run, dropped,
+  // now back) — the UI badges these blue vs. amber "new". new = flagged − revived.
+  revivedDimensionKeys: string[];
   // Discovery seeds, echoed so the composer stays in sync after a tier/seed save.
   favouritedKeys: string[];
   proposedDimensions: string[];
@@ -275,9 +278,12 @@ export type CurrentRunResponse = {
   // The model's streamed reasoning from the discovery pass (markdown), shown on the
   // Insights tab. Null for runs from before it was captured.
   discoveryNarrative: string | null;
-  // New dimensions with no confident match to a prior one — they start in Ignore,
-  // badged "new" until the committee triages them. Empty on a first run.
+  // Flagged dimensions (new OR revived) absent from the immediately-prior run — they
+  // are badged until the committee triages them. Empty on a first run.
   newDimensionKeys: string[];
+  // Subset of newDimensionKeys that are "revived" (seen in an earlier run, dropped,
+  // now back) — badged blue vs. amber "new". new = flagged − revived.
+  revivedDimensionKeys: string[];
   // Discovery seeds (see api): favourited dimension keys kept across re-runs, and
   // pending free-text proposals fed to the next Rank then consumed.
   favouritedKeys: string[];
@@ -302,6 +308,20 @@ export type MatchAuditResponse = {
   // Fraction matched onto a prior dimension. Null on a first run (undefined, not 0);
   // a persistently near-1.0 rate on re-runs is the over-matching smell.
   carryForwardRate: number | null;
+};
+
+// The reconcile pass's audit: the second look at dropped prior dimensions. Null when
+// the pass didn't run (first run / nothing dropped / run predates capture).
+export type ReconcileAuditResponse = {
+  runId: number;
+  // The full ballot — a verdict + reasoning per dropped prior offered (both revivals
+  // and rejections, so a spot-check sees why each went the way it did).
+  verdicts: { oldKey: string; revive: boolean; reasoning: string }[];
+  offeredCount: number;
+  recoveredCount: number;
+  // Fraction of dropped priors revived. A persistently high rate is the over-recovery
+  // smell — reconcile reviving too readily under rationalization pressure.
+  recoveryRate: number | null;
 };
 
 // A notification toast. Success toasts auto-dismiss; error toasts persist until
