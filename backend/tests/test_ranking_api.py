@@ -695,6 +695,113 @@ async def test_re_rank_reconcile_recovers_dropped_dimension() -> None:
         ]
 
 
+def _only_participation() -> PoolDimensionReport:
+    """A re-discovery that surfaces only participation_commitment (skills_offered is
+    absent) — used across the 3-run revival test to force a presence gap."""
+    return PoolDimensionReport(
+        summary="Pool varies on commitment.",
+        dimensions=[
+            PoolDimension(
+                key="participation_commitment",
+                name="Participation commitment",
+                definition="Willingness to do shared work.",
+                why_it_differentiates="Some eager, some vague.",
+            ),
+        ],
+    )
+
+
+@pytest.mark.anyio
+async def test_three_run_gap_flags_dimension_as_revived_not_new() -> None:
+    """The full 'revived' path through the live /run chain: a dimension present in run
+    1, GONE in run 2 (a real gap the committee lived through), then reconciled back in
+    run 3 — must badge blue 'Revived' (not amber 'New'), restore its placement, and
+    read as revived in the API response. Closes the seam between the 3-run label logic
+    and the streaming chain (the 2-run test can only prove 'recovered, not revived')."""
+    app, db, provider = setup_app(role=UserRole.ADMIN)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        # Run 1: discover participation_commitment + skills_offered; tier skills_offered
+        # into Critical (the committee's durable intent).
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", a_pattern_report())
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/ranking/run")
+        await client.put(
+            "/ranking/tiers",
+            json={
+                "tiers": [
+                    {"id": "tier-s", "label": "Critical", "dimensionKeys": ["skills_offered"], "ignore": False},
+                    {"id": "tier-a", "label": "Important", "dimensionKeys": ["participation_commitment"], "ignore": False},
+                    {"id": "ignore", "label": "Ignore", "dimensionKeys": [], "ignore": True},
+                ]
+            },
+        )
+
+        # Run 2 (pool changes): discovery drops skills_offered; reconcile is offered it
+        # and DECLINES — so it genuinely leaves the run (the gap the committee lives
+        # through). match maps participation_commitment to its prior key.
+        add_eligible(db, email="b@x.com", raw_hash="h2")
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", _only_participation())
+        provider.route(
+            "<prior_dimensions>",
+            DimensionMatchReport(
+                matches=[DimensionMatch(new_key="participation_commitment", old_key="participation_commitment")]
+            ),
+        )
+        provider.route(
+            "<dropped_dimensions>",
+            ReconcileReport(
+                verdicts=[ReconcileVerdict(old_key="skills_offered", revive=False, reasoning="pool flat on skills now")]
+            ),
+        )
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/ranking/run")
+
+        # After run 2: skills_offered is gone from the run entirely — the gap.
+        current2 = (await client.get("/ranking/current")).json()
+        assert "skills_offered" not in {d["key"] for d in current2["dimensions"]}
+
+        # Run 3 (pool changes again): discovery still only surfaces participation; this
+        # time reconcile REVIVES skills_offered — back after a gap.
+        add_eligible(db, email="c@x.com", raw_hash="h3")
+        provider.route("<essays>", an_essay_report())
+        provider.route("<applicant_pool>", _only_participation())
+        provider.route(
+            "<prior_dimensions>",
+            DimensionMatchReport(
+                matches=[DimensionMatch(new_key="participation_commitment", old_key="participation_commitment")]
+            ),
+        )
+        provider.route(
+            "<dropped_dimensions>",
+            ReconcileReport(
+                verdicts=[ReconcileVerdict(old_key="skills_offered", revive=True, reasoning="skills vary again")]
+            ),
+        )
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/ranking/run")
+
+        # skills_offered is back, flagged, and labelled REVIVED (seen in run 1, before
+        # the run-2 gap) — NOT new. participation_commitment stayed continuous → unflagged.
+        current = (await client.get("/ranking/current")).json()
+        assert "skills_offered" in {d["key"] for d in current["dimensions"]}
+        assert current["revivedDimensionKeys"] == ["skills_offered"]
+        assert current["newDimensionKeys"] == ["skills_offered"]  # flagged set holds it
+        # It restored its Critical placement across the gap (durable committee intent).
+        layout = (await client.get("/ranking/tiers")).json()["tiers"]
+        by_label = {t["label"]: t for t in layout}
+        assert by_label["Critical"]["dimensionKeys"] == ["skills_offered"]
+
+        # The ranking payload (what the tier-list UI reads) agrees, so the blue badge
+        # renders: revived on a working-tier chip, not gated to Ignore.
+        ranking = (await client.get("/ranking")).json()
+        assert ranking["revivedDimensionKeys"] == ["skills_offered"]
+
+
 @pytest.mark.anyio
 async def test_tiers_without_ignore_zone_means_everything_ignored() -> None:
     """Ignore is the absence of a placement, not a stored tier: a layout with only
