@@ -296,3 +296,129 @@ class ReconcileReport(BaseModel):
         default_factory=list,
         description="One verdict per dropped prior dimension you were shown.",
     )
+
+
+# --- Fan-out decomposition (SPEC "Fan-Out Redesign", Phase 3) ----------------
+#
+# K parallel discovery calls produce K reports that carve the same pool at
+# different, overlapping granularities. The decomposition step sees all K at once
+# and settles the FINEST set of axes that are each genuinely differentiating AND
+# mutually non-overlapping — collapsing re-carvings of one concept, keeping
+# genuinely distinct axes apart. Two-sided failure to guard: UNDER-merge (keep
+# nine "participation" slices → weight one concept 9×) and OVER-merge (collapse a
+# nurse's health-safety into a treasurer's finance → lose a real lever).
+
+
+class DecomposedDimension(BaseModel):
+    """One axis in the settled set, plus the provenance + reasoning that put it there.
+
+    Carries the same committee-facing fields as ``PoolDimension`` (this becomes the
+    stored dimension), but adds ``source_keys`` — every input dimension (across the K
+    reports) this axis subsumes — and ``decision`` reasoning, so a merge is auditable
+    and never silent (the reconcile pass's lesson: persist the reasoning, not just the
+    outcome). A kept-as-is axis has one source key; a merge has several.
+    """
+
+    key: str = Field(
+        description=(
+            "Stable snake_case identifier for the settled axis. Prefer REUSING an "
+            "input dimension's key when this axis is essentially that one; mint a new "
+            "snake_case key only for a genuinely new merged concept. Unique within the set."
+        )
+    )
+    name: str = Field(description="Short human-readable label for the committee UI.")
+    definition: str = Field(
+        description="1-2 neutral sentences defining what this settled axis measures, and which end is high.",
+    )
+    why_it_differentiates: str = Field(
+        description="Briefly, what varies across THIS pool on this axis.",
+    )
+    source_keys: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Every input dimension key (from any of the K reports) this settled axis "
+            "subsumes. One key = kept essentially as-is; several = a merge of "
+            "re-carvings of one concept. List ALL absorbed keys — this is the merge "
+            "audit trail and the only way a swallowed axis stays visible."
+        ),
+    )
+    from_committee_request: bool = Field(
+        default=False,
+        description=(
+            "True if ANY source dimension was committee-requested (a proposed/"
+            "favourited axis). A committee request must never be silently merged away, "
+            "so this flag rides through a merge — see decision reasoning if it was folded."
+        ),
+    )
+    decision: str = Field(
+        description=(
+            "One or two sentences on WHY these source axes are one settled axis (for a "
+            "merge, assert they would score the same applicant the same way) or why "
+            "this axis is kept distinct. The audit trail for over/under-merge review."
+        ),
+    )
+
+
+class DecompositionReport(BaseModel):
+    """The settled, finest-non-overlapping dimension set distilled from K discovery
+    reports (SPEC "Fan-Out Redesign", Phase 3), with the reasoning behind every merge.
+
+    Every input dimension key across the K reports MUST appear in exactly one settled
+    dimension's ``source_keys`` — nothing is silently dropped; a genuinely redundant
+    carving is merged (recorded), never deleted. The result feeds scoring once.
+    """
+
+    summary: str = Field(
+        description="2-4 neutral sentences on what most distinguishes strong from weak fit across this pool.",
+    )
+    dimensions: list[DecomposedDimension] = Field(
+        default_factory=list,
+        description=(
+            "The settled axes: the finest set that is each differentiating AND "
+            "non-overlapping. Split a concept only where a plausible applicant lands "
+            "high on one part and low on another; merge only true re-carvings."
+        ),
+    )
+
+
+class OverMergeChallenge(BaseModel):
+    """The Splitter's challenge to ONE merged settled axis: does this merge collapse
+    two genuinely-distinct axes (the OVER-merge failure)? (SPEC "Fan-Out Redesign",
+    D7 — the adversarial half of the bounded loop.)
+
+    The Splitter's job is the falsifiable keep-separate test: to overturn a merge it
+    must NAME an applicant (or applicant profile) who would land high on one absorbed
+    axis and low on another — that is the proof they measure different things. If it
+    cannot, the merge stands. Only merged axes (more than one source key) are
+    challengeable; a kept-as-is axis has nothing to split.
+    """
+
+    key: str = Field(description="The merged settled axis's key this challenge is about.")
+    overmerged: bool = Field(
+        description=(
+            "True ONLY if this merge collapsed genuinely-distinct axes and should be "
+            "split back. Default false: the merge stands unless you can name the "
+            "distinguishing applicant. Do not overturn a merge just because the "
+            "sources were worded differently."
+        ),
+    )
+    splitting_evidence: str = Field(
+        description=(
+            "If overmerged: name the applicant/profile who is HIGH on one absorbed "
+            "axis and LOW on another, and which source keys split apart. If not "
+            "overmerged: one sentence on why they really are one axis."
+        ),
+    )
+
+
+class OverMergeReport(BaseModel):
+    """The Splitter's full ballot over a decomposition's merges: one challenge per
+    merged axis. Like the reconcile ballot (not the match report), it returns an entry
+    for EVERY merge — the reasoning on both upheld and overturned merges is the audit
+    trail, and lets the Decider (or a human) see why each merge survived or was split.
+    """
+
+    challenges: list[OverMergeChallenge] = Field(
+        default_factory=list,
+        description="One challenge per merged axis (more than one source key) in the decomposition.",
+    )
