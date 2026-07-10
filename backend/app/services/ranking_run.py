@@ -202,6 +202,7 @@ def create_run(
     prior_favourited_keys: list[str] | None = None,
     match_audit: dict | None = None,
     reconcile_audit: dict | None = None,
+    fan_out_audit: dict | None = None,
 ) -> RankingRun:
     """Persist a freshly discovered pattern report as a new ranking run.
 
@@ -260,6 +261,11 @@ def create_run(
             # + offered/recovered counts, so over-recovery is inspectable. None when
             # the pass didn't run (first run / nothing dropped).
             "reconcile_audit": reconcile_audit,
+            # Fan-out audit (SPEC "Fan-Out Redesign", Phase 2): the K raw discovery
+            # reports this run produced, before the match/reconcile tail collapsed them
+            # to one. The input Phase 3's decomposition bake-off consumes. None on runs
+            # written before fan-out landed (single-discovery runs).
+            "fan_out_audit": fan_out_audit,
         },
     )
     db.add(run)

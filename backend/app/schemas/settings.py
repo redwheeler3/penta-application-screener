@@ -63,6 +63,12 @@ class AISettings(BridgeModel):
     discovery_model: str = Field(default=_SONNET)
     match_model: str = Field(default=_SONNET)
     reconcile_model: str = Field(default=_SONNET)
+    # Fan-Out Redesign (SPEC "Fan-Out Redesign", D6): how many parallel, fresh-context
+    # discovery calls one Rank runs. Their cross-call variation is the diversity a later
+    # decomposition step pares to the finest non-overlapping set. Default 4 — discovery
+    # is uncached, so K carries a real linear cost (see the cost model note); kept small
+    # and fixed, not adaptive. K=1 degenerates to the single-discovery behaviour.
+    discovery_fan_out: int = Field(default=4, ge=1, le=10)
     spending_cap_usd: float = Field(default=1.0, ge=0)
     # How many applications to screen concurrently. The model calls are the slow,
     # blocking part; ~300 applicants finish in seconds at this width. The Bedrock
