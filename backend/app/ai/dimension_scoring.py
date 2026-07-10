@@ -54,6 +54,7 @@ from app.ai.schemas import (
 from app.db.models import Application, ApplicationAIResult, ApplicationStatus
 from app.schemas.settings import AppSettings
 from app.services.application_import import extract_essays
+from app.services.cost_report import recent_scoring_fresh_usd
 from app.services.ranking_run import current_dimension_report, get_current_run
 
 KIND_PREFIX = "dimension_scoring"
@@ -229,34 +230,84 @@ def _per_candidate_input_tokens(db: Session, report: PoolDimensionReport | None)
 def estimate_dimension_scoring(
     db: Session, settings: AppSettings
 ) -> dict[str, object]:
-    """Pre-run scoring estimate as a full-pool ceiling: price as if every eligible
-    candidate scores every dimension in one call.
+    """Pre-run scoring estimate that respects the per-dimension cache.
 
     Models the real cost shape of a scoring call: a per-candidate INPUT cost (the
     shared facts + essays, sent once per call — measured from a real prompt) plus a
     per-DIMENSION OUTPUT cost (each dimension's score + rationale + evidence, learned
-    from usage) times the dimension count. This is immune to carry-forward skew: a
-    past run that scored only one uncached dimension per candidate no longer inflates
-    the estimate (the old per-row average treated the whole shared prompt as a single
-    dimension's cost). Runs before discovery, so it prices the worst case — every
-    candidate scores every dimension; carry-forward reuse brings the actual under it.
+    from usage). Input is immune to carry-forward skew because it's measured from a
+    real built prompt, not the split per-dimension rows.
+
+    History-first, cache-aware fallback. The old estimate priced the whole pool as if
+    nothing were cached — a ~10× over-estimate on a stable-pool re-run (the
+    per-(candidate,dimension) cache reuses almost everything) that wrongly tripped the
+    spending cap. Two better signals, in priority order:
+
+    1. **Measured (preferred):** a recency-weighted average of what recent Rank runs
+       *actually spent* on fresh scoring (``recent_scoring_fresh_usd``). A past run's
+       stored scoring ``fresh_usd`` already captures the true re-run shape — reuse plus
+       whatever discovery newly minted and scored — so history is the honest predictor,
+       no invented churn constant. Used whenever any prior Rank recorded a scoring pass.
+    2. **Cache-aware count (fallback, no history yet):** count the actually-uncached
+       (candidate, dimension) pairs against the current run's dimensions, exactly as
+       ``_to_score_dimensions`` does at run time (the same count-the-uncached approach
+       the shared ``estimate_cost`` engine uses for per-application passes).
+    3. **First-run ceiling (no report at all):** every candidate × assumed dims, nothing
+       cached — the genuine worst case before discovery has run once.
+
+    Caveat on the measured path: it reads only the ledger, so it can't see a *current*
+    cache change (e.g. a just-synced batch of new applicants that will score fresh) —
+    it under-predicts until the next run records the new cost. Fine for the dominant
+    locked-pool re-run case; if the pool-changed case proves to underestimate in
+    practice, blend in the cache-aware count then (measure-first).
     """
     model_id = settings.ai.dimension_scoring_model
     candidates = applications_to_score(db)
     run = get_current_run(db)
     report = current_dimension_report(run) if run is not None else None
-    dims_per_candidate = len(report.dimensions) if report else ASSUMED_DIMENSIONS_FIRST_RUN
 
     input_tokens = _per_candidate_input_tokens(db, report)
-    output_tokens = _avg_output_tokens_per_dimension(db, model_id) * dims_per_candidate
-    per_candidate = cost_usd(
-        model_id, Usage(input_tokens=input_tokens, output_tokens=output_tokens)
-    )
+    output_per_dim = _avg_output_tokens_per_dimension(db, model_id)
+
+    def _call_cost(uncached_dims: int) -> float:
+        # One call: shared input once + output per uncached dimension.
+        return cost_usd(
+            model_id,
+            Usage(input_tokens=input_tokens, output_tokens=output_per_dim * uncached_dims),
+        )
+
+    if report is None:
+        # First run: no dimensions discovered yet and nothing cached → the original
+        # ceiling (every candidate scores every assumed dimension).
+        per_candidate = _call_cost(ASSUMED_DIMENSIONS_FIRST_RUN)
+        return {
+            "total": len(candidates),
+            "to_analyze": len(candidates),
+            "cached": 0,
+            "estimated_usd": round(per_candidate * len(candidates), 4),
+        }
+
+    # Count the real uncached work per candidate against the current dims (also drives
+    # the honest cached/to_analyze counts the UI shows). A fully-cached candidate makes
+    # no call, matching run-time behavior.
+    count_based = 0.0
+    fully_cached = 0
+    for application in candidates:
+        to_score, _cached, _saved = _to_score_dimensions(db, application, report, model_id)
+        if not to_score:
+            fully_cached += 1
+            continue
+        count_based += _call_cost(len(to_score))
+
+    # Prefer the measured predictor when we have run history; else the cache-aware count.
+    measured = recent_scoring_fresh_usd(db)
+    estimated = measured if measured is not None else count_based
+
     return {
         "total": len(candidates),
-        "to_analyze": len(candidates),  # ceiling: assume none cached
-        "cached": 0,
-        "estimated_usd": round(per_candidate * len(candidates), 4),
+        "to_analyze": len(candidates) - fully_cached,
+        "cached": fully_cached,
+        "estimated_usd": round(estimated, 4),
     }
 
 

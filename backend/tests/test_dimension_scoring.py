@@ -239,3 +239,86 @@ def test_ceiling_estimate_prices_per_candidate_call() -> None:
     expected = round(per_candidate * 2, 4)
     assert est["estimated_usd"] == expected
     assert est["to_analyze"] == 2  # candidates (the ceiling assumes none cached)
+
+
+def test_rerun_estimate_cache_aware_fallback_when_no_history() -> None:
+    # Regression for the cap-tripping bug. With a current run whose dimensions are all
+    # cached but NO cost-ledger history yet, the estimate falls back to the cache-aware
+    # count: fully-cached candidates cost 0, so it's far below the old whole-pool
+    # ceiling (which priced every candidate × every dim as if nothing were cached).
+    from app.ai.dimension_scoring import (
+        ASSUMED_DIMENSIONS_FIRST_RUN,
+        _avg_output_tokens_per_dimension,
+        _per_candidate_input_tokens,
+        estimate_dimension_scoring,
+    )
+    from app.ai.pricing import cost_usd
+    from app.ai.provider import Usage
+    from app.services.ranking_run import create_run
+
+    db = make_db()
+    app1 = add_eligible(db, email="a@x.com", raw_hash="h1")
+    app2 = add_eligible(db, email="b@x.com", raw_hash="h2")
+    settings = AppSettings()
+    keys = ["community", "skills", "participation"]
+    report = report_with(keys)
+
+    create_run(
+        db, report=report, settings=settings,
+        model_id=settings.ai.dimension_scoring_model, narrative=None,
+        discovery_cost_usd=0.0,
+    )
+    provider = MockProvider()
+    provider.queue(a_scoring_report(keys))
+    provider.queue(a_scoring_report(keys))
+    run_scores(db, provider, [app1, app2], report, settings)
+    # NOTE: run_scores does not write a RunCostLedger row (that happens in the API
+    # stream), so recent_scoring_fresh_usd() is None here → cache-aware fallback.
+
+    est = estimate_dimension_scoring(db, settings)
+
+    # Everyone fully cached against the current dims → 0 uncached work → $0 estimate.
+    assert est["cached"] == 2
+    assert est["to_analyze"] == 0
+    assert est["estimated_usd"] == 0.0
+    # And strictly below the old ceiling (every candidate × assumed dims, none cached).
+    out_per_dim = _avg_output_tokens_per_dimension(db, settings.ai.dimension_scoring_model)
+    inp = _per_candidate_input_tokens(db, report)
+    ceiling = cost_usd(
+        settings.ai.dimension_scoring_model,
+        Usage(inp, out_per_dim * ASSUMED_DIMENSIONS_FIRST_RUN),
+    ) * 2
+    assert est["estimated_usd"] < ceiling
+
+
+def test_rerun_estimate_prefers_measured_history() -> None:
+    # When prior Rank runs recorded actual fresh scoring spend, the estimate uses a
+    # recency-weighted average of that measured cost — the honest predictor — rather
+    # than a reconstructed count.
+    from app.ai.dimension_scoring import estimate_dimension_scoring
+    from app.services.cost_report import record_run_cost
+    from app.services.ranking_run import create_run
+
+    db = make_db()
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    settings = AppSettings()
+    report = report_with(["community", "skills"])
+    create_run(
+        db, report=report, settings=settings,
+        model_id=settings.ai.dimension_scoring_model, narrative=None,
+        discovery_cost_usd=0.0,
+    )
+
+    def rank_row(scoring_fresh: float) -> None:
+        record_run_cost(db, kind="rank", passes=[
+            {"label": "Dimension scoring", "fresh_usd": scoring_fresh, "fresh_calls": 1,
+             "cached_count": 0, "cached_saved_usd": 0.0},
+        ])
+
+    # Two recorded runs: older $0.40, newer $0.10. Recency weights (2×newer + 1×older)
+    # / 3 = (2*0.10 + 1*0.40)/3 = 0.20.
+    rank_row(0.40)
+    rank_row(0.10)
+
+    est = estimate_dimension_scoring(db, settings)
+    assert est["estimated_usd"] == round((2 * 0.10 + 1 * 0.40) / 3, 4)

@@ -210,3 +210,47 @@ def last_runs_report(db: Session) -> LastRunsReport:
     cache savings. Either is null if that run type hasn't completed since ledgering
     began."""
     return LastRunsReport(screen=_last_run(db, "screen"), rank=_last_run(db, "rank"))
+
+
+# How many recent Rank runs to average when predicting a re-run's fresh scoring cost.
+_SCORING_HISTORY_WINDOW = 5
+
+
+def recent_scoring_fresh_usd(db: Session, pass_label: str = "Dimension scoring") -> float | None:
+    """A recency-weighted average of what recent Rank runs actually spent on FRESH
+    dimension scoring — the measured predictor of a re-run's scoring cost.
+
+    A past run's stored ``fresh_usd`` for the scoring pass already captures the real
+    shape of a re-run: carry-forward reuse (cached, spent nothing) plus whatever
+    discovery newly minted and scored fresh. So the best estimate of the next re-run's
+    scoring cost is "what recent re-runs actually spent," not a reconstructed count with
+    a guessed churn allowance. Weighted toward the most recent run because the earliest
+    runs (fresh pool, everything scored) cost far more than a settled re-run and
+    shouldn't dominate.
+
+    Returns None when no Rank run has recorded a scoring pass yet (first-ever run) —
+    the caller falls back to the cache-aware count. Only reads the ledger (the honest
+    per-run source); does not see the *current* cache state, so a pool that just grew
+    is under-predicted until the next run records it (documented caveat, not a blend).
+    """
+    rows = list(
+        db.scalars(
+            select(RunCostLedger)
+            .where(RunCostLedger.kind == "rank")
+            .order_by(RunCostLedger.id.desc())
+            .limit(_SCORING_HISTORY_WINDOW)
+        )
+    )
+    # rows are newest→oldest; pull each run's scoring-pass fresh spend.
+    fresh: list[float] = []
+    for row in rows:
+        for p in row.passes:
+            if p["label"] == pass_label:
+                fresh.append(float(p.get("fresh_usd") or 0.0))
+                break
+    if not fresh:
+        return None
+    # Linear recency weights: newest gets the largest weight (len), oldest gets 1.
+    weights = list(range(len(fresh), 0, -1))
+    weighted = sum(f * w for f, w in zip(fresh, weights, strict=True))
+    return weighted / sum(weights)
