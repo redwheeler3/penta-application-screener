@@ -101,6 +101,9 @@ class ReconcileAuditResponse(ResponseModel):
     offered_count: int
     recovered_count: int
     recovery_rate: float | None = None
+    # The reconcile pass's free-text reasoning (markdown), for the Insights panel.
+    # Null on runs written before narrative capture.
+    narrative: str | None = None
 
 
 class RankEstimateBreakdown(ResponseModel):

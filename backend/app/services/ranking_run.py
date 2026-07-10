@@ -162,13 +162,19 @@ def revive_dimensions(
     return report.model_copy(update={"dimensions": [*report.dimensions, *revived]})
 
 
-def reconcile_audit_payload(ballot: list[dict], revive_keys: list[str]) -> dict | None:
+def reconcile_audit_payload(
+    ballot: list[dict], revive_keys: list[str], narrative: str | None = None
+) -> dict | None:
     """Shape the reconcile pass's full ballot for storage on the run, or None when the
     pass didn't run (first run / nothing dropped — an empty ballot).
 
     Stores every verdict (both revivals and rejections, per SPEC RQ8b), the offered
     and recovered counts, so ``reconcile_audit_view`` can derive the recovery rate —
     the over-recovery smell. A zero-recovery run still writes a row (healthy signal).
+
+    ``narrative`` is the model's free-text reasoning from the pass, persisted so the
+    Insights tab can render it later (the live stream is gone by then). Mirrors the
+    match pass's stored ``match_narrative``.
     """
     if not ballot:
         return None
@@ -176,6 +182,7 @@ def reconcile_audit_payload(ballot: list[dict], revive_keys: list[str]) -> dict 
         "verdicts": ballot,  # [{old_key, revive, reasoning}]
         "offered_count": len(ballot),
         "recovered_count": len(revive_keys),
+        "narrative": narrative,
     }
 
 
@@ -409,6 +416,9 @@ def reconcile_audit_view(run: RankingRun) -> dict | None:
         # Fraction of dropped priors reconcile revived. None only if somehow nothing
         # was offered (defensive; a stored audit always has offered > 0).
         "recovery_rate": round(recovered / offered, 4) if offered else None,
+        # The model's free-text reasoning (markdown), for the Insights panel. None on
+        # runs written before narrative capture.
+        "narrative": audit.get("narrative"),
     }
 
 

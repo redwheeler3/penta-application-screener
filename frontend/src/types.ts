@@ -322,6 +322,9 @@ export type ReconcileAuditResponse = {
   // Fraction of dropped priors revived. A persistently high rate is the over-recovery
   // smell — reconcile reviving too readily under rationalization pressure.
   recoveryRate: number | null;
+  // The model's free-text reasoning (markdown) from the reconcile pass. Null on runs
+  // written before narrative capture.
+  narrative: string | null;
 };
 
 // A notification toast. Success toasts auto-dismiss; error toasts persist until

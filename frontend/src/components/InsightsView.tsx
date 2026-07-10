@@ -16,7 +16,7 @@ import { ReconcileAuditPanel } from "./ReconcileAuditPanel";
 // as SUBTABS (one at a time) rather than stacked panels — the tab will hold four
 // concerns by the end of M13, and subtabs keep the page short and scannable as they
 // land, instead of a growing scroll of accordions.
-type InsightsTab = "discovery" | "carryForward" | "cost";
+type InsightsTab = "discovery" | "carryForward" | "reconcile" | "cost";
 
 export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNode {
   const [tab, setTab] = useState<InsightsTab>(props.run ? "discovery" : "cost");
@@ -24,6 +24,7 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
     ? [
         { id: "discovery", label: "Pattern discovery" },
         { id: "carryForward", label: "Carry-forward" },
+        { id: "reconcile", label: "Reconcile" },
         { id: "cost", label: "Cost" },
       ]
     : [{ id: "cost", label: "Cost" }];
@@ -54,16 +55,13 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
         {activeTab === "discovery" && props.run ? (
           <DiscoveryPanel run={props.run} />
         ) : activeTab === "carryForward" ? (
-          <>
-            {/* Two sides of "what changed across runs": the match pass carries
-                surviving dimensions forward; the reconcile pass revives dropped ones
-                the pool still varies on. Shown together under one subtab. */}
-            <MatchAuditPanel />
-            <div className="insights-subsection">
-              <h4 className="insights-subsection-title">Reconcile (dropped-dimension second look)</h4>
-              <ReconcileAuditPanel />
-            </div>
-          </>
+          // How surviving dimensions carry forward from the prior run (the 1:1 match).
+          <MatchAuditPanel />
+        ) : activeTab === "reconcile" ? (
+          // The dropped-dimension second look: which axes the pool still varies on get
+          // revived, with the model's reasoning. Its own subtab (was folded under
+          // Carry-forward) now that it carries a reasoning narrative of its own.
+          <ReconcileAuditPanel />
         ) : (
           <CostPanel />
         )}

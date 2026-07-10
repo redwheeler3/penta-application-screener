@@ -306,8 +306,13 @@ def test_reconcile_audit_payload_records_ballot_and_counts() -> None:
         {"old_key": "x", "revive": True, "reasoning": "pool varies"},
         {"old_key": "y", "revive": False, "reasoning": "flat"},
     ]
-    payload = reconcile_audit_payload(ballot, ["x"])
-    assert payload == {"verdicts": ballot, "offered_count": 2, "recovered_count": 1}
+    payload = reconcile_audit_payload(ballot, ["x"], "The pool still varies on x.")
+    assert payload == {
+        "verdicts": ballot,
+        "offered_count": 2,
+        "recovered_count": 1,
+        "narrative": "The pool still varies on x.",
+    }
 
 
 def test_reconcile_audit_payload_none_when_pass_skipped() -> None:
