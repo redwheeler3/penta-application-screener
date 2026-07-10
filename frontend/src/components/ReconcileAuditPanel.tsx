@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { fetchReconcileAudit } from "../api";
 import type { ReconcileAuditResponse } from "../types";
 
@@ -100,6 +101,17 @@ function ReconcileAuditBody(props: { audit: ReconcileAuditResponse }): ReactNode
           ))}
         </tbody>
       </table>
+
+      {audit.narrative ? (
+        <div className="insights-narrative">
+          <span className="insights-label">Reconcile reasoning</span>
+          {/* Reuse the .ai-narrative markdown box (same as the match/screening
+              narratives) so the reconcile reasoning renders as markdown, not raw text. */}
+          <div className="ai-narrative">
+            <ReactMarkdown>{audit.narrative}</ReactMarkdown>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

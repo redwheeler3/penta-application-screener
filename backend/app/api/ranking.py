@@ -502,9 +502,7 @@ def rank_run(
             return
         (
             report, narrative, discovery_cost, new_to_old, match_narrative, match_cost,
-            # reconcile's narrative is streamed live + its per-verdict reasoning is in the
-            # audit, so the returned narrative isn't re-persisted here.
-            revive_keys, reconcile_ballot, _reconcile_narrative, reconcile_cost,
+            revive_keys, reconcile_ballot, reconcile_narrative, reconcile_cost,
         ) = criteria_outcome["ok"]
         # Audit trail for the carry-forward: what discovery ACTUALLY emitted (its own
         # keys, before adopt_matched_keys rewrites matched ones to prior keys) and how
@@ -540,7 +538,9 @@ def rank_run(
         # carried-forward key: carry_forward_layout restores its placement and scoring
         # reuses its cached scores. reconcile_audit records the full ballot separately.
         report = revive_dimensions(report, revive_keys, match_history)
-        reconcile_audit = reconcile_audit_payload(reconcile_ballot, revive_keys)
+        reconcile_audit = reconcile_audit_payload(
+            reconcile_ballot, revive_keys, reconcile_narrative
+        )
         # Carry committee intent forward across ALL runs: restore each key's most-recent
         # tier placement, and flag every dimension absent from the immediately-prior run
         # (new OR revived) for triage — the new-vs-revived label is derived at read time.
