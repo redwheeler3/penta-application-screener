@@ -45,25 +45,32 @@ dozen lines and an afternoon of runs.
 
 ## What the data said
 
-Cumulative distinct dimensions across 8 unchanged-pool runs:
+Cumulative distinct dimensions across 10 unchanged-pool runs:
 
-| Run | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
-|-----|---|---|---|---|---|---|---|---|
-| **Union** | 13 | 17 | 21 | 24 | 27 | 27 | 30 | 33 |
-| **New this run** | 13 | +4 | +4 | +3 | +3 | +0 | +3 | +3 |
+| Run | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|-----|---|---|---|---|---|---|---|---|---|----|
+| **Union** | 13 | 17 | 21 | 24 | 27 | 27 | 30 | 33 | 34 | 35 |
+| **New this run** | 13 | +4 | +4 | +3 | +3 | +0 | +3 | +3 | +1 | +1 |
 
-**It does not converge — it creeps, roughly linearly.** A converging process
-would trend toward +0 new dimensions per run; this held around +3 to +4 and kept
-climbing. Two runs (4 and 6) *looked* like they might be leveling off — and both
-times I was tempted to call a ceiling. Both times the next run resumed the climb.
-(Logged as its own lesson: on a noisy signal, a single flat point means nothing —
-wait for the second.)
+**It does not usefully converge — it accumulates for a long time before
+plateauing.** A cleanly converging process would drop toward +0 new dimensions
+within a run or two; this held +3 to +4 through run 8 and only settled to +1/+1
+by runs 9–10, plateauing around 35 distinct dimensions — for a pool a human would
+describe with maybe 20. It *is* eventually finite, but "eventually, after ten
+runs" is not the stable set the accumulation idea assumed.
+
+The plateau also came with a discipline lesson worth keeping: runs 4 and 6 each
+dipped (to +3, then +0) and *looked* like the ceiling — both times I was tempted
+to call it, and both times the next run resumed the climb. Only the **sustained**
++1/+1 at runs 9–10 (two points, not one) was real deceleration. On a noisy
+signal, a single flat point means nothing; wait for the second. (I mis-called it
+twice before trusting it — which is itself the point.)
 
 The mechanism was visible in the details: the per-run *count* was stable (~24),
 which felt like settling, but it was a **rotating cast** — each run swapped a few
 dimensions for differently-grained versions of the same concepts. "Participation
 / governance" got sliced into more and more overlapping axes as runs accumulated
-(2 → 9 by run 8): `participation_commitment_depth`,
+(2 → 8-9 across the runs): `participation_commitment_depth`,
 `governance_participation_commitment`, `maintenance_participation_commitment`,
 `meeting_facilitation_skills`, `proactive_initiative`… all real, all overlapping.
 Discovery wasn't finding *new* things about the pool; it was **re-carving the
