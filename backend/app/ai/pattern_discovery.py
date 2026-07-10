@@ -1,10 +1,12 @@
 """Pattern discovery: the pool-level pass that finds how THIS applicant pool varies
 (SPEC "Pattern Discovery And Dimension Scoring").
 
-A single synthesis call over the whole eligible pool, producing run-scoped output
-(the differentiating dimensions), so it bypasses the ``screen_applications`` engine
-and the per-application cache. It reads each candidate's essay-analysis report
-(preferred) plus a trimmed view of their raw essays, on the synthesis model.
+K parallel synthesis calls over the whole eligible pool (``discover_patterns_fanout``,
+SPEC "Fan-Out Redesign"), producing run-scoped output (the differentiating dimensions),
+so it bypasses the ``screen_applications`` engine and the per-application cache. Each
+reads each candidate's essay-analysis report (preferred) plus a trimmed view of their
+raw essays, on the synthesis model. K=1 is a single call; the K reports' cross-call
+variation is the diversity a later decomposition step pares to the finest set.
 
 The model describes the axes, never ranks anyone; scoring and ranking build on top.
 """
@@ -148,32 +150,94 @@ def estimate_discovery(applications: list[Application], settings: AppSettings) -
     return cost_usd(settings.ai.discovery_model, usage)
 
 
-def discover_patterns(
+def _discover_from_prompt(
+    provider: AIProvider,
+    prompt: str,
+    settings: AppSettings,
+    *,
+    on_delta: DeltaSink | None = None,
+) -> tuple[PoolDimensionReport, str | None, float]:
+    """Make one discovery call from an already-built prompt. Does NO DB work, so it is
+    safe to call on a worker thread (the fan-out builds the prompt once on the calling
+    thread, then runs this K times in the pool — see ``run_in_pool``'s session-free
+    contract). The single place that knows how to shape + price a discovery call.
+    """
+    result = provider.structured_output(
+        model_id=settings.ai.discovery_model,
+        schema=PoolDimensionReport,
+        prompt=prompt,
+        system_prompt=SYSTEM_PROMPT,
+        on_delta=on_delta,
+    )
+    return result.output, result.narrative, cost_usd(result.model_id, result.usage)
+
+
+@dataclass(frozen=True)
+class FanOutDiscovery:
+    """The result of K parallel discovery calls (SPEC "Fan-Out Redesign", D6).
+
+    ``reports`` are the K fresh-context discoveries whose cross-call variation is the
+    diversity a later decomposition step pares to the finest non-overlapping set. Order
+    is not meaningful (calls complete out of order). ``narrative`` is the live reasoning
+    of ONE representative call (index 0) — the others run silently, since interleaving K
+    streams would be unreadable. ``cost_usd`` sums all K priced calls.
+    """
+
+    reports: list[PoolDimensionReport]
+    narrative: str | None
+    cost_usd: float
+
+
+def discover_patterns_fanout(
     db: Session,
     provider: AIProvider,
     *,
     applications: list[Application],
     settings: AppSettings,
+    k: int,
     seeds: DiscoverySeeds | None = None,
     on_delta: DeltaSink | None = None,
-) -> tuple[PoolDimensionReport, str | None, float]:
-    """Run the single pool-level discovery call on the synthesis model. Returns the
-    report, the reasoning narrative (kept for the debug view), and the priced cost.
+) -> FanOutDiscovery:
+    """Run K parallel, identical-prompt discovery calls and collect their reports.
 
-    ``seeds`` are committee-requested axes to strongly consider (favourited +
-    proposed); the model flags any dimension it creates from one so the caller can
-    auto-favourite it. None/empty means a fully blind discovery (the default).
+    The K calls share ONE prompt, built once here on the calling thread (a single
+    pool-digest DB read); the fan-out itself does NO DB work, so the worker calls are
+    session-free as ``run_in_pool`` requires. Their diversity comes from the model's
+    nondeterminism across fresh contexts (the same variation the convergence experiment
+    measured), not from differing inputs — see D6.
 
-    ``on_delta``, when given, streams the model's reasoning text as it generates —
-    the live "thinking" for this otherwise-opaque multi-minute call. The result is
-    identical either way.
+    ``k`` ≥ 1; k=1 is a single call (degenerate fan-out). ``on_delta`` streams only the
+    first call's reasoning as the live "thinking"; the rest are silent to keep the
+    stream coherent. A worker that raises propagates (the caller treats a failed
+    criteria phase as fatal, same as the single-call path).
     """
-    model_id = settings.ai.discovery_model
-    result = provider.structured_output(
-        model_id=model_id,
-        schema=PoolDimensionReport,
-        prompt=build_prompt(db, applications, seeds=seeds),
-        system_prompt=SYSTEM_PROMPT,
-        on_delta=on_delta,
+    from app.ai.analysis import run_in_pool
+
+    # Build the prompt ONCE, here on the calling thread (a single pool-digest DB read).
+    # The K worker calls then share it and touch no DB — satisfying run_in_pool's
+    # session-free contract (SQLAlchemy sessions aren't thread-safe) and rendering the
+    # digest once instead of K times.
+    prompt = build_prompt(db, applications, seeds=seeds)
+
+    def _call(index: int) -> tuple[PoolDimensionReport, str | None, float]:
+        # Only worker 0 streams; interleaving K reasoning traces is unreadable.
+        return _discover_from_prompt(
+            provider, prompt, settings, on_delta=on_delta if index == 0 else None
+        )
+
+    reports: list[PoolDimensionReport] = []
+    narratives: dict[int, str | None] = {}
+    total_cost = 0.0
+    for index, outcome, error in run_in_pool(
+        list(range(k)), call=_call, max_workers=min(k, settings.ai.max_workers)
+    ):
+        if error is not None:
+            raise error
+        report, narrative, cost = outcome
+        reports.append(report)
+        narratives[index] = narrative
+        total_cost += cost
+
+    return FanOutDiscovery(
+        reports=reports, narrative=narratives.get(0), cost_usd=total_cost
     )
-    return result.output, result.narrative, cost_usd(result.model_id, result.usage)

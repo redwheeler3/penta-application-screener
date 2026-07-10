@@ -353,6 +353,40 @@ async def test_rank_chain_runs_essays_criteria_scores() -> None:
 
 
 @pytest.mark.anyio
+async def test_rank_runs_k_parallel_discoveries_and_persists_reports() -> None:
+    # Fan-Out Redesign Phase 2: a Rank runs K (default 4) parallel discovery calls and
+    # persists all K raw reports under criteria.fan_out_audit — the input Phase 3's
+    # decomposition step consumes. MockProvider returns the routed report for every
+    # discovery call (same prompt), so we verify the COUNT and persistence here;
+    # cross-call diversity needs real Bedrock (the Phase 3 bake-off).
+    from app.schemas.settings import AISettings
+    from app.services.ranking_run import get_current_run
+
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    a = add_eligible(db, email="a@x.com", raw_hash="h1")
+    provider.route("<essays>", an_essay_report())
+    provider.route("<applicant_pool>", a_pattern_report())
+    provider.route(f'"applicant_id": {a.id}', _scoring_report(commitment=0.5, skills=0.5))
+
+    k = AISettings().discovery_fan_out  # the shipped default (4)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await stream_events(client, "/ranking/run")
+
+    run = get_current_run(db)
+    audit = (run.criteria or {}).get("fan_out_audit")
+    assert audit is not None, "fan_out_audit must be persisted"
+    assert audit["k"] == k
+    assert len(audit["reports"]) == k
+    # Each persisted report round-trips to a real dimension report.
+    assert all(r["dimensions"] for r in audit["reports"])
+    # K discovery calls actually hit the provider (K + essays + scoring). Discovery
+    # calls carry the pool block; count them to prove the fan-out really fanned out.
+    discovery_calls = [c for c in provider.calls if "<applicant_pool>" in c.prompt]
+    assert len(discovery_calls) == k
+
+
+@pytest.mark.anyio
 async def test_criteria_phase_streams_thinking_deltas() -> None:
     # The discovery (and match) call streams the model's reasoning as
     # criteria_thinking events, so the UI can show live "thinking" during the

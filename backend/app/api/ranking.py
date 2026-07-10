@@ -46,7 +46,7 @@ from app.ai.essay_analysis import (
 )
 from app.ai.pattern_discovery import (
     DiscoverySeeds,
-    discover_patterns,
+    discover_patterns_fanout,
     eligible_applications,
     estimate_discovery,
 )
@@ -274,7 +274,10 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     """
     essays = estimate_essay_analysis(db, settings)
     pool = eligible_applications(db)
-    discovery_usd = estimate_discovery(pool, settings)
+    # Fan-out: K parallel discovery calls (SPEC "Fan-Out Redesign", D6), each priced
+    # like the single call. Discovery is uncached, so K multiplies straight through —
+    # the bigger-than-expected half of the fan-out cost (see the cost-model note).
+    discovery_usd = estimate_discovery(pool, settings) * settings.ai.discovery_fan_out
     # A match pass runs only when there is a prior run to match against.
     has_prior = get_current_run(db) is not None
     match_usd = estimate_match(settings) if has_prior else 0.0
@@ -431,12 +434,21 @@ def rank_run(
 
         def do_criteria() -> None:
             try:
-                # Pass 1: re-discovery, blind except for the committee's seeds. With
-                # no seeds this is fully blind, as before.
-                report, narrative, discovery_cost = discover_patterns(
-                    db, provider, applications=pool, settings=settings, seeds=seeds,
-                    on_delta=on_delta,
+                # Pass 1: K-parallel fresh-context re-discovery (SPEC "Fan-Out
+                # Redesign", D6), blind except for the committee's seeds. The K reports'
+                # cross-call variation is the diversity Phase 3's decomposition step will
+                # pare down; for now (Phase 2) we persist all K as an audit trail and
+                # feed ONE primary report through the existing match/reconcile tail so
+                # the app still ranks end-to-end. Primary = the largest report (most
+                # dimensions), an arbitrary-but-sensible pick until decomposition lands.
+                fan_out = discover_patterns_fanout(
+                    db, provider, applications=pool, settings=settings,
+                    k=settings.ai.discovery_fan_out, seeds=seeds, on_delta=on_delta,
                 )
+                fan_out_reports = fan_out.reports
+                discovery_cost = fan_out.cost_usd
+                report = max(fan_out_reports, key=lambda r: len(r.dimensions))
+                narrative = fan_out.narrative
                 # Pass 2: identity-match new dimensions onto ALL prior dimensions (not
                 # just the last run) so a re-surfaced concept re-adopts its key rather
                 # than minting a new one — keeping the key count converging and reusing
@@ -471,7 +483,7 @@ def rank_run(
                 criteria_outcome["ok"] = (
                     report, narrative, discovery_cost, new_to_old, match_narrative,
                     match_cost, revive_keys, reconcile_ballot, reconcile_narrative,
-                    reconcile_cost,
+                    reconcile_cost, fan_out_reports,
                 )
             except Exception as exc:
                 criteria_outcome["error"] = exc
@@ -503,7 +515,17 @@ def rank_run(
         (
             report, narrative, discovery_cost, new_to_old, match_narrative, match_cost,
             revive_keys, reconcile_ballot, reconcile_narrative, reconcile_cost,
+            fan_out_reports,
         ) = criteria_outcome["ok"]
+        # Fan-out audit (SPEC "Fan-Out Redesign", Phase 2): persist every one of the K
+        # raw discovery reports so Phase 3's decomposition step (and its bake-off) has
+        # real fresh fan-out input to work from, not just the historical fixture. This
+        # is the ONLY place the K reports exist — the match/reconcile tail below collapses
+        # them to the one primary report. Stored as plain dicts under criteria.
+        fan_out_audit = {
+            "k": len(fan_out_reports),
+            "reports": [r.model_dump(mode="json") for r in fan_out_reports],
+        }
         # Audit trail for the carry-forward: what discovery ACTUALLY emitted (its own
         # keys, before adopt_matched_keys rewrites matched ones to prior keys) and how
         # the match pass mapped it. Without this the stored report only shows the
@@ -561,6 +583,7 @@ def rank_run(
             prior_favourited_keys=prior_favourites,
             match_audit=match_audit,
             reconcile_audit=reconcile_audit,
+            fan_out_audit=fan_out_audit,
         )
         total_cost += discovery_cost + match_cost + reconcile_cost
         yield emit(
