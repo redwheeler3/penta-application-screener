@@ -138,4 +138,7 @@ told me the exact property the union step must have.
 
 For the full build-facing detail (the fix candidates, the fan-out design seams,
 the badge logic this experiment also validated), see the reconcile section of
-`SPEC.md`. This document is the story; that one is the blueprint.
+`SPEC.md`. This document is the story; that one is the blueprint. For the design
+judgment *behind* the feature this experiment tested — requirements-first, the
+escalation ladder, naming as a design tool — see the companion,
+[designing-an-ai-feature.md](designing-an-ai-feature.md).
