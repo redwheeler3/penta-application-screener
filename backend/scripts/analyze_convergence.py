@@ -17,6 +17,10 @@ Columns/sections it prints, per run and cumulatively:
     a converging set adds few/no new keys per run; a creeping set keeps growing)
   - reconcile ballot: offered / recovered / rate (over-recovery smell)
   - match carry-forward rate (per the existing match_audit)
+  - overlap readout (the Fan-Out Redesign judge): how many of the cumulative-union
+    dimensions have score vectors that correlate above threshold — the redundancy
+    the creep produced, measured. Delegated to ``scripts.dimension_overlap`` (O2);
+    this script only prints the summary line so both stay in sync.
 
 This is an analysis tool, not app code — it computes nothing the app relies on,
 so it stays deliberately simple and prints a human-readable report.
@@ -28,6 +32,7 @@ from sqlalchemy import select
 
 from app.db.models import RankingRun
 from app.db.session import SessionLocal
+from scripts.dimension_overlap import load_score_vectors, overlap_report
 
 
 def _dim_keys(run: RankingRun) -> list[str]:
@@ -129,6 +134,26 @@ def main() -> None:
         print("CONVERGENCE: need ≥2 runs to judge. Re-rank the unchanged pool and re-run this.")
     print(f"  Total distinct keys ever seen across {len(runs)} run(s): {len(union)}")
     print(f"{'=' * 70}\n")
+
+    # Overlap: the redundancy the creep produced, made measurable (Fan-Out Redesign
+    # judge, O2). Correlates score vectors of the cumulative-union dimensions; the
+    # count of flagged pairs is the "how much did creep re-carve the same axis?"
+    # number the sequential chain could never see. Zero score rows ⇒ skip (a run
+    # discovered but never scored).
+    db = SessionLocal()
+    try:
+        vectors = load_score_vectors(db)
+    finally:
+        db.close()
+    if vectors:
+        rep = overlap_report(vectors, keys=sorted(union))
+        print(f"{'=' * 70}")
+        print(f"OVERLAP (redundancy judge, r ≥ {rep.threshold}): "
+              f"{len(rep.overlaps)} pair(s) of the {rep.distinct_count} scored union "
+              f"dimensions correlate — finest score {rep.finest_score:.1f}.")
+        print("  A converged, non-overlapping set flags ~0; many pairs = re-carvings "
+              "of the same axis. See `python -m scripts.dimension_overlap` for detail.")
+        print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":
