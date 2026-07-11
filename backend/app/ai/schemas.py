@@ -99,10 +99,11 @@ class EssayAnalysisReport(BaseModel):
         default_factory=list,
         description="Ways the applicant said they would be a valuable member (Q4).",
     )
-    evidence: list[str] = Field(
-        default_factory=list,
-        description="Short direct quotes or field references grounding the extractions above. No full essays.",
-    )
+    # (No ``evidence`` field — dropped 2026-07-11. It held grounding quotes, but was
+    # never rendered in the UI and was excluded from the pool-discovery prompt; its only
+    # consumer was the dimension-scoring prompt, which ALREADY includes the full raw
+    # essays, so pre-extracted quotes were redundant there. Generating them per applicant
+    # was unused output. Per-flag/per-score ``evidence`` fields are unrelated and stay.)
 
 
 # --- Pattern discovery and dimension scoring --------------------------------

@@ -129,7 +129,6 @@ export type EssayAnalysis = {
   priorCoOpExperience: string | null;
   statedMotivations: string[];
   statedContributions: string[];
-  evidence: string[];
 };
 
 export type ApplicationDetail = ApplicationSummary & {
