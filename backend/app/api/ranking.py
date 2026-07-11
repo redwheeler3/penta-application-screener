@@ -561,7 +561,13 @@ def rank_run(
                 decomposition, folded_requests = enforce_committee_requests(
                     decomposition, fan_out_reports, favourites=favourite_dims
                 )
-                report = to_pool_report(decomposition)
+                # The settled why_it_differentiates is carried forward from each axis's
+                # primary source (the discoverer/favourite that actually read the pool),
+                # NOT written by the decomposer (which never sees the pool). See
+                # to_pool_report / DecomposedDimension.
+                report = to_pool_report(
+                    decomposition, fan_out_reports, favourites=favourite_dims
+                )
                 narrative = decompose_narrative or fan_out.narrative
                 # Pass 2: identity-match new dimensions onto ALL prior dimensions (not
                 # just the last run) so a re-surfaced concept re-adopts its key rather

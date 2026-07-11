@@ -265,11 +265,20 @@ class DimensionMatchReport(BaseModel):
 class DecomposedDimension(BaseModel):
     """One axis in the settled set, plus the provenance + reasoning that put it there.
 
-    Carries the same committee-facing fields as ``PoolDimension`` (this becomes the
-    stored dimension), but adds ``source_keys`` — every input dimension (across the K
-    reports) this axis subsumes — and ``decision`` reasoning, so a merge is auditable
-    and never silent (the reconcile pass's lesson: persist the reasoning, not just the
-    outcome). A kept-as-is axis has one source key; a merge has several.
+    Carries the committee-facing IDENTITY fields (``key``, ``name``, ``definition``)
+    plus ``source_keys`` — every input dimension (across the K reports) this axis
+    subsumes — and ``decision`` reasoning, so a merge is auditable and never silent
+    (the reconcile pass's lesson: persist the reasoning, not just the outcome). A
+    kept-as-is axis has one source key; a merge has several.
+
+    It deliberately does NOT carry ``why_it_differentiates``. That field is a claim
+    about what varies across the REAL pool — but the decomposer is sent only the K
+    reports' key/name/definition, never the pool (no essays, facts, or scores). Asking
+    it to write ``why`` produced confident, plausible, and *unverifiable* pool prose
+    (confabulation). The pool-grounded ``why`` already exists — written by a discoverer
+    that read the essays — so ``to_pool_report`` carries THAT forward from the primary
+    source axis instead. (Also cuts the decomposer's priciest output; see the fan-out
+    redesign cost notes.)
     """
 
     key: str = Field(
@@ -282,9 +291,6 @@ class DecomposedDimension(BaseModel):
     name: str = Field(description="Short human-readable label for the committee UI.")
     definition: str = Field(
         description="1-2 neutral sentences defining what this settled axis measures, and which end is high.",
-    )
-    why_it_differentiates: str = Field(
-        description="Briefly, what varies across THIS pool on this axis.",
     )
     source_keys: list[str] = Field(
         default_factory=list,

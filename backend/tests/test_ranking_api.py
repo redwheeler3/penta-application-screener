@@ -37,7 +37,6 @@ def _decomposition_of(report: PoolDimensionReport) -> DecompositionReport:
                 key=d.key,
                 name=d.name,
                 definition=d.definition,
-                why_it_differentiates=d.why_it_differentiates,
                 source_keys=[d.key],
                 from_committee_request=d.from_committee_request,
                 decision="pass-through (test)",
@@ -457,13 +456,12 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
             DecomposedDimension(
                 key="commitment", name="Commitment",
                 definition="willingness to do shared work",
-                why_it_differentiates="varies",
                 source_keys=["commitment_a", "commitment_b"],
                 decision="commitment_a and commitment_b score the same applicant alike — one axis.",
             ),
             DecomposedDimension(
                 key="skills_offered", name="Skills offered",
-                definition="concrete skills", why_it_differentiates="varies",
+                definition="concrete skills",
                 source_keys=["skills_offered"], decision="distinct — kept.",
             ),
         ],
@@ -497,8 +495,18 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
         assert set(merged_out["sourceKeys"]) == {"commitment_a", "commitment_b"}
 
     run = get_current_run(db)
-    settled_keys = {d["key"] for d in run.criteria["dimension_report"]["dimensions"]}
+    stored_dims = run.criteria["dimension_report"]["dimensions"]
+    settled_keys = {d["key"] for d in stored_dims}
     assert settled_keys == {"commitment", "skills_offered"}
+
+    # The settled 'commitment' axis carries the pool-grounded why from its PRIMARY
+    # source discoverer (commitment_a), not a decomposer-written one — the decomposer
+    # never saw the pool. (discovered's commitment_a why is "varies" here.)
+    commitment = next(d for d in stored_dims if d["key"] == "commitment")
+    commitment_a_why = next(
+        d.why_it_differentiates for d in discovered.dimensions if d.key == "commitment_a"
+    )
+    assert commitment["why_it_differentiates"] == commitment_a_why
 
     # The merge is recorded for audit: the settled 'commitment' lists both source keys.
     audit = run.criteria.get("decompose_audit")
@@ -542,7 +550,6 @@ async def test_d9_committee_request_folded_into_merge_is_surfaced_not_lost() -> 
             DecomposedDimension(
                 key="child_wellbeing", name="Child wellbeing",
                 definition="child-centred motivation incl. playground",
-                why_it_differentiates="varies",
                 source_keys=["child_wellbeing", "playground_use"],
                 from_committee_request=False,  # model dropped it — guard must repair
                 decision="folded playground_use in — same underlying concept",
@@ -588,7 +595,7 @@ async def test_d9_silently_dropped_committee_request_is_re_added() -> None:
         dimensions=[
             DecomposedDimension(
                 key="child_wellbeing", name="Child wellbeing",
-                definition="child-centred motivation", why_it_differentiates="varies",
+                definition="child-centred motivation",
                 source_keys=["child_wellbeing"], decision="kept",
             ),
         ],
@@ -661,7 +668,7 @@ def test_enforce_committee_requests_guarantees_an_unsurfaced_favourite() -> None
         dimensions=[
             DecomposedDimension(
                 key="skills_offered", name="Skills offered", definition="trades",
-                why_it_differentiates="varies", source_keys=["skills_offered"],
+                source_keys=["skills_offered"],
                 decision="kept",
             ),
         ],
@@ -672,6 +679,46 @@ def test_enforce_committee_requests_guarantees_an_unsurfaced_favourite() -> None
     readded = next(d for d in corrected.dimensions if d.key == "participation_commitment")
     assert readded.from_committee_request is True
     assert folded == []  # kept standalone, not folded into another axis
+
+
+def test_settled_why_is_carried_from_source_not_decomposer() -> None:
+    # The decomposer never sees the pool, so it does not write why_it_differentiates;
+    # to_pool_report carries the real, pool-grounded why forward from the PRIMARY source
+    # discovery axis (first source_key that resolves), including across a merge.
+    from app.ai.dimension_decompose import to_pool_report
+
+    reports = [
+        PoolDimensionReport(
+            summary="s",
+            dimensions=[
+                PoolDimension(
+                    key="commitment_a", name="Commitment A",
+                    definition="willingness to do shared work",
+                    why_it_differentiates="Applicants range from eager volunteers to vague.",
+                ),
+                PoolDimension(
+                    key="commitment_b", name="Commitment B",
+                    definition="willingness to show up for work days",
+                    why_it_differentiates="secondary carving why",
+                ),
+            ],
+        ),
+    ]
+    settled = DecompositionReport(
+        summary="settled",
+        dimensions=[
+            DecomposedDimension(
+                key="commitment", name="Commitment",
+                definition="willingness to do shared work",
+                source_keys=["commitment_a", "commitment_b"],
+                decision="merged",
+            ),
+        ],
+    )
+    out = to_pool_report(settled, reports)
+    dim = out.dimensions[0]
+    # The primary source's real why is carried forward — NOT an empty/decomposer string.
+    assert dim.why_it_differentiates == "Applicants range from eager volunteers to vague."
 
 
 @pytest.mark.anyio

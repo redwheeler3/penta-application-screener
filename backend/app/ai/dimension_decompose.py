@@ -77,7 +77,8 @@ You are given K independent discovery reports for the same applicant pool, in th
 - EVERY input dimension key, across all K reports, must appear in exactly one settled axis's `source_keys`. A redundant carving is MERGED (recorded in source_keys + decision), never dropped. If an axis is genuinely not differentiating, still fold it into its nearest concept and say so — do not silently omit it.
 
 ## Output
-For each settled axis: `key` (reuse an input key when it's essentially that axis; mint a new snake_case key only for a genuinely merged concept), `name`, `definition` (what it measures + which end is high), `why_it_differentiates`, `source_keys` (ALL absorbed input keys), `from_committee_request`, and `decision` (the reasoning — for a merge, the score-alike assertion; for a kept-distinct axis, why). Also a 2-4 sentence neutral `summary`.
+For each settled axis: `key` (reuse an input key when it's essentially that axis; mint a new snake_case key only for a genuinely merged concept), `name`, `definition` (what it measures + which end is high), `source_keys` (ALL absorbed input keys), `from_committee_request`, and `decision` (the reasoning — for a merge, the score-alike assertion; for a kept-distinct axis, why). Also a 2-4 sentence neutral `summary`.
+- Do NOT describe what varies across the applicant pool ("why it differentiates"): you have the reports' definitions, not the pool itself, so any such claim would be unfounded. Report only what you CAN judge from the definitions — identity (`key`/`name`/`definition`) and merge reasoning (`decision`). The pool-grounded "why" is carried forward from the source reports automatically.
 
 ## Guardrails
 - {INJECTION_GUARD_NOTE}
@@ -151,9 +152,11 @@ def build_prompt(
 
 # The input scales with K × dimensions (all K reports in the prompt); output scales
 # with the settled set (~30 axes, each with definition + source_keys + decision
-# reasoning). Calibrated to observed spend (2026-07-11): the real settled output runs
-# ~8000 tokens — was 4000, which under-estimated decomposition ~2x.
-_DECOMPOSE_OUTPUT_TOKENS = 8000
+# reasoning). Calibrated to observed spend (2026-07-11): the real settled output ran
+# ~8000 tokens; dropping the per-axis why_it_differentiates (~30 × ~80 tok, now carried
+# forward from the source instead of generated here) trims ~2400 → ~5600. Re-calibrate
+# against the ledger after a real run on the trimmed prompt.
+_DECOMPOSE_OUTPUT_TOKENS = 5600
 
 
 def estimate_decompose(reports: list[PoolDimensionReport], settings: AppSettings) -> float:
@@ -168,14 +171,41 @@ def estimate_decompose(reports: list[PoolDimensionReport], settings: AppSettings
     return cost_usd(settings.ai.decompose_model, usage)
 
 
-def to_pool_report(decomposition: DecompositionReport) -> PoolDimensionReport:
+def to_pool_report(
+    decomposition: DecompositionReport,
+    input_reports: list[PoolDimensionReport] | None = None,
+    favourites: list[PoolDimension] | None = None,
+) -> PoolDimensionReport:
     """Project the settled ``DecompositionReport`` onto a ``PoolDimensionReport`` — the
     shape the rest of the rank chain (match pass, scoring, storage) already speaks. The
     decomposition-only fields (``source_keys``, ``decision``) are dropped here; they are
     preserved separately in the decompose audit (see ``decompose_audit_payload``). The
     ``from_committee_request`` flag rides through, since it drives auto-favouriting and
     the D9 committee-request protection downstream.
+
+    ``why_it_differentiates`` is NOT taken from the decomposition (it doesn't produce
+    one — see ``DecomposedDimension``). Instead it is carried forward from the PRIMARY
+    source axis: the discoverer that coined this axis read the pool, so its ``why`` is
+    the real, essay-grounded one. The primary source is the first ``source_key`` that
+    resolves to an input dimension (or an injected ``favourite``, which carries its own
+    prior pool-grounded ``why``). Falls back to an empty string only if no source key
+    resolves — which shouldn't happen once favourites are included, since every settled
+    axis's sources are drawn from the reports or the favourites.
     """
+    why_by_key: dict[str, str] = {}
+    for report in input_reports or []:
+        for dim in report.dimensions:
+            # First writer wins — a key repeated across K reports keeps report 0's why.
+            why_by_key.setdefault(dim.key, dim.why_it_differentiates)
+    for fav in favourites or []:
+        why_by_key.setdefault(fav.key, fav.why_it_differentiates)
+
+    def _carried_why(d: DecomposedDimension) -> str:
+        for sk in d.source_keys:
+            if sk in why_by_key:
+                return why_by_key[sk]
+        return ""
+
     return PoolDimensionReport(
         summary=decomposition.summary,
         dimensions=[
@@ -183,7 +213,7 @@ def to_pool_report(decomposition: DecompositionReport) -> PoolDimensionReport:
                 key=d.key,
                 name=d.name,
                 definition=d.definition,
-                why_it_differentiates=d.why_it_differentiates,
+                why_it_differentiates=_carried_why(d),
                 from_committee_request=d.from_committee_request,
             )
             for d in decomposition.dimensions
@@ -256,7 +286,6 @@ def enforce_committee_requests(
                     key=req_dim.key,
                     name=req_dim.name,
                     definition=req_dim.definition,
-                    why_it_differentiates=req_dim.why_it_differentiates,
                     source_keys=[req_dim.key],
                     from_committee_request=True,
                     decision="Re-added by the D9 guard — decomposition dropped this committee-requested axis.",
@@ -335,7 +364,6 @@ def decompose_dimensions(
                     key=d.key,
                     name=d.name,
                     definition=d.definition,
-                    why_it_differentiates=d.why_it_differentiates,
                     source_keys=[d.key],
                     from_committee_request=d.from_committee_request,
                     decision="Single discovery report — no decomposition needed.",
