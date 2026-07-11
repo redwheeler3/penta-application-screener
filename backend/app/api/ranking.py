@@ -90,7 +90,6 @@ from app.schemas.ranking import (
     RankEstimateBreakdown,
     RankEstimateResponse,
     RankingResponse,
-    ReconcileAuditResponse,
     SeedsResponse,
     SeedsUpdate,
     TierLayoutUpdate,
@@ -120,9 +119,6 @@ from app.services.ranking_run import (
     match_audit_view,
     proposed_dimensions,
     ranking_is_current,
-    reconcile_audit_payload,
-    reconcile_audit_view,
-    revive_dimensions,
     revived_flag_keys,
     set_seeds,
     set_tiers,
@@ -259,25 +255,6 @@ def current_match_audit(
     return MatchAuditResponse(run_id=run.id, **view)
 
 
-@router.get("/current/reconcile-audit", response_model=ReconcileAuditResponse | None)
-def current_reconcile_audit(
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> ReconcileAuditResponse | None:
-    """The current run's reconcile audit — the full ballot on dropped dimensions (a
-    verdict + reasoning per offered prior) plus the derived recovery rate (the
-    over-recovery smell, RQ8). Null when the pass didn't run (first run / nothing
-    dropped / run predates capture).
-    """
-    run = get_current_run(db)
-    if run is None:
-        return None
-    view = reconcile_audit_view(run)
-    if view is None:
-        return None
-    return ReconcileAuditResponse(run_id=run.id, **view)
-
-
 @router.get("/current/decompose-audit", response_model=DecomposeAuditResponse | None)
 def current_decompose_audit(
     user: User = Depends(require_current_user),
@@ -338,14 +315,13 @@ def insights_last_runs(
 
 def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     """Combined projected cost of the Rank passes (essays → K-discovery + decompose →
-    match → reconcile → scoring).
+    match → scoring).
 
     Essays are netted against their cache; the K parallel discovery calls always re-run
     (uncached), and the decomposition that settles them is one more call — both folded
-    into ``criteria_usd``. The match + reconcile passes add calls only when a prior run
-    exists (reconcile priced at its worst-case ceiling; removed in Phase 4c). Scoring is
-    priced as a whole-pool ceiling (every candidate × every dimension) because the
-    estimate runs before discovery, so it can't yet know how many dimensions carry
+    into ``criteria_usd``. The match pass adds a call only when a prior run exists.
+    Scoring is priced as a whole-pool ceiling (every candidate × every dimension) because
+    the estimate runs before discovery, so it can't yet know how many dimensions carry
     forward. Per-dimension reuse makes the actual run come in under this ceiling, so the
     total is an upper bound (the confirmation labels it approximate).
     """
@@ -386,15 +362,11 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     else:
         measured_match = recent_pass_fresh_usd(db, "Dimension matching")
         match_usd = measured_match if measured_match is not None else estimate_match(settings)
-    # Reconcile is DISABLED (fan-out redesign, D2/D8) — the pass no longer runs, so it
-    # must not be priced (it was phantom cost inflating the estimate). Kept as a 0 field
-    # for the response contract until the reconcile removal sweep (4c) drops it entirely.
-    reconcile_usd = 0.0
     scoring = estimate_dimension_scoring(db, settings)
     scoring_usd = float(scoring["estimated_usd"])
     total = round(
         float(essays["estimated_usd"]) + discovery_usd + decompose_usd + match_usd
-        + reconcile_usd + scoring_usd, 4
+        + scoring_usd, 4
     )
     return {
         "eligible": len(pool),
@@ -405,12 +377,11 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
             # criteria = the K discovery calls + the decomposition that settles them.
             "criteria_usd": round(discovery_usd + decompose_usd, 4),
             "match_usd": round(match_usd, 4),
-            "reconcile_usd": round(reconcile_usd, 4),
             "scoring_usd": round(scoring_usd, 4),
         },
         "essays_cached": essays["cached"],
         "estimated_usd": total,
-        "approximate": True,  # scoring & reconcile are ceilings; carry-forward reuse lowers the real cost
+        "approximate": True,  # scoring is a ceiling; carry-forward reuse lowers the real cost
     }
 
 
@@ -432,7 +403,6 @@ def rank_estimate(
             essays_usd=breakdown["essays_usd"],
             criteria_usd=breakdown["criteria_usd"],
             match_usd=breakdown["match_usd"],
-            reconcile_usd=breakdown["reconcile_usd"],
             scoring_usd=breakdown["scoring_usd"],
         ),
         essays_cached=result["essays_cached"],
@@ -593,19 +563,10 @@ def rank_run(
                 new_to_old: dict[str, str] = {}
                 match_narrative: str | None = None
                 match_cost = 0.0
-                # Pass 3 (reconcile) is DISABLED as of the fan-out redesign (SPEC D2/D8):
-                # reviving dropped historical priors was the creep engine, and fan-out +
-                # decomposition subsume its only legitimate job (a valued axis that still
-                # varies re-surfaces in at least one of K fresh discoveries and survives
-                # the settle). Left un-invoked here — not yet deleted (module, schemas,
-                # audit endpoint/panel go in Phase 4c) — so a verification run shows ONLY
-                # decomposition's settled set, not a muddle of settled + revived-from-
-                # history dimensions. revive_keys stays empty → revive_dimensions is a
-                # no-op and reconcile_audit is None.
-                revive_keys: list[str] = []
-                reconcile_ballot: list[dict] = []
-                reconcile_narrative: str | None = None
-                reconcile_cost = 0.0
+                # (The reconcile pass — a second look that revived dropped priors — was
+                # removed in the fan-out redesign, D2/D8: it was the creep engine, and
+                # K-discovery + decomposition subsume its one legitimate job without the
+                # unfalsifiable "does the pool vary on this?" that made it over-revive.)
                 if match_history is not None:
                     delta_queue.put(_Stage(CRITERIA_STAGES["matching"]))
                     new_to_old, match_narrative, match_cost = match_dimensions(
@@ -614,8 +575,7 @@ def rank_run(
                     )
                 criteria_outcome["ok"] = (
                     report, narrative, discovery_cost, new_to_old, match_narrative,
-                    match_cost, revive_keys, reconcile_ballot, reconcile_narrative,
-                    reconcile_cost, fan_out_reports, decomposition, decompose_cost,
+                    match_cost, fan_out_reports, decomposition, decompose_cost,
                     folded_requests, fan_out_audit,
                 )
             except Exception as exc:
@@ -650,7 +610,6 @@ def rank_run(
             return
         (
             report, narrative, discovery_cost, new_to_old, match_narrative, match_cost,
-            revive_keys, reconcile_ballot, reconcile_narrative, reconcile_cost,
             fan_out_reports, decomposition, decompose_cost, folded_requests,
             fan_out_audit,
         ) = criteria_outcome["ok"]
@@ -692,15 +651,6 @@ def rank_run(
         # tier placement AND cached score carry forward, and the displayed text stays
         # the wording that score was computed against.
         report = adopt_matched_keys(report, new_to_old, match_history)
-        # Re-enter every reconcile-revived dropped prior into the report (by its
-        # historical key + text, so its cached scores are reused where candidates are
-        # unchanged). From here a revived dimension is indistinguishable from any other
-        # carried-forward key: carry_forward_layout restores its placement and scoring
-        # reuses its cached scores. reconcile_audit records the full ballot separately.
-        report = revive_dimensions(report, revive_keys, match_history)
-        reconcile_audit = reconcile_audit_payload(
-            reconcile_ballot, revive_keys, reconcile_narrative
-        )
         # Carry committee intent forward across ALL runs: restore each key's most-recent
         # tier placement, and flag every dimension absent from the immediately-prior run
         # (new OR revived) for triage — the new-vs-revived label is derived at read time.
@@ -713,19 +663,17 @@ def rank_run(
         create_run(
             db, report=report, settings=settings, model_id=settings.ai.discovery_model,
             narrative=narrative, discovery_cost_usd=discovery_cost, match_cost_usd=match_cost,
-            reconcile_cost_usd=reconcile_cost,
             tier_layout=layout, new_dimension_keys=new_dimension_keys,
             # Carry prior favourites forward (by key, post-match); create_run unions
             # in any dimension the model flagged from_committee_request and clears
             # the consumed proposals.
             prior_favourited_keys=prior_favourites,
             match_audit=match_audit,
-            reconcile_audit=reconcile_audit,
             fan_out_audit=fan_out_audit,
             decompose_audit=decompose_audit,
             decompose_cost_usd=decompose_cost,
         )
-        total_cost += discovery_cost + decompose_cost + match_cost + reconcile_cost
+        total_cost += discovery_cost + decompose_cost + match_cost
         yield emit(
             NoticeEvent(
                 phase=CRITERIA,

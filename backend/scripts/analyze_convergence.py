@@ -15,7 +15,7 @@ Columns/sections it prints, per run and cumulatively:
   - NEW keys vs. the running union of all prior runs (the creep signal)
   - distinct-key count this run + cumulative-union count (convergence signal:
     a converging set adds few/no new keys per run; a creeping set keeps growing)
-  - reconcile ballot: offered / recovered / rate (over-recovery smell)
+  - decomposition settle-down: input axes → settled count (merges)
   - match carry-forward rate (per the existing match_audit)
   - overlap readout (the Fan-Out Redesign judge): how many of the cumulative-union
     dimensions have score vectors that correlate above threshold — the redundancy
@@ -41,8 +41,8 @@ def _dim_keys(run: RankingRun) -> list[str]:
     return [d["key"] for d in report.get("dimensions", [])]
 
 
-def _reconcile(run: RankingRun) -> dict | None:
-    return (run.criteria or {}).get("reconcile_audit")
+def _decompose(run: RankingRun) -> dict | None:
+    return (run.criteria or {}).get("decompose_audit")
 
 
 def _match(run: RankingRun) -> dict | None:
@@ -95,17 +95,18 @@ def main() -> None:
         print(f"   new vs. prior union : {len(fresh)}  {sorted(fresh) if fresh else ''}")
         print(f"   cumulative union    : {len(union)}")
 
-        rec = _reconcile(run)
-        if rec:
-            offered = rec.get("offered_count", 0)
-            recovered = rec.get("recovered_count", 0)
-            rate = f"{recovered / offered:.0%}" if offered else "—"
-            print(f"   reconcile           : offered {offered}, revived {recovered} (rate {rate})")
-            for v in rec.get("verdicts", []):
-                mark = "✓ revive" if v.get("revive") else "· decline"
-                print(f"       {mark:10} {v.get('old_key')}: {v.get('reasoning', '')}")
+        dec = _decompose(run)
+        if dec:
+            # Decomposition settle-down: how many raw axes across the K fan-out reports
+            # collapsed into the settled set, and how many of those settled axes are
+            # merges. This replaced the reconcile readout when the fan-out redesign
+            # removed reconcile.
+            print(
+                f"   decomposition       : {dec.get('input_dimension_count', 0)} input "
+                f"→ {dec.get('settled_count', 0)} settled ({dec.get('merge_count', 0)} merges)"
+            )
         else:
-            print("   reconcile           : (did not run — first run / nothing dropped)")
+            print("   decomposition       : (none — run predates the fan-out redesign)")
 
         match = _match(run)
         if match:

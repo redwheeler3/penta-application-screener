@@ -1475,15 +1475,6 @@ h1 {
   font-weight: 600;
 }
 
-/* The carry-forward rate is the headline signal; colour it amber/red as it climbs
-   toward the "over-matching" band the SPEC warns about. */
-.match-audit-rate.match-audit-rate-mid {
-  color: #b45309;
-}
-
-.match-audit-rate.match-audit-rate-high {
-  color: #dc2626;
-}
 
 .match-audit-table {
   width: 100%;
@@ -1629,8 +1620,8 @@ h1 {
   font-style: italic;
 }
 
-/* A second concern within one Insights subtab (e.g. reconcile below match), set off
-   with a rule + heading so the two audits read as related but distinct. */
+/* A second concern within one Insights subtab, set off with a rule + heading so two
+   related-but-distinct audits read cleanly stacked. */
 .insights-subsection {
   margin-top: 1.75rem;
   padding-top: 1.25rem;
@@ -2623,8 +2614,8 @@ h1 {
   text-transform: uppercase;
 }
 
-/* "Revived" chip + badge: a dimension seen in an earlier run, dropped, now back
-   (reconcile confirmed the pool still varies on it). A softer heads-up than "New"
+/* "Revived" chip + badge: a dimension seen in an earlier run, dropped for a run, now
+   back (a fresh discovery re-surfaced it). A softer heads-up than "New"
    (the committee saw it before), so it uses the calm blue of the impact score-band
    palette's "moderate" rather than the amber "New" alarm. Unlike New, a Revived chip
    may sit in a working tier (carry-forward auto-restored its placement), so the badge

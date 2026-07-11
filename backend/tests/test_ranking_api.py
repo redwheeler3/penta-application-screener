@@ -17,8 +17,6 @@ from app.ai.schemas import (
     EssayAnalysisReport,
     PoolDimension,
     PoolDimensionReport,
-    ReconcileReport,
-    ReconcileVerdict,
     ScoreConfidence,
 )
 from app.api.dependencies import get_ai_provider, require_current_user
@@ -292,7 +290,6 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
         provider.route("<essays>", an_essay_report())
         route_criteria(provider, a_pattern_report())
         provider.route("<prior_dimensions>", DimensionMatchReport(matches=[]))
-        provider.route("<dropped_dimensions>", ReconcileReport(verdicts=[]))  # revive nothing
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
@@ -820,7 +817,6 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
                 matches=[DimensionMatch(new_key="stated_participation", old_key="participation_commitment")]
             ),
         )
-        provider.route("<dropped_dimensions>", ReconcileReport(verdicts=[]))  # revive nothing
         provider.route("applicant_id", _scoring_report_v2())
         events = await stream_events(client, "/ranking/run")
 
@@ -882,16 +878,12 @@ def _scoring_report_v2() -> DimensionScoringReport:
 
 
 @pytest.mark.anyio
-async def test_reconcile_disabled_dropped_dimension_is_not_revived() -> None:
-    """Reconcile is DISABLED in the fan-out redesign (SPEC D2/D8): a prior dimension the
-    latest discovery drops is NOT dragged back. This is the inverse of the old
-    reconcile-recovers behavior — a valued axis that still varies is expected to
-    re-surface in one of the K fresh discoveries and survive the decomposition, not be
-    revived from history by a separate pass. So a dropped prior stays gone, and no
-    reconcile audit is produced.
-
-    (When 4c deletes the reconcile module + endpoint, the reconcile-audit assertion here
-    becomes a 404/removal check; for now the endpoint exists but returns null.)"""
+async def test_dropped_prior_dimension_is_not_revived() -> None:
+    """Reconcile was REMOVED in the fan-out redesign (SPEC D2/D8): a prior dimension the
+    latest discovery drops is NOT dragged back. A valued axis that still varies is
+    expected to re-surface in one of the K fresh discoveries and survive the
+    decomposition, not be revived from history by a separate pass. So a dropped prior
+    stays gone."""
     app, db, provider = setup_app(role=UserRole.ADMIN)
     add_eligible(db, email="a@x.com", raw_hash="h1")
 
@@ -942,14 +934,6 @@ async def test_reconcile_disabled_dropped_dimension_is_not_revived() -> None:
                 matches=[DimensionMatch(new_key="participation_commitment", old_key="participation_commitment")]
             ),
         )
-        # A <dropped_dimensions> route is set but should NEVER be hit — reconcile is
-        # disabled, so the pass doesn't run and skills_offered is not offered for revival.
-        provider.route(
-            "<dropped_dimensions>",
-            ReconcileReport(
-                verdicts=[ReconcileVerdict(old_key="skills_offered", revive=True, reasoning="should not run")]
-            ),
-        )
         provider.route("applicant_id", a_scoring_report())
         run2_events = await stream_events(client, "/ranking/run")
 
@@ -964,8 +948,6 @@ async def test_reconcile_disabled_dropped_dimension_is_not_revived() -> None:
         keys = {d["key"] for d in current["dimensions"]}
         assert "skills_offered" not in keys
         assert keys == {"participation_commitment"}
-        # No reconcile audit is produced (the pass didn't run).
-        assert (await client.get("/ranking/current/reconcile-audit")).json() is None
 
 
 def _only_participation() -> PoolDimensionReport:
@@ -1270,7 +1252,6 @@ async def test_proposed_dimension_seeds_discovery_then_clears_and_auto_favourite
         provider.calls.clear()
         route_criteria(provider, _pattern_report_with_requested())
         provider.route("<prior_dimensions>", DimensionMatchReport(matches=[]))  # match pass
-        provider.route("<dropped_dimensions>", ReconcileReport(verdicts=[]))  # revive nothing
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
@@ -1311,7 +1292,6 @@ async def test_favourited_dimension_is_re_fed_to_discovery_and_persists() -> Non
             "<prior_dimensions>",
             DimensionMatchReport(matches=[]),  # same keys, so no rewrite needed
         )
-        provider.route("<dropped_dimensions>", ReconcileReport(verdicts=[]))  # revive nothing
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
@@ -1412,7 +1392,6 @@ async def test_match_audit_reports_carry_forward_rate_on_rerun() -> None:
                 matches=[DimensionMatch(new_key="stated_participation", old_key="participation_commitment")]
             ),
         )
-        provider.route("<dropped_dimensions>", ReconcileReport(verdicts=[]))  # revive nothing
         provider.route("applicant_id", _scoring_report_v2())
         await stream_events(client, "/ranking/run")
 

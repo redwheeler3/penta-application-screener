@@ -54,18 +54,19 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
     badge.
 
     Combines the pool fingerprint with the **prompt identity and model** of every
-    pass the Rank chain runs (essays → discovery + match + reconcile → scoring). So a
-    re-rank is flagged current only when the pool, all five prompts, AND all five
-    rank-chain models are unchanged since the run was created — editing any rank-chain
+    pass the Rank chain runs (essays → discovery + decompose + match → scoring). So a
+    re-rank is flagged current only when the pool, every rank-chain prompt, AND every
+    rank-chain model are unchanged since the run was created — editing any rank-chain
     prompt or switching a model now correctly shows Rank as stale, not just a pool
-    change. (screening is the separate Screen step, not part of Rank, so excluded.)
+    change. (screening is the separate Screen step, not part of Rank, so excluded;
+    reconcile was removed in the fan-out redesign, and decompose replaced it here.)
 
     Prompt versions are imported lazily: the AI passes import this module, so a
     top-level import would be circular (matches the existing local-import pattern in
     ``estimate_match``).
     """
+    from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSE_V
     from app.ai.dimension_matching import PROMPT_VERSION as MATCH_V
-    from app.ai.dimension_reconcile import PROMPT_VERSION as RECONCILE_V
     from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_V
     from app.ai.essay_analysis import PROMPT_VERSION as ESSAY_V
     from app.ai.pattern_discovery import PROMPT_VERSION as DISCOVERY_V
@@ -74,16 +75,15 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
         pool_fingerprint(db),
         f"essay:{ESSAY_V}",
         f"discovery:{DISCOVERY_V}",
+        f"decompose:{DECOMPOSE_V}",
         f"match:{MATCH_V}",
-        f"reconcile:{RECONCILE_V}",
         f"scoring:{SCORING_V}",
-        # The model of every rank-chain pass — one per pass now, so a change to any
-        # of them ambers Rank. Screening's model is deliberately absent: it's the
-        # separate Screen step, not part of Rank (same reason its prompt is absent).
+        # The model of every rank-chain pass — a change to any of them ambers Rank.
+        # Screening's model is deliberately absent: it's the separate Screen step.
+        # (discovery + decompose share discovery_model, listed once.)
         f"essay_model:{settings.ai.essay_analysis_model}",
         f"discovery_model:{settings.ai.discovery_model}",
         f"match_model:{settings.ai.match_model}",
-        f"reconcile_model:{settings.ai.reconcile_model}",
         f"scoring_model:{settings.ai.dimension_scoring_model}",
     ]
     basis = "\n".join(parts)
@@ -133,59 +133,6 @@ def adopt_matched_keys(
     return report.model_copy(update={"dimensions": dims})
 
 
-def revive_dimensions(
-    report: PoolDimensionReport,
-    revive_keys: list[str],
-    prior: PoolDimensionReport | None,
-) -> PoolDimensionReport:
-    """Re-enter each reconcile-revived dropped prior into the report, by its
-    historical key + text (from ``prior`` = the all-history report the reconcile pass
-    judged against).
-
-    Runs *after* ``adopt_matched_keys``, so ``report`` already holds every matched +
-    freshly-discovered dimension. Revived keys are the dropped priors the reconcile
-    pass said the pool still varies on; adding them back under their historical key
-    means their cached scores are reused (score cache is keyed by key) and their tier
-    placement carries forward — identical to any other carried key. A revive_key
-    already present (defensive; the dropped set excludes matched keys) is skipped, so
-    no duplicate.
-    """
-    if not revive_keys or prior is None:
-        return report
-    prior_by_key = {d.key: d for d in prior.dimensions}
-    existing = {d.key for d in report.dimensions}
-    revived = [
-        prior_by_key[k] for k in revive_keys if k in prior_by_key and k not in existing
-    ]
-    if not revived:
-        return report
-    return report.model_copy(update={"dimensions": [*report.dimensions, *revived]})
-
-
-def reconcile_audit_payload(
-    ballot: list[dict], revive_keys: list[str], narrative: str | None = None
-) -> dict | None:
-    """Shape the reconcile pass's full ballot for storage on the run, or None when the
-    pass didn't run (first run / nothing dropped — an empty ballot).
-
-    Stores every verdict (both revivals and rejections, per SPEC RQ8b), the offered
-    and recovered counts, so ``reconcile_audit_view`` can derive the recovery rate —
-    the over-recovery smell. A zero-recovery run still writes a row (healthy signal).
-
-    ``narrative`` is the model's free-text reasoning from the pass, persisted so the
-    Insights tab can render it later (the live stream is gone by then). Mirrors the
-    match pass's stored ``match_narrative``.
-    """
-    if not ballot:
-        return None
-    return {
-        "verdicts": ballot,  # [{old_key, revive, reasoning}]
-        "offered_count": len(ballot),
-        "recovered_count": len(revive_keys),
-        "narrative": narrative,
-    }
-
-
 def create_run(
     db: Session,
     *,
@@ -195,13 +142,11 @@ def create_run(
     narrative: str | None,
     discovery_cost_usd: float,
     match_cost_usd: float = 0.0,
-    reconcile_cost_usd: float = 0.0,
     name: str = "Ranking run",
     tier_layout: list[dict] | None = None,
     new_dimension_keys: list[str] | None = None,
     prior_favourited_keys: list[str] | None = None,
     match_audit: dict | None = None,
-    reconcile_audit: dict | None = None,
     fan_out_audit: dict | None = None,
     decompose_audit: dict | None = None,
     decompose_cost_usd: float = 0.0,
@@ -252,17 +197,10 @@ def create_run(
             # first run (no match pass ran).
             "discovery_cost_usd": round(discovery_cost_usd, 6),
             "match_cost_usd": round(match_cost_usd, 6),
-            # Reconcile is a third Bedrock call (dropped-dimension second look), priced
-            # separately. 0 on a first run / when nothing dropped (pass skipped).
-            "reconcile_cost_usd": round(reconcile_cost_usd, 6),
             # Carry-forward audit: raw pre-adopt discovery dims + the match map +
             # match narrative, so a re-rank's "what changed" is inspectable (genuine
             # re-discovery vs. match over-matching). None on a first run (no match).
             "match_audit": match_audit,
-            # Reconcile audit: the full ballot (verdict + reasoning per dropped prior)
-            # + offered/recovered counts, so over-recovery is inspectable. None when
-            # the pass didn't run (first run / nothing dropped).
-            "reconcile_audit": reconcile_audit,
             # Fan-out audit (SPEC "Fan-Out Redesign"): the K raw discovery reports this
             # run produced, before decomposition settled them into one set. None on runs
             # written before fan-out landed (single-discovery runs).
@@ -403,36 +341,6 @@ def match_audit_view(run: RankingRun) -> dict | None:
         "carry_forward_rate": (
             None if is_first_run or not discovered else round(matched / len(discovered), 4)
         ),
-    }
-
-
-def reconcile_audit_view(run: RankingRun) -> dict | None:
-    """The run's reconcile audit — the dropped-dimension second look — shaped for the
-    trace viewer, or None when the reconcile pass did not run (first run / nothing
-    dropped / run predates the capture).
-
-    The stored audit (``criteria.reconcile_audit``) is the full ballot: a verdict +
-    reasoning per dropped prior. This adds the derived **recovery rate** (recovered /
-    offered) — the over-recovery smell (RQ8): a persistently high rate means reconcile
-    is reviving too readily under the rationalization pressure the prompt guards
-    against. A zero-recovery run (rate 0.0) is the healthy signal, and still returns a
-    view (the pass ran); only a skipped pass returns None.
-    """
-    audit = (run.criteria or {}).get("reconcile_audit")
-    if not audit:
-        return None
-    offered = audit.get("offered_count", 0)
-    recovered = audit.get("recovered_count", 0)
-    return {
-        "verdicts": audit.get("verdicts", []),  # [{old_key, revive, reasoning}]
-        "offered_count": offered,
-        "recovered_count": recovered,
-        # Fraction of dropped priors reconcile revived. None only if somehow nothing
-        # was offered (defensive; a stored audit always has offered > 0).
-        "recovery_rate": round(recovered / offered, 4) if offered else None,
-        # The model's free-text reasoning (markdown), for the Insights panel. None on
-        # runs written before narrative capture.
-        "narrative": audit.get("narrative"),
     }
 
 

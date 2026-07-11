@@ -78,34 +78,6 @@ class MatchAuditResponse(ResponseModel):
     carry_forward_rate: float | None = None
 
 
-class ReconcileVerdictOut(ResponseModel):
-    """One dropped-prior verdict from the reconcile pass, for the trace viewer."""
-
-    old_key: str
-    revive: bool
-    reasoning: str
-
-
-class ReconcileAuditResponse(ResponseModel):
-    """GET /ranking/current/reconcile-audit — the dropped-dimension second look for
-    the current run. Null when the reconcile pass didn't run (first run / nothing
-    dropped / run predates capture).
-
-    ``recoveryRate`` (recovered / offered) is the over-recovery smell: a persistently
-    high rate means reconcile is reviving too readily. A zero-recovery run (rate 0.0)
-    is the healthy expected signal.
-    """
-
-    run_id: int
-    verdicts: list[ReconcileVerdictOut]
-    offered_count: int
-    recovered_count: int
-    recovery_rate: float | None = None
-    # The reconcile pass's free-text reasoning (markdown), for the Insights panel.
-    # Null on runs written before narrative capture.
-    narrative: str | None = None
-
-
 class SettledDimensionOut(ResponseModel):
     """One settled axis from the decomposition, for the Insights trace: what it is,
     the input axes it absorbed (``sourceKeys`` — one = kept as-is, several = a merge),
@@ -171,7 +143,6 @@ class RankEstimateBreakdown(ResponseModel):
     essays_usd: float
     criteria_usd: float
     match_usd: float
-    reconcile_usd: float
     scoring_usd: float
 
 

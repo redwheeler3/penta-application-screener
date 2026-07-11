@@ -251,53 +251,6 @@ class DimensionMatchReport(BaseModel):
     )
 
 
-class ReconcileVerdict(BaseModel):
-    """The reconcile pass's judgment on ONE dropped prior dimension: does the live
-    pool vary on it, so it should be pulled back into the run?
-
-    Reconcile runs *after* match (SPEC "Automatic Reconcile Of Dropped Dimensions").
-    The match pass carries forward dimensions that re-surfaced on their own; reconcile
-    takes the priors that did NOT re-surface and asks, against the current pool, "does
-    this axis still meaningfully vary here?" — a fresh, skeptical look, NOT a
-    re-assertion of prior intent. A flat or inapplicable axis is a ``revive: false``.
-    """
-
-    old_key: str = Field(
-        description="The key of the dropped prior dimension this verdict is about.",
-    )
-    revive: bool = Field(
-        description=(
-            "True ONLY if the live pool genuinely VARIES on this axis — candidates "
-            "spread out on it, so it would move the ranking. A flat axis (everyone "
-            "similar) or one that does not apply to this pool is false. Default to "
-            "false: 'no' is the expected answer for most dropped dimensions, since "
-            "fresh discovery already declined to name them."
-        ),
-    )
-    reasoning: str = Field(
-        description=(
-            "One neutral sentence on whether THIS pool varies on the axis, grounded "
-            "in the pool you were shown. Required for both verdicts — a 'no' should "
-            "say why (flat / not present / not applicable)."
-        ),
-    )
-
-
-class ReconcileReport(BaseModel):
-    """The reconcile pass's full ballot: one verdict per dropped prior dimension.
-
-    Unlike ``DimensionMatchReport`` (matches only, omissions implicit), reconcile
-    returns an entry for EVERY offered prior — the reasoning on both revivals and
-    rejections is the audit trail (``reconcile_audit``), and lets a spot-check see
-    why an axis was or wasn't revived without re-running the pass.
-    """
-
-    verdicts: list[ReconcileVerdict] = Field(
-        default_factory=list,
-        description="One verdict per dropped prior dimension you were shown.",
-    )
-
-
 # --- Fan-out decomposition (SPEC "Fan-Out Redesign", Phase 3) ----------------
 #
 # K parallel discovery calls produce K reports that carve the same pool at
@@ -381,44 +334,3 @@ class DecompositionReport(BaseModel):
     )
 
 
-class OverMergeChallenge(BaseModel):
-    """The Splitter's challenge to ONE merged settled axis: does this merge collapse
-    two genuinely-distinct axes (the OVER-merge failure)? (SPEC "Fan-Out Redesign",
-    D7 — the adversarial half of the bounded loop.)
-
-    The Splitter's job is the falsifiable keep-separate test: to overturn a merge it
-    must NAME an applicant (or applicant profile) who would land high on one absorbed
-    axis and low on another — that is the proof they measure different things. If it
-    cannot, the merge stands. Only merged axes (more than one source key) are
-    challengeable; a kept-as-is axis has nothing to split.
-    """
-
-    key: str = Field(description="The merged settled axis's key this challenge is about.")
-    overmerged: bool = Field(
-        description=(
-            "True ONLY if this merge collapsed genuinely-distinct axes and should be "
-            "split back. Default false: the merge stands unless you can name the "
-            "distinguishing applicant. Do not overturn a merge just because the "
-            "sources were worded differently."
-        ),
-    )
-    splitting_evidence: str = Field(
-        description=(
-            "If overmerged: name the applicant/profile who is HIGH on one absorbed "
-            "axis and LOW on another, and which source keys split apart. If not "
-            "overmerged: one sentence on why they really are one axis."
-        ),
-    )
-
-
-class OverMergeReport(BaseModel):
-    """The Splitter's full ballot over a decomposition's merges: one challenge per
-    merged axis. Like the reconcile ballot (not the match report), it returns an entry
-    for EVERY merge — the reasoning on both upheld and overturned merges is the audit
-    trail, and lets the Decider (or a human) see why each merge survived or was split.
-    """
-
-    challenges: list[OverMergeChallenge] = Field(
-        default_factory=list,
-        description="One challenge per merged axis (more than one source key) in the decomposition.",
-    )

@@ -15,7 +15,6 @@ import type {
   FanOutAuditResponse,
   LastRunsReport,
   MatchAuditResponse,
-  ReconcileAuditResponse,
   SettingsResponse,
   SortState,
   Tier,
@@ -95,11 +94,6 @@ export const fetchRankingCurrent = () => fetch(url("/ranking/current"), { creden
 // The current run's carry-forward audit (M13 per-run AI legibility). Null when no
 // run exists or the run predates match-audit capture.
 export const fetchMatchAudit = () => getJson<MatchAuditResponse | null>("/ranking/current/match-audit");
-
-// The current run's reconcile audit — the dropped-dimension second look (the full
-// ballot + recovery rate). Null when the pass didn't run (first run / nothing dropped).
-export const fetchReconcileAudit = () =>
-  getJson<ReconcileAuditResponse | null>("/ranking/current/reconcile-audit");
 
 // The current run's decomposition audit — how the K fan-out discovery reports were
 // settled into one set (settled axes + merge reasoning + D9 folded-request trail).

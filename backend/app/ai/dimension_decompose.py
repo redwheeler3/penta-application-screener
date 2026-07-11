@@ -23,10 +23,9 @@ same applicant the same way; to KEEP two apart you must be able to name an appli
 high on one and low on the other. Committee-requested axes get extra protection (D9):
 never merged away silently — the flag rides through and the decision must say so.
 
-This is the BASELINE contender in the Phase 3 bake-off (one structured call). The
-multi-agent splitter↔merger↔decider loop is the other; the Phase-1 overlap judge
-picks the winner on finest + stable. Not yet wired into ``rank_run`` — that is
-Phase 4, after the bake-off names a winner.
+This single structured call is the decomposition step, wired into ``rank_run``. It won
+a bake-off against a multi-agent splitter↔merger loop (the loop was costlier, no more
+stable, and worse on overlaps — see the fan-out redesign notes); the loop is not built.
 """
 
 from __future__ import annotations
@@ -40,7 +39,6 @@ from app.ai.provider import AIProvider, DeltaSink, Usage
 from app.ai.schemas import (
     DecomposedDimension,
     DecompositionReport,
-    OverMergeReport,
     PoolDimension,
     PoolDimensionReport,
 )
@@ -307,143 +305,3 @@ def decompose_dimensions(
         read_timeout=DECOMPOSE_READ_TIMEOUT,
     )
     return result.output, result.narrative, cost_usd(result.model_id, result.usage)
-
-
-# --- Multi-agent variant: bounded merger ↔ splitter loop (D7) ----------------
-#
-# The other bake-off contender. Round 1 is the baseline (a merge-biased Merger).
-# Then a Splitter adversarially challenges each merge, and any merge it overturns —
-# by naming an applicant high on one absorbed axis and low on another — is split back
-# into its sources. Bounded (hard round cap) and MONOTONIC (a round only ever splits,
-# never re-merges), so it converges: it stops when a round overturns nothing, or at the
-# cap. The point is to test whether the adversarial split-back catches over-merges the
-# single call makes — the exact failure the Phase-1 judge showed is the higher-stakes
-# one. If it rarely overturns, the baseline is good enough and the loop is ceremony.
-
-SPLITTER_SYSTEM_PROMPT = """\
-You are a skeptical reviewer on a housing co-op screening committee, checking whether a set of "merged" dimensions collapsed axes that should have stayed separate.
-Each merged axis fused several source axes on the claim they measure the same thing. Your job is the opposite pressure: find the merges that are WRONG — where a plausible applicant would score HIGH on one fused source and LOW on another, proving they are different axes the committee would want to weight separately.
-Overturn a merge ONLY when you can name that applicant or profile. A merge you cannot break stands — do not overturn one just because the sources were worded differently or feel broad. Being asked "is this over-merged?" is not evidence that it is."""
-
-_SPLITTER_INSTRUCTIONS = f"""\
-## Task
-You are given a set of MERGED dimensions in `<merged_dimensions>`. Each lists the source axes it fused (`source_keys`) and the reasoning for the merge. For each, judge: did this merge collapse genuinely-distinct axes?
-
-## The falsifiable test (the only way to overturn a merge)
-Name an applicant or applicant profile who would land HIGH on one fused source and LOW on another. If you can, the merge is wrong (`overmerged: true`) — say who and which sources split apart. If you cannot, the merge stands (`overmerged: false`) — one sentence on why they really are one axis.
-- Default to NOT overturning. The merge was made by a careful pass; overturn only with concrete splitting evidence, not a hunch that an axis "feels broad".
-- Different WORDING is not a reason to split — only different MEASUREMENT (an applicant who ranks differently on the two) is.
-
-## Output
-One challenge per merged axis you were shown: its `key`, `overmerged`, and `splitting_evidence` (the naming, or why it holds).
-
-## Guardrails
-- {INJECTION_GUARD_NOTE}
-- Do not invent applicants not consistent with a real co-op pool; the splitting profile must be plausible."""
-
-SPLITTER_PROMPT_VERSION = derive_prompt_version(
-    SPLITTER_SYSTEM_PROMPT, _SPLITTER_INSTRUCTIONS
-)
-
-
-def _merged_block(report: DecompositionReport) -> str:
-    """The decomposition's MERGED axes (more than one source key) as JSON for the
-    Splitter. Kept-as-is axes are omitted — there is nothing to split.
-    """
-    merges = [
-        {
-            "key": d.key,
-            "definition": d.definition,
-            "source_keys": d.source_keys,
-            "merge_reasoning": d.decision,
-        }
-        for d in report.dimensions
-        if len(d.source_keys) > 1
-    ]
-    return f"<merged_dimensions>\n{json.dumps(merges, indent=2, default=str)}\n</merged_dimensions>"
-
-
-def _split_back(
-    report: DecompositionReport,
-    overturned_keys: set[str],
-    sources_by_key: dict[str, PoolDimension],
-) -> DecompositionReport:
-    """Split each overturned merged axis back into one settled axis per source key,
-    restoring each source's original text. Non-overturned axes pass through unchanged.
-    """
-    dims: list[DecomposedDimension] = []
-    for d in report.dimensions:
-        if d.key in overturned_keys and len(d.source_keys) > 1:
-            for sk in d.source_keys:
-                src = sources_by_key.get(sk)
-                dims.append(
-                    DecomposedDimension(
-                        key=sk,
-                        name=src.name if src else sk,
-                        definition=src.definition if src else d.definition,
-                        why_it_differentiates=(
-                            src.why_it_differentiates if src else d.why_it_differentiates
-                        ),
-                        source_keys=[sk],
-                        from_committee_request=(
-                            src.from_committee_request if src else d.from_committee_request
-                        ),
-                        decision=f"Split back out of '{d.key}' — the splitter judged that merge over-merged.",
-                    )
-                )
-        else:
-            dims.append(d)
-    return report.model_copy(update={"dimensions": dims})
-
-
-def decompose_dimensions_loop(
-    provider: AIProvider,
-    *,
-    reports: list[PoolDimensionReport],
-    settings: AppSettings,
-    max_rounds: int = 2,
-) -> tuple[DecompositionReport, list[dict], float]:
-    """Bounded merger↔splitter loop (D7 multi-agent variant). Round 1 is the baseline
-    decomposition; each subsequent round runs the Splitter over the current merges and
-    splits back any it overturns, until a round overturns nothing or ``max_rounds`` is
-    hit. Returns ``(report, round_audit, cost_usd)``; ``round_audit`` records each
-    Splitter ballot for inspection (the reconcile-audit lesson: persist the reasoning).
-    """
-    report, _narr, cost = decompose_dimensions(
-        provider, reports=reports, settings=settings
-    )
-    total_cost = cost
-    # Original source dimensions, by key, so split-back can restore their text.
-    sources_by_key = {d.key: d for r in reports for d in r.dimensions}
-
-    round_audit: list[dict] = []
-    for _round in range(max_rounds):
-        merges = [d for d in report.dimensions if len(d.source_keys) > 1]
-        if not merges:
-            break  # nothing merged → nothing to challenge
-        result = provider.structured_output(
-            model_id=settings.ai.discovery_model,
-            schema=OverMergeReport,
-            prompt=f"{_SPLITTER_INSTRUCTIONS}\n\n{_merged_block(report)}",
-            system_prompt=SPLITTER_SYSTEM_PROMPT,
-        )
-        total_cost += cost_usd(result.model_id, result.usage)
-        ballot: OverMergeReport = result.output
-        merge_keys = {d.key for d in merges}
-        overturned = {
-            c.key for c in ballot.challenges if c.overmerged and c.key in merge_keys
-        }
-        round_audit.append(
-            {
-                "challenges": [
-                    {"key": c.key, "overmerged": c.overmerged, "evidence": c.splitting_evidence}
-                    for c in ballot.challenges
-                ],
-                "overturned": sorted(overturned),
-            }
-        )
-        if not overturned:
-            break  # the splitter accepted every merge → converged
-        report = _split_back(report, overturned, sources_by_key)
-
-    return report, round_audit, total_cost
