@@ -148,4 +148,7 @@ the badge logic this experiment also validated), see the reconcile section of
 `SPEC.md`. This document is the story; that one is the blueprint. For the design
 judgment *behind* the feature this experiment tested — requirements-first, the
 escalation ladder, naming as a design tool — see the companion,
-[designing-an-ai-feature.md](designing-an-ai-feature.md).
+[designing-an-ai-feature.md](designing-an-ai-feature.md). For the twin
+discipline — once the fan-out was chosen, *choosing between two ways to build it*
+by measuring both — see [deciding-with-a-bake-off.md](deciding-with-a-bake-off.md);
+the two are a deliberate pair (kill-before-building / choose-by-building).
