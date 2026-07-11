@@ -35,6 +35,7 @@ from app.ai.analysis import (
 from app.ai.dimension_decompose import (
     decompose_audit_payload,
     decompose_dimensions,
+    enforce_committee_requests,
     estimate_decompose,
     to_pool_report,
 )
@@ -474,6 +475,13 @@ def rank_run(
                 decomposition, decompose_narrative, decompose_cost = decompose_dimensions(
                     provider, reports=fan_out_reports, settings=settings, on_delta=on_delta,
                 )
+                # D9 guard: a committee-requested axis must never be silently merged away.
+                # Deterministic backstop for the prompt — repairs flag-loss on merge and
+                # re-adds any request decomposition dropped; `folded` lists requests merged
+                # INTO another axis, surfaced to the committee (never a silent vanish).
+                decomposition, folded_requests = enforce_committee_requests(
+                    decomposition, fan_out_reports
+                )
                 report = to_pool_report(decomposition)
                 narrative = decompose_narrative or fan_out.narrative
                 # Pass 2: identity-match new dimensions onto ALL prior dimensions (not
@@ -511,6 +519,7 @@ def rank_run(
                     report, narrative, discovery_cost, new_to_old, match_narrative,
                     match_cost, revive_keys, reconcile_ballot, reconcile_narrative,
                     reconcile_cost, fan_out_reports, decomposition, decompose_cost,
+                    folded_requests,
                 )
             except Exception as exc:
                 criteria_outcome["error"] = exc
@@ -542,7 +551,7 @@ def rank_run(
         (
             report, narrative, discovery_cost, new_to_old, match_narrative, match_cost,
             revive_keys, reconcile_ballot, reconcile_narrative, reconcile_cost,
-            fan_out_reports, decomposition, decompose_cost,
+            fan_out_reports, decomposition, decompose_cost, folded_requests,
         ) = criteria_outcome["ok"]
         # Fan-out audit (SPEC "Fan-Out Redesign"): persist every one of the K raw
         # discovery reports — the diversity the decomposition settled from, so a re-rank's
@@ -557,7 +566,8 @@ def rank_run(
         # from the pre-adopt decomposition so it reflects what decomposition actually did,
         # before the match pass rewrites matched keys to prior ones below.
         decompose_audit = decompose_audit_payload(
-            decomposition, fan_out_reports, narrative=narrative
+            decomposition, fan_out_reports, narrative=narrative,
+            folded_requests=folded_requests,
         )
         # Audit trail for the carry-forward: what discovery ACTUALLY emitted (its own
         # keys, before adopt_matched_keys rewrites matched ones to prior keys) and how

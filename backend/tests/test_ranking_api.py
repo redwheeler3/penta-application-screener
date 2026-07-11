@@ -494,6 +494,118 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
     assert set(merged["source_keys"]) == {"commitment_a", "commitment_b"}
 
 
+def _discovery_with_committee_request() -> PoolDimensionReport:
+    """A discovery report with one committee-requested axis (playground) plus a sibling
+    it could tempt a merge with (child_wellbeing)."""
+    return PoolDimensionReport(
+        summary="two child-related axes, one committee-requested",
+        dimensions=[
+            PoolDimension(key="playground_use", name="Playground use",
+                          definition="school-age kids who'd use the playground",
+                          why_it_differentiates="varies", from_committee_request=True),
+            PoolDimension(key="child_wellbeing", name="Child wellbeing",
+                          definition="general child-centred motivation",
+                          why_it_differentiates="varies"),
+        ],
+    )
+
+
+@pytest.mark.anyio
+async def test_d9_committee_request_folded_into_merge_is_surfaced_not_lost() -> None:
+    # D9: if decomposition MERGES a committee-requested axis into another and (as models
+    # do) drops the from_committee_request flag, the guard restores the flag AND records
+    # the fold in decompose_audit.folded_requests — surfaced to the committee, never a
+    # silent disappearance.
+    from app.services.ranking_run import get_current_run
+
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    a = add_eligible(db, email="a@x.com", raw_hash="h1")
+    # Decomposition folds the requested playground_use into child_wellbeing AND (the
+    # failure the guard must catch) returns the merged axis with the flag false.
+    settled = DecompositionReport(
+        summary="settled",
+        dimensions=[
+            DecomposedDimension(
+                key="child_wellbeing", name="Child wellbeing",
+                definition="child-centred motivation incl. playground",
+                why_it_differentiates="varies",
+                source_keys=["child_wellbeing", "playground_use"],
+                from_committee_request=False,  # model dropped it — guard must repair
+                decision="folded playground_use in — same underlying concept",
+            ),
+        ],
+    )
+    provider.route("<essays>", an_essay_report())
+    provider.route("<applicant_pool>", _discovery_with_committee_request())
+    provider.route("<discovery_reports>", settled)
+    provider.route(
+        f'"applicant_id": {a.id}',
+        DimensionScoringReport(scores=[
+            DimensionScore(dimension_key="child_wellbeing", score=0.5, rationale="r",
+                           evidence="", confidence=ScoreConfidence.MEDIUM),
+        ]),
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await stream_events(client, "/ranking/run")
+
+    run = get_current_run(db)
+    audit = run.criteria["decompose_audit"]
+    # The fold is surfaced: playground_use -> child_wellbeing.
+    assert {"request_key": "playground_use", "into_key": "child_wellbeing"} in audit["folded_requests"]
+    # The flag was repaired on the settled axis (drives auto-favourite + the badge).
+    settled_axis = next(d for d in audit["settled"] if d["key"] == "child_wellbeing")
+    assert settled_axis["from_committee_request"] is True
+
+
+@pytest.mark.anyio
+async def test_d9_silently_dropped_committee_request_is_re_added() -> None:
+    # D9: if decomposition drops a committee-requested axis entirely (its key appears in
+    # NO settled source_keys), the guard re-adds it as its own settled axis so it cannot
+    # vanish.
+    from app.services.ranking_run import get_current_run
+
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    a = add_eligible(db, email="a@x.com", raw_hash="h1")
+    # Decomposition returns ONLY child_wellbeing — playground_use (requested) is gone.
+    settled = DecompositionReport(
+        summary="settled",
+        dimensions=[
+            DecomposedDimension(
+                key="child_wellbeing", name="Child wellbeing",
+                definition="child-centred motivation", why_it_differentiates="varies",
+                source_keys=["child_wellbeing"], decision="kept",
+            ),
+        ],
+    )
+    provider.route("<essays>", an_essay_report())
+    provider.route("<applicant_pool>", _discovery_with_committee_request())
+    provider.route("<discovery_reports>", settled)
+    provider.route(
+        f'"applicant_id": {a.id}',
+        DimensionScoringReport(scores=[
+            DimensionScore(dimension_key="child_wellbeing", score=0.5, rationale="r",
+                           evidence="", confidence=ScoreConfidence.MEDIUM),
+            DimensionScore(dimension_key="playground_use", score=0.6, rationale="r",
+                           evidence="", confidence=ScoreConfidence.MEDIUM),
+        ]),
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await stream_events(client, "/ranking/run")
+
+    run = get_current_run(db)
+    keys = {d["key"] for d in run.criteria["dimension_report"]["dimensions"]}
+    # The dropped request was re-added, so both axes survive.
+    assert keys == {"child_wellbeing", "playground_use"}
+    readded = next(
+        d for d in run.criteria["decompose_audit"]["settled"] if d["key"] == "playground_use"
+    )
+    assert readded["from_committee_request"] is True
+
+
 @pytest.mark.anyio
 async def test_criteria_phase_streams_thinking_deltas() -> None:
     # The discovery (and match) call streams the model's reasoning as
