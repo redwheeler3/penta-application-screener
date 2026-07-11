@@ -75,6 +75,7 @@ from app.schemas.events import (
     PhaseEvent,
     ProgressEvent,
     RankSummary,
+    StageEvent,
     ThinkingEvent,
     emit,
 )
@@ -132,6 +133,26 @@ router = APIRouter(prefix="/ranking", tags=["ranking"])
 # Phase names for the rank stream (every event carries one, so the client's
 # stream switch is uniform across this job and the screening job).
 ESSAYS, CRITERIA, SCORES = "essays", "criteria", "scores"
+
+# Sub-stages within the criteria phase — the sequential model calls under its one
+# banner, surfaced so the UI can say which step is running (they're opaque calls with
+# no per-item progress). Emitted as StageEvents; see do_criteria + the drain loop.
+CRITERIA_STAGES = {
+    "discovering": "discovering",
+    "settling": "settling",
+    "matching": "matching",
+}
+
+
+class _Stage:
+    """A sentinel pushed onto the criteria delta queue to mark a sub-stage transition,
+    so the drain loop can tell it apart from a reasoning-text delta (a plain str) and
+    emit a StageEvent instead of a ThinkingEvent."""
+
+    __slots__ = ("name",)
+
+    def __init__(self, name: str) -> None:
+        self.name = name
 
 
 @dataclass
@@ -476,7 +497,9 @@ def rank_run(
         # from a callback, so the work runs on a worker thread that pushes deltas
         # onto a queue, and this generator drains the queue into NDJSON lines.
         # A None sentinel marks the work done; the worker stashes its outcome/error.
-        delta_queue: queue.Queue[str | None] = queue.Queue()
+        # Queue items: str = a reasoning-text delta, _Stage = a sub-stage transition,
+        # None = work complete. The drain loop below fans these into the right events.
+        delta_queue: queue.Queue[str | _Stage | None] = queue.Queue()
         criteria_outcome: dict[str, Any] = {}
 
         def on_delta(text: str) -> None:
@@ -489,6 +512,7 @@ def rank_run(
                 # cross-call variation is the diversity the decomposition step (pass 1b)
                 # settles — measured to buy +36% real coverage vs. a single run (see the
                 # coverage gate). All K are persisted as an audit trail.
+                delta_queue.put(_Stage(CRITERIA_STAGES["discovering"]))
                 fan_out = discover_patterns_fanout(
                     db, provider, applications=pool, settings=settings,
                     k=settings.ai.discovery_fan_out, seeds=seeds, on_delta=on_delta,
@@ -502,6 +526,7 @@ def rank_run(
                 # projected onto a PoolDimensionReport so the unchanged match → (reconcile)
                 # → adopt → score tail below flows exactly as before; source_keys + the
                 # per-axis merge reasoning are preserved separately in decompose_audit.
+                delta_queue.put(_Stage(CRITERIA_STAGES["settling"]))
                 decomposition, decompose_narrative, decompose_cost = decompose_dimensions(
                     provider, reports=fan_out_reports, settings=settings, on_delta=on_delta,
                 )
@@ -535,6 +560,7 @@ def rank_run(
                 reconcile_narrative: str | None = None
                 reconcile_cost = 0.0
                 if match_history is not None:
+                    delta_queue.put(_Stage(CRITERIA_STAGES["matching"]))
                     new_to_old, match_narrative, match_cost = match_dimensions(
                         provider, old=match_history, new=report, settings=settings,
                         on_delta=on_delta,
@@ -553,10 +579,13 @@ def rank_run(
         worker = threading.Thread(target=do_criteria, daemon=True)
         worker.start()
         while True:
-            text = delta_queue.get()
-            if text is None:
+            item = delta_queue.get()
+            if item is None:
                 break
-            yield emit(ThinkingEvent(phase=CRITERIA, text=text))
+            if isinstance(item, _Stage):
+                yield emit(StageEvent(phase=CRITERIA, stage=item.name))
+            else:
+                yield emit(ThinkingEvent(phase=CRITERIA, text=item))
         worker.join()
 
         if "error" in criteria_outcome:

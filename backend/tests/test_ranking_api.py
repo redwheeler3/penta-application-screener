@@ -635,6 +635,12 @@ async def test_criteria_phase_streams_thinking_deltas() -> None:
         assert types.index("phase") < types.index("thinking")
         assert "".join(e["text"] for e in thinking)  # non-empty reasoning text
 
+        # The criteria phase also emits sub-stage markers so the UI can name the step.
+        # This is a FIRST run (no prior history), so the match pass is skipped — only
+        # discovery and decomposition fire, in order.
+        stages = [e["stage"] for e in events if e["type"] == "stage"]
+        assert stages == ["discovering", "settling"]
+
 
 @pytest.mark.anyio
 async def test_tiers_reweight_and_resort_the_ranking() -> None:
@@ -935,7 +941,12 @@ async def test_reconcile_disabled_dropped_dimension_is_not_revived() -> None:
             ),
         )
         provider.route("applicant_id", a_scoring_report())
-        await stream_events(client, "/ranking/run")
+        run2_events = await stream_events(client, "/ranking/run")
+
+        # This IS a re-run (prior history exists), so all three criteria sub-stages fire
+        # in order — including matching, which a first run skips.
+        stages = [e["stage"] for e in run2_events if e["type"] == "stage"]
+        assert stages == ["discovering", "settling", "matching"]
 
         # skills_offered was dropped by discovery and is NOT revived — the run holds only
         # what decomposition settled (participation_commitment), not the historical prior.

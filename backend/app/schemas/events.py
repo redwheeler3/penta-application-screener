@@ -45,6 +45,18 @@ class ThinkingEvent(ResponseModel):
     text: str
 
 
+class StageEvent(ResponseModel):
+    """A sub-stage transition within a phase, for phases that run several sequential
+    steps under one phase banner (the criteria phase: discovery → decompose → match).
+    Lets the UI update its label ("Running discoveries…" → "Settling the set…")
+    without a per-item progress fraction — the steps are opaque model calls.
+    """
+
+    type: Literal["stage"] = "stage"
+    phase: str
+    stage: str
+
+
 class NoticeEvent(ResponseModel):
     """A structured mid-stream update (e.g. criteria discovered + carried forward)."""
 
