@@ -2617,33 +2617,27 @@ h1 {
   color: #92400e;
 }
 
-/* Tier-agnostic "clear all flags" row: sits between the tier-list head and the
-   tiers, so it reads as acting on the whole layout rather than one row. Clears every
-   flag (new + revived) across all tiers at once. The button inside stays
-   content-width so its hover background only covers the button. */
-.tier-clear-flags-row {
-  display: flex;
-  margin-bottom: 0.4rem;
-}
-
-.tier-mark-reviewed {
+/* Tier-agnostic "clear flags" control: lives inline in the tier-list head, before the
+   Add actions. Deliberately QUIET — clearing flags is a minor dismissal, so it's a
+   muted borderless text button, lighter than the neutral Add buttons beside it (never
+   an amber alert, which would overweight a throwaway action). Only shown when flags
+   exist; clears new + revived across ALL tiers. */
+.tier-clear-flags {
   display: inline-flex;
   align-items: center;
-  align-self: flex-start;
-  width: fit-content;
   gap: 0.3rem;
-  padding: 0.2rem 0.5rem;
+  padding: 0.3rem 0.5rem;
   border: 0;
   border-radius: 6px;
   background: none;
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
 }
 
-.tier-mark-reviewed:hover {
+.tier-clear-flags:hover {
   background: rgba(17, 24, 39, 0.05);
   color: var(--ink);
 }
