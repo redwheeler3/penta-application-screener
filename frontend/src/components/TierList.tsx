@@ -285,24 +285,6 @@ function TierRow(props: {
               );
             })
           )}
-          {/* Bulk-acknowledge the flagged dimensions in this (Ignore) row — flows
-              after the chips it acts on. Only shows when at least one flag is here.
-              Covers both "new" and any "revived" chips that landed back in Ignore. */}
-          {(() => {
-            const flaggedHere = tier.dimensionKeys.filter((k) => props.newKeys.has(k));
-            return tier.ignore && flaggedHere.length > 0 ? (
-              <div className="tier-mark-reviewed-row">
-                <button
-                  type="button"
-                  className="tier-mark-reviewed"
-                  onClick={() => props.onAcknowledge(flaggedHere)}
-                >
-                  <Check size={13} />
-                  Clear all {flaggedHere.length} flag{flaggedHere.length === 1 ? "" : "s"}
-                </button>
-              </div>
-            ) : null;
-          })()}
         </div>
       </SortableContext>
     </div>
@@ -401,6 +383,12 @@ export function TierList(props: {
   const activeLabel = activeKey ? props.labelFor(activeKey) : null;
   const activeFav = activeKey ? props.favourited.has(activeKey) : false;
 
+  // Every flagged dimension, across ALL tiers — not just Ignore. Flags (new OR revived)
+  // now surface in whatever tier carry-forward placed them, so the bulk "clear all"
+  // acts on the whole layout, not one row. props.newKeys is the full flagged set;
+  // revived is a subset, so this covers both badge kinds wherever they sit.
+  const flaggedKeys = tiers.flatMap((t) => t.dimensionKeys.filter((k) => props.newKeys.has(k)));
+
   function renameTier(id: string, label: string) {
     onChange(tiers.map((t) => (t.id === id ? { ...t, label } : t)));
   }
@@ -450,6 +438,21 @@ export function TierList(props: {
         </div>
       </div>
       {props.addOpen ? props.composer : null}
+      {/* Bulk-acknowledge every flagged dimension across ALL tiers (new + revived).
+          Tier-agnostic: flags surface wherever carry-forward placed a dimension, not
+          just in Ignore, so the control lives with the tier list as a whole. */}
+      {flaggedKeys.length > 0 ? (
+        <div className="tier-clear-flags-row no-print">
+          <button
+            type="button"
+            className="tier-mark-reviewed"
+            onClick={() => props.onAcknowledge(flaggedKeys)}
+          >
+            <Check size={13} />
+            Clear all {flaggedKeys.length} flag{flaggedKeys.length === 1 ? "" : "s"}
+          </button>
+        </div>
+      ) : null}
       <DndContext
         sensors={sensors}
         collisionDetection={collisionDetection}

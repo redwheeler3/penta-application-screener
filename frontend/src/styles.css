@@ -2617,12 +2617,13 @@ h1 {
   color: #92400e;
 }
 
-/* Bulk "Mark all reviewed" on the Ignore row — clears every new badge at once. */
-.tier-mark-reviewed-row {
-  /* Full-width basis forces the button onto its own line below the chips it
-     acts on. The wrapper takes the full row; the button inside stays
-     content-width so its hover background only covers the button itself. */
-  flex-basis: 100%;
+/* Tier-agnostic "clear all flags" row: sits between the tier-list head and the
+   tiers, so it reads as acting on the whole layout rather than one row. Clears every
+   flag (new + revived) across all tiers at once. The button inside stays
+   content-width so its hover background only covers the button. */
+.tier-clear-flags-row {
+  display: flex;
+  margin-bottom: 0.4rem;
 }
 
 .tier-mark-reviewed {
