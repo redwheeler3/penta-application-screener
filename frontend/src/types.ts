@@ -327,6 +327,32 @@ export type ReconcileAuditResponse = {
   narrative: string | null;
 };
 
+// GET /ranking/current/decompose-audit — how the K fan-out discovery reports were
+// settled into one non-overlapping dimension set for the current run. Null on runs
+// that predate the fan-out redesign (single-discovery runs).
+export type DecomposeAuditResponse = {
+  runId: number;
+  inputReportCount: number;
+  inputDimensionCount: number;
+  settledCount: number;
+  mergeCount: number;
+  // Each settled axis: its key/name, the input axes it absorbed (sourceKeys — one =
+  // kept as-is, several = a merge), the committee-request flag, and the model's
+  // decision reasoning (why merged / kept distinct).
+  settled: {
+    key: string;
+    name: string;
+    sourceKeys: string[];
+    fromCommitteeRequest: boolean;
+    decision: string;
+  }[];
+  // D9: committee-requested axes decomposition folded INTO another axis
+  // (requestKey → intoKey), surfaced so a fold is visible, never silent.
+  foldedRequests: { requestKey: string; intoKey: string }[];
+  // The decomposition pass's free-text reasoning (markdown). Null if none surfaced.
+  narrative: string | null;
+};
+
 // A notification toast. Success toasts auto-dismiss; error toasts persist until
 // dismissed (and offer a copy button), so a failure can't scroll away unread.
 export type Toast = { id: number; message: string; variant: "success" | "error" };

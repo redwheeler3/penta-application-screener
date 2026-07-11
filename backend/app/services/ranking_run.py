@@ -436,6 +436,30 @@ def reconcile_audit_view(run: RankingRun) -> dict | None:
     }
 
 
+def decompose_audit_view(run: RankingRun) -> dict | None:
+    """The run's decompose audit — how the K fan-out reports were settled into one set —
+    shaped for the trace viewer, or None on runs that predate decomposition (single-
+    discovery runs have no ``criteria.decompose_audit``).
+
+    The stored audit (built by ``dimension_decompose.decompose_audit_payload``) is already
+    view-shaped: settled axes with source_keys + decision reasoning, the input/settled
+    counts, and the D9 ``folded_requests`` trail. This is a thin pass-through with
+    defaults, mirroring the other ``*_audit_view`` accessors so the router stays uniform.
+    """
+    audit = (run.criteria or {}).get("decompose_audit")
+    if not audit:
+        return None
+    return {
+        "input_report_count": audit.get("input_report_count", 0),
+        "input_dimension_count": audit.get("input_dimension_count", 0),
+        "settled_count": audit.get("settled_count", 0),
+        "merge_count": audit.get("merge_count", 0),
+        "settled": audit.get("settled", []),
+        "folded_requests": audit.get("folded_requests", []),
+        "narrative": audit.get("narrative"),
+    }
+
+
 def set_seeds(
     db: Session,
     run: RankingRun,

@@ -482,6 +482,13 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
         # The run settled to 2 dims (the merge collapsed 3 → 2), not the 3 discovered.
         assert summary["dimensions"] == 2
 
+        # The decompose-audit endpoint surfaces the merge (the Insights panel's source).
+        endpoint = (await client.get("/ranking/current/decompose-audit")).json()
+        assert endpoint["mergeCount"] == 1
+        assert endpoint["settledCount"] == 2
+        merged_out = next(d for d in endpoint["settled"] if d["key"] == "commitment")
+        assert set(merged_out["sourceKeys"]) == {"commitment_a", "commitment_b"}
+
     run = get_current_run(db)
     settled_keys = {d["key"] for d in run.criteria["dimension_report"]["dimensions"]}
     assert settled_keys == {"commitment", "skills_offered"}

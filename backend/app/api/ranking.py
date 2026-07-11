@@ -77,6 +77,7 @@ from app.schemas.events import (
 from app.schemas.insights import CostReport, LastRunsReport
 from app.schemas.ranking import (
     CurrentRunResponse,
+    DecomposeAuditResponse,
     MatchAuditResponse,
     PoolDimensionOut,
     RankedCandidateOut,
@@ -103,6 +104,7 @@ from app.services.ranking_run import (
     carry_forward_layout,
     create_run,
     current_dimension_report,
+    decompose_audit_view,
     dimension_weights,
     display_tiers,
     favourited_keys,
@@ -246,6 +248,25 @@ def current_reconcile_audit(
     if view is None:
         return None
     return ReconcileAuditResponse(run_id=run.id, **view)
+
+
+@router.get("/current/decompose-audit", response_model=DecomposeAuditResponse | None)
+def current_decompose_audit(
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> DecomposeAuditResponse | None:
+    """The current run's decomposition audit — how the K fan-out discovery reports were
+    settled into one non-overlapping set: each settled axis's source keys + merge/keep
+    reasoning, the settle-down counts, and the D9 folded-committee-request trail. Null on
+    runs that predate the fan-out redesign (single-discovery runs).
+    """
+    run = get_current_run(db)
+    if run is None:
+        return None
+    view = decompose_audit_view(run)
+    if view is None:
+        return None
+    return DecomposeAuditResponse(run_id=run.id, **view)
 
 
 @router.get("/insights/cost", response_model=CostReport)

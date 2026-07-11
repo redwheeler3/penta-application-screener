@@ -106,6 +106,47 @@ class ReconcileAuditResponse(ResponseModel):
     narrative: str | None = None
 
 
+class SettledDimensionOut(ResponseModel):
+    """One settled axis from the decomposition, for the Insights trace: what it is,
+    the input axes it absorbed (``sourceKeys`` — one = kept as-is, several = a merge),
+    and the model's ``decision`` reasoning (why merged / kept distinct)."""
+
+    key: str
+    name: str
+    source_keys: list[str]
+    from_committee_request: bool = False
+    decision: str
+
+
+class FoldedRequestOut(ResponseModel):
+    """A committee-requested axis that decomposition merged INTO another (D9): the
+    request key and the settled axis it was folded into. Surfaced so a fold is visible
+    to the committee, never a silent disappearance."""
+
+    request_key: str
+    into_key: str
+
+
+class DecomposeAuditResponse(ResponseModel):
+    """GET /ranking/current/decompose-audit — how the K fan-out discovery reports were
+    settled into one non-overlapping set for the current run. Null when the run predates
+    decomposition (single-discovery runs).
+
+    ``mergeCount`` / the settle-down from ``inputDimensionCount`` to ``settledCount`` show
+    how much the decomposition collapsed; ``foldedRequests`` is the D9 committee-request
+    trail (empty when no request was merged away)."""
+
+    run_id: int
+    input_report_count: int
+    input_dimension_count: int
+    settled_count: int
+    merge_count: int
+    settled: list[SettledDimensionOut]
+    folded_requests: list[FoldedRequestOut] = []
+    # The decomposition pass's free-text reasoning (markdown), for the Insights panel.
+    narrative: str | None = None
+
+
 class RankEstimateBreakdown(ResponseModel):
     essays_usd: float
     criteria_usd: float

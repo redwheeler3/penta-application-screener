@@ -1441,6 +1441,14 @@ h1 {
   margin: 0 0 0.75rem;
 }
 
+/* D9 committee-request folds: a left accent bar so "your proposal was folded in"
+   reads as a callout, not just another hint line. */
+.decompose-folded-note {
+  border-left: 3px solid var(--accent, #6366f1);
+  padding-left: 0.6rem;
+  color: var(--text, inherit);
+}
+
 .match-audit-stats {
   display: flex;
   flex-wrap: wrap;
