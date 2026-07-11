@@ -45,10 +45,13 @@ class AISettings(BridgeModel):
     runs on the model already trusted for the HARDER discovery task. Any of these
     can move to Opus if a real run shows the current default is too weak for the job.
 
-    (The decomposition step — which settles the K fan-out reports — reuses
-    ``discovery_model``; it's the same synthesis-tier judgment, so it doesn't get its
-    own field. The former ``reconcile_model`` was removed with the reconcile pass in the
-    fan-out redesign.)
+    ``decompose_model`` (settles the K fan-out reports into one set) gets its own field
+    for consistency and independent tunability — every pass has one — even though it
+    defaults to the same synthesis tier as discovery. It's a genuinely different task
+    (reasoning over K reports vs. reading the pool), so being able to move it — e.g. to
+    Opus if settling proves harder than discovering — without dragging discovery along
+    is worth the one knob. (The former ``reconcile_model`` was removed with the reconcile
+    pass in the fan-out redesign.)
     """
 
     region: str = Field(default="us-west-2")
@@ -58,6 +61,7 @@ class AISettings(BridgeModel):
     essay_analysis_model: str = Field(default=_HAIKU)
     dimension_scoring_model: str = Field(default=_HAIKU)
     discovery_model: str = Field(default=_SONNET)
+    decompose_model: str = Field(default=_SONNET)
     match_model: str = Field(default=_SONNET)
     # Fan-Out Redesign (SPEC "Fan-Out Redesign", D6): how many parallel, fresh-context
     # discovery calls one Rank runs. Their cross-call variation is the diversity a later

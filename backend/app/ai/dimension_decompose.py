@@ -134,7 +134,7 @@ def estimate_decompose(reports: list[PoolDimensionReport], settings: AppSettings
         input_tokens=200 * max(input_dims, 1),
         output_tokens=_DECOMPOSE_OUTPUT_TOKENS,
     )
-    return cost_usd(settings.ai.discovery_model, usage)
+    return cost_usd(settings.ai.decompose_model, usage)
 
 
 def to_pool_report(decomposition: DecompositionReport) -> PoolDimensionReport:
@@ -297,7 +297,7 @@ def decompose_dimensions(
         return trivial, None, 0.0
 
     result = provider.structured_output(
-        model_id=settings.ai.discovery_model,
+        model_id=settings.ai.decompose_model,
         schema=DecompositionReport,
         prompt=build_prompt(reports),
         system_prompt=SYSTEM_PROMPT,

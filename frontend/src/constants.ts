@@ -104,6 +104,7 @@ export const defaultSettings: AppSettings = {
     essayAnalysisModel: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
     dimensionScoringModel: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
     discoveryModel: "us.anthropic.claude-sonnet-4-6",
+    decomposeModel: "us.anthropic.claude-sonnet-4-6",
     matchModel: "us.anthropic.claude-sonnet-4-6",
     discoveryFanOut: 5,
     spendingCapUsd: 1.0,
