@@ -161,10 +161,76 @@ def to_pool_report(decomposition: DecompositionReport) -> PoolDimensionReport:
     )
 
 
+def enforce_committee_requests(
+    decomposition: DecompositionReport,
+    input_reports: list[PoolDimensionReport],
+) -> tuple[DecompositionReport, list[dict]]:
+    """D9 guard (SPEC "Fan-Out Redesign", D9): a committee-requested axis must never be
+    silently merged away. Deterministic backstop for the prompt instruction — prompts
+    guide, they don't guarantee.
+
+    Two failure modes repaired here, both computed from the input `from_committee_request`
+    flags vs. what decomposition returned:
+      - **Flag loss on merge:** a requested input key was absorbed into a settled axis,
+        but that axis came back ``from_committee_request: false`` — the provenance that
+        drives auto-favouriting and the UI badge. We force the flag back true.
+      - **Silent drop:** a requested input key appears in NO settled axis's
+        ``source_keys`` — decomposition dropped it entirely. We re-add it as its own
+        settled axis (restoring the input's text) so it cannot vanish.
+
+    Returns the corrected report and a ``folded`` list — the requested axes that were
+    merged INTO another axis (not kept standalone), each ``{request_key, into_key}`` —
+    so the caller can surface "your proposal X was folded into Y" to the committee
+    (never a silent disappearance). A requested axis kept as its own settled axis is not
+    "folded" and isn't listed.
+    """
+    requested = {
+        d.key: d
+        for r in input_reports
+        for d in r.dimensions
+        if d.from_committee_request
+    }
+    if not requested:
+        return decomposition, []
+
+    dims = [d.model_copy() for d in decomposition.dimensions]
+    covered: dict[str, str] = {}  # requested input key -> settled axis key that absorbed it
+    for settled in dims:
+        for sk in settled.source_keys:
+            if sk in requested:
+                covered[sk] = settled.key
+                # Flag-loss repair: a settled axis absorbing a request carries the flag.
+                if not settled.from_committee_request:
+                    settled.from_committee_request = True
+
+    folded: list[dict] = []
+    for req_key, req_dim in requested.items():
+        settled_key = covered.get(req_key)
+        if settled_key is None:
+            # Silent drop: re-add the requested axis as its own settled dimension.
+            dims.append(
+                DecomposedDimension(
+                    key=req_dim.key,
+                    name=req_dim.name,
+                    definition=req_dim.definition,
+                    why_it_differentiates=req_dim.why_it_differentiates,
+                    source_keys=[req_dim.key],
+                    from_committee_request=True,
+                    decision="Re-added by the D9 guard — decomposition dropped this committee-requested axis.",
+                )
+            )
+        elif settled_key != req_key:
+            # Merged INTO another axis (not kept standalone) — surface it, don't undo it.
+            folded.append({"request_key": req_key, "into_key": settled_key})
+
+    return decomposition.model_copy(update={"dimensions": dims}), folded
+
+
 def decompose_audit_payload(
     decomposition: DecompositionReport,
     input_reports: list[PoolDimensionReport],
     narrative: str | None = None,
+    folded_requests: list[dict] | None = None,
 ) -> dict:
     """Shape the decomposition for storage on the run (mirrors ``reconcile_audit``).
 
@@ -190,6 +256,10 @@ def decompose_audit_payload(
             }
             for d in settled
         ],
+        # D9: committee-requested axes that decomposition folded INTO another axis
+        # (request_key → into_key). The UI surfaces "your proposal X was folded into Y"
+        # so a fold is visible, never silent. Empty when no request was merged away.
+        "folded_requests": folded_requests or [],
         "narrative": narrative,
     }
 
