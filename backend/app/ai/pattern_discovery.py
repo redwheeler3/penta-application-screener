@@ -59,7 +59,7 @@ You describe axes, not individuals; a later step scores and ranks them."""
 # Static instruction text. Shared note fragments are interpolated at import.
 _INSTRUCTIONS = f"""\
 ## Task
-Discover the dimensions (10-30) on which this pool genuinely varies and that matter for "fit for Penta". Draw on BOTH facts and essays — quantitative axes count as much as qualitative ones. Prefer splitting a broad axis into separately-weighable sub-dimensions over merging. Every dimension must be independently meaningful and non-overlapping.
+Discover the dimensions (20-30) on which this pool genuinely varies and that matter for "fit for Penta". Draw on BOTH facts and essays — quantitative axes count as much as qualitative ones. Prefer splitting a broad axis into separately-weighable sub-dimensions over merging. Every dimension must be independently meaningful and non-overlapping.
 
 ## Inputs
 The eligible applicants are in the `<applicant_pool>` block below — each with structured "facts" (household make-up, income and its split, employment tenure, real-estate ownership, pets) and an essay summary.
