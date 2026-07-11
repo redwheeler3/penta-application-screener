@@ -32,6 +32,12 @@ from app.ai.analysis import (
     exception_type_name,
     log,
 )
+from app.ai.dimension_decompose import (
+    decompose_audit_payload,
+    decompose_dimensions,
+    estimate_decompose,
+    to_pool_report,
+)
 from app.ai.dimension_matching import estimate_match, match_dimensions
 from app.ai.dimension_reconcile import estimate_reconcile, reconcile_dropped
 from app.ai.dimension_scoring import (
@@ -51,6 +57,7 @@ from app.ai.pattern_discovery import (
     estimate_discovery,
 )
 from app.ai.provider import AIProvider
+from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.api.dependencies import get_ai_provider, require_current_user
 from app.api.problems import Problem
 from app.db.models import User
@@ -278,6 +285,17 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     # like the single call. Discovery is uncached, so K multiplies straight through —
     # the bigger-than-expected half of the fan-out cost (see the cost-model note).
     discovery_usd = estimate_discovery(pool, settings) * settings.ai.discovery_fan_out
+    # Decomposition: one call settling the K reports into the finest set. Priced from a
+    # projected input size (K reports × ~20 dims each) since the real reports don't
+    # exist pre-run. Folded into criteria_usd — it's part of the criteria phase.
+    _stub = PoolDimension(
+        key="x", name="x", definition="x", why_it_differentiates="x"
+    )
+    projected = [
+        PoolDimensionReport(summary="", dimensions=[_stub] * 20)
+        for _ in range(settings.ai.discovery_fan_out)
+    ]
+    decompose_usd = estimate_decompose(projected, settings)
     # A match pass runs only when there is a prior run to match against.
     has_prior = get_current_run(db) is not None
     match_usd = estimate_match(settings) if has_prior else 0.0
@@ -291,14 +309,15 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     scoring = estimate_dimension_scoring(db, settings)
     scoring_usd = float(scoring["estimated_usd"])
     total = round(
-        float(essays["estimated_usd"]) + discovery_usd + match_usd
+        float(essays["estimated_usd"]) + discovery_usd + decompose_usd + match_usd
         + reconcile_usd + scoring_usd, 4
     )
     return {
         "eligible": len(pool),
         "breakdown": {
             "essays_usd": round(float(essays["estimated_usd"]), 4),
-            "criteria_usd": round(discovery_usd, 4),
+            # criteria = the K discovery calls + the decomposition that settles them.
+            "criteria_usd": round(discovery_usd + decompose_usd, 4),
             "match_usd": round(match_usd, 4),
             "reconcile_usd": round(reconcile_usd, 4),
             "scoring_usd": round(scoring_usd, 4),
@@ -436,19 +455,27 @@ def rank_run(
             try:
                 # Pass 1: K-parallel fresh-context re-discovery (SPEC "Fan-Out
                 # Redesign", D6), blind except for the committee's seeds. The K reports'
-                # cross-call variation is the diversity Phase 3's decomposition step will
-                # pare down; for now (Phase 2) we persist all K as an audit trail and
-                # feed ONE primary report through the existing match/reconcile tail so
-                # the app still ranks end-to-end. Primary = the largest report (most
-                # dimensions), an arbitrary-but-sensible pick until decomposition lands.
+                # cross-call variation is the diversity the decomposition step (pass 1b)
+                # settles — measured to buy +36% real coverage vs. a single run (see the
+                # coverage gate). All K are persisted as an audit trail.
                 fan_out = discover_patterns_fanout(
                     db, provider, applications=pool, settings=settings,
                     k=settings.ai.discovery_fan_out, seeds=seeds, on_delta=on_delta,
                 )
                 fan_out_reports = fan_out.reports
                 discovery_cost = fan_out.cost_usd
-                report = max(fan_out_reports, key=lambda r: len(r.dimensions))
-                narrative = fan_out.narrative
+                # Pass 1b: decomposition — settle the K reports into ONE finest,
+                # non-overlapping set (SPEC "Fan-Out Redesign", Phase 3/4a). The winning
+                # single-call baseline; it distils the union to ~one axis per real concept
+                # (0 judge-flagged overlaps in the bake-off). Its DecompositionReport is
+                # projected onto a PoolDimensionReport so the unchanged match → (reconcile)
+                # → adopt → score tail below flows exactly as before; source_keys + the
+                # per-axis merge reasoning are preserved separately in decompose_audit.
+                decomposition, decompose_narrative, decompose_cost = decompose_dimensions(
+                    provider, reports=fan_out_reports, settings=settings, on_delta=on_delta,
+                )
+                report = to_pool_report(decomposition)
+                narrative = decompose_narrative or fan_out.narrative
                 # Pass 2: identity-match new dimensions onto ALL prior dimensions (not
                 # just the last run) so a re-surfaced concept re-adopts its key rather
                 # than minting a new one — keeping the key count converging and reusing
@@ -483,7 +510,7 @@ def rank_run(
                 criteria_outcome["ok"] = (
                     report, narrative, discovery_cost, new_to_old, match_narrative,
                     match_cost, revive_keys, reconcile_ballot, reconcile_narrative,
-                    reconcile_cost, fan_out_reports,
+                    reconcile_cost, fan_out_reports, decomposition, decompose_cost,
                 )
             except Exception as exc:
                 criteria_outcome["error"] = exc
@@ -515,17 +542,23 @@ def rank_run(
         (
             report, narrative, discovery_cost, new_to_old, match_narrative, match_cost,
             revive_keys, reconcile_ballot, reconcile_narrative, reconcile_cost,
-            fan_out_reports,
+            fan_out_reports, decomposition, decompose_cost,
         ) = criteria_outcome["ok"]
-        # Fan-out audit (SPEC "Fan-Out Redesign", Phase 2): persist every one of the K
-        # raw discovery reports so Phase 3's decomposition step (and its bake-off) has
-        # real fresh fan-out input to work from, not just the historical fixture. This
-        # is the ONLY place the K reports exist — the match/reconcile tail below collapses
-        # them to the one primary report. Stored as plain dicts under criteria.
+        # Fan-out audit (SPEC "Fan-Out Redesign"): persist every one of the K raw
+        # discovery reports — the diversity the decomposition settled from, so a re-rank's
+        # "what did the K carvings look like before we settled them" is inspectable.
+        # Stored as plain dicts under criteria.
         fan_out_audit = {
             "k": len(fan_out_reports),
             "reports": [r.model_dump(mode="json") for r in fan_out_reports],
         }
+        # Decompose audit: per settled axis, the source_keys it absorbed + the merge/keep
+        # reasoning (the Insights panel surface, and the D9 committee-request trail). Built
+        # from the pre-adopt decomposition so it reflects what decomposition actually did,
+        # before the match pass rewrites matched keys to prior ones below.
+        decompose_audit = decompose_audit_payload(
+            decomposition, fan_out_reports, narrative=narrative
+        )
         # Audit trail for the carry-forward: what discovery ACTUALLY emitted (its own
         # keys, before adopt_matched_keys rewrites matched ones to prior keys) and how
         # the match pass mapped it. Without this the stored report only shows the
@@ -584,8 +617,10 @@ def rank_run(
             match_audit=match_audit,
             reconcile_audit=reconcile_audit,
             fan_out_audit=fan_out_audit,
+            decompose_audit=decompose_audit,
+            decompose_cost_usd=decompose_cost,
         )
-        total_cost += discovery_cost + match_cost + reconcile_cost
+        total_cost += discovery_cost + decompose_cost + match_cost + reconcile_cost
         yield emit(
             NoticeEvent(
                 phase=CRITERIA,

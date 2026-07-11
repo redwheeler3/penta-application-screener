@@ -31,17 +31,27 @@ class StrandsProvider:
         self._region = region
         # Size the pool to the worker count so threads don't queue on sockets.
         self._max_pool_connections = max_pool_connections
-        self._models: dict[str, BedrockModel] = {}
+        # Keyed by (model_id, read_timeout): a longer-timeout variant of the same model
+        # is a distinct cached client (see _model_for / the decomposition call).
+        self._models: dict[tuple[str, int], BedrockModel] = {}
         self._models_lock = threading.Lock()
 
-    def _model_for(self, model_id: str) -> BedrockModel:
+    # Default Bedrock read timeout (s). Fine for the per-applicant passes and single
+    # discovery calls, but the fan-out DECOMPOSITION call streams a large reasoned set
+    # and blows this (confirmed twice) — that call passes a longer read_timeout, keyed
+    # separately in the model cache so the default stays put for everything else.
+    DEFAULT_READ_TIMEOUT = 120
+
+    def _model_for(self, model_id: str, read_timeout: int | None = None) -> BedrockModel:
         # Imported lazily so importing this module (and the test suite) does not
         # require the strands/botocore packages or any AWS configuration.
         from botocore.config import Config
         from strands.models import BedrockModel
 
+        timeout = read_timeout or self.DEFAULT_READ_TIMEOUT
+        cache_key = (model_id, timeout)  # a longer-timeout variant is a distinct model
         with self._models_lock:
-            model = self._models.get(model_id)
+            model = self._models.get(cache_key)
             if model is None:
                 model = BedrockModel(
                     model_id=model_id,
@@ -52,10 +62,10 @@ class StrandsProvider:
                         # transient 5xx/timeouts — cheap insurance once parallel.
                         retries={"max_attempts": 5, "mode": "adaptive"},
                         connect_timeout=10,
-                        read_timeout=120,
+                        read_timeout=timeout,
                     ),
                 )
-                self._models[model_id] = model
+                self._models[cache_key] = model
             return model
 
     def structured_output(
@@ -66,6 +76,7 @@ class StrandsProvider:
         prompt: str,
         system_prompt: str | None = None,
         on_delta: DeltaSink | None = None,
+        read_timeout: int | None = None,
     ) -> AIResult:
         # One path for every call: drain Strands' (async) streaming API to completion
         # in a private event loop on the calling thread. A spike confirmed this is
@@ -83,7 +94,7 @@ class StrandsProvider:
         # intended surface for that text (via sink -> the NDJSON stream); the terminal
         # echo is just noise.
         agent = Agent(
-            model=self._model_for(model_id),
+            model=self._model_for(model_id, read_timeout),
             system_prompt=system_prompt,
             callback_handler=None,
         )
