@@ -291,15 +291,17 @@ def insights_last_runs(
 
 
 def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
-    """Combined projected cost of the Rank passes (essays → discovery → match →
-    scoring).
+    """Combined projected cost of the Rank passes (essays → K-discovery + decompose →
+    match → reconcile → scoring).
 
-    Essays are netted against their cache; discovery always re-runs (uncached);
-    the match pass adds one small call, only when a prior run exists. Scoring is
+    Essays are netted against their cache; the K parallel discovery calls always re-run
+    (uncached), and the decomposition that settles them is one more call — both folded
+    into ``criteria_usd``. The match + reconcile passes add calls only when a prior run
+    exists (reconcile priced at its worst-case ceiling; removed in Phase 4c). Scoring is
     priced as a whole-pool ceiling (every candidate × every dimension) because the
     estimate runs before discovery, so it can't yet know how many dimensions carry
-    forward. Per-dimension reuse makes the actual run come in under this ceiling,
-    so the total is an upper bound (the confirmation labels it approximate).
+    forward. Per-dimension reuse makes the actual run come in under this ceiling, so the
+    total is an upper bound (the confirmation labels it approximate).
     """
     essays = estimate_essay_analysis(db, settings)
     pool = eligible_applications(db)
@@ -336,6 +338,8 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     )
     return {
         "eligible": len(pool),
+        # K parallel discoveries per Rank (D6), so the confirm card can name the fan-out.
+        "fan_out": settings.ai.discovery_fan_out,
         "breakdown": {
             "essays_usd": round(float(essays["estimated_usd"]), 4),
             # criteria = the K discovery calls + the decomposition that settles them.
@@ -363,6 +367,7 @@ def rank_estimate(
     breakdown = result["breakdown"]
     return RankEstimateResponse(
         eligible=result["eligible"],
+        fan_out=result["fan_out"],
         breakdown=RankEstimateBreakdown(
             essays_usd=breakdown["essays_usd"],
             criteria_usd=breakdown["criteria_usd"],

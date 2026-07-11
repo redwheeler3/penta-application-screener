@@ -370,8 +370,11 @@ export type ScreeningEstimateResponse = {
 // `approximate` is always true: scoring is priced as a whole-pool ceiling.
 export type RankEstimateResponse = {
   eligible: number;
+  // K parallel discovery calls per Rank (the fan-out width), for the confirm-card copy.
+  fanOut: number;
   breakdown: {
     essaysUsd: number;
+    // K parallel discoveries + the decomposition that settles them into one set.
     criteriaUsd: number;
     // The dimension identity-match call; 0 on a first run (pass skipped).
     matchUsd: number;
