@@ -356,6 +356,19 @@ export type DecomposeAuditResponse = {
   narrative: string | null;
 };
 
+// GET /ranking/current/fan-out-audit — the K parallel discoverers that fed
+// decomposition. Each pass is one fresh-context discovery: the dimensions it found +
+// its own reasoning. Null on runs that predate the fan-out redesign.
+export type FanOutAuditResponse = {
+  runId: number;
+  k: number;
+  passes: {
+    summary: string;
+    dimensions: { key: string; name: string; definition: string; whyItDifferentiates: string }[];
+    narrative: string | null;
+  }[];
+};
+
 // A notification toast. Success toasts auto-dismiss; error toasts persist until
 // dismissed (and offer a copy button), so a failure can't scroll away unread.
 export type Toast = { id: number; message: string; variant: "success" | "error" };

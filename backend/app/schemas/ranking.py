@@ -147,6 +147,26 @@ class DecomposeAuditResponse(ResponseModel):
     narrative: str | None = None
 
 
+class FanOutPassOut(ResponseModel):
+    """One of the K parallel discoverers, for the Insights discovery panel: the pool
+    summary + dimensions it found, and its own reasoning narrative (null on legacy runs
+    that stored reports without per-pass narratives)."""
+
+    summary: str
+    dimensions: list[PoolDimensionOut]
+    narrative: str | None = None
+
+
+class FanOutAuditResponse(ResponseModel):
+    """GET /ranking/current/fan-out-audit — the K fresh-context discovery passes that
+    fed decomposition, so the committee can see each discoverer (not just the one whose
+    reasoning streamed live). Null on runs that predate the fan-out redesign."""
+
+    run_id: int
+    k: int
+    passes: list[FanOutPassOut]
+
+
 class RankEstimateBreakdown(ResponseModel):
     essays_usd: float
     criteria_usd: float

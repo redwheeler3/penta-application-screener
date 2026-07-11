@@ -174,19 +174,34 @@ def _discover_from_prompt(
 
 
 @dataclass(frozen=True)
+class DiscoveryPass:
+    """One of the K fan-out discovery calls: the report it produced and its own
+    reasoning narrative (kept per-pass so the Insights panel can show each discoverer,
+    not just the one that streamed live)."""
+
+    report: PoolDimensionReport
+    narrative: str | None
+
+
+@dataclass(frozen=True)
 class FanOutDiscovery:
     """The result of K parallel discovery calls (SPEC "Fan-Out Redesign", D6).
 
-    ``reports`` are the K fresh-context discoveries whose cross-call variation is the
-    diversity a later decomposition step pares to the finest non-overlapping set. Order
-    is not meaningful (calls complete out of order). ``narrative`` is the live reasoning
-    of ONE representative call (index 0) — the others run silently, since interleaving K
-    streams would be unreadable. ``cost_usd`` sums all K priced calls.
+    ``passes`` are the K fresh-context discoveries (report + its narrative) whose
+    cross-call variation is the diversity a later decomposition step pares to the finest
+    non-overlapping set. Order is not meaningful (calls complete out of order).
+    ``narrative`` is the live-streamed reasoning of ONE representative call (the others
+    run silently), kept for the run-level discovery narrative. ``cost_usd`` sums all K.
     """
 
-    reports: list[PoolDimensionReport]
+    passes: list[DiscoveryPass]
     narrative: str | None
     cost_usd: float
+
+    @property
+    def reports(self) -> list[PoolDimensionReport]:
+        """The K reports, order-agnostic — the input to decomposition."""
+        return [p.report for p in self.passes]
 
 
 def discover_patterns_fanout(
@@ -226,8 +241,8 @@ def discover_patterns_fanout(
             provider, prompt, settings, on_delta=on_delta if index == 0 else None
         )
 
-    reports: list[PoolDimensionReport] = []
-    narratives: dict[int, str | None] = {}
+    passes: list[DiscoveryPass] = []
+    live_narrative: str | None = None
     total_cost = 0.0
     for index, outcome, error in run_in_pool(
         list(range(k)), call=_call, max_workers=min(k, settings.ai.max_workers)
@@ -235,10 +250,11 @@ def discover_patterns_fanout(
         if error is not None:
             raise error
         report, narrative, cost = outcome
-        reports.append(report)
-        narratives[index] = narrative
+        # Pair each report with its OWN narrative (not by completion order) so the
+        # per-discoverer panel shows the right reasoning next to the right dimensions.
+        passes.append(DiscoveryPass(report=report, narrative=narrative))
+        if index == 0:
+            live_narrative = narrative  # the one that streamed as live "thinking"
         total_cost += cost
 
-    return FanOutDiscovery(
-        reports=reports, narrative=narratives.get(0), cost_usd=total_cost
-    )
+    return FanOutDiscovery(passes=passes, narrative=live_narrative, cost_usd=total_cost)

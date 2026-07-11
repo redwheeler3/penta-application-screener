@@ -460,6 +460,44 @@ def decompose_audit_view(run: RankingRun) -> dict | None:
     }
 
 
+def fan_out_audit_view(run: RankingRun) -> dict | None:
+    """The run's fan-out audit — each of the K parallel discoverers' report + reasoning —
+    shaped for the Insights discovery panel, or None on runs that predate the fan-out
+    (single-discovery runs have no ``criteria.fan_out_audit``, or an older shape).
+
+    Returns ``{k, passes: [{summary, dimensions: [{key,name,definition,why...}],
+    narrative}]}``. Older audits stored ``reports`` without per-pass narratives; those
+    are tolerated (narrative comes back null) so the panel still renders their dimensions.
+    """
+    audit = (run.criteria or {}).get("fan_out_audit")
+    if not audit:
+        return None
+    # Current shape: passes = [{report, narrative}]. Legacy shape: reports = [report].
+    raw_passes = audit.get("passes")
+    if raw_passes is None:
+        raw_passes = [{"report": r, "narrative": None} for r in audit.get("reports", [])]
+
+    passes = []
+    for p in raw_passes:
+        report = p.get("report") or {}
+        passes.append(
+            {
+                "summary": report.get("summary", ""),
+                "dimensions": [
+                    {
+                        "key": d.get("key", ""),
+                        "name": d.get("name", ""),
+                        "definition": d.get("definition", ""),
+                        "why_it_differentiates": d.get("why_it_differentiates", ""),
+                    }
+                    for d in report.get("dimensions", [])
+                ],
+                "narrative": p.get("narrative"),
+            }
+        )
+    return {"k": audit.get("k", len(passes)), "passes": passes}
+
+
 def set_seeds(
     db: Session,
     run: RankingRun,
