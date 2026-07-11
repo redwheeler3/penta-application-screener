@@ -4,7 +4,6 @@ import { CostPanel } from "./CostPanel";
 import { DecomposeAuditPanel } from "./DecomposeAuditPanel";
 import { DiscoveryPanel } from "./DiscoveryPanel";
 import { MatchAuditPanel } from "./MatchAuditPanel";
-import { ReconcileAuditPanel } from "./ReconcileAuditPanel";
 
 // The run-level AI observability surface (M13). Home for the general, non-applicant-
 // specific audits: what pattern discovery found this run, and how those dimensions
@@ -17,7 +16,7 @@ import { ReconcileAuditPanel } from "./ReconcileAuditPanel";
 // as SUBTABS (one at a time) rather than stacked panels — the tab will hold four
 // concerns by the end of M13, and subtabs keep the page short and scannable as they
 // land, instead of a growing scroll of accordions.
-type InsightsTab = "discovery" | "decompose" | "carryForward" | "reconcile" | "cost";
+type InsightsTab = "discovery" | "decompose" | "carryForward" | "cost";
 
 export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNode {
   const [tab, setTab] = useState<InsightsTab>(props.run ? "discovery" : "cost");
@@ -26,7 +25,6 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
         { id: "discovery", label: "Pattern discovery" },
         { id: "decompose", label: "Decomposition" },
         { id: "carryForward", label: "Carry-forward" },
-        { id: "reconcile", label: "Reconcile" },
         { id: "cost", label: "Cost" },
       ]
     : [{ id: "cost", label: "Cost" }];
@@ -64,11 +62,6 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
         ) : activeTab === "carryForward" ? (
           // How surviving dimensions carry forward from the prior run (the 1:1 match).
           <MatchAuditPanel />
-        ) : activeTab === "reconcile" ? (
-          // The dropped-dimension second look: which axes the pool still varies on get
-          // revived, with the model's reasoning. Its own subtab (was folded under
-          // Carry-forward) now that it carries a reasoning narrative of its own.
-          <ReconcileAuditPanel />
         ) : (
           <CostPanel />
         )}

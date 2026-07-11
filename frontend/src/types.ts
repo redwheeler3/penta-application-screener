@@ -18,7 +18,6 @@ export type AISettings = {
   dimensionScoringModel: string;
   discoveryModel: string;
   matchModel: string;
-  reconcileModel: string;
   // Fan-out width: parallel discovery calls per Rank (SPEC "Fan-Out Redesign", D6).
   discoveryFanOut: number;
   spendingCapUsd: number;
@@ -311,23 +310,6 @@ export type MatchAuditResponse = {
   // Fraction matched onto a prior dimension. Null on a first run (undefined, not 0);
   // a persistently near-1.0 rate on re-runs is the over-matching smell.
   carryForwardRate: number | null;
-};
-
-// The reconcile pass's audit: the second look at dropped prior dimensions. Null when
-// the pass didn't run (first run / nothing dropped / run predates capture).
-export type ReconcileAuditResponse = {
-  runId: number;
-  // The full ballot — a verdict + reasoning per dropped prior offered (both revivals
-  // and rejections, so a spot-check sees why each went the way it did).
-  verdicts: { oldKey: string; revive: boolean; reasoning: string }[];
-  offeredCount: number;
-  recoveredCount: number;
-  // Fraction of dropped priors revived. A persistently high rate is the over-recovery
-  // smell — reconcile reviving too readily under rationalization pressure.
-  recoveryRate: number | null;
-  // The model's free-text reasoning (markdown) from the reconcile pass. Null on runs
-  // written before narrative capture.
-  narrative: string | null;
 };
 
 // GET /ranking/current/decompose-audit — how the K fan-out discovery reports were

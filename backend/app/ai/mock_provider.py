@@ -110,10 +110,9 @@ class MockProvider:
                 on_delta("Thinking… ")
                 on_delta("considering the pool.")
             # Content-addressed routing, but schema-aware: a route applies only when
-            # its output matches the REQUESTED schema. Two pool-level passes (discovery,
-            # reconcile) share the ``<applicant_pool>`` block, so substring alone is
-            # ambiguous; the schema disambiguates (PoolDimensionReport vs.
-            # ReconcileReport) without the test having to order routes carefully.
+            # its output matches the REQUESTED schema. Lets two passes that share a
+            # prompt substring be disambiguated by their output schema, without the test
+            # having to order routes carefully.
             for substring, result in self.routed.items():
                 if substring in prompt and isinstance(result.output, schema):
                     return result

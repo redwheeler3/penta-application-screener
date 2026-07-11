@@ -11,8 +11,6 @@ from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.services.ranking_run import (
     adopt_matched_keys,
     carry_forward_layout,
-    reconcile_audit_payload,
-    revive_dimensions,
     weights_from_tiers,
 )
 
@@ -265,56 +263,3 @@ def test_carry_forward_first_run_has_no_matches_and_no_flags() -> None:
     )
     assert flagged_keys == []
     assert all(t["dimension_keys"] == [] for t in layout)
-
-
-# --- revive_dimensions: re-enter reconcile-revived dropped priors -------------
-
-
-def test_revive_dimensions_adds_prior_dimension_by_key_and_text() -> None:
-    # The report (post-adopt) has 'a'; reconcile revived 'b' from history. 'b' re-enters
-    # under its historical key + text, so its cached scores/placement carry forward.
-    current = report("a")
-    history = PoolDimensionReport(
-        summary="hist",
-        dimensions=[
-            PoolDimension(key="b", name="B name", definition="B def", why_it_differentiates="w"),
-            PoolDimension(key="c", name="C", definition="d", why_it_differentiates="w"),
-        ],
-    )
-    revived = revive_dimensions(current, ["b"], history)
-    keys = [d.key for d in revived.dimensions]
-    assert keys == ["a", "b"]  # 'b' appended, 'c' (not revived) left out
-    b = next(d for d in revived.dimensions if d.key == "b")
-    assert b.name == "B name"  # historical text, for score alignment
-    assert b.definition == "B def"
-
-
-def test_revive_dimensions_skips_duplicates_and_empty() -> None:
-    current = report("a", "b")
-    history = report("a", "b")
-    # 'a' already present → not duplicated; empty revive list → unchanged object.
-    assert [d.key for d in revive_dimensions(current, ["a"], history).dimensions] == ["a", "b"]
-    assert revive_dimensions(current, [], history) is current
-    assert revive_dimensions(current, ["a"], None) is current
-
-
-# --- reconcile_audit_payload: full ballot storage ----------------------------
-
-
-def test_reconcile_audit_payload_records_ballot_and_counts() -> None:
-    ballot = [
-        {"old_key": "x", "revive": True, "reasoning": "pool varies"},
-        {"old_key": "y", "revive": False, "reasoning": "flat"},
-    ]
-    payload = reconcile_audit_payload(ballot, ["x"], "The pool still varies on x.")
-    assert payload == {
-        "verdicts": ballot,
-        "offered_count": 2,
-        "recovered_count": 1,
-        "narrative": "The pool still varies on x.",
-    }
-
-
-def test_reconcile_audit_payload_none_when_pass_skipped() -> None:
-    # Empty ballot = the pass didn't run (first run / nothing dropped) → no audit row.
-    assert reconcile_audit_payload([], []) is None
