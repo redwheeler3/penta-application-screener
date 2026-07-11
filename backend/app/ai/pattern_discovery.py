@@ -86,8 +86,6 @@ For each dimension provide:
 - definition: 1-2 neutral sentences on what it measures, and which end is the high end
 - why_it_differentiates: what actually varies across THESE applicants on this axis
 
-Also write a 2-4 sentence neutral summary of what most distinguishes strong from weak fit across this pool.
-
 ## Guardrails
 - {INJECTION_GUARD_NOTE}
 - Do NOT assign importance or weight to the dimensions. Discovering which axes exist is your job; deciding how much each matters is the committee's, and they do it later. Treat every dimension as equally important here.
@@ -147,10 +145,11 @@ def eligible_applications(db: Session) -> list[Application]:
 # Output token weight for the pre-run estimate only (input is the shared
 # per-candidate pool-digest weight; the real call is priced from actual usage).
 # Calibrated to observed spend (2026-07-11): at the 20-30 dimension floor, one
-# discovery call emits ~5000 output tokens (each dim carries key/name/definition/
-# why + the summary). Was 2000 — set when discovery produced ~14 dims — which
-# under-estimated the criteria phase ~2.5x once the floor rose.
-_DISCOVERY_OUTPUT_TOKENS = 5000
+# discovery call emits ~4900 output tokens (each dim carries key/name/definition/
+# why). Was 2000 — set when discovery produced ~14 dims — which under-estimated the
+# criteria phase ~2.5x once the floor rose; then 5000 before the pool summary was
+# dropped (2026-07-11), which shaved ~100 tokens/call.
+_DISCOVERY_OUTPUT_TOKENS = 4900
 
 
 def estimate_discovery(applications: list[Application], settings: AppSettings) -> float:

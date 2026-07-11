@@ -19,7 +19,6 @@ KEYS = ["a", "b", "c", "d"]
 
 def report(*keys: str) -> PoolDimensionReport:
     return PoolDimensionReport(
-        summary="s",
         dimensions=[
             PoolDimension(key=k, name=k, definition="d", why_it_differentiates="w")
             for k in keys
@@ -99,7 +98,6 @@ def test_adopt_replaces_matched_dim_with_prior_text() -> None:
     # wording — otherwise the committee sees a score labelled with a definition it
     # was not scored against.
     new = PoolDimensionReport(
-        summary="s",
         dimensions=[
             PoolDimension(
                 key="long_term_stability", name="Fresh Name",
@@ -108,7 +106,6 @@ def test_adopt_replaces_matched_dim_with_prior_text() -> None:
         ],
     )
     prior = PoolDimensionReport(
-        summary="s",
         dimensions=[
             PoolDimension(
                 key="long_term_residency", name="Prior Name",
@@ -129,7 +126,6 @@ def test_adopt_keeps_fresh_committee_flag_on_match() -> None:
     # axis now?), not part of the scored concept — so it follows the fresh dim even
     # when the prior text is adopted, so a newly-requested match still auto-favourites.
     new = PoolDimensionReport(
-        summary="s",
         dimensions=[
             PoolDimension(
                 key="fresh", name="n", definition="d", why_it_differentiates="w",
@@ -153,7 +149,6 @@ def test_adopt_unmatched_keeps_fresh_text() -> None:
     # A match map entry whose target isn't in prior history is treated as unmatched
     # (defensive), so the fresh dimension is kept as discovered.
     new = PoolDimensionReport(
-        summary="s",
         dimensions=[
             PoolDimension(key="new_axis", name="Fresh", definition="fresh def",
                           why_it_differentiates="w")

@@ -149,14 +149,14 @@ class PoolDimensionReport(BaseModel):
     Run-scoped, not per-candidate. It does not rank, score, or weight anyone —
     importance is the committee's call. Scoring rates each applicant against these
     dimensions; ranking is deterministic math on top.
+
+    (There is deliberately no pool ``summary`` field — a "what distinguishes strong
+    from weak fit" digest. It was unused in the UI and, at the decomposition step, was
+    the same unverifiable confabulation as the dropped per-axis ``why`` — a pool claim
+    from a model that never saw the pool. Removed 2026-07-11; see the fan-out redesign
+    notes. Per-applicant ``EssayAnalysisReport.summary`` is unrelated and stays.)
     """
 
-    summary: str = Field(
-        description=(
-            "2-4 sentences on what most distinguishes strong from weak fit "
-            "across this specific pool. Neutral, committee-facing."
-        )
-    )
     dimensions: list[PoolDimension] = Field(
         default_factory=list,
         description=(
@@ -325,11 +325,13 @@ class DecompositionReport(BaseModel):
     Every input dimension key across the K reports MUST appear in exactly one settled
     dimension's ``source_keys`` — nothing is silently dropped; a genuinely redundant
     carving is merged (recorded), never deleted. The result feeds scoring once.
+
+    (No pool ``summary`` field — see ``PoolDimensionReport``. It was the ranking page's
+    "strong vs. weak fit" paragraph, written by the decomposer, which never sees the
+    pool: unverifiable confabulation, and unused beyond that one paragraph. Dropped
+    2026-07-11.)
     """
 
-    summary: str = Field(
-        description="2-4 neutral sentences on what most distinguishes strong from weak fit across this pool.",
-    )
     dimensions: list[DecomposedDimension] = Field(
         default_factory=list,
         description=(

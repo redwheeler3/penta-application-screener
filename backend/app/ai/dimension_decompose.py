@@ -77,7 +77,7 @@ You are given K independent discovery reports for the same applicant pool, in th
 - EVERY input dimension key, across all K reports, must appear in exactly one settled axis's `source_keys`. A redundant carving is MERGED (recorded in source_keys + decision), never dropped. If an axis is genuinely not differentiating, still fold it into its nearest concept and say so — do not silently omit it.
 
 ## Output
-For each settled axis: `key` (reuse an input key when it's essentially that axis; mint a new snake_case key only for a genuinely merged concept), `name`, `definition` (what it measures + which end is high), `source_keys` (ALL absorbed input keys), `from_committee_request`, and `decision` (the reasoning — for a merge, the score-alike assertion; for a kept-distinct axis, why). Also a 2-4 sentence neutral `summary`.
+For each settled axis: `key` (reuse an input key when it's essentially that axis; mint a new snake_case key only for a genuinely merged concept), `name`, `definition` (what it measures + which end is high), `source_keys` (ALL absorbed input keys), `from_committee_request`, and `decision` (the reasoning — for a merge, the score-alike assertion; for a kept-distinct axis, why).
 - Do NOT describe what varies across the applicant pool ("why it differentiates"): you have the reports' definitions, not the pool itself, so any such claim would be unfounded. Report only what you CAN judge from the definitions — identity (`key`/`name`/`definition`) and merge reasoning (`decision`). The pool-grounded "why" is carried forward from the source reports automatically.
 
 ## Guardrails
@@ -207,7 +207,6 @@ def to_pool_report(
         return ""
 
     return PoolDimensionReport(
-        summary=decomposition.summary,
         dimensions=[
             PoolDimension(
                 key=d.key,
@@ -356,9 +355,8 @@ def decompose_dimensions(
     downstream) at no cost.
     """
     if len(reports) < 2:
-        only = reports[0] if reports else PoolDimensionReport(summary="", dimensions=[])
+        only = reports[0] if reports else PoolDimensionReport(dimensions=[])
         trivial = DecompositionReport(
-            summary=only.summary,
             dimensions=[
                 DecomposedDimension(
                     key=d.key,
