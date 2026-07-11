@@ -250,10 +250,7 @@ def all_known_dimensions(db: Session) -> PoolDimensionReport | None:
                 latest_by_key[dim.key] = dim
     if not latest_by_key:
         return None
-    return PoolDimensionReport(
-        summary="All dimensions discovered across prior runs (identity-match history).",
-        dimensions=list(latest_by_key.values()),
-    )
+    return PoolDimensionReport(dimensions=list(latest_by_key.values()))
 
 
 def ranking_is_current(db: Session, run: RankingRun | None, settings: AppSettings) -> bool:
@@ -373,9 +370,10 @@ def fan_out_audit_view(run: RankingRun) -> dict | None:
     shaped for the Insights discovery panel, or None on runs that predate the fan-out
     (single-discovery runs have no ``criteria.fan_out_audit``, or an older shape).
 
-    Returns ``{k, passes: [{summary, dimensions: [{key,name,definition,why...}],
-    narrative}]}``. Older audits stored ``reports`` without per-pass narratives; those
-    are tolerated (narrative comes back null) so the panel still renders their dimensions.
+    Returns ``{k, passes: [{dimensions: [{key,name,definition,why...}], narrative}]}``.
+    Older audits stored ``reports`` without per-pass narratives; those are tolerated
+    (narrative comes back null) so the panel still renders their dimensions. (Stored
+    reports may still carry a ``summary`` key — dropped 2026-07-11 — which is ignored.)
     """
     audit = (run.criteria or {}).get("fan_out_audit")
     if not audit:
@@ -390,7 +388,6 @@ def fan_out_audit_view(run: RankingRun) -> dict | None:
         report = p.get("report") or {}
         passes.append(
             {
-                "summary": report.get("summary", ""),
                 "dimensions": [
                     {
                         "key": d.get("key", ""),

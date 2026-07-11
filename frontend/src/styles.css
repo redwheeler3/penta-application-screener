@@ -1773,57 +1773,6 @@ h1 {
    end of the second line so people know it's clickable (the whole block is the
    button). Clamping keeps the tiers high on the page instead of pushed down by six
    lines of grey text. */
-.dimensions-summary {
-  position: relative;
-  display: block;
-  margin: 0.4rem 0 0;
-  padding: 0;
-  border: none;
-  background: none;
-  text-align: left;
-  width: 100%;
-  cursor: pointer;
-  line-height: 1.5;
-  font: inherit;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-.dimensions-summary-text {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-}
-
-.dimensions-summary.is-expanded .dimensions-summary-text {
-  -webkit-line-clamp: unset;
-  overflow: visible;
-}
-
-/* Collapsed: pin "More…" to the bottom-right of the clamped block, over a fade so
-   it doesn't collide with the clamped text. */
-.dimensions-summary-toggle {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  padding-left: 2.5rem;
-  background: linear-gradient(to right, transparent, var(--surface) 1.5rem);
-  font-weight: 600;
-  color: var(--penta-green);
-}
-
-/* Expanded: the toggle ("Less") flows inline at the end of the text. */
-.dimensions-summary.is-expanded .dimensions-summary-toggle {
-  position: static;
-  padding-left: 0.25rem;
-  background: none;
-}
-
-.dimensions-summary:hover .dimensions-summary-text {
-  color: var(--ink);
-}
-
 /* Description-panel title: the criterion name as a small heading. */
 .dimension-name {
   display: block;
@@ -2755,7 +2704,6 @@ h1 {
   .page-heading,
   .workflow-bar,
   .criteria-head-title,
-  .dimensions-summary,
   .criteria-detail,
   .tier-list,
   .ranking-header > button,

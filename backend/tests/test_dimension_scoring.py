@@ -55,7 +55,6 @@ def add_eligible(db: Session, *, email: str, raw_hash: str) -> Application:
 
 def report_with(keys: list[str]) -> PoolDimensionReport:
     return PoolDimensionReport(
-        summary="A pool.",
         dimensions=[
             PoolDimension(
                 key=k,

@@ -114,9 +114,6 @@ export function RankingView(props: {
   // panel.
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
-  // The AI summary is long; clamp it to a couple of lines with a "more" toggle so it
-  // doesn't push the tiers (the actual control) down the page.
-  const [summaryExpanded, setSummaryExpanded] = useState(false);
   const openDim = openKey ? rankingRun?.dimensions.find((d) => d.key === openKey) ?? null : null;
 
   return (
@@ -143,18 +140,6 @@ export function RankingView(props: {
           <p className="criteria-head-title no-print">
             This ranking weighs {rankingRun.dimensions.length} criteria
           </p>
-          {rankingRun.summary ? (
-            <button
-              type="button"
-              className={`dimensions-summary no-print${summaryExpanded ? " is-expanded" : ""}`}
-              aria-expanded={summaryExpanded}
-              onClick={() => setSummaryExpanded((v) => !v)}
-              title={summaryExpanded ? "Show less" : "Show more"}
-            >
-              <span className="dimensions-summary-text">{rankingRun.summary}</span>
-              <span className="dimensions-summary-toggle">{summaryExpanded ? " Less" : " More…"}</span>
-            </button>
-          ) : null}
           {/* Tier list + the always-visible description side by side: the description
               sits to the RIGHT of the tiers (not below, where it scrolled out of
               view) so tapping a chip shows its text without leaving the dragger. The

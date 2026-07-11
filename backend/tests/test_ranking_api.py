@@ -31,7 +31,6 @@ def _decomposition_of(report: PoolDimensionReport) -> DecompositionReport:
     discovery keys, so the match/score/tier flow downstream is unchanged — the mock
     decomposition is a no-op reshaper, which is what these criteria/tier tests want."""
     return DecompositionReport(
-        summary=report.summary,
         dimensions=[
             DecomposedDimension(
                 key=d.key,
@@ -97,7 +96,6 @@ def add_eligible(db: Session, *, email: str, raw_hash: str) -> Application:
 
 def a_pattern_report() -> PoolDimensionReport:
     return PoolDimensionReport(
-        summary="Pool varies on commitment and skills.",
         dimensions=[
             PoolDimension(
                 key="participation_commitment",
@@ -437,7 +435,6 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
 
     discovered = PoolDimensionReport(
-        summary="three axes, two of them the same concept re-carved",
         dimensions=[
             PoolDimension(key="commitment_a", name="Commitment A",
                           definition="willingness to do shared work",
@@ -451,7 +448,6 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
     )
     # Decomposition folds commitment_a + commitment_b into one settled axis; skills stays.
     settled = DecompositionReport(
-        summary="settled",
         dimensions=[
             DecomposedDimension(
                 key="commitment", name="Commitment",
@@ -520,7 +516,6 @@ def _discovery_with_committee_request() -> PoolDimensionReport:
     """A discovery report with one committee-requested axis (playground) plus a sibling
     it could tempt a merge with (child_wellbeing)."""
     return PoolDimensionReport(
-        summary="two child-related axes, one committee-requested",
         dimensions=[
             PoolDimension(key="playground_use", name="Playground use",
                           definition="school-age kids who'd use the playground",
@@ -545,7 +540,6 @@ async def test_d9_committee_request_folded_into_merge_is_surfaced_not_lost() -> 
     # Decomposition folds the requested playground_use into child_wellbeing AND (the
     # failure the guard must catch) returns the merged axis with the flag false.
     settled = DecompositionReport(
-        summary="settled",
         dimensions=[
             DecomposedDimension(
                 key="child_wellbeing", name="Child wellbeing",
@@ -591,7 +585,6 @@ async def test_d9_silently_dropped_committee_request_is_re_added() -> None:
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
     # Decomposition returns ONLY child_wellbeing — playground_use (requested) is gone.
     settled = DecompositionReport(
-        summary="settled",
         dimensions=[
             DecomposedDimension(
                 key="child_wellbeing", name="Child wellbeing",
@@ -664,7 +657,6 @@ def test_enforce_committee_requests_guarantees_an_unsurfaced_favourite() -> None
     )
     # Decomposition settled on an unrelated axis only.
     settled = DecompositionReport(
-        summary="settled",
         dimensions=[
             DecomposedDimension(
                 key="skills_offered", name="Skills offered", definition="trades",
@@ -689,7 +681,6 @@ def test_settled_why_is_carried_from_source_not_decomposer() -> None:
 
     reports = [
         PoolDimensionReport(
-            summary="s",
             dimensions=[
                 PoolDimension(
                     key="commitment_a", name="Commitment A",
@@ -705,7 +696,6 @@ def test_settled_why_is_carried_from_source_not_decomposer() -> None:
         ),
     ]
     settled = DecompositionReport(
-        summary="settled",
         dimensions=[
             DecomposedDimension(
                 key="commitment", name="Commitment",
@@ -861,7 +851,6 @@ def a_pattern_report_v2() -> PoolDimensionReport:
     """A re-discovery: participation_commitment recurs (drifted key), skills_offered
     is gone, and a genuinely new dimension appears."""
     return PoolDimensionReport(
-        summary="Pool varies on commitment and finances.",
         dimensions=[
             PoolDimension(
                 key="stated_participation",  # same concept, drifted key
@@ -1018,7 +1007,6 @@ async def test_dropped_prior_dimension_is_not_revived() -> None:
         route_criteria(
             provider,
             PoolDimensionReport(
-                summary="Pool varies on commitment.",
                 dimensions=[
                     PoolDimension(
                         key="participation_commitment",
@@ -1055,7 +1043,6 @@ def _only_participation() -> PoolDimensionReport:
     """A re-discovery that surfaces only participation_commitment (skills_offered is
     absent) — used across the 3-run revival test to force a presence gap."""
     return PoolDimensionReport(
-        summary="Pool varies on commitment.",
         dimensions=[
             PoolDimension(
                 key="participation_commitment",
@@ -1275,7 +1262,6 @@ def _pattern_report_with_requested() -> PoolDimensionReport:
     """A discovery result where the model flagged one dimension as created from a
     committee request (the auto-favourite signal)."""
     return PoolDimensionReport(
-        summary="Pool varies on commitment and a requested axis.",
         dimensions=[
             PoolDimension(
                 key="participation_commitment",

@@ -203,7 +203,6 @@ def _run_payload(db: Session) -> CurrentRunResponse | None:
         run_id=run.id,
         name=run.name,
         status=run.status,
-        summary=report.summary,
         dimensions=[
             PoolDimensionOut(
                 key=d.key,
@@ -349,7 +348,7 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     else:
         _stub = PoolDimension(key="x", name="x", definition="x", why_it_differentiates="x")
         projected = [
-            PoolDimensionReport(summary="", dimensions=[_stub] * 20)
+            PoolDimensionReport(dimensions=[_stub] * 20)
             for _ in range(settings.ai.discovery_fan_out)
         ]
         decompose_usd = estimate_decompose(projected, settings)

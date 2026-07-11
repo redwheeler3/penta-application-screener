@@ -26,7 +26,6 @@ class CurrentRunResponse(ResponseModel):
     run_id: int
     name: str
     status: str
-    summary: str
     dimensions: list[PoolDimensionOut]
     # The model's streamed reasoning from the discovery pass (markdown), for the
     # Insights trace. Null for runs from before it was captured / if the provider
@@ -120,11 +119,11 @@ class DecomposeAuditResponse(ResponseModel):
 
 
 class FanOutPassOut(ResponseModel):
-    """One of the K parallel discoverers, for the Insights discovery panel: the pool
-    summary + dimensions it found, and its own reasoning narrative (null on legacy runs
-    that stored reports without per-pass narratives)."""
+    """One of the K parallel discoverers, for the Insights discovery panel: the
+    dimensions it found and its own reasoning narrative (null on legacy runs that stored
+    reports without per-pass narratives). No pool summary — that field was dropped from
+    discovery (unused, and confabulated at the decompose step); see PoolDimensionReport."""
 
-    summary: str
     dimensions: list[PoolDimensionOut]
     narrative: str | None = None
 

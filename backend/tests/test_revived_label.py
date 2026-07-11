@@ -35,7 +35,6 @@ def _run_with(db: Session, *, dim_keys: list[str], flagged: list[str] | None = N
         status="patterns_discovered",
         criteria={
             "dimension_report": PoolDimensionReport(
-                summary="s",
                 dimensions=[
                     PoolDimension(key=k, name=k, definition="d", why_it_differentiates="w")
                     for k in dim_keys

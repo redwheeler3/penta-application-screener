@@ -276,7 +276,6 @@ export type CurrentRunResponse = {
   runId: number;
   name: string;
   status: string;
-  summary: string;
   dimensions: PoolDimension[];
   // The model's streamed reasoning from the discovery pass (markdown), shown on the
   // Insights tab. Null for runs from before it was captured.
@@ -346,7 +345,6 @@ export type FanOutAuditResponse = {
   runId: number;
   k: number;
   passes: {
-    summary: string;
     dimensions: { key: string; name: string; definition: string; whyItDifferentiates: string }[];
     narrative: string | null;
   }[];
