@@ -159,6 +159,9 @@ class RankEstimateResponse(ResponseModel):
     """GET /ranking/estimate — combined cost projection for the rank chain."""
 
     eligible: int
+    # K parallel discovery calls per Rank (the fan-out width), so the confirm card can
+    # name it ("N parallel discoveries, then settle them into one set").
+    fan_out: int
     breakdown: RankEstimateBreakdown
     essays_cached: int
     estimated_usd: float

@@ -328,7 +328,10 @@ export function WorkflowBar(props: {
                 Summarize essays ~${rankEstimate.breakdown.essaysUsd.toFixed(4)}
                 {rankEstimate.essaysCached > 0 ? ` (${rankEstimate.essaysCached} cached)` : ""}
               </li>
-              <li>Find distinguishing criteria ~${rankEstimate.breakdown.criteriaUsd.toFixed(4)}</li>
+              <li>
+                Find distinguishing criteria — {rankEstimate.fanOut} parallel discoveries, then
+                settle them into one set ~${rankEstimate.breakdown.criteriaUsd.toFixed(4)}
+              </li>
               {rankEstimate.breakdown.matchUsd > 0 ? (
                 <li>Match criteria to the prior run ~${rankEstimate.breakdown.matchUsd.toFixed(4)}</li>
               ) : null}
