@@ -156,22 +156,42 @@ export function SettingsPanel(props: {
             </div>
             <div className="rules-section">
               <h3>AI Screening</h3>
-              <p className="rules-hint">
-                The screening run is blocked before it starts if its estimated cost exceeds this cap.
-              </p>
-              <label>
-                <span>Spending cap (USD per run)</span>
-                <input
-                  type="number"
-                onWheel={blurOnWheel}
-                  min="0"
-                  step="0.01"
-                  value={draft.ai.spendingCapUsd}
-                  onChange={(event) =>
-                    setDraft({ ...draft, ai: { ...draft.ai, spendingCapUsd: Number(event.target.value) } })
-                  }
-                />
-              </label>
+              <div className="settings-grid">
+                <label>
+                  <span>Spending cap (USD per run)</span>
+                  <input
+                    type="number"
+                    onWheel={blurOnWheel}
+                    min="0"
+                    step="0.01"
+                    value={draft.ai.spendingCapUsd}
+                    onChange={(event) =>
+                      setDraft({ ...draft, ai: { ...draft.ai, spendingCapUsd: Number(event.target.value) } })
+                    }
+                  />
+                  <span className="field-hint">
+                    A Rank is blocked before it starts if its estimated cost exceeds this.
+                  </span>
+                </label>
+                <label>
+                  <span>Discovery fan-out (parallel passes)</span>
+                  <input
+                    type="number"
+                    onWheel={blurOnWheel}
+                    min="1"
+                    max="10"
+                    step="1"
+                    value={draft.ai.discoveryFanOut}
+                    onChange={(event) =>
+                      setDraft({ ...draft, ai: { ...draft.ai, discoveryFanOut: Number(event.target.value) } })
+                    }
+                  />
+                  <span className="field-hint">
+                    Discovery passes run in parallel per Rank, then settled into one criteria set.
+                    More passes find more axes but cost more.
+                  </span>
+                </label>
+              </div>
             </div>
             <div className="settings-actions">
               <button className="primary-button" type="submit" disabled={props.isSaving}>

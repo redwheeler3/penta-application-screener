@@ -456,7 +456,8 @@ h1 {
     margin: 20px 0 18px;
   }
 
-  .settings-form {
+  .settings-form,
+  .settings-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1633,6 +1634,37 @@ h1 {
   font-size: 0.78rem;
   color: var(--muted);
   margin: 0 0 0.75rem;
+}
+
+/* Two-column field grid inside a full-width rules-section (e.g. AI Screening), so a
+   pair of short number fields sit side by side instead of each spanning the row —
+   matching the eligibility grid above. Collapses to one column on narrow viewports.
+   Three explicit rows (label / input / hint) with each label as a subgrid spanning
+   them, so the two fields' labels, inputs, and hints align across the columns even
+   when one hint wraps to more lines than the other. */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: auto auto auto;
+  gap: 6px 14px;
+}
+
+.settings-grid > label {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 3;
+  align-content: start;
+  /* No gap override — inherit the parent's 6px row gap, so label→input→hint each get
+     the same 6px the eligibility fields use. (gap:0 here would zero that out.) */
+}
+
+/* A per-field caption under an input (not a full-width paragraph), constrained to the
+   field's column so the explanatory text stays readable, not edge-to-edge. */
+.field-hint {
+  font-size: 0.78rem;
+  font-weight: 400 !important;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .rules-grid {

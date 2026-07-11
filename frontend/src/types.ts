@@ -9,8 +9,8 @@ export type CurrentUser = {
   role: "admin" | "member";
 };
 
-// Mirrors backend AISettings. The UI only edits spendingCapUsd; the rest are
-// round-tripped so a save never resets them.
+// Mirrors backend AISettings. The UI edits spendingCapUsd and discoveryFanOut; the
+// rest are round-tripped so a save never resets them.
 export type AISettings = {
   region: string;
   screeningModel: string;
@@ -18,6 +18,9 @@ export type AISettings = {
   dimensionScoringModel: string;
   discoveryModel: string;
   matchModel: string;
+  reconcileModel: string;
+  // Fan-out width: parallel discovery calls per Rank (SPEC "Fan-Out Redesign", D6).
+  discoveryFanOut: number;
   spendingCapUsd: number;
   maxWorkers: number;
 };
