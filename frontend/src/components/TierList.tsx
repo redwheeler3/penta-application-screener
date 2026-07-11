@@ -424,6 +424,20 @@ export function TierList(props: {
       <div className="tier-list-head">
         <span className="tier-list-title">Importance tiers</span>
         <div className="tier-list-actions no-print">
+          {/* Bulk-acknowledge every flagged dimension across ALL tiers (new + revived).
+              Tier-agnostic — flags surface wherever carry-forward placed a dimension,
+              not just in Ignore. Styled as an alert chip (not a peer of the Add actions)
+              and only shown when flags exist, so it reads as a transient triage prompt. */}
+          {flaggedKeys.length > 0 ? (
+            <button
+              type="button"
+              className="tier-clear-flags"
+              onClick={() => props.onAcknowledge(flaggedKeys)}
+            >
+              <Check size={14} />
+              Clear {flaggedKeys.length} flag{flaggedKeys.length === 1 ? "" : "s"}
+            </button>
+          ) : null}
           <button
             type="button"
             className="secondary-button tier-add"
@@ -438,21 +452,6 @@ export function TierList(props: {
         </div>
       </div>
       {props.addOpen ? props.composer : null}
-      {/* Bulk-acknowledge every flagged dimension across ALL tiers (new + revived).
-          Tier-agnostic: flags surface wherever carry-forward placed a dimension, not
-          just in Ignore, so the control lives with the tier list as a whole. */}
-      {flaggedKeys.length > 0 ? (
-        <div className="tier-clear-flags-row no-print">
-          <button
-            type="button"
-            className="tier-mark-reviewed"
-            onClick={() => props.onAcknowledge(flaggedKeys)}
-          >
-            <Check size={13} />
-            Clear all {flaggedKeys.length} flag{flaggedKeys.length === 1 ? "" : "s"}
-          </button>
-        </div>
-      ) : null}
       <DndContext
         sensors={sensors}
         collisionDetection={collisionDetection}
