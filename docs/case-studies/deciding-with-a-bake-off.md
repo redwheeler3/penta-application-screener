@@ -157,6 +157,56 @@ seat, because neither number asked for one.
   no product surface, no model-grading-model — settled which of two AI
   architectures to keep and whether the parallelism was worth its cost.
 
+## Postscript: the same method, tuned — and two ways measurement humbles you
+
+Weeks later the same discipline answered a follow-on question, and the answer
+came with two lessons the bake-off didn't teach.
+
+The question: the coverage gate proved K parallel discoverers beat *one*. It said
+nothing about *how many* K should be. Each discoverer is a real cost (~$0.20 an
+uncached call), so is the 5th earning its keep, or paying for coverage the 3rd
+already bought? I ran discovery at K = 3, 5, 7, 10 and built a third read-only
+instrument (`backend/scripts/marginal_coverage.py`). This one needed no cross-run
+proxy: a real fan-out run stores every discoverer's raw report *and* the settled
+set's `source_keys` — which discoverers fed each final axis. So I could trace each
+differentiating territory back to the discoverers that surfaced it and compute,
+exactly, the expected coverage of a random *k*-of-*K* subset. The finding was
+clean: total territory is flat in K (~26 regardless), and the knee is sharp at
+**k ≈ 3** (k=3 ≈ 91% of achievable coverage, k=4 ≈ 95%, k=5 ≈ 98%, and past that,
+noise). Most territories are found by many discoverers; only a rare few ride on a
+single one, and those are all a bigger K buys.
+
+**Lesson one: when a new instrument disagrees with one you already trust, debug
+the instrument before you believe the finding.** The first run of this script
+reported *6* territories for a run the coverage gate had scored at *27*. A 4×
+disagreement — but the number wasn't obvious garbage, it was *plausibly* low, the
+kind of wrong answer that ships. I didn't trust it, and the reason I could check
+it at all was that a *different* instrument gave a different number for the same
+thing. The bug: the match pass runs after decomposition and *renames* settled
+keys to adopt prior-run keys (so cached scores carry forward), and I was joining
+territory attribution on the pre-rename key while the scores lived under the
+post-rename key. Only 6 of 31 keys happened to line up. One `new_to_old` lookup
+fixed it and the numbers reconciled. A single instrument would have quietly
+reported 6, and I'd have "learned" something false. Cross-checking instruments is
+not redundancy — it's how you find out an instrument is lying.
+
+**Lesson two: measurement informs the judgment; it doesn't get to make it.** The
+data said cut to K=4, maybe K=3 — the knee was unambiguous, and there was real
+money in the cut. I kept K=5 anyway. The honest reason: this was five runs on one
+pool, the 4th and 5th discoverers are cheap, and their whole value is catching the
+rare single-discoverer territory that a less-measured pool might have more of.
+"Keep the margin until the cost actually bites" is a defensible call, but it is a
+*judgment* — the number can't weigh one pool's worth of evidence against the risk
+of a pool I haven't seen. The trap in a measure-everything culture is treating the
+knee as the decision. It's an input to the decision. What the instrument bought me
+wasn't the answer; it was the ability to re-decide in one command the day cost
+does bite.
+
+The through-line with the bake-off: the point was never "let numbers decide." It
+was "build cheap instruments so judgment is *informed* instead of *guessed*" — and
+part of using them well is knowing when an instrument is wrong (lesson one) and
+when it has said all it can and the rest is yours (lesson two).
+
 For the build-facing detail (the bake-off table in context, the D1–D9 decisions,
 the coverage gate, the D9 committee-request guard), see the "Fan-Out Redesign"
 section of `SPEC.md`. This document is the story; that one is the blueprint. For
