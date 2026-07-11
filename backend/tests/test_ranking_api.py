@@ -866,15 +866,16 @@ def _scoring_report_v2() -> DimensionScoringReport:
 
 
 @pytest.mark.anyio
-async def test_re_rank_reconcile_recovers_dropped_dimension() -> None:
-    """A dimension the committee tiered, then dropped from the next discovery, is
-    recovered by the reconcile pass: it re-enters the report, restores its prior tier
-    placement, and the reconcile audit records the recovery.
+async def test_reconcile_disabled_dropped_dimension_is_not_revived() -> None:
+    """Reconcile is DISABLED in the fan-out redesign (SPEC D2/D8): a prior dimension the
+    latest discovery drops is NOT dragged back. This is the inverse of the old
+    reconcile-recovers behavior — a valued axis that still varies is expected to
+    re-surface in one of the K fresh discoveries and survive the decomposition, not be
+    revived from history by a separate pass. So a dropped prior stays gone, and no
+    reconcile audit is produced.
 
-    It is NOT badged 'revived' here — it was in the immediately-prior run, so there is
-    no presence gap (this is the 'recovered but not revived' case from the vocabulary:
-    reconcile salvaged it, but the committee never lost sight of it). The badge needs a
-    genuine gap (present, gone a run, back) — see test_revived_label_needs_a_gap."""
+    (When 4c deletes the reconcile module + endpoint, the reconcile-audit assertion here
+    becomes a 404/removal check; for now the endpoint exists but returns null.)"""
     app, db, provider = setup_app(role=UserRole.ADMIN)
     add_eligible(db, email="a@x.com", raw_hash="h1")
 
@@ -899,11 +900,14 @@ async def test_re_rank_reconcile_recovers_dropped_dimension() -> None:
 
         # Run 2 (pool changes): discovery returns ONLY participation_commitment —
         # skills_offered dropped out. Match maps participation_commitment to its prior
-        # key; skills_offered is the dropped prior, which reconcile revives.
+        # key; skills_offered is the dropped prior. With reconcile disabled it stays gone.
+        # route_criteria re-routes BOTH discovery and the decomposition (a pass-through of
+        # the same single dim), overriding run 1's routes so the run-2 settled set is
+        # participation-only.
         add_eligible(db, email="b@x.com", raw_hash="h2")
         provider.route("<essays>", an_essay_report())
-        provider.route(
-            "<applicant_pool>",
+        route_criteria(
+            provider,
             PoolDimensionReport(
                 summary="Pool varies on commitment.",
                 dimensions=[
@@ -922,38 +926,25 @@ async def test_re_rank_reconcile_recovers_dropped_dimension() -> None:
                 matches=[DimensionMatch(new_key="participation_commitment", old_key="participation_commitment")]
             ),
         )
-        # Reconcile is offered skills_offered (dropped) and revives it.
+        # A <dropped_dimensions> route is set but should NEVER be hit — reconcile is
+        # disabled, so the pass doesn't run and skills_offered is not offered for revival.
         provider.route(
             "<dropped_dimensions>",
             ReconcileReport(
-                verdicts=[ReconcileVerdict(old_key="skills_offered", revive=True, reasoning="pool still varies on skills")]
+                verdicts=[ReconcileVerdict(old_key="skills_offered", revive=True, reasoning="should not run")]
             ),
         )
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
-        # The revived dimension is back in the run's report, under its historical key.
+        # skills_offered was dropped by discovery and is NOT revived — the run holds only
+        # what decomposition settled (participation_commitment), not the historical prior.
         current = (await client.get("/ranking/current")).json()
         keys = {d["key"] for d in current["dimensions"]}
-        assert "skills_offered" in keys
-        assert "participation_commitment" in keys
-        # It restored its Critical placement (durable committee intent).
-        layout = (await client.get("/ranking/tiers")).json()["tiers"]
-        by_label = {t["label"]: t for t in layout}
-        assert by_label["Critical"]["dimensionKeys"] == ["skills_offered"]
-        # NOT flagged/badged: it was in the immediately-prior run, so no presence gap —
-        # recovered (audit below) but not revived (member never lost it).
-        assert current["newDimensionKeys"] == []
-        assert current["revivedDimensionKeys"] == []
-
-        # The reconcile audit records the ballot and a recovery.
-        audit = (await client.get("/ranking/current/reconcile-audit")).json()
-        assert audit["offeredCount"] == 1
-        assert audit["recoveredCount"] == 1
-        assert audit["recoveryRate"] == 1.0
-        assert audit["verdicts"] == [
-            {"oldKey": "skills_offered", "revive": True, "reasoning": "pool still varies on skills"}
-        ]
+        assert "skills_offered" not in keys
+        assert keys == {"participation_commitment"}
+        # No reconcile audit is produced (the pass didn't run).
+        assert (await client.get("/ranking/current/reconcile-audit")).json() is None
 
 
 def _only_participation() -> PoolDimensionReport:
@@ -1001,9 +992,9 @@ async def test_three_run_gap_flags_dimension_as_revived_not_new() -> None:
             },
         )
 
-        # Run 2 (pool changes): discovery drops skills_offered; reconcile is offered it
-        # and DECLINES — so it genuinely leaves the run (the gap the committee lives
-        # through). match maps participation_commitment to its prior key.
+        # Run 2 (pool changes): discovery drops skills_offered and it genuinely leaves the
+        # run — the gap the committee lives through. (No reconcile to salvage it; with the
+        # pass disabled, a dropped prior stays gone.) match maps participation forward.
         add_eligible(db, email="b@x.com", raw_hash="h2")
         provider.route("<essays>", an_essay_report())
         route_criteria(provider, _only_participation())
@@ -1013,12 +1004,6 @@ async def test_three_run_gap_flags_dimension_as_revived_not_new() -> None:
                 matches=[DimensionMatch(new_key="participation_commitment", old_key="participation_commitment")]
             ),
         )
-        provider.route(
-            "<dropped_dimensions>",
-            ReconcileReport(
-                verdicts=[ReconcileVerdict(old_key="skills_offered", revive=False, reasoning="pool flat on skills now")]
-            ),
-        )
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
@@ -1026,21 +1011,20 @@ async def test_three_run_gap_flags_dimension_as_revived_not_new() -> None:
         current2 = (await client.get("/ranking/current")).json()
         assert "skills_offered" not in {d["key"] for d in current2["dimensions"]}
 
-        # Run 3 (pool changes again): discovery still only surfaces participation; this
-        # time reconcile REVIVES skills_offered — back after a gap.
+        # Run 3 (pool changes again): DISCOVERY itself re-surfaces skills_offered after
+        # the gap (the fan-out route to revival now that reconcile is gone — a fresh
+        # discovery names it again). The "revived" badge is presence-driven and route-
+        # agnostic: seen in run 1, absent run 2, back run 3 → revived, not new.
         add_eligible(db, email="c@x.com", raw_hash="h3")
         provider.route("<essays>", an_essay_report())
-        route_criteria(provider, _only_participation())
+        route_criteria(provider, a_pattern_report())  # both dims — skills_offered returns
         provider.route(
             "<prior_dimensions>",
             DimensionMatchReport(
-                matches=[DimensionMatch(new_key="participation_commitment", old_key="participation_commitment")]
-            ),
-        )
-        provider.route(
-            "<dropped_dimensions>",
-            ReconcileReport(
-                verdicts=[ReconcileVerdict(old_key="skills_offered", revive=True, reasoning="skills vary again")]
+                matches=[
+                    DimensionMatch(new_key="participation_commitment", old_key="participation_commitment"),
+                    DimensionMatch(new_key="skills_offered", old_key="skills_offered"),
+                ]
             ),
         )
         provider.route("applicant_id", a_scoring_report())
