@@ -18,6 +18,7 @@ const PASS_LABELS: Record<"screen" | "rank", Array<{ label: string; cacheable: b
   rank: [
     { label: "Essay analysis", cacheable: true },
     { label: "Pattern discovery", cacheable: false },
+    { label: "Dimension decomposition", cacheable: false },
     { label: "Dimension matching", cacheable: false },
     { label: "Dimension scoring", cacheable: true },
   ],

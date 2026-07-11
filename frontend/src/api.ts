@@ -12,6 +12,7 @@ import type {
   CurrentUser,
   DashboardCounts,
   DecomposeAuditResponse,
+  FanOutAuditResponse,
   LastRunsReport,
   MatchAuditResponse,
   ReconcileAuditResponse,
@@ -105,6 +106,11 @@ export const fetchReconcileAudit = () =>
 // Null on runs that predate the fan-out redesign.
 export const fetchDecomposeAudit = () =>
   getJson<DecomposeAuditResponse | null>("/ranking/current/decompose-audit");
+
+// The current run's fan-out audit — each of the K parallel discoverers' dimensions +
+// reasoning. Null on runs that predate the fan-out redesign.
+export const fetchFanOutAudit = () =>
+  getJson<FanOutAuditResponse | null>("/ranking/current/fan-out-audit");
 
 // Aggregated AI spend (M13 Pillar 1): cumulative, grouped by run.
 export const fetchCostReport = () => getJson<CostReport>("/ranking/insights/cost");

@@ -119,6 +119,8 @@ def cost_report(db: Session) -> CostReport:
     # A match pass runs only when there's a prior run to match against, so it's absent
     # on first runs; count only runs that actually stored a match cost.
     match_runs = [r for r in all_runs if (r.criteria or {}).get("match_cost_usd")]
+    # Count only runs that actually stored a decompose cost (fan-out redesign onward).
+    decompose_runs = [r for r in all_runs if (r.criteria or {}).get("decompose_cost_usd")]
     cache = _cache_by_pass(db)  # label → (cached_count, saved_usd)
 
     def cached(label: str) -> dict:
@@ -140,6 +142,11 @@ def cost_report(db: Session) -> CostReport:
             # into discovery_cost_usd — a minor historical over-attribution, not worth
             # resetting real cost history over.
             _pass("Pattern discovery", len(all_runs), 0, 0, _summed(all_runs, "discovery_cost_usd")),
+            # Decomposition settles the K fan-out reports into one set — its own call,
+            # cost-only, attributed separately. Only runs from the fan-out redesign store
+            # it; older runs have 0, so they simply don't contribute.
+            _pass("Dimension decomposition", len(decompose_runs), 0, 0,
+                  _summed(all_runs, "decompose_cost_usd")),
             _pass("Dimension matching", len(match_runs), 0, 0, _summed(all_runs, "match_cost_usd")),
             _pass("Dimension scoring", *_sum_rows(db, ApplicationAIResult.kind.startswith(SCORING_PREFIX)),
                   **cached("Dimension scoring")),

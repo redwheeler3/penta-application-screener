@@ -3,10 +3,12 @@ import ReactMarkdown from "react-markdown";
 import { fetchMatchAudit } from "../api";
 import type { MatchAuditResponse } from "../types";
 
-// M13 per-run AI legibility: the carry-forward audit for the current run. Surfaces
-// what discovery ACTUALLY emitted (pre key-adoption), how the match pass mapped each
-// new dimension onto a prior one, and the derived carry-forward rate — the signal
-// that answers "is the match pass over-matching?" without a SQLite spelunk.
+// M13 per-run AI legibility: the carry-forward audit for the current run. Surfaces the
+// settled dimensions (post-decomposition, pre key-adoption), how the match pass mapped
+// each onto a prior-run dimension, and the derived carry-forward rate. Under the fan-out
+// redesign a high rate is EXPECTED (the dimension set has stabilised); the audit's real
+// job is letting a human eyeball individual matches for a wrong mapping, without a
+// SQLite spelunk.
 //
 // Self-fetches on mount. Rendered as the active Insights subtab, so an absent audit
 // (a first run, or a run from before capture) shows an explicit empty state rather
@@ -42,21 +44,25 @@ function MatchAuditBody(props: { audit: MatchAuditResponse }): ReactNode {
   const { audit } = props;
   const firstRun = audit.priorDimensionCount === 0;
   const rate = audit.carryForwardRate;
-  // A high rate is the over-matching smell; flag it visually so the number isn't just
-  // decoration. The band mirrors the SPEC's "persistently near-100%" concern.
-  const rateClass =
-    rate === null ? "" : rate >= 0.9 ? " match-audit-rate-high" : rate >= 0.6 ? " match-audit-rate-mid" : "";
+  // No alarm colouring on the rate: under the fan-out redesign a HIGH carry-forward
+  // rate is expected and good — it means the settled dimension set has stabilised
+  // run-to-run (and re-ranks stay cheap, reusing tiers + scores). The thing that would
+  // signal over-matching is a WRONG match — visible in the ballot/narrative below, not
+  // in the aggregate rate, which can't tell "correctly stable" from "wrongly matched".
 
   return (
     <div className="match-audit">
       <p className="match-audit-hint">
-        Dimensions carried forward reuse their tier placement and cached scores. A persistently high carry-forward
-        rate can mean the match pass is over-matching.
+        Dimensions carried forward reuse their tier placement and cached scores, so a high carry-forward rate is
+        expected once the pool’s dimension set has settled. Watch the individual matches below for a wrong mapping —
+        that, not a high rate, is what would corrupt a prior tier or score.
       </p>
 
       <dl className="match-audit-stats">
         <div>
-          <dt>Discovered</dt>
+          {/* Post-decomposition settled set (what the match pass ran on), not raw
+              discovery output — under fan-out those differ. */}
+          <dt>Settled</dt>
           <dd>{audit.discoveredCount}</dd>
         </div>
         <div>
@@ -69,7 +75,7 @@ function MatchAuditBody(props: { audit: MatchAuditResponse }): ReactNode {
         </div>
         <div>
           <dt>Carry-forward rate</dt>
-          <dd className={`match-audit-rate${rateClass}`}>
+          <dd className="match-audit-rate">
             {firstRun || rate === null ? "—" : `${Math.round(rate * 100)}%`}
           </dd>
         </div>
@@ -81,7 +87,7 @@ function MatchAuditBody(props: { audit: MatchAuditResponse }): ReactNode {
       <table className="match-audit-table">
         <thead>
           <tr>
-            <th>Discovered dimension</th>
+            <th>Settled dimension</th>
             <th>Carried forward from</th>
           </tr>
         </thead>

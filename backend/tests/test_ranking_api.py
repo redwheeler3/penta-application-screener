@@ -228,13 +228,16 @@ async def test_insights_cost_aggregates_by_pass() -> None:
         assert set(groups) == {"Screen", "Rank"}
         rank_passes = {p["passLabel"]: p for p in groups["Rank"]["passes"]}
         assert set(rank_passes) == {
-            "Essay analysis", "Pattern discovery", "Dimension matching", "Dimension scoring"
+            "Essay analysis", "Pattern discovery", "Dimension decomposition",
+            "Dimension matching", "Dimension scoring",
         }
         assert [p["passLabel"] for p in groups["Screen"]["passes"]] == ["Screening"]
-        # Discovery and matching are separate passes (not summed into one).
+        # Discovery, decomposition, and matching are separate passes (not summed into one).
         # First run (no prior report) → no match pass ran → 0 matching cost.
         assert rank_passes["Dimension matching"]["costUsd"] == 0.0
         assert rank_passes["Pattern discovery"]["costUsd"] > 0.0
+        # Decomposition ran (K≥2 reports settled), so it recorded a cost.
+        assert rank_passes["Dimension decomposition"]["costUsd"] > 0.0
         assert rank_passes["Dimension scoring"]["calls"] == 2  # 1 applicant × 2 dimensions
         # Cacheable passes are marked so; the always-fresh ones are not (UI shows "—").
         assert rank_passes["Dimension scoring"]["cacheable"] is True
@@ -257,6 +260,8 @@ async def test_insights_cost_aggregates_by_pass() -> None:
 async def test_last_runs_records_fresh_and_cached_cost() -> None:
     # A first Rank spends everything fresh; a second Rank on the SAME pool reuses the
     # essay + scoring caches, so its ledger shows cached counts and a saved estimate.
+    from app.schemas.settings import AISettings
+
     app, db, provider = setup_app(role=UserRole.MEMBER)
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
@@ -271,7 +276,8 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
         rank = first["rank"]
         by_pass = {p["label"]: p for p in rank["passes"]}
         assert set(by_pass) == {
-            "Essay analysis", "Pattern discovery", "Dimension matching", "Dimension scoring"
+            "Essay analysis", "Pattern discovery", "Dimension decomposition",
+            "Dimension matching", "Dimension scoring",
         }
         # First run: everything fresh, nothing cached.
         assert by_pass["Essay analysis"]["freshCalls"] == 1
@@ -279,6 +285,8 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
         assert rank["freshUsd"] > 0
         assert rank["cachedSavedUsd"] == 0.0
         assert by_pass["Dimension scoring"]["freshCalls"] == 2
+        # Discovery ran K parallel calls (the fan-out), not 1.
+        assert by_pass["Pattern discovery"]["freshCalls"] == AISettings().discovery_fan_out
 
         # Re-rank the unchanged pool: essays + scores are cache hits now.
         provider.route("<essays>", an_essay_report())
@@ -401,7 +409,7 @@ async def test_rank_runs_k_parallel_discoveries_and_persists_reports() -> None:
     route_criteria(provider, a_pattern_report())
     provider.route(f'"applicant_id": {a.id}', _scoring_report(commitment=0.5, skills=0.5))
 
-    k = AISettings().discovery_fan_out  # the shipped default (4)
+    k = AISettings().discovery_fan_out  # the shipped default
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         await stream_events(client, "/ranking/run")
@@ -410,9 +418,11 @@ async def test_rank_runs_k_parallel_discoveries_and_persists_reports() -> None:
     audit = (run.criteria or {}).get("fan_out_audit")
     assert audit is not None, "fan_out_audit must be persisted"
     assert audit["k"] == k
-    assert len(audit["reports"]) == k
-    # Each persisted report round-trips to a real dimension report.
-    assert all(r["dimensions"] for r in audit["reports"])
+    assert len(audit["passes"]) == k
+    # Each persisted pass carries its report (with dimensions) AND its own narrative
+    # key — all K discoverers are kept, not just the one that streamed live.
+    assert all(p["report"]["dimensions"] for p in audit["passes"])
+    assert all("narrative" in p for p in audit["passes"])
     # K discovery calls actually hit the provider (K + essays + scoring). Discovery
     # calls carry the pool block; count them to prove the fan-out really fanned out.
     discovery_calls = [c for c in provider.calls if "<applicant_pool>" in c.prompt]

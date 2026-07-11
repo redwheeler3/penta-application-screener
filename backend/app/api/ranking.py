@@ -83,6 +83,7 @@ from app.schemas.insights import CostReport, LastRunsReport
 from app.schemas.ranking import (
     CurrentRunResponse,
     DecomposeAuditResponse,
+    FanOutAuditResponse,
     MatchAuditResponse,
     PoolDimensionOut,
     RankedCandidateOut,
@@ -112,6 +113,7 @@ from app.services.ranking_run import (
     decompose_audit_view,
     dimension_weights,
     display_tiers,
+    fan_out_audit_view,
     favourited_keys,
     get_current_run,
     match_audit_view,
@@ -292,6 +294,24 @@ def current_decompose_audit(
     if view is None:
         return None
     return DecomposeAuditResponse(run_id=run.id, **view)
+
+
+@router.get("/current/fan-out-audit", response_model=FanOutAuditResponse | None)
+def current_fan_out_audit(
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> FanOutAuditResponse | None:
+    """The current run's fan-out audit — each of the K parallel discoverers' dimensions
+    + reasoning, so the discovery panel can show every discoverer, not just the one that
+    streamed live. Null on runs that predate the fan-out redesign.
+    """
+    run = get_current_run(db)
+    if run is None:
+        return None
+    view = fan_out_audit_view(run)
+    if view is None:
+        return None
+    return FanOutAuditResponse(run_id=run.id, **view)
 
 
 @router.get("/insights/cost", response_model=CostReport)
@@ -518,6 +538,18 @@ def rank_run(
                     k=settings.ai.discovery_fan_out, seeds=seeds, on_delta=on_delta,
                 )
                 fan_out_reports = fan_out.reports
+                # Persist every discoverer's report AND its own reasoning, built here
+                # where the passes are in scope. Each pass = one fresh-context discovery;
+                # keeping all K narratives (not just the streamed one) is what lets the
+                # Insights panel show each discoverer — and reasoning has proven vital for
+                # debugging (see .clinerules).
+                fan_out_audit = {
+                    "k": len(fan_out.passes),
+                    "passes": [
+                        {"report": p.report.model_dump(mode="json"), "narrative": p.narrative}
+                        for p in fan_out.passes
+                    ],
+                }
                 discovery_cost = fan_out.cost_usd
                 # Pass 1b: decomposition — settle the K reports into ONE finest,
                 # non-overlapping set (SPEC "Fan-Out Redesign", Phase 3/4a). The winning
@@ -569,7 +601,7 @@ def rank_run(
                     report, narrative, discovery_cost, new_to_old, match_narrative,
                     match_cost, revive_keys, reconcile_ballot, reconcile_narrative,
                     reconcile_cost, fan_out_reports, decomposition, decompose_cost,
-                    folded_requests,
+                    folded_requests, fan_out_audit,
                 )
             except Exception as exc:
                 criteria_outcome["error"] = exc
@@ -605,15 +637,10 @@ def rank_run(
             report, narrative, discovery_cost, new_to_old, match_narrative, match_cost,
             revive_keys, reconcile_ballot, reconcile_narrative, reconcile_cost,
             fan_out_reports, decomposition, decompose_cost, folded_requests,
+            fan_out_audit,
         ) = criteria_outcome["ok"]
-        # Fan-out audit (SPEC "Fan-Out Redesign"): persist every one of the K raw
-        # discovery reports — the diversity the decomposition settled from, so a re-rank's
-        # "what did the K carvings look like before we settled them" is inspectable.
-        # Stored as plain dicts under criteria.
-        fan_out_audit = {
-            "k": len(fan_out_reports),
-            "reports": [r.model_dump(mode="json") for r in fan_out_reports],
-        }
+        # fan_out_audit (each discoverer's report + narrative) was built in do_criteria
+        # where the passes were in scope; see there.
         # Decompose audit: per settled axis, the source_keys it absorbed + the merge/keep
         # reasoning (the Insights panel surface, and the D9 committee-request trail). Built
         # from the pre-adopt decomposition so it reflects what decomposition actually did,
@@ -723,8 +750,18 @@ def rank_run(
                     cached_saved_usd=essay_tally.cached_saved_usd,
                 ),
                 ledger_pass(
+                    # K parallel discovery calls (the fan-out); discovery_cost is their
+                    # summed spend, so the call count is K, not 1.
                     "Pattern discovery",
-                    fresh_usd=discovery_cost, fresh_calls=1,
+                    fresh_usd=discovery_cost, fresh_calls=len(fan_out_reports),
+                    cached_count=0, cached_saved_usd=0.0,
+                ),
+                ledger_pass(
+                    # Settles the K fan-out reports into one non-overlapping set — its
+                    # own Bedrock call, so it's a distinct ledger line (was missing,
+                    # making the breakdown under-sum the total by this cost).
+                    "Dimension decomposition",
+                    fresh_usd=decompose_cost, fresh_calls=1 if decompose_cost else 0,
                     cached_count=0, cached_saved_usd=0.0,
                 ),
                 ledger_pass(
