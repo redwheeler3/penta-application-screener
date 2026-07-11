@@ -30,20 +30,28 @@ from app.schemas.settings import AppSettings
 
 @dataclass(frozen=True)
 class DiscoverySeeds:
-    """Axes the committee asked discovery to strongly consider (not a mandate).
+    """Free-text axes a committee member proposed for discovery to ground.
 
-    ``favourited`` are existing dimensions to keep across re-runs, sent as their
-    current name + definition. ``proposed`` are free-text descriptions a member
-    wrote. Both are folded into the prompt the same way; the model may refine,
-    split, merge, or skip them, and flags each dimension it creates from a request
-    with ``from_committee_request`` so the caller can auto-favourite it.
+    ``proposed`` are untested member hypotheses ("families who'd use the
+    playground") that have never touched the pool — discovery's job is to ground
+    each in the applicants' own words, sharpen it into a measurable axis, and apply
+    the pool-variance gate (omit it if the pool genuinely doesn't vary on it). The
+    model flags each dimension it creates from a proposal with
+    ``from_committee_request`` so the caller can auto-favourite it.
+
+    Only proposals ride here. FAVOURITES are NOT seeded into discovery: a favourite
+    is a prior dimension that already has a pool-grounded definition and cached
+    scores, so it needs a *guarantee it stays on the table*, not re-discovery. It is
+    injected at the decomposition step instead (see ``dimension_decompose``), which
+    keeps all K discoverers blind — seeding all K on the same axes would correlate
+    the samples and dent the coverage the fan-out exists to buy (SPEC "Fan-Out
+    Redesign", committee-axis injection).
     """
 
-    favourited: list[dict[str, str]] = field(default_factory=list)  # {name, definition}
     proposed: list[str] = field(default_factory=list)
 
     def is_empty(self) -> bool:
-        return not self.favourited and not self.proposed
+        return not self.proposed
 
 
 # Not a cached per-application "kind"; named for the admin debug view / logging.
@@ -93,24 +101,26 @@ Also write a 2-4 sentence neutral summary of what most distinguishes strong from
 PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 
 
-def build_prompt(db: Session, applications: list[Application], *, seeds: DiscoverySeeds | None = None) -> str:
+def _compose_prompt(pool_block: str, seeds: DiscoverySeeds | None) -> str:
+    """Assemble the prompt from an already-rendered pool digest. Split from
+    ``build_prompt`` so the fan-out can render the digest ONCE (one DB read) and reuse
+    it for both the seeded (worker 0) and blind (workers 1..K-1) variants.
+    """
     seeds_block = _seeds_block(seeds) if seeds is not None else ""
-    pool_block = pool_digest_block(db, applications)
     return f"{_INSTRUCTIONS}{seeds_block}\n\n{pool_block}"
 
 
+def build_prompt(db: Session, applications: list[Application], *, seeds: DiscoverySeeds | None = None) -> str:
+    return _compose_prompt(pool_digest_block(db, applications), seeds)
+
+
 def _seeds_block(seeds: DiscoverySeeds) -> str:
-    """The committee-requested axes, rendered as a prompt section. Empty string when
-    there are no seeds, so an un-seeded run's prompt is byte-identical to before.
+    """The committee-proposed axes, rendered as a prompt section. Empty string when
+    there are no proposals, so an un-seeded run's prompt is byte-identical to before.
     """
     if seeds.is_empty():
         return ""
-    lines: list[str] = []
-    for d in seeds.favourited:
-        lines.append(f'- {d["name"]}: {d["definition"]}')
-    for text in seeds.proposed:
-        lines.append(f"- {text}")
-    requested = "\n".join(lines)
+    requested = "\n".join(f"- {text}" for text in seeds.proposed)
     return f"""\
 
 The committee has asked you to STRONGLY CONSIDER the axes in the `<requested_axes>` block. For each one, include a dimension that captures it — refining the wording, splitting it into several dimensions, or merging overlapping ones as the one-concept-per-dimension rule demands. Omit a requested axis ONLY if this pool genuinely does not vary on it (say so is not required, just leave it out). A requested axis is still bound by every rule above: grounded in the applicants' words, single-concept, neutral, and relevant to the co-op criteria being analyzed. Set ``from_committee_request: true`` on every dimension you create from a request (and on each piece if you split one); leave it false for axes you discover on your own.
@@ -218,31 +228,43 @@ def discover_patterns_fanout(
     seeds: DiscoverySeeds | None = None,
     on_delta: DeltaSink | None = None,
 ) -> FanOutDiscovery:
-    """Run K parallel, identical-prompt discovery calls and collect their reports.
+    """Run K parallel discovery calls and collect their reports.
 
-    The K calls share ONE prompt, built once here on the calling thread (a single
-    pool-digest DB read); the fan-out itself does NO DB work, so the worker calls are
-    session-free as ``run_in_pool`` requires. Their diversity comes from the model's
-    nondeterminism across fresh contexts (the same variation the convergence experiment
-    measured), not from differing inputs — see D6.
+    Diversity comes from the model's nondeterminism across fresh contexts (the same
+    variation the convergence experiment measured), so the K calls are kept as
+    independent as possible. The ONE exception is committee proposals: they are fed to
+    worker 0 ONLY, not all K. A proposal is an untested member hypothesis that needs
+    discovery to ground it in the pool and gate it on variance — but seeding all K on
+    the same axes would correlate the samples and dent the coverage the fan-out exists
+    to buy. So worker 0 grounds the proposal; workers 1..K-1 stay blind, preserving
+    K-1 independent samples. (Favourites don't come through here at all — they inject
+    at decomposition; see ``DiscoverySeeds`` and the redesign notes.)
 
-    ``k`` ≥ 1; k=1 is a single call (degenerate fan-out). ``on_delta`` streams only the
-    first call's reasoning as the live "thinking"; the rest are silent to keep the
-    stream coherent. A worker that raises propagates (the caller treats a failed
-    criteria phase as fatal, same as the single-call path).
+    ``k`` ≥ 1; k=1 is a single call (degenerate fan-out) and, being worker 0, still
+    grounds any proposal. ``on_delta`` streams only the first call's reasoning as the
+    live "thinking"; the rest are silent to keep the stream coherent. A worker that
+    raises propagates (the caller treats a failed criteria phase as fatal, same as the
+    single-call path).
     """
     from app.ai.analysis import run_in_pool
 
-    # Build the prompt ONCE, here on the calling thread (a single pool-digest DB read).
-    # The K worker calls then share it and touch no DB — satisfying run_in_pool's
-    # session-free contract (SQLAlchemy sessions aren't thread-safe) and rendering the
-    # digest once instead of K times.
-    prompt = build_prompt(db, applications, seeds=seeds)
+    # Render the pool digest ONCE here on the calling thread (a single DB read), then
+    # compose two prompt variants from it: seeded (worker 0, carries the proposals) and
+    # blind (workers 1..K-1). The worker calls touch no DB — satisfying run_in_pool's
+    # session-free contract (SQLAlchemy sessions aren't thread-safe). When there are no
+    # proposals both variants are identical, so this costs nothing over the old path.
+    pool_block = pool_digest_block(db, applications)
+    seeded_prompt = _compose_prompt(pool_block, seeds)
+    blind_prompt = _compose_prompt(pool_block, None)
 
     def _call(index: int) -> tuple[PoolDimensionReport, str | None, float]:
-        # Only worker 0 streams; interleaving K reasoning traces is unreadable.
+        # Worker 0 gets the proposals and streams; the rest are blind and silent
+        # (interleaving K reasoning traces is unreadable, and they carry no proposal).
         return _discover_from_prompt(
-            provider, prompt, settings, on_delta=on_delta if index == 0 else None
+            provider,
+            seeded_prompt if index == 0 else blind_prompt,
+            settings,
+            on_delta=on_delta if index == 0 else None,
         )
 
     passes: list[DiscoveryPass] = []
