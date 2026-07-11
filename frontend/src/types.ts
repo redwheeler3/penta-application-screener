@@ -17,6 +17,7 @@ export type AISettings = {
   essayAnalysisModel: string;
   dimensionScoringModel: string;
   discoveryModel: string;
+  decomposeModel: string;
   matchModel: string;
   // Fan-out width: parallel discovery calls per Rank (SPEC "Fan-Out Redesign", D6).
   discoveryFanOut: number;

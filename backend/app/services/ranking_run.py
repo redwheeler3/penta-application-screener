@@ -80,9 +80,9 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
         f"scoring:{SCORING_V}",
         # The model of every rank-chain pass — a change to any of them ambers Rank.
         # Screening's model is deliberately absent: it's the separate Screen step.
-        # (discovery + decompose share discovery_model, listed once.)
         f"essay_model:{settings.ai.essay_analysis_model}",
         f"discovery_model:{settings.ai.discovery_model}",
+        f"decompose_model:{settings.ai.decompose_model}",
         f"match_model:{settings.ai.match_model}",
         f"scoring_model:{settings.ai.dimension_scoring_model}",
     ]
