@@ -40,7 +40,11 @@ from app.ai.dimension_decompose import (
     to_pool_report,
 )
 from app.ai.dimension_matching import estimate_match, match_dimensions
-from app.ai.dimension_reconcile import estimate_reconcile, reconcile_dropped
+
+# reconcile_dropped is intentionally NOT imported — the reconcile pass is disabled in
+# the rank chain (fan-out redesign, D2/D8); estimate_reconcile still prices its ceiling
+# until Phase 4c removes it, and the audit view still serves historical runs.
+from app.ai.dimension_reconcile import estimate_reconcile
 from app.ai.dimension_scoring import (
     applications_to_score,
     estimate_dimension_scoring,
@@ -517,11 +521,15 @@ def rank_run(
                 new_to_old: dict[str, str] = {}
                 match_narrative: str | None = None
                 match_cost = 0.0
-                # Pass 3: reconcile the dropped priors — the historical dimensions the
-                # match pass did NOT carry forward. Ask, against the current pool,
-                # "does this pool still vary on it?" and revive only those it does, so a
-                # valued axis isn't silently lost to a nondeterministic discovery run.
-                # Skipped on the first run (no history) or when nothing dropped.
+                # Pass 3 (reconcile) is DISABLED as of the fan-out redesign (SPEC D2/D8):
+                # reviving dropped historical priors was the creep engine, and fan-out +
+                # decomposition subsume its only legitimate job (a valued axis that still
+                # varies re-surfaces in at least one of K fresh discoveries and survives
+                # the settle). Left un-invoked here — not yet deleted (module, schemas,
+                # audit endpoint/panel go in Phase 4c) — so a verification run shows ONLY
+                # decomposition's settled set, not a muddle of settled + revived-from-
+                # history dimensions. revive_keys stays empty → revive_dimensions is a
+                # no-op and reconcile_audit is None.
                 revive_keys: list[str] = []
                 reconcile_ballot: list[dict] = []
                 reconcile_narrative: str | None = None
@@ -530,16 +538,6 @@ def rank_run(
                     new_to_old, match_narrative, match_cost = match_dimensions(
                         provider, old=match_history, new=report, settings=settings,
                         on_delta=on_delta,
-                    )
-                    dropped = [
-                        d for d in match_history.dimensions
-                        if d.key not in set(new_to_old.values())
-                    ]
-                    revive_keys, reconcile_ballot, reconcile_narrative, reconcile_cost = (
-                        reconcile_dropped(
-                            provider, db, dropped=dropped, applications=pool,
-                            settings=settings, on_delta=on_delta,
-                        )
                     )
                 criteria_outcome["ok"] = (
                     report, narrative, discovery_cost, new_to_old, match_narrative,
