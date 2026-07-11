@@ -54,7 +54,7 @@ from app.ai.schemas import (
 from app.db.models import Application, ApplicationAIResult, ApplicationStatus
 from app.schemas.settings import AppSettings
 from app.services.application_import import extract_essays
-from app.services.cost_report import recent_scoring_fresh_usd
+from app.services.cost_report import recent_pass_fresh_usd
 from app.services.ranking_run import current_dimension_report, get_current_run
 
 KIND_PREFIX = "dimension_scoring"
@@ -244,7 +244,7 @@ def estimate_dimension_scoring(
     spending cap. Two better signals, in priority order:
 
     1. **Measured (preferred):** a recency-weighted average of what recent Rank runs
-       *actually spent* on fresh scoring (``recent_scoring_fresh_usd``). A past run's
+       *actually spent* on fresh scoring (``recent_pass_fresh_usd``). A past run's
        stored scoring ``fresh_usd`` already captures the true re-run shape — reuse plus
        whatever discovery newly minted and scored — so history is the honest predictor,
        no invented churn constant. Used whenever any prior Rank recorded a scoring pass.
@@ -300,7 +300,7 @@ def estimate_dimension_scoring(
         count_based += _call_cost(len(to_score))
 
     # Prefer the measured predictor when we have run history; else the cache-aware count.
-    measured = recent_scoring_fresh_usd(db)
+    measured = recent_pass_fresh_usd(db)
     estimated = measured if measured is not None else count_based
 
     return {

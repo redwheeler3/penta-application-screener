@@ -121,9 +121,10 @@ def build_prompt(reports: list[PoolDimensionReport]) -> str:
 # --- Cost estimation (non-prompt) ---
 
 # The input scales with K × dimensions (all K reports in the prompt); output scales
-# with the settled set (~20-25 axes, each with reasoning). Flat, generous guesses for
-# the pre-run estimate — the pass is uncached and runs once per Rank.
-_DECOMPOSE_OUTPUT_TOKENS = 4000
+# with the settled set (~30 axes, each with definition + source_keys + decision
+# reasoning). Calibrated to observed spend (2026-07-11): the real settled output runs
+# ~8000 tokens — was 4000, which under-estimated decomposition ~2x.
+_DECOMPOSE_OUTPUT_TOKENS = 8000
 
 
 def estimate_decompose(reports: list[PoolDimensionReport], settings: AppSettings) -> float:
