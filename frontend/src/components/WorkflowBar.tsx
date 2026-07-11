@@ -4,12 +4,22 @@ import ReactMarkdown from "react-markdown";
 import { screeningPercent } from "../format";
 import type {
   Coverage,
+  CriteriaStage,
   DashboardCounts,
   ScreeningEstimateResponse,
   RankEstimateResponse,
   RankProgress,
   WorkflowState,
 } from "../types";
+
+// Labels for the criteria phase's sub-stages (the sequential model calls under its
+// one banner), keyed by the backend's stage names. Fan-out width isn't known here, so
+// "discoveries" stays plural-generic rather than naming K.
+const CRITERIA_STAGE_LABELS: Record<CriteriaStage, string> = {
+  discovering: "Running parallel discovery passes…",
+  settling: "Settling into one set of criteria…",
+  matching: "Matching criteria to the prior run…",
+};
 
 // One numbered step in the ordered workflow strip: the step button plus a chevron
 // to the next step (omitted on the last). Line 1 is the title; line 2 is the live
@@ -370,7 +380,7 @@ export function WorkflowBar(props: {
           <div className="run-progress-label">
             {rankProgress
               ? rankProgress.phase === "criteria"
-                ? "Finding criteria across the pool…"
+                ? CRITERIA_STAGE_LABELS[rankProgress.stage ?? "discovering"]
                 : `${rankProgress.phase === "essays" ? "Summarizing essays" : "Scoring candidates"}… ` +
                   `${rankProgress.processed}/${rankProgress.total}` +
                   (rankProgress.total ? ` (${Math.round(screeningPercent(rankProgress))}%)` : "")

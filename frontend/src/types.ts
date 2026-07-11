@@ -399,5 +399,13 @@ export type SortState = { key: SortKey; direction: "asc" | "desc" } | null;
 // The filter that the applications list / facets are keyed on.
 export type AppFilter = { status?: AppStatus; statusSource?: StatusSource };
 
-// Live progress emitted by the streaming Rank chain.
-export type RankProgress = { phase: "essays" | "criteria" | "scores"; processed: number; total: number };
+// Live progress emitted by the streaming Rank chain. `stage` is the current sub-step
+// within the criteria phase (discovery → decompose → match), set by "stage" events so
+// the UI can name which opaque step is running; null in phases without sub-steps.
+export type CriteriaStage = "discovering" | "settling" | "matching";
+export type RankProgress = {
+  phase: "essays" | "criteria" | "scores";
+  processed: number;
+  total: number;
+  stage?: CriteriaStage | null;
+};

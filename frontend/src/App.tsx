@@ -360,6 +360,12 @@ export function App() {
             setRankProgress({ phase: event.phase, processed: 0, total: event.total ?? 0 });
           } else if (event.type === "progress") {
             setRankProgress({ phase: event.phase, processed: event.processed, total: event.total });
+          } else if (event.type === "stage") {
+            // A sub-step transition within the criteria phase — update the stage label
+            // in place, keeping the current phase/counts.
+            setRankProgress((prior) =>
+              prior ? { ...prior, stage: event.stage } : { phase: "criteria", processed: 0, total: 0, stage: event.stage },
+            );
           } else if (event.type === "thinking") {
             // Live model reasoning during discovery + match; append as it streams.
             setCriteriaThinking((prior) => prior + event.text);
