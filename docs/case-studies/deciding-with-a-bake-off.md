@@ -157,7 +157,7 @@ seat, because neither number asked for one.
   no product surface, no model-grading-model — settled which of two AI
   architectures to keep and whether the parallelism was worth its cost.
 
-## Postscript: the same method, tuned — and two ways measurement humbles you
+## Postscript: measuring K — two ways measurement humbles you
 
 Weeks later the same discipline answered a follow-on question, and the answer
 came with two lessons the bake-off didn't teach.
@@ -206,6 +206,61 @@ The through-line with the bake-off: the point was never "let numbers decide." It
 was "build cheap instruments so judgment is *informed* instead of *guessed*" — and
 part of using them well is knowing when an instrument is wrong (lesson one) and
 when it has said all it can and the rest is yours (lesson two).
+
+## Second postscript: an architecture can guarantee a lie
+
+The next thread started as pure cost-trimming and turned into a correctness fix —
+and the trigger was a collaborator's question, not an instrument.
+
+Chasing the token budget, I looked at the decomposition step's output. Each
+settled axis carried a `why_it_differentiates` field — a sentence describing what
+varies across the applicant pool on that axis — and the ranking view showed it
+when you clicked a dimension. I proposed trimming it. My teammate asked a simple
+question: *the decomposer generates that? How, when it never sees the applicant
+data?*
+
+He was right, and it undid my mental model. The decomposer is fed only the K
+discovery reports' key/name/definition — never the pool, never an essay, never a
+score. Yet it was emitting confident, pool-specific prose: "Several applicants
+reflect deeply on mutual aid…". It *couldn't* know that. It was pattern-matching
+plausible co-op talk onto a definition string. **The architecture guaranteed the
+field would be confabulated** — not "might drift," *guaranteed*, because the model
+writing it structurally had no access to the thing it was describing. And it was
+the exact text we surfaced to committee members as if it were grounded analysis.
+
+The tell was visible in the product once we knew to look. A *newly* coined axis
+("Breadth of Contribution Domains") had a why that read generic and hollow —
+because the decomposer wrote it from nothing. An axis that had been *carried
+forward from an older run* ("Community Motivation Alignment") read specific and
+concrete — because that text traced back, through the match pass, to a real
+discoverer that had read the essays. Generic meant fabricated; specific meant
+grounded. The two sat side by side in the same list.
+
+Three things generalize:
+
+- **"Trust the reasoning trace" assumes the reasoner saw the evidence.** Persisted
+  model reasoning is a product feature here (see the convergence study) — but a
+  trace is only trustworthy if the model that wrote it had the data it claims to
+  describe. A reasoning field on the wrong side of an information boundary is
+  decoration at best, fiction at worst. Always ask *what did this model actually
+  see?* before you trust what it says.
+- **The fix was the opposite of my proposal.** I came to *trim* the why. The right
+  move was to *keep* it — but source it from the discoverer that read the pool
+  (carried forward by `source_keys`) and forbid the decomposer from inventing one.
+  The field wasn't waste; it was correct data being overwritten by a model that
+  couldn't produce it. A question flipped "delete this" into "this is load-bearing,
+  stop corrupting it."
+- **Cleaning up a fabrication is its own small design problem.** The generated slop
+  was already stored, and the match pass copies a matched axis's text forward
+  wholesale — so the lie was *sticky*: a plain re-run would keep pulling it. The
+  clean fix wasn't a runtime fallback (which would need flagging for removal
+  later); it was a one-shot migration that regenerated each stored why from the
+  discoverer source it should have had. No lingering code, no conflation of fresh
+  text with old scores.
+
+The first postscript is about measurement humbling you. This one is about a
+*question* humbling you — the cheapest instrument of all is someone asking "wait,
+how does that even work?"
 
 For the build-facing detail (the bake-off table in context, the D1–D9 decisions,
 the coverage gate, the D9 committee-request guard), see the "Fan-Out Redesign"
