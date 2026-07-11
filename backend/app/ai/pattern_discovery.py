@@ -136,7 +136,11 @@ def eligible_applications(db: Session) -> list[Application]:
 
 # Output token weight for the pre-run estimate only (input is the shared
 # per-candidate pool-digest weight; the real call is priced from actual usage).
-_DISCOVERY_OUTPUT_TOKENS = 2000
+# Calibrated to observed spend (2026-07-11): at the 20-30 dimension floor, one
+# discovery call emits ~5000 output tokens (each dim carries key/name/definition/
+# why + the summary). Was 2000 — set when discovery produced ~14 dims — which
+# under-estimated the criteria phase ~2.5x once the floor rose.
+_DISCOVERY_OUTPUT_TOKENS = 5000
 
 
 def estimate_discovery(applications: list[Application], settings: AppSettings) -> float:

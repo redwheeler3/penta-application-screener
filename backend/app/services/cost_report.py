@@ -223,22 +223,27 @@ def last_runs_report(db: Session) -> LastRunsReport:
 _SCORING_HISTORY_WINDOW = 5
 
 
-def recent_scoring_fresh_usd(db: Session, pass_label: str = "Dimension scoring") -> float | None:
-    """A recency-weighted average of what recent Rank runs actually spent on FRESH
-    dimension scoring — the measured predictor of a re-run's scoring cost.
+def recent_pass_fresh_usd(db: Session, pass_label: str = "Dimension scoring") -> float | None:
+    """A recency-weighted average of what recent Rank runs actually spent (fresh) on the
+    named pass — the MEASURED predictor of a re-run's cost for that pass.
 
-    A past run's stored ``fresh_usd`` for the scoring pass already captures the real
-    shape of a re-run: carry-forward reuse (cached, spent nothing) plus whatever
-    discovery newly minted and scored fresh. So the best estimate of the next re-run's
-    scoring cost is "what recent re-runs actually spent," not a reconstructed count with
-    a guessed churn allowance. Weighted toward the most recent run because the earliest
-    runs (fresh pool, everything scored) cost far more than a settled re-run and
-    shouldn't dominate.
+    The principle (per .clinerules: estimate from history when we have it, seed only
+    when we don't): a past run's stored ``fresh_usd`` for a pass already captures its
+    real cost shape — for scoring, carry-forward reuse plus newly-minted fresh scoring;
+    for discovery/decompose, the real output size at the current prompt (so it self-
+    corrects when a prompt change moves the token count, instead of a hand-tuned
+    constant going stale). Weighted toward the most recent run because early runs
+    (fresh pool, bigger output) shouldn't dominate.
 
-    Returns None when no Rank run has recorded a scoring pass yet (first-ever run) —
-    the caller falls back to the cache-aware count. Only reads the ledger (the honest
-    per-run source); does not see the *current* cache state, so a pool that just grew
-    is under-predicted until the next run records it (documented caveat, not a blend).
+    Returns None when no Rank run has recorded this pass yet — the caller falls back to
+    a seed estimate. Only reads the ledger (the honest per-run source); does not see the
+    *current* cache state, so a pool that just grew is under-predicted until the next run
+    records it (documented caveat, not a blend).
+
+    Minor edge: a pass that records ``fresh_usd=0`` on a first run (match, which is
+    skipped with no prior history) will pull the average down if such a run falls in the
+    recency window. Tolerated, not filtered — recency-weighting favours later non-zero
+    runs and first-runs age out fast; the seed fallback already covers the first re-run.
     """
     rows = list(
         db.scalars(

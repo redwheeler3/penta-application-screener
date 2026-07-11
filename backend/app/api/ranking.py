@@ -41,10 +41,10 @@ from app.ai.dimension_decompose import (
 )
 from app.ai.dimension_matching import estimate_match, match_dimensions
 
-# reconcile_dropped is intentionally NOT imported — the reconcile pass is disabled in
-# the rank chain (fan-out redesign, D2/D8); estimate_reconcile still prices its ceiling
-# until Phase 4c removes it, and the audit view still serves historical runs.
-from app.ai.dimension_reconcile import estimate_reconcile
+# Nothing is imported from dimension_reconcile any more — the reconcile pass is disabled
+# in the rank chain (fan-out redesign, D2/D8): not invoked, and no longer priced in the
+# estimate (it was phantom cost). The module + its audit view survive for historical
+# runs until the Phase 4c removal sweep.
 from app.ai.dimension_scoring import (
     applications_to_score,
     estimate_dimension_scoring,
@@ -102,6 +102,7 @@ from app.services.cost_report import (
     cost_report,
     last_runs_report,
     ledger_pass,
+    recent_pass_fresh_usd,
     record_run_cost,
 )
 from app.services.ranking_run import (
@@ -353,28 +354,42 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     # Fan-out: K parallel discovery calls (SPEC "Fan-Out Redesign", D6), each priced
     # like the single call. Discovery is uncached, so K multiplies straight through —
     # the bigger-than-expected half of the fan-out cost (see the cost-model note).
-    discovery_usd = estimate_discovery(pool, settings) * settings.ai.discovery_fan_out
-    # Decomposition: one call settling the K reports into the finest set. Priced from a
-    # projected input size (K reports × ~20 dims each) since the real reports don't
-    # exist pre-run. Folded into criteria_usd — it's part of the criteria phase.
-    _stub = PoolDimension(
-        key="x", name="x", definition="x", why_it_differentiates="x"
+    # Prefer MEASURED cost from recent runs; fall back to a seed estimate only when
+    # there's no history (per .clinerules: history is the honest predictor — it self-
+    # corrects when a prompt change moves output size, unlike a hand-tuned token guess).
+    # The ledger stores discovery as the summed K-call cost, so the measured value is
+    # already the whole fan-out — do NOT multiply by K again; the seed fallback does.
+    measured_discovery = recent_pass_fresh_usd(db, "Pattern discovery")
+    discovery_usd = (
+        measured_discovery
+        if measured_discovery is not None
+        else estimate_discovery(pool, settings) * settings.ai.discovery_fan_out
     )
-    projected = [
-        PoolDimensionReport(summary="", dimensions=[_stub] * 20)
-        for _ in range(settings.ai.discovery_fan_out)
-    ]
-    decompose_usd = estimate_decompose(projected, settings)
-    # A match pass runs only when there is a prior run to match against.
+    # Decomposition: measured from history, else a seed from projected input size (K
+    # reports × ~20 dims each, since the real reports don't exist pre-run).
+    measured_decompose = recent_pass_fresh_usd(db, "Dimension decomposition")
+    if measured_decompose is not None:
+        decompose_usd = measured_decompose
+    else:
+        _stub = PoolDimension(key="x", name="x", definition="x", why_it_differentiates="x")
+        projected = [
+            PoolDimensionReport(summary="", dimensions=[_stub] * 20)
+            for _ in range(settings.ai.discovery_fan_out)
+        ]
+        decompose_usd = estimate_decompose(projected, settings)
+    # A match pass runs only when there is a prior run to match against. Measured from
+    # history when we have it (same principle as the other passes); the flat-token
+    # estimate_match is the seed for the first re-run before any match cost is recorded.
     has_prior = get_current_run(db) is not None
-    match_usd = estimate_match(settings) if has_prior else 0.0
-    # Reconcile ceiling: it runs only with a prior run, and prices the WORST case —
-    # the match pass carries nothing forward, so every historical dimension is dropped
-    # and offered. The actual run offers fewer (most match), coming in under this, the
-    # same ceiling stance scoring takes. Zero on a first run (no history).
-    history = all_known_dimensions(db)
-    dropped_ceiling = len(history.dimensions) if history is not None else 0
-    reconcile_usd = estimate_reconcile(dropped_ceiling, pool, settings) if has_prior else 0.0
+    if not has_prior:
+        match_usd = 0.0
+    else:
+        measured_match = recent_pass_fresh_usd(db, "Dimension matching")
+        match_usd = measured_match if measured_match is not None else estimate_match(settings)
+    # Reconcile is DISABLED (fan-out redesign, D2/D8) — the pass no longer runs, so it
+    # must not be priced (it was phantom cost inflating the estimate). Kept as a 0 field
+    # for the response contract until the reconcile removal sweep (4c) drops it entirely.
+    reconcile_usd = 0.0
     scoring = estimate_dimension_scoring(db, settings)
     scoring_usd = float(scoring["estimated_usd"])
     total = round(
