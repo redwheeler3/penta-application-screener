@@ -620,6 +620,60 @@ async def test_d9_silently_dropped_committee_request_is_re_added() -> None:
     assert readded["from_committee_request"] is True
 
 
+def test_fan_out_seeds_only_worker_0_the_rest_stay_blind() -> None:
+    # Proposals steer ONE discoverer (worker 0); workers 1..K-1 stay blind, preserving
+    # K-1 independent samples. Assert exactly one of K prompts carries the proposal.
+    from app.ai.pattern_discovery import DiscoverySeeds, discover_patterns_fanout
+
+    _app, db, provider = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    from app.ai.pattern_discovery import eligible_applications
+
+    pool = eligible_applications(db)
+    k = 4
+    for _ in range(k):
+        provider.queue(a_pattern_report())
+
+    from app.schemas.settings import AppSettings
+
+    seeds = DiscoverySeeds(proposed=["families who'd use the playground"])
+    discover_patterns_fanout(
+        db, provider, applications=pool, settings=AppSettings(), k=k, seeds=seeds,
+    )
+    discovery_calls = [c for c in provider.calls if "<applicant_pool>" in c.prompt]
+    assert len(discovery_calls) == k
+    seeded = [c for c in discovery_calls if "families who'd use the playground" in c.prompt]
+    assert len(seeded) == 1, "exactly one discoverer should carry the proposal"
+
+
+def test_enforce_committee_requests_guarantees_an_unsurfaced_favourite() -> None:
+    # A favourite that NO discovery report re-surfaced (so it's absent from the settled
+    # set) must be re-added by the guard — a favourite is never dropped.
+    from app.ai.dimension_decompose import enforce_committee_requests
+
+    favourite = PoolDimension(
+        key="participation_commitment", name="Participation commitment",
+        definition="Willingness to do shared work.", why_it_differentiates="varies",
+    )
+    # Decomposition settled on an unrelated axis only.
+    settled = DecompositionReport(
+        summary="settled",
+        dimensions=[
+            DecomposedDimension(
+                key="skills_offered", name="Skills offered", definition="trades",
+                why_it_differentiates="varies", source_keys=["skills_offered"],
+                decision="kept",
+            ),
+        ],
+    )
+    corrected, folded = enforce_committee_requests(settled, [], favourites=[favourite])
+    keys = {d.key for d in corrected.dimensions}
+    assert "participation_commitment" in keys  # re-added, not lost
+    readded = next(d for d in corrected.dimensions if d.key == "participation_commitment")
+    assert readded.from_committee_request is True
+    assert folded == []  # kept standalone, not folded into another axis
+
+
 @pytest.mark.anyio
 async def test_criteria_phase_streams_thinking_deltas() -> None:
     # The discovery (and match) call streams the model's reasoning as
@@ -1207,18 +1261,15 @@ def test_build_prompt_unseeded_has_no_requested_section() -> None:
     assert build_prompt(db, apps, seeds=DiscoverySeeds()) == bare
 
 
-def test_build_prompt_includes_favourited_and_proposed_seeds() -> None:
+def test_build_prompt_includes_proposed_seeds() -> None:
+    # Only PROPOSALS seed discovery now; favourites inject at decomposition, not here.
     from app.ai.pattern_discovery import DiscoverySeeds, build_prompt
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
-    seeds = DiscoverySeeds(
-        favourited=[{"name": "Conflict Mediation", "definition": "Resolves disputes."}],
-        proposed=["school-age kids who'd use the playground"],
-    )
+    seeds = DiscoverySeeds(proposed=["school-age kids who'd use the playground"])
     prompt = build_prompt(db, [a], seeds=seeds)
     assert "<requested_axes>" in prompt
-    assert "Conflict Mediation: Resolves disputes." in prompt
     assert "school-age kids who'd use the playground" in prompt
     # The model is told to flag what it creates from a request.
     assert "from_committee_request" in prompt
@@ -1266,9 +1317,9 @@ async def test_proposed_dimension_seeds_discovery_then_clears_and_auto_favourite
 
 
 @pytest.mark.anyio
-async def test_favourited_dimension_is_re_fed_to_discovery_and_persists() -> None:
-    # A favourited dimension is sent back into the next discovery (by name +
-    # definition) and stays favourited across the re-run.
+async def test_favourited_dimension_is_injected_at_decomposition_not_discovery() -> None:
+    # A favourite is injected at DECOMPOSITION (by name + definition), NOT seeded into
+    # discovery — so all K discoverers stay blind. It stays favourited across the re-run.
     app, db, provider = setup_app(role=UserRole.MEMBER)
     add_eligible(db, email="a@x.com", raw_hash="h1")
 
@@ -1295,10 +1346,15 @@ async def test_favourited_dimension_is_re_fed_to_discovery_and_persists() -> Non
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
-        # The favourite's name + definition were re-fed to discovery.
+        # Discovery stays BLIND — the favourite is NOT in the discovery prompt.
         discovery_prompt = next(c.prompt for c in provider.calls if "<applicant_pool>" in c.prompt)
-        assert "<requested_axes>" in discovery_prompt
-        assert "Participation commitment: Willingness to do shared work." in discovery_prompt
+        assert "<requested_axes>" not in discovery_prompt
+        assert "Willingness to do shared work." not in discovery_prompt
+
+        # The favourite's name + definition reached the DECOMPOSITION prompt instead.
+        decompose_prompt = next(c.prompt for c in provider.calls if "<discovery_reports>" in c.prompt)
+        assert "<favourite_axes>" in decompose_prompt
+        assert "Willingness to do shared work." in decompose_prompt
 
         # It is still favourited after the re-run.
         current = (await client.get("/ranking/current")).json()

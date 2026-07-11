@@ -480,17 +480,19 @@ def rank_run(
         # the committee's view (never flagged); one absent-then-present is a presence
         # gap to flag (new or revived). See carry_forward_layout.
         immediately_prior_keys = {d.key for d in prior_report.dimensions} if prior_report else set()
-        # Committee discovery seeds: favourited dimensions (resolved to name +
-        # definition from the prior report) plus pending free-text proposals. These
-        # steer discovery toward axes the committee asked for; an empty seed set
-        # leaves discovery fully blind (the default first-run behaviour).
+        # Committee asks split by what each needs (SPEC "Fan-Out Redesign", committee-axis
+        # injection). PROPOSALS are untested free-text hypotheses → seeded into discovery
+        # (worker 0 only) so it grounds them in the pool and gates on variance. FAVOURITES
+        # are prior dimensions already grounded + scored → injected at DECOMPOSITION, not
+        # discovery, so all K discoverers stay blind (seeding them would correlate the
+        # samples and cost coverage). An empty set leaves discovery fully blind (first-run).
         prior_favourites = favourited_keys(prior_run) if prior_run else []
+        favourite_dims = [
+            d
+            for d in (prior_report.dimensions if prior_report else [])
+            if d.key in set(prior_favourites)
+        ]
         seeds = DiscoverySeeds(
-            favourited=[
-                {"name": d.name, "definition": d.definition}
-                for d in (prior_report.dimensions if prior_report else [])
-                if d.key in set(prior_favourites)
-            ],
             proposed=proposed_dimensions(prior_run) if prior_run else [],
         )
 
@@ -544,15 +546,20 @@ def rank_run(
                 # → adopt → score tail below flows exactly as before; source_keys + the
                 # per-axis merge reasoning are preserved separately in decompose_audit.
                 delta_queue.put(_Stage(CRITERIA_STAGES["settling"]))
+                # Favourites are injected HERE (not into discovery): the settling call sees
+                # every carving at once, so it folds any re-discovered twin into the
+                # favourite (reusing its key → match adopts it → cached scores carry
+                # forward) and keeps it present regardless.
                 decomposition, decompose_narrative, decompose_cost = decompose_dimensions(
-                    provider, reports=fan_out_reports, settings=settings, on_delta=on_delta,
+                    provider, reports=fan_out_reports, settings=settings,
+                    favourites=favourite_dims, on_delta=on_delta,
                 )
-                # D9 guard: a committee-requested axis must never be silently merged away.
-                # Deterministic backstop for the prompt — repairs flag-loss on merge and
-                # re-adds any request decomposition dropped; `folded` lists requests merged
+                # D9 guard: a committee ask (proposal OR favourite) must never be silently
+                # merged away. Deterministic backstop for the prompt — repairs flag-loss on
+                # merge and re-adds any ask decomposition dropped; `folded` lists asks merged
                 # INTO another axis, surfaced to the committee (never a silent vanish).
                 decomposition, folded_requests = enforce_committee_requests(
-                    decomposition, fan_out_reports
+                    decomposition, fan_out_reports, favourites=favourite_dims
                 )
                 report = to_pool_report(decomposition)
                 narrative = decompose_narrative or fan_out.narrative
