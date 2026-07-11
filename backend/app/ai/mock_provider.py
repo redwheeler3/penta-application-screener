@@ -100,6 +100,7 @@ class MockProvider:
         prompt: str,
         system_prompt: str | None = None,
         on_delta=None,
+        read_timeout: int | None = None,  # ignored; no real Bedrock call
     ) -> AIResult:
         with self._lock:
             self.calls.append(MockCall(model_id=model_id, prompt=prompt))

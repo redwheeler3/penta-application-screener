@@ -51,11 +51,16 @@ class AIProvider(Protocol):
         prompt: str,
         system_prompt: str | None = None,
         on_delta: DeltaSink | None = None,
+        read_timeout: int | None = None,
     ) -> AIResult:
         """Run ``prompt`` and return its output validated against ``schema`` (plus
         usage for pricing). When ``on_delta`` is given, it is called with each chunk
         of the model's reasoning text as it streams — for live "thinking" UI on the
         long single-call passes (discovery, match) where a per-item progress fraction
         is impossible. Most callers omit it; the result is identical either way.
+
+        ``read_timeout`` overrides the Bedrock read timeout (s) for this call only —
+        raised for the fan-out decomposition call, whose large reasoned output streams
+        past the default. Omit for every other pass.
         """
         ...

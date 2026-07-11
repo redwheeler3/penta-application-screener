@@ -203,6 +203,8 @@ def create_run(
     match_audit: dict | None = None,
     reconcile_audit: dict | None = None,
     fan_out_audit: dict | None = None,
+    decompose_audit: dict | None = None,
+    decompose_cost_usd: float = 0.0,
 ) -> RankingRun:
     """Persist a freshly discovered pattern report as a new ranking run.
 
@@ -261,11 +263,17 @@ def create_run(
             # + offered/recovered counts, so over-recovery is inspectable. None when
             # the pass didn't run (first run / nothing dropped).
             "reconcile_audit": reconcile_audit,
-            # Fan-out audit (SPEC "Fan-Out Redesign", Phase 2): the K raw discovery
-            # reports this run produced, before the match/reconcile tail collapsed them
-            # to one. The input Phase 3's decomposition bake-off consumes. None on runs
+            # Fan-out audit (SPEC "Fan-Out Redesign"): the K raw discovery reports this
+            # run produced, before decomposition settled them into one set. None on runs
             # written before fan-out landed (single-discovery runs).
             "fan_out_audit": fan_out_audit,
+            # Decompose audit (SPEC "Fan-Out Redesign", Phase 4a): per settled axis, the
+            # source_keys it absorbed + the merge/keep reasoning (the Insights surface +
+            # the D9 committee-request trail). None on runs written before decomposition.
+            "decompose_audit": decompose_audit,
+            # Decomposition is its own Bedrock call (settle the K reports into one set),
+            # priced separately so the cost report can attribute it.
+            "decompose_cost_usd": round(decompose_cost_usd, 6),
         },
     )
     db.add(run)

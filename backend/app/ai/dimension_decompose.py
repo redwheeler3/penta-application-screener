@@ -48,6 +48,12 @@ from app.schemas.settings import AppSettings
 
 KIND = "dimension_decompose"  # for logging / the debug view; not a cached per-app kind
 
+# Bedrock read timeout (s) for the decomposition call specifically. It streams a large
+# reasoned set (settle ~250 input dims → ~28 axes, each with merge reasoning) and blows
+# the provider's 120s default — confirmed twice (over-gen experiment + the bake-off).
+# Only this call raises it; the default stays put for every other pass.
+DECOMPOSE_READ_TIMEOUT = 600
+
 SYSTEM_PROMPT = """\
 You are helping a housing co-op screening committee settle the final set of dimensions its applicant pool varies on.
 You are given SEVERAL independent analyses of the SAME pool. They overlap heavily: the same underlying concept is often carved at different granularities, named differently, or split in different places. Your job is to distil them into ONE set of axes that is as FINE as the evidence supports while being mutually NON-OVERLAPPING — collapse re-carvings of a single concept, keep genuinely distinct concepts apart.
@@ -132,6 +138,62 @@ def estimate_decompose(reports: list[PoolDimensionReport], settings: AppSettings
     return cost_usd(settings.ai.discovery_model, usage)
 
 
+def to_pool_report(decomposition: DecompositionReport) -> PoolDimensionReport:
+    """Project the settled ``DecompositionReport`` onto a ``PoolDimensionReport`` — the
+    shape the rest of the rank chain (match pass, scoring, storage) already speaks. The
+    decomposition-only fields (``source_keys``, ``decision``) are dropped here; they are
+    preserved separately in the decompose audit (see ``decompose_audit_payload``). The
+    ``from_committee_request`` flag rides through, since it drives auto-favouriting and
+    the D9 committee-request protection downstream.
+    """
+    return PoolDimensionReport(
+        summary=decomposition.summary,
+        dimensions=[
+            PoolDimension(
+                key=d.key,
+                name=d.name,
+                definition=d.definition,
+                why_it_differentiates=d.why_it_differentiates,
+                from_committee_request=d.from_committee_request,
+            )
+            for d in decomposition.dimensions
+        ],
+    )
+
+
+def decompose_audit_payload(
+    decomposition: DecompositionReport,
+    input_reports: list[PoolDimensionReport],
+    narrative: str | None = None,
+) -> dict:
+    """Shape the decomposition for storage on the run (mirrors ``reconcile_audit``).
+
+    Captures, per settled axis, the ``source_keys`` it absorbed and the ``decision``
+    reasoning (why merged / kept distinct) — the merge audit trail, and the surface the
+    Insights panel renders (the reconcile-reasoning lesson: persist the *why*). Also the
+    input dimension count (K reports → how many raw axes fed in) so the settle-down
+    ratio is inspectable. A merge is any settled axis with more than one source key.
+    """
+    settled = decomposition.dimensions
+    return {
+        "input_report_count": len(input_reports),
+        "input_dimension_count": sum(len(r.dimensions) for r in input_reports),
+        "settled_count": len(settled),
+        "merge_count": sum(1 for d in settled if len(d.source_keys) > 1),
+        "settled": [
+            {
+                "key": d.key,
+                "name": d.name,
+                "source_keys": d.source_keys,
+                "from_committee_request": d.from_committee_request,
+                "decision": d.decision,
+            }
+            for d in settled
+        ],
+        "narrative": narrative,
+    }
+
+
 def decompose_dimensions(
     provider: AIProvider,
     *,
@@ -171,6 +233,7 @@ def decompose_dimensions(
         prompt=build_prompt(reports),
         system_prompt=SYSTEM_PROMPT,
         on_delta=on_delta,
+        read_timeout=DECOMPOSE_READ_TIMEOUT,
     )
     return result.output, result.narrative, cost_usd(result.model_id, result.usage)
 
