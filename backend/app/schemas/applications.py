@@ -44,7 +44,6 @@ class EssayAnalysisOut(ResponseModel):
     prior_co_op_experience: str | None = None
     stated_motivations: list[str] = []
     stated_contributions: list[str] = []
-    evidence: list[str] = []
 
 
 class DimensionContributionOut(ResponseModel):

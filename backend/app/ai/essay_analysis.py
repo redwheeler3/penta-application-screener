@@ -60,7 +60,6 @@ Fill each field from the essays:
 - prior_co_op_experience: any previous co-op experience stated. Null if none given.
 - stated_motivations: reasons they gave for wanting to live in a co-op.
 - stated_contributions: ways they said they would be a valuable member.
-- evidence: short direct quotes or phrases grounding the above. Do not quote whole essays.
 
 ## Guardrails
 - {INJECTION_GUARD_NOTE}
