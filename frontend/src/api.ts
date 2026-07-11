@@ -11,6 +11,7 @@ import type {
   Coverage,
   CurrentUser,
   DashboardCounts,
+  DecomposeAuditResponse,
   LastRunsReport,
   MatchAuditResponse,
   ReconcileAuditResponse,
@@ -98,6 +99,12 @@ export const fetchMatchAudit = () => getJson<MatchAuditResponse | null>("/rankin
 // ballot + recovery rate). Null when the pass didn't run (first run / nothing dropped).
 export const fetchReconcileAudit = () =>
   getJson<ReconcileAuditResponse | null>("/ranking/current/reconcile-audit");
+
+// The current run's decomposition audit — how the K fan-out discovery reports were
+// settled into one set (settled axes + merge reasoning + D9 folded-request trail).
+// Null on runs that predate the fan-out redesign.
+export const fetchDecomposeAudit = () =>
+  getJson<DecomposeAuditResponse | null>("/ranking/current/decompose-audit");
 
 // Aggregated AI spend (M13 Pillar 1): cumulative, grouped by run.
 export const fetchCostReport = () => getJson<CostReport>("/ranking/insights/cost");
