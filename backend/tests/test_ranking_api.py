@@ -8,6 +8,8 @@ from sqlalchemy.pool import StaticPool
 
 from app.ai.mock_provider import MockProvider
 from app.ai.schemas import (
+    ConsolidationReport,
+    ConsolidationVerdict,
     DecomposedDimension,
     DecompositionReport,
     DimensionMatch,
@@ -45,12 +47,15 @@ def _decomposition_of(report: PoolDimensionReport) -> DecompositionReport:
 
 
 def route_criteria(provider: MockProvider, report: PoolDimensionReport) -> None:
-    """Route both criteria-phase model calls from one discovery report: the K-parallel
-    discovery (``<applicant_pool>``) and the decomposition that settles them
-    (``<discovery_reports>``, a pass-through of the same dims). One call per test instead
-    of wiring both markers by hand."""
+    """Route the criteria-phase model calls from one discovery report: the K-parallel
+    discovery (``<applicant_pool>``), the decomposition that settles them
+    (``<discovery_reports>``, a pass-through of the same dims), and a keep-everything
+    verdict for the post-score consolidation confirm (``<candidate_pairs>``) — routed
+    only in case correlated mock scores nominate a pair, so the default full-chain test
+    doesn't merge anything. Tests that want a merge route their own ConsolidationReport."""
     provider.route("<applicant_pool>", report)
     provider.route("<discovery_reports>", _decomposition_of(report))
+    provider.route("<candidate_pairs>", ConsolidationReport(verdicts=[]))
 
 
 def setup_app(role: UserRole | None) -> tuple:
@@ -267,7 +272,7 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
         by_pass = {p["label"]: p for p in rank["passes"]}
         assert set(by_pass) == {
             "Pattern discovery", "Dimension decomposition",
-            "Dimension matching", "Dimension scoring",
+            "Dimension matching", "Dimension scoring", "Dimension consolidation",
         }
         # First run: everything fresh, nothing cached.
         assert rank["freshUsd"] > 0
@@ -492,6 +497,122 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
     assert audit["merge_count"] == 1
     merged = next(d for d in audit["settled"] if d["key"] == "commitment")
     assert set(merged["source_keys"]) == {"commitment_a", "commitment_b"}
+
+
+@pytest.mark.anyio
+async def test_post_score_consolidation_merges_correlated_duplicate() -> None:
+    # The consolidation pass runs AFTER scoring: two dimensions whose per-applicant
+    # scores correlate are nominated, the confirm call says same_concept, and the run
+    # collapses to one dim + writes a DimensionAlias so future matches adopt the winner.
+    from sqlalchemy import select
+
+    from app.db.models import DimensionAlias
+    from app.services.ranking_run import get_current_run
+
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    apps = [add_eligible(db, email=f"a{i}@x.com", raw_hash=f"h{i}") for i in range(4)]
+
+    discovered = PoolDimensionReport(
+        dimensions=[
+            PoolDimension(key="financial_literacy", name="Financial literacy",
+                          definition="handles co-op money", why_it_differentiates="varies"),
+            PoolDimension(key="financial_stewardship", name="Financial stewardship",
+                          definition="bookkeeping and oversight", why_it_differentiates="varies"),
+        ],
+    )
+    provider.route("<applicant_pool>", discovered)
+    provider.route("<discovery_reports>", _decomposition_of(discovered))
+    # Give the two dims near-identical per-applicant scores so they correlate ≥ 0.85.
+    scores = [0.1, 0.4, 0.7, 0.95]
+    for a, s in zip(apps, scores):
+        provider.route(
+            f'"applicant_id": {a.id}',
+            DimensionScoringReport(scores=[
+                DimensionScore(dimension_key="financial_literacy", score=s, rationale="r",
+                               evidence="", confidence=ScoreConfidence.MEDIUM),
+                DimensionScore(dimension_key="financial_stewardship", score=s, rationale="r",
+                               evidence="", confidence=ScoreConfidence.MEDIUM),
+            ]),
+        )
+    # The confirm call: these two are the same concept → merge.
+    provider.route(
+        "<candidate_pairs>",
+        ConsolidationReport(verdicts=[
+            ConsolidationVerdict(
+                key_a="financial_literacy", key_b="financial_stewardship",
+                same_concept=True, reason="both measure handling co-op finances",
+            ),
+        ]),
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await stream_events(client, "/ranking/run")
+
+    run = get_current_run(db)
+    keys = {d["key"] for d in run.criteria["dimension_report"]["dimensions"]}
+    # Collapsed 2 → 1: the newer key (financial_stewardship) is aliased into the older.
+    assert keys == {"financial_literacy"}
+
+    audit = run.criteria["consolidate_audit"]
+    assert audit["merges"] == {"financial_stewardship": "financial_literacy"}
+
+    alias = db.scalar(select(DimensionAlias).where(DimensionAlias.alias_key == "financial_stewardship"))
+    assert alias is not None
+    assert alias.canonical_key == "financial_literacy"
+
+
+@pytest.mark.anyio
+async def test_post_score_consolidation_keeps_confound_apart() -> None:
+    # A nominated pair the confirm call rejects (a confound) is NOT merged: both dims
+    # survive and no alias is written, even though their scores correlate.
+    from sqlalchemy import select
+
+    from app.db.models import DimensionAlias
+    from app.services.ranking_run import get_current_run
+
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    apps = [add_eligible(db, email=f"b{i}@x.com", raw_hash=f"hb{i}") for i in range(4)]
+
+    discovered = PoolDimensionReport(
+        dimensions=[
+            PoolDimension(key="motivation", name="Motivation",
+                          definition="why they want in", why_it_differentiates="varies"),
+            PoolDimension(key="followthrough", name="Follow-through",
+                          definition="do they finish tasks", why_it_differentiates="varies"),
+        ],
+    )
+    provider.route("<applicant_pool>", discovered)
+    provider.route("<discovery_reports>", _decomposition_of(discovered))
+    for a, s in zip(apps, [0.2, 0.5, 0.8, 0.9]):
+        provider.route(
+            f'"applicant_id": {a.id}',
+            DimensionScoringReport(scores=[
+                DimensionScore(dimension_key="motivation", score=s, rationale="r",
+                               evidence="", confidence=ScoreConfidence.MEDIUM),
+                DimensionScore(dimension_key="followthrough", score=s, rationale="r",
+                               evidence="", confidence=ScoreConfidence.MEDIUM),
+            ]),
+        )
+    provider.route(
+        "<candidate_pairs>",
+        ConsolidationReport(verdicts=[
+            ConsolidationVerdict(
+                key_a="motivation", key_b="followthrough",
+                same_concept=False, reason="an eager applicant who never finishes splits them",
+            ),
+        ]),
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await stream_events(client, "/ranking/run")
+
+    run = get_current_run(db)
+    keys = {d["key"] for d in run.criteria["dimension_report"]["dimensions"]}
+    assert keys == {"motivation", "followthrough"}  # both kept
+    assert run.criteria["consolidate_audit"]["merges"] == {}
+    assert db.scalar(select(DimensionAlias)) is None
 
 
 def _discovery_with_committee_request() -> PoolDimensionReport:
