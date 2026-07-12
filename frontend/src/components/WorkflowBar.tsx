@@ -37,7 +37,7 @@ function criteriaStageLabel(stage: CriteriaStage, k: number): string {
 const STAGE_CAPTIONS: Record<CriteriaStage | "scoring" | "consolidate", string> = {
   discovering: "Reading the whole pool and reasoning about what distinguishes it — this can take up to 5 minutes.",
   settling: "Distilling the parallel discoveries into one non-overlapping set of criteria — this can take up to 5 minutes.",
-  matching: "Carrying tier placements and cached scores forward by matching to the prior run.",
+  matching: "Reusing tier placements and cached scores by matching each criterion to the prior run.",
   scoring: "Scoring each candidate against every criterion — the longest phase on a fresh run.",
   consolidate: "Checking the scored criteria for duplicates and merging any that measure the same thing.",
 };
