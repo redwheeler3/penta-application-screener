@@ -265,6 +265,13 @@ def apply_consolidation(
         criteria["new_dimension_keys"] = [
             k for k in (criteria.get("new_dimension_keys") or []) if k not in merges
         ]
+        # A merged-away key can't stay favourited (it no longer exists in the run). If
+        # the committee favourited the dropped key, the favourite transfers to the
+        # surviving canonical key so the intent — "keep this axis" — is preserved.
+        favourited = criteria.get("favourited_keys") or []
+        criteria["favourited_keys"] = sorted(
+            {merges.get(k, k) for k in favourited}
+        )
 
     criteria["consolidate_audit"] = {
         "merges": merges,

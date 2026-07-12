@@ -562,6 +562,39 @@ async def test_post_score_consolidation_merges_correlated_duplicate() -> None:
     assert alias.canonical_key == "financial_literacy"
 
 
+def test_apply_consolidation_transfers_a_favourite_off_a_merged_key() -> None:
+    # A merged-away key can't stay favourited (it no longer exists). If the committee
+    # favourited the dropped key, the favourite transfers to the surviving canonical key.
+    from app.schemas.settings import AppSettings
+    from app.services.ranking_run import apply_consolidation, create_run
+
+    _app, db, _ = setup_app(role=UserRole.MEMBER)
+    report = PoolDimensionReport(dimensions=[
+        PoolDimension(key="financial_literacy", name="Financial literacy",
+                      definition="handles money", why_it_differentiates="v"),
+        PoolDimension(key="financial_stewardship", name="Financial stewardship",
+                      definition="bookkeeping", why_it_differentiates="v"),
+    ])
+    run = create_run(
+        db, report=report, settings=AppSettings(), model_id="m",
+        narrative=None, discovery_cost_usd=0.0,
+        prior_favourited_keys=["financial_stewardship"],  # the key that will be merged away
+    )
+    assert run.criteria["favourited_keys"] == ["financial_stewardship"]
+
+    apply_consolidation(
+        db, run,
+        merges={"financial_stewardship": "financial_literacy"},
+        audit=[{"keep": "financial_literacy", "drop": "financial_stewardship",
+                "r": 0.94, "merged": True, "reason": "same concept"}],
+        narrative=None, cost_usd=0.01,
+    )
+    # The favourite moved to the survivor, not left dangling on the dropped key.
+    assert run.criteria["favourited_keys"] == ["financial_literacy"]
+    keys = {d["key"] for d in run.criteria["dimension_report"]["dimensions"]}
+    assert keys == {"financial_literacy"}
+
+
 @pytest.mark.anyio
 async def test_post_score_consolidation_keeps_confound_apart() -> None:
     # A nominated pair the confirm call rejects (a confound) is NOT merged: both dims
