@@ -85,8 +85,10 @@ function ConsolidateAuditBody(props: { audit: ConsolidateAuditResponse }): React
             <tr key={`${p.keep}:${p.drop}`}>
               <td>
                 <div className="consolidate-pair">
+                  {/* Always the candidate merge direction (newer → older); the Verdict
+                      column says whether it actually merged. */}
                   <code className="consolidate-pair-key">{p.drop}</code>
-                  <span className="consolidate-pair-sep">{p.merged ? "→" : "vs"}</span>
+                  <span className="consolidate-pair-sep">→</span>
                   <code className="consolidate-pair-key">{p.keep}</code>
                 </div>
               </td>
