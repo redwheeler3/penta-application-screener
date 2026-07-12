@@ -1178,10 +1178,11 @@ h1 {
   margin-top: 0.6rem;
 }
 
-.criteria-thinking-caption {
+/* Descriptive caption under the rank progress bar; tracks the current stage. */
+.run-progress-caption {
   color: var(--muted);
   font-size: 0.78rem;
-  margin-bottom: 0.4rem;
+  margin-top: 0.4rem;
 }
 
 .criteria-thinking-stream {

@@ -21,6 +21,18 @@ const CRITERIA_STAGE_LABELS: Record<CriteriaStage, string> = {
   matching: "Matching criteria to the prior run…",
 };
 
+// The descriptive caption under the progress bar, per stage — it explains what the
+// current step is doing (and why the wait), so the static line tracks the green label
+// instead of describing only discovery. Keyed by criteria sub-stage plus "scoring"
+// (the per-candidate phase, which has no criteria sub-stage). Every stage the rank
+// stream can report has an entry.
+const STAGE_CAPTIONS: Record<CriteriaStage | "scoring", string> = {
+  discovering: "Reading the whole pool and reasoning about what distinguishes it — this can take up to 5 minutes.",
+  settling: "Distilling the parallel discoveries into one non-overlapping set of criteria.",
+  matching: "Carrying tier placements and cached scores forward by matching to the prior run.",
+  scoring: "Scoring each candidate against every criterion — the longest phase on a fresh run.",
+};
+
 // One numbered step in the ordered workflow strip: the step button plus a chevron
 // to the next step (omitted on the last). Line 1 is the title; line 2 is the live
 // "processed/total" while running, else the step's coverage "cached/inScope". When
@@ -390,6 +402,17 @@ export function WorkflowBar(props: {
               <div className="run-progress-fill run-progress-fill-indeterminate" />
             )}
           </div>
+          {/* Descriptive caption that tracks the current stage (criteria sub-stage or
+              scoring), so the static line under the bar matches the green label above. */}
+          {rankProgress ? (
+            <div className="run-progress-caption">
+              {STAGE_CAPTIONS[
+                rankProgress.phase === "criteria"
+                  ? (rankProgress.stage ?? "discovering")
+                  : "scoring"
+              ]}
+            </div>
+          ) : null}
           {/* During the criteria phase (discovery + match — one long opaque call,
               no per-item progress) show the model's live reasoning so the wait
               reads as active work, not a hang. */}
@@ -411,16 +434,11 @@ function CriteriaThinking(props: { text: string }): ReactNode {
     // Keep the newest text in view as it streams in.
     if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
   }, [props.text]);
-  return (
+  return props.text ? (
     <div className="criteria-thinking">
-      <div className="criteria-thinking-caption">
-        Reading the whole pool and reasoning about what distinguishes it — this can take up to 5 minutes.
+      <div className="criteria-thinking-stream" ref={boxRef}>
+        <ReactMarkdown>{props.text}</ReactMarkdown>
       </div>
-      {props.text ? (
-        <div className="criteria-thinking-stream" ref={boxRef}>
-          <ReactMarkdown>{props.text}</ReactMarkdown>
-        </div>
-      ) : null}
     </div>
-  );
+  ) : null;
 }
