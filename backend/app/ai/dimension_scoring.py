@@ -426,7 +426,12 @@ def score_dimensions(
                 prompt_version=PROMPT_VERSION,
                 result=AIResult(
                     output=score, usage=share, model_id=result.model_id,
-                    narrative=result.narrative,
+                    # No narrative: the scoring prompt requests no reasoning preamble
+                    # (structured output only), so this per-decision pass's reasoning IS
+                    # the per-dimension rationale + evidence in `score`, surfaced on the
+                    # candidate detail page. Persisting the call preamble would duplicate
+                    # one near-empty string across every dimension row, read by nothing.
+                    narrative=None,
                 ),
             )
             call_cost += outcome.cost_usd
