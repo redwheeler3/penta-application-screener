@@ -24,6 +24,7 @@ from app.api.dependencies import get_ai_provider, require_current_user
 from app.db.models import Application, ApplicationStatus, Base, User, UserRole
 from app.db.session import get_db
 from app.main import create_app
+from app.services.cost_report import RANK_PASS_LABELS
 
 
 def _decomposition_of(report: PoolDimensionReport) -> DecompositionReport:
@@ -224,10 +225,7 @@ async def test_insights_cost_aggregates_by_pass() -> None:
         # decomposition/matching/scoring).
         assert set(groups) == {"Screen", "Rank"}
         rank_passes = {p["passLabel"]: p for p in groups["Rank"]["passes"]}
-        assert set(rank_passes) == {
-            "Pattern discovery", "Dimension decomposition",
-            "Dimension matching", "Dimension scoring",
-        }
+        assert set(rank_passes) == set(RANK_PASS_LABELS)
         assert [p["passLabel"] for p in groups["Screen"]["passes"]] == ["Screening"]
         # Discovery, decomposition, and matching are separate passes (not summed into one).
         # First run (no prior report) → no match pass ran → 0 matching cost.
@@ -270,10 +268,7 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
         assert first["screen"] is None  # no Screen run happened
         rank = first["rank"]
         by_pass = {p["label"]: p for p in rank["passes"]}
-        assert set(by_pass) == {
-            "Pattern discovery", "Dimension decomposition",
-            "Dimension matching", "Dimension scoring", "Dimension consolidation",
-        }
+        assert set(by_pass) == set(RANK_PASS_LABELS)
         # First run: everything fresh, nothing cached.
         assert rank["freshUsd"] > 0
         assert rank["cachedSavedUsd"] == 0.0
@@ -295,6 +290,31 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
         assert by_pass2["Dimension scoring"]["cachedCount"] == 2
         assert by_pass2["Dimension scoring"]["cachedSavedUsd"] > 0.0
         assert second["cachedSavedUsd"] > 0.0
+
+
+@pytest.mark.anyio
+async def test_cost_surfaces_agree_on_rank_passes() -> None:
+    # Drift guard: the two cost surfaces read from different stores (cumulative from
+    # RankingRun/ApplicationAIResult, last-run from the ledger) and are easy to update
+    # in one but not the other — the bug that once let consolidation show in last-run
+    # but not cumulative. After a real Rank, both must cover exactly RANK_PASS_LABELS.
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        route_criteria(provider, a_pattern_report())
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/ranking/run")
+
+        cumulative = (await client.get("/ranking/insights/cost")).json()
+        rank_group = next(g for g in cumulative["groups"] if g["runLabel"] == "Rank")
+        cumulative_labels = {p["passLabel"] for p in rank_group["passes"]}
+
+        last = (await client.get("/ranking/insights/last-runs")).json()["rank"]
+        ledger_labels = {p["label"] for p in last["passes"]}
+
+    assert cumulative_labels == set(RANK_PASS_LABELS)
+    assert ledger_labels == set(RANK_PASS_LABELS)
 
 
 @pytest.mark.anyio

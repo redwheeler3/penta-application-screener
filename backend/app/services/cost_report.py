@@ -35,9 +35,26 @@ from app.schemas.insights import (
 SCREENING = "screening"
 SCORING_PREFIX = "dimension_scoring:"
 
-# Passes that can reuse cached results. The others (pattern discovery, dimension
-# matching) always call Bedrock fresh, so a "saved by cache" figure is N/A for them —
-# the UI shows "—", never $0, so structural absence of caching doesn't read as failure.
+# The canonical pass labels per user-facing run, and the SINGLE SOURCE OF TRUTH for
+# "which passes exist." BOTH cost surfaces must cover exactly these: the cumulative
+# report (``cost_report`` below) and the per-run ledger (``record_run_cost`` in
+# ``api/ranking.py`` + ``api/screening.py``). They read from different stores and can't
+# share an iterator (the ledger's fresh/cached split is only known mid-run), so drift is
+# the risk — a pass added to one surface but not the other. Guarded two ways: the
+# cumulative builder asserts it emitted exactly this set, and ``test_cost_report`` asserts
+# the ledger emits it too. Add a pass here first, then wire both surfaces.
+RANK_PASS_LABELS = [
+    "Pattern discovery",
+    "Dimension decomposition",
+    "Dimension matching",
+    "Dimension scoring",
+    "Dimension consolidation",
+]
+SCREEN_PASS_LABELS = ["Screening"]
+
+# Passes that can reuse cached results. The others (discovery, decomposition, matching,
+# consolidation) always call Bedrock fresh, so a "saved by cache" figure is N/A — the UI
+# shows "—", never $0, so structural absence of caching doesn't read as failure.
 CACHEABLE_PASSES = {"Screening", "Dimension scoring"}
 
 
@@ -120,6 +137,9 @@ def cost_report(db: Session) -> CostReport:
     match_runs = [r for r in all_runs if (r.criteria or {}).get("match_cost_usd")]
     # Count only runs that actually stored a decompose cost (fan-out redesign onward).
     decompose_runs = [r for r in all_runs if (r.criteria or {}).get("decompose_cost_usd")]
+    # Consolidation's confirm call fires only when correlation nominates a pair, so most
+    # runs store a 0 — count only runs where it actually spent.
+    consolidate_runs = [r for r in all_runs if (r.criteria or {}).get("consolidate_cost_usd")]
     cache = _cache_by_pass(db)  # label → (cached_count, saved_usd)
 
     def cached(label: str) -> dict:
@@ -147,8 +167,18 @@ def cost_report(db: Session) -> CostReport:
             _pass("Dimension matching", len(match_runs), 0, 0, _summed(all_runs, "match_cost_usd")),
             _pass("Dimension scoring", *_sum_rows(db, ApplicationAIResult.kind.startswith(SCORING_PREFIX)),
                   **cached("Dimension scoring")),
+            # Post-score duplicate-merge confirm — cost-only, attributed separately. Only
+            # runs where correlation nominated a pair stored a cost; the rest contribute 0.
+            _pass("Dimension consolidation", len(consolidate_runs), 0, 0,
+                  _summed(all_runs, "consolidate_cost_usd")),
         ],
     )
+    # Coverage guard: the cumulative report must cover exactly the canonical pass set.
+    # Fails loudly if a pass is added to RANK_PASS_LABELS (or the ledger) without a row
+    # here — the drift that once let consolidation cost show in "last runs" but not here.
+    assert [p.pass_label for p in rank.passes] == RANK_PASS_LABELS
+    assert [p.pass_label for p in screen.passes] == SCREEN_PASS_LABELS
+
     groups = [screen, rank]
     return CostReport(
         groups=groups,
