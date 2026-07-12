@@ -393,7 +393,7 @@ export type AppFilter = { status?: AppStatus; statusSource?: StatusSource };
 // the UI can name which opaque step is running; null in phases without sub-steps.
 export type CriteriaStage = "discovering" | "settling" | "matching";
 export type RankProgress = {
-  phase: "criteria" | "scores";
+  phase: "criteria" | "scores" | "consolidate";
   processed: number;
   total: number;
   stage?: CriteriaStage | null;

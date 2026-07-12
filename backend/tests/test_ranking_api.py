@@ -382,9 +382,10 @@ async def test_rank_chain_runs_criteria_scores() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         events = await stream_events(client, "/ranking/run")
 
-        # The phases are announced in order.
+        # The phases are announced in order (consolidation runs post-score, always
+        # emitting its phase even when it merges nothing).
         phases = [e["phase"] for e in events if e["type"] == "phase"]
-        assert phases == ["criteria", "scores"]
+        assert phases == ["criteria", "scores", "consolidate"]
 
         summary = next(e for e in events if e["type"] == "summary")
         assert summary["dimensions"] == 2

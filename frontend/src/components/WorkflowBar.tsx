@@ -26,11 +26,12 @@ const CRITERIA_STAGE_LABELS: Record<CriteriaStage, string> = {
 // instead of describing only discovery. Keyed by criteria sub-stage plus "scoring"
 // (the per-candidate phase, which has no criteria sub-stage). Every stage the rank
 // stream can report has an entry.
-const STAGE_CAPTIONS: Record<CriteriaStage | "scoring", string> = {
+const STAGE_CAPTIONS: Record<CriteriaStage | "scoring" | "consolidate", string> = {
   discovering: "Reading the whole pool and reasoning about what distinguishes it — this can take up to 5 minutes.",
   settling: "Distilling the parallel discoveries into one non-overlapping set of criteria.",
   matching: "Carrying tier placements and cached scores forward by matching to the prior run.",
   scoring: "Scoring each candidate against every criterion — the longest phase on a fresh run.",
+  consolidate: "Checking the scored criteria for duplicates and merging any that measure the same thing.",
 };
 
 // One numbered step in the ordered workflow strip: the step button plus a chevron
@@ -389,27 +390,31 @@ export function WorkflowBar(props: {
             {rankProgress
               ? rankProgress.phase === "criteria"
                 ? CRITERIA_STAGE_LABELS[rankProgress.stage ?? "discovering"]
-                : `Scoring candidates… ${rankProgress.processed}/${rankProgress.total}` +
-                  (rankProgress.total ? ` (${Math.round(screeningPercent(rankProgress))}%)` : "")
+                : rankProgress.phase === "consolidate"
+                  ? "Consolidating duplicate criteria…"
+                  : `Scoring candidates… ${rankProgress.processed}/${rankProgress.total}` +
+                    (rankProgress.total ? ` (${Math.round(screeningPercent(rankProgress))}%)` : "")
               : "Starting…"}
           </div>
           <div className="run-progress-track">
-            {/* Criteria is a single call with no fraction, so it shows the
-                indeterminate bar; the per-candidate phases show real width. */}
-            {rankProgress && rankProgress.phase !== "criteria" && rankProgress.total ? (
+            {/* Only the per-candidate scoring phase has a real fraction; criteria and
+                consolidation are single opaque calls → indeterminate bar. */}
+            {rankProgress && rankProgress.phase === "scores" && rankProgress.total ? (
               <div className="run-progress-fill" style={{ width: `${screeningPercent(rankProgress)}%` }} />
             ) : (
               <div className="run-progress-fill run-progress-fill-indeterminate" />
             )}
           </div>
-          {/* Descriptive caption that tracks the current stage (criteria sub-stage or
-              scoring), so the static line under the bar matches the green label above. */}
+          {/* Descriptive caption that tracks the current stage, so the static line under
+              the bar matches the green label above through every phase. */}
           {rankProgress ? (
             <div className="run-progress-caption">
               {STAGE_CAPTIONS[
                 rankProgress.phase === "criteria"
                   ? (rankProgress.stage ?? "discovering")
-                  : "scoring"
+                  : rankProgress.phase === "consolidate"
+                    ? "consolidate"
+                    : "scoring"
               ]}
             </div>
           ) : null}

@@ -126,7 +126,7 @@ router = APIRouter(prefix="/ranking", tags=["ranking"])
 
 # Phase names for the rank stream (every event carries one, so the client's
 # stream switch is uniform across this job and the screening job).
-CRITERIA, SCORES = "criteria", "scores"
+CRITERIA, SCORES, CONSOLIDATE = "criteria", "scores", "consolidate"
 
 # Sub-stages within the criteria phase — the sequential model calls under its one
 # banner, surfaced so the UI can say which step is running (they're opaque calls with
@@ -711,6 +711,10 @@ def rank_run(
         # writes the alias rows. Usually a no-op (correlation nominates nothing → $0).
         from app.ai.score_vectors import load_score_vectors
 
+        # One opaque model call (only when correlation nominates a pair) → an
+        # indeterminate-bar phase of its own, so the UI stops showing stale scoring
+        # progress while it runs. total omitted (no per-item fraction).
+        yield emit(PhaseEvent(phase=CONSOLIDATE))
         canonical_rank, known_defs = key_history(db)
         consolidation = consolidate_dimensions(
             provider,
