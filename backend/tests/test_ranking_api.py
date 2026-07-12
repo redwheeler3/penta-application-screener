@@ -653,6 +653,47 @@ def test_apply_consolidation_reconfirming_an_existing_alias_is_idempotent() -> N
     assert aliases[0].reason == "re-minted and re-confirmed"  # latest reason kept
 
 
+def test_apply_consolidation_flattens_an_in_run_chain() -> None:
+    # A single run can confirm a chain: {C: B, B: A} when C↔B correlates higher than
+    # B↔A. Every drop must resolve to the terminal survivor A — including a favourite on
+    # the innermost key C, which would otherwise land on B, itself dropped from the run.
+    from sqlalchemy import select
+
+    from app.db.models import DimensionAlias
+    from app.schemas.settings import AppSettings
+    from app.services.ranking_run import apply_consolidation, create_run
+
+    _app, db, _ = setup_app(role=UserRole.MEMBER)
+    report = PoolDimensionReport(dimensions=[
+        PoolDimension(key="a_oldest", name="A", definition="d", why_it_differentiates="v"),
+        PoolDimension(key="b_mid", name="B", definition="d", why_it_differentiates="v"),
+        PoolDimension(key="c_newest", name="C", definition="d", why_it_differentiates="v"),
+    ])
+    run = create_run(
+        db, report=report, settings=AppSettings(), model_id="m",
+        narrative=None, discovery_cost_usd=0.0,
+        prior_favourited_keys=["c_newest"],  # favourite on the innermost link of the chain
+    )
+
+    apply_consolidation(
+        db, run,
+        merges={"c_newest": "b_mid", "b_mid": "a_oldest"},  # chain, not a flat map
+        audit=[
+            {"keep": "b_mid", "drop": "c_newest", "r": 0.95, "merged": True, "reason": "c=b"},
+            {"keep": "a_oldest", "drop": "b_mid", "r": 0.88, "merged": True, "reason": "b=a"},
+        ],
+        narrative=None, cost_usd=0.01,
+    )
+
+    # Only the terminal survivor remains, and the favourite followed the full chain to it.
+    keys = {d["key"] for d in run.criteria["dimension_report"]["dimensions"]}
+    assert keys == {"a_oldest"}
+    assert run.criteria["favourited_keys"] == ["a_oldest"]
+    # Both aliases point straight at the survivor — no mid-chain key persisted.
+    aliases = {a.alias_key: a.canonical_key for a in db.scalars(select(DimensionAlias))}
+    assert aliases == {"c_newest": "a_oldest", "b_mid": "a_oldest"}
+
+
 @pytest.mark.anyio
 async def test_post_score_consolidation_keeps_confound_apart() -> None:
     # A nominated pair the confirm call rejects (a confound) is NOT merged: both dims

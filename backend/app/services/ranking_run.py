@@ -219,6 +219,23 @@ def create_run(
     return run
 
 
+def _flatten_merges(merges: dict[str, str]) -> dict[str, str]:
+    """Resolve every drop→keep to its terminal survivor, collapsing in-run chains.
+
+    ``{C: B, B: A}`` becomes ``{C: A, B: A}``. Orientation is always newer→older
+    (canonical rank), so the links strictly decrease and can't cycle; the ``seen`` cap
+    is defensive only.
+    """
+    resolved: dict[str, str] = {}
+    for drop, keep in merges.items():
+        seen = {drop}
+        while keep in merges and keep not in seen:
+            seen.add(keep)
+            keep = merges[keep]
+        resolved[drop] = keep
+    return resolved
+
+
 def apply_consolidation(
     db: Session,
     run: RankingRun,
@@ -240,6 +257,13 @@ def apply_consolidation(
     ``consolidate_cost_usd`` (even with zero merges — the pass ran), for Insights.
     """
     criteria = dict(run.criteria or {})
+
+    # A single run's merges can form a chain: if C→B correlates higher than B→A, the
+    # confirm loop emits {C: B, B: A}. Flatten every drop to its TERMINAL survivor
+    # ({C: A, B: A}) so aliases point straight at the winner and every by-value lookup
+    # below (favourite transfer especially) lands on a key that still exists, not a
+    # mid-chain key that was itself dropped.
+    merges = _flatten_merges(merges)
 
     if merges:
         # An alias may already exist: matching is high-bar, so a merged key can be
