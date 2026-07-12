@@ -109,9 +109,8 @@ export function RankingView(props: {
   const favourited = new Set(props.favouritedKeys ?? []);
   const proposedDimensions = props.proposedDimensions ?? [];
   // Which criterion's description is open (one at a time, shown below the tiers), and
-  // whether the "add your own" composer is revealed. The criteria now live as the
-  // tier chips — these drive the on-demand reading/adding that used to be a separate
-  // panel.
+  // whether the "add your own" composer is revealed. The criteria live as the tier
+  // chips, which drive this on-demand reading/adding.
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const openDim = openKey ? rankingRun?.dimensions.find((d) => d.key === openKey) ?? null : null;

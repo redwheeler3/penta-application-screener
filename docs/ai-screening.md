@@ -1,10 +1,10 @@
 # AI Screening
 
-This document explains how AI-assisted screening works: the **quality-flag pass** that reviews applications for data-integrity concerns and the **essay-analysis pass** that extracts what applicants said in their essays, how results are cached and cost-capped, and how each pass runs many applications concurrently.
+This document explains how AI-assisted screening works: the **quality-flag pass** that reviews applications for data-integrity concerns and the **Rank chain** that discovers evaluation criteria across the pool and scores candidates against them, how results are cached and cost-capped, and how each pass runs many applications concurrently.
 
 It is a companion to [app-architecture.md](app-architecture.md). The architecture doc gives the one-paragraph summary; this doc is the depth.
 
-Both passes are built on one shared engine (`app/ai/analysis.py`): the same caching, cost estimate, spending cap, narrative capture, and the concurrent `screen_applications` loop. They differ only in their schema, prompt, scope, and whether they affect status. Most of this doc describes the quality-flag pass in detail; the [Essay Analysis](#essay-analysis) section covers how the second pass differs.
+The per-applicant passes are built on one shared engine (`app/ai/analysis.py`): the same caching, cost estimate, spending cap, narrative capture, and the concurrent `screen_applications` loop. They differ only in their schema, prompt, scope, and whether they affect status. Most of this doc describes the quality-flag pass in detail; the [Ranking (Milestone 8)](#ranking-milestone-8) section covers the Rank chain.
 
 ## What It Is, And What It Is Not
 
@@ -47,14 +47,13 @@ The AI code lives in `backend/app/ai/`:
 - `mock_provider.py` — a deterministic in-memory provider for tests and offline development. No AWS access.
 - `analysis.py` — the shared engine: cache key, cache read/write, cost estimate, spending-cap enforcement, and the concurrent `screen_applications` loop both passes run through. Provider-agnostic.
 - `quality_flags.py` — the quality-flag pass: prompt building, which applications to analyze, and status application via the shared engine.
-- `essay_analysis.py` — the essay-analysis pass (milestone 6): prompt building and eligible-only scope, run through the same shared engine, status-independent.
-- `schemas.py` — the structured-output contracts (`QualityFlagReport`, `EssayAnalysisReport`). One definition each, shared by prompt, storage, API, and UI.
+- `schemas.py` — the structured-output contracts (`QualityFlagReport` and the Rank-chain schemas). One definition each, shared by prompt, storage, API, and UI.
 - `pricing.py` — Bedrock token prices, used for cost estimates and the cap.
 
 Plus HTTP route modules and one domain module:
 
-- `app/api/quality_flags.py` (the `/quality-flags/*` "Screen" endpoints) and `app/api/screening.py` (the `/screening/rank/*` chain, `/current`, `/ranking`, `/tiers`). Both depend on the shared `get_ai_provider` in `app/api/dependencies.py`. The essay-summary, find-criteria, and scoring passes have no standalone endpoints — they run only as phases of `POST /screening/rank/run`.
-- `app/domain/status.py` — how quality flags translate into an application's eligibility status (the essay/criteria/scoring passes do not touch status).
+- `app/api/quality_flags.py` (the `/quality-flags/*` "Screen" endpoints) and `app/api/screening.py` (the `/screening/rank/*` chain, `/current`, `/ranking`, `/tiers`). Both depend on the shared `get_ai_provider` in `app/api/dependencies.py`. The discovery, decomposition, matching, and scoring passes have no standalone endpoints — they run only as phases of `POST /screening/rank/run`.
+- `app/domain/status.py` — how quality flags translate into an application's eligibility status (the Rank-chain passes do not touch status).
 
 ## The Provider Boundary
 
@@ -205,20 +204,6 @@ The connection client is configured with **adaptive retries** (`mode="adaptive"`
 
 The route keeps a small `RunTally` of the counts and emits the summary at the end. The frontend reads the stream incrementally, updating a progress indicator and, on completion, showing how many were flagged, how much it cost, and how many (if any) failed.
 
-## Essay Analysis
-
-The essay-analysis pass (milestone 6, `app/ai/essay_analysis.py`) is the second AI pass. It reads a candidate's four essays and extracts **what they said** into a fixed, normalized schema (`EssayAnalysisReport`) plus a neutral committee-facing summary. It reuses everything in this doc — the provider boundary, structured output, caching (keyed `kind="essay_analysis"`), cost estimate, spending cap, narrative, and the concurrent `screen_applications` loop — through the same shared engine.
-
-How it differs from quality flags:
-
-- **It extracts, it does not judge.** One field per thing the essay questions ask for (household, employment, interests, values, skills, prior co-op experience, motivations, contributions), each describing what the applicant said — never how good it is. Evaluation against discovered criteria is the milestone 7 ranker's job; if this pass pre-committed judgment on fixed dimensions it would defeat that discovery. See SPEC "Essay Analysis (Milestone 6)".
-- **It never touches status.** Unlike quality flags, it does not call `apply_machine_status` — there is no `on_result` hook on its `screen_applications` call. It is purely informational. (Its summary line therefore has no `flagged` count.)
-- **Scope is eligible-only.** There is no value in summarizing essays for disqualified applicants; quality flags use a broader scope because they can *change* status, which this pass cannot.
-- **It is additive, not a replacement.** The raw essays and form fields are preserved, so the ranker reads the source directly for anything the fixed schema did not capture. No catch-all field — cross-cutting nuance goes in the `summary`.
-- **Model:** the first-pass model (Haiku 4.5), confirmed adequate by validating real essays — the summaries were neutral, grounded, and correctly structured, so no Sonnet upgrade was needed. Revisit empirically if real output ever reads thin.
-
-Essay summary has no standalone endpoint: it is the first phase of the Rank chain (`POST /screening/rank/run`), which summarizes essays, then finds criteria, then scores — see "Ranking (Milestone 8)" below. The summary and structured fields render on the candidate detail page; the raw model reasoning is in a debug section alongside the quality-flag narrative.
-
 ## Ranking (Milestone 8)
 
 The ranked shortlist is **not an AI pass** — it is deterministic math over the cached dimension scores, so it does not touch the provider, the cache, or the spending cap. It lives in `app/domain/ranking.py` alongside `hard_filters.py` (deterministic domain logic, separate from AI evaluation), as a pure function with no DB or I/O. This is the architectural payoff of milestone 7's "the LLM extracts scored features; ranking is math on top of them" decision: re-ranking is a re-fetch, not a re-spend, which is what makes the milestone 9 interactions instant and reproducible.
@@ -230,7 +215,7 @@ The ranked shortlist is **not an AI pass** — it is deterministic math over the
 
 The frontend surfaces this as a **separate ranked view**, not a re-sort of the browse table: the order is the product, read top-down, and milestone 9's tier-list maker docks above it (drag criteria into importance tiers → `PUT /screening/tiers` → re-sort, no model call). Re-running the Rank chain finds fresh criteria (a new dimensions-hash) and re-scores, then refreshes an open ranking — but only when the pool has actually changed: the chain is gated on a **pool fingerprint** (`pool_fingerprint`, a hash of the sorted eligible `raw_row_hash`es) stored on the run, so re-ranking an unchanged pool is blocked (`/rank/run` → 409) rather than re-paying for an identical result. A new/edited/eligibility-changed application moves the fingerprint and re-enables it.
 
-**The Rank button (workflow simplification).** The three model passes that produce a ranking — essay summary, find criteria (discovery), and dimension scoring — are exposed in the UI as a single "Rank" step, because the committee never runs them individually. `POST /screening/rank/run` orchestrates them back-to-back and streams phase-aware progress (`phase` lines for essays / criteria / scores, `progress` lines within the per-candidate phases, a final `summary`). The passes stay separate underneath (distinct schemas, cache kinds, status behavior); only the endpoint and the button are merged. Crucially for the cost rules, the cap is enforced **once over the combined projected cost** (`GET /screening/rank/estimate` sums essays + criteria + scoring), before any model call — so the single button keeps the same hard pre-run cost gate the individual passes had. The estimate is approximate: criteria and scoring scale with essay output that does not exist until the essay phase runs, so it is labeled as such. The workflow strip is correspondingly three single-verb steps — **Import** (sync + deterministic hard filters), **Screen** (the AI integrity/quality pass), **Rank** (this chain).
+**The Rank button (workflow simplification).** The model passes that produce a ranking — pattern discovery, decomposition, identity-match, and dimension scoring — are exposed in the UI as a single "Rank" step, because the committee never runs them individually. `POST /screening/rank/run` orchestrates them back-to-back and streams phase-aware progress (`phase` lines for criteria / scores, `progress` lines within the per-candidate phases, a final `summary`). The passes stay separate underneath (distinct schemas, cache kinds, status behavior); only the endpoint and the button are merged. Crucially for the cost rules, the cap is enforced **once over the combined projected cost** (`GET /screening/rank/estimate` sums discovery + decomposition + scoring), before any model call — so the single button keeps the same hard pre-run cost gate the individual passes had. The estimate is approximate: scoring scales with the dimensions discovery settles on, which do not exist until the criteria phase runs, so it is labeled as such. The workflow strip is correspondingly three single-verb steps — **Import** (sync + deterministic hard filters), **Screen** (the AI integrity/quality pass), **Rank** (this chain).
 
 ## Configuration
 
@@ -238,7 +223,7 @@ AI settings live under `ai` in the admin settings (`app/schemas/settings.py`):
 
 - `region` — Bedrock region (default `us-west-2`).
 - One model per AI pass, named by the job (all Bedrock inference-profile IDs, `us.anthropic...`, which these models require):
-  - `screening_model`, `essay_analysis_model`, `dimension_scoring_model` — the high-volume per-applicant passes. Default Claude Haiku 4.5: call *count* drives their cost (scoring is candidates × dimensions), so cheap-and-fast wins.
+  - `screening_model`, `dimension_scoring_model` — the high-volume per-applicant passes. Default Claude Haiku 4.5: call *count* drives their cost (scoring is candidates × dimensions), so cheap-and-fast wins.
   - `discovery_model` — the pool-level pattern-discovery call. Default Claude Sonnet 4.6 (cross-document judgment).
   - `match_model` — the once-per-re-rank dimension identity match. Default Claude Sonnet 4.6; earned its own tier because on Haiku it over-matched drifted concepts. Bump to Opus only if a real run shows Sonnet still over-matching.
 - `spending_cap_usd` — the per-run cost ceiling (default `$1.00`). Editable from the settings form ("AI Screening" section).
@@ -251,7 +236,5 @@ The other `ai` fields (region, model IDs) are config-only too. The frontend stil
 - `test_ai_analysis.py` — pricing, cache key, cache miss-then-hit, cost estimate, cap enforcement.
 - `test_quality_flags.py` — prompt building, which applications are analyzed, status application, plus the concurrency contracts: that calls genuinely run in parallel (a thread barrier proves it) and that a failed call is isolated from the batch.
 - `test_quality_flags_api.py` — the streamed run end-to-end with `MockProvider`: status transitions, the needs-review bucket, member-visible raw row and narrative, member status override, and facet counts.
-- `test_essay_analysis.py` — the essay pass: eligible-only scope, prompt building, that it does *not* change status, caching, and the concurrent screen.
-- `test_essay_analysis_api.py` — the streamed run end-to-end: member access, summary counts (no `flagged`), status untouched, and the analysis surfacing on the detail page (null before a run).
 
 `MockProvider` supports two ways to supply results: a FIFO `queue` (for count-only assertions) and content-routed `route` (bind a specific verdict to a specific application by a marker in its prompt). Routing exists because, under real concurrency, calls do not complete in submission order — so a test that needs a particular application to be flagged keys on content, not order.

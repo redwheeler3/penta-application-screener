@@ -7,9 +7,9 @@ class CostPass(ResponseModel):
     """One pass's aggregated cost. ``input_tokens``/``output_tokens`` are 0 for the
     discovery and matching passes, which store cost only (no token breakdown).
 
-    ``cacheable`` distinguishes passes that can reuse results (screening, essay
-    analysis, dimension scoring) from those that always call fresh (pattern discovery,
-    dimension matching). ``cached_saved_usd`` is meaningful only when ``cacheable`` —
+    ``cacheable`` distinguishes passes that can reuse results (screening, dimension
+    scoring) from those that always call fresh (pattern discovery, dimension matching).
+    ``cached_saved_usd`` is meaningful only when ``cacheable`` —
     the UI shows "—" for non-cacheable passes, never $0, so a structural absence of
     caching doesn't read as "caching failed here". Summed from the run-cost ledger."""
 
@@ -25,8 +25,8 @@ class CostPass(ResponseModel):
 
 class CostGroup(ResponseModel):
     """The passes triggered by one user-facing run (Screen or Rank), with subtotals.
-    Screen runs the screening pass; Rank runs essay analysis → pattern discovery →
-    dimension matching → dimension scoring."""
+    Screen runs the screening pass; Rank runs pattern discovery → dimension
+    decomposition → dimension matching → dimension scoring."""
 
     run_label: str
     passes: list[CostPass]

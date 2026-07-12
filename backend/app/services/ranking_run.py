@@ -54,12 +54,11 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
     badge.
 
     Combines the pool fingerprint with the **prompt identity and model** of every
-    pass the Rank chain runs (essays → discovery + decompose + match → scoring). So a
-    re-rank is flagged current only when the pool, every rank-chain prompt, AND every
-    rank-chain model are unchanged since the run was created — editing any rank-chain
-    prompt or switching a model now correctly shows Rank as stale, not just a pool
-    change. (screening is the separate Screen step, not part of Rank, so excluded;
-    reconcile was removed in the fan-out redesign, and decompose replaced it here.)
+    pass the Rank chain runs (discovery + decompose + match → scoring). So a re-rank is
+    flagged current only when the pool, every rank-chain prompt, AND every rank-chain
+    model are unchanged since the run was created — editing any rank-chain prompt or
+    switching a model correctly shows Rank as stale, not just a pool change. (Screening
+    is the separate Screen step, not part of Rank, so it's excluded.)
 
     Prompt versions are imported lazily: the AI passes import this module, so a
     top-level import would be circular (matches the existing local-import pattern in
@@ -68,19 +67,16 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
     from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSE_V
     from app.ai.dimension_matching import PROMPT_VERSION as MATCH_V
     from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_V
-    from app.ai.essay_analysis import PROMPT_VERSION as ESSAY_V
     from app.ai.pattern_discovery import PROMPT_VERSION as DISCOVERY_V
 
     parts = [
         pool_fingerprint(db),
-        f"essay:{ESSAY_V}",
         f"discovery:{DISCOVERY_V}",
         f"decompose:{DECOMPOSE_V}",
         f"match:{MATCH_V}",
         f"scoring:{SCORING_V}",
         # The model of every rank-chain pass — a change to any of them ambers Rank.
         # Screening's model is deliberately absent: it's the separate Screen step.
-        f"essay_model:{settings.ai.essay_analysis_model}",
         f"discovery_model:{settings.ai.discovery_model}",
         f"decompose_model:{settings.ai.decompose_model}",
         f"match_model:{settings.ai.match_model}",
@@ -372,8 +368,8 @@ def fan_out_audit_view(run: RankingRun) -> dict | None:
 
     Returns ``{k, passes: [{dimensions: [{key,name,definition,why...}], narrative}]}``.
     Older audits stored ``reports`` without per-pass narratives; those are tolerated
-    (narrative comes back null) so the panel still renders their dimensions. (Stored
-    reports may still carry a ``summary`` key — dropped 2026-07-11 — which is ignored.)
+    (narrative comes back null) so the panel still renders their dimensions. Any extra
+    keys in a stored report are ignored — only the fields above are projected.
     """
     audit = (run.criteria or {}).get("fan_out_audit")
     if not audit:

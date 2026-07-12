@@ -4,9 +4,9 @@
 K parallel synthesis calls over the whole eligible pool (``discover_patterns_fanout``,
 SPEC "Fan-Out Redesign"), producing run-scoped output (the differentiating dimensions),
 so it bypasses the ``screen_applications`` engine and the per-application cache. Each
-reads each candidate's essay-analysis report (preferred) plus a trimmed view of their
-raw essays, on the synthesis model. K=1 is a single call; the K reports' cross-call
-variation is the diversity a later decomposition step pares to the finest set.
+reads every candidate's structured facts plus their raw essays, on the synthesis model.
+K=1 is a single call; the K reports' cross-call variation is the diversity a later
+decomposition step pares to the finest set.
 
 The model describes the axes, never ranks anyone; scoring and ranking build on top.
 """
@@ -70,7 +70,7 @@ _INSTRUCTIONS = f"""\
 Discover the dimensions (20-30) on which this pool genuinely varies and that matter for "fit for Penta". Draw on BOTH facts and essays — quantitative axes count as much as qualitative ones. Prefer splitting a broad axis into separately-weighable sub-dimensions over merging. Every dimension must be independently meaningful and non-overlapping.
 
 ## Inputs
-The eligible applicants are in the `<applicant_pool>` block below — each with structured "facts" (household make-up, income and its split, employment tenure, real-estate ownership, pets) and an essay summary.
+The eligible applicants are in the `<applicant_pool>` block below — each with structured "facts" (household make-up, income and its split, employment tenure, real-estate ownership, pets) and their essay answers.
 
 ## How to judge
 - **One concept per dimension.** Test by OPPOSING EVIDENCE: if one applicant could score HIGH on part of a dimension and LOW on another part, it bundles two axes — split them. (Out-of-domain illustration, do not borrow the subject: a restaurant "good value" fuses price fairness with portion size — a pricey place with huge plates is high on one, low on the other, so one "value" number hides which varies. Two ratings, not one.) Watch for the seam even when the name reads as one idea; "&", "and", "/", or a comma is just the obvious case. The high cap exists so you never combine to fit.
@@ -108,8 +108,8 @@ def _compose_prompt(pool_block: str, seeds: DiscoverySeeds | None) -> str:
     return f"{_INSTRUCTIONS}{seeds_block}\n\n{pool_block}"
 
 
-def build_prompt(db: Session, applications: list[Application], *, seeds: DiscoverySeeds | None = None) -> str:
-    return _compose_prompt(pool_digest_block(db, applications), seeds)
+def build_prompt(applications: list[Application], *, seeds: DiscoverySeeds | None = None) -> str:
+    return _compose_prompt(pool_digest_block(applications), seeds)
 
 
 def _seeds_block(seeds: DiscoverySeeds) -> str:
@@ -144,11 +144,8 @@ def eligible_applications(db: Session) -> list[Application]:
 
 # Output token weight for the pre-run estimate only (input is the shared
 # per-candidate pool-digest weight; the real call is priced from actual usage).
-# Calibrated to observed spend (2026-07-11): at the 20-30 dimension floor, one
-# discovery call emits ~4900 output tokens (each dim carries key/name/definition/
-# why). Was 2000 — set when discovery produced ~14 dims — which under-estimated the
-# criteria phase ~2.5x once the floor rose; then 5000 before the pool summary was
-# dropped (2026-07-11), which shaved ~100 tokens/call.
+# Calibrated to observed spend: at the 20-30 dimension floor, one discovery call emits
+# ~4900 output tokens (each dim carries key/name/definition/why).
 _DISCOVERY_OUTPUT_TOKENS = 4900
 
 
@@ -218,7 +215,6 @@ class FanOutDiscovery:
 
 
 def discover_patterns_fanout(
-    db: Session,
     provider: AIProvider,
     *,
     applications: list[Application],
@@ -247,12 +243,12 @@ def discover_patterns_fanout(
     """
     from app.ai.analysis import run_in_pool
 
-    # Render the pool digest ONCE here on the calling thread (a single DB read), then
-    # compose two prompt variants from it: seeded (worker 0, carries the proposals) and
-    # blind (workers 1..K-1). The worker calls touch no DB — satisfying run_in_pool's
-    # session-free contract (SQLAlchemy sessions aren't thread-safe). When there are no
-    # proposals both variants are identical, so this costs nothing over the old path.
-    pool_block = pool_digest_block(db, applications)
+    # Render the pool digest ONCE here on the calling thread, then compose two prompt
+    # variants from it: seeded (worker 0, carries the proposals) and blind (workers
+    # 1..K-1). The worker calls touch no DB — satisfying run_in_pool's session-free
+    # contract (SQLAlchemy sessions aren't thread-safe). When there are no proposals both
+    # variants are identical.
+    pool_block = pool_digest_block(applications)
     seeded_prompt = _compose_prompt(pool_block, seeds)
     blind_prompt = _compose_prompt(pool_block, None)
 

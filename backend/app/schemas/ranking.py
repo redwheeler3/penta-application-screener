@@ -121,8 +121,7 @@ class DecomposeAuditResponse(ResponseModel):
 class FanOutPassOut(ResponseModel):
     """One of the K parallel discoverers, for the Insights discovery panel: the
     dimensions it found and its own reasoning narrative (null on legacy runs that stored
-    reports without per-pass narratives). No pool summary — that field was dropped from
-    discovery (unused, and confabulated at the decompose step); see PoolDimensionReport."""
+    reports without per-pass narratives)."""
 
     dimensions: list[PoolDimensionOut]
     narrative: str | None = None
@@ -139,7 +138,6 @@ class FanOutAuditResponse(ResponseModel):
 
 
 class RankEstimateBreakdown(ResponseModel):
-    essays_usd: float
     criteria_usd: float
     match_usd: float
     scoring_usd: float
@@ -153,7 +151,6 @@ class RankEstimateResponse(ResponseModel):
     # name it ("N parallel discoveries, then settle them into one set").
     fan_out: int
     breakdown: RankEstimateBreakdown
-    essays_cached: int
     estimated_usd: float
     approximate: bool
     cap_usd: float

@@ -59,7 +59,6 @@ async def test_workflow_flags_track_progress() -> None:
             "synced": False,
             "importCurrent": True,
             "screened": False,
-            "essaysAnalyzed": False,
             "patternsDiscovered": False,
             "candidatesScored": False,
             "rankingCurrent": False,
@@ -84,16 +83,6 @@ async def test_workflow_flags_track_progress() -> None:
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow["screened"] is True
-        assert workflow["essaysAnalyzed"] is False
-
-        # An essay-analysis result exists -> that step done; M7 steps still not.
-        db.add(ApplicationAIResult(
-            application_id=application.id, kind="essay_analysis", cache_key="k2",
-            model_id="m", prompt_version="v1", output={"summary": "x"},
-        ))
-        db.commit()
-        workflow = (await client.get("/dashboard")).json()["workflow"]
-        assert workflow["essaysAnalyzed"] is True
         assert workflow["patternsDiscovered"] is False
         assert workflow["candidatesScored"] is False
 

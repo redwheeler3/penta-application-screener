@@ -36,7 +36,6 @@ from app.ai.analysis import (
     store_result,
 )
 from app.ai.applicant_facts import applicant_facts
-from app.ai.essay_analysis import KIND as ESSAY_ANALYSIS_KIND
 from app.ai.pricing import cost_usd
 from app.ai.prompt_fragments import (
     ENGLISH_POLISH_NOTE,
@@ -46,12 +45,11 @@ from app.ai.provider import AIProvider, AIResult, Usage
 from app.ai.schemas import (
     DimensionScore,
     DimensionScoringReport,
-    EssayAnalysisReport,
     PoolDimension,
     PoolDimensionReport,
     ScoreConfidence,
 )
-from app.db.models import Application, ApplicationAIResult, ApplicationStatus
+from app.db.models import Application, ApplicationStatus
 from app.schemas.settings import AppSettings
 from app.services.application_import import extract_essays
 from app.services.cost_report import recent_pass_fresh_usd
@@ -73,7 +71,7 @@ _INSTRUCTIONS = f"""\
 Score this applicant on EACH of the dimensions in the `<dimensions>` block, returning exactly one entry per dimension. Judge from BOTH the applicant's structured facts and their essays, using whichever the dimension draws on.
 
 ## Inputs
-The dimensions to score in the `<dimensions>` block, and the applicant's evidence (structured facts, essay-analysis digest, and raw essays) in the `<applicant>` block, below.
+The dimensions to score in the `<dimensions>` block, and the applicant's evidence (structured facts and raw essays) in the `<applicant>` block, below.
 
 ## Output
 For each dimension provide:
@@ -97,11 +95,10 @@ PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 def build_prompt(
     application: Application,
     dimensions: list[PoolDimension],
-    essay_report: dict | None,
 ) -> str:
     return (
         f"{_INSTRUCTIONS}\n\n<dimensions>\n{_dimensions_block(dimensions)}\n</dimensions>"
-        f"\n\n<applicant>\n{_applicant_block(application, essay_report)}\n</applicant>"
+        f"\n\n<applicant>\n{_applicant_block(application)}\n</applicant>"
     )
 
 
@@ -114,23 +111,18 @@ def _dimensions_block(dimensions: list[PoolDimension]) -> str:
     return json.dumps(dims, indent=2, default=str)
 
 
-def _applicant_block(application: Application, essay_report: dict | None) -> str:
-    """The applicant evidence: structured facts, the essay-analysis digest, and the
-    raw essays.
+def _applicant_block(application: Application) -> str:
+    """The applicant evidence: structured facts plus the raw essays in full.
 
     Facts must match what discovery saw, or a fact-based dimension is unscoreable.
-    Essays are included in full (unlike discovery, which trims for pool size): a
-    single-candidate call is cheap and lets the model ground quotes precisely.
+    Essays are included in full (a single-candidate call is cheap and lets the model
+    ground quotes precisely).
     """
     payload: dict[str, object] = {
         "applicant_id": application.id,
         "facts": applicant_facts(application),
+        "essays": extract_essays(application.raw_row or {}),
     }
-    if essay_report is not None:
-        payload["essay_analysis"] = EssayAnalysisReport.model_validate(
-            essay_report
-        ).model_dump(mode="json")
-    payload["essays"] = extract_essays(application.raw_row or {})
     return json.dumps(payload, indent=2, default=str)
 
 
@@ -143,22 +135,6 @@ def kind_for_dimension(dimension_key: str) -> str:
     is the same) — editing a definition would need a new key to force a re-score.
     """
     return f"{KIND_PREFIX}:{dimension_key}"
-
-
-def _essay_reports(db: Session, application_ids: list[int]) -> dict[int, dict]:
-    """Most recent essay-analysis output per application, as raw JSON dicts."""
-    if not application_ids:
-        return {}
-    query = (
-        select(ApplicationAIResult)
-        .where(ApplicationAIResult.kind == ESSAY_ANALYSIS_KIND)
-        .where(ApplicationAIResult.application_id.in_(application_ids))
-        .order_by(ApplicationAIResult.created_at)
-    )
-    latest: dict[int, dict] = {}
-    for result in db.scalars(query):
-        latest[result.application_id] = result.output
-    return latest
 
 
 def applications_to_score(db: Session) -> list[Application]:
@@ -222,8 +198,7 @@ def _per_candidate_input_tokens(db: Session, report: PoolDimensionReport | None)
     if not candidates:
         return SCORING_FALLBACK_INPUT_TOKENS_PER_CANDIDATE
     sample = candidates[0]
-    essay_report = _essay_reports(db, [sample.id]).get(sample.id)
-    prompt = build_prompt(sample, report.dimensions, essay_report)
+    prompt = build_prompt(sample, report.dimensions)
     return len(prompt) // _CHARS_PER_TOKEN
 
 
@@ -238,10 +213,10 @@ def estimate_dimension_scoring(
     from usage). Input is immune to carry-forward skew because it's measured from a
     real built prompt, not the split per-dimension rows.
 
-    History-first, cache-aware fallback. The old estimate priced the whole pool as if
-    nothing were cached — a ~10× over-estimate on a stable-pool re-run (the
-    per-(candidate,dimension) cache reuses almost everything) that wrongly tripped the
-    spending cap. Two better signals, in priority order:
+    History-first, cache-aware. Pricing the whole pool as if nothing were cached would be
+    a ~10× over-estimate on a stable-pool re-run (the per-(candidate,dimension) cache
+    reuses almost everything) and could wrongly trip the spending cap, so the estimate
+    uses two cache-aware signals, in priority order:
 
     1. **Measured (preferred):** a recency-weighted average of what recent Rank runs
        *actually spent* on fresh scoring (``recent_pass_fresh_usd``). A past run's
@@ -392,7 +367,6 @@ def score_dimensions(
     thread, only the model call in a worker via ``run_in_pool``.
     """
     model_id = settings.ai.dimension_scoring_model
-    essay_reports = _essay_reports(db, [app.id for app in applications])
 
     # Plan each candidate on the main thread (cache lookups touch the ORM): which
     # dimensions still need scoring, and the cached ones to merge in.
@@ -410,7 +384,7 @@ def score_dimensions(
         return provider.structured_output(
             model_id=model_id,
             schema=DimensionScoringReport,
-            prompt=build_prompt(application, to_score, essay_reports.get(application.id)),
+            prompt=build_prompt(application, to_score),
             system_prompt=SYSTEM_PROMPT,
         )
 

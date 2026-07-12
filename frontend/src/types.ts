@@ -14,7 +14,6 @@ export type CurrentUser = {
 export type AISettings = {
   region: string;
   screeningModel: string;
-  essayAnalysisModel: string;
   dimensionScoringModel: string;
   discoveryModel: string;
   decomposeModel: string;
@@ -63,7 +62,6 @@ export type WorkflowState = {
   // Import step amber: a re-import would reclassify eligibility.
   importCurrent: boolean;
   screened: boolean;
-  essaysAnalyzed: boolean;
   patternsDiscovered: boolean;
   candidatesScored: boolean;
   // Same truth the Rank no-op gate uses; the "needs re-run" badge reads this (not
@@ -117,20 +115,6 @@ export type ScreeningFlag = {
   evidence: string;
 };
 
-// Neutral factual extraction across the four essays. Mirrors backend
-// EssayAnalysisReport. Informational only — never affects status.
-export type EssayAnalysis = {
-  summary: string;
-  householdContext: string | null;
-  employmentBackground: string | null;
-  interests: string[];
-  values: string[];
-  skillsOffered: string[];
-  priorCoOpExperience: string | null;
-  statedMotivations: string[];
-  statedContributions: string[];
-};
-
 export type ApplicationDetail = ApplicationSummary & {
   // What the machine would decide from the current findings — i.e. the result of
   // clearing a human override. Lets the status control show the automatic verdict.
@@ -143,8 +127,6 @@ export type ApplicationDetail = ApplicationSummary & {
   rawRow?: Record<string, unknown>;
   // The model's free-text reasoning from the latest screening pass.
   aiNarrative?: string | null;
-  // null = essay-analysis pass not yet run for this application.
-  essayAnalysis?: EssayAnalysis | null;
   // This candidate's scores against the current run's dimensions, by |impact|
   // descending — the same ranking contributions the ranked-list row slices. null =
   // no run, or not scored under it.
@@ -369,14 +351,12 @@ export type RankEstimateResponse = {
   // K parallel discovery calls per Rank (the fan-out width), for the confirm-card copy.
   fanOut: number;
   breakdown: {
-    essaysUsd: number;
     // K parallel discoveries + the decomposition that settles them into one set.
     criteriaUsd: number;
     // The dimension identity-match call; 0 on a first run (pass skipped).
     matchUsd: number;
     scoringUsd: number;
   };
-  essaysCached: number;
   estimatedUsd: number;
   approximate: boolean;
   capUsd: number;
@@ -397,7 +377,7 @@ export type AppFilter = { status?: AppStatus; statusSource?: StatusSource };
 // the UI can name which opaque step is running; null in phases without sub-steps.
 export type CriteriaStage = "discovering" | "settling" | "matching";
 export type RankProgress = {
-  phase: "essays" | "criteria" | "scores";
+  phase: "criteria" | "scores";
   processed: number;
   total: number;
   stage?: CriteriaStage | null;

@@ -2,7 +2,7 @@ import { ChevronLeft, Printer } from "lucide-react";
 import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { FLAG_CATEGORY_LABELS, REASON_FIELDS, SOURCE_DESCRIPTIONS, SOURCE_LABELS, STATUS_LABELS } from "../constants";
-import { fieldLabel, formatFieldValue, renderEssayChips, renderEssayText, scoreBand } from "../format";
+import { fieldLabel, formatFieldValue, scoreBand } from "../format";
 import type { ApplicationDetail, AppStatus } from "../types";
 
 type DetailField = {
@@ -328,27 +328,6 @@ export function CandidateDetail(props: {
           <summary>Raw AI narrative (screening)</summary>
           <div className="ai-narrative">
             <ReactMarkdown>{app.aiNarrative}</ReactMarkdown>
-          </div>
-        </details>
-      ) : null}
-      {app.essayAnalysis ? (
-        <details className="raw-row-section">
-          <summary>AI essay summary</summary>
-          <div className="essay-analysis">
-            <p className="essay-analysis-hint">
-              A neutral digest of what the applicant wrote. It describes what they said, not how good it is.
-            </p>
-            <p className="essay-analysis-summary">{app.essayAnalysis.summary}</p>
-            <dl className="essay-analysis-fields">
-              {renderEssayText("Household", app.essayAnalysis.householdContext)}
-              {renderEssayText("Employment", app.essayAnalysis.employmentBackground)}
-              {renderEssayText("Prior co-op experience", app.essayAnalysis.priorCoOpExperience)}
-              {renderEssayChips("Skills offered", app.essayAnalysis.skillsOffered)}
-              {renderEssayChips("Stated contributions", app.essayAnalysis.statedContributions)}
-              {renderEssayChips("Motivations", app.essayAnalysis.statedMotivations)}
-              {renderEssayChips("Interests", app.essayAnalysis.interests)}
-              {renderEssayChips("Values", app.essayAnalysis.values)}
-            </dl>
           </div>
         </details>
       ) : null}

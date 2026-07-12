@@ -72,7 +72,6 @@ def read_dashboard(
             # is "probably fresh," not a guarantee.
             import_current=_import_is_current(db, settings),
             screened=_kind_exists(db, "screening"),
-            essays_analyzed=_kind_exists(db, "essay_analysis"),
             # Pattern discovery is a ranking run, not a per-application result.
             patterns_discovered=_run_exists(db),
             # Scoring kinds are per-dimension, so match by prefix.
@@ -130,9 +129,6 @@ def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
             screening_scope(db), "screening", screening_prompt_version(settings),
             settings.ai.screening_model,
         ),
-        # Essay coverage is intentionally NOT surfaced: essays are a sub-phase of
-        # Rank, not a workflow step, and an essay-prompt change already ambers Rank
-        # via the run's rank-inputs fingerprint. No separate badge needed.
     }
     # Scoring coverage is only meaningful against the current run. A candidate
     # counts as scored once it has a cached row for EVERY dimension key, so partial

@@ -102,7 +102,7 @@ function WorkflowStep(props: {
 
 // The ordered screening workflow band: three single-verb steps (Import, Screen,
 // Rank), the View-ranking entry point, and the confirm + progress cards for the
-// two AI runs. Rank is one button that runs the whole essays → criteria → scores
+// two AI runs. Rank is one button that runs the whole criteria → scores
 // chain under one combined cost estimate. Later steps stay hard-gated until the
 // previous has run; "done" flags come from the backend, so gating survives reload.
 export function WorkflowBar(props: {
@@ -327,17 +327,13 @@ export function WorkflowBar(props: {
               </p>
             ) : (
               <p>
-                This summarizes essays, finds the criteria that distinguish this pool, and scores all{" "}
+                This finds the criteria that distinguish this pool and scores all{" "}
                 {rankEstimate.eligible} eligible applicant{rankEstimate.eligible === 1 ? "" : "s"} against them.
                 Estimated cost <strong>~${rankEstimate.estimatedUsd.toFixed(4)}</strong> (cap $
                 {rankEstimate.capUsd.toFixed(2)}).
               </p>
             )}
             <ul className="run-confirm-breakdown">
-              <li>
-                Summarize essays ~${rankEstimate.breakdown.essaysUsd.toFixed(4)}
-                {rankEstimate.essaysCached > 0 ? ` (${rankEstimate.essaysCached} cached)` : ""}
-              </li>
               <li>
                 Find distinguishing criteria — {rankEstimate.fanOut} parallel discoveries, then
                 settle them into one set ~${rankEstimate.breakdown.criteriaUsd.toFixed(4)}
@@ -381,8 +377,7 @@ export function WorkflowBar(props: {
             {rankProgress
               ? rankProgress.phase === "criteria"
                 ? CRITERIA_STAGE_LABELS[rankProgress.stage ?? "discovering"]
-                : `${rankProgress.phase === "essays" ? "Summarizing essays" : "Scoring candidates"}… ` +
-                  `${rankProgress.processed}/${rankProgress.total}` +
+                : `Scoring candidates… ${rankProgress.processed}/${rankProgress.total}` +
                   (rankProgress.total ? ` (${Math.round(screeningPercent(rankProgress))}%)` : "")
               : "Starting…"}
           </div>

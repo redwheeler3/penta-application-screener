@@ -24,7 +24,6 @@ from app.schemas.applications import (
     ApplicationListResponse,
     ApplicationSummary,
     DimensionContributionOut,
-    EssayAnalysisOut,
     Facets,
     ScreeningFlagOut,
 )
@@ -310,11 +309,6 @@ def _serialize_detail(app: Application, db: Session) -> ApplicationDetail:
         has_reasons=bool(app.hard_filter_reasons), has_ai_flags=bool(flags)
     )
 
-    # Essay analysis: informational, never affects status. null = not yet run. No
-    # narrative — an A/B run showed it doesn't change the extracted fields (see SPEC
-    # "Essay Analysis"), so the structured output is the whole product.
-    essay_result = _latest_results(db, "essay_analysis", [app.id]).get(app.id)
-
     return ApplicationDetail(
         **summary.model_dump(),
         auto_status=auto_status.value,
@@ -326,9 +320,6 @@ def _serialize_detail(app: Application, db: Session) -> ApplicationDetail:
         ),
         raw_row=app.raw_row,
         ai_narrative=flag_result.narrative if flag_result is not None else None,
-        essay_analysis=(
-            EssayAnalysisOut(**essay_result.output) if essay_result else None
-        ),
         # This candidate's scores against the current run's dimensions, joined to
         # their labels. null = no run, or not scored under it.
         dimension_scores=_dimension_scores(db, app),

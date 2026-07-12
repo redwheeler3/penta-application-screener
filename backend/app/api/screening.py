@@ -31,7 +31,7 @@ from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/screening", tags=["screening"])
 
-# The single phase name for this one-pass job (rank uses essays/criteria/scores).
+# The single phase name for this one-pass job (rank uses criteria/scores).
 PHASE = "screen"
 
 
