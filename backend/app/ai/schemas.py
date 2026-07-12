@@ -193,6 +193,46 @@ class DimensionMatchReport(BaseModel):
     )
 
 
+class ConsolidationVerdict(BaseModel):
+    """One adjudicated candidate pair for the post-score consolidation pass.
+
+    Score-vector correlation NOMINATES a pair (two dimensions whose per-applicant
+    scores move near-identically); this verdict is the model deciding, from the
+    definitions, whether they are the SAME concept (a duplicate to merge) or a
+    CONFOUND (distinct axes that happen to correlate — e.g. two things engaged
+    applicants both score high on). Merge only on same-concept: an over-merge loses a
+    real distinction invisibly, the higher-stakes error.
+    """
+
+    key_a: str = Field(description="One dimension key from the nominated pair.")
+    key_b: str = Field(description="The other dimension key from the nominated pair.")
+    same_concept: bool = Field(
+        description=(
+            "True only if the two definitions measure the SAME underlying concept "
+            "(a duplicate to merge). False if they are distinct axes that merely "
+            "correlate (a confound) — when unsure, false; a wrong merge is unrecoverable."
+        ),
+    )
+    reason: str = Field(
+        description=(
+            "One sentence: for same_concept, assert they'd score an applicant alike "
+            "and are one axis; for a confound, name the applicant who'd score high on "
+            "one and low on the other."
+        ),
+    )
+
+
+class ConsolidationReport(BaseModel):
+    """Verdicts for the correlation-nominated pairs. Only same_concept=true pairs are
+    merged (loser aliased to the older/canonical key). Absence of a pair = keep apart.
+    """
+
+    verdicts: list[ConsolidationVerdict] = Field(
+        default_factory=list,
+        description="One verdict per nominated pair. Judge each on its definitions.",
+    )
+
+
 # --- Fan-out decomposition (SPEC "Fan-Out Redesign", Phase 3) ----------------
 #
 # K parallel discovery calls produce K reports that carve the same pool at

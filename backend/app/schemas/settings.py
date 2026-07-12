@@ -51,6 +51,10 @@ class AISettings(BridgeModel):
     (reasoning over K reports vs. reading the pool), so being able to move it — e.g. to
     Opus if settling proves harder than discovering — without dragging discovery along
     is worth the one knob.
+
+    ``consolidate_model`` (the post-score duplicate-merge confirm) defaults to the
+    synthesis tier: it's the same high-stakes identity judgment as matching (a wrong
+    merge is unrecoverable), so it wants the stronger model, not cheap Haiku.
     """
 
     region: str = Field(default="us-west-2")
@@ -61,6 +65,7 @@ class AISettings(BridgeModel):
     discovery_model: str = Field(default=_SONNET)
     decompose_model: str = Field(default=_SONNET)
     match_model: str = Field(default=_SONNET)
+    consolidate_model: str = Field(default=_SONNET)
     # Fan-Out Redesign (SPEC "Fan-Out Redesign", D6): how many parallel, fresh-context
     # discovery calls one Rank runs. Their cross-call variation is the diversity a later
     # decomposition step pares to the finest non-overlapping set. Discovery is uncached,

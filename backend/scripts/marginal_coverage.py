@@ -33,6 +33,7 @@ from math import comb
 
 from sqlalchemy import select
 
+from app.ai.score_vectors import load_score_vectors
 from app.db.models import RankingRun
 from app.db.session import SessionLocal
 from scripts.coverage_gate import (
@@ -41,7 +42,6 @@ from scripts.coverage_gate import (
     _real_keys,
     _same_territory,
 )
-from scripts.dimension_overlap import load_score_vectors
 
 
 def _fan_out_runs(runs: list[RankingRun]) -> list[RankingRun]:

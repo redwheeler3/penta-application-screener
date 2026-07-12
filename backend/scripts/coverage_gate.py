@@ -29,9 +29,10 @@ import statistics
 
 from sqlalchemy import select
 
+from app.ai.score_vectors import load_score_vectors
+from app.ai.score_vectors import pearson as _pearson
 from app.db.models import RankingRun
 from app.db.session import SessionLocal
-from scripts.dimension_overlap import _pearson, load_score_vectors
 
 # Only axes with stdev at/above this count as real differentiators. Calibrated to the
 # pool: income_level (0.076) is the sole near-flat axis, everything else is ≥ 0.14.
