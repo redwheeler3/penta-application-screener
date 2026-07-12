@@ -21,6 +21,14 @@ const CRITERIA_STAGE_LABELS: Record<CriteriaStage, string> = {
   matching: "Matching criteria to the prior run…",
 };
 
+// The green criteria-stage label. Discovering names its fan-out width K (carried on the
+// criteria phase event's `total`) — "Running K parallel discovery passes…" — falling back
+// to the count-less phrasing if K wasn't reported.
+function criteriaStageLabel(stage: CriteriaStage, k: number): string {
+  if (stage === "discovering" && k > 0) return `Running ${k} parallel discovery passes…`;
+  return CRITERIA_STAGE_LABELS[stage];
+}
+
 // The descriptive caption under the progress bar, per stage — it explains what the
 // current step is doing (and why the wait), so the static line tracks the green label
 // instead of describing only discovery. Keyed by criteria sub-stage plus "scoring"
@@ -389,7 +397,7 @@ export function WorkflowBar(props: {
           <div className="run-progress-label">
             {rankProgress
               ? rankProgress.phase === "criteria"
-                ? CRITERIA_STAGE_LABELS[rankProgress.stage ?? "discovering"]
+                ? criteriaStageLabel(rankProgress.stage ?? "discovering", rankProgress.total)
                 : rankProgress.phase === "consolidate"
                   ? "Consolidating duplicate criteria…"
                   : `Scoring candidates… ${rankProgress.processed}/${rankProgress.total}` +
