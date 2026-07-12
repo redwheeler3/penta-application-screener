@@ -3,12 +3,11 @@ of axes that are each genuinely differentiating AND mutually non-overlapping
 (SPEC "Fan-Out Redesign", Phase 3 — the single-call baseline variant).
 
 K fresh-context discovery calls carve the same pool at different, overlapping
-granularities (the diversity Phase 2 produces). This step sees all K at once — the
-thing the sequential chain never could — and settles ONE non-overlapping set. The
-question it can now answer that the old reconcile pass could not: "is this axis
-redundant with one we already have?" (decidable with all carvings visible), instead
-of "does the pool vary on this?" (structurally unfalsifiable — discovery only ever
-coined an axis because it saw variance; see the convergence case study).
+granularities (the diversity Phase 2 produces). This step sees all K at once and
+settles ONE non-overlapping set. Seeing every carving together is what lets it answer
+"is this axis redundant with one we already have?" — decidable by comparison, unlike
+"does the pool vary on this?", which is unfalsifiable (discovery only ever coins an
+axis because it saw variance; see the convergence case study).
 
 The failure is two-sided and the prompt must guard both:
   - UNDER-merge: keep nine "participation" re-carvings → the committee unknowingly
@@ -23,9 +22,7 @@ same applicant the same way; to KEEP two apart you must be able to name an appli
 high on one and low on the other. Committee-requested axes get extra protection (D9):
 never merged away silently — the flag rides through and the decision must say so.
 
-This single structured call is the decomposition step, wired into ``rank_run``. It won
-a bake-off against a multi-agent splitter↔merger loop (the loop was costlier, no more
-stable, and worse on overlaps — see the fan-out redesign notes); the loop is not built.
+This single structured call is the decomposition step, wired into ``rank_run``.
 """
 
 from __future__ import annotations
@@ -47,9 +44,9 @@ from app.schemas.settings import AppSettings
 KIND = "dimension_decompose"  # for logging / the debug view; not a cached per-app kind
 
 # Bedrock read timeout (s) for the decomposition call specifically. It streams a large
-# reasoned set (settle ~250 input dims → ~28 axes, each with merge reasoning) and blows
-# the provider's 120s default — confirmed twice (over-gen experiment + the bake-off).
-# Only this call raises it; the default stays put for every other pass.
+# reasoned set (settle ~250 input dims → ~28 axes, each with merge reasoning) that blows
+# the provider's 120s default. Only this call raises it; the default stays put for every
+# other pass.
 DECOMPOSE_READ_TIMEOUT = 600
 
 SYSTEM_PROMPT = """\
@@ -152,10 +149,9 @@ def build_prompt(
 
 # The input scales with K × dimensions (all K reports in the prompt); output scales
 # with the settled set (~30 axes, each with definition + source_keys + decision
-# reasoning). Calibrated to observed spend (2026-07-11): the real settled output ran
-# ~8000 tokens; dropping the per-axis why_it_differentiates (~30 × ~80 tok, now carried
-# forward from the source instead of generated here) trims ~2400 → ~5600. Re-calibrate
-# against the ledger after a real run on the trimmed prompt.
+# reasoning, but no per-axis why — that's carried forward from the source). Calibrated
+# to observed spend (~5600 output tokens); re-calibrate against the ledger if the
+# decompose prompt's output shape changes.
 _DECOMPOSE_OUTPUT_TOKENS = 5600
 
 

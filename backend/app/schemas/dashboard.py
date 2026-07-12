@@ -19,7 +19,6 @@ class WorkflowState(ResponseModel):
     synced: bool
     import_current: bool
     screened: bool
-    essays_analyzed: bool
     patterns_discovered: bool
     candidates_scored: bool
     ranking_current: bool

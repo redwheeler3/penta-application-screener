@@ -16,7 +16,6 @@ const cachedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : Stri
 const PASS_LABELS: Record<"screen" | "rank", Array<{ label: string; cacheable: boolean }>> = {
   screen: [{ label: "Screening", cacheable: true }],
   rank: [
-    { label: "Essay analysis", cacheable: true },
     { label: "Pattern discovery", cacheable: false },
     { label: "Dimension decomposition", cacheable: false },
     { label: "Dimension matching", cacheable: false },

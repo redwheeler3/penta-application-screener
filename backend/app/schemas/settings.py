@@ -33,11 +33,11 @@ class AISettings(BridgeModel):
 
     One model per AI pass, named by the JOB rather than a tier ("first pass" /
     "synthesis"), so each pass can be tuned independently and the mapping is
-    self-documenting. Today the high-volume per-applicant passes (screening, essay
-    analysis, dimension scoring) default to cheap-and-fast Haiku because call COUNT
-    is what drives their cost (scoring alone is candidates × dimensions), while the
-    two once-per-rank pool-level passes (discovery, matching) default to the
-    stronger Sonnet — cost is trivial there and judgment quality matters.
+    self-documenting. Today the high-volume per-applicant passes (screening, dimension
+    scoring) default to cheap-and-fast Haiku because call COUNT is what drives their cost
+    (scoring alone is candidates × dimensions), while the once-per-rank pool-level passes
+    (discovery, matching) default to the stronger Sonnet — cost is trivial there and
+    judgment quality matters.
 
     ``match_model`` earned its own tier from evidence: on Haiku the identity-match
     pass over-matched genuinely-drifted concepts (freezing the wrong prior
@@ -50,15 +50,13 @@ class AISettings(BridgeModel):
     defaults to the same synthesis tier as discovery. It's a genuinely different task
     (reasoning over K reports vs. reading the pool), so being able to move it — e.g. to
     Opus if settling proves harder than discovering — without dragging discovery along
-    is worth the one knob. (The former ``reconcile_model`` was removed with the reconcile
-    pass in the fan-out redesign.)
+    is worth the one knob.
     """
 
     region: str = Field(default="us-west-2")
     _HAIKU = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
     _SONNET = "us.anthropic.claude-sonnet-4-6"
     screening_model: str = Field(default=_HAIKU)
-    essay_analysis_model: str = Field(default=_HAIKU)
     dimension_scoring_model: str = Field(default=_HAIKU)
     discovery_model: str = Field(default=_SONNET)
     decompose_model: str = Field(default=_SONNET)
@@ -67,9 +65,8 @@ class AISettings(BridgeModel):
     # discovery calls one Rank runs. Their cross-call variation is the diversity a later
     # decomposition step pares to the finest non-overlapping set. Discovery is uncached,
     # so K carries a real linear cost (see the cost model note); kept small and fixed,
-    # not adaptive. K=1 degenerates to the single-discovery behaviour. Default 5 (D6
-    # first reasoned to 4 on cost; raised to 5 on 2026-07-10 — the extra fresh context
-    # is worth the modest cost for coverage).
+    # not adaptive. K=1 degenerates to the single-discovery behaviour. Default 5: the 5th
+    # fresh context is worth its modest cost for coverage (see the marginal-coverage note).
     discovery_fan_out: int = Field(default=5, ge=1, le=10)
     spending_cap_usd: float = Field(default=1.0, ge=0)
     # How many applications to screen concurrently. The model calls are the slow,

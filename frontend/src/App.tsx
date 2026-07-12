@@ -56,7 +56,6 @@ export function App() {
     synced: false,
     importCurrent: true,
     screened: false,
-    essaysAnalyzed: false,
     patternsDiscovered: false,
     candidatesScored: false,
     rankingCurrent: false,
@@ -112,8 +111,8 @@ export function App() {
   // The current run's discovered dimensions, shown above the list once Rank has run.
   const [rankingRun, setRankingRun] = useState<CurrentRunResponse | null>(null);
 
-  // Rank (the combined essays → criteria → scores chain): one estimate-confirm-stream
-  // flow over all three passes, gated once on the combined cost.
+  // Rank (the combined criteria → scores chain): one estimate-confirm-stream
+  // flow over its passes, gated once on the combined cost.
   const [rankEstimate, setRankEstimate] = useState<RankEstimateResponse | null>(null);
   const [rankRunning, setRankRunning] = useState(false);
   const [rankProgress, setRankProgress] = useState<RankProgress | null>(null);

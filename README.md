@@ -28,7 +28,7 @@ The workflow is three single-verb steps — **Import → Screen → Rank** — e
 - Deterministic hard filters for clear eligibility issues, applied at import.
 - Application dashboard, searchable/sortable table, facets, pagination, and candidate detail pages.
 - **Screen:** AI integrity pass flagging suspicious, AI-boilerplate, or low-quality submissions (informational input to human review, never auto-disqualifying).
-- **Rank:** one orchestrated AI chain over eligible applicants — essay analysis → pattern discovery of differentiating dimensions → per-dimension scoring — feeding a weighted ranked list with relative fit bands and per-driver rationale. (See *The LLM extracts features; the math does the ranking* above.)
+- **Rank:** one orchestrated AI chain over eligible applicants — parallel pattern discovery of differentiating dimensions → decomposition into one non-overlapping set → per-dimension scoring — feeding a weighted ranked list with relative fit bands and per-driver rationale. (See *The LLM extracts features; the math does the ranking* above.)
 - **Interactive tier-list weighting:** drag discovered criteria into Critical/Important/Minor/Ignore tiers to instantly re-sort. Re-ranking carries tier placements forward and reuses cached scores (see *Prompt identity as a cache key* above).
 - **Reports:** browser print-to-PDF of the ranked view and candidate detail pages, with an `@media print` stylesheet and a text importance-tiers summary.
 - Provider-agnostic AI interface with Amazon Bedrock/Strands as the concrete provider and a deterministic mock provider for tests.

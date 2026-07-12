@@ -31,21 +31,6 @@ class ScreeningFlagOut(ResponseModel):
     evidence: str
 
 
-class EssayAnalysisOut(ResponseModel):
-    """Camel-cased view of the stored ``EssayAnalysisReport`` (which stays
-    snake_case as the prompt/storage contract)."""
-
-    summary: str
-    household_context: str | None = None
-    employment_background: str | None = None
-    interests: list[str] = []
-    values: list[str] = []
-    skills_offered: list[str] = []
-    prior_co_op_experience: str | None = None
-    stated_motivations: list[str] = []
-    stated_contributions: list[str] = []
-
-
 class DimensionContributionOut(ResponseModel):
     """Camel-cased view of the ranking ``DimensionContribution`` dataclass."""
 
@@ -84,7 +69,6 @@ class ApplicationDetail(ApplicationSummary):
     flags: list[ScreeningFlagOut] | None = None
     raw_row: dict[str, Any] | None = None
     ai_narrative: str | None = None
-    essay_analysis: EssayAnalysisOut | None = None
     dimension_scores: list[DimensionContributionOut] | None = None
 
 

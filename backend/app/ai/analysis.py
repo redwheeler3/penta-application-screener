@@ -366,8 +366,8 @@ def screen_applications(
     """Run a cached AI pass over ``applications``, yielding each result as it
     completes (cached first, then model results in completion order).
 
-    The 1:1 engine behind screening flags and essay analysis — one application, one
-    cached result, one row. Prompts are built and results stored on this thread
+    The 1:1 engine behind screening flags — one application, one cached result, one
+    row. Prompts are built and results stored on this thread
     (ORM access); only the model calls run in ``run_in_pool``, so the session is
     never shared. A failed call yields a ``PassResult`` with an error rather
     than aborting the batch.

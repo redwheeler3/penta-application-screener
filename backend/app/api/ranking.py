@@ -2,9 +2,9 @@
 
 Flow the UI drives:
   1. GET  /ranking/estimate — combined cost projection for the chain.
-  2. POST /ranking/run — summarize essays → find criteria → score every eligible
-     applicant, streaming phase/progress/summary as NDJSON. The cap is enforced
-     once over the COMBINED cost before any model call.
+  2. POST /ranking/run — find criteria → score every eligible applicant, streaming
+     phase/progress/summary as NDJSON. The cap is enforced once over the COMBINED cost
+     before any model call.
   3. GET  /ranking/current — the current run's criteria + summary.
   4. GET  /ranking — the ranked shortlist (math over cached scores).
   5. GET/PUT /ranking/tiers — the committee's importance-tier weighting.
@@ -40,20 +40,10 @@ from app.ai.dimension_decompose import (
     to_pool_report,
 )
 from app.ai.dimension_matching import estimate_match, match_dimensions
-
-# Nothing is imported from dimension_reconcile any more — the reconcile pass is disabled
-# in the rank chain (fan-out redesign, D2/D8): not invoked, and no longer priced in the
-# estimate (it was phantom cost). The module + its audit view survive for historical
-# runs until the Phase 4c removal sweep.
 from app.ai.dimension_scoring import (
     applications_to_score,
     estimate_dimension_scoring,
     score_dimensions,
-)
-from app.ai.essay_analysis import (
-    applications_to_analyze,
-    estimate_essay_analysis,
-    screen_essays,
 )
 from app.ai.pattern_discovery import (
     DiscoverySeeds,
@@ -131,7 +121,7 @@ router = APIRouter(prefix="/ranking", tags=["ranking"])
 
 # Phase names for the rank stream (every event carries one, so the client's
 # stream switch is uniform across this job and the screening job).
-ESSAYS, CRITERIA, SCORES = "essays", "criteria", "scores"
+CRITERIA, SCORES = "criteria", "scores"
 
 # Sub-stages within the criteria phase — the sequential model calls under its one
 # banner, surfaced so the UI can say which step is running (they're opaque calls with
@@ -309,22 +299,21 @@ def insights_last_runs(
     return last_runs_report(db)
 
 
-# --- Rank: the combined essays → criteria → scores chain --------------------
+# --- Rank: the combined criteria → scores chain -----------------------------
 
 
 def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
-    """Combined projected cost of the Rank passes (essays → K-discovery + decompose →
-    match → scoring).
+    """Combined projected cost of the Rank passes (K-discovery + decompose → match →
+    scoring).
 
-    Essays are netted against their cache; the K parallel discovery calls always re-run
-    (uncached), and the decomposition that settles them is one more call — both folded
-    into ``criteria_usd``. The match pass adds a call only when a prior run exists.
-    Scoring is priced as a whole-pool ceiling (every candidate × every dimension) because
-    the estimate runs before discovery, so it can't yet know how many dimensions carry
-    forward. Per-dimension reuse makes the actual run come in under this ceiling, so the
-    total is an upper bound (the confirmation labels it approximate).
+    The K parallel discovery calls always re-run (uncached), and the decomposition that
+    settles them is one more call — both folded into ``criteria_usd``. The match pass adds
+    a call only when a prior run exists. Scoring is priced as a whole-pool ceiling (every
+    candidate × every dimension) because the estimate runs before discovery, so it can't
+    yet know how many dimensions carry forward. Per-dimension reuse makes the actual run
+    come in under this ceiling, so the total is an upper bound (the confirmation labels it
+    approximate).
     """
-    essays = estimate_essay_analysis(db, settings)
     pool = eligible_applications(db)
     # Fan-out: K parallel discovery calls (SPEC "Fan-Out Redesign", D6), each priced
     # like the single call. Discovery is uncached, so K multiplies straight through —
@@ -363,22 +352,17 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
         match_usd = measured_match if measured_match is not None else estimate_match(settings)
     scoring = estimate_dimension_scoring(db, settings)
     scoring_usd = float(scoring["estimated_usd"])
-    total = round(
-        float(essays["estimated_usd"]) + discovery_usd + decompose_usd + match_usd
-        + scoring_usd, 4
-    )
+    total = round(discovery_usd + decompose_usd + match_usd + scoring_usd, 4)
     return {
         "eligible": len(pool),
         # K parallel discoveries per Rank (D6), so the confirm card can name the fan-out.
         "fan_out": settings.ai.discovery_fan_out,
         "breakdown": {
-            "essays_usd": round(float(essays["estimated_usd"]), 4),
             # criteria = the K discovery calls + the decomposition that settles them.
             "criteria_usd": round(discovery_usd + decompose_usd, 4),
             "match_usd": round(match_usd, 4),
             "scoring_usd": round(scoring_usd, 4),
         },
-        "essays_cached": essays["cached"],
         "estimated_usd": total,
         "approximate": True,  # scoring is a ceiling; carry-forward reuse lowers the real cost
     }
@@ -399,12 +383,10 @@ def rank_estimate(
         eligible=result["eligible"],
         fan_out=result["fan_out"],
         breakdown=RankEstimateBreakdown(
-            essays_usd=breakdown["essays_usd"],
             criteria_usd=breakdown["criteria_usd"],
             match_usd=breakdown["match_usd"],
             scoring_usd=breakdown["scoring_usd"],
         ),
-        essays_cached=result["essays_cached"],
         estimated_usd=result["estimated_usd"],
         approximate=result["approximate"],
         cap_usd=cap,
@@ -421,9 +403,9 @@ def rank_run(
     db: Session = Depends(get_db),
     provider: AIProvider = Depends(get_ai_provider),
 ) -> StreamingResponse:
-    """Run the full ranking chain — summarize essays → find criteria → score —
-    streaming NDJSON. The combined cost is checked against the cap once before any
-    model call, so an over-cap run fails fast with a 402 and spends nothing.
+    """Run the full ranking chain — find criteria → score — streaming NDJSON. The
+    combined cost is checked against the cap once before any model call, so an over-cap
+    run fails fast with a 402 and spends nothing.
 
     Stream shape: a ``phase`` line per pass, ``progress`` lines for the
     per-candidate passes, then a final ``summary`` with the combined cost.
@@ -451,22 +433,7 @@ def rank_run(
     def stream() -> Iterator[str]:
         total_cost = 0.0
 
-        # Phase 1: summarize essays (informational; never touches status).
-        essays = applications_to_analyze(db)
-        yield emit(PhaseEvent(phase=ESSAYS, total=len(essays)))
-        essay_tally = RunTally()
-        for processed, result in enumerate(
-            screen_essays(
-                db, provider, applications=essays, settings=settings,
-                max_workers=settings.ai.max_workers,
-            ),
-            start=1,
-        ):
-            essay_tally.add(result)
-            yield emit(ProgressEvent(phase=ESSAYS, processed=processed, total=len(essays)))
-        total_cost += essay_tally.cost_usd
-
-        # Phase 2: find criteria (one synthesis call; starts a fresh run).
+        # Phase 1: find criteria (one synthesis call; starts a fresh run).
         # Capture prior state before discovery. Matching and tier carry-forward both
         # look across ALL prior runs, not just the last: a concept that fell out and
         # re-surfaces should re-adopt its existing key (reusing its cached scores) and
@@ -520,7 +487,7 @@ def rank_run(
                 # coverage gate). All K are persisted as an audit trail.
                 delta_queue.put(_Stage(CRITERIA_STAGES["discovering"]))
                 fan_out = discover_patterns_fanout(
-                    db, provider, applications=pool, settings=settings,
+                    provider, applications=pool, settings=settings,
                     k=settings.ai.discovery_fan_out, seeds=seeds, on_delta=on_delta,
                 )
                 fan_out_reports = fan_out.reports
@@ -538,12 +505,11 @@ def rank_run(
                 }
                 discovery_cost = fan_out.cost_usd
                 # Pass 1b: decomposition — settle the K reports into ONE finest,
-                # non-overlapping set (SPEC "Fan-Out Redesign", Phase 3/4a). The winning
-                # single-call baseline; it distils the union to ~one axis per real concept
-                # (0 judge-flagged overlaps in the bake-off). Its DecompositionReport is
-                # projected onto a PoolDimensionReport so the unchanged match → (reconcile)
-                # → adopt → score tail below flows exactly as before; source_keys + the
-                # per-axis merge reasoning are preserved separately in decompose_audit.
+                # non-overlapping set (SPEC "Fan-Out Redesign", Phase 3). A single call
+                # distils the union to ~one axis per real concept. Its DecompositionReport
+                # is projected onto a PoolDimensionReport so the match → adopt → score tail
+                # below consumes it unchanged; source_keys + the per-axis merge reasoning
+                # are preserved separately in decompose_audit.
                 delta_queue.put(_Stage(CRITERIA_STAGES["settling"]))
                 # Favourites are injected HERE (not into discovery): the settling call sees
                 # every carving at once, so it folds any re-discovered twin into the
@@ -575,10 +541,6 @@ def rank_run(
                 new_to_old: dict[str, str] = {}
                 match_narrative: str | None = None
                 match_cost = 0.0
-                # (The reconcile pass — a second look that revived dropped priors — was
-                # removed in the fan-out redesign, D2/D8: it was the creep engine, and
-                # K-discovery + decomposition subsume its one legitimate job without the
-                # unfalsifiable "does the pool vary on this?" that made it over-revive.)
                 if match_history is not None:
                     delta_queue.put(_Stage(CRITERIA_STAGES["matching"]))
                     new_to_old, match_narrative, match_cost = match_dimensions(
@@ -718,13 +680,6 @@ def rank_run(
             kind="rank",
             passes=[
                 ledger_pass(
-                    "Essay analysis",
-                    fresh_usd=essay_tally.cost_usd,
-                    fresh_calls=essay_tally.analyzed,
-                    cached_count=essay_tally.cached,
-                    cached_saved_usd=essay_tally.cached_saved_usd,
-                ),
-                ledger_pass(
                     # K parallel discovery calls (the fan-out); discovery_cost is their
                     # summed spend, so the call count is K, not 1.
                     "Pattern discovery",
@@ -758,7 +713,7 @@ def rank_run(
             RankSummary(
                 dimensions=len(report.dimensions),
                 scored=score_tally.processed,
-                failed=essay_tally.failed + score_tally.failed,
+                failed=score_tally.failed,
                 total_cost_usd=round(total_cost, 4),
             )
         )

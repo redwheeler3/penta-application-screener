@@ -691,7 +691,7 @@ Current settings:
 - Household limits: max adults, minimum adult age
 - Pet limits: max dogs, max cats, whether other/exotic pets are allowed
 - `disabled_rules`: which deterministic hard-filter rules are turned off
-- A nested `ai` block (`AISettings`): region, one model per AI pass (`screening_model`, `essay_analysis_model`, `dimension_scoring_model`, `discovery_model`, `match_model`), spending cap, and screening concurrency (`max_workers`) — see [ai-screening.md](ai-screening.md). Of these, only the spending cap is editable in the settings form; the rest are config-only but still round-tripped on save.
+- A nested `ai` block (`AISettings`): region, one model per AI pass (`screening_model`, `dimension_scoring_model`, `discovery_model`, `match_model`), spending cap, and screening concurrency (`max_workers`) — see [ai-screening.md](ai-screening.md). Of these, only the spending cap is editable in the settings form; the rest are config-only but still round-tripped on save.
 
 The defaults match the current planned 2-bedroom opening:
 
@@ -1037,6 +1037,6 @@ All backend tests should pass (`uv run pytest` reports the current count).
 
 ## Next Architecture Step
 
-The current feature set includes Google Sheets sync, deterministic hard filters, application tables, searchable/filterable views, candidate detail pages, filtered-out reason display, raw row inspection, and the AI quality-flag pass (see [ai-screening.md](ai-screening.md)).
+The current feature set includes Google Sheets sync, deterministic hard filters, application tables, searchable/filterable views, candidate detail pages, filtered-out reason display, raw row inspection, the AI quality-flag pass, and the Rank chain that discovers criteria across the pool and scores candidates against them, feeding a deterministic stack-ranked shortlist (see [ai-screening.md](ai-screening.md)).
 
-The next planned product areas build on the AI foundation: per-candidate essay analysis, and an interactive stack-ranking assistant that ranks the full applicant pool with per-row rationale. Both reuse the provider boundary, caching, and cost-cap machinery already in `app/ai/`.
+The next planned product areas build on the AI foundation, reusing the provider boundary, caching, and cost-cap machinery already in `app/ai/`.

@@ -95,32 +95,3 @@ export async function readProblem(response: Response): Promise<string | null> {
     return null;
   }
 }
-
-// Render one essay-analysis prose field as a dt/dd row, omitted when the model
-// captured nothing for it (null = "applicant did not address this").
-export function renderEssayText(label: string, value: string | null): ReactNode {
-  if (!value) return null;
-  return (
-    <div className="essay-analysis-field">
-      <dt>{label}</dt>
-      <dd>{value}</dd>
-    </div>
-  );
-}
-
-// Render one essay-analysis list field as chips, omitted when empty.
-export function renderEssayChips(label: string, values: string[]): ReactNode {
-  if (!values || values.length === 0) return null;
-  return (
-    <div className="essay-analysis-field">
-      <dt>{label}</dt>
-      <dd className="essay-analysis-chips">
-        {values.map((value, i) => (
-          <span key={i} className="essay-analysis-chip">
-            {value}
-          </span>
-        ))}
-      </dd>
-    </div>
-  );
-}

@@ -101,7 +101,6 @@ export const defaultSettings: AppSettings = {
   ai: {
     region: "us-west-2",
     screeningModel: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    essayAnalysisModel: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
     dimensionScoringModel: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
     discoveryModel: "us.anthropic.claude-sonnet-4-6",
     decomposeModel: "us.anthropic.claude-sonnet-4-6",

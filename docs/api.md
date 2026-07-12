@@ -67,11 +67,11 @@ See [ai-screening.md](ai-screening.md) for the full pipeline behind these.
 
 ### Screening — `app/api/screening.py`
 
-The **Rank chain** (milestones 6–8) and the deterministic ranked shortlist (milestone 8). Rank is one button that runs essay summary → find criteria → score, back-to-back; the cap is enforced once over the combined cost. The individual sub-passes are not exposed as endpoints (the committee never runs them alone); `screen_essays` / `discover_patterns` / `screen_dimension_scores` are the underlying passes. Ranking itself is pure math over the cached scores — no model call. See [ai-screening.md](ai-screening.md).
+The **Rank chain** (milestones 6–8) and the deterministic ranked shortlist (milestone 8). Rank is one button that runs pattern discovery → decomposition → identity-match → score, back-to-back; the cap is enforced once over the combined cost. The individual sub-passes are not exposed as endpoints (the committee never runs them alone); `discover_patterns_fanout` / `decompose_dimensions` / `match_dimensions` / `score_dimensions` are the underlying passes. Ranking itself is pure math over the cached scores — no model call. See [ai-screening.md](ai-screening.md).
 
 | Method | Path | Purpose | Auth |
 | --- | --- | --- | --- |
-| GET | `/screening/rank/estimate` | Combined projected cost of the Rank chain (essays + criteria + scoring), with a per-pass breakdown. Approximate — criteria/scoring scale with essay output. 409 if no eligible applicants. | Login |
+| GET | `/screening/rank/estimate` | Combined projected cost of the Rank chain (discovery + decomposition + scoring), with a per-pass breakdown. Approximate — scoring scales with the dimensions discovery settles on. 409 if no eligible applicants. | Login |
 | POST | `/screening/rank/run` | Run the full chain. Streams NDJSON: a `phase` line per pass, `progress` lines for the per-candidate passes, then a `summary`. Cap enforced once over the combined cost (402 if over). 409 if no eligible applicants. | Login |
 | GET | `/screening/current` | The current run's criteria + summary, or null if the chain has never run. | Login |
 | GET | `/screening/ranking` | The deterministic ranked shortlist: candidates ordered by weight-normalized fit, each with a relative band. Stack-ranked — the committee reads top-down, no fixed cut line. 409 before criteria exist. | Login |

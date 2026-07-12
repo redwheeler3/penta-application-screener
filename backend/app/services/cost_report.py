@@ -1,8 +1,8 @@
 """Cost aggregation for the Insights tab (M13 Pillar 1).
 
 AI spend lives in two places:
-  - ``ApplicationAIResult`` rows — the per-application passes (screening, essay
-    analysis, dimension scoring), with tokens + cost per call.
+  - ``ApplicationAIResult`` rows — the per-application passes (screening, dimension
+    scoring), with tokens + cost per call.
   - ``RankingRun.criteria["discovery_cost_usd"]`` — the run-level discovery + match
     passes, cost only (no token breakdown is stored for them).
 
@@ -33,13 +33,12 @@ from app.schemas.insights import (
 )
 
 SCREENING = "screening"
-ESSAY = "essay_analysis"
 SCORING_PREFIX = "dimension_scoring:"
 
 # Passes that can reuse cached results. The others (pattern discovery, dimension
 # matching) always call Bedrock fresh, so a "saved by cache" figure is N/A for them —
 # the UI shows "—", never $0, so structural absence of caching doesn't read as failure.
-CACHEABLE_PASSES = {"Screening", "Essay analysis", "Dimension scoring"}
+CACHEABLE_PASSES = {"Screening", "Dimension scoring"}
 
 
 def _pass(
@@ -112,8 +111,8 @@ def cost_report(db: Session) -> CostReport:
     Spend is exact (a plain sum of every stored cost); cache savings come from the
     run-cost ledger (see ``_saved_by_pass``).
 
-    Screen runs the screening pass; Rank runs essay analysis → pattern discovery →
-    dimension matching → dimension scoring (essay analysis is part of Rank, not Screen).
+    Screen runs the screening pass; Rank runs pattern discovery → dimension
+    decomposition → dimension matching → dimension scoring.
     """
     all_runs = list(db.scalars(select(RankingRun)))
     # A match pass runs only when there's a prior run to match against, so it's absent
@@ -134,8 +133,6 @@ def cost_report(db: Session) -> CostReport:
     rank = _group(
         "Rank",
         [
-            _pass("Essay analysis", *_sum_rows(db, ApplicationAIResult.kind == ESSAY),
-                  **cached("Essay analysis")),
             # Discovery and match are separate Bedrock calls (Sonnet vs. Haiku), stored
             # and attributed separately. Cost-only (no tokens stored). Never cacheable.
             # Runs created before the discovery/match cost split fold their match cost

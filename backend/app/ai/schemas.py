@@ -49,63 +49,6 @@ class ScreeningReport(BaseModel):
     flags: list[ScreeningFlag] = Field(default_factory=list)
 
 
-class EssayAnalysisReport(BaseModel):
-    """Neutral, factual extraction across a candidate's four essays (see SPEC "Essay
-    Analysis").
-
-    Describes WHAT the applicant said, never how good it is — evaluation is the
-    ranker's job. An additive digest: the raw essays are preserved, so off-question
-    content stays available. ``str | None`` fields are prose-or-absent; ``list``
-    fields are empty when nothing was said — both forms of "did not say" are signal
-    the ranker may read.
-    """
-
-    summary: str = Field(
-        description=(
-            "A 2-4 sentence neutral, factual digest across all four essays. "
-            "Describe what the applicant conveyed; do not evaluate fit, "
-            "commitment, or quality, and do not speculate."
-        )
-    )
-    household_context: str | None = Field(
-        default=None,
-        description="Who is in the household, as the applicant introduced them (Q1). Null if not stated.",
-    )
-    employment_background: str | None = Field(
-        default=None,
-        description="Work situation as narrated, applicant and co-applicant (Q1). Null if not stated.",
-    )
-    interests: list[str] = Field(
-        default_factory=list,
-        description="Interests the applicant stated (Q1).",
-    )
-    values: list[str] = Field(
-        default_factory=list,
-        description="Values the applicant expressed (Q1).",
-    )
-    skills_offered: list[str] = Field(
-        default_factory=list,
-        description="Concrete skills offered to help run or maintain the co-op, applicant and co-applicant (Q2).",
-    )
-    prior_co_op_experience: str | None = Field(
-        default=None,
-        description="Prior co-op experience the applicant or co-applicant stated (Q3). Null if none given.",
-    )
-    stated_motivations: list[str] = Field(
-        default_factory=list,
-        description="Reasons the applicant gave for wanting to live in a co-op (Q4).",
-    )
-    stated_contributions: list[str] = Field(
-        default_factory=list,
-        description="Ways the applicant said they would be a valuable member (Q4).",
-    )
-    # (No ``evidence`` field — dropped 2026-07-11. It held grounding quotes, but was
-    # never rendered in the UI and was excluded from the pool-discovery prompt; its only
-    # consumer was the dimension-scoring prompt, which ALREADY includes the full raw
-    # essays, so pre-extracted quotes were redundant there. Generating them per applicant
-    # was unused output. Per-flag/per-score ``evidence`` fields are unrelated and stay.)
-
-
 # --- Pattern discovery and dimension scoring --------------------------------
 #
 # The LLM extracts scored features; ranking is deterministic math over them.
@@ -151,11 +94,9 @@ class PoolDimensionReport(BaseModel):
     importance is the committee's call. Scoring rates each applicant against these
     dimensions; ranking is deterministic math on top.
 
-    (There is deliberately no pool ``summary`` field — a "what distinguishes strong
-    from weak fit" digest. It was unused in the UI and, at the decomposition step, was
-    the same unverifiable confabulation as the dropped per-axis ``why`` — a pool claim
-    from a model that never saw the pool. Removed 2026-07-11; see the fan-out redesign
-    notes. Per-applicant ``EssayAnalysisReport.summary`` is unrelated and stays.)
+    Deliberately no pool ``summary`` / "what distinguishes strong from weak fit" field:
+    the decomposition step that finalizes these dimensions never sees the pool, so any
+    such digest would be an ungrounded pool claim (confabulation). Dimensions only.
     """
 
     dimensions: list[PoolDimension] = Field(
@@ -268,18 +209,14 @@ class DecomposedDimension(BaseModel):
 
     Carries the committee-facing IDENTITY fields (``key``, ``name``, ``definition``)
     plus ``source_keys`` — every input dimension (across the K reports) this axis
-    subsumes — and ``decision`` reasoning, so a merge is auditable and never silent
-    (the reconcile pass's lesson: persist the reasoning, not just the outcome). A
+    subsumes — and ``decision`` reasoning, so a merge is auditable and never silent. A
     kept-as-is axis has one source key; a merge has several.
 
-    It deliberately does NOT carry ``why_it_differentiates``. That field is a claim
-    about what varies across the REAL pool — but the decomposer is sent only the K
-    reports' key/name/definition, never the pool (no essays, facts, or scores). Asking
-    it to write ``why`` produced confident, plausible, and *unverifiable* pool prose
-    (confabulation). The pool-grounded ``why`` already exists — written by a discoverer
-    that read the essays — so ``to_pool_report`` carries THAT forward from the primary
-    source axis instead. (Also cuts the decomposer's priciest output; see the fan-out
-    redesign cost notes.)
+    Deliberately no ``why_it_differentiates``: that field is a claim about what varies
+    across the REAL pool, but the decomposer is sent only the K reports'
+    key/name/definition, never the pool — so any ``why`` it wrote would be ungrounded
+    (confabulation). The pool-grounded ``why`` is written by the discoverer that read the
+    essays, and ``to_pool_report`` carries it forward from the primary source axis.
     """
 
     key: str = Field(
@@ -327,10 +264,8 @@ class DecompositionReport(BaseModel):
     dimension's ``source_keys`` — nothing is silently dropped; a genuinely redundant
     carving is merged (recorded), never deleted. The result feeds scoring once.
 
-    (No pool ``summary`` field — see ``PoolDimensionReport``. It was the ranking page's
-    "strong vs. weak fit" paragraph, written by the decomposer, which never sees the
-    pool: unverifiable confabulation, and unused beyond that one paragraph. Dropped
-    2026-07-11.)
+    No pool ``summary`` field (see ``PoolDimensionReport`` for why the decomposer emits
+    dimensions only, not a pool digest).
     """
 
     dimensions: list[DecomposedDimension] = Field(
