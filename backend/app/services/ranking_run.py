@@ -476,6 +476,28 @@ def decompose_audit_view(run: RankingRun) -> dict | None:
     }
 
 
+def consolidate_audit_view(run: RankingRun) -> dict | None:
+    """The run's consolidation audit — the correlation-nominated duplicate pairs and the
+    confirm verdict on each — shaped for the trace viewer, or None on runs that predate
+    the pass (no ``criteria.consolidate_audit``).
+
+    ``pairs`` are every nominated pair with its correlation ``r``, whether it ``merged``,
+    and the model's ``reason``. ``merges`` is the applied ``drop_key -> keep_key`` map.
+    Thin pass-through with defaults, mirroring the other ``*_audit_view`` accessors.
+    """
+    audit = (run.criteria or {}).get("consolidate_audit")
+    if not audit:
+        return None
+    pairs = audit.get("pairs", [])
+    return {
+        "merges": audit.get("merges", {}),
+        "pairs": pairs,
+        "nominated_count": len(pairs),
+        "merged_count": sum(1 for p in pairs if p.get("merged")),
+        "narrative": audit.get("narrative"),
+    }
+
+
 def fan_out_audit_view(run: RankingRun) -> dict | None:
     """The run's fan-out audit — each of the K parallel discoverers' report + reasoning —
     shaped for the Insights discovery panel, or None on runs that predate the fan-out

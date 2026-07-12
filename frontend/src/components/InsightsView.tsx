@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from "react";
 import type { CurrentRunResponse } from "../types";
+import { ConsolidateAuditPanel } from "./ConsolidateAuditPanel";
 import { CostPanel } from "./CostPanel";
 import { DecomposeAuditPanel } from "./DecomposeAuditPanel";
 import { DiscoveryPanel } from "./DiscoveryPanel";
@@ -16,7 +17,7 @@ import { MatchAuditPanel } from "./MatchAuditPanel";
 // as SUBTABS (one at a time) rather than stacked panels — the tab will hold four
 // concerns by the end of M13, and subtabs keep the page short and scannable as they
 // land, instead of a growing scroll of accordions.
-type InsightsTab = "discovery" | "decompose" | "carryForward" | "cost";
+type InsightsTab = "discovery" | "decompose" | "consolidate" | "carryForward" | "cost";
 
 export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNode {
   const [tab, setTab] = useState<InsightsTab>(props.run ? "discovery" : "cost");
@@ -24,6 +25,7 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
     ? [
         { id: "discovery", label: "Pattern discovery" },
         { id: "decompose", label: "Decomposition" },
+        { id: "consolidate", label: "Consolidation" },
         { id: "carryForward", label: "Carry-forward" },
         { id: "cost", label: "Cost" },
       ]
@@ -59,6 +61,10 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
           // set: the settle-down counts, which axes are merges, the model's reasoning,
           // and the D9 committee-request folds.
           <DecomposeAuditPanel />
+        ) : activeTab === "consolidate" ? (
+          // How the run healed duplicate dimensions after scoring: which correlated
+          // pairs were nominated and how each merge/keep was adjudicated.
+          <ConsolidateAuditPanel />
         ) : activeTab === "carryForward" ? (
           // How surviving dimensions carry forward from the prior run (the 1:1 match).
           <MatchAuditPanel />

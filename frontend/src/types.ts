@@ -319,6 +319,22 @@ export type DecomposeAuditResponse = {
   narrative: string | null;
 };
 
+// GET /ranking/current/consolidate-audit — the post-score duplicate-merge pass:
+// score-vector correlation nominates suspected-duplicate pairs, a confirm call merges
+// genuine ones (older key kept, newer aliased). Null on runs that predate the pass.
+export type ConsolidateAuditResponse = {
+  runId: number;
+  // Applied merges: dropped (newer) key → kept (older canonical) key.
+  merges: Record<string, string>;
+  // Every nominated pair: keep/drop keys, the correlation r that flagged it, whether it
+  // merged, and the confirm call's reason.
+  pairs: { keep: string; drop: string; r: number; merged: boolean; reason: string }[];
+  nominatedCount: number;
+  mergedCount: number;
+  // The confirm call's free-text reasoning (markdown). Null if none surfaced.
+  narrative: string | null;
+};
+
 // GET /ranking/current/fan-out-audit — the K parallel discoverers that fed
 // decomposition. Each pass is one fresh-context discovery: the dimensions it found +
 // its own reasoning. Null on runs that predate the fan-out redesign.
