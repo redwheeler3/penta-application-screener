@@ -32,6 +32,7 @@ from app.ai.analysis import (
     exception_type_name,
     log,
 )
+from app.ai.dimension_consolidate import consolidate_dimensions, estimate_consolidate
 from app.ai.dimension_decompose import (
     decompose_audit_payload,
     decompose_dimensions,
@@ -39,7 +40,6 @@ from app.ai.dimension_decompose import (
     estimate_decompose,
     to_pool_report,
 )
-from app.ai.dimension_consolidate import consolidate_dimensions, estimate_consolidate
 from app.ai.dimension_matching import estimate_match, match_dimensions
 from app.ai.dimension_scoring import (
     applications_to_score,
@@ -72,6 +72,7 @@ from app.schemas.events import (
 )
 from app.schemas.insights import CostReport, LastRunsReport
 from app.schemas.ranking import (
+    ConsolidateAuditResponse,
     CurrentRunResponse,
     DecomposeAuditResponse,
     FanOutAuditResponse,
@@ -100,6 +101,7 @@ from app.services.ranking_run import (
     all_known_dimensions,
     apply_consolidation,
     carry_forward_layout,
+    consolidate_audit_view,
     create_run,
     current_dimension_report,
     decompose_audit_view,
@@ -264,6 +266,24 @@ def current_decompose_audit(
     if view is None:
         return None
     return DecomposeAuditResponse(run_id=run.id, **view)
+
+
+@router.get("/current/consolidate-audit", response_model=ConsolidateAuditResponse | None)
+def current_consolidate_audit(
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> ConsolidateAuditResponse | None:
+    """The current run's consolidation audit — the post-score duplicate-merge pass:
+    which correlated pairs were nominated and, per pair, whether the confirm call merged
+    them (with its reasoning). Null on runs that predate the pass.
+    """
+    run = get_current_run(db)
+    if run is None:
+        return None
+    view = consolidate_audit_view(run)
+    if view is None:
+        return None
+    return ConsolidateAuditResponse(run_id=run.id, **view)
 
 
 @router.get("/current/fan-out-audit", response_model=FanOutAuditResponse | None)

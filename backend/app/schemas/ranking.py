@@ -118,6 +118,33 @@ class DecomposeAuditResponse(ResponseModel):
     narrative: str | None = None
 
 
+class ConsolidatedPairOut(ResponseModel):
+    """One correlation-nominated duplicate pair and its confirm verdict, for the trace:
+    ``keep``/``drop`` keys (older kept, newer aliased on a merge), the correlation ``r``
+    that nominated it, whether it ``merged``, and the model's ``reason``."""
+
+    keep: str
+    drop: str
+    r: float
+    merged: bool
+    reason: str = ""
+
+
+class ConsolidateAuditResponse(ResponseModel):
+    """GET /ranking/current/consolidate-audit — the post-score duplicate-merge pass:
+    which correlated pairs were nominated and how each was adjudicated. Null when the run
+    predates the pass. ``merges`` is the applied drop→keep map; ``nominatedCount`` /
+    ``mergedCount`` summarize the pass at a glance."""
+
+    run_id: int
+    merges: dict[str, str] = {}
+    pairs: list[ConsolidatedPairOut] = []
+    nominated_count: int = 0
+    merged_count: int = 0
+    # The confirm call's free-text reasoning (markdown), for the Insights panel.
+    narrative: str | None = None
+
+
 class FanOutPassOut(ResponseModel):
     """One of the K parallel discoverers, for the Insights discovery panel: the
     dimensions it found and its own reasoning narrative (null on legacy runs that stored

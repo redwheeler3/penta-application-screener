@@ -7,6 +7,7 @@ import type {
   ApplicationDetail,
   ApplicationSummary,
   AppFacets,
+  ConsolidateAuditResponse,
   CostReport,
   Coverage,
   CurrentUser,
@@ -100,6 +101,9 @@ export const fetchMatchAudit = () => getJson<MatchAuditResponse | null>("/rankin
 // Null on runs that predate the fan-out redesign.
 export const fetchDecomposeAudit = () =>
   getJson<DecomposeAuditResponse | null>("/ranking/current/decompose-audit");
+
+export const fetchConsolidateAudit = () =>
+  getJson<ConsolidateAuditResponse | null>("/ranking/current/consolidate-audit");
 
 // The current run's fan-out audit — each of the K parallel discoverers' dimensions +
 // reasoning. Null on runs that predate the fan-out redesign.
