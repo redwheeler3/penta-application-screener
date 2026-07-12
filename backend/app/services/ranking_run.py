@@ -242,11 +242,27 @@ def apply_consolidation(
     criteria = dict(run.criteria or {})
 
     if merges:
+        # An alias may already exist: matching is high-bar, so a merged key can be
+        # re-minted by discovery and re-nominated on a later run. Upsert rather than
+        # blind-insert — a second confirm of the same merge must be a no-op, not a
+        # UNIQUE-constraint crash that rolls back the whole run.
+        existing = {
+            a.alias_key: a
+            for a in db.scalars(
+                select(DimensionAlias).where(DimensionAlias.alias_key.in_(list(merges)))
+            )
+        }
         for drop_key, keep_key in merges.items():
             reason = next(
                 (a.get("reason") for a in audit if a.get("drop") == drop_key), None
             )
-            db.add(DimensionAlias(alias_key=drop_key, canonical_key=keep_key, reason=reason))
+            row = existing.get(drop_key)
+            if row is None:
+                db.add(DimensionAlias(alias_key=drop_key, canonical_key=keep_key, reason=reason))
+            else:
+                # Keep the alias pointing at the current canonical key + latest reason.
+                row.canonical_key = keep_key
+                row.reason = reason
 
         report = criteria.get("dimension_report") or {}
         report["dimensions"] = [
