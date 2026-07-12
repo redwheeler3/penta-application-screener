@@ -32,22 +32,16 @@ in the bake-off harness.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import sqrt
 
-from sqlalchemy import select
-
-from app.ai.dimension_scoring import KIND_PREFIX
-from app.db.models import ApplicationAIResult
+# The score-vector math + loader live in app.ai.score_vectors (shared with the
+# production consolidation pass); this script adds the overlap-report scoring on top.
+from app.ai.score_vectors import CORRELATION_THRESHOLD, load_score_vectors, pearson
 from app.db.session import SessionLocal
 
-# Default correlation threshold above which a surviving pair is flagged as a
-# suspected un-merged overlap. O2 started at 0.9; validated down to 0.85 on the
-# 10-run pool — that cut flags the 2 genuine duplicates (r≈0.85-0.89, e.g.
-# governance_body_experience ↔ depth_of_shared_governance_experience) and nothing
-# spurious, while 0.75 drags in real confounds (engaged applicants are both willing
-# AND available → correlated but distinct). A flag is a prompt to inspect, not an
-# auto-merge; definitions stay the ground truth. Still a tunable knob.
-DEFAULT_OVERLAP_THRESHOLD = 0.85
+# Default correlation threshold above which a surviving pair is flagged as a suspected
+# un-merged overlap — the shared consolidation threshold (0.85; flags genuine
+# duplicates and a few confounds, so a flag prompts inspection, never auto-merges).
+DEFAULT_OVERLAP_THRESHOLD = CORRELATION_THRESHOLD
 
 # Penalty per flagged overlapping pair when scoring a set's "finest"-ness. One
 # overlap cancels roughly one axis's worth of credit, so a set that pads its count
@@ -86,49 +80,6 @@ class OverlapReport:
         return self.distinct_count - self.penalty * len(self.overlaps)
 
 
-def _pearson(xs: list[float], ys: list[float]) -> float | None:
-    """Pearson correlation of two equal-length vectors, or None when undefined.
-
-    None when fewer than 2 points or either vector is constant (zero variance) —
-    a flat axis has no correlation to speak of, so it simply isn't flagged (the
-    right behaviour: a flat axis moves no ranking, overlap or not).
-    """
-    n = len(xs)
-    if n < 2:
-        return None
-    mean_x = sum(xs) / n
-    mean_y = sum(ys) / n
-    dx = [x - mean_x for x in xs]
-    dy = [y - mean_y for y in ys]
-    cov = sum(a * b for a, b in zip(dx, dy))
-    var_x = sum(a * a for a in dx)
-    var_y = sum(b * b for b in dy)
-    if var_x == 0.0 or var_y == 0.0:
-        return None
-    return cov / sqrt(var_x * var_y)
-
-
-def load_score_vectors(db) -> dict[str, dict[int, float]]:
-    """Every dimension key ever scored → {application_id: latest score}.
-
-    Reads all ``dimension_scoring:<key>`` rows and keeps the newest per
-    (key, candidate) by ``created_at`` — the same "a re-score supersedes older
-    rows" rule the ranker uses (see ``ranking_view.candidate_scores``), so the
-    metric measures the scores the committee actually ranks on.
-    """
-    rows = db.scalars(
-        select(ApplicationAIResult)
-        .where(ApplicationAIResult.kind.like(f"{KIND_PREFIX}:%"))
-        .order_by(ApplicationAIResult.created_at)
-    )
-    vectors: dict[str, dict[int, float]] = {}
-    for row in rows:
-        key = row.kind.split(":", 1)[1]  # strip the "dimension_scoring:" prefix
-        score = float((row.output or {}).get("score", 0.0))
-        vectors.setdefault(key, {})[row.application_id] = score  # later row wins
-    return vectors
-
-
 def overlap_report(
     vectors: dict[str, dict[int, float]],
     keys: list[str] | None = None,
@@ -153,7 +104,7 @@ def overlap_report(
             common = sorted(va.keys() & vb.keys())
             if len(common) < min_support:
                 continue
-            r = _pearson([va[c] for c in common], [vb[c] for c in common])
+            r = pearson([va[c] for c in common], [vb[c] for c in common])
             if r is not None and r >= threshold:
                 overlaps.append(OverlapPair(key_a, key_b, r, len(common)))
     overlaps.sort(key=lambda p: p.r, reverse=True)
