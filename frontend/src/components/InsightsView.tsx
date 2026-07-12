@@ -17,7 +17,9 @@ import { MatchAuditPanel } from "./MatchAuditPanel";
 // as SUBTABS (one at a time) rather than stacked panels — the tab will hold four
 // concerns by the end of M13, and subtabs keep the page short and scannable as they
 // land, instead of a growing scroll of accordions.
-type InsightsTab = "discovery" | "decompose" | "consolidate" | "carryForward" | "cost";
+// Tabs follow the pipeline order: discovery → decomposition → matching → consolidation,
+// then cost. Each is named by its pass (matching, not "carry-forward") for consistency.
+type InsightsTab = "discovery" | "decompose" | "match" | "consolidate" | "cost";
 
 export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNode {
   const [tab, setTab] = useState<InsightsTab>(props.run ? "discovery" : "cost");
@@ -25,8 +27,8 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
     ? [
         { id: "discovery", label: "Pattern discovery" },
         { id: "decompose", label: "Decomposition" },
+        { id: "match", label: "Matching" },
         { id: "consolidate", label: "Consolidation" },
-        { id: "carryForward", label: "Carry-forward" },
         { id: "cost", label: "Cost" },
       ]
     : [{ id: "cost", label: "Cost" }];
@@ -61,13 +63,14 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
           // set: the settle-down counts, which axes are merges, the model's reasoning,
           // and the D9 committee-request folds.
           <DecomposeAuditPanel />
+        ) : activeTab === "match" ? (
+          // The 1:1 identity match onto prior runs — how surviving dimensions carry
+          // their tier placement + cached scores forward.
+          <MatchAuditPanel />
         ) : activeTab === "consolidate" ? (
           // How the run healed duplicate dimensions after scoring: which correlated
           // pairs were nominated and how each merge/keep was adjudicated.
           <ConsolidateAuditPanel />
-        ) : activeTab === "carryForward" ? (
-          // How surviving dimensions carry forward from the prior run (the 1:1 match).
-          <MatchAuditPanel />
         ) : (
           <CostPanel />
         )}

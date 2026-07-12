@@ -28,11 +28,11 @@ export function MatchAuditPanel(): ReactNode {
   }, []);
 
   if (state === "loading") return <p className="match-audit-hint">Loading…</p>;
-  if (state === "error") return <p className="match-audit-hint">Couldn’t load the carry-forward audit.</p>;
+  if (state === "error") return <p className="match-audit-hint">Couldn’t load the matching audit.</p>;
   if (audit === null) {
     return (
       <p className="match-audit-hint">
-        No carry-forward audit for this run — it’s the first run (nothing to match against) or predates audit
+        No matching audit for this run — it’s the first run (nothing to match against) or predates audit
         capture. Re-rank to populate it.
       </p>
     );
