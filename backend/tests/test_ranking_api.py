@@ -616,6 +616,43 @@ def test_apply_consolidation_transfers_a_favourite_off_a_merged_key() -> None:
     assert keys == {"financial_literacy"}
 
 
+def test_apply_consolidation_reconfirming_an_existing_alias_is_idempotent() -> None:
+    # Matching is high-bar, so a merged key can be re-minted and re-nominated on a later
+    # run. Re-confirming the SAME merge must upsert the alias, not crash on the UNIQUE
+    # constraint (the bug that 500'd a real rank).
+    from sqlalchemy import select
+
+    from app.db.models import DimensionAlias
+    from app.schemas.settings import AppSettings
+    from app.services.ranking_run import apply_consolidation, create_run
+
+    _app, db, _ = setup_app(role=UserRole.MEMBER)
+
+    def run_with_merge(reason: str) -> None:
+        report = PoolDimensionReport(dimensions=[
+            PoolDimension(key="financial_literacy", name="FL", definition="d", why_it_differentiates="v"),
+            PoolDimension(key="financial_stewardship", name="FS", definition="d", why_it_differentiates="v"),
+        ])
+        run = create_run(db, report=report, settings=AppSettings(), model_id="m",
+                         narrative=None, discovery_cost_usd=0.0)
+        apply_consolidation(
+            db, run,
+            merges={"financial_stewardship": "financial_literacy"},
+            audit=[{"keep": "financial_literacy", "drop": "financial_stewardship",
+                    "r": 0.94, "merged": True, "reason": reason}],
+            narrative=None, cost_usd=0.01,
+        )
+
+    run_with_merge("first time")
+    run_with_merge("re-minted and re-confirmed")  # would UNIQUE-crash before the upsert fix
+
+    aliases = list(db.scalars(select(DimensionAlias).where(
+        DimensionAlias.alias_key == "financial_stewardship")))
+    assert len(aliases) == 1  # upserted, not duplicated
+    assert aliases[0].canonical_key == "financial_literacy"
+    assert aliases[0].reason == "re-minted and re-confirmed"  # latest reason kept
+
+
 @pytest.mark.anyio
 async def test_post_score_consolidation_keeps_confound_apart() -> None:
     # A nominated pair the confirm call rejects (a confound) is NOT merged: both dims
