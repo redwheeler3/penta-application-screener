@@ -84,9 +84,11 @@ function ConsolidateAuditBody(props: { audit: ConsolidateAuditResponse }): React
           {audit.pairs.map((p) => (
             <tr key={`${p.keep}:${p.drop}`}>
               <td>
-                <span className="match-audit-key">{p.drop}</span>
-                {p.merged ? " → " : " / "}
-                <span className="match-audit-key">{p.keep}</span>
+                <div className="consolidate-pair">
+                  <code className="consolidate-pair-key">{p.drop}</code>
+                  <span className="consolidate-pair-sep">{p.merged ? "→" : "vs"}</span>
+                  <code className="consolidate-pair-key">{p.keep}</code>
+                </div>
               </td>
               <td>r={p.r.toFixed(2)}</td>
               <td>

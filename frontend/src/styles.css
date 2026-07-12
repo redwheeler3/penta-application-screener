@@ -1454,6 +1454,28 @@ h1 {
   font-weight: 600;
 }
 
+/* Consolidation "PAIR" cell: the two dimension keys with a separator between them.
+   A flex row (not the block-stacked .match-audit-key) so the keys and separator read
+   as one grouped "A → B" unit, wrapping cleanly in a narrow column instead of leaving
+   the separator floating on its own line. */
+.consolidate-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.4rem;
+}
+
+.consolidate-pair-key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  color: var(--ink);
+}
+
+.consolidate-pair-sep {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
 /* Fallback when a matched prior dimension's name is unknown (audit written before
    the prior-names capture) — the key still shows below it. */
 .match-audit-key-unnamed {
