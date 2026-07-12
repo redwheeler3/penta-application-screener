@@ -39,6 +39,7 @@ from app.ai.dimension_decompose import (
     estimate_decompose,
     to_pool_report,
 )
+from app.ai.dimension_consolidate import consolidate_dimensions, estimate_consolidate
 from app.ai.dimension_matching import estimate_match, match_dimensions
 from app.ai.dimension_scoring import (
     applications_to_score,
@@ -97,6 +98,7 @@ from app.services.cost_report import (
 from app.services.ranking_run import (
     adopt_matched_keys,
     all_known_dimensions,
+    apply_consolidation,
     carry_forward_layout,
     create_run,
     current_dimension_report,
@@ -106,6 +108,7 @@ from app.services.ranking_run import (
     fan_out_audit_view,
     favourited_keys,
     get_current_run,
+    key_history,
     match_audit_view,
     proposed_dimensions,
     ranking_is_current,
@@ -352,14 +355,21 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
         match_usd = measured_match if measured_match is not None else estimate_match(settings)
     scoring = estimate_dimension_scoring(db, settings)
     scoring_usd = float(scoring["estimated_usd"])
-    total = round(discovery_usd + decompose_usd + match_usd + scoring_usd, 4)
+    # Post-score consolidation: a ceiling — the confirm call fires only when correlation
+    # nominates a duplicate pair (often none). Measured from history when available, else
+    # the flat seed; folded into criteria (it's criteria-cleanup) so the breakdown sums.
+    measured_consolidate = recent_pass_fresh_usd(db, "Dimension consolidation")
+    consolidate_usd = (
+        measured_consolidate if measured_consolidate is not None else estimate_consolidate(settings)
+    )
+    total = round(discovery_usd + decompose_usd + match_usd + scoring_usd + consolidate_usd, 4)
     return {
         "eligible": len(pool),
         # K parallel discoveries per Rank (D6), so the confirm card can name the fan-out.
         "fan_out": settings.ai.discovery_fan_out,
         "breakdown": {
-            # criteria = the K discovery calls + the decomposition that settles them.
-            "criteria_usd": round(discovery_usd + decompose_usd, 4),
+            # criteria = K discovery + decomposition + the post-score consolidation cleanup.
+            "criteria_usd": round(discovery_usd + decompose_usd + consolidate_usd, 4),
             "match_usd": round(match_usd, 4),
             "scoring_usd": round(scoring_usd, 4),
         },
@@ -634,7 +644,7 @@ def rank_run(
             most_recent_tier_by_key=tier_by_key,
             immediately_prior_keys=immediately_prior_keys,
         )
-        create_run(
+        run = create_run(
             db, report=report, settings=settings, model_id=settings.ai.discovery_model,
             narrative=narrative, discovery_cost_usd=discovery_cost, match_cost_usd=match_cost,
             tier_layout=layout, new_dimension_keys=new_dimension_keys,
@@ -672,6 +682,33 @@ def rank_run(
             yield emit(ProgressEvent(phase=SCORES, processed=processed, total=len(to_score)))
         total_cost += score_tally.cost_usd
 
+        # Phase 3b: consolidate duplicate dimensions (SPEC "Post-score consolidation").
+        # Now that every dimension is scored, score-vector correlation can nominate
+        # duplicates the definition-only match pass missed; one LLM call confirms by
+        # definition and merges genuine duplicates (loser aliased to the older key, which
+        # heals the fork on future matches too). Runs post-score because it needs the
+        # vectors; re-writes the just-created run in place (collapse merged keys) and
+        # writes the alias rows. Usually a no-op (correlation nominates nothing → $0).
+        from app.ai.score_vectors import load_score_vectors
+
+        canonical_rank, known_defs = key_history(db)
+        consolidation = consolidate_dimensions(
+            provider,
+            report=report,
+            canonical_rank=canonical_rank,
+            vectors=load_score_vectors(db),
+            definitions=known_defs,
+            settings=settings,
+        )
+        apply_consolidation(
+            db, run,
+            merges=consolidation.merges,
+            audit=consolidation.audit,
+            narrative=consolidation.narrative,
+            cost_usd=consolidation.cost_usd,
+        )
+        total_cost += consolidation.cost_usd
+
         # Persist this run's cost + cache breakdown (the only point the fresh/cached
         # split is known). Discovery and matching are always fresh calls when a Rank
         # runs — no caching — so their entries carry no cached counts.
@@ -705,6 +742,14 @@ def rank_run(
                     fresh_calls=score_tally.analyzed,
                     cached_count=score_tally.cached,
                     cached_saved_usd=score_tally.cached_saved_usd,
+                ),
+                ledger_pass(
+                    # Post-score duplicate-merge confirm; one call only when correlation
+                    # nominates a pair (often none → $0, 0 calls). Never cacheable.
+                    "Dimension consolidation",
+                    fresh_usd=consolidation.cost_usd,
+                    fresh_calls=1 if consolidation.cost_usd else 0,
+                    cached_count=0, cached_saved_usd=0.0,
                 ),
             ],
         )

@@ -196,3 +196,23 @@ class RankingRun(TimestampMixin, Base):
 
     owner: Mapped[User | None] = relationship()
     source_sync_run: Mapped[SyncRun | None] = relationship()
+
+
+class DimensionAlias(TimestampMixin, Base):
+    """A confirmed duplicate dimension key folded into its canonical key.
+
+    The post-score consolidation pass writes one row per merge: ``alias_key`` (the newer
+    key retired) → ``canonical_key`` (the older key kept). ``all_known_dimensions``
+    resolves through these so the match pass adopts the canonical key on every future
+    run — otherwise discovery would re-mint the duplicate and it would re-heal each run.
+    ``reason`` is the model's one-line merge justification (audit trail). Resolution
+    follows chains to a terminal canonical key, so a later merge of a canonical key
+    forwards its existing aliases too.
+    """
+
+    __tablename__ = "dimension_aliases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    alias_key: Mapped[str] = mapped_column(String(200), unique=True, index=True, nullable=False)
+    canonical_key: Mapped[str] = mapped_column(String(200), index=True, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)

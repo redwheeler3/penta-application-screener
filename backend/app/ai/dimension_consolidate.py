@@ -157,28 +157,28 @@ def consolidate_dimensions(
     report: PoolDimensionReport,
     canonical_rank: dict[str, int],
     vectors: dict[str, dict[int, float]],
+    definitions: dict[str, str],
     settings: AppSettings,
     on_delta: DeltaSink | None = None,
 ) -> Consolidation:
     """Nominate duplicate pairs by score-vector correlation, then confirm by definition.
 
-    Returns a ``Consolidation``. When correlation nominates nothing (the common case),
-    returns empty at zero cost — no model call. Otherwise one confirm call adjudicates
-    the flagged pairs; only ``same_concept`` verdicts become merges (``drop -> keep``),
-    each merge aliasing the newer key to the older/canonical one.
+    ``definitions`` maps every candidate key (this run's dimensions AND prior keys that
+    could be nominated) to its definition, so the confirm prompt can judge a this-run ×
+    prior-key pair. Returns a ``Consolidation``. When correlation nominates nothing (the
+    common case), returns empty at zero cost — no model call. Otherwise one confirm call
+    adjudicates the flagged pairs; only ``same_concept`` verdicts become merges
+    (``drop -> keep``), each aliasing the newer key to the older/canonical one.
     """
     run_keys = [d.key for d in report.dimensions]
     pairs = nominate_pairs(run_keys, canonical_rank, vectors)
     if not pairs:
         return Consolidation(merges={}, narrative=None, audit=[], cost_usd=0.0)
 
-    # Definitions for the confirm prompt: this run's dimensions plus any prior key a
-    # pair references (its definition rides in via canonical history — see caller).
-    defs = {d.key: d.definition for d in report.dimensions}
     result = provider.structured_output(
         model_id=settings.ai.consolidate_model,
         schema=ConsolidationReport,
-        prompt=build_prompt(pairs, defs),
+        prompt=build_prompt(pairs, definitions),
         system_prompt=SYSTEM_PROMPT,
         on_delta=on_delta,
     )

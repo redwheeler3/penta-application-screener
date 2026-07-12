@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.schemas import PoolDimension, PoolDimensionReport
-from app.db.models import Application, ApplicationStatus, RankingRun
+from app.db.models import Application, ApplicationStatus, DimensionAlias, RankingRun
 from app.schemas.settings import AppSettings
 
 
@@ -64,6 +64,7 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
     top-level import would be circular (matches the existing local-import pattern in
     ``estimate_match``).
     """
+    from app.ai.dimension_consolidate import PROMPT_VERSION as CONSOLIDATE_V
     from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSE_V
     from app.ai.dimension_matching import PROMPT_VERSION as MATCH_V
     from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_V
@@ -75,12 +76,14 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
         f"decompose:{DECOMPOSE_V}",
         f"match:{MATCH_V}",
         f"scoring:{SCORING_V}",
+        f"consolidate:{CONSOLIDATE_V}",
         # The model of every rank-chain pass — a change to any of them ambers Rank.
         # Screening's model is deliberately absent: it's the separate Screen step.
         f"discovery_model:{settings.ai.discovery_model}",
         f"decompose_model:{settings.ai.decompose_model}",
         f"match_model:{settings.ai.match_model}",
         f"scoring_model:{settings.ai.dimension_scoring_model}",
+        f"consolidate_model:{settings.ai.consolidate_model}",
     ]
     basis = "\n".join(parts)
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
@@ -216,9 +219,111 @@ def create_run(
     return run
 
 
+def apply_consolidation(
+    db: Session,
+    run: RankingRun,
+    *,
+    merges: dict[str, str],
+    audit: list[dict],
+    narrative: str | None,
+    cost_usd: float,
+) -> RankingRun:
+    """Fold confirmed duplicate keys into their canonical key on an already-persisted
+    run (the post-score consolidation pass; SPEC "Post-score consolidation").
+
+    ``merges`` maps each dropped (newer) key → its kept (older/canonical) key. For each:
+    persist a ``DimensionAlias`` row (so future matches adopt the canonical key), drop
+    the loser from this run's ``dimension_report``, and remove it from every tier — the
+    winner already carries its own tier placement + cached scores, so the loser's rows
+    simply become orphaned cache (harmless, like any dropped dimension). Weights are
+    re-derived from the collapsed tiers. Always records the ``consolidate_audit`` +
+    ``consolidate_cost_usd`` (even with zero merges — the pass ran), for Insights.
+    """
+    criteria = dict(run.criteria or {})
+
+    if merges:
+        for drop_key, keep_key in merges.items():
+            reason = next(
+                (a.get("reason") for a in audit if a.get("drop") == drop_key), None
+            )
+            db.add(DimensionAlias(alias_key=drop_key, canonical_key=keep_key, reason=reason))
+
+        report = criteria.get("dimension_report") or {}
+        report["dimensions"] = [
+            d for d in report.get("dimensions", []) if d.get("key") not in merges
+        ]
+        criteria["dimension_report"] = report
+
+        tiers = [
+            {**t, "dimension_keys": [k for k in t.get("dimension_keys", []) if k not in merges]}
+            for t in (criteria.get("tiers") or [])
+        ]
+        criteria["tiers"] = tiers
+        surviving = [d.get("key") for d in report["dimensions"]]
+        criteria["weights"] = weights_from_tiers(surviving, tiers)
+        # A dropped key can't stay flagged "new".
+        criteria["new_dimension_keys"] = [
+            k for k in (criteria.get("new_dimension_keys") or []) if k not in merges
+        ]
+
+    criteria["consolidate_audit"] = {
+        "merges": merges,
+        "pairs": audit,
+        "narrative": narrative,
+    }
+    criteria["consolidate_cost_usd"] = round(cost_usd, 6)
+
+    run.criteria = criteria  # reassign so SQLAlchemy tracks the JSON change
+    db.commit()
+    db.refresh(run)
+    return run
+
+
 def get_current_run(db: Session) -> RankingRun | None:
     """The most recent ranking run, or None if discovery has never run."""
     return db.scalar(select(RankingRun).order_by(RankingRun.id.desc()).limit(1))
+
+
+def alias_map(db: Session) -> dict[str, str]:
+    """Every consolidation alias, resolved to its TERMINAL canonical key.
+
+    Follows chains (A→B, B→C ⇒ A→C, B→C) so a later merge of a canonical key forwards
+    the aliases already pointing at it. The post-score consolidation pass writes these;
+    the match input resolves through them so a re-minted duplicate re-adopts the
+    canonical key. Cycles (shouldn't occur — merges always point newer→older) are broken
+    defensively by capping the walk.
+    """
+    direct = {a.alias_key: a.canonical_key for a in db.scalars(select(DimensionAlias))}
+    resolved: dict[str, str] = {}
+    for start in direct:
+        cur = direct[start]
+        seen = {start}
+        while cur in direct and cur not in seen:
+            seen.add(cur)
+            cur = direct[cur]
+        resolved[start] = cur
+    return resolved
+
+
+def key_history(db: Session) -> tuple[dict[str, int], dict[str, str]]:
+    """For consolidation: (canonical_rank, definitions) over every key ever discovered.
+
+    ``canonical_rank[key]`` = the id of the EARLIEST run the key appeared in — so a
+    lower rank means older, and consolidation keeps the older key on a merge (maximizing
+    cache carry-forward). ``definitions[key]`` = the key's most-recent definition, for
+    the confirm prompt to judge a nominated pair. One pass over all runs, oldest first.
+    """
+    runs = db.scalars(select(RankingRun).order_by(RankingRun.id.asc())).all()
+    rank: dict[str, int] = {}
+    definitions: dict[str, str] = {}
+    for run in runs:
+        report = current_dimension_report(run)
+        if report is None:
+            continue
+        for dim in report.dimensions:
+            rank.setdefault(dim.key, run.id)  # first (oldest) run wins the rank
+            definitions[dim.key] = dim.definition  # last (newest) wins the definition
+    return rank, definitions
 
 
 def all_known_dimensions(db: Session) -> PoolDimensionReport | None:
@@ -232,8 +337,12 @@ def all_known_dimensions(db: Session) -> PoolDimensionReport | None:
     few per run, and (because the score cache is keyed by dimension key) lets those
     re-adopted keys reuse their cached scores. See SPEC "Matching scope".
 
-    Returns None when no run has ever discovered dimensions.
+    Consolidation aliases are resolved to their canonical key here, so a key a prior
+    run retired as a duplicate never re-enters the match target set — a re-minted
+    duplicate matches onto the canonical key instead. Returns None when no run has ever
+    discovered dimensions.
     """
+    aliases = alias_map(db)
     # Newest run first, so the first time we see a key we take its latest definition.
     runs = db.scalars(select(RankingRun).order_by(RankingRun.id.desc())).all()
     latest_by_key: dict[str, PoolDimension] = {}
@@ -242,8 +351,14 @@ def all_known_dimensions(db: Session) -> PoolDimensionReport | None:
         if report is None:
             continue
         for dim in report.dimensions:
-            if dim.key not in latest_by_key:
-                latest_by_key[dim.key] = dim
+            canonical = aliases.get(dim.key, dim.key)
+            if canonical in latest_by_key:
+                continue
+            # A retired alias key contributes its definition under the canonical key
+            # only if the canonical hasn't already supplied one (newest-run-first).
+            latest_by_key[canonical] = (
+                dim if canonical == dim.key else dim.model_copy(update={"key": canonical})
+            )
     if not latest_by_key:
         return None
     return PoolDimensionReport(dimensions=list(latest_by_key.values()))
