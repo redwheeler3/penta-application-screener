@@ -492,7 +492,10 @@ def rank_run(
             proposed=proposed_dimensions(prior_run) if prior_run else [],
         )
 
-        yield emit(PhaseEvent(phase=CRITERIA))
+        # Carry K (the fan-out width) on the criteria phase event's `total` so the UI can
+        # name it ("Running K parallel discovery passes…"). Criteria has no per-item
+        # fraction, so `total` is free to repurpose as this count.
+        yield emit(PhaseEvent(phase=CRITERIA, total=settings.ai.discovery_fan_out))
         pool = eligible_applications(db)
         # Discovery and match are single multi-minute model calls with no per-item
         # progress, so we STREAM their reasoning text as live "thinking". The
