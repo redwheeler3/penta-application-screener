@@ -1,3 +1,4 @@
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 
@@ -78,6 +79,7 @@ class RunTally:
             cost_usd=self.cost_usd,
             cached_count=self.cached,
             cached_saved_usd=self.cached_saved_usd,
+            failed_calls=self.failed,
             model_id=model_id if self.analyzed else "",
         )
 
@@ -143,6 +145,7 @@ def run(
         total = len(applications)
         tally = RunTally()
         yield emit(PhaseEvent(phase=PHASE, total=total))
+        started = time.perf_counter()
         results = run_screening(
             db,
             provider,
@@ -169,6 +172,7 @@ def run(
             db,
             kind="screen",
             passes={"Screening": tally.as_pass_cost(settings.ai.screening_model)},
+            durations_ms={"Screening": round((time.perf_counter() - started) * 1000)},
         )
 
         yield emit(

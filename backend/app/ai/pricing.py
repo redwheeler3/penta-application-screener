@@ -80,6 +80,14 @@ class PassCost:
     cost_usd: float = 0.0
     cached_count: int = 0
     cached_saved_usd: float = 0.0
+    # Model calls that errored out. Meaningful for the per-application passes (screening,
+    # scoring), where a failure is non-fatal and per-item — the run continues, this counts
+    # the casualties. ~Always 0 for the pool passes (discovery/decompose/match/consolidate),
+    # where a failure is fatal: the run aborts before recording, so there's no partial
+    # count to keep. Latency is NOT here — it's wall-clock per pass, measured at the pass
+    # level and recorded separately (summing it across a fan-out's parallel calls would
+    # give CPU time, not wall-clock).
+    failed_calls: int = 0
     # The model the pass ran on. "" when it made no call this run (a skipped match on a
     # first run, a consolidation that nominated nothing). On a fan-out all K calls share
     # one model, so summing keeps it.
@@ -104,6 +112,7 @@ class PassCost:
             cost_usd=self.cost_usd + other.cost_usd,
             cached_count=self.cached_count + other.cached_count,
             cached_saved_usd=self.cached_saved_usd + other.cached_saved_usd,
+            failed_calls=self.failed_calls + other.failed_calls,
             model_id=self.model_id or other.model_id,
         )
 

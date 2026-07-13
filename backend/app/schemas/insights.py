@@ -85,3 +85,47 @@ class LastRunsReport(ResponseModel):
 
     screen: LastRunCost | None = None
     rank: LastRunCost | None = None
+
+
+# --- Operational metrics / trends (M13 Pillar 3) ------------------------------------
+
+
+class TrendPoint(ResponseModel):
+    """One completed run as a point on the trend charts, oldest→newest. Per-run rollups
+    over that run's pass rows; ``dimensions`` is the run's live dimension count (Rank
+    only — null for Screen)."""
+
+    at: str  # ISO timestamp of the run
+    kind: str  # "screen" | "rank"
+    cost_usd: float
+    input_tokens: int
+    output_tokens: int
+    duration_ms: int
+    failed_calls: int
+    # Cache-hit rate over cacheable units this run (cached / (cached + fresh)); null when
+    # the run had no cacheable work.
+    cache_hit_rate: float | None = None
+    # Live dimension count for a Rank (post-consolidation); null for a Screen.
+    dimensions: int | None = None
+
+
+class PassTrendPoint(ResponseModel):
+    """One pass within one run, for the per-pass breakdown series."""
+
+    at: str
+    label: str
+    cost_usd: float
+    input_tokens: int
+    output_tokens: int
+    duration_ms: int
+    failed_calls: int
+
+
+class MetricsReport(ResponseModel):
+    """GET /ranking/insights/metrics — operational trends across all completed runs
+    (M13 Pillar 3). ``runs`` is the per-run rollup (both kinds, oldest→newest);
+    ``passes`` is the flattened per-(run, pass) series for the per-pass breakdown.
+    Empty lists when no run has completed since ledgering began."""
+
+    runs: list[TrendPoint]
+    passes: list[PassTrendPoint]

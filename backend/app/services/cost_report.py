@@ -52,14 +52,23 @@ CACHEABLE_PASSES = {"Screening", "Dimension scoring"}
 # --- Recording (both Screen and Rank write here) ----------------------------------
 
 
-def record_run_cost(db: Session, *, kind: str, passes: dict[str, PassCost]) -> None:
+def record_run_cost(
+    db: Session,
+    *,
+    kind: str,
+    passes: dict[str, PassCost],
+    durations_ms: dict[str, int] | None = None,
+) -> None:
     """Persist a completed run's per-pass cost (``kind`` = "screen" | "rank"), one
     ``RunPassCost`` row per pass, under a header row. Called as the run's stream finishes
     — the only point the fresh/cached split is known. ``passes`` maps each canonical pass
     label to its ``PassCost`` (a pass that made no call still passes a zero cost, so the
-    row set always covers the canonical labels). Commits its own rows so a later failure
+    row set always covers the canonical labels). ``durations_ms`` maps a label to the
+    pass's wall-clock (measured by the caller, not summed from PassCost — see the model
+    docstring); a label absent from it records 0. Commits its own rows so a later failure
     can't lose them.
     """
+    durations_ms = durations_ms or {}
     header = RunCostLedger(
         kind=kind,
         passes=[
@@ -72,6 +81,8 @@ def record_run_cost(db: Session, *, kind: str, passes: dict[str, PassCost]) -> N
                 cost_usd=round(cost.cost_usd, 6),
                 cached_count=cost.cached_count,
                 cached_saved_usd=round(cost.cached_saved_usd, 6),
+                duration_ms=durations_ms.get(label, 0),
+                failed_calls=cost.failed_calls,
             )
             for label, cost in passes.items()
         ],

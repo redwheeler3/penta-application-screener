@@ -17,6 +17,7 @@ status behavior).
 
 import queue
 import threading
+import time
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -75,7 +76,7 @@ from app.schemas.events import (
     ThinkingEvent,
     emit,
 )
-from app.schemas.insights import CostReport, LastRunsReport
+from app.schemas.insights import CostReport, LastRunsReport, MetricsReport
 from app.schemas.ranking import (
     ConsolidateAuditResponse,
     CurrentRunResponse,
@@ -100,6 +101,7 @@ from app.services.cost_report import (
     recent_pass_fresh_usd,
     record_run_cost,
 )
+from app.services.metrics import metrics_report
 from app.services.ranking_run import (
     adopt_matched_keys,
     all_known_dimensions,
@@ -208,6 +210,7 @@ class RunTally:
             cost_usd=self.cost_usd,
             cached_count=self.cached,
             cached_saved_usd=self.cached_saved_usd,
+            failed_calls=self.failed,
             model_id=model_id if self.analyzed else "",
         )
 
@@ -348,6 +351,16 @@ def insights_last_runs(
 ) -> LastRunsReport:
     """The most recent Screen and Rank runs, each with fresh spend + cache savings."""
     return last_runs_report(db)
+
+
+@router.get("/insights/metrics", response_model=MetricsReport)
+def insights_metrics(
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> MetricsReport:
+    """Operational trends across all completed runs — cost/tokens/latency/cache-hit/
+    failures per run and per pass, plus dimension count over time (M13 Pillar 3)."""
+    return metrics_report(db)
 
 
 # --- Rank: the combined criteria → scores chain -----------------------------
@@ -537,6 +550,10 @@ def rank_run(
         # None = work complete. The drain loop below fans these into the right events.
         delta_queue: queue.Queue[str | _Stage | None] = queue.Queue()
         criteria_outcome: dict[str, Any] = {}
+        # Per-pass wall-clock (ms) for the criteria sub-passes, filled as each runs and
+        # read back after the worker joins (M13 Pillar 3). On the shared dict, not the
+        # result tuple, to avoid threading another positional through it.
+        durations: dict[str, int] = {}
 
         def on_delta(text: str) -> None:
             delta_queue.put(text)
@@ -549,10 +566,12 @@ def rank_run(
                 # settles — measured to buy +36% real coverage vs. a single run (see the
                 # coverage gate). All K are persisted as an audit trail.
                 delta_queue.put(_Stage(CRITERIA_STAGES["discovering"]))
+                _t0 = time.perf_counter()
                 fan_out = discover_patterns_fanout(
                     provider, applications=pool, settings=settings,
                     k=settings.ai.discovery_fan_out, seeds=seeds, on_delta=on_delta,
                 )
+                durations["Pattern discovery"] = round((time.perf_counter() - _t0) * 1000)
                 fan_out_reports = fan_out.reports
                 # Persist every discoverer's report AND its own reasoning, built here
                 # where the passes are in scope. Each pass = one fresh-context discovery;
@@ -578,10 +597,12 @@ def rank_run(
                 # every carving at once, so it folds any re-discovered twin into the
                 # favourite (reusing its key → match adopts it → cached scores carry
                 # forward) and keeps it present regardless.
+                _t0 = time.perf_counter()
                 decomposition, decompose_narrative, decompose_cost = decompose_dimensions(
                     provider, reports=fan_out_reports, settings=settings,
                     favourites=favourite_dims, on_delta=on_delta,
                 )
+                durations["Dimension decomposition"] = round((time.perf_counter() - _t0) * 1000)
                 # D9 guard: a committee ask (proposal OR favourite) must never be silently
                 # merged away. Deterministic backstop for the prompt — repairs flag-loss on
                 # merge and re-adds any ask decomposition dropped; `folded` lists asks merged
@@ -606,10 +627,12 @@ def rank_run(
                 match_cost = PassCost()
                 if match_history is not None:
                     delta_queue.put(_Stage(CRITERIA_STAGES["matching"]))
+                    _t0 = time.perf_counter()
                     new_to_old, match_narrative, match_cost = match_dimensions(
                         provider, old=match_history, new=report, settings=settings,
                         on_delta=on_delta,
                     )
+                    durations["Dimension matching"] = round((time.perf_counter() - _t0) * 1000)
                 criteria_outcome["ok"] = (
                     report, narrative, discovery_cost, new_to_old, match_narrative,
                     match_cost, fan_out_reports, decomposition, decompose_cost,
@@ -729,6 +752,7 @@ def rank_run(
         to_score = applications_to_score(db)
         yield emit(PhaseEvent(phase=SCORES, total=len(to_score)))
         score_tally = RunTally()
+        _t0 = time.perf_counter()
         for processed, result in enumerate(
             score_dimensions(
                 db, provider, applications=to_score, report=report,
@@ -738,6 +762,7 @@ def rank_run(
         ):
             score_tally.add(result)
             yield emit(ProgressEvent(phase=SCORES, processed=processed, total=len(to_score)))
+        durations["Dimension scoring"] = round((time.perf_counter() - _t0) * 1000)
         total_cost += score_tally.cost_usd
 
         # Phase 3b: consolidate duplicate dimensions (SPEC "Post-score consolidation").
@@ -757,6 +782,7 @@ def rank_run(
         # can't yield from the provider's on_delta callback. The frontend appends
         # these deltas to the SAME reasoning box the criteria phase filled.
         yield emit(PhaseEvent(phase=CONSOLIDATE))
+        _t0 = time.perf_counter()
         canonical_rank, known_defs = key_history(db)
 
         consolidate_queue: queue.Queue[str | None] = queue.Queue()
@@ -812,12 +838,14 @@ def rank_run(
             audit=consolidation.audit,
             narrative=consolidation.narrative,
         )
+        durations["Dimension consolidation"] = round((time.perf_counter() - _t0) * 1000)
         total_cost += consolidation.cost.cost_usd
 
         # Persist this run's per-pass cost (the only point the fresh/cached split is
         # known). Each pass hands over its PassCost — discovery is the summed K fan-out
         # calls; match/consolidation are zero-cost no-ops when they made no call this run,
-        # still recorded so the pass set always covers RANK_PASS_LABELS.
+        # still recorded so the pass set always covers RANK_PASS_LABELS. durations carries
+        # each pass's wall-clock (Pillar 3), measured at the pass level above.
         record_run_cost(
             db,
             kind="rank",
@@ -828,6 +856,7 @@ def rank_run(
                 "Dimension scoring": score_tally.as_pass_cost(settings.ai.dimension_scoring_model),
                 "Dimension consolidation": consolidation.cost,
             },
+            durations_ms=durations,
         )
 
         yield emit(

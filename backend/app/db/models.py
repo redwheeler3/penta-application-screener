@@ -196,6 +196,13 @@ class RunPassCost(TimestampMixin, Base):
     estimate of what caching saved). A never-cached pass leaves those 0. ``model_id`` is
     the model the pass ran on ("" when the pass made no call this run, e.g. a skipped
     match on a first run).
+
+    ``duration_ms`` is the pass's wall-clock (M13 Pillar 3) — measured at the pass level,
+    NOT summed from parallel calls (that would be CPU time). ``failed_calls`` counts model
+    calls that errored: real for the per-application passes (a failure is non-fatal, the
+    run continues), ~always 0 for the pool passes (a failure aborts the run before it
+    records). Retry counts are deliberately absent — they happen inside the AWS SDK
+    (adaptive, max_attempts=5) and aren't surfaced without hooking boto's event system.
     """
 
     __tablename__ = "run_pass_cost"
@@ -212,6 +219,8 @@ class RunPassCost(TimestampMixin, Base):
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     cached_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     cached_saved_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failed_calls: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     run: Mapped[RunCostLedger] = relationship(back_populates="passes")
 

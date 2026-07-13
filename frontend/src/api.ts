@@ -16,6 +16,7 @@ import type {
   FanOutAuditResponse,
   LastRunsReport,
   MatchAuditResponse,
+  MetricsReport,
   SettingsResponse,
   SortState,
   Tier,
@@ -115,6 +116,9 @@ export const fetchCostReport = () => getJson<CostReport>("/ranking/insights/cost
 
 // The most recent Screen and Rank runs, each with fresh spend + cache savings.
 export const fetchLastRuns = () => getJson<LastRunsReport>("/ranking/insights/last-runs");
+
+// Operational trends across all runs (M13 Pillar 3): cost/tokens/latency/cache/failures.
+export const fetchMetrics = () => getJson<MetricsReport>("/ranking/insights/metrics");
 
 export const fetchScreeningEstimate = () => fetch(url("/screening/estimate"), { credentials: "include" });
 export const runScreening = () => fetch(url("/screening/run"), { method: "POST", credentials: "include" });
