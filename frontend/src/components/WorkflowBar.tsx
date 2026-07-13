@@ -145,8 +145,10 @@ export function WorkflowBar(props: {
   rankRunning: boolean;
   rankEstimate: RankEstimateResponse | null;
   rankProgress: RankProgress | null;
-  // The model's live reasoning during the criteria phase (discovery + match),
-  // streamed; shown as "thinking" since that call has no per-item progress.
+  // The model's live reasoning, streamed and shown as "thinking" for the opaque
+  // calls that have no per-item progress: the criteria phase (discovery + match)
+  // and post-score consolidation. Accumulates across the whole run and persists
+  // through scoring once it has any text.
   criteriaThinking: string;
   // Committee discovery seeds the next Rank will offer the AI, for the card note.
   favouritedCount: number;
@@ -426,12 +428,13 @@ export function WorkflowBar(props: {
               ]}
             </div>
           ) : null}
-          {/* During the criteria phase (discovery + match — one long opaque call,
-              no per-item progress) show the model's live reasoning so the wait
-              reads as active work, not a hang. */}
-          {rankProgress?.phase === "criteria" ? (
-            <CriteriaThinking text={props.criteriaThinking} />
-          ) : null}
+          {/* The model's live reasoning box. It fills during the opaque criteria
+              calls (discovery + match) and the consolidation call so those waits
+              read as active work, not a hang. Once populated it PERSISTS through
+              scoring — scoring adds nothing to it, but vanishing the box mid-run
+              looked like the reasoning had been lost. The component self-hides
+              until the first delta, so it's absent only before criteria streams. */}
+          <CriteriaThinking text={props.criteriaThinking} />
         </div>
       ) : null}
     </>

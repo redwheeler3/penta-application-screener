@@ -117,9 +117,10 @@ export function App() {
   const [rankEstimate, setRankEstimate] = useState<RankEstimateResponse | null>(null);
   const [rankRunning, setRankRunning] = useState(false);
   const [rankProgress, setRankProgress] = useState<RankProgress | null>(null);
-  // The model's live reasoning during the criteria (discovery + match) phase — a
-  // single multi-minute call with no per-item progress, so we show the streamed
-  // "thinking" text instead of a bare spinner.
+  // The model's live reasoning during the run's opaque calls (criteria discovery +
+  // match, and post-score consolidation) — multi-minute calls with no per-item
+  // progress, so we show the streamed "thinking" text instead of a bare spinner.
+  // Both phases append here, so the box carries through the whole run.
   const [criteriaThinking, setCriteriaThinking] = useState("");
 
   // The deterministic ranked shortlist; null ranking means not yet fetched. The
@@ -368,7 +369,8 @@ export function App() {
               prior ? { ...prior, stage: event.stage } : { phase: "criteria", processed: 0, total: 0, stage: event.stage },
             );
           } else if (event.type === "thinking") {
-            // Live model reasoning during discovery + match; append as it streams.
+            // Live model reasoning from the opaque calls (discovery + match, and
+            // consolidation); append as it streams so the box carries the whole run.
             setCriteriaThinking((prior) => prior + event.text);
           } else if (event.type === "error") {
             // Fatal phase failure (e.g. the criteria thread crashed); ends the stream.
