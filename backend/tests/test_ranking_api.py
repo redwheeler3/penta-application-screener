@@ -592,6 +592,72 @@ async def test_post_score_consolidation_merges_correlated_duplicate() -> None:
     assert alias.canonical_key == "financial_literacy"
 
 
+@pytest.mark.anyio
+async def test_consolidation_streams_thinking_deltas() -> None:
+    # The confirm call is opaque (no per-item progress), so — like the criteria phase —
+    # it streams the model's reasoning as thinking events tagged with the consolidate
+    # phase, and they arrive AFTER the consolidate phase announcement. The UI appends
+    # these to the same reasoning box the criteria phase filled.
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    apps = [add_eligible(db, email=f"a{i}@x.com", raw_hash=f"h{i}") for i in range(4)]
+
+    discovered = PoolDimensionReport(
+        dimensions=[
+            PoolDimension(key="financial_literacy", name="Financial literacy",
+                          definition="handles co-op money", high_end="high", low_end="low", why_it_differentiates="varies"),
+            PoolDimension(key="financial_stewardship", name="Financial stewardship",
+                          definition="bookkeeping and oversight", high_end="high", low_end="low", why_it_differentiates="varies"),
+        ],
+    )
+    provider.route("<applicant_pool>", discovered)
+    provider.route("<discovery_reports>", _decomposition_of(discovered))
+    # Correlated scores → the confirm call fires (a no-op consolidation makes no call
+    # and would stream nothing).
+    scores = [0.1, 0.4, 0.7, 0.95]
+    for a, s in zip(apps, scores):
+        provider.route(
+            f'"applicant_id": {a.id}',
+            DimensionScoringReport(scores=[
+                DimensionScore(dimension_key="financial_literacy", score=s, rationale="r",
+                               evidence="", confidence=ScoreConfidence.MEDIUM),
+                DimensionScore(dimension_key="financial_stewardship", score=s, rationale="r",
+                               evidence="", confidence=ScoreConfidence.MEDIUM),
+            ]),
+        )
+    provider.route(
+        "<candidate_pairs>",
+        ConsolidationReport(verdicts=[
+            ConsolidationVerdict(
+                key_a="financial_literacy", key_b="financial_stewardship",
+                same_concept=True, reason="both measure handling co-op finances",
+            ),
+        ]),
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        events = await stream_events(client, "/ranking/run")
+
+    consolidate_thinking = [
+        e for e in events if e["type"] == "thinking" and e["phase"] == "consolidate"
+    ]
+    assert consolidate_thinking, "expected streamed consolidation thinking deltas"
+    # The section opens with a horizontal rule to separate it from the criteria
+    # reasoning already in the box, then streams real reasoning text.
+    assert consolidate_thinking[0]["text"] == "\n\n---\n\n"
+    assert "".join(e["text"] for e in consolidate_thinking[1:])  # non-empty reasoning text
+
+    # The deltas arrive after the consolidate phase is announced (not before it).
+    consolidate_phase_idx = next(
+        i for i, e in enumerate(events) if e["type"] == "phase" and e["phase"] == "consolidate"
+    )
+    first_consolidate_thinking_idx = next(
+        i for i, e in enumerate(events)
+        if e["type"] == "thinking" and e["phase"] == "consolidate"
+    )
+    assert consolidate_phase_idx < first_consolidate_thinking_idx
+
+
 def test_apply_consolidation_transfers_a_favourite_off_a_merged_key() -> None:
     # A merged-away key can't stay favourited (it no longer exists). If the committee
     # favourited the dropped key, the favourite transfers to the surviving canonical key.
@@ -983,6 +1049,14 @@ async def test_criteria_phase_streams_thinking_deltas() -> None:
         # discovery and decomposition fire, in order.
         stages = [e["stage"] for e in events if e["type"] == "stage"]
         assert stages == ["discovering", "settling"]
+
+        # A horizontal rule separates each sub-stage's reasoning — one here, between the
+        # two stages — but none opens the box before the first stage.
+        separators = [e for e in thinking if e["text"] == "\n\n---\n\n"]
+        assert len(separators) == 1
+        first_sep_idx = next(i for i, e in enumerate(events) if e.get("text") == "\n\n---\n\n")
+        settling_idx = next(i for i, e in enumerate(events) if e.get("stage") == "settling")
+        assert first_sep_idx < settling_idx  # rule precedes the stage label it introduces
 
 
 @pytest.mark.anyio

@@ -32,7 +32,11 @@ from app.ai.analysis import (
     exception_type_name,
     log,
 )
-from app.ai.dimension_consolidate import consolidate_dimensions, estimate_consolidate
+from app.ai.dimension_consolidate import (
+    Consolidation,
+    consolidate_dimensions,
+    estimate_consolidate,
+)
 from app.ai.dimension_decompose import (
     decompose_audit_payload,
     decompose_dimensions,
@@ -136,6 +140,12 @@ CRITERIA_STAGES = {
     "settling": "settling",
     "matching": "matching",
 }
+
+# A markdown horizontal rule streamed into the reasoning box between sections (each
+# criteria sub-stage, and consolidation), so the model's reasoning for one step reads
+# as visually distinct from the next. ReactMarkdown renders it as an <hr>. Emitted as
+# a thinking delta — the frontend appends it like any other, staying a dumb sink.
+THINKING_SEPARATOR = "\n\n---\n\n"
 
 
 class _Stage:
@@ -612,11 +622,17 @@ def rank_run(
 
         worker = threading.Thread(target=do_criteria, daemon=True)
         worker.start()
+        # Separate each sub-stage's reasoning with a rule — but not before the first, so
+        # the box doesn't open with a stray divider.
+        first_stage = True
         while True:
             item = delta_queue.get()
             if item is None:
                 break
             if isinstance(item, _Stage):
+                if not first_stage:
+                    yield emit(ThinkingEvent(phase=CRITERIA, text=THINKING_SEPARATOR))
+                first_stage = False
                 yield emit(StageEvent(phase=CRITERIA, stage=item.name))
             else:
                 yield emit(ThinkingEvent(phase=CRITERIA, text=item))
@@ -735,16 +751,60 @@ def rank_run(
 
         # One opaque model call (only when correlation nominates a pair) → an
         # indeterminate-bar phase of its own, so the UI stops showing stale scoring
-        # progress while it runs. total omitted (no per-item fraction).
+        # progress while it runs. total omitted (no per-item fraction). Like the
+        # criteria call it has no per-item progress, so we stream its reasoning as
+        # live "thinking" too — same worker-thread/queue bridge, since a generator
+        # can't yield from the provider's on_delta callback. The frontend appends
+        # these deltas to the SAME reasoning box the criteria phase filled.
         yield emit(PhaseEvent(phase=CONSOLIDATE))
         canonical_rank, known_defs = key_history(db)
-        consolidation = consolidate_dimensions(
-            provider,
-            report=report,
-            canonical_rank=canonical_rank,
-            vectors=load_score_vectors(db),
-            definitions=known_defs,
-            settings=settings,
+
+        consolidate_queue: queue.Queue[str | None] = queue.Queue()
+        consolidate_outcome: dict[str, Any] = {}
+
+        def do_consolidate() -> None:
+            try:
+                consolidate_outcome["ok"] = consolidate_dimensions(
+                    provider,
+                    report=report,
+                    canonical_rank=canonical_rank,
+                    vectors=load_score_vectors(db),
+                    definitions=known_defs,
+                    settings=settings,
+                    on_delta=consolidate_queue.put,
+                )
+            except Exception as exc:
+                consolidate_outcome["error"] = exc
+            finally:
+                consolidate_queue.put(None)  # signal completion
+
+        consolidate_worker = threading.Thread(target=do_consolidate, daemon=True)
+        consolidate_worker.start()
+        # Criteria always ran first and left text in the box, so consolidation's reasoning
+        # needs a leading rule. Emit it lazily — only once real deltas arrive — so a no-op
+        # consolidation (correlation nominated nothing → no call) leaves no stray divider.
+        first_consolidate_delta = True
+        while True:
+            item = consolidate_queue.get()
+            if item is None:
+                break
+            if first_consolidate_delta:
+                yield emit(ThinkingEvent(phase=CONSOLIDATE, text=THINKING_SEPARATOR))
+                first_consolidate_delta = False
+            yield emit(ThinkingEvent(phase=CONSOLIDATE, text=item))
+        consolidate_worker.join()
+
+        # A consolidation failure is non-fatal — the run's scores are already saved
+        # and the merge cleanup is best-effort. Log it and carry on with no merges,
+        # matching the "usually a no-op" contract rather than losing the whole run.
+        if "error" in consolidate_outcome:
+            exc = consolidate_outcome["error"]
+            log.warning(
+                "Rank consolidation phase failed: %s",
+                exception_type_name(exc), exc_info=exc,
+            )
+        consolidation = consolidate_outcome.get("ok") or Consolidation(
+            merges={}, narrative=None, audit=[], cost=PassCost()
         )
         apply_consolidation(
             db, run,
