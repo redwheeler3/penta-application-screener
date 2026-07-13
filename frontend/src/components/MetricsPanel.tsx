@@ -77,7 +77,7 @@ function RunTable(props: { title: string; runs: TrendPoint[] }): ReactNode {
           <tr>
             <th className="cost-col-label">when</th>
             <th className="cost-col-money">cost</th>
-            <th className="cost-col-count">latency</th>
+            <th className="cost-col-latency">latency</th>
             <th className="cost-col-count">cache hit</th>
             <th className="cost-col-count">failed</th>
             <th className="cost-col-count">dims</th>

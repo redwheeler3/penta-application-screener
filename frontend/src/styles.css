@@ -2078,6 +2078,12 @@ h1 {
   flex-direction: column;
 }
 
+/* On the Trends tab the two run tables (Rank, Screen) are stacked cost-sections;
+   space the second off the first so they don't read as one table. */
+.metrics-report .cost-section + .cost-section {
+  margin-top: 1.5rem;
+}
+
 .cost-muted {
   color: var(--muted);
   font-weight: 400;
@@ -2113,6 +2119,12 @@ h1 {
 /* Wider than a plain count: holds the "148.0k → 23.2k" in→out token pair. */
 .cost-col-tokens {
   width: 9rem;
+}
+
+/* Latency carries an inline bar + a time like "210.5s", so it needs the same room as
+   the cost column (a plain count column truncates it). */
+.cost-col-latency {
+  width: 8rem;
 }
 
 .cost-col-money {
