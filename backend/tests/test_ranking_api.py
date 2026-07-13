@@ -325,6 +325,33 @@ async def test_cost_surfaces_agree_on_rank_passes() -> None:
 
 
 @pytest.mark.anyio
+async def test_insights_metrics_trends_after_a_rank() -> None:
+    # Pillar 3: after a Rank, the metrics endpoint reports a per-run trend point with
+    # captured latency, the live dimension count, and a per-pass breakdown.
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        route_criteria(provider, a_pattern_report())
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/ranking/run")
+
+        metrics = (await client.get("/ranking/insights/metrics")).json()
+        assert len(metrics["runs"]) == 1
+        run = metrics["runs"][0]
+        assert run["kind"] == "rank"
+        assert run["costUsd"] > 0
+        # Latency is measured (wall-clock ms); a real pass takes nonzero time.
+        assert run["durationMs"] >= 0
+        assert run["failedCalls"] == 0
+        # a_pattern_report has 2 dimensions; the live count carries through.
+        assert run["dimensions"] == 2
+        # Per-pass series covers this run's passes, each with its own duration slot.
+        labels = {p["label"] for p in metrics["passes"]}
+        assert labels == set(RANK_PASS_LABELS)
+
+
+@pytest.mark.anyio
 async def test_ranking_before_discovery_is_409() -> None:
     app, db, _ = setup_app(role=UserRole.MEMBER)
     add_eligible(db, email="a@x.com", raw_hash="h1")

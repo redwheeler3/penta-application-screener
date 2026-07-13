@@ -2158,6 +2158,31 @@ h1 {
   color: var(--muted);
 }
 
+/* Trends (Pillar 3): a crude inline bar before a numeric cell, so a column reads as a
+   rough sparkline down the rows. Decorative scale only, not a precise axis. */
+.metric-bar {
+  display: inline-block;
+  width: 34px;
+  height: 5px;
+  margin-right: 6px;
+  vertical-align: middle;
+  background: var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.metric-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--penta-green);
+}
+
+/* A nonzero failure count is the one number that should catch the eye. */
+.metric-failed {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
 .cost-num {
   text-align: right;
   font-variant-numeric: tabular-nums;

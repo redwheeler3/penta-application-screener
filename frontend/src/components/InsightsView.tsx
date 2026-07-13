@@ -5,6 +5,7 @@ import { CostPanel } from "./CostPanel";
 import { DecomposeAuditPanel } from "./DecomposeAuditPanel";
 import { DiscoveryPanel } from "./DiscoveryPanel";
 import { MatchAuditPanel } from "./MatchAuditPanel";
+import { MetricsPanel } from "./MetricsPanel";
 
 // The run-level AI observability surface (M13). Home for the general, non-applicant-
 // specific audits: what pattern discovery found this run, and how those dimensions
@@ -18,21 +19,29 @@ import { MatchAuditPanel } from "./MatchAuditPanel";
 // concerns by the end of M13, and subtabs keep the page short and scannable as they
 // land, instead of a growing scroll of accordions.
 // Tabs follow the pipeline order: discovery → decomposition → matching → consolidation,
-// then cost. Each is named by its pass (matching, not "carry-forward") for consistency.
-type InsightsTab = "discovery" | "decompose" | "match" | "consolidate" | "cost";
+// then the cross-run surfaces (cost, trends). Each is named by its pass (matching, not
+// "carry-forward") for consistency. Cost + Trends are cross-run, so they show even with
+// no current run.
+type InsightsTab = "discovery" | "decompose" | "match" | "consolidate" | "cost" | "metrics";
 
 export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNode {
   const [tab, setTab] = useState<InsightsTab>(props.run ? "discovery" : "cost");
-  const tabs: { id: InsightsTab; label: string }[] = props.run
+  const perRunTabs: { id: InsightsTab; label: string }[] = props.run
     ? [
         { id: "discovery", label: "Pattern discovery" },
         { id: "decompose", label: "Decomposition" },
         { id: "match", label: "Matching" },
         { id: "consolidate", label: "Consolidation" },
-        { id: "cost", label: "Cost" },
       ]
-    : [{ id: "cost", label: "Cost" }];
-  const activeTab = props.run ? tab : "cost";
+    : [];
+  const tabs: { id: InsightsTab; label: string }[] = [
+    ...perRunTabs,
+    { id: "cost", label: "Cost" },
+    { id: "metrics", label: "Trends" },
+  ];
+  // A per-run tab is only valid when a run exists; cost/metrics always are.
+  const crossRun = tab === "cost" || tab === "metrics";
+  const activeTab = props.run || crossRun ? tab : "cost";
 
   return (
     <div className="insights-view">
@@ -71,6 +80,10 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
           // How the run healed duplicate dimensions after scoring: which correlated
           // pairs were nominated and how each merge/keep was adjudicated.
           <ConsolidateAuditPanel />
+        ) : activeTab === "metrics" ? (
+          // Cross-run operational trends: cost/latency/cache/failures per run, and
+          // dimension count over time (M13 Pillar 3).
+          <MetricsPanel />
         ) : (
           <CostPanel />
         )}

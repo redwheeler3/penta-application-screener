@@ -191,6 +191,35 @@ export type LastRunCost = {
   passes: LastRunPass[];
 };
 
+// GET /ranking/insights/metrics — operational trends across all runs (M13 Pillar 3).
+// One point per completed run, oldest→newest.
+export type TrendPoint = {
+  at: string;
+  kind: string; // "screen" | "rank"
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  durationMs: number;
+  failedCalls: number;
+  cacheHitRate: number | null; // over cacheable units; null when none
+  dimensions: number | null; // live dimension count (rank only)
+};
+
+export type PassTrendPoint = {
+  at: string;
+  label: string;
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  durationMs: number;
+  failedCalls: number;
+};
+
+export type MetricsReport = {
+  runs: TrendPoint[];
+  passes: PassTrendPoint[];
+};
+
 // The most recent Screen and Rank, each with fresh spend + cache savings. Either is
 // null if that run type hasn't completed since per-run ledgering began.
 export type LastRunsReport = {
