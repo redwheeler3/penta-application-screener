@@ -171,7 +171,10 @@ def consolidate_dimensions(
     (``drop -> keep``), each aliasing the newer key to the older/canonical one.
     """
     run_keys = [d.key for d in report.dimensions]
-    pairs = nominate_pairs(run_keys, canonical_rank, vectors)
+    pairs = nominate_pairs(
+        run_keys, canonical_rank, vectors,
+        threshold=settings.ai.consolidate_correlation_threshold,
+    )
     if not pairs:
         return Consolidation(merges={}, narrative=None, audit=[], cost=PassCost())
 

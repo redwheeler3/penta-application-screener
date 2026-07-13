@@ -191,6 +191,26 @@ export function SettingsPanel(props: {
                     More passes find more axes but cost more.
                   </span>
                 </label>
+                <label>
+                  <span>Consolidation correlation threshold</span>
+                  <input
+                    type="number"
+                    onWheel={blurOnWheel}
+                    step="0.01"
+                    value={draft.ai.consolidateCorrelationThreshold}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        ai: { ...draft.ai, consolidateCorrelationThreshold: Number(event.target.value) },
+                      })
+                    }
+                  />
+                  <span className="field-hint">
+                    After scoring, dimensions whose per-applicant scores correlate at or above this
+                    are flagged as possible duplicates for an AI merge check. Lower catches subtler
+                    overlaps; higher is stricter. The AI still confirms every merge.
+                  </span>
+                </label>
               </div>
             </div>
             <div className="settings-actions">

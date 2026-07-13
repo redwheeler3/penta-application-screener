@@ -18,8 +18,11 @@ export type AISettings = {
   discoveryModel: string;
   decomposeModel: string;
   matchModel: string;
+  consolidateModel: string;
   // Fan-out width: parallel discovery calls per Rank (SPEC "Fan-Out Redesign", D6).
   discoveryFanOut: number;
+  // Pearson r at/above which post-score consolidation nominates a duplicate pair (0–1).
+  consolidateCorrelationThreshold: number;
   spendingCapUsd: number;
   maxWorkers: number;
 };
