@@ -54,16 +54,18 @@ export function MetricsPanel(): ReactNode {
         How each run behaved over time — spend, wall-clock, cache reuse, failures, and (for Rank) the live
         dimension count. Reads the same per-pass ledger as Cost; here it’s trend, not total.
       </p>
-      {rank.length > 0 ? <RunTable title="Rank runs" runs={rank} showDimensions /> : null}
+      {rank.length > 0 ? <RunTable title="Rank runs" runs={rank} /> : null}
       {screen.length > 0 ? <RunTable title="Screen runs" runs={screen} /> : null}
     </div>
   );
 }
 
-function RunTable(props: { title: string; runs: TrendPoint[]; showDimensions?: boolean }): ReactNode {
-  const { runs, showDimensions } = props;
+function RunTable(props: { title: string; runs: TrendPoint[] }): ReactNode {
+  const { runs } = props;
   const maxCost = Math.max(...runs.map((r) => r.costUsd));
   const maxDur = Math.max(...runs.map((r) => r.durationMs));
+  // The dims column is always present so the Screen and Rank tables share one layout
+  // and line up; Screen rows have no dimension count and show "—".
   return (
     <div className="cost-section">
       <div className="cost-block-head">
@@ -78,7 +80,7 @@ function RunTable(props: { title: string; runs: TrendPoint[]; showDimensions?: b
             <th className="cost-col-count">latency</th>
             <th className="cost-col-count">cache hit</th>
             <th className="cost-col-count">failed</th>
-            {showDimensions ? <th className="cost-col-count">dims</th> : null}
+            <th className="cost-col-count">dims</th>
           </tr>
         </thead>
         <tbody>
@@ -95,7 +97,7 @@ function RunTable(props: { title: string; runs: TrendPoint[]; showDimensions?: b
               </td>
               <td className="cost-num">{pct(r.cacheHitRate)}</td>
               <td className={`cost-num${r.failedCalls > 0 ? " metric-failed" : ""}`}>{r.failedCalls}</td>
-              {showDimensions ? <td className="cost-num">{r.dimensions ?? "—"}</td> : null}
+              <td className="cost-num">{r.dimensions ?? "—"}</td>
             </tr>
           ))}
         </tbody>

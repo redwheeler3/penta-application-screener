@@ -361,6 +361,72 @@ def _assemble(
     return DimensionScoringReport(scores=scores)
 
 
+# A scoring response occasionally omits a dimension we asked for (model non-determinism).
+# We re-ask for ONLY the missing ones, up to this many times; if still short, the
+# candidate fails loudly rather than persisting a silent partial (a placeholder score
+# that reads as "scored 0.0" and hides forever behind a coverage fraction).
+MAX_SCORING_RETRIES = 2
+
+
+class IncompleteScoringError(Exception):
+    """The model would not return a score for every requested dimension, even after
+    retries — the candidate's scoring failed rather than being silently partial."""
+
+
+def _score_all_dimensions(
+    provider: AIProvider,
+    application: Application,
+    to_score: list[PoolDimension],
+    model_id: str,
+) -> AIResult:
+    """One candidate's uncached dimensions, scored COMPLETELY — the initial call plus
+    targeted re-asks for any dimensions the model omitted, merged into one result whose
+    usage sums every call. Raises ``IncompleteScoringError`` if the model still omits a
+    dimension after ``MAX_SCORING_RETRIES`` — fail loud, never store a partial.
+
+    No DB work here (runs on a ``run_in_pool`` worker thread); the caller stores the
+    returned scores back on the main thread.
+    """
+    scores: dict[str, DimensionScore] = {}
+    input_tokens = output_tokens = 0
+    last_model_id = model_id
+    remaining = to_score
+    for attempt in range(MAX_SCORING_RETRIES + 1):  # 1 initial + N retries
+        result = provider.structured_output(
+            model_id=model_id,
+            schema=DimensionScoringReport,
+            prompt=build_prompt(application, remaining),
+            system_prompt=SYSTEM_PROMPT,
+        )
+        input_tokens += result.usage.input_tokens
+        output_tokens += result.usage.output_tokens
+        last_model_id = result.model_id
+        returned = {s.dimension_key: s for s in result.output.scores}
+        for dim in remaining:
+            if dim.key in returned:
+                scores[dim.key] = returned[dim.key]
+        remaining = [d for d in remaining if d.key not in scores]
+        if not remaining:
+            break
+        if attempt < MAX_SCORING_RETRIES:
+            log.warning(
+                "Dimension scoring for application %s omitted %d dimension(s); "
+                "re-asking (attempt %d): %s",
+                application.id, len(remaining), attempt + 1,
+                [d.key for d in remaining],
+            )
+    if remaining:
+        raise IncompleteScoringError(
+            f"model omitted {len(remaining)} dimension(s) after "
+            f"{MAX_SCORING_RETRIES} retries: {[d.key for d in remaining]}"
+        )
+    return AIResult(
+        output=DimensionScoringReport(scores=list(scores.values())),
+        usage=Usage(input_tokens=input_tokens, output_tokens=output_tokens),
+        model_id=last_model_id,
+    )
+
+
 def score_dimensions(
     db: Session,
     provider: AIProvider,
@@ -391,12 +457,10 @@ def score_dimensions(
         application, to_score, _cached, _cached_saved_usd = plan
         if not to_score:
             return None  # fully cached → no model call
-        return provider.structured_output(
-            model_id=model_id,
-            schema=DimensionScoringReport,
-            prompt=build_prompt(application, to_score),
-            system_prompt=SYSTEM_PROMPT,
-        )
+        # Score COMPLETELY: initial call + targeted re-asks for any omitted dimension.
+        # Raises IncompleteScoringError if the model won't return them all — which
+        # run_in_pool surfaces as this candidate's error (fail loud, no partial store).
+        return _score_all_dimensions(provider, application, to_score, model_id)
 
     for (application, to_score, cached, cached_saved_usd), result, error in run_in_pool(
         plans, call=call, max_workers=max_workers
@@ -428,9 +492,10 @@ def score_dimensions(
         call_cost = 0.0
         fresh_count = 0
         for dim in to_score:
-            score = fresh.get(dim.key)
-            if score is None:
-                continue
+            # _score_all_dimensions guarantees every to_score dim is present, so index
+            # directly — a KeyError here would mean that contract broke, and failing
+            # loud beats silently skipping (the old bug).
+            score = fresh[dim.key]
             outcome = store_result(
                 db, application, kind=kind_for_dimension(dim.key), model_id=model_id,
                 prompt_version=PROMPT_VERSION,

@@ -189,7 +189,10 @@ def test_batched_call_tokens_are_split_across_dimensions() -> None:
     assert sum(r.output_tokens for r in rows) == 300
 
 
-def test_assembled_report_fills_omitted_dimension_with_placeholder() -> None:
+def test_omitted_dimension_is_re_asked_then_completes() -> None:
+    # A response missing a requested dimension triggers a TARGETED re-ask for just the
+    # missing one; once the model returns it, the candidate is fully scored (a row per
+    # dimension) rather than storing a silent 0.0 placeholder.
     db = make_db()
     app = add_eligible(db, email="a@x.com", raw_hash="h1")
     settings = AppSettings()
@@ -197,13 +200,44 @@ def test_assembled_report_fills_omitted_dimension_with_placeholder() -> None:
     keys = ["community", "skills"]
     report = report_with(keys)
 
-    # Model returns only one of the two requested dimensions.
+    # Call 1 omits "skills"; the retry (for only the missing dim) returns it.
     provider.queue(a_scoring_report(["community"]))
+    provider.queue(a_scoring_report(["skills"]))
     results = run_scores(db, provider, [app], report, settings)
 
+    assert not results[0].failed
     scores = {s.dimension_key: s for s in results[0].outcome.output.scores}
-    assert set(scores) == {"community", "skills"}  # shape stays complete
-    assert scores["skills"].score == 0.0  # placeholder for the omitted one
+    assert set(scores) == {"community", "skills"}
+    assert scores["skills"].score == 0.7  # real score from the retry, not a placeholder
+    # Both dimensions persisted a real cache row (coverage would read complete).
+    rows = db.scalars(select(ApplicationAIResult)).all()
+    assert {r.kind for r in rows} == {kind_for_dimension("community"), kind_for_dimension("skills")}
+    # The retry re-asked ONLY the missing dimension, not the whole batch.
+    assert "community" not in provider.calls[-1].prompt.lower()
+    assert "skills" in provider.calls[-1].prompt.lower()
+
+
+def test_persistently_omitted_dimension_fails_the_candidate_loudly() -> None:
+    # If the model keeps omitting a dimension across all retries, the candidate FAILS
+    # (surfaced as a PassResult error) rather than being silently stored partial — the
+    # hole that let a candidate read 24/25 forever.
+    from app.ai.dimension_scoring import MAX_SCORING_RETRIES
+
+    db = make_db()
+    app = add_eligible(db, email="a@x.com", raw_hash="h1")
+    settings = AppSettings()
+    provider = MockProvider()
+    report = report_with(["community", "skills"])
+
+    # Every attempt (initial + all retries) omits "skills".
+    for _ in range(MAX_SCORING_RETRIES + 1):
+        provider.queue(a_scoring_report(["community"]))
+    results = run_scores(db, provider, [app], report, settings)
+
+    assert results[0].failed
+    assert "skills" in results[0].error
+    # Nothing partial persisted for this candidate.
+    assert db.scalars(select(ApplicationAIResult)).all() == []
 
 
 def test_ceiling_estimate_prices_per_candidate_call() -> None:
