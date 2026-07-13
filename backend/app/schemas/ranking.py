@@ -82,11 +82,17 @@ class MatchAuditResponse(ResponseModel):
 class SettledDimensionOut(ResponseModel):
     """One settled axis from the decomposition, for the Insights trace: what it is,
     the input axes it absorbed (``sourceKeys`` — one = kept as-is, several = a merge),
-    and the model's ``decision`` reasoning (why merged / kept distinct)."""
+    and the model's ``decision`` reasoning (why merged / kept distinct).
+
+    ``sourceReportMap`` maps each source key to the discovery report indices (0-based)
+    that coined it — so the UI can label a source as "trade_skills (R0, R3)", showing
+    which of the K discoverers surfaced it (a key in several reports = independent
+    re-discovery). Empty for runs whose fan-out audit wasn't captured."""
 
     key: str
     name: str
     source_keys: list[str]
+    source_report_map: dict[str, list[int]] = {}
     from_committee_request: bool = False
     decision: str
 
