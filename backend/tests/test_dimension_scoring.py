@@ -265,7 +265,6 @@ def test_rerun_estimate_cache_aware_fallback_when_no_history() -> None:
     create_run(
         db, report=report, settings=settings,
         model_id=settings.ai.dimension_scoring_model, narrative=None,
-        discovery_cost_usd=0.0,
     )
     provider = MockProvider()
     provider.queue(a_scoring_report(keys))
@@ -295,6 +294,7 @@ def test_rerun_estimate_prefers_measured_history() -> None:
     # recency-weighted average of that measured cost — the honest predictor — rather
     # than a reconstructed count.
     from app.ai.dimension_scoring import estimate_dimension_scoring
+    from app.ai.pricing import PassCost
     from app.services.cost_report import record_run_cost
     from app.services.ranking_run import create_run
 
@@ -305,14 +305,12 @@ def test_rerun_estimate_prefers_measured_history() -> None:
     create_run(
         db, report=report, settings=settings,
         model_id=settings.ai.dimension_scoring_model, narrative=None,
-        discovery_cost_usd=0.0,
     )
 
     def rank_row(scoring_fresh: float) -> None:
-        record_run_cost(db, kind="rank", passes=[
-            {"label": "Dimension scoring", "fresh_usd": scoring_fresh, "fresh_calls": 1,
-             "cached_count": 0, "cached_saved_usd": 0.0},
-        ])
+        record_run_cost(db, kind="rank", passes={
+            "Dimension scoring": PassCost(calls=1, cost_usd=scoring_fresh),
+        })
 
     # Two recorded runs: older $0.40, newer $0.10. Recency weights (2×newer + 1×older)
     # / 3 = (2*0.10 + 1*0.40)/3 = 0.20.

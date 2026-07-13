@@ -4,14 +4,14 @@ from app.schemas.base import ResponseModel
 
 
 class CostPass(ResponseModel):
-    """One pass's aggregated cost. ``input_tokens``/``output_tokens`` are 0 for the
-    discovery and matching passes, which store cost only (no token breakdown).
+    """One pass's aggregated cost + token breakdown, summed across all runs from the
+    run-cost ledger's per-pass rows.
 
     ``cacheable`` distinguishes passes that can reuse results (screening, dimension
     scoring) from those that always call fresh (pattern discovery, dimension matching).
     ``cached_saved_usd`` is meaningful only when ``cacheable`` —
     the UI shows "—" for non-cacheable passes, never $0, so a structural absence of
-    caching doesn't read as "caching failed here". Summed from the run-cost ledger."""
+    caching doesn't read as "caching failed here"."""
 
     pass_label: str
     calls: int  # uncached result units; dimension scoring counts per dimension row
@@ -53,13 +53,16 @@ class CostReport(ResponseModel):
 
 
 class LastRunPass(ResponseModel):
-    """One pass within a single completed run: what it spent fresh vs. reused from cache.
-    ``cached_saved_usd`` is the reused results' original cost — an estimate of what
-    regenerating them would have cost (what caching saved this run)."""
+    """One pass within a single completed run: what it spent fresh vs. reused from cache,
+    plus the fresh token breakdown. ``cached_saved_usd`` is the reused results' original
+    cost — an estimate of what regenerating them would have cost (what caching saved this
+    run)."""
 
     label: str
     fresh_usd: float
     fresh_calls: int  # uncached result units; dimension scoring counts dimensions
+    input_tokens: int = 0
+    output_tokens: int = 0
     cached_count: int  # cached result units, in the same units as fresh_calls
     cached_saved_usd: float
     # Whether this pass can cache at all. Pattern discovery and dimension matching

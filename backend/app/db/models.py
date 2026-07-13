@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
@@ -161,27 +163,57 @@ class SyncRun(TimestampMixin, Base):
 
 
 class RunCostLedger(TimestampMixin, Base):
-    """One row per completed AI run (a Screen or a Rank), capturing its cost + cache
-    breakdown at write time (M13). This is the only honest source of *per-run* cost:
-    ``ApplicationAIResult`` is a reuse cache with no run-id stamp, so a run's fresh vs.
-    cached split can't be reconstructed after the fact — it must be recorded as the run
-    completes.
+    """One row per completed AI run (a Screen or a Rank) — the header (M13). This is the
+    only honest source of *per-run* cost: ``ApplicationAIResult`` is a reuse cache with no
+    run-id stamp, so a run's fresh vs. cached split can't be reconstructed after the fact —
+    it must be recorded as the run completes. The per-pass breakdown (tokens, cost, cache)
+    lives in child ``RunPassCost`` rows, one per pass, so a token/model breakdown is a
+    first-class queryable column rather than buried in a JSON blob.
 
-    ``kind`` is "screen" or "rank". ``passes`` is a JSON list of per-pass entries,
-    each ``{label, fresh_usd, fresh_calls, cached_count, cached_saved_usd}``:
-      - ``fresh_usd`` / ``fresh_calls`` — actual Bedrock spend + calls this run.
-      - ``cached_count`` — results reused from cache (spent nothing now).
-      - ``cached_saved_usd`` — sum of those reused results' ORIGINAL cost: an estimate
-        of what regenerating them would have cost (what caching saved).
+    ``kind`` is "screen" or "rank".
     """
 
     __tablename__ = "run_cost_ledger"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     kind: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # "screen" | "rank"
-    fresh_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+
+    passes: Mapped[list[RunPassCost]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", order_by="RunPassCost.id"
+    )
+
+
+class RunPassCost(TimestampMixin, Base):
+    """One pass's spend within a completed run (M13) — the single source of per-pass cost
+    for BOTH pool-level passes (discovery, decompose, match, consolidate) and per-
+    application passes (screening, scoring). Every pass writes the same shape here, so the
+    Insights cost surfaces read one table instead of stitching together criteria keys,
+    summed cache rows, and a JSON blob.
+
+    ``calls`` is fresh model calls (per-dimension units for scoring); ``input_tokens`` /
+    ``output_tokens`` / ``cost_usd`` are that fresh spend. ``cached_count`` /
+    ``cached_saved_usd`` are the cache side — reused units and their original cost (an
+    estimate of what caching saved). A never-cached pass leaves those 0. ``model_id`` is
+    the model the pass ran on ("" when the pass made no call this run, e.g. a skipped
+    match on a first run).
+    """
+
+    __tablename__ = "run_pass_cost"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("run_cost_ledger.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    label: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    model_id: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    calls: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    cached_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     cached_saved_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
-    passes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+
+    run: Mapped[RunCostLedger] = relationship(back_populates="passes")
 
 
 class RankingRun(TimestampMixin, Base):

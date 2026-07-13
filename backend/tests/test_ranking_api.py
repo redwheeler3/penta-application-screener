@@ -275,6 +275,11 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
         assert by_pass["Dimension scoring"]["freshCalls"] == 2
         # Discovery ran K parallel calls (the fan-out), not 1.
         assert by_pass["Pattern discovery"]["freshCalls"] == AISettings().discovery_fan_out
+        # The per-pass token breakdown is now persisted, not discarded: each fresh pass
+        # records the tokens behind its spend (MockProvider bills 100 in / 50 out a call).
+        assert by_pass["Pattern discovery"]["inputTokens"] == 100 * AISettings().discovery_fan_out
+        assert by_pass["Pattern discovery"]["outputTokens"] == 50 * AISettings().discovery_fan_out
+        assert by_pass["Dimension scoring"]["inputTokens"] > 0
 
         # Re-rank the unchanged pool: scores are cache hits now.
         route_criteria(provider, a_pattern_report())
@@ -598,7 +603,7 @@ def test_apply_consolidation_transfers_a_favourite_off_a_merged_key() -> None:
     ])
     run = create_run(
         db, report=report, settings=AppSettings(), model_id="m",
-        narrative=None, discovery_cost_usd=0.0,
+        narrative=None,
         prior_favourited_keys=["financial_stewardship"],  # the key that will be merged away
     )
     assert run.criteria["favourited_keys"] == ["financial_stewardship"]
@@ -608,7 +613,7 @@ def test_apply_consolidation_transfers_a_favourite_off_a_merged_key() -> None:
         merges={"financial_stewardship": "financial_literacy"},
         audit=[{"keep": "financial_literacy", "drop": "financial_stewardship",
                 "r": 0.94, "merged": True, "reason": "same concept"}],
-        narrative=None, cost_usd=0.01,
+        narrative=None,
     )
     # The favourite moved to the survivor, not left dangling on the dropped key.
     assert run.criteria["favourited_keys"] == ["financial_literacy"]
@@ -634,13 +639,13 @@ def test_apply_consolidation_reconfirming_an_existing_alias_is_idempotent() -> N
             PoolDimension(key="financial_stewardship", name="FS", definition="d", why_it_differentiates="v"),
         ])
         run = create_run(db, report=report, settings=AppSettings(), model_id="m",
-                         narrative=None, discovery_cost_usd=0.0)
+                         narrative=None)
         apply_consolidation(
             db, run,
             merges={"financial_stewardship": "financial_literacy"},
             audit=[{"keep": "financial_literacy", "drop": "financial_stewardship",
                     "r": 0.94, "merged": True, "reason": reason}],
-            narrative=None, cost_usd=0.01,
+            narrative=None,
         )
 
     run_with_merge("first time")
@@ -671,7 +676,7 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
     ])
     run = create_run(
         db, report=report, settings=AppSettings(), model_id="m",
-        narrative=None, discovery_cost_usd=0.0,
+        narrative=None,
         prior_favourited_keys=["c_newest"],  # favourite on the innermost link of the chain
     )
 
@@ -682,7 +687,7 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
             {"keep": "b_mid", "drop": "c_newest", "r": 0.95, "merged": True, "reason": "c=b"},
             {"keep": "a_oldest", "drop": "b_mid", "r": 0.88, "merged": True, "reason": "b=a"},
         ],
-        narrative=None, cost_usd=0.01,
+        narrative=None,
     )
 
     # Only the terminal survivor remains, and the favourite followed the full chain to it.

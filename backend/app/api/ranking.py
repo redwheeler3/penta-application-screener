@@ -52,6 +52,7 @@ from app.ai.pattern_discovery import (
     eligible_applications,
     estimate_discovery,
 )
+from app.ai.pricing import PassCost
 from app.ai.provider import AIProvider
 from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.api.dependencies import get_ai_provider, require_current_user
@@ -92,7 +93,6 @@ from app.schemas.settings import AppSettings
 from app.services.cost_report import (
     cost_report,
     last_runs_report,
-    ledger_pass,
     recent_pass_fresh_usd,
     record_run_cost,
 )
@@ -157,6 +157,8 @@ class RunTally:
     cached: int = 0
     failed: int = 0
     cost_usd: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
     # Sum of reused results' ORIGINAL cost — an estimate of what caching saved this run.
     cached_saved_usd: float = 0.0
     # Count of candidates (one PassResult each) that succeeded — distinct from
@@ -169,6 +171,8 @@ class RunTally:
             self.failed += 1
             return
         self.processed += 1
+        self.input_tokens += result.outcome.input_tokens if result.outcome else 0
+        self.output_tokens += result.outcome.output_tokens if result.outcome else 0
         if result.fresh_units is not None or result.cached_units is not None:
             self.analyzed += result.fresh_units or 0
             self.cached += result.cached_units or 0
@@ -184,6 +188,18 @@ class RunTally:
             return
         self.analyzed += 1
         self.cost_usd += result.outcome.cost_usd
+
+    def as_pass_cost(self, model_id: str) -> PassCost:
+        """The scoring pass's spend in the shared shape (fresh tokens + cost, cache side)."""
+        return PassCost(
+            calls=self.analyzed,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            cost_usd=self.cost_usd,
+            cached_count=self.cached,
+            cached_saved_usd=self.cached_saved_usd,
+            model_id=model_id if self.analyzed else "",
+        )
 
 
 def _run_payload(db: Session) -> CurrentRunResponse | None:
@@ -536,7 +552,7 @@ def rank_run(
                         for p in fan_out.passes
                     ],
                 }
-                discovery_cost = fan_out.cost_usd
+                discovery_cost = fan_out.cost
                 # Pass 1b: decomposition — settle the K reports into ONE finest,
                 # non-overlapping set (SPEC "Fan-Out Redesign", Phase 3). A single call
                 # distils the union to ~one axis per real concept. Its DecompositionReport
@@ -573,7 +589,7 @@ def rank_run(
                 # cached scores. Skipped on the very first run (no history).
                 new_to_old: dict[str, str] = {}
                 match_narrative: str | None = None
-                match_cost = 0.0
+                match_cost = PassCost()
                 if match_history is not None:
                     delta_queue.put(_Stage(CRITERIA_STAGES["matching"]))
                     new_to_old, match_narrative, match_cost = match_dimensions(
@@ -669,7 +685,7 @@ def rank_run(
         )
         run = create_run(
             db, report=report, settings=settings, model_id=settings.ai.discovery_model,
-            narrative=narrative, discovery_cost_usd=discovery_cost, match_cost_usd=match_cost,
+            narrative=narrative,
             tier_layout=layout, new_dimension_keys=new_dimension_keys,
             # Carry prior favourites forward (by key, post-match); create_run unions
             # in any dimension the model flagged from_committee_request and clears
@@ -678,9 +694,8 @@ def rank_run(
             match_audit=match_audit,
             fan_out_audit=fan_out_audit,
             decompose_audit=decompose_audit,
-            decompose_cost_usd=decompose_cost,
         )
-        total_cost += discovery_cost + decompose_cost + match_cost
+        total_cost += (discovery_cost + decompose_cost + match_cost).cost_usd
         yield emit(
             NoticeEvent(
                 phase=CRITERIA,
@@ -732,53 +747,23 @@ def rank_run(
             merges=consolidation.merges,
             audit=consolidation.audit,
             narrative=consolidation.narrative,
-            cost_usd=consolidation.cost_usd,
         )
-        total_cost += consolidation.cost_usd
+        total_cost += consolidation.cost.cost_usd
 
-        # Persist this run's cost + cache breakdown (the only point the fresh/cached
-        # split is known). Discovery and matching are always fresh calls when a Rank
-        # runs — no caching — so their entries carry no cached counts.
+        # Persist this run's per-pass cost (the only point the fresh/cached split is
+        # known). Each pass hands over its PassCost — discovery is the summed K fan-out
+        # calls; match/consolidation are zero-cost no-ops when they made no call this run,
+        # still recorded so the pass set always covers RANK_PASS_LABELS.
         record_run_cost(
             db,
             kind="rank",
-            passes=[
-                ledger_pass(
-                    # K parallel discovery calls (the fan-out); discovery_cost is their
-                    # summed spend, so the call count is K, not 1.
-                    "Pattern discovery",
-                    fresh_usd=discovery_cost, fresh_calls=len(fan_out_reports),
-                    cached_count=0, cached_saved_usd=0.0,
-                ),
-                ledger_pass(
-                    # Settles the K fan-out reports into one non-overlapping set — its
-                    # own Bedrock call, so it's a distinct ledger line (was missing,
-                    # making the breakdown under-sum the total by this cost).
-                    "Dimension decomposition",
-                    fresh_usd=decompose_cost, fresh_calls=1 if decompose_cost else 0,
-                    cached_count=0, cached_saved_usd=0.0,
-                ),
-                ledger_pass(
-                    "Dimension matching",
-                    fresh_usd=match_cost, fresh_calls=1 if match_cost else 0,
-                    cached_count=0, cached_saved_usd=0.0,
-                ),
-                ledger_pass(
-                    "Dimension scoring",
-                    fresh_usd=score_tally.cost_usd,
-                    fresh_calls=score_tally.analyzed,
-                    cached_count=score_tally.cached,
-                    cached_saved_usd=score_tally.cached_saved_usd,
-                ),
-                ledger_pass(
-                    # Post-score duplicate-merge confirm; one call only when correlation
-                    # nominates a pair (often none → $0, 0 calls). Never cacheable.
-                    "Dimension consolidation",
-                    fresh_usd=consolidation.cost_usd,
-                    fresh_calls=1 if consolidation.cost_usd else 0,
-                    cached_count=0, cached_saved_usd=0.0,
-                ),
-            ],
+            passes={
+                "Pattern discovery": discovery_cost,
+                "Dimension decomposition": decompose_cost,
+                "Dimension matching": match_cost,
+                "Dimension scoring": score_tally.as_pass_cost(settings.ai.dimension_scoring_model),
+                "Dimension consolidation": consolidation.cost,
+            },
         )
 
         yield emit(

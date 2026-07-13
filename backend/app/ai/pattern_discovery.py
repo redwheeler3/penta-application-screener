@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.analysis import derive_prompt_version
 from app.ai.pool_digest import INPUT_TOKENS_PER_CANDIDATE, pool_digest_block
-from app.ai.pricing import cost_usd
+from app.ai.pricing import PassCost, cost_usd
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider, DeltaSink, Usage
 from app.ai.schemas import PoolDimensionReport
@@ -167,7 +167,7 @@ def _discover_from_prompt(
     settings: AppSettings,
     *,
     on_delta: DeltaSink | None = None,
-) -> tuple[PoolDimensionReport, str | None, float]:
+) -> tuple[PoolDimensionReport, str | None, PassCost]:
     """Make one discovery call from an already-built prompt. Does NO DB work, so it is
     safe to call on a worker thread (the fan-out builds the prompt once on the calling
     thread, then runs this K times in the pool — see ``run_in_pool``'s session-free
@@ -180,7 +180,7 @@ def _discover_from_prompt(
         system_prompt=SYSTEM_PROMPT,
         on_delta=on_delta,
     )
-    return result.output, result.narrative, cost_usd(result.model_id, result.usage)
+    return result.output, result.narrative, PassCost.from_usage(result.model_id, result.usage)
 
 
 @dataclass(frozen=True)
@@ -201,12 +201,12 @@ class FanOutDiscovery:
     cross-call variation is the diversity a later decomposition step pares to the finest
     non-overlapping set. Order is not meaningful (calls complete out of order).
     ``narrative`` is the live-streamed reasoning of ONE representative call (the others
-    run silently), kept for the run-level discovery narrative. ``cost_usd`` sums all K.
+    run silently), kept for the run-level discovery narrative. ``cost`` sums all K.
     """
 
     passes: list[DiscoveryPass]
     narrative: str | None
-    cost_usd: float
+    cost: PassCost
 
     @property
     def reports(self) -> list[PoolDimensionReport]:
@@ -252,7 +252,7 @@ def discover_patterns_fanout(
     seeded_prompt = _compose_prompt(pool_block, seeds)
     blind_prompt = _compose_prompt(pool_block, None)
 
-    def _call(index: int) -> tuple[PoolDimensionReport, str | None, float]:
+    def _call(index: int) -> tuple[PoolDimensionReport, str | None, PassCost]:
         # Worker 0 gets the proposals and streams; the rest are blind and silent
         # (interleaving K reasoning traces is unreadable, and they carry no proposal).
         return _discover_from_prompt(
@@ -264,7 +264,7 @@ def discover_patterns_fanout(
 
     passes: list[DiscoveryPass] = []
     live_narrative: str | None = None
-    total_cost = 0.0
+    total_cost = PassCost()
     for index, outcome, error in run_in_pool(
         list(range(k)), call=_call, max_workers=min(k, settings.ai.max_workers)
     ):
@@ -278,4 +278,4 @@ def discover_patterns_fanout(
             live_narrative = narrative  # the one that streamed as live "thinking"
         total_cost += cost
 
-    return FanOutDiscovery(passes=passes, narrative=live_narrative, cost_usd=total_cost)
+    return FanOutDiscovery(passes=passes, narrative=live_narrative, cost=total_cost)

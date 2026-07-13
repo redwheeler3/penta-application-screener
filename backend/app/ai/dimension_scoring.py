@@ -436,10 +436,14 @@ def score_dimensions(
             )
             call_cost += outcome.cost_usd
             fresh_count += 1
+        # The candidate's fresh tokens are the whole call's usage (each stored row got a
+        # 1/parts share; summing them back rounds down to ~the call total). Report the
+        # call's usage directly so the run ledger's token total stays exact.
         yield PassResult(
             application=application,
             outcome=AnalysisOutcome(
-                output=_assemble(report, cached, fresh), cost_usd=call_cost, cached=False
+                output=_assemble(report, cached, fresh), cost_usd=call_cost, cached=False,
+                input_tokens=result.usage.input_tokens, output_tokens=result.usage.output_tokens,
             ),
             fresh_units=fresh_count,
             cached_units=len(cached),
