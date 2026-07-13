@@ -500,12 +500,29 @@ def decompose_audit_view(run: RankingRun) -> dict | None:
     audit = (run.criteria or {}).get("decompose_audit")
     if not audit:
         return None
+    # Which discovery report(s) coined each source key, derived from the fan-out audit
+    # (source key -> [report index]). A key in several reports = independent re-discovery.
+    # Empty on runs whose fan-out wasn't captured; the UI then just omits the R-labels.
+    key_to_reports: dict[str, list[int]] = {}
+    fan_out = (run.criteria or {}).get("fan_out_audit") or {}
+    for i, p in enumerate(fan_out.get("passes", [])):
+        for dim in (p.get("report") or {}).get("dimensions", []):
+            key_to_reports.setdefault(dim.get("key"), []).append(i)
+    settled = [
+        {
+            **s,
+            "source_report_map": {
+                sk: key_to_reports[sk] for sk in s.get("source_keys", []) if sk in key_to_reports
+            },
+        }
+        for s in audit.get("settled", [])
+    ]
     return {
         "input_report_count": audit.get("input_report_count", 0),
         "input_dimension_count": audit.get("input_dimension_count", 0),
         "settled_count": audit.get("settled_count", 0),
         "merge_count": audit.get("merge_count", 0),
-        "settled": audit.get("settled", []),
+        "settled": settled,
         "folded_requests": audit.get("folded_requests", []),
         "narrative": audit.get("narrative"),
     }

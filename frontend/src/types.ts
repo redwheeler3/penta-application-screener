@@ -344,6 +344,9 @@ export type DecomposeAuditResponse = {
     key: string;
     name: string;
     sourceKeys: string[];
+    // source key → discovery report indices that coined it (e.g. {trade_skills: [0, 3]}),
+    // so the UI can label a source "trade_skills (R0, R3)". Empty if fan-out uncaptured.
+    sourceReportMap: Record<string, number[]>;
     fromCommitteeRequest: boolean;
     decision: string;
   }[];

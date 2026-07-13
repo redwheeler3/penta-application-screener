@@ -119,11 +119,22 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
                   ) : null}
                 </td>
                 <td>
-                  {d.sourceKeys.map((k) => (
-                    <span key={k} className="match-audit-key">
-                      {k}
-                    </span>
-                  ))}
+                  {d.sourceKeys.map((k) => {
+                    // Which discoverer(s) coined this source key — "R0, R3" — so the
+                    // committee can see independent re-discovery vs. a single origin.
+                    const reports = d.sourceReportMap[k] ?? [];
+                    return (
+                      <span key={k} className="match-audit-key">
+                        {k}
+                        {reports.length > 0 ? (
+                          <span className="decompose-source-reports">
+                            {" "}
+                            ({reports.map((i) => `R${i}`).join(", ")})
+                          </span>
+                        ) : null}
+                      </span>
+                    );
+                  })}
                 </td>
                 <td>{d.decision}</td>
               </tr>
