@@ -73,6 +73,16 @@ class AISettings(BridgeModel):
     # not adaptive. K=1 degenerates to the single-discovery behaviour. Default 5: the 5th
     # fresh context is worth its modest cost for coverage (see the marginal-coverage note).
     discovery_fan_out: int = Field(default=5, ge=1, le=10)
+    # Post-score consolidation (SPEC "Post-score consolidation"): the Pearson r at/above
+    # which two dimensions' score vectors nominate the pair as a suspected duplicate for
+    # the LLM confirm. Calibrated at 0.85 (true duplicates sit ~0.85-0.94, confounds
+    # ~0.2-0.8); lowering nominates more pairs (catches subtler forks, but hands the
+    # merge-biased confirm more confounds to reject), raising nominates fewer. Tunable
+    # because the right cut depends on the pool. Unbounded on purpose: an out-of-range
+    # value is harmless (above 1 nominates nothing, below 0 everything), not an error, so
+    # there's nothing to guard. Confirm still gates every merge, so this only moves what
+    # gets *considered*, never auto-merges.
+    consolidate_correlation_threshold: float = Field(default=0.85)
     spending_cap_usd: float = Field(default=1.0, ge=0)
     # How many applications to screen concurrently. The model calls are the slow,
     # blocking part; ~300 applicants finish in seconds at this width. The Bedrock
