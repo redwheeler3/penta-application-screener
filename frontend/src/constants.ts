@@ -1,4 +1,4 @@
-import type { AppSettings, AppStatus, StatusSource } from "./types";
+import type { AppStatus, StatusSource } from "./types";
 
 export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
@@ -81,36 +81,6 @@ export const SOURCE_DESCRIPTIONS: Record<StatusSource, string> = {
   rules: "Set ineligible by the deterministic screening rules.",
   ai: "Flagged by the AI screening pass.",
   human: "Set by a reviewer.",
-};
-
-// Placeholder for the initial render only — the GET /settings fetch on mount
-// overwrites draft and saved with the server's values (the backend's AppSettings
-// schema is the source of truth for every default). Not canonical.
-export const defaultSettings: AppSettings = {
-  googleSheetId: "",
-  incomeMin: 70000,
-  incomeMax: 150000,
-  minAdultAge: 18,
-  maxChildAge: 17,
-  minChildren: 1,
-  maxChildren: 4,
-  maxDogs: 1,
-  maxCats: 1,
-  allowOtherPets: false,
-  disabledRules: [],
-  ai: {
-    region: "us-west-2",
-    screeningModel: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    dimensionScoringModel: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    discoveryModel: "us.anthropic.claude-sonnet-4-6",
-    decomposeModel: "us.anthropic.claude-sonnet-4-6",
-    matchModel: "us.anthropic.claude-sonnet-4-6",
-    consolidateModel: "us.anthropic.claude-sonnet-4-6",
-    discoveryFanOut: 5,
-    consolidateCorrelationThreshold: 0.85,
-    spendingCapUsd: 1.0,
-    maxWorkers: 50,
-  },
 };
 
 // Kept in alphabetical order by label so the toggle grid reads predictably; the
