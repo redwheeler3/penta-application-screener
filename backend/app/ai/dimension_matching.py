@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 
 from app.ai.analysis import derive_prompt_version
-from app.ai.pricing import cost_usd
+from app.ai.pricing import PassCost, cost_usd
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider, DeltaSink
 from app.ai.schemas import DimensionMatchReport, PoolDimensionReport
@@ -104,10 +104,10 @@ def match_dimensions(
     new: PoolDimensionReport,
     settings: AppSettings,
     on_delta: DeltaSink | None = None,
-) -> tuple[dict[str, str], str | None, float]:
+) -> tuple[dict[str, str], str | None, PassCost]:
     """Map new dimension keys to prior ones at a high confidence bar.
 
-    Returns ``(new_key -> old_key, narrative, cost_usd)``. The result is sanitized
+    Returns ``(new_key -> old_key, narrative, cost)``. The result is sanitized
     to strictly one-to-one over real keys, so a duplicate or unknown key can't
     corrupt the carry-forward. An empty map (first run, or no matches) is common.
 
@@ -115,7 +115,7 @@ def match_dimensions(
     so the criteria phase's live "thinking" continues through the match call too.
     """
     if not old.dimensions or not new.dimensions:
-        return {}, None, 0.0
+        return {}, None, PassCost()
 
     result = provider.structured_output(
         model_id=settings.ai.match_model,
@@ -139,4 +139,4 @@ def match_dimensions(
         mapping[m.new_key] = m.old_key
         used_old.add(m.old_key)
 
-    return mapping, result.narrative, cost_usd(result.model_id, result.usage)
+    return mapping, result.narrative, PassCost.from_usage(result.model_id, result.usage)

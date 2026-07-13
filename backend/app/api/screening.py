@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import SpendingCapExceeded, enforce_cap
+from app.ai.pricing import PassCost
 from app.ai.provider import AIProvider
 from app.ai.screening import (
     PassResult,
@@ -26,7 +27,7 @@ from app.schemas.events import (
 )
 from app.schemas.screening import ScreeningEstimateResponse
 from app.schemas.settings import AppSettings
-from app.services.cost_report import ledger_pass, record_run_cost
+from app.services.cost_report import record_run_cost
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/screening", tags=["screening"])
@@ -46,6 +47,8 @@ class RunTally:
     flagged: int = 0
     failed: int = 0
     cost_usd: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
     # Sum of reused results' ORIGINAL cost — an estimate of what caching saved this run.
     cached_saved_usd: float = 0.0
 
@@ -61,8 +64,22 @@ class RunTally:
         else:
             self.analyzed += 1
             self.cost_usd += result.outcome.cost_usd
+            self.input_tokens += result.outcome.input_tokens
+            self.output_tokens += result.outcome.output_tokens
         if result.outcome.output.flags:
             self.flagged += 1
+
+    def as_pass_cost(self, model_id: str) -> PassCost:
+        """The screening pass's spend in the shared shape (fresh tokens + cost, cache side)."""
+        return PassCost(
+            calls=self.analyzed,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            cost_usd=self.cost_usd,
+            cached_count=self.cached,
+            cached_saved_usd=self.cached_saved_usd,
+            model_id=model_id if self.analyzed else "",
+        )
 
 
 @router.get("/estimate", response_model=ScreeningEstimateResponse)
@@ -151,15 +168,7 @@ def run(
         record_run_cost(
             db,
             kind="screen",
-            passes=[
-                ledger_pass(
-                    "Screening",
-                    fresh_usd=tally.cost_usd,
-                    fresh_calls=tally.analyzed,
-                    cached_count=tally.cached,
-                    cached_saved_usd=tally.cached_saved_usd,
-                )
-            ],
+            passes={"Screening": tally.as_pass_cost(settings.ai.screening_model)},
         )
 
         yield emit(

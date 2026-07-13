@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 
 from app.ai.analysis import derive_prompt_version
-from app.ai.pricing import cost_usd
+from app.ai.pricing import PassCost, cost_usd
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider, DeltaSink, Usage
 from app.ai.schemas import (
@@ -338,7 +338,7 @@ def decompose_dimensions(
     settings: AppSettings,
     favourites: list[PoolDimension] | None = None,
     on_delta: DeltaSink | None = None,
-) -> tuple[DecompositionReport, str | None, float]:
+) -> tuple[DecompositionReport, str | None, PassCost]:
     """Single-call baseline: settle the K reports into one finest-non-overlapping set.
 
     ``favourites`` are prior dimensions the committee kept; they are injected into the
@@ -365,7 +365,7 @@ def decompose_dimensions(
                 for d in only.dimensions
             ],
         )
-        return trivial, None, 0.0
+        return trivial, None, PassCost()
 
     result = provider.structured_output(
         model_id=settings.ai.decompose_model,
@@ -375,4 +375,4 @@ def decompose_dimensions(
         on_delta=on_delta,
         read_timeout=DECOMPOSE_READ_TIMEOUT,
     )
-    return result.output, result.narrative, cost_usd(result.model_id, result.usage)
+    return result.output, result.narrative, PassCost.from_usage(result.model_id, result.usage)

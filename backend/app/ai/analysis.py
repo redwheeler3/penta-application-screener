@@ -79,6 +79,11 @@ class AnalysisOutcome:
     output: BaseModel
     cost_usd: float
     cached: bool
+    # Token usage of the fresh call behind this outcome, so the run ledger can persist a
+    # per-pass token breakdown (not just cost). Zero for a cache hit — it spent nothing
+    # this run (the saving is tracked separately, in the tally's cached_saved_usd).
+    input_tokens: int = 0
+    output_tokens: int = 0
     # The model's reasoning narrative, if the provider surfaced one.
     narrative: str | None = None
 
@@ -260,6 +265,8 @@ def store_result(
         output=result.output,
         cost_usd=call_cost,
         cached=False,
+        input_tokens=result.usage.input_tokens,
+        output_tokens=result.usage.output_tokens,
         narrative=result.narrative,
     )
 

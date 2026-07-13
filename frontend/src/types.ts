@@ -134,7 +134,6 @@ export type ApplicationDetail = ApplicationSummary & {
 };
 
 // GET /ranking/insights/cost — aggregated AI spend for the Insights tab (M13).
-// inputTokens/outputTokens are 0 for the discovery+match pass (cost-only, no tokens).
 export type CostPass = {
   passLabel: string;
   // Uncached result units; dimension scoring counts per-dimension rows.
@@ -174,6 +173,8 @@ export type LastRunPass = {
   freshUsd: number;
   // Uncached result units; dimension scoring counts per-dimension rows.
   freshCalls: number;
+  inputTokens: number;
+  outputTokens: number;
   cachedCount: number;
   cachedSavedUsd: number;
   cacheable: boolean;

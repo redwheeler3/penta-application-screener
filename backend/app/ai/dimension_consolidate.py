@@ -24,7 +24,7 @@ import json
 from dataclasses import dataclass
 
 from app.ai.analysis import derive_prompt_version
-from app.ai.pricing import cost_usd
+from app.ai.pricing import PassCost, cost_usd
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider, DeltaSink, Usage
 from app.ai.schemas import ConsolidationReport, PoolDimensionReport
@@ -148,7 +148,7 @@ class Consolidation:
     merges: dict[str, str]
     narrative: str | None
     audit: list[dict]
-    cost_usd: float
+    cost: PassCost
 
 
 def consolidate_dimensions(
@@ -173,7 +173,7 @@ def consolidate_dimensions(
     run_keys = [d.key for d in report.dimensions]
     pairs = nominate_pairs(run_keys, canonical_rank, vectors)
     if not pairs:
-        return Consolidation(merges={}, narrative=None, audit=[], cost_usd=0.0)
+        return Consolidation(merges={}, narrative=None, audit=[], cost=PassCost())
 
     result = provider.structured_output(
         model_id=settings.ai.consolidate_model,
@@ -212,5 +212,5 @@ def consolidate_dimensions(
         merges=merges,
         narrative=result.narrative,
         audit=audit,
-        cost_usd=cost_usd(result.model_id, result.usage),
+        cost=PassCost.from_usage(result.model_id, result.usage),
     )

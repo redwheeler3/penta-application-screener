@@ -3,8 +3,9 @@ import { fetchCostReport, fetchLastRuns } from "../api";
 import type { CostReport, LastRunCost, LastRunsReport } from "../types";
 
 // M13 Pillar 1: AI cost, an Insights subtab. Two sections, same column layout so they
-// line up: [ label | uncached | cached | saved by cache | spent ]. Spent is the
-// rightmost hard number; cache savings sit to its left as the softer estimate.
+// line up: [ label | tokens (in→out) | uncached | cached | saved by cache | spent ].
+// Spent is the rightmost hard number; cache savings sit to its left as the softer
+// estimate; tokens sit next to the label as the "why it cost that" breakdown.
 //   - Last runs — the most recent Screen and Rank, fresh spend vs. cache savings.
 //   - Cumulative spend — cumulative spend + savings, grouped by run.
 // Passes that can't cache (pattern discovery, dimension matching) show "—" for the
@@ -13,6 +14,11 @@ import type { CostReport, LastRunCost, LastRunsReport } from "../types";
 const money = (n: number) => `$${n.toFixed(4)}`;
 const savedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : money(n));
 const cachedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : String(n));
+// Compact token count: 1_234 → "1.2k", 26_203 → "26.2k". Output ~5× the input rate on
+// Sonnet, so the in→out split is what tells you whether a pass is input- or output-bound.
+const tok = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+const tokensCell = (input: number, output: number) =>
+  input || output ? `${tok(input)} → ${tok(output)}` : "—";
 const PASS_LABELS: Record<"screen" | "rank", Array<{ label: string; cacheable: boolean }>> = {
   screen: [{ label: "Screening", cacheable: true }],
   rank: [
@@ -20,6 +26,7 @@ const PASS_LABELS: Record<"screen" | "rank", Array<{ label: string; cacheable: b
     { label: "Dimension decomposition", cacheable: false },
     { label: "Dimension matching", cacheable: false },
     { label: "Dimension scoring", cacheable: true },
+    { label: "Dimension consolidation", cacheable: false },
   ],
 };
 
@@ -72,12 +79,14 @@ export function CostPanel(): ReactNode {
                     <td>{run.kind === "screen" ? "Screen" : "Rank"}</td>
                     <td className="cost-num" />
                     <td className="cost-num" />
+                    <td className="cost-num" />
                     <td className="cost-num">{run.cachedSavedUsd > 0 ? money(run.cachedSavedUsd) : "—"}</td>
                     <td className="cost-num">{money(run.freshUsd)}</td>
                   </tr>
                   {run.passes.map((p) => (
                     <tr key={p.label}>
                       <td className="cost-pass-name">{p.label}</td>
+                      <td className="cost-num">{tokensCell(p.inputTokens, p.outputTokens)}</td>
                       <td className="cost-num">{p.freshCalls}</td>
                       <td className="cost-num">{cachedCell(p.cachedCount, p.cacheable)}</td>
                       <td className="cost-num">{savedCell(p.cachedSavedUsd, p.cacheable)}</td>
@@ -108,12 +117,14 @@ export function CostPanel(): ReactNode {
                 <td>{g.runLabel}</td>
                 <td className="cost-num" />
                 <td className="cost-num" />
+                <td className="cost-num" />
                 <td className="cost-num">{g.subtotalSavedUsd > 0 ? money(g.subtotalSavedUsd) : "—"}</td>
                 <td className="cost-num">{money(g.subtotalUsd)}</td>
               </tr>
               {g.passes.map((p) => (
                 <tr key={p.passLabel}>
                   <td className="cost-pass-name">{p.passLabel}</td>
+                  <td className="cost-num">{tokensCell(p.inputTokens, p.outputTokens)}</td>
                   <td className="cost-num">{p.calls}</td>
                   <td className="cost-num">{cachedCell(p.cachedCount, p.cacheable)}</td>
                   <td className="cost-num">{savedCell(p.cachedSavedUsd, p.cacheable)}</td>
@@ -135,12 +146,14 @@ function renderEmptyRun(kind: "screen" | "rank"): ReactNode {
         <td>{kind === "screen" ? "Screen" : "Rank"}</td>
         <td className="cost-num" />
         <td className="cost-num" />
+        <td className="cost-num" />
         <td className="cost-num">—</td>
         <td className="cost-num">{money(0)}</td>
       </tr>
       {PASS_LABELS[kind].map((p) => (
         <tr key={p.label}>
           <td className="cost-pass-name">{p.label}</td>
+          <td className="cost-num">—</td>
           <td className="cost-num">0</td>
           <td className="cost-num">{cachedCell(0, p.cacheable)}</td>
           <td className="cost-num">{savedCell(0, p.cacheable)}</td>
@@ -157,6 +170,7 @@ function CostHead(): ReactNode {
     <thead>
       <tr>
         <th className="cost-col-label" />
+        <th className="cost-col-count">tokens (in→out)</th>
         <th className="cost-col-count">uncached</th>
         <th className="cost-col-count">cached</th>
         <th className="cost-col-money">cache savings</th>

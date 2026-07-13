@@ -139,8 +139,6 @@ def create_run(
     settings: AppSettings,
     model_id: str,
     narrative: str | None,
-    discovery_cost_usd: float,
-    match_cost_usd: float = 0.0,
     name: str = "Ranking run",
     tier_layout: list[dict] | None = None,
     new_dimension_keys: list[str] | None = None,
@@ -148,7 +146,6 @@ def create_run(
     match_audit: dict | None = None,
     fan_out_audit: dict | None = None,
     decompose_audit: dict | None = None,
-    decompose_cost_usd: float = 0.0,
 ) -> RankingRun:
     """Persist a freshly discovered pattern report as a new ranking run.
 
@@ -191,11 +188,6 @@ def create_run(
             "proposed_dimensions": [],
             "discovery_model_id": model_id,
             "discovery_narrative": narrative,
-            # Discovery and match are separate Bedrock calls (different models), stored
-            # separately so the cost report can attribute each. match_cost is 0 on a
-            # first run (no match pass ran).
-            "discovery_cost_usd": round(discovery_cost_usd, 6),
-            "match_cost_usd": round(match_cost_usd, 6),
             # Carry-forward audit: raw pre-adopt discovery dims + the match map +
             # match narrative, so a re-rank's "what changed" is inspectable (genuine
             # re-discovery vs. match over-matching). None on a first run (no match).
@@ -208,9 +200,6 @@ def create_run(
             # source_keys it absorbed + the merge/keep reasoning (the Insights surface +
             # the D9 committee-request trail). None on runs written before decomposition.
             "decompose_audit": decompose_audit,
-            # Decomposition is its own Bedrock call (settle the K reports into one set),
-            # priced separately so the cost report can attribute it.
-            "decompose_cost_usd": round(decompose_cost_usd, 6),
         },
     )
     db.add(run)
@@ -243,7 +232,6 @@ def apply_consolidation(
     merges: dict[str, str],
     audit: list[dict],
     narrative: str | None,
-    cost_usd: float,
 ) -> RankingRun:
     """Fold confirmed duplicate keys into their canonical key on an already-persisted
     run (the post-score consolidation pass; SPEC "Post-score consolidation").
@@ -253,8 +241,9 @@ def apply_consolidation(
     the loser from this run's ``dimension_report``, and remove it from every tier — the
     winner already carries its own tier placement + cached scores, so the loser's rows
     simply become orphaned cache (harmless, like any dropped dimension). Weights are
-    re-derived from the collapsed tiers. Always records the ``consolidate_audit`` +
-    ``consolidate_cost_usd`` (even with zero merges — the pass ran), for Insights.
+    re-derived from the collapsed tiers. Always records the ``consolidate_audit``
+    (even with zero merges — the pass ran), for Insights. The pass's cost lands in the
+    run cost ledger, not here.
     """
     criteria = dict(run.criteria or {})
 
@@ -318,7 +307,6 @@ def apply_consolidation(
         "pairs": audit,
         "narrative": narrative,
     }
-    criteria["consolidate_cost_usd"] = round(cost_usd, 6)
 
     run.criteria = criteria  # reassign so SQLAlchemy tracks the JSON change
     db.commit()

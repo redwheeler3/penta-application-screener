@@ -58,3 +58,57 @@ def cost_usd(model_id: str, usage: Usage) -> float:
         usage.input_tokens / 1_000_000 * price.input_per_mtok
         + usage.output_tokens / 1_000_000 * price.output_per_mtok
     )
+
+
+@dataclass(frozen=True)
+class PassCost:
+    """What one AI pass spent, in one shape every pass speaks (pool-level and
+    per-application alike). Built once from a model call's ``Usage`` so tokens are never
+    discarded — the reason token counts used to vanish for the pool passes was that each
+    hand-wrote ``cost_usd(...)`` and returned a bare float. Carries the fresh spend
+    (``calls`` model calls, ``input_tokens``/``output_tokens``, ``cost_usd``) plus the
+    cache side (``cached_count`` reused units and ``cached_saved_usd``, their original
+    cost — an estimate of what caching saved). A pass that never caches leaves those 0.
+
+    Additive so a fan-out (K discovery calls) or a per-candidate loop can fold each
+    call's cost into one pass total with ``+``/``sum``.
+    """
+
+    calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+    cached_count: int = 0
+    cached_saved_usd: float = 0.0
+    # The model the pass ran on. "" when it made no call this run (a skipped match on a
+    # first run, a consolidation that nominated nothing). On a fan-out all K calls share
+    # one model, so summing keeps it.
+    model_id: str = ""
+
+    @classmethod
+    def from_usage(cls, model_id: str, usage: Usage) -> PassCost:
+        """One fresh model call, priced from its token usage."""
+        return cls(
+            calls=1,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cost_usd=cost_usd(model_id, usage),
+            model_id=model_id,
+        )
+
+    def __add__(self, other: PassCost) -> PassCost:
+        return PassCost(
+            calls=self.calls + other.calls,
+            input_tokens=self.input_tokens + other.input_tokens,
+            output_tokens=self.output_tokens + other.output_tokens,
+            cost_usd=self.cost_usd + other.cost_usd,
+            cached_count=self.cached_count + other.cached_count,
+            cached_saved_usd=self.cached_saved_usd + other.cached_saved_usd,
+            model_id=self.model_id or other.model_id,
+        )
+
+    def __radd__(self, other: PassCost | int) -> PassCost:
+        # so sum([...]) works: its start value is int 0, everything else is a PassCost.
+        if other == 0:
+            return self
+        return self.__add__(other)  # type: ignore[arg-type]
