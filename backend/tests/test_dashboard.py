@@ -300,8 +300,10 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
         "dimension_report": {
             "summary": "s",
             "dimensions": [
-                {"key": "community", "name": "Community", "definition": "d", "why_it_differentiates": "w"},
-                {"key": "skills", "name": "Skills", "definition": "d", "why_it_differentiates": "w"},
+                {"key": "community", "name": "Community", "definition": "d",
+                 "high_end": "hi", "low_end": "lo", "why_it_differentiates": "w"},
+                {"key": "skills", "name": "Skills", "definition": "d",
+                 "high_end": "hi", "low_end": "lo", "why_it_differentiates": "w"},
             ],
         },
     }))

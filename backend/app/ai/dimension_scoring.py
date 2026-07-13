@@ -76,7 +76,7 @@ The dimensions to score in the `<dimensions>` block, and the applicant's evidenc
 ## Output
 For each dimension provide:
 - dimension_key: the dimension's key, exactly as given
-- score: 0..1 for how strongly this applicant exhibits it, judged only on stated evidence
+- score: 0..1, anchored to the dimension's poles — 1.0 is its `high_end`, 0.0 its `low_end` — judged only on stated evidence
 - rationale: one neutral sentence from the applicant's facts or words
 - evidence: a short quote or field reference (empty string if there is nothing relevant)
 - confidence: low, medium, or high — per the standing-vs-wording rule above; an unaddressed dimension is low confidence.
@@ -103,9 +103,19 @@ def build_prompt(
 
 
 def _dimensions_block(dimensions: list[PoolDimension]) -> str:
-    """The candidate's uncached dimensions to score, as compact JSON for the prompt."""
+    """The candidate's uncached dimensions to score, as compact JSON for the prompt.
+
+    Includes ``high_end``/``low_end`` — the concrete meaning of a 1.0 vs. a 0.0 score —
+    so the model anchors each score to the axis's own poles rather than an implicit scale.
+    """
     dims = [
-        {"key": d.key, "name": d.name, "definition": d.definition}
+        {
+            "key": d.key,
+            "name": d.name,
+            "definition": d.definition,
+            "high_end": d.high_end,
+            "low_end": d.low_end,
+        }
         for d in dimensions
     ]
     return json.dumps(dims, indent=2, default=str)

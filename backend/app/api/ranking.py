@@ -219,6 +219,8 @@ def _run_payload(db: Session) -> CurrentRunResponse | None:
                 key=d.key,
                 name=d.name,
                 definition=d.definition,
+                high_end=d.high_end,
+                low_end=d.low_end,
                 why_it_differentiates=d.why_it_differentiates,
                 from_committee_request=d.from_committee_request,
             )
@@ -374,7 +376,9 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     if measured_decompose is not None:
         decompose_usd = measured_decompose
     else:
-        _stub = PoolDimension(key="x", name="x", definition="x", why_it_differentiates="x")
+        _stub = PoolDimension(
+            key="x", name="x", definition="x", high_end="x", low_end="x", why_it_differentiates="x"
+        )
         projected = [
             PoolDimensionReport(dimensions=[_stub] * 20)
             for _ in range(settings.ai.discovery_fan_out)

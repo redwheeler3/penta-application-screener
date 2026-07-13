@@ -200,6 +200,8 @@ export type PoolDimension = {
   key: string;
   name: string;
   definition: string;
+  highEnd: string;
+  lowEnd: string;
   whyItDifferentiates: string;
 };
 

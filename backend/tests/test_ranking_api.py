@@ -38,6 +38,8 @@ def _decomposition_of(report: PoolDimensionReport) -> DecompositionReport:
                 key=d.key,
                 name=d.name,
                 definition=d.definition,
+                high_end=d.high_end,
+                low_end=d.low_end,
                 source_keys=[d.key],
                 from_committee_request=d.from_committee_request,
                 decision="pass-through (test)",
@@ -106,13 +108,13 @@ def a_pattern_report() -> PoolDimensionReport:
                 key="participation_commitment",
                 name="Participation commitment",
                 definition="Willingness to do shared work.",
-                why_it_differentiates="Some are eager, some vague.",
+                high_end="high", low_end="low", why_it_differentiates="Some are eager, some vague.",
             ),
             PoolDimension(
                 key="skills_offered",
                 name="Skills offered",
                 definition="Concrete maintenance skills.",
-                why_it_differentiates="Range from none to specific trades.",
+                high_end="high", low_end="low", why_it_differentiates="Range from none to specific trades.",
             ),
         ],
     )
@@ -452,12 +454,12 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
         dimensions=[
             PoolDimension(key="commitment_a", name="Commitment A",
                           definition="willingness to do shared work",
-                          why_it_differentiates="varies"),
+                          high_end="high", low_end="low", why_it_differentiates="varies"),
             PoolDimension(key="commitment_b", name="Commitment B",
                           definition="willingness to show up for work days",
-                          why_it_differentiates="varies"),
+                          high_end="high", low_end="low", why_it_differentiates="varies"),
             PoolDimension(key="skills_offered", name="Skills offered",
-                          definition="concrete skills", why_it_differentiates="varies"),
+                          definition="concrete skills", high_end="high", low_end="low", why_it_differentiates="varies"),
         ],
     )
     # Decomposition folds commitment_a + commitment_b into one settled axis; skills stays.
@@ -466,12 +468,14 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
             DecomposedDimension(
                 key="commitment", name="Commitment",
                 definition="willingness to do shared work",
+                high_end="high", low_end="low",
                 source_keys=["commitment_a", "commitment_b"],
                 decision="commitment_a and commitment_b score the same applicant alike — one axis.",
             ),
             DecomposedDimension(
                 key="skills_offered", name="Skills offered",
                 definition="concrete skills",
+                high_end="high", low_end="low",
                 source_keys=["skills_offered"], decision="distinct — kept.",
             ),
         ],
@@ -541,9 +545,9 @@ async def test_post_score_consolidation_merges_correlated_duplicate() -> None:
     discovered = PoolDimensionReport(
         dimensions=[
             PoolDimension(key="financial_literacy", name="Financial literacy",
-                          definition="handles co-op money", why_it_differentiates="varies"),
+                          definition="handles co-op money", high_end="high", low_end="low", why_it_differentiates="varies"),
             PoolDimension(key="financial_stewardship", name="Financial stewardship",
-                          definition="bookkeeping and oversight", why_it_differentiates="varies"),
+                          definition="bookkeeping and oversight", high_end="high", low_end="low", why_it_differentiates="varies"),
         ],
     )
     provider.route("<applicant_pool>", discovered)
@@ -597,9 +601,9 @@ def test_apply_consolidation_transfers_a_favourite_off_a_merged_key() -> None:
     _app, db, _ = setup_app(role=UserRole.MEMBER)
     report = PoolDimensionReport(dimensions=[
         PoolDimension(key="financial_literacy", name="Financial literacy",
-                      definition="handles money", why_it_differentiates="v"),
+                      definition="handles money", high_end="high", low_end="low", why_it_differentiates="v"),
         PoolDimension(key="financial_stewardship", name="Financial stewardship",
-                      definition="bookkeeping", why_it_differentiates="v"),
+                      definition="bookkeeping", high_end="high", low_end="low", why_it_differentiates="v"),
     ])
     run = create_run(
         db, report=report, settings=AppSettings(), model_id="m",
@@ -635,8 +639,8 @@ def test_apply_consolidation_reconfirming_an_existing_alias_is_idempotent() -> N
 
     def run_with_merge(reason: str) -> None:
         report = PoolDimensionReport(dimensions=[
-            PoolDimension(key="financial_literacy", name="FL", definition="d", why_it_differentiates="v"),
-            PoolDimension(key="financial_stewardship", name="FS", definition="d", why_it_differentiates="v"),
+            PoolDimension(key="financial_literacy", name="FL", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
+            PoolDimension(key="financial_stewardship", name="FS", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
         ])
         run = create_run(db, report=report, settings=AppSettings(), model_id="m",
                          narrative=None)
@@ -670,9 +674,9 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
     report = PoolDimensionReport(dimensions=[
-        PoolDimension(key="a_oldest", name="A", definition="d", why_it_differentiates="v"),
-        PoolDimension(key="b_mid", name="B", definition="d", why_it_differentiates="v"),
-        PoolDimension(key="c_newest", name="C", definition="d", why_it_differentiates="v"),
+        PoolDimension(key="a_oldest", name="A", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
+        PoolDimension(key="b_mid", name="B", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
+        PoolDimension(key="c_newest", name="C", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
     ])
     run = create_run(
         db, report=report, settings=AppSettings(), model_id="m",
@@ -714,9 +718,9 @@ async def test_post_score_consolidation_keeps_confound_apart() -> None:
     discovered = PoolDimensionReport(
         dimensions=[
             PoolDimension(key="motivation", name="Motivation",
-                          definition="why they want in", why_it_differentiates="varies"),
+                          definition="why they want in", high_end="high", low_end="low", why_it_differentiates="varies"),
             PoolDimension(key="followthrough", name="Follow-through",
-                          definition="do they finish tasks", why_it_differentiates="varies"),
+                          definition="do they finish tasks", high_end="high", low_end="low", why_it_differentiates="varies"),
         ],
     )
     provider.route("<applicant_pool>", discovered)
@@ -759,10 +763,10 @@ def _discovery_with_committee_request() -> PoolDimensionReport:
         dimensions=[
             PoolDimension(key="playground_use", name="Playground use",
                           definition="school-age kids who'd use the playground",
-                          why_it_differentiates="varies", from_committee_request=True),
+                          high_end="high", low_end="low", why_it_differentiates="varies", from_committee_request=True),
             PoolDimension(key="child_wellbeing", name="Child wellbeing",
                           definition="general child-centred motivation",
-                          why_it_differentiates="varies"),
+                          high_end="high", low_end="low", why_it_differentiates="varies"),
         ],
     )
 
@@ -784,6 +788,7 @@ async def test_d9_committee_request_folded_into_merge_is_surfaced_not_lost() -> 
             DecomposedDimension(
                 key="child_wellbeing", name="Child wellbeing",
                 definition="child-centred motivation incl. playground",
+                high_end="high", low_end="low",
                 source_keys=["child_wellbeing", "playground_use"],
                 from_committee_request=False,  # model dropped it — guard must repair
                 decision="folded playground_use in — same underlying concept",
@@ -828,6 +833,7 @@ async def test_d9_silently_dropped_committee_request_is_re_added() -> None:
             DecomposedDimension(
                 key="child_wellbeing", name="Child wellbeing",
                 definition="child-centred motivation",
+                high_end="high", low_end="low",
                 source_keys=["child_wellbeing"], decision="kept",
             ),
         ],
@@ -891,13 +897,14 @@ def test_enforce_committee_requests_guarantees_an_unsurfaced_favourite() -> None
 
     favourite = PoolDimension(
         key="participation_commitment", name="Participation commitment",
-        definition="Willingness to do shared work.", why_it_differentiates="varies",
+        definition="Willingness to do shared work.", high_end="high", low_end="low", why_it_differentiates="varies",
     )
     # Decomposition settled on an unrelated axis only.
     settled = DecompositionReport(
         dimensions=[
             DecomposedDimension(
                 key="skills_offered", name="Skills offered", definition="trades",
+                high_end="high", low_end="low",
                 source_keys=["skills_offered"],
                 decision="kept",
             ),
@@ -923,12 +930,12 @@ def test_settled_why_is_carried_from_source_not_decomposer() -> None:
                 PoolDimension(
                     key="commitment_a", name="Commitment A",
                     definition="willingness to do shared work",
-                    why_it_differentiates="Applicants range from eager volunteers to vague.",
+                    high_end="high", low_end="low", why_it_differentiates="Applicants range from eager volunteers to vague.",
                 ),
                 PoolDimension(
                     key="commitment_b", name="Commitment B",
                     definition="willingness to show up for work days",
-                    why_it_differentiates="secondary carving why",
+                    high_end="high", low_end="low", why_it_differentiates="secondary carving why",
                 ),
             ],
         ),
@@ -938,6 +945,7 @@ def test_settled_why_is_carried_from_source_not_decomposer() -> None:
             DecomposedDimension(
                 key="commitment", name="Commitment",
                 definition="willingness to do shared work",
+                high_end="high", low_end="low",
                 source_keys=["commitment_a", "commitment_b"],
                 decision="merged",
             ),
@@ -1090,13 +1098,13 @@ def a_pattern_report_v2() -> PoolDimensionReport:
                 key="stated_participation",  # same concept, drifted key
                 name="Stated participation",
                 definition="Willingness to do shared work.",
-                why_it_differentiates="Some eager, some vague.",
+                high_end="high", low_end="low", why_it_differentiates="Some eager, some vague.",
             ),
             PoolDimension(
                 key="financial_stability",  # genuinely new
                 name="Financial stability",
                 definition="Income resilience and stability.",
-                why_it_differentiates="Range of income security.",
+                high_end="high", low_end="low", why_it_differentiates="Range of income security.",
             ),
         ],
     )
@@ -1242,7 +1250,7 @@ async def test_dropped_prior_dimension_is_not_revived() -> None:
                         key="participation_commitment",
                         name="Participation commitment",
                         definition="Willingness to do shared work.",
-                        why_it_differentiates="Some eager, some vague.",
+                        high_end="high", low_end="low", why_it_differentiates="Some eager, some vague.",
                     ),
                 ],
             ),
@@ -1278,7 +1286,7 @@ def _only_participation() -> PoolDimensionReport:
                 key="participation_commitment",
                 name="Participation commitment",
                 definition="Willingness to do shared work.",
-                why_it_differentiates="Some eager, some vague.",
+                high_end="high", low_end="low", why_it_differentiates="Some eager, some vague.",
             ),
         ],
     )
@@ -1492,13 +1500,13 @@ def _pattern_report_with_requested() -> PoolDimensionReport:
                 key="participation_commitment",
                 name="Participation commitment",
                 definition="Willingness to do shared work.",
-                why_it_differentiates="Some eager, some vague.",
+                high_end="high", low_end="low", why_it_differentiates="Some eager, some vague.",
             ),
             PoolDimension(
                 key="playground_age_children",
                 name="Playground-age children",
                 definition="Presence of school-age kids who'd use shared play space.",
-                why_it_differentiates="Some households have young kids, some none.",
+                high_end="high", low_end="low", why_it_differentiates="Some households have young kids, some none.",
                 from_committee_request=True,
             ),
         ],

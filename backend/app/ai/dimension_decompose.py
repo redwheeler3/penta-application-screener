@@ -65,7 +65,7 @@ You are given K independent discovery reports for the same applicant pool, in th
 - **Split only where the evidence supports it:** do not manufacture fine distinctions the pool does not actually vary on. Fine is good; fabricated granularity is padding.
 
 ## Orientation and direction (carry the discovery rules forward)
-- Orient each settled axis so the HIGH end is the more-desirable-fit end (scoring counts higher toward fit). If an axis is direction-contested (both ends carry a legitimate fit story and only committee policy decides which is "good"), keep BOTH orientations as separate axes rather than baking in one — the committee chooses later.
+- Each settled axis states its poles in `high_end`/`low_end`, carried forward from the source axes — the HIGH end is the more-desirable-fit end (scoring counts higher toward fit). Never write "policy-dependent" or "left to the committee" for an end. If an axis is direction-contested (both ends carry a legitimate fit story and only committee policy decides which is "good"), keep BOTH orientations as separate axes rather than baking in one — the committee chooses later.
 
 ## Committee-requested axes (do not lose a human's explicit ask)
 - Some input dimensions are flagged `from_committee_request: true`. These were explicitly asked for. You may still merge one INTO a settled axis if it is genuinely the same concept — but then the settled axis MUST carry `from_committee_request: true`, and its `decision` MUST say the request was folded in and into what. NEVER let a committee-requested axis silently disappear.
@@ -74,7 +74,7 @@ You are given K independent discovery reports for the same applicant pool, in th
 - EVERY input dimension key, across all K reports, must appear in exactly one settled axis's `source_keys`. A redundant carving is MERGED (recorded in source_keys + decision), never dropped. If an axis is genuinely not differentiating, still fold it into its nearest concept and say so — do not silently omit it.
 
 ## Output
-For each settled axis: `key` (reuse an input key when it's essentially that axis; mint a new snake_case key only for a genuinely merged concept), `name`, `definition` (what it measures + which end is high), `source_keys` (ALL absorbed input keys), `from_committee_request`, and `decision` (the reasoning — for a merge, the score-alike assertion; for a kept-distinct axis, why).
+For each settled axis: `key` (reuse an input key when it's essentially that axis; mint a new snake_case key only for a genuinely merged concept), `name`, `definition` (what it measures, no direction), `high_end` (the more-desirable-fit pole, concrete, never "depends"), `low_end` (the opposite pole), `source_keys` (ALL absorbed input keys), `from_committee_request`, and `decision` (the reasoning — for a merge, the score-alike assertion; for a kept-distinct axis, why).
 - Do NOT describe what varies across the applicant pool ("why it differentiates"): you have the reports' definitions, not the pool itself, so any such claim would be unfounded. Report only what you CAN judge from the definitions — identity (`key`/`name`/`definition`) and merge reasoning (`decision`). The pool-grounded "why" is carried forward from the source reports automatically.
 
 ## Guardrails
@@ -89,8 +89,8 @@ PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 
 def _reports_block(reports: list[PoolDimensionReport]) -> str:
     """The K discovery reports as a compact JSON list, wrapped in an XML tag. Each
-    report keeps its dimensions' key/name/definition + the committee-request flag, so
-    the model can judge overlap by definition and protect requested axes.
+    report keeps its dimensions' key/name/definition + poles + the committee-request
+    flag, so the model can judge overlap by definition and carry the poles forward.
     """
     payload = [
         {
@@ -100,6 +100,8 @@ def _reports_block(reports: list[PoolDimensionReport]) -> str:
                     "key": d.key,
                     "name": d.name,
                     "definition": d.definition,
+                    "high_end": d.high_end,
+                    "low_end": d.low_end,
                     "from_committee_request": d.from_committee_request,
                 }
                 for d in report.dimensions
@@ -208,6 +210,8 @@ def to_pool_report(
                 key=d.key,
                 name=d.name,
                 definition=d.definition,
+                high_end=d.high_end,
+                low_end=d.low_end,
                 why_it_differentiates=_carried_why(d),
                 from_committee_request=d.from_committee_request,
             )
@@ -281,6 +285,8 @@ def enforce_committee_requests(
                     key=req_dim.key,
                     name=req_dim.name,
                     definition=req_dim.definition,
+                    high_end=req_dim.high_end,
+                    low_end=req_dim.low_end,
                     source_keys=[req_dim.key],
                     from_committee_request=True,
                     decision="Re-added by the D9 guard — decomposition dropped this committee-requested axis.",
@@ -358,6 +364,8 @@ def decompose_dimensions(
                     key=d.key,
                     name=d.name,
                     definition=d.definition,
+                    high_end=d.high_end,
+                    low_end=d.low_end,
                     source_keys=[d.key],
                     from_committee_request=d.from_committee_request,
                     decision="Single discovery report — no decomposition needed.",

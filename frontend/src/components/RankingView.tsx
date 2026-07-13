@@ -19,6 +19,18 @@ function CriteriaDetail(props: { dim: PoolDimension | null }): ReactNode {
     <div className="criteria-detail" role="region" aria-label={`${props.dim.name} — what it measures`}>
       <span className="dimension-name">{props.dim.name}</span>
       <p className="dimension-def">{props.dim.definition}</p>
+      {/* The scored poles: what a high (1.0) vs. low (0.0) score means, so the committee
+          reads the axis's direction, not just what it measures. */}
+      {props.dim.highEnd ? (
+        <p className="dimension-pole">
+          <span className="dimension-pole-label">High:</span> {props.dim.highEnd}
+        </p>
+      ) : null}
+      {props.dim.lowEnd ? (
+        <p className="dimension-pole">
+          <span className="dimension-pole-label">Low:</span> {props.dim.lowEnd}
+        </p>
+      ) : null}
       {props.dim.whyItDifferentiates ? (
         <p className="dimension-why">
           <span className="dimension-why-label">Why it differentiates:</span> {props.dim.whyItDifferentiates}

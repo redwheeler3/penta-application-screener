@@ -60,7 +60,7 @@ def report_with(keys: list[str]) -> PoolDimensionReport:
                 key=k,
                 name=k.replace("_", " ").title(),
                 definition="def",
-                why_it_differentiates="why",
+                high_end="high", low_end="low", why_it_differentiates="why",
             )
             for k in keys
         ],
