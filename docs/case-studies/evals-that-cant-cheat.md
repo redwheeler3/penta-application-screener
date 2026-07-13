@@ -155,3 +155,54 @@ happened all session was Jeff catching me negotiating with the baseline — beca
 failure mode of evals isn't that they're wrong, it's that they're theatre, and theatre
 is comfortable. A guardrail you've quietly tuned to always-green feels exactly like a
 guardrail, right up until the regression it was supposed to catch sails through.
+
+## Postscript — the "24 of 25", or: the checks you don't build catch bugs too
+
+The deterministic suite above is the observability you build *on purpose*. But the
+same principle — *make the AI's intermediate state legible and the bugs arrive as
+questions, not silent drift* — pays off from surfaces you built for other reasons. A
+few days later a coverage button read **24/25** instead of 25/25, and pulling that
+one-off thread found a real hole no eval was watching.
+
+The fraction was telling the truth: 24 candidates had a cached score for every one of
+the 31 dimensions; one had **30 of 31**, missing a single axis. A candidate counts as
+scored only with a row for *every* dimension, so 30/31 correctly read as not-done. Not
+a display bug — the observability surface honestly reporting that one applicant wasn't
+fully scored, and inviting the question *why*.
+
+The why was a polite little disaster in the scoring loop:
+
+```python
+for dim in to_score:
+    score = fresh.get(dim.key)
+    if score is None:
+        continue          # <- the hole
+    store_result(...)
+```
+
+When the batched model call came back one dimension short (real, rare
+non-determinism), the loop **silently skipped** the missing one — no row, no retry, no
+log — and a downstream step filled a `0.0` placeholder so nothing crashed. The
+candidate *looked* scored; one axis was a fabricated zero, invisible forever behind the
+placeholder.
+
+The reframe that fixed it is the same shape as the piece above — a discipline about
+what you refuse to accept: **a partial result is a failure, not a success.** The fix
+re-asks the model for *only* the missing dimensions (not the whole batch), and if
+they're still missing after a couple of tries, **fails the candidate loudly** rather
+than storing a result it knows is incomplete. A visible "1 candidate failed scoring"
+beats a silent 24/25 you have to spelunk.
+
+And a coda that rhymes with Move 3's "delete a check that can't be honest": once the
+retry guaranteed completeness, the old `if score is None: continue` was dead code — and
+the instinct to keep it "just in case" was exactly wrong. A defensive skip for a state
+that can no longer occur isn't insurance; it re-arms the silent failure, because if the
+guarantee ever broke the skip would swallow it again. Indexing directly (`fresh[dim.key]`)
+makes a broken guarantee a loud crash. **Belt-and-suspenders on a failure path can
+reintroduce the failure.**
+
+The lesson that ties it to the evals: observability didn't *fix* the bug — it asked the
+question that found it. The built-on-purpose checks and the noticed-by-accident fraction
+are the same instinct, which is why they live in the same file: instrument
+*completeness*, not just success, and never let the system report "mostly worked" as
+"worked."
