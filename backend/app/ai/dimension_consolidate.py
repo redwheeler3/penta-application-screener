@@ -57,13 +57,23 @@ def nominate_pairs(
     prior key's cached vector.
 
     ``canonical_rank`` orders keys oldest→newest (lower = older = wins on merge), so
-    each pair is oriented ``keep`` (older) / ``drop`` (newer). Free — no model call.
+    each pair is oriented ``keep`` (older) / ``drop`` (newer). It also defines the set of
+    LIVE keys — keys present in some current dimension report. Only live keys are
+    nominated: ``vectors`` retains score rows for keys already merged away (a dropped
+    key's cached scores live forever), and those would correlate against their own
+    survivor and get re-nominated with no definition to judge — a phantom re-merge of a
+    dead key. Gating on ``canonical_rank`` membership drops them. Free — no model call.
     """
-    all_keys = list(vectors.keys())
+    live = set(canonical_rank)
+    # Prior-side candidates: live keys with a score vector (a dead key is absent from
+    # `live`; a live key with no vector can't correlate). run_keys are always live.
+    candidates = [k for k in vectors if k in live]
     seen: set[frozenset[str]] = set()
     pairs: list[NominatedPair] = []
     for a in run_keys:  # one side is always a this-run key
-        for b in all_keys:
+        if a not in live:  # this run is persisted before key_history, so normally present
+            continue
+        for b in candidates:
             if a == b:
                 continue
             fs = frozenset((a, b))
@@ -73,10 +83,8 @@ def nominate_pairs(
             r = correlation(a, b, vectors)
             if r is None or r < threshold:
                 continue
-            # Older key (smaller rank) is kept; unknown-rank keys sort last (newest).
-            ra = canonical_rank.get(a, len(canonical_rank))
-            rb = canonical_rank.get(b, len(canonical_rank))
-            keep, drop = (a, b) if ra <= rb else (b, a)
+            # Older key (smaller rank) is kept. Both keys are live, so both have a rank.
+            keep, drop = (a, b) if canonical_rank[a] <= canonical_rank[b] else (b, a)
             pairs.append(NominatedPair(keep=keep, drop=drop, r=r))
     pairs.sort(key=lambda p: p.r, reverse=True)  # worst-duplicate first, for the audit
     return pairs
