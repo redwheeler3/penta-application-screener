@@ -48,6 +48,13 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
   // Map each settled axis's key → the request it folded in (for the D9 badge).
   const foldedInto = new Map(audit.foldedRequests.map((f) => [f.intoKey, f.requestKey]));
 
+  // Kept-as-is axes (one source) first, merges after — the merges are the interesting,
+  // heavier rows, so grouping them below keeps the plain carry-throughs from being
+  // visually interrupted. Stable sort preserves the model's order within each group.
+  const settled = [...audit.settled].sort(
+    (a, b) => Number(a.sourceKeys.length > 1) - Number(b.sourceKeys.length > 1),
+  );
+
   return (
     <div className="match-audit">
       <p className="match-audit-hint">
@@ -92,7 +99,7 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
           </tr>
         </thead>
         <tbody>
-          {audit.settled.map((d) => {
+          {settled.map((d) => {
             const isMerge = d.sourceKeys.length > 1;
             const folded = foldedInto.get(d.key);
             return (

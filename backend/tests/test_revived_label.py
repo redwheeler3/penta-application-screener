@@ -36,7 +36,7 @@ def _run_with(db: Session, *, dim_keys: list[str], flagged: list[str] | None = N
         criteria={
             "dimension_report": PoolDimensionReport(
                 dimensions=[
-                    PoolDimension(key=k, name=k, definition="d", why_it_differentiates="w")
+                    PoolDimension(key=k, name=k, definition="d", high_end="high", low_end="low", why_it_differentiates="w")
                     for k in dim_keys
                 ],
             ).model_dump(mode="json"),

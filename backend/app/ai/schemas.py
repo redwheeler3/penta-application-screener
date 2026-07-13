@@ -70,6 +70,21 @@ class PoolDimension(BaseModel):
     definition: str = Field(
         description="1-2 sentences defining what this dimension measures, in neutral terms.",
     )
+    high_end: str = Field(
+        description=(
+            "What a HIGH score (near 1.0) means — the most-desirable-fit end of this "
+            "axis. Must be a concrete description of the applicant at that end, never "
+            "'policy-dependent' or 'left to the committee': if you can't name a high "
+            "end that is clearly better fit, this is a directionless quantity — reframe "
+            "it to the fit concept it drives, or drop it (see the orientation rules)."
+        ),
+    )
+    low_end: str = Field(
+        description=(
+            "What a LOW score (near 0.0) means — the opposite pole from high_end. "
+            "Concrete, and the genuine inverse of the high end."
+        ),
+    )
     why_it_differentiates: str = Field(
         description=(
             "Briefly, why this dimension actually separates THIS pool — what "
@@ -268,7 +283,18 @@ class DecomposedDimension(BaseModel):
     )
     name: str = Field(description="Short human-readable label for the committee UI.")
     definition: str = Field(
-        description="1-2 neutral sentences defining what this settled axis measures, and which end is high.",
+        description="1-2 neutral sentences defining what this settled axis measures.",
+    )
+    high_end: str = Field(
+        description=(
+            "What a HIGH score (near 1.0) means — the most-desirable-fit end. Carry it "
+            "forward from the source axes; never 'policy-dependent' or 'left to the "
+            "committee'. A directionless quantity should have been reframed or split in "
+            "discovery, not settled as one axis with an undefined high end."
+        ),
+    )
+    low_end: str = Field(
+        description="What a LOW score (near 0.0) means — the opposite pole from high_end.",
     )
     source_keys: list[str] = Field(
         default_factory=list,

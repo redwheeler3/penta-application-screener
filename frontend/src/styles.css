@@ -2102,6 +2102,11 @@ h1 {
   width: 6rem;
 }
 
+/* Wider than a plain count: holds the "148.0k → 23.2k" in→out token pair. */
+.cost-col-tokens {
+  width: 9rem;
+}
+
 .cost-col-money {
   width: 8rem;
 }
@@ -2165,6 +2170,20 @@ h1 {
 }
 
 .dimension-why-label {
+  font-weight: 600;
+}
+
+/* The scored poles (High / Low) under a criterion's definition on the Ranking tab —
+   what a 1.0 vs. 0.0 score means, so the axis's direction is explicit. Matches the
+   "Why it differentiates" line: inline bold label, no indent or colour. */
+.dimension-pole {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.dimension-pole-label {
   font-weight: 600;
 }
 

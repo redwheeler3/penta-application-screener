@@ -20,7 +20,7 @@ KEYS = ["a", "b", "c", "d"]
 def report(*keys: str) -> PoolDimensionReport:
     return PoolDimensionReport(
         dimensions=[
-            PoolDimension(key=k, name=k, definition="d", why_it_differentiates="w")
+            PoolDimension(key=k, name=k, definition="d", high_end="high", low_end="low", why_it_differentiates="w")
             for k in keys
         ],
     )
@@ -101,7 +101,7 @@ def test_adopt_replaces_matched_dim_with_prior_text() -> None:
         dimensions=[
             PoolDimension(
                 key="long_term_stability", name="Fresh Name",
-                definition="fresh def", why_it_differentiates="fresh why",
+                definition="fresh def", high_end="high", low_end="low", why_it_differentiates="fresh why",
             )
         ],
     )
@@ -109,7 +109,7 @@ def test_adopt_replaces_matched_dim_with_prior_text() -> None:
         dimensions=[
             PoolDimension(
                 key="long_term_residency", name="Prior Name",
-                definition="prior def", why_it_differentiates="prior why",
+                definition="prior def", high_end="high", low_end="low", why_it_differentiates="prior why",
             )
         ],
     )
@@ -128,7 +128,7 @@ def test_adopt_keeps_fresh_committee_flag_on_match() -> None:
     new = PoolDimensionReport(
         dimensions=[
             PoolDimension(
-                key="fresh", name="n", definition="d", why_it_differentiates="w",
+                key="fresh", name="n", definition="d", high_end="high", low_end="low", why_it_differentiates="w",
                 from_committee_request=True,
             )
         ],
@@ -151,7 +151,7 @@ def test_adopt_unmatched_keeps_fresh_text() -> None:
     new = PoolDimensionReport(
         dimensions=[
             PoolDimension(key="new_axis", name="Fresh", definition="fresh def",
-                          why_it_differentiates="w")
+                          high_end="high", low_end="low", why_it_differentiates="w")
         ],
     )
     adopted = adopt_matched_keys(new, {"new_axis": "not_in_history"}, report("other"))

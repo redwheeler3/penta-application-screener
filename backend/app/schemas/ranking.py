@@ -16,6 +16,8 @@ class PoolDimensionOut(ResponseModel):
     key: str
     name: str
     definition: str
+    high_end: str = ""
+    low_end: str = ""
     why_it_differentiates: str
     from_committee_request: bool = False
 

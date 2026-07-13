@@ -170,7 +170,7 @@ function CostHead(): ReactNode {
     <thead>
       <tr>
         <th className="cost-col-label" />
-        <th className="cost-col-count">tokens (in→out)</th>
+        <th className="cost-col-tokens">tokens (in→out)</th>
         <th className="cost-col-count">uncached</th>
         <th className="cost-col-count">cached</th>
         <th className="cost-col-money">cache savings</th>
