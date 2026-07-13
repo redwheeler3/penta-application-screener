@@ -2,7 +2,6 @@ import { LogIn, LogOut, Settings } from "lucide-react";
 import { type SyntheticEvent, useEffect, useRef, useState } from "react";
 import { HouseIcon } from "./HouseIcon";
 import * as api from "./api";
-import { defaultSettings } from "./constants";
 import { readProblem, resolveSheetId } from "./format";
 import type {
   ApplicationDetail,
@@ -41,8 +40,10 @@ export function App() {
   const [isLoadingUser, setIsLoadingUser] = useState(true);
 
   // The form draft the user edits. Separate from `saved` so typing never affects
-  // affordances that gate on persisted state until the change is saved.
-  const [draft, setDraft] = useState<AppSettings>(defaultSettings);
+  // affordances that gate on persisted state until the change is saved. Null until
+  // GET /settings resolves (there's no client-side default — the backend schema is the
+  // sole source of the settings shape); the Settings tab gates on `saved` before reading it.
+  const [draft, setDraft] = useState<AppSettings | null>(null);
   // The last settings persisted on the server. `draft` resets to this on load/save.
   const [saved, setSaved] = useState<SettingsResponse | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
@@ -224,6 +225,7 @@ export function App() {
 
   async function saveSettings(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!draft) return; // form only renders once draft is loaded, so this can't fire
     setIsSavingSettings(true);
     const response = await api.saveSettings(draft);
     if (response.ok) {
@@ -655,7 +657,7 @@ export function App() {
                 onOverrideStatus={overrideStatus}
                 onClearOverride={clearStatusOverride}
               />
-            ) : activeTab === "settings" ? (
+            ) : activeTab === "settings" && draft ? (
               <SettingsPanel
                 draft={draft}
                 setDraft={setDraft}
