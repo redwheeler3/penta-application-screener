@@ -1,7 +1,7 @@
 import { ChevronLeft, Printer } from "lucide-react";
 import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
-import { FLAG_CATEGORY_LABELS, REASON_FIELDS, SOURCE_DESCRIPTIONS, SOURCE_LABELS, STATUS_LABELS } from "../constants";
+import { FLAG_CATEGORY_LABELS, FLAG_FIELDS, REASON_FIELDS, SOURCE_DESCRIPTIONS, SOURCE_LABELS, STATUS_LABELS } from "../constants";
 import { fieldLabel, formatFieldValue, scoreBand } from "../format";
 import type { ApplicationDetail, AppStatus } from "../types";
 
@@ -164,7 +164,10 @@ export function CandidateDetail(props: {
   onClearOverride: (id: number) => void;
 }): ReactNode {
   const { app } = props;
-  const flaggedFields = new Set(app.hardFilterReasons.flatMap((reason) => REASON_FIELDS[reason.code] ?? []));
+  const flaggedFields = new Set([
+    ...app.hardFilterReasons.flatMap((reason) => REASON_FIELDS[reason.code] ?? []),
+    ...(app.flags ?? []).flatMap((flag) => FLAG_FIELDS[flag.category] ?? []),
+  ]);
   const isHuman = app.statusSource === "human";
   const autoLabel = STATUS_LABELS[app.autoStatus];
   const detailSections = buildDetailSections(app);
