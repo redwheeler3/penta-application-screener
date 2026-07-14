@@ -242,7 +242,10 @@ export function WorkflowBar(props: {
             // change makes ranking out of date even with full coverage.
             outOfDate={workflow.candidatesScored && !workflow.rankingCurrent}
             staleTitle="The applicant pool changed since the last ranking — re-rank to refresh it."
-            progress={rankProgress}
+            // Only scoring has a candidate count. Criteria's total is the discovery
+            // fan-out width, not "candidates processed", and consolidation is one
+            // opaque call, so neither should render a misleading 0/5-style fraction.
+            progress={rankProgress?.phase === "scores" ? rankProgress : null}
             last
           />
         </ol>
