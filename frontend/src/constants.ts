@@ -60,6 +60,12 @@ export const REASON_FIELDS: Record<string, string[]> = {
   future_employment_start: ["applicant_employment_start", "co_applicant_employment_start"],
 };
 
+// Maps AI screening flag categories to the normalized fields they concern. These
+// use the same red field treatment as deterministic filter reasons in the detail view.
+export const FLAG_FIELDS: Record<string, string[]> = {
+  pet_policy: ["pets_text"],
+};
+
 // Status and "who set it" are independent axes, shown as separate columns.
 export const STATUS_LABELS: Record<AppStatus, string> = {
   eligible: "Eligible",
