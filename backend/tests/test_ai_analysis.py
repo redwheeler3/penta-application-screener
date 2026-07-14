@@ -228,10 +228,16 @@ def test_enforce_cap_passes_when_under() -> None:
     enforce_cap({"estimated_usd": 0.04}, cap_usd=5.0)  # no raise
 
 
-def test_default_spending_cap_is_one_dollar() -> None:
+def test_default_spending_cap_is_two_dollars() -> None:
     from app.schemas.settings import AISettings
 
-    assert AISettings().spending_cap_usd == 1.0
+    assert AISettings().spending_cap_usd == 2.0
+
+
+def test_default_consolidation_correlation_threshold_is_point_eight() -> None:
+    from app.schemas.settings import AISettings
+
+    assert AISettings().consolidate_correlation_threshold == 0.8
 
 
 def test_prompt_version_is_part_of_key() -> None:

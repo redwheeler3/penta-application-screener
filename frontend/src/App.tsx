@@ -232,6 +232,11 @@ export function App() {
     if (response.ok) {
       const payload: SettingsResponse = await response.json();
       applySettingsResponse(payload);
+      // Cost estimates are a snapshot of the saved AI settings. Invalidate them so
+      // a cap increase (or any model/cost setting change) cannot leave a stale
+      // over-cap warning and disabled confirmation button on screen.
+      setScreeningEstimate(null);
+      setRankEstimate(null);
       setSelectedApp(null);
       setActiveTab("applications");
       refreshDashboard();

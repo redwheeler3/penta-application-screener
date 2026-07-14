@@ -119,7 +119,7 @@ def _aligned(a: list[float | None], b: list[float | None]) -> tuple[list[float],
     return xs, ys
 
 
-def signal_overlap(fixture: EvalFixture, threshold: float = 0.85) -> list[Signal]:
+def signal_overlap(fixture: EvalFixture, threshold: float = 0.8) -> list[Signal]:
     """Report every pair of THIS run's dimensions whose score vectors correlate at/above
     ``threshold``. Not a failure: a high-r pair may be an escaped duplicate OR a genuine
     confound the committee wants kept apart — only a human knows which, so we surface it

@@ -20,11 +20,9 @@ from app.ai.dimension_scoring import KIND_PREFIX
 from app.db.models import ApplicationAIResult
 
 # Correlation at/above which a dimension pair is nominated as a suspected duplicate.
-# Calibrated on the historical pool: true duplicates sit at r ≈ 0.85-0.94, "sounds
-# similar but distinct" confounds at 0.2-0.75. r ≥ 0.85 nominates the real duplicates
-# and a few confounds — which is why nomination is followed by a definition-based
+# Default 0.8 catches subtler forks. A nomination is followed by a definition-based
 # confirm, never an auto-merge. A tunable knob.
-CORRELATION_THRESHOLD = 0.85
+CORRELATION_THRESHOLD = 0.8
 
 # A correlation needs at least this many candidates scored on BOTH dimensions to mean
 # anything (a 2-point "line" always correlates perfectly).
