@@ -16,7 +16,8 @@ echo "  http://localhost:8000/auth/google/login"
 echo ""
 
 echo "Starting backend on http://localhost:8000 ..."
-(cd "$REPO_ROOT/backend" && uv run fastapi dev --host localhost app/main.py) &
+# Watch application code only: saving tests should not restart local development.
+(cd "$REPO_ROOT/backend" && uv run uvicorn app.main:app --host localhost --port 8000 --reload --reload-dir app) &
 
 echo "Starting frontend on http://localhost:5173 ..."
 (cd "$REPO_ROOT/frontend" && npm run dev) &

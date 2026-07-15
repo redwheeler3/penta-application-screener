@@ -125,6 +125,9 @@ export const runScreening = () => fetch(url("/screening/run"), { method: "POST",
 
 export const fetchRankEstimate = () => fetch(url("/ranking/estimate"), { credentials: "include" });
 export const runRank = () => fetch(url("/ranking/run"), { method: "POST", credentials: "include" });
+export const fetchScoreCurrentEstimate = () =>
+  fetch(url("/ranking/score-current/estimate"), { credentials: "include" });
+export const scoreCurrent = () => fetch(url("/ranking/score-current"), { method: "POST", credentials: "include" });
 
 export function fetchRanking(): Promise<Response> {
   return fetch(url("/ranking"), { credentials: "include" });

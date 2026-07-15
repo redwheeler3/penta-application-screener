@@ -8,6 +8,7 @@ import type {
   DashboardCounts,
   ScreeningEstimateResponse,
   RankEstimateResponse,
+  ScoreCurrentEstimateResponse,
   RankProgress,
   WorkflowState,
 } from "../types";
@@ -38,7 +39,7 @@ const STAGE_CAPTIONS: Record<CriteriaStage | "scoring" | "consolidate", string> 
   discovering: "Reading the whole pool and reasoning about what distinguishes it — this can take up to 5 minutes.",
   settling: "Distilling the parallel discoveries into one non-overlapping set of criteria — this can take up to 5 minutes.",
   matching: "Reusing tier placements and cached scores by matching each criterion to the prior run.",
-  scoring: "Scoring each candidate against every criterion — the longest phase on a fresh run.",
+  scoring: "Scoring applicants against the current criteria.",
   consolidate: "Checking the scored criteria for duplicates and merging any that measure the same thing.",
 };
 
@@ -144,17 +145,15 @@ export function WorkflowBar(props: {
   onCancelScreening: () => void;
   rankRunning: boolean;
   rankEstimate: RankEstimateResponse | null;
+  scoreCurrentEstimate: ScoreCurrentEstimateResponse | null;
   rankProgress: RankProgress | null;
   // The model's live reasoning, streamed and shown as "thinking" for the opaque
   // calls that have no per-item progress: the criteria phase (discovery + match)
   // and post-score consolidation. Accumulates across the whole run and persists
   // through scoring once it has any text.
   criteriaThinking: string;
-  // Committee discovery seeds the next Rank will offer the AI, for the card note.
-  favouritedCount: number;
-  proposedCount: number;
   onRequestRank: () => void;
-  onRunRank: () => void;
+  onRunRank: (mode: "discover" | "score-current") => void;
   onCancelRank: () => void;
 }): ReactNode {
   const {
@@ -164,8 +163,10 @@ export function WorkflowBar(props: {
     screeningEstimate,
     screeningProgress,
     rankEstimate,
+    scoreCurrentEstimate,
     rankProgress,
   } = props;
+  const hasMissingScores = (scoreCurrentEstimate?.toAnalyze ?? 0) > 0;
 
   return (
     <>
@@ -241,7 +242,7 @@ export function WorkflowBar(props: {
             // Rank's currency is the pool fingerprint, not score coverage: a pool
             // change makes ranking out of date even with full coverage.
             outOfDate={workflow.candidatesScored && !workflow.rankingCurrent}
-            staleTitle="The applicant pool changed since the last ranking — re-rank to refresh it."
+            staleTitle="The applicant pool changed — score missing applicants or discover fresh criteria."
             // Only scoring has a candidate count. Criteria's total is the discovery
             // fan-out width, not "candidates processed", and consolidation is one
             // opaque call, so neither should render a misleading 0/5-style fraction.
@@ -341,55 +342,62 @@ export function WorkflowBar(props: {
       {rankEstimate ? (
         <div className="run-confirm">
           <div className="run-confirm-body">
-            <strong>Rank the candidates?</strong>
-            {rankEstimate.rankingCurrent ? (
-              // Nothing changed in the pool, but re-ranking is still allowed: the
-              // categorization is non-deterministic, so a re-run gives a fresh set
-              // of criteria for the committee to weigh.
+            <strong>
+              {scoreCurrentEstimate?.toAnalyze === 0
+                ? "Ranking is up to date."
+                : scoreCurrentEstimate
+                  ? "Update the ranking?"
+                  : "Rank the candidates?"}
+            </strong>
+            {scoreCurrentEstimate && hasMissingScores ? (
+              <>
+                <p>
+                  <strong>Score missing applicants</strong> against the current {scoreCurrentEstimate.dimensions} criteria.
+                  The criteria and your tier layout stay unchanged. Estimated cost{" "}
+                  <strong>~${scoreCurrentEstimate.estimatedUsd.toFixed(4)}</strong> (cap ${scoreCurrentEstimate.capUsd.toFixed(2)}).
+                </p>
+                {!scoreCurrentEstimate.withinCap ? (
+                  <p className="run-confirm-warn">
+                    Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+            {scoreCurrentEstimate?.toAnalyze === 0 ? (
+              <p>All {scoreCurrentEstimate.cached} eligible applicants are already scored against these criteria.</p>
+            ) : null}
+            <div>
               <p>
-                Ranking is already up to date. You can re-run for a fresh take on the criteria (finding them is
-                non-deterministic). Estimated cost <strong>~${rankEstimate.estimatedUsd.toFixed(4)}</strong> (cap $
-                {rankEstimate.capUsd.toFixed(2)}).
-              </p>
-            ) : (
-              <p>
-                This finds the criteria that distinguish this pool and scores all{" "}
+                {hasMissingScores ? "Or, " : ""}<strong>Discover new criteria</strong> that distinguish this pool and score all{" "}
                 {rankEstimate.eligible} eligible applicant{rankEstimate.eligible === 1 ? "" : "s"} against them.
                 Estimated cost <strong>~${rankEstimate.estimatedUsd.toFixed(4)}</strong> (cap $
                 {rankEstimate.capUsd.toFixed(2)}).
               </p>
-            )}
-            <ul className="run-confirm-breakdown">
-              <li>
-                Find distinguishing criteria — {rankEstimate.fanOut} parallel discoveries, then
-                settle them into one set ~${rankEstimate.breakdown.criteriaUsd.toFixed(4)}
-              </li>
-              {rankEstimate.breakdown.matchUsd > 0 ? (
-                <li>Match criteria to the prior run ~${rankEstimate.breakdown.matchUsd.toFixed(4)}</li>
+              {!rankEstimate.withinCap ? (
+                <p className="run-confirm-warn">
+                  Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
+                </p>
               ) : null}
-              <li>Score against criteria ~${rankEstimate.breakdown.scoringUsd.toFixed(4)}</li>
-            </ul>
-            {props.favouritedCount + props.proposedCount > 0 ? (
-              <p className="run-confirm-note">
-                Offering the AI {props.favouritedCount + props.proposedCount} suggested{" "}
-                {props.favouritedCount + props.proposedCount === 1 ? "axis" : "axes"} ({props.favouritedCount} favourited,{" "}
-                {props.proposedCount} proposed) — it may refine, split, or skip them.
-              </p>
-            ) : null}
-            {!rankEstimate.withinCap ? (
-              <p className="run-confirm-warn">
-                Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
-              </p>
-            ) : null}
+            </div>
           </div>
           <div className="run-confirm-actions">
+            {scoreCurrentEstimate && hasMissingScores ? (
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => props.onRunRank("score-current")}
+                disabled={props.rankRunning || !scoreCurrentEstimate.withinCap}
+              >
+                {props.rankRunning ? "Running" : "Score missing applicants"}
+              </button>
+            ) : null}
             <button
-              className="primary-button"
+              className={hasMissingScores ? "secondary-button" : "primary-button"}
               type="button"
-              onClick={props.onRunRank}
+              onClick={() => props.onRunRank("discover")}
               disabled={props.rankRunning || !rankEstimate.withinCap}
             >
-              {props.rankRunning ? "Running" : "Confirm & run"}
+              {props.rankRunning ? "Running" : scoreCurrentEstimate ? "Discover new criteria" : "Confirm & run"}
             </button>
             <button className="secondary-button" type="button" onClick={props.onCancelRank}>
               Cancel

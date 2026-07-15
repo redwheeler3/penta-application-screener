@@ -422,6 +422,16 @@ export type RankEstimateResponse = {
   rankingCurrent: boolean;
 };
 
+export type ScoreCurrentEstimateResponse = {
+  eligible: number;
+  toAnalyze: number;
+  cached: number;
+  dimensions: number;
+  estimatedUsd: number;
+  capUsd: number;
+  withinCap: boolean;
+};
+
 export type SortKey = "applicant" | "co_applicant" | "children" | "income" | "status";
 export type SortState = { key: SortKey; direction: "asc" | "desc" } | null;
 

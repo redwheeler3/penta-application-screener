@@ -193,6 +193,18 @@ class RankEstimateResponse(ResponseModel):
     ranking_current: bool
 
 
+class ScoreCurrentEstimateResponse(ResponseModel):
+    """Cost projection for filling missing scores on the current dimension set."""
+
+    eligible: int
+    to_analyze: int
+    cached: int
+    dimensions: int
+    estimated_usd: float
+    cap_usd: float
+    within_cap: bool
+
+
 class RankedCandidateOut(ResponseModel):
     """Camel-cased view of the ranking ``RankedCandidate`` dataclass."""
 

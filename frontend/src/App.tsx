@@ -15,6 +15,7 @@ import type {
   DashboardCounts,
   ScreeningEstimateResponse,
   RankEstimateResponse,
+  ScoreCurrentEstimateResponse,
   RankingResponse,
   RankProgress,
   CurrentRunResponse,
@@ -112,9 +113,10 @@ export function App() {
   // The current run's discovered dimensions, shown above the list once Rank has run.
   const [rankingRun, setRankingRun] = useState<CurrentRunResponse | null>(null);
 
-  // Rank (the combined criteria → scores chain): one estimate-confirm-stream
-  // flow over its passes, gated once on the combined cost.
+  // The full Rank discovers a new criteria set; the safe alternative fills missing
+  // scores against the current set. Both begin with their own capped estimate.
   const [rankEstimate, setRankEstimate] = useState<RankEstimateResponse | null>(null);
+  const [scoreCurrentEstimate, setScoreCurrentEstimate] = useState<ScoreCurrentEstimateResponse | null>(null);
   const [rankRunning, setRankRunning] = useState(false);
   const [rankProgress, setRankProgress] = useState<RankProgress | null>(null);
   // The model's live reasoning during the run's opaque calls (criteria discovery +
@@ -344,23 +346,29 @@ export function App() {
   async function requestRankEstimate() {
     setScreeningEstimate(null); // only one card shows at a time
     setImportConfirm(false);
-    const response = await api.fetchRankEstimate();
-    if (response.ok) {
+    setScoreCurrentEstimate(null);
+    const [rankResponse, currentScoreResponse] = await Promise.all([
+      api.fetchRankEstimate(),
+      rankingRun ? api.fetchScoreCurrentEstimate() : Promise.resolve(null),
+    ]);
+    if (rankResponse.ok) {
       // Always open the card, even when unchanged: it explains there's nothing to
       // re-rank and disables Confirm, instead of a transient toast.
-      setRankEstimate(await response.json());
+      setRankEstimate(await rankResponse.json());
+      if (currentScoreResponse?.ok) setScoreCurrentEstimate(await currentScoreResponse.json());
     } else {
       showError("Could not load the AI cost estimate for ranking.");
     }
   }
 
-  async function runRank() {
+  async function runRank(mode: "discover" | "score-current") {
     setRankRunning(true);
     setRankEstimate(null);
+    setScoreCurrentEstimate(null);
     setRankProgress(null);
     setCriteriaThinking("");
     try {
-      const response = await api.runRank();
+      const response = mode === "discover" ? await api.runRank() : await api.scoreCurrent();
       if (!response.ok || !response.body) {
         const problem = await readProblem(response);
         showError(problem ? `Ranking failed: ${problem}` : "Ranking failed.");
@@ -387,7 +395,8 @@ export function App() {
           } else if (event.type === "summary") {
             const failedNote = event.failed ? ` ${event.failed} failed and were skipped.` : "";
             showToast(
-              `Ranking complete: ${event.dimensions} criteria, ${event.scored} candidates scored ` +
+              `${mode === "discover" ? "Ranking complete" : "Current criteria updated"}: ` +
+                `${event.dimensions} criteria, ${event.scored} candidates scored ` +
                 `($${event.totalCostUsd.toFixed(4)}).` +
                 failedNote,
             );
@@ -603,13 +612,15 @@ export function App() {
             onCancelScreening={() => setScreeningEstimate(null)}
             rankRunning={rankRunning}
             rankEstimate={rankEstimate}
+            scoreCurrentEstimate={scoreCurrentEstimate}
             rankProgress={rankProgress}
             criteriaThinking={criteriaThinking}
-            favouritedCount={rankingRun?.favouritedKeys.length ?? 0}
-            proposedCount={rankingRun?.proposedDimensions.length ?? 0}
             onRequestRank={requestRankEstimate}
             onRunRank={runRank}
-            onCancelRank={() => setRankEstimate(null)}
+            onCancelRank={() => {
+              setRankEstimate(null);
+              setScoreCurrentEstimate(null);
+            }}
           />
 
           {/* Tab row: the two data views on the left, Settings set apart on the
