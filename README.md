@@ -119,6 +119,9 @@ Start both servers:
 ```
 
 The backend runs at `http://localhost:8000`. The frontend runs at `http://localhost:5173`.
+On Windows, `dev.ps1` writes per-service output and errors to `.dev-logs/`. If either
+service exits, it prints the last log lines; it also retries the frontend twice before
+leaving the backend running for diagnosis.
 
 If local screening data looks stale or inconsistent, reset the local SQLite database before starting dev:
 
