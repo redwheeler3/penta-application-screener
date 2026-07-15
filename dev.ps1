@@ -63,6 +63,7 @@ function Start-Frontend {
     $arguments = "`"$npmCli`" run dev"
     $process = Start-Process -PassThru -WorkingDirectory "$PSScriptRoot\frontend" `
         -FilePath $node -ArgumentList $arguments `
+        -WindowStyle Hidden `
         -RedirectStandardOutput $outputLog -RedirectStandardError $errorLog
     return [pscustomobject]@{ Process = $process; OutputLog = $outputLog; ErrorLog = $errorLog }
 }
@@ -79,6 +80,7 @@ try {
     $backendErrorLog = Join-Path $logDir "$sessionStamp-backend.err.log"
     $backend = Start-Process -PassThru -WorkingDirectory "$PSScriptRoot\backend" `
         -FilePath "uv" -ArgumentList "run", "uvicorn", "app.main:app", "--host", "localhost", "--port", "8000", "--reload", "--reload-dir", "app" `
+        -WindowStyle Hidden `
         -RedirectStandardOutput $backendOutputLog -RedirectStandardError $backendErrorLog
 
     Write-Host "Starting frontend on http://localhost:5173 ..."
