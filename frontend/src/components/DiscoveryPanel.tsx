@@ -54,7 +54,7 @@ export function DiscoveryPanel(props: { run: CurrentRunResponse }): ReactNode {
         axes below independently — the overlaps and the gaps are the fan-out at work.
       </p>
       {audit.passes.map((pass, i) => (
-        <details key={i} className="discovery-pass" open={i === 0}>
+        <details key={i} className="discovery-pass">
           <summary className="discovery-pass-summary">
             Discoverer {i + 1}
             <span className="discovery-pass-count">{pass.dimensions.length} dimensions</span>

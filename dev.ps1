@@ -61,8 +61,10 @@ try {
     Write-Host ""
 
     Write-Host "Starting backend on http://localhost:8000 ..."
+    # Watch application code only: saving tests should never interrupt a running
+    # server reload on Windows.
     $backend = Start-Process -NoNewWindow -PassThru -WorkingDirectory "$PSScriptRoot\backend" `
-        -FilePath "uv" -ArgumentList "run", "fastapi", "dev", "--host", "localhost", "app/main.py"
+        -FilePath "uv" -ArgumentList "run", "uvicorn", "app.main:app", "--host", "localhost", "--port", "8000", "--reload", "--reload-dir", "app"
 
     Write-Host "Starting frontend on http://localhost:5173 ..."
     $node = (Get-Command "node.exe" -ErrorAction Stop).Source

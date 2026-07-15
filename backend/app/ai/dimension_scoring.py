@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from app.ai.analysis import (
     AnalysisOutcome,
     PassResult,
+    cache_key,
     cached_outcome,
     derive_prompt_version,
     exception_type_name,
@@ -49,7 +50,7 @@ from app.ai.schemas import (
     PoolDimensionReport,
     ScoreConfidence,
 )
-from app.db.models import Application, ApplicationStatus
+from app.db.models import Application, ApplicationAIResult, ApplicationStatus
 from app.schemas.settings import AppSettings
 from app.services.application_import import extract_essays
 from app.services.cost_report import recent_pass_fresh_usd
@@ -213,7 +214,11 @@ def _per_candidate_input_tokens(db: Session, report: PoolDimensionReport | None)
 
 
 def estimate_dimension_scoring(
-    db: Session, settings: AppSettings
+    db: Session,
+    settings: AppSettings,
+    *,
+    prefer_history: bool = True,
+    include_coverage: bool = True,
 ) -> dict[str, object]:
     """Pre-run scoring estimate that respects the per-dimension cache.
 
@@ -251,6 +256,19 @@ def estimate_dimension_scoring(
     run = get_current_run(db)
     report = current_dimension_report(run) if run is not None else None
 
+    # The full-discovery estimate needs only the measured scoring cost, not the
+    # current cache counts. Skip N×dimension cache lookups when history already gives
+    # that cost; the score-current estimate keeps ``include_coverage`` true because
+    # it must name exactly which applicants still need work.
+    measured = recent_pass_fresh_usd(db) if prefer_history else None
+    if measured is not None and not include_coverage:
+        return {
+            "total": len(candidates),
+            "to_analyze": 0,
+            "cached": 0,
+            "estimated_usd": round(measured, 4),
+        }
+
     input_tokens = _per_candidate_input_tokens(db, report)
     output_per_dim = _avg_output_tokens_per_dimension(db, model_id)
 
@@ -275,17 +293,21 @@ def estimate_dimension_scoring(
     # Count the real uncached work per candidate against the current dims (also drives
     # the honest cached/to_analyze counts the UI shows). A fully-cached candidate makes
     # no call, matching run-time behavior.
+    missing_by_application = _missing_dimensions_by_application(
+        db, candidates, report, model_id
+    )
     count_based = 0.0
     fully_cached = 0
     for application in candidates:
-        to_score, _cached, _saved = _to_score_dimensions(db, application, report, model_id)
+        to_score = missing_by_application[application.id]
         if not to_score:
             fully_cached += 1
             continue
         count_based += _call_cost(len(to_score))
 
-    # Prefer the measured predictor when we have run history; else the cache-aware count.
-    measured = recent_pass_fresh_usd(db)
+    # A full Rank has discovery-dependent scoring work, so its estimate favours recent
+    # measured runs. Scoring an existing dimension set has no such uncertainty: use the
+    # exact current cache count instead.
     estimated = measured if measured is not None else count_based
 
     return {
@@ -328,6 +350,67 @@ def _to_score_dimensions(
             cached[dim.key] = DimensionScore.model_validate(outcome.output.model_dump())
             cached_saved_usd += outcome.cost_usd
     return to_score, cached, cached_saved_usd
+
+
+def _missing_dimensions_by_application(
+    db: Session,
+    applications: list[Application],
+    report: PoolDimensionReport,
+    model_id: str,
+) -> dict[int, list[PoolDimension]]:
+    """Find cache misses for an applicant × dimension grid in batched queries.
+
+    The confirmation card needs this exact answer. Querying one cache row at a time
+    makes its latency grow with every criterion, so fetch the relevant cache keys in
+    bounded batches and map the misses back to each applicant.
+    """
+    keys_by_application = {
+        application.id: {
+            dimension.key: cache_key(
+                application=application,
+                kind=kind_for_dimension(dimension.key),
+                model_id=model_id,
+                prompt_version=PROMPT_VERSION,
+            )
+            for dimension in report.dimensions
+        }
+        for application in applications
+    }
+    all_keys = [
+        key
+        for by_dimension in keys_by_application.values()
+        for key in by_dimension.values()
+    ]
+    existing: set[str] = set()
+    # SQLite's bound-variable ceiling is commonly 999. Keep well below it so the
+    # same code handles a much larger applicant pool without a dialect-specific path.
+    for start in range(0, len(all_keys), 500):
+        existing.update(
+            db.scalars(
+                select(ApplicationAIResult.cache_key).where(
+                    ApplicationAIResult.cache_key.in_(all_keys[start:start + 500])
+                )
+            )
+        )
+    return {
+        application.id: [
+            dimension
+            for dimension in report.dimensions
+            if keys_by_application[application.id][dimension.key] not in existing
+        ]
+        for application in applications
+    }
+
+
+def applications_needing_scores(
+    db: Session, report: PoolDimensionReport, model_id: str
+) -> list[Application]:
+    """Eligible applicants with at least one missing score for ``report``."""
+    applications = applications_to_score(db)
+    missing_by_application = _missing_dimensions_by_application(
+        db, applications, report, model_id
+    )
+    return [app for app in applications if missing_by_application[app.id]]
 
 
 def _split_usage(usage: Usage, parts: int) -> Usage:

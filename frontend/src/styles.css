@@ -1163,27 +1163,6 @@ h1 {
   color: #991b1b !important;
 }
 
-/* The per-pass cost breakdown under the combined Rank estimate. Smaller and
-   quieter than the headline cost — it's the supporting detail. One line per
-   pass so each step's verb reads clearly. */
-.run-confirm-breakdown {
-  margin: 0.35rem 0 0;
-  padding-left: 1.1rem;
-  font-size: 0.76rem;
-  opacity: 0.85;
-}
-
-.run-confirm-breakdown li {
-  margin: 0.1rem 0;
-}
-
-.run-confirm-note {
-  margin: 0.4rem 0 0;
-  font-size: 0.74rem;
-  font-style: italic;
-  opacity: 0.75;
-}
-
 .run-confirm-actions {
   display: flex;
   gap: 0.5rem;

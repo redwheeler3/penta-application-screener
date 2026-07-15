@@ -47,6 +47,7 @@ from app.ai.dimension_decompose import (
 )
 from app.ai.dimension_matching import estimate_match, match_dimensions
 from app.ai.dimension_scoring import (
+    applications_needing_scores,
     applications_to_score,
     estimate_dimension_scoring,
     score_dimensions,
@@ -88,6 +89,7 @@ from app.schemas.ranking import (
     RankEstimateBreakdown,
     RankEstimateResponse,
     RankingResponse,
+    ScoreCurrentEstimateResponse,
     SeedsResponse,
     SeedsUpdate,
     TierLayoutUpdate,
@@ -117,6 +119,7 @@ from app.services.ranking_run import (
     favourited_keys,
     get_current_run,
     key_history,
+    mark_ranking_current,
     match_audit_view,
     proposed_dimensions,
     ranking_is_current,
@@ -416,7 +419,7 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     else:
         measured_match = recent_pass_fresh_usd(db, "Dimension matching")
         match_usd = measured_match if measured_match is not None else estimate_match(settings)
-    scoring = estimate_dimension_scoring(db, settings)
+    scoring = estimate_dimension_scoring(db, settings, include_coverage=False)
     scoring_usd = float(scoring["estimated_usd"])
     # Post-score consolidation: a ceiling — the confirm call fires only when correlation
     # nominates a duplicate pair (often none). Measured from history when available, else
@@ -468,6 +471,117 @@ def rank_estimate(
         # this to say "up to date" instead of offering to spend.
         ranking_current=ranking_is_current(db, get_current_run(db), settings),
     )
+
+
+def _current_scoring_estimate(
+    db: Session, settings: AppSettings
+) -> tuple[PoolDimensionReport, dict[str, object]]:
+    """Return the current criteria and an exact cache-aware scoring estimate.
+
+    Unlike a full Rank, this path never discovers, matches, consolidates, or creates a
+    run. It only fills cache misses for the current run's dimensions.
+    """
+    run = get_current_run(db)
+    report = current_dimension_report(run) if run is not None else None
+    if report is None:
+        raise Problem(
+            "run_required",
+            detail="Discover ranking criteria before scoring applicants against them.",
+        )
+    return report, estimate_dimension_scoring(db, settings, prefer_history=False)
+
+
+@router.get("/score-current/estimate", response_model=ScoreCurrentEstimateResponse)
+def score_current_estimate(
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> ScoreCurrentEstimateResponse:
+    settings = get_app_settings(db)
+    report, result = _current_scoring_estimate(db, settings)
+    estimated_usd = float(result["estimated_usd"])
+    return ScoreCurrentEstimateResponse(
+        eligible=int(result["total"]),
+        to_analyze=int(result["to_analyze"]),
+        cached=int(result["cached"]),
+        dimensions=len(report.dimensions),
+        estimated_usd=estimated_usd,
+        cap_usd=settings.ai.spending_cap_usd,
+        within_cap=estimated_usd <= settings.ai.spending_cap_usd,
+    )
+
+
+@router.post("/score-current")
+def score_current(
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+    provider: AIProvider = Depends(get_ai_provider),
+) -> StreamingResponse:
+    """Fill missing scores without changing the current dimensions or tier layout."""
+    settings = get_app_settings(db)
+    report, estimate = _current_scoring_estimate(db, settings)
+    if int(estimate["to_analyze"]) == 0:
+        raise Problem(
+            "unchanged_pool",
+            detail="Every eligible applicant is already scored against the current criteria.",
+        )
+    try:
+        enforce_cap(estimate, settings.ai.spending_cap_usd)
+    except SpendingCapExceeded as exc:
+        raise Problem(
+            "cap_exceeded",
+            detail=str(exc),
+            cap_usd=settings.ai.spending_cap_usd,
+            estimated_usd=float(estimate["estimated_usd"]),
+        ) from exc
+
+    # Restrict the work list before streaming so the progress count means applicants
+    # that actually need a model call, not every eligible applicant.
+    candidates = applications_needing_scores(
+        db, report, settings.ai.dimension_scoring_model
+    )
+
+    def stream() -> Iterator[str]:
+        yield emit(PhaseEvent(phase=SCORES, total=len(candidates)))
+        tally = RunTally()
+        started = time.perf_counter()
+        for processed, result in enumerate(
+            score_dimensions(
+                db, provider, applications=candidates, report=report,
+                settings=settings, max_workers=settings.ai.max_workers,
+            ),
+            start=1,
+        ):
+            tally.add(result)
+            yield emit(ProgressEvent(phase=SCORES, processed=processed, total=len(candidates)))
+        if tally.failed == 0:
+            # Choosing the score-only path is an explicit committee decision to retain
+            # these criteria for the changed pool. Re-stamp only after complete success;
+            # a partial score run must stay amber and invite a retry.
+            run = get_current_run(db)
+            if run is not None:
+                mark_ranking_current(db, run, settings)
+        record_run_cost(
+            db,
+            kind="rank",
+            passes={
+                "Pattern discovery": PassCost(),
+                "Dimension decomposition": PassCost(),
+                "Dimension matching": PassCost(),
+                "Dimension scoring": tally.as_pass_cost(settings.ai.dimension_scoring_model),
+                "Dimension consolidation": PassCost(),
+            },
+            durations_ms={"Dimension scoring": round((time.perf_counter() - started) * 1000)},
+        )
+        yield emit(
+            RankSummary(
+                dimensions=len(report.dimensions),
+                scored=tally.processed,
+                failed=tally.failed,
+                total_cost_usd=round(tally.cost_usd, 4),
+            )
+        )
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
 
 
 @router.post("/run")

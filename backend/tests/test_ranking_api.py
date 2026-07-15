@@ -229,6 +229,62 @@ async def test_full_flow_rank_then_detail() -> None:
 
 
 @pytest.mark.anyio
+async def test_score_current_fills_only_missing_scores_without_replacing_run() -> None:
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        route_criteria(provider, a_pattern_report())
+        provider.route("applicant_id", a_scoring_report())
+        await stream_events(client, "/ranking/run")
+
+        before = (await client.get("/ranking/current")).json()
+        await client.put(
+            "/ranking/tiers",
+            json={
+                "tiers": [
+                    {"id": "critical", "label": "Critical", "dimensionKeys": ["skills_offered"], "ignore": False},
+                    {"id": "ignore", "label": "Ignore", "dimensionKeys": ["participation_commitment"], "ignore": True},
+                ]
+            },
+        )
+        add_eligible(db, email="b@x.com", raw_hash="h2")
+
+        estimate = (await client.get("/ranking/score-current/estimate")).json()
+        assert estimate["toAnalyze"] == 1
+        assert estimate["cached"] == 1
+        assert estimate["dimensions"] == 2
+
+        calls_before = len(provider.calls)
+        summary = next(
+            event
+            for event in await stream_events(client, "/ranking/score-current")
+            if event["type"] == "summary"
+        )
+        assert summary["scored"] == 1
+        assert summary["dimensions"] == 2
+        # Only the new applicant's scoring call ran: no discovery, decomposition,
+        # matching, or consolidation call is part of this path.
+        assert len(provider.calls) == calls_before + 1
+
+        after = (await client.get("/ranking/current")).json()
+        assert after["runId"] == before["runId"]
+        assert after["dimensions"] == before["dimensions"]
+        tiers = (await client.get("/ranking/tiers")).json()["tiers"]
+        assert tiers[0]["dimensionKeys"] == ["skills_offered"]
+        assert (await client.get("/dashboard")).json()["workflow"]["rankingCurrent"] is True
+
+
+@pytest.mark.anyio
+async def test_score_current_requires_existing_criteria() -> None:
+    app, _, _ = setup_app(role=UserRole.MEMBER)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        assert (await client.get("/ranking/score-current/estimate")).status_code == 409
+        assert (await client.post("/ranking/score-current")).status_code == 409
+
+
+@pytest.mark.anyio
 async def test_insights_cost_aggregates_by_pass() -> None:
     # After a rank, the cost report sums stored spend by pass: scoring from
     # ApplicationAIResult, discovery from the run. (Screening isn't run in this flow.)

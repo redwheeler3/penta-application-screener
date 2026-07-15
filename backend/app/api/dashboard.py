@@ -53,6 +53,16 @@ def read_dashboard(
     # Counts keyed by the real columns; named views are composed client-side.
     by_status = _count_by(db, Application.status)
     by_source = _count_by(db, Application.status_source)
+    coverage = _coverage(db, settings)
+    scoring_coverage = coverage.get("candidatesScored")
+    # A completed score-only run is the committee's deliberate choice to retain the
+    # current criteria for this pool. Full coverage therefore clears the Rank stale
+    # state even when the discovery-input fingerprint changed.
+    current_criteria_scored = (
+        scoring_coverage is not None
+        and scoring_coverage.in_scope > 0
+        and scoring_coverage.cached == scoring_coverage.in_scope
+    )
 
     return DashboardResponse(
         settings_complete=bool(settings.google_sheet_id),
@@ -76,14 +86,17 @@ def read_dashboard(
             patterns_discovered=_run_exists(db),
             # Scoring kinds are per-dimension, so match by prefix.
             candidates_scored=_kind_prefix_exists(db, "dimension_scoring:"),
-            # Same truth the Rank no-op gate uses, so the "needs re-run" badge and
-            # the Rank button agree even when every candidate has a cached score.
-            ranking_current=ranking_is_current(db, get_current_run(db), settings),
+            # A full discovery run is fresh when its inputs match; alternatively,
+            # complete current-criteria coverage records the score-only path.
+            ranking_current=(
+                ranking_is_current(db, get_current_run(db), settings)
+                or current_criteria_scored
+            ),
         ),
         # Per-AI-step coverage of the current scope. A step whose results predate a
         # re-sync goes stale (cached < inScope) even though it ran, so the UI warns
         # instead of showing a misleading done-check.
-        coverage=_coverage(db, settings),
+        coverage=coverage,
     )
 
 

@@ -416,6 +416,16 @@ def ranking_is_current(db: Session, run: RankingRun | None, settings: AppSetting
     return stored == rank_inputs_fingerprint(db, settings)
 
 
+def mark_ranking_current(db: Session, run: RankingRun, settings: AppSettings) -> None:
+    """Record the committee's choice to keep this run's criteria for current inputs."""
+    run.criteria = {
+        **(run.criteria or {}),
+        "rank_inputs_fingerprint": rank_inputs_fingerprint(db, settings),
+    }
+    db.add(run)
+    db.commit()
+
+
 def current_dimension_report(run: RankingRun) -> PoolDimensionReport | None:
     """Parse the stored ``PoolDimensionReport`` from a run's criteria, if present."""
     payload = (run.criteria or {}).get("dimension_report")

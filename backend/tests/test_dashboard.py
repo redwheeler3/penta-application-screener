@@ -105,12 +105,11 @@ async def test_workflow_flags_track_progress() -> None:
 
 @pytest.mark.anyio
 async def test_ranking_current_tracks_rank_inputs() -> None:
-    """rankingCurrent follows the rank-inputs fingerprint: the eligible pool AND the
-    rank-chain prompt/model identity, not score coverage.
+    """rankingCurrent follows the rank-inputs fingerprint until the committee
+    completes score-only coverage for the retained criteria.
 
-    This is the green/yellow reconciliation — the Rank "needs re-run" badge must
-    agree with the no-op gate — extended so a rank-chain PROMPT change also flags
-    re-rank, not just a pool change. Coverage alone would miss both.
+    A pool or prompt change is amber until the committee either discovers new criteria
+    or has every eligible applicant scored against the existing set.
     """
     from app.schemas.settings import AppSettings
     from app.services.ranking_run import rank_inputs_fingerprint
@@ -319,8 +318,10 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        coverage = (await client.get("/dashboard")).json()["coverage"]
+        dashboard = (await client.get("/dashboard")).json()
+    coverage = dashboard["coverage"]
     assert coverage["candidatesScored"] == {"cached": 0, "inScope": 1}  # partial = not done
+    assert dashboard["workflow"]["rankingCurrent"] is False
 
     # Score the second dimension too -> complete.
     db.add(ApplicationAIResult(
@@ -331,6 +332,8 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     db.commit()
 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        coverage = (await client.get("/dashboard")).json()["coverage"]
+        dashboard = (await client.get("/dashboard")).json()
+    coverage = dashboard["coverage"]
     assert coverage["candidatesScored"] == {"cached": 1, "inScope": 1}
+    assert dashboard["workflow"]["rankingCurrent"] is True
 
