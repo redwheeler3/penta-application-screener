@@ -344,6 +344,13 @@ def _dimension_scores(
     if report is None:
         return None
 
+    # An all-Ignore board intentionally falls back to uniform weights so the ranked
+    # list has a stable opening order. It is not a committee weighting decision,
+    # though, so applicant details should not present every raw score as relevant.
+    tiers = (run.criteria or {}).get("tiers") or []
+    if not any(tier.get("dimension_keys") for tier in tiers):
+        return []
+
     weights = dimension_weights(run)
     ranked = rank_candidates(candidate_scores(db, run), weights)
     candidate = next((c for c in ranked if c.application_id == app.id), None)
