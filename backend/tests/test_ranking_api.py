@@ -202,6 +202,7 @@ async def test_full_flow_rank_then_detail() -> None:
         assert detail["status"] == "eligible"
         assert detail["statusSource"] == "untouched"
         assert detail["dimensionScores"] == []
+        assert detail["dimensionScoringTrace"]["dimensionCount"] == 2
 
         # Once the committee places dimensions in a working tier, their scores
         # surface on the candidate detail, joined to dimension names.
@@ -226,6 +227,13 @@ async def test_full_flow_rank_then_detail() -> None:
         assert by_key["participation_commitment"]["name"] == "Participation commitment"
         assert by_key["participation_commitment"]["score"] == 0.8
         assert by_key["skills_offered"]["confidence"] == "low"
+        trace = detail["dimensionScoringTrace"]
+        assert trace["dimensionCount"] == 2
+        assert trace["modelIds"] == ["mock-model"]
+        assert len(trace["promptVersions"]) == 1
+        assert trace["inputTokens"] == 100
+        assert trace["outputTokens"] == 50
+        assert trace["costUsd"] > 0
 
 
 @pytest.mark.anyio

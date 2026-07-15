@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "re
 import ReactMarkdown from "react-markdown";
 import { FLAG_CATEGORY_LABELS, FLAG_FIELDS, REASON_FIELDS, SOURCE_DESCRIPTIONS, SOURCE_LABELS, STATUS_LABELS } from "../constants";
 import { fieldLabel, formatFieldValue, scoreBand } from "../format";
-import type { ApplicationDetail, AppStatus } from "../types";
+import type { AIResultTrace, ApplicationDetail, AppStatus, DimensionScoringTrace } from "../types";
 
 type DetailField = {
   key: string;
@@ -416,7 +416,49 @@ export function CandidateDetail(props: {
           </div>
         </details>
       ) : null}
+      {app.screeningTrace || app.dimensionScoringTrace ? (
+        <details className="raw-row-section ai-trace-section">
+          <summary>AI trace</summary>
+          {app.screeningTrace ? (
+            <div className="ai-trace-score">
+              <strong>Screening</strong>
+              <AITrace trace={app.screeningTrace} />
+            </div>
+          ) : null}
+          {app.dimensionScoringTrace ? (
+            <div className="ai-trace-score">
+              <strong>Dimension scoring</strong>
+              <DimensionScoringTraceDetails trace={app.dimensionScoringTrace} />
+            </div>
+          ) : null}
+        </details>
+      ) : null}
     </div>
+  );
+}
+
+function AITrace(props: { trace: AIResultTrace }): ReactNode {
+  const { trace } = props;
+  return (
+    <dl className="ai-trace-meta">
+      <div><dt>Model</dt><dd>{trace.modelId}</dd></div>
+      <div><dt>Prompt</dt><dd><code>{trace.promptVersion}</code></dd></div>
+      <div><dt>Tokens</dt><dd>{trace.inputTokens.toLocaleString()} in → {trace.outputTokens.toLocaleString()} out</dd></div>
+      <div><dt>Attributed cost</dt><dd>${trace.costUsd.toFixed(4)}</dd></div>
+    </dl>
+  );
+}
+
+function DimensionScoringTraceDetails(props: { trace: DimensionScoringTrace }): ReactNode {
+  const { trace } = props;
+  return (
+    <dl className="ai-trace-meta">
+      <div><dt>Criteria</dt><dd>{trace.dimensionCount} stored score{trace.dimensionCount === 1 ? "" : "s"}</dd></div>
+      <div><dt>Model</dt><dd>{trace.modelIds.join(", ")}</dd></div>
+      <div><dt>Prompt</dt><dd>{trace.promptVersions.map((version) => <code key={version}>{version}</code>)}</dd></div>
+      <div><dt>Tokens</dt><dd>{trace.inputTokens.toLocaleString()} in → {trace.outputTokens.toLocaleString()} out</dd></div>
+      <div><dt>Attributed cost</dt><dd>${trace.costUsd.toFixed(4)}</dd></div>
+    </dl>
   );
 }
 

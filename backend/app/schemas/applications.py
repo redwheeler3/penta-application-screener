@@ -46,6 +46,34 @@ class DimensionContributionOut(ResponseModel):
     evidence: str
 
 
+class AIResultTraceOut(ResponseModel):
+    """Provenance for one cached per-application model result. Cost and tokens describe
+    its original generation allocation; a later run may reuse that result from cache."""
+
+    model_id: str
+    prompt_version: str
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+
+
+class DimensionScoringTraceOut(ResponseModel):
+    """Combined provenance for an applicant's current-dimension score results.
+
+    A fresh scoring call commonly produces several dimension rows. On later updates,
+    cached dimensions may originate from different calls, models, or prompt revisions,
+    so this reports the exact total and all contributing provenance rather than
+    pretending there was one call.
+    """
+
+    dimension_count: int
+    model_ids: list[str]
+    prompt_versions: list[str]
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+
+
 class ApplicationSummary(ResponseModel):
     id: int
     primary_email: str
@@ -71,7 +99,9 @@ class ApplicationDetail(ApplicationSummary):
     flags: list[ScreeningFlagOut] | None = None
     raw_row: dict[str, Any] | None = None
     ai_narrative: str | None = None
+    screening_trace: AIResultTraceOut | None = None
     dimension_scores: list[DimensionContributionOut] | None = None
+    dimension_scoring_trace: DimensionScoringTraceOut | None = None
     # The current reviewer's private note. It is intentionally not part of the
     # application, source row, AI input, or any shared report.
     private_note: str = ""

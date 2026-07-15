@@ -118,6 +118,23 @@ export type ScreeningFlag = {
   evidence: string;
 };
 
+export type AIResultTrace = {
+  modelId: string;
+  promptVersion: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+};
+
+export type DimensionScoringTrace = {
+  dimensionCount: number;
+  modelIds: string[];
+  promptVersions: string[];
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+};
+
 export type ApplicationDetail = ApplicationSummary & {
   // What the machine would decide from the current findings — i.e. the result of
   // clearing a human override. Lets the status control show the automatic verdict.
@@ -130,10 +147,14 @@ export type ApplicationDetail = ApplicationSummary & {
   rawRow?: Record<string, unknown>;
   // The model's free-text reasoning from the latest screening pass.
   aiNarrative?: string | null;
+  // Provenance for the latest screening result and current dimension score results.
+  // Costs describe original generation allocations; results may be reused from cache.
+  screeningTrace?: AIResultTrace | null;
   // This candidate's scores against the current run's dimensions, by |impact|
   // descending — the same ranking contributions the ranked-list row slices. null =
   // no run, or not scored under it.
   dimensionScores?: DimensionContribution[] | null;
+  dimensionScoringTrace?: DimensionScoringTrace | null;
   // Private to the signed-in committee member; never included in AI inputs.
   privateNote: string;
 };

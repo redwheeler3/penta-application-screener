@@ -299,6 +299,11 @@ async def test_raw_row_and_narrative_visible_to_members() -> None:
         assert member_detail["aiNarrative"] == (
             "Checking pets: a hamster is outside the allowed categories."
         )
+        trace = member_detail["screeningTrace"]
+        assert trace["modelId"] == "mock-model"
+        assert trace["inputTokens"] == 100
+        assert trace["outputTokens"] == 50
+        assert trace["costUsd"] > 0
         assert "rawRow" in member_detail
 
 
