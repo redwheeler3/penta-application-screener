@@ -129,6 +129,27 @@ class ScoreConfidence(StrEnum):
     HIGH = "high"
 
 
+class JudgeVerdict(StrEnum):
+    """A manual eval judge's semantic verdict.
+
+    These labels cover the first two eval case families: whether a proposed
+    consolidation is correct, and whether a decomposition audit agrees with
+    its own recorded decision.
+    """
+
+    MERGE = "merge"
+    KEEP = "keep"
+    MATCHES = "matches"
+    MISMATCHES = "mismatches"
+
+
+class JudgeReport(BaseModel):
+    """One non-gating judgement over a labelled eval case."""
+
+    verdict: JudgeVerdict
+    reason: str = Field(description="One concise, evidence-based explanation.")
+
+
 class DimensionScore(BaseModel):
     """One candidate's score on one discovered dimension, with grounding."""
 

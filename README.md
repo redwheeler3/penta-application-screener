@@ -57,6 +57,8 @@ The next planned milestone (M13) is deeper AI observability and evals: the per-p
 
 Current planning lives in [SPEC.md](SPEC.md). Developer architecture notes live in [docs/app-architecture.md](docs/app-architecture.md), with deeper references in [docs/ai-screening.md](docs/ai-screening.md), [docs/api.md](docs/api.md), and [docs/form-field-reference.md](docs/form-field-reference.md). Shared agent guidance lives in [.clinerules](.clinerules), with [AGENTS.md](AGENTS.md) pointing agents there.
 
+Evaluation design and the manual LLM judge are documented in [docs/ai-evals.md](docs/ai-evals.md).
+
 ## Privacy And Test Data
 
 Applicant data is sensitive. Do not commit real application exports, local SQLite databases, OAuth credentials, raw AI traces, exported/printed reports with applicant data, or `.env` files.
@@ -80,11 +82,14 @@ The sample CSV in [test-data](test-data) is synthetic and intentionally realisti
    - Node.js 20+ with npm
    - PowerShell 7 on Windows if using `dev.ps1`
 
-2. Install dependencies:
+2. Initialize dependencies and the local database:
 
    ```sh
-   cd backend && uv sync && cd ..
-   cd frontend && npm install && cd ..
+   bash ./setup.sh       # macOS/Linux
+   ```
+
+   ```powershell
+   ./setup.ps1           # Windows PowerShell
    ```
 
 3. Configure Google OAuth.
@@ -100,11 +105,7 @@ The sample CSV in [test-data](test-data) is synthetic and intentionally realisti
 
    See [docs/google-cloud-oauth-setup.md](docs/google-cloud-oauth-setup.md) for full Google Cloud and OAuth details.
 
-4. Run database migrations:
-
-   ```sh
-   cd backend && uv run alembic upgrade head
-   ```
+   The setup script has already run the database migrations.
 
 ## Local Development
 
@@ -165,6 +166,21 @@ Frontend build/type check:
 ```sh
 cd frontend
 npm run build
+```
+
+## Manual AI Quality Audit
+
+Run the non-gating LLM judge against its PII-safe labelled cases. It makes paid
+Bedrock calls only when invoked; it never runs during Rank or the test suite.
+
+```sh
+bash ./judge.sh              # macOS/Linux
+bash ./judge.sh --case decompose_routing_drift
+```
+
+```powershell
+./judge.ps1             # Windows PowerShell
+./judge.ps1 -Case decompose_routing_drift
 ```
 
 ## Status
