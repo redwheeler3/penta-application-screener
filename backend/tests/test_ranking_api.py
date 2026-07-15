@@ -196,11 +196,30 @@ async def test_full_flow_rank_then_detail() -> None:
         current = (await client.get("/ranking/current")).json()
         assert len(current["dimensions"]) == 2
 
-        # Scores surface on the candidate detail, joined to dimension names, and
-        # status is untouched (the chain's passes never gate eligibility).
+        # With every dimension initially in Ignore, details do not present raw
+        # scores as if the committee had selected them.
         detail = (await client.get(f"/applications/{application.id}")).json()["application"]
         assert detail["status"] == "eligible"
         assert detail["statusSource"] == "untouched"
+        assert detail["dimensionScores"] == []
+
+        # Once the committee places dimensions in a working tier, their scores
+        # surface on the candidate detail, joined to dimension names.
+        await client.put(
+            "/ranking/tiers",
+            json={
+                "tiers": [
+                    {
+                        "id": "tier-s",
+                        "label": "Critical",
+                        "dimensionKeys": ["participation_commitment", "skills_offered"],
+                        "ignore": False,
+                    },
+                    {"id": "ignore", "label": "Ignore", "dimensionKeys": [], "ignore": True},
+                ]
+            },
+        )
+        detail = (await client.get(f"/applications/{application.id}")).json()["application"]
         scores = detail["dimensionScores"]
         assert len(scores) == 2
         by_key = {s["dimensionKey"]: s for s in scores}
