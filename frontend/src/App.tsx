@@ -613,6 +613,7 @@ export function App() {
             rankRunning={rankRunning}
             rankEstimate={rankEstimate}
             scoreCurrentEstimate={scoreCurrentEstimate}
+            hasCurrentCriteria={rankingRun !== null}
             rankProgress={rankProgress}
             criteriaThinking={criteriaThinking}
             onRequestRank={requestRankEstimate}
