@@ -4,7 +4,17 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
@@ -110,6 +120,28 @@ class Application(TimestampMixin, Base):
     # status. Null unless status_source == human. A differing current hash means
     # there are new findings since the human's review (staleness).
     reviewed_fingerprint: Mapped[str | None] = mapped_column(String(64))
+
+
+class ApplicationNote(TimestampMixin, Base):
+    """A reviewer's private note on one application.
+
+    Notes are deliberately separate from the application and its AI results: they
+    belong to one member, never enter model prompts, and are never shared by a
+    general application response.
+    """
+
+    __tablename__ = "application_notes"
+    __table_args__ = (UniqueConstraint("application_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id"), index=True, nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    application: Mapped[Application] = relationship()
+    user: Mapped[User] = relationship()
 
 
 class ApplicationAIResult(TimestampMixin, Base):

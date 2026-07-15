@@ -2,7 +2,7 @@ import json
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -10,7 +10,14 @@ from app.ai.mock_provider import MockProvider
 from app.ai.schemas import FlagCategory, FlagSeverity, ScreeningFlag, ScreeningReport
 from app.api.dependencies import require_current_user
 from app.api.screening import get_ai_provider
-from app.db.models import Application, ApplicationStatus, Base, User, UserRole
+from app.db.models import (
+    Application,
+    ApplicationNote,
+    ApplicationStatus,
+    Base,
+    User,
+    UserRole,
+)
 from app.db.session import get_db
 from app.main import create_app
 
@@ -86,6 +93,36 @@ async def test_run_requires_login() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.post("/screening/run")
     assert response.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_private_notes_are_scoped_to_the_current_member() -> None:
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    application = add_eligible(db, email="note@x.com", raw_hash="h1")
+    first_member = db.scalar(select(User).where(User.email == "admin@x.com"))
+    assert first_member is not None
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        saved = await client.put(f"/applications/{application.id}/note", json={"note": "Call references."})
+        assert saved.status_code == 200
+        assert saved.json()["application"]["privateNote"] == "Call references."
+
+        other_member = User(email="other@x.com", display_name="Other", role=UserRole.MEMBER, is_active=True)
+        db.add(other_member)
+        db.commit()
+        app.dependency_overrides[require_current_user] = lambda: other_member
+
+        # Another member sees neither the first member's note nor a shared note field.
+        detail = (await client.get(f"/applications/{application.id}")).json()["application"]
+        assert detail["privateNote"] == ""
+        await client.put(f"/applications/{application.id}/note", json={"note": "Review income source."})
+
+        app.dependency_overrides[require_current_user] = lambda: first_member
+        detail = (await client.get(f"/applications/{application.id}")).json()["application"]
+        assert detail["privateNote"] == "Call references."
+
+    assert db.scalar(select(ApplicationNote).where(ApplicationNote.application_id == application.id)) is not None
 
 
 @pytest.mark.anyio

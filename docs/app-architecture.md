@@ -84,7 +84,7 @@ The frontend is a single React screen (`App.tsx`) that has grown to cover the fu
 5. Let the user expand the admin settings panel (an "Edit settings" toggle, not a gear icon) and save changes.
 6. Let the user sync applications from the configured Google Sheet.
 7. Show a searchable, sortable, paginated applications table.
-8. Open a candidate detail view: normalized fields, essays, filter reasons, AI quality flags, the raw row, and the AI narrative.
+8. Open a candidate detail view: normalized fields, essays, filter reasons, AI quality flags, a private reviewer note, the raw row, and the AI narrative.
 9. Run the AI quality-flag pass with a cost-estimate confirmation and live streamed progress.
 10. Let a committee member override an application's status (the human decision is sticky) or clear the override to hand the decision back to the machine.
 

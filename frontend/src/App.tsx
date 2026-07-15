@@ -511,6 +511,17 @@ export function App() {
     }
   }
 
+  async function savePrivateNote(id: number, note: string): Promise<boolean> {
+    const response = await api.savePrivateNote(id, note);
+    if (!response.ok) {
+      showError("Could not save your private note.");
+      return false;
+    }
+    const payload: { application: ApplicationDetail } = await response.json();
+    setSelectedApp(payload.application);
+    return true;
+  }
+
   const hasGoogleSheetLink = Boolean(saved && resolveSheetId(saved));
   const hasInsights = workflow.screened || Boolean(rankingRun);
 
@@ -663,6 +674,7 @@ export function App() {
                 onBack={() => setSelectedApp(null)}
                 onOverrideStatus={overrideStatus}
                 onClearOverride={clearStatusOverride}
+                onSavePrivateNote={savePrivateNote}
               />
             ) : activeTab === "settings" && draft ? (
               <SettingsPanel
