@@ -274,6 +274,13 @@ async def test_score_current_fills_only_missing_scores_without_replacing_run() -
         assert tiers[0]["dimensionKeys"] == ["skills_offered"]
         assert (await client.get("/dashboard")).json()["workflow"]["rankingCurrent"] is True
 
+        last_runs = (await client.get("/ranking/insights/last-runs")).json()
+        assert last_runs["rankScores"]["kind"] == "rank_scores"
+        assert [p["label"] for p in last_runs["rankScores"]["passes"]] == ["Dimension scoring"]
+        metrics = (await client.get("/ranking/insights/metrics")).json()
+        assert metrics["runs"][-1]["kind"] == "rank_scores"
+        assert metrics["runs"][-1]["dimensions"] is None
+
 
 @pytest.mark.anyio
 async def test_score_current_requires_existing_criteria() -> None:
@@ -298,10 +305,9 @@ async def test_insights_cost_aggregates_by_pass() -> None:
 
         report = (await client.get("/ranking/insights/cost")).json()
         groups = {g["runLabel"]: g for g in report["groups"]}
-        # Grouped by triggering run: Screen (screening) and Rank (discovery/
-        # decomposition/matching/scoring).
-        assert set(groups) == {"Screen", "Rank"}
-        rank_passes = {p["passLabel"]: p for p in groups["Rank"]["passes"]}
+        # Grouped by triggering run: Screen, full discovery-and-rank, and score-current.
+        assert set(groups) == {"Screen", "Discover criteria & rank", "Score current criteria"}
+        rank_passes = {p["passLabel"]: p for p in groups["Discover criteria & rank"]["passes"]}
         assert set(rank_passes) == set(RANK_PASS_LABELS)
         assert [p["passLabel"] for p in groups["Screen"]["passes"]] == ["Screening"]
         # Discovery, decomposition, and matching are separate passes (not summed into one).
@@ -316,8 +322,8 @@ async def test_insights_cost_aggregates_by_pass() -> None:
         assert rank_passes["Pattern discovery"]["cacheable"] is False
         assert rank_passes["Dimension matching"]["cacheable"] is False
         # Subtotals and total reconcile.
-        assert groups["Rank"]["subtotalUsd"] == pytest.approx(
-            sum(p["costUsd"] for p in groups["Rank"]["passes"]), abs=1e-6
+        assert groups["Discover criteria & rank"]["subtotalUsd"] == pytest.approx(
+            sum(p["costUsd"] for p in groups["Discover criteria & rank"]["passes"]), abs=1e-6
         )
         assert report["totalCostUsd"] == pytest.approx(
             sum(g["subtotalUsd"] for g in report["groups"]), abs=1e-6
@@ -389,7 +395,7 @@ async def test_cost_surfaces_agree_on_rank_passes() -> None:
         await stream_events(client, "/ranking/run")
 
         cumulative = (await client.get("/ranking/insights/cost")).json()
-        rank_group = next(g for g in cumulative["groups"] if g["runLabel"] == "Rank")
+        rank_group = next(g for g in cumulative["groups"] if g["runLabel"] == "Discover criteria & rank")
         cumulative_labels = {p["passLabel"] for p in rank_group["passes"]}
 
         last = (await client.get("/ranking/insights/last-runs")).json()["rank"]

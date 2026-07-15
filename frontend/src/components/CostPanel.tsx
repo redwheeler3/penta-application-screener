@@ -6,7 +6,7 @@ import type { CostReport, LastRunCost, LastRunsReport } from "../types";
 // line up: [ label | tokens (in→out) | uncached | cached | saved by cache | spent ].
 // Spent is the rightmost hard number; cache savings sit to its left as the softer
 // estimate; tokens sit next to the label as the "why it cost that" breakdown.
-//   - Last runs — the most recent Screen and Rank, fresh spend vs. cache savings.
+//   - Last runs — the most recent Screen, full Rank, and score-current update.
 //   - Cumulative spend — cumulative spend + savings, grouped by run.
 // Passes that can't cache (pattern discovery, dimension matching) show "—" for the
 // cached count and savings, never 0, so structural absence of caching doesn't read as
@@ -19,7 +19,15 @@ const cachedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : Stri
 const tok = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 const tokensCell = (input: number, output: number) =>
   input || output ? `${tok(input)} → ${tok(output)}` : "—";
-const PASS_LABELS: Record<"screen" | "rank", Array<{ label: string; cacheable: boolean }>> = {
+type InsightRunKind = "screen" | "rank" | "rank_scores";
+
+const RUN_LABELS: Record<InsightRunKind, string> = {
+  screen: "Screen",
+  rank: "Discover criteria & rank",
+  rank_scores: "Score current criteria",
+};
+
+const PASS_LABELS: Record<InsightRunKind, Array<{ label: string; cacheable: boolean }>> = {
   screen: [{ label: "Screening", cacheable: true }],
   rank: [
     { label: "Pattern discovery", cacheable: false },
@@ -28,6 +36,7 @@ const PASS_LABELS: Record<"screen" | "rank", Array<{ label: string; cacheable: b
     { label: "Dimension scoring", cacheable: true },
     { label: "Dimension consolidation", cacheable: false },
   ],
+  rank_scores: [{ label: "Dimension scoring", cacheable: true }],
 };
 
 export function CostPanel(): ReactNode {
@@ -49,7 +58,7 @@ export function CostPanel(): ReactNode {
   if (state === "error" || cost === null || last === null)
     return <p className="match-audit-hint">Couldn’t load AI cost.</p>;
 
-  const runs = [last.screen, last.rank].filter((r): r is LastRunCost => r !== null);
+  const runs = [last.screen, last.rank, last.rankScores].filter((r): r is LastRunCost => r !== null);
   const lastSpent = runs.reduce((s, r) => s + r.freshUsd, 0);
 
   return (
@@ -60,23 +69,23 @@ export function CostPanel(): ReactNode {
           <span className="cost-block-total">{`$${lastSpent.toFixed(2)}`} spent</span>
         </div>
         <p className="match-audit-hint">
-          What your most recent Screen and Rank each spent on Bedrock, and an estimate of what caching saved by
-          reusing unchanged results.
+          What your most recent Screen, full Rank, and score-current update each spent on Bedrock, and an estimate
+          of what caching saved by reusing unchanged results.
         </p>
         {runs.length === 0 ? (
           <p className="match-audit-hint">No runs recorded yet — run Screen or Rank to see per-run cost.</p>
         ) : (
           <table className="cost-table">
             <CostHead />
-            {[last.screen, last.rank].map((run, i) =>
+            {[last.screen, last.rank, last.rankScores].map((run, i) =>
               run === null ? (
                 <tbody key={i}>
-                  {renderEmptyRun(i === 0 ? "screen" : "rank")}
+                  {renderEmptyRun((["screen", "rank", "rank_scores"] as const)[i])}
                 </tbody>
               ) : (
                 <tbody key={i}>
                   <tr className="cost-group-head">
-                    <td>{run.kind === "screen" ? "Screen" : "Rank"}</td>
+                    <td>{RUN_LABELS[run.kind as InsightRunKind]}</td>
                     <td className="cost-num" />
                     <td className="cost-num" />
                     <td className="cost-num" />
@@ -106,8 +115,8 @@ export function CostPanel(): ReactNode {
           <span className="cost-block-total">{`$${cost.totalCostUsd.toFixed(2)}`} spent</span>
         </div>
         <p className="match-audit-hint">
-          What all Screen and Rank runs have spent on Bedrock, and an estimate of what caching saved by reusing
-          unchanged results.
+          What all Screen, full Rank, and score-current update runs have spent on Bedrock, and an estimate of what
+          caching saved by reusing unchanged results.
         </p>
         <table className="cost-table">
           <CostHead />
@@ -139,11 +148,11 @@ export function CostPanel(): ReactNode {
   );
 }
 
-function renderEmptyRun(kind: "screen" | "rank"): ReactNode {
+function renderEmptyRun(kind: InsightRunKind): ReactNode {
   return (
     <>
       <tr className="cost-group-head">
-        <td>{kind === "screen" ? "Screen" : "Rank"}</td>
+        <td>{RUN_LABELS[kind]}</td>
         <td className="cost-num" />
         <td className="cost-num" />
         <td className="cost-num" />

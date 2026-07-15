@@ -5,7 +5,8 @@ application (screening, scoring) alike — records its spend the same way: a ``P
 folded into a ``RunPassCost`` row, one per pass, under a ``RunCostLedger`` header per
 completed run. That single table is the source for both cost surfaces here:
   - **cumulative** — every dollar/token ever spent, summed across all runs' pass rows.
-  - **last-run** — the most recent Screen and Rank, each pass's fresh-vs-cached split.
+  - **last-run** — the most recent Screen, full Rank, and score-current update, each
+    pass's fresh-vs-cached split.
 
 Both are exact and now carry a token + model breakdown, because the ledger is written as
 each run completes (the only point the fresh/cached split is known) — ``ApplicationAIResult``
@@ -31,9 +32,9 @@ from app.schemas.insights import (
 )
 
 # The canonical pass labels per user-facing run, and the SINGLE SOURCE OF TRUTH for
-# "which passes exist." Every run records exactly these rows (a pass that made no call
-# this run still records a zero row), so both surfaces cover the full set by construction
-# and can't drift. Add a pass here first, then have its run record a RunPassCost for it.
+# "which passes exist." Each run mode records its own full set (a pass that made no call
+# still records a zero row), so both surfaces cover that mode's passes by construction
+# and can't drift. Add a pass here first, then have its mode record a RunPassCost for it.
 RANK_PASS_LABELS = [
     "Pattern discovery",
     "Dimension decomposition",
@@ -42,6 +43,10 @@ RANK_PASS_LABELS = [
     "Dimension consolidation",
 ]
 SCREEN_PASS_LABELS = ["Screening"]
+SCORE_CURRENT_PASS_LABELS = ["Dimension scoring"]
+
+FULL_RANK_KIND = "rank"
+SCORE_CURRENT_KIND = "rank_scores"
 
 # Passes that can reuse cached results. The others (discovery, decomposition, matching,
 # consolidation) always call Bedrock fresh, so a "saved by cache" figure is N/A — the UI
@@ -59,7 +64,8 @@ def record_run_cost(
     passes: dict[str, PassCost],
     durations_ms: dict[str, int] | None = None,
 ) -> None:
-    """Persist a completed run's per-pass cost (``kind`` = "screen" | "rank"), one
+    """Persist a completed run's per-pass cost (``kind`` = "screen" | "rank" |
+    "rank_scores"), one
     ``RunPassCost`` row per pass, under a header row. Called as the run's stream finishes
     — the only point the fresh/cached split is known. ``passes`` maps each canonical pass
     label to its ``PassCost`` (a pass that made no call still passes a zero cost, so the
@@ -122,16 +128,24 @@ def cost_report(db: Session) -> CostReport:
     A plain sum over every recorded ``RunPassCost`` — spend, tokens, and cache savings
     all exact.
 
-    Screen runs the screening pass; Rank runs pattern discovery → dimension
-    decomposition → dimension matching → dimension scoring → dimension consolidation.
+    Screen runs the screening pass; full Ranks run pattern discovery → dimension
+    decomposition → dimension matching → dimension scoring → dimension consolidation;
+    score-current updates run dimension scoring only.
     """
-    by_label: dict[str, list[RunPassCost]] = {}
-    for row in db.scalars(select(RunPassCost)):
-        by_label.setdefault(row.label, []).append(row)
+    by_kind_and_label: dict[tuple[str, str], list[RunPassCost]] = {}
+    for kind, row in db.execute(
+        select(RunCostLedger.kind, RunPassCost).join(RunPassCost, RunPassCost.run_id == RunCostLedger.id)
+    ):
+        by_kind_and_label.setdefault((kind, row.label), []).append(row)
 
-    screen = _group("Screen", [_cost_pass(label, by_label.get(label, [])) for label in SCREEN_PASS_LABELS])
-    rank = _group("Rank", [_cost_pass(label, by_label.get(label, [])) for label in RANK_PASS_LABELS])
-    groups = [screen, rank]
+    def passes_for(kind: str, labels: list[str]) -> list[CostPass]:
+        return [_cost_pass(label, by_kind_and_label.get((kind, label), [])) for label in labels]
+
+    groups = [
+        _group("Screen", passes_for("screen", SCREEN_PASS_LABELS)),
+        _group("Discover criteria & rank", passes_for(FULL_RANK_KIND, RANK_PASS_LABELS)),
+        _group("Score current criteria", passes_for(SCORE_CURRENT_KIND, SCORE_CURRENT_PASS_LABELS)),
+    ]
     return CostReport(
         groups=groups,
         total_cost_usd=round(sum(g.subtotal_usd for g in groups), 6),
@@ -174,10 +188,14 @@ def _last_run(db: Session, kind: str) -> LastRunCost | None:
 
 
 def last_runs_report(db: Session) -> LastRunsReport:
-    """The most recent Screen and the most recent Rank, each with its fresh spend and
-    cache savings. Either is null if that run type hasn't completed since ledgering
-    began."""
-    return LastRunsReport(screen=_last_run(db, "screen"), rank=_last_run(db, "rank"))
+    """The most recent Screen, full Rank, and score-current update, each with fresh
+    spend and cache savings. A run is null if that type has not completed since
+    ledgering began."""
+    return LastRunsReport(
+        screen=_last_run(db, "screen"),
+        rank=_last_run(db, FULL_RANK_KIND),
+        rank_scores=_last_run(db, SCORE_CURRENT_KIND),
+    )
 
 
 # How many recent Rank runs to average when predicting a re-run's fresh scoring cost.
@@ -210,7 +228,7 @@ def recent_pass_fresh_usd(db: Session, pass_label: str = "Dimension scoring") ->
         db.scalars(
             select(RunPassCost)
             .join(RunCostLedger, RunPassCost.run_id == RunCostLedger.id)
-            .where(RunCostLedger.kind == "rank", RunPassCost.label == pass_label)
+            .where(RunCostLedger.kind == FULL_RANK_KIND, RunPassCost.label == pass_label)
             .order_by(RunCostLedger.id.desc())
             .limit(_SCORING_HISTORY_WINDOW)
         )

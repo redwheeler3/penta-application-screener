@@ -186,7 +186,7 @@ export type LastRunPass = {
 };
 
 export type LastRunCost = {
-  kind: string; // "screen" | "rank"
+  kind: string; // "screen" | "rank" | "rank_scores"
   at: string; // ISO timestamp
   freshUsd: number;
   cachedSavedUsd: number;
@@ -197,14 +197,14 @@ export type LastRunCost = {
 // One point per completed run, oldest→newest.
 export type TrendPoint = {
   at: string;
-  kind: string; // "screen" | "rank"
+  kind: string; // "screen" | "rank" | "rank_scores"
   costUsd: number;
   inputTokens: number;
   outputTokens: number;
   durationMs: number;
   failedCalls: number;
   cacheHitRate: number | null; // over cacheable units; null when none
-  dimensions: number | null; // live dimension count (rank only)
+  dimensions: number | null; // live dimension count (full rank only)
 };
 
 export type PassTrendPoint = {
@@ -222,11 +222,12 @@ export type MetricsReport = {
   passes: PassTrendPoint[];
 };
 
-// The most recent Screen and Rank, each with fresh spend + cache savings. Either is
-// null if that run type hasn't completed since per-run ledgering began.
+// The most recent Screen, full Rank, and score-current update, each with fresh spend +
+// cache savings. A run is null if that type has not completed since ledgering began.
 export type LastRunsReport = {
   screen: LastRunCost | null;
   rank: LastRunCost | null;
+  rankScores: LastRunCost | null;
 };
 
 // The current run's discovered dimensions, from GET /ranking/current.

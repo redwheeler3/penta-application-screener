@@ -98,6 +98,7 @@ from app.schemas.ranking import (
 )
 from app.schemas.settings import AppSettings
 from app.services.cost_report import (
+    SCORE_CURRENT_KIND,
     cost_report,
     last_runs_report,
     recent_pass_fresh_usd,
@@ -562,14 +563,8 @@ def score_current(
                 mark_ranking_current(db, run, settings)
         record_run_cost(
             db,
-            kind="rank",
-            passes={
-                "Pattern discovery": PassCost(),
-                "Dimension decomposition": PassCost(),
-                "Dimension matching": PassCost(),
-                "Dimension scoring": tally.as_pass_cost(settings.ai.dimension_scoring_model),
-                "Dimension consolidation": PassCost(),
-            },
+            kind=SCORE_CURRENT_KIND,
+            passes={"Dimension scoring": tally.as_pass_cost(settings.ai.dimension_scoring_model)},
             durations_ms={"Dimension scoring": round((time.perf_counter() - started) * 1000)},
         )
         yield emit(
