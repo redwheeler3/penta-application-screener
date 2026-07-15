@@ -24,9 +24,9 @@ class CostPass(ResponseModel):
 
 
 class CostGroup(ResponseModel):
-    """The passes triggered by one user-facing run (Screen or Rank), with subtotals.
-    Screen runs the screening pass; Rank runs pattern discovery → dimension
-    decomposition → dimension matching → dimension scoring."""
+    """The passes triggered by one user-facing run, with subtotals. Screen runs the
+    screening pass; full Ranks discover criteria then score; score-current updates only
+    score against the retained criteria."""
 
     run_label: str
     passes: list[CostPass]
@@ -71,7 +71,7 @@ class LastRunPass(ResponseModel):
 
 
 class LastRunCost(ResponseModel):
-    kind: str  # "screen" | "rank"
+    kind: str  # "screen" | "rank" | "rank_scores"
     at: str  # ISO timestamp of the run
     fresh_usd: float
     cached_saved_usd: float
@@ -79,12 +79,12 @@ class LastRunCost(ResponseModel):
 
 
 class LastRunsReport(ResponseModel):
-    """GET /ranking/insights/last-runs — the most recent Screen and Rank, each with its
-    fresh spend and cache savings. Either is null if that run type hasn't completed
-    since per-run ledgering began."""
+    """GET /ranking/insights/last-runs — the most recent Screen, full Rank, and
+    score-current update, each with fresh spend and cache savings."""
 
     screen: LastRunCost | None = None
     rank: LastRunCost | None = None
+    rank_scores: LastRunCost | None = None
 
 
 # --- Operational metrics / trends (M13 Pillar 3) ------------------------------------
@@ -92,11 +92,11 @@ class LastRunsReport(ResponseModel):
 
 class TrendPoint(ResponseModel):
     """One completed run as a point on the trend charts, oldest→newest. Per-run rollups
-    over that run's pass rows; ``dimensions`` is the run's live dimension count (Rank
-    only — null for Screen)."""
+    over that run's pass rows; ``dimensions`` is the run's live dimension count for full
+    Ranks only — null for Screen and score-current updates."""
 
     at: str  # ISO timestamp of the run
-    kind: str  # "screen" | "rank"
+    kind: str  # "screen" | "rank" | "rank_scores"
     cost_usd: float
     input_tokens: int
     output_tokens: int
@@ -105,7 +105,7 @@ class TrendPoint(ResponseModel):
     # Cache-hit rate over cacheable units this run (cached / (cached + fresh)); null when
     # the run had no cacheable work.
     cache_hit_rate: float | None = None
-    # Live dimension count for a Rank (post-consolidation); null for a Screen.
+    # Live dimension count for a full Rank (post-consolidation); null otherwise.
     dimensions: int | None = None
 
 

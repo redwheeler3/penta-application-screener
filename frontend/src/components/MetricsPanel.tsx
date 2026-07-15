@@ -6,8 +6,8 @@ import type { MetricsReport, TrendPoint } from "../types";
 // RunPassCost rows Cost does, but for *behaviour over time* rather than spend: per-run
 // cost, latency, cache-hit rate, failures, and dimension count. Deliberately plain —
 // one row per run, newest first, with a tiny inline bar for at-a-glance shape rather
-// than a charting dependency (a single-dev MVP doesn't need one). Rank and Screen are
-// split because their passes and cadence differ.
+// than a charting dependency (a single-dev MVP doesn't need one). Full Rank and
+// score-current updates are split because their work and cadence differ.
 const money = (n: number) => `$${n.toFixed(4)}`;
 const secs = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`);
 const pct = (r: number | null) => (r === null ? "—" : `${Math.round(r * 100)}%`);
@@ -44,17 +44,19 @@ export function MetricsPanel(): ReactNode {
   if (report.runs.length === 0)
     return <p className="match-audit-hint">No runs recorded yet — run Screen or Rank to see trends.</p>;
 
-  // Newest first for reading; both kinds shown in their own section.
+  // Newest first for reading; each workflow action has its own section.
   const rank = report.runs.filter((r) => r.kind === "rank").reverse();
+  const rankScores = report.runs.filter((r) => r.kind === "rank_scores").reverse();
   const screen = report.runs.filter((r) => r.kind === "screen").reverse();
 
   return (
     <div className="metrics-report">
       <p className="match-audit-hint">
-        How each run behaved over time — spend, wall-clock, cache reuse, failures, and (for Rank) the live
+        How each run behaved over time — spend, wall-clock, cache reuse, failures, and (for full Ranks) the live
         dimension count. Reads the same per-pass ledger as Cost; here it’s trend, not total.
       </p>
-      {rank.length > 0 ? <RunTable title="Rank runs" runs={rank} /> : null}
+      {rank.length > 0 ? <RunTable title="Discover criteria & rank" runs={rank} /> : null}
+      {rankScores.length > 0 ? <RunTable title="Score current criteria" runs={rankScores} /> : null}
       {screen.length > 0 ? <RunTable title="Screen runs" runs={screen} /> : null}
     </div>
   );
