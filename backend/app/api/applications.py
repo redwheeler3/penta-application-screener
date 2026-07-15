@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.ai.dimension_scoring import kind_for_dimension
 from app.api.dependencies import require_current_user
 from app.api.problems import Problem
 from app.db.models import (
@@ -20,11 +21,13 @@ from app.db.session import get_db
 from app.domain.ranking import rank_candidates
 from app.domain.status import findings_fingerprint, is_stale, resolve_machine_status
 from app.schemas.applications import (
+    AIResultTraceOut,
     ApplicationDetail,
     ApplicationEnvelope,
     ApplicationListResponse,
     ApplicationSummary,
     DimensionContributionOut,
+    DimensionScoringTraceOut,
     Facets,
     PrivateNoteUpdate,
     ScreeningFlagOut,
@@ -339,6 +342,7 @@ def _serialize_detail(app: Application, db: Session, user: User) -> ApplicationD
         has_reasons=bool(app.hard_filter_reasons), has_ai_flags=bool(flags)
     )
 
+    dimension_scores = _dimension_scores(db, app)
     return ApplicationDetail(
         **summary.model_dump(),
         auto_status=auto_status.value,
@@ -350,9 +354,11 @@ def _serialize_detail(app: Application, db: Session, user: User) -> ApplicationD
         ),
         raw_row=app.raw_row,
         ai_narrative=flag_result.narrative if flag_result is not None else None,
+        screening_trace=_result_trace(flag_result),
         # This candidate's scores against the current run's dimensions, joined to
         # their labels. null = no run, or not scored under it.
-        dimension_scores=_dimension_scores(db, app),
+        dimension_scores=dimension_scores,
+        dimension_scoring_trace=_dimension_scoring_trace(db, app.id),
         private_note=_private_note(db, app.id, user.id),
     )
 
@@ -365,6 +371,49 @@ def _private_note(db: Session, application_id: int, user_id: int) -> str:
         )
     )
     return note or ""
+
+
+def _result_trace(result: ApplicationAIResult | None) -> AIResultTraceOut | None:
+    if result is None:
+        return None
+    return AIResultTraceOut(
+        model_id=result.model_id,
+        prompt_version=result.prompt_version,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        cost_usd=result.cost_usd,
+    )
+
+
+def _dimension_scoring_trace(
+    db: Session, application_id: int
+) -> DimensionScoringTraceOut | None:
+    run = get_current_run(db)
+    report = current_dimension_report(run) if run is not None else None
+    if report is None:
+        return None
+    kinds = {kind_for_dimension(dimension.key) for dimension in report.dimensions}
+    latest: dict[str, ApplicationAIResult] = {}
+    for result in db.scalars(
+        select(ApplicationAIResult)
+        .where(
+            ApplicationAIResult.application_id == application_id,
+            ApplicationAIResult.kind.in_(kinds),
+        )
+        .order_by(ApplicationAIResult.created_at)
+    ):
+        latest[result.kind] = result
+    results = list(latest.values())
+    if not results:
+        return None
+    return DimensionScoringTraceOut(
+        dimension_count=len(results),
+        model_ids=sorted({result.model_id for result in results}),
+        prompt_versions=sorted({result.prompt_version for result in results}),
+        input_tokens=sum(result.input_tokens for result in results),
+        output_tokens=sum(result.output_tokens for result in results),
+        cost_usd=round(sum(result.cost_usd for result in results), 6),
+    )
 
 
 def _dimension_scores(

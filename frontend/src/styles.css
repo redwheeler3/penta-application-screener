@@ -1403,6 +1403,37 @@ h1 {
   margin-bottom: 0.5rem;
 }
 
+.ai-trace-section {
+  margin-top: 0.75rem;
+}
+
+.ai-trace-score + .ai-trace-score {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.ai-trace-meta {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.3rem 0.75rem;
+  margin: 0.65rem 0 0;
+  font-size: 0.85rem;
+}
+
+.ai-trace-meta div {
+  display: contents;
+}
+
+.ai-trace-meta dt {
+  color: var(--muted);
+}
+
+.ai-trace-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .raw-row-section pre {
   background: var(--surface);
   border: 1px solid var(--line);

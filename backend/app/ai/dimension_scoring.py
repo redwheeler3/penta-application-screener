@@ -97,9 +97,13 @@ def build_prompt(
     application: Application,
     dimensions: list[PoolDimension],
 ) -> str:
+    return _build_prompt(_applicant_block(application), dimensions)
+
+
+def _build_prompt(applicant_block: str, dimensions: list[PoolDimension]) -> str:
     return (
         f"{_INSTRUCTIONS}\n\n<dimensions>\n{_dimensions_block(dimensions)}\n</dimensions>"
-        f"\n\n<applicant>\n{_applicant_block(application)}\n</applicant>"
+        f"\n\n<applicant>\n{applicant_block}\n</applicant>"
     )
 
 
@@ -458,7 +462,7 @@ class IncompleteScoringError(Exception):
 
 def _score_all_dimensions(
     provider: AIProvider,
-    application: Application,
+    applicant_block: str,
     to_score: list[PoolDimension],
     model_id: str,
 ) -> AIResult:
@@ -478,7 +482,7 @@ def _score_all_dimensions(
         result = provider.structured_output(
             model_id=model_id,
             schema=DimensionScoringReport,
-            prompt=build_prompt(application, remaining),
+            prompt=_build_prompt(applicant_block, remaining),
             system_prompt=SYSTEM_PROMPT,
         )
         input_tokens += result.usage.input_tokens
@@ -495,7 +499,7 @@ def _score_all_dimensions(
             log.warning(
                 "Dimension scoring for application %s omitted %d dimension(s); "
                 "re-asking (attempt %d): %s",
-                application.id, len(remaining), attempt + 1,
+                "the current applicant", len(remaining), attempt + 1,
                 [d.key for d in remaining],
             )
     if remaining:
@@ -534,18 +538,23 @@ def score_dimensions(
         to_score, cached, cached_saved_usd = _to_score_dimensions(
             db, application, report, model_id
         )
-        plans.append((application, to_score, cached, cached_saved_usd))
+        # Workers must never touch an ORM instance: storing an earlier candidate commits
+        # on the main thread and expires session objects while slower workers are still
+        # building prompts. Snapshot the applicant input before the pool starts.
+        applicant_block = _applicant_block(application) if to_score else None
+        plans.append((application, applicant_block, to_score, cached, cached_saved_usd))
 
     def call(plan):
-        application, to_score, _cached, _cached_saved_usd = plan
+        _application, applicant_block, to_score, _cached, _cached_saved_usd = plan
         if not to_score:
             return None  # fully cached → no model call
+        assert applicant_block is not None
         # Score COMPLETELY: initial call + targeted re-asks for any omitted dimension.
         # Raises IncompleteScoringError if the model won't return them all — which
         # run_in_pool surfaces as this candidate's error (fail loud, no partial store).
-        return _score_all_dimensions(provider, application, to_score, model_id)
+        return _score_all_dimensions(provider, applicant_block, to_score, model_id)
 
-    for (application, to_score, cached, cached_saved_usd), result, error in run_in_pool(
+    for (application, _applicant_block_text, to_score, cached, cached_saved_usd), result, error in run_in_pool(
         plans, call=call, max_workers=max_workers
     ):
         if error is not None:
