@@ -146,6 +146,7 @@ export function WorkflowBar(props: {
   rankRunning: boolean;
   rankEstimate: RankEstimateResponse | null;
   scoreCurrentEstimate: ScoreCurrentEstimateResponse | null;
+  hasCurrentCriteria: boolean;
   rankProgress: RankProgress | null;
   // The model's live reasoning, streamed and shown as "thinking" for the opaque
   // calls that have no per-item progress: the criteria phase (discovery + match)
@@ -164,6 +165,7 @@ export function WorkflowBar(props: {
     screeningProgress,
     rankEstimate,
     scoreCurrentEstimate,
+    hasCurrentCriteria,
     rankProgress,
   } = props;
   const hasMissingScores = (scoreCurrentEstimate?.toAnalyze ?? 0) > 0;
@@ -373,6 +375,9 @@ export function WorkflowBar(props: {
                 Estimated cost <strong>~${rankEstimate.estimatedUsd.toFixed(4)}</strong> (cap $
                 {rankEstimate.capUsd.toFixed(2)}).
               </p>
+              {hasCurrentCriteria ? (
+                <p className="run-confirm-warn">Any current criteria that are not rediscovered will be lost.</p>
+              ) : null}
               {!rankEstimate.withinCap ? (
                 <p className="run-confirm-warn">
                   Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
