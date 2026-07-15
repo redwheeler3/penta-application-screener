@@ -201,8 +201,12 @@ export function App() {
     });
   }
 
-  function viewApplication(id: number) {
-    api.fetchApplication(id).then(setSelectedApp);
+  async function viewApplication(id: number) {
+    const application = await api.fetchApplication(id);
+    setSelectedApp(application);
+    // The clicked row can be far below the detail heading (especially in Ranking),
+    // so reveal the new view rather than preserving the old scroll position.
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
   }
 
   function toggleSort(key: SortKey) {
