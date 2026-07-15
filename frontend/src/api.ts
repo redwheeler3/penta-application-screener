@@ -168,6 +168,15 @@ export function clearStatusOverride(id: number): Promise<Response> {
   return fetch(url(`/applications/${id}/status`), { method: "DELETE", credentials: "include" });
 }
 
+export function savePrivateNote(id: number, note: string): Promise<Response> {
+  return fetch(url(`/applications/${id}/note`), {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note }),
+  });
+}
+
 // Read an NDJSON stream, invoking `onEvent` for each parsed line. Used by the
 // screening and Rank runs, which stream progress then a summary.
 export async function streamNdjson(body: ReadableStream<Uint8Array>, onEvent: (event: any) => void): Promise<void> {

@@ -134,6 +134,8 @@ export type ApplicationDetail = ApplicationSummary & {
   // descending — the same ranking contributions the ranked-list row slices. null =
   // no run, or not scored under it.
   dimensionScores?: DimensionContribution[] | null;
+  // Private to the signed-in committee member; never included in AI inputs.
+  privateNote: string;
 };
 
 // GET /ranking/insights/cost — aggregated AI spend for the Insights tab (M13).

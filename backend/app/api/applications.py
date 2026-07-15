@@ -11,6 +11,7 @@ from app.api.problems import Problem
 from app.db.models import (
     Application,
     ApplicationAIResult,
+    ApplicationNote,
     ApplicationStatus,
     StatusSource,
     User,
@@ -25,6 +26,7 @@ from app.schemas.applications import (
     ApplicationSummary,
     DimensionContributionOut,
     Facets,
+    PrivateNoteUpdate,
     ScreeningFlagOut,
 )
 from app.services.application_import import extract_essays
@@ -157,14 +159,14 @@ def _sort_key(value: Any, descending: bool) -> tuple[int, Any]:
 @router.get("/{application_id}", response_model=ApplicationEnvelope)
 def get_application(
     application_id: int,
-    _: User = Depends(require_current_user),
+    user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> ApplicationEnvelope:
     application = db.get(Application, application_id)
     if application is None:
         raise Problem("not_found", detail="Application not found.")
 
-    return ApplicationEnvelope(application=_serialize_detail(application, db))
+    return ApplicationEnvelope(application=_serialize_detail(application, db, user))
 
 
 class StatusOverride(BaseModel):
@@ -175,7 +177,7 @@ class StatusOverride(BaseModel):
 def override_status(
     application_id: int,
     body: StatusOverride,
-    _: User = Depends(require_current_user),
+    user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> ApplicationEnvelope:
     """Human override of an application's status.
@@ -197,13 +199,13 @@ def override_status(
     db.commit()
     db.refresh(application)
 
-    return ApplicationEnvelope(application=_serialize_detail(application, db))
+    return ApplicationEnvelope(application=_serialize_detail(application, db, user))
 
 
 @router.delete("/{application_id}/status", response_model=ApplicationEnvelope)
 def clear_status_override(
     application_id: int,
-    _: User = Depends(require_current_user),
+    user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> ApplicationEnvelope:
     """Remove a human override, handing the decision back to the machine.
@@ -228,7 +230,35 @@ def clear_status_override(
         db.commit()
         db.refresh(application)
 
-    return ApplicationEnvelope(application=_serialize_detail(application, db))
+    return ApplicationEnvelope(application=_serialize_detail(application, db, user))
+
+
+@router.put("/{application_id}/note", response_model=ApplicationEnvelope)
+def save_private_note(
+    application_id: int,
+    body: PrivateNoteUpdate,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> ApplicationEnvelope:
+    """Create or replace the current member's private application note."""
+    application = db.get(Application, application_id)
+    if application is None:
+        raise Problem("not_found", detail="Application not found.")
+
+    note = db.scalar(
+        select(ApplicationNote).where(
+            ApplicationNote.application_id == application_id,
+            ApplicationNote.user_id == user.id,
+        )
+    )
+    if note is None:
+        note = ApplicationNote(application_id=application_id, user_id=user.id, note=body.note)
+        db.add(note)
+    else:
+        note.note = body.note
+    db.commit()
+
+    return ApplicationEnvelope(application=_serialize_detail(application, db, user))
 
 
 def _serialize_summary(
@@ -296,7 +326,7 @@ def _latest_results(
     return latest
 
 
-def _serialize_detail(app: Application, db: Session) -> ApplicationDetail:
+def _serialize_detail(app: Application, db: Session, user: User) -> ApplicationDetail:
     # The raw source row and AI narrative are shown to any committee member: they're
     # trusted screeners, and these just back the data the member already sees.
     flag_result = _latest_results(db, "screening", [app.id]).get(app.id)
@@ -323,7 +353,18 @@ def _serialize_detail(app: Application, db: Session) -> ApplicationDetail:
         # This candidate's scores against the current run's dimensions, joined to
         # their labels. null = no run, or not scored under it.
         dimension_scores=_dimension_scores(db, app),
+        private_note=_private_note(db, app.id, user.id),
     )
+
+
+def _private_note(db: Session, application_id: int, user_id: int) -> str:
+    note = db.scalar(
+        select(ApplicationNote.note).where(
+            ApplicationNote.application_id == application_id,
+            ApplicationNote.user_id == user_id,
+        )
+    )
+    return note or ""
 
 
 def _dimension_scores(

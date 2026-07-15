@@ -1,5 +1,5 @@
 import { ChevronLeft, Printer } from "lucide-react";
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { FLAG_CATEGORY_LABELS, FLAG_FIELDS, REASON_FIELDS, SOURCE_DESCRIPTIONS, SOURCE_LABELS, STATUS_LABELS } from "../constants";
 import { fieldLabel, formatFieldValue, scoreBand } from "../format";
@@ -24,6 +24,8 @@ type SourceField = {
   source?: "raw" | "normalized";
   consumesRawKeys?: string[];
 };
+
+const MAX_PRIVATE_NOTE_HEIGHT_PX = 192;
 
 const CHILD_DETAIL_RAW_KEYS = [
   "First name [3]",
@@ -162,8 +164,72 @@ export function CandidateDetail(props: {
   onBack: () => void;
   onOverrideStatus: (id: number, status: AppStatus) => void;
   onClearOverride: (id: number) => void;
+  onSavePrivateNote: (id: number, note: string) => Promise<boolean>;
 }): ReactNode {
   const { app } = props;
+  const [privateNote, setPrivateNote] = useState(app.privateNote);
+  const [noteStatus, setNoteStatus] = useState<"saved" | "saving" | "error">("saved");
+  const privateNoteRef = useRef<HTMLTextAreaElement>(null);
+  const pendingNoteSave = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noteRevision = useRef(0);
+  const savedNote = useRef(app.privateNote);
+
+  useEffect(() => {
+    if (pendingNoteSave.current !== null) clearTimeout(pendingNoteSave.current);
+    noteRevision.current += 1;
+    savedNote.current = app.privateNote;
+    setPrivateNote(app.privateNote);
+    setNoteStatus("saved");
+  }, [app.id]);
+
+  useEffect(
+    () => () => {
+      if (pendingNoteSave.current !== null) clearTimeout(pendingNoteSave.current);
+    },
+    [],
+  );
+
+  useLayoutEffect(() => {
+    const textarea = privateNoteRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, MAX_PRIVATE_NOTE_HEIGHT_PX)}px`;
+    textarea.style.overflowY = textarea.scrollHeight > MAX_PRIVATE_NOTE_HEIGHT_PX ? "auto" : "hidden";
+  }, [privateNote]);
+
+  function persistPrivateNote(note: string, revision: number) {
+    if (note === savedNote.current) {
+      if (revision === noteRevision.current) setNoteStatus("saved");
+      return;
+    }
+    setNoteStatus("saving");
+    props.onSavePrivateNote(app.id, note).then((saved) => {
+      if (revision !== noteRevision.current) return;
+      if (saved) {
+        savedNote.current = note;
+        setNoteStatus("saved");
+      } else {
+        setNoteStatus("error");
+      }
+    });
+  }
+
+  function updatePrivateNote(note: string) {
+    setPrivateNote(note);
+    const revision = (noteRevision.current += 1);
+    if (pendingNoteSave.current !== null) clearTimeout(pendingNoteSave.current);
+    setNoteStatus("saving");
+    pendingNoteSave.current = setTimeout(() => persistPrivateNote(note, revision), 600);
+  }
+
+  function flushPrivateNote() {
+    if (pendingNoteSave.current !== null) {
+      clearTimeout(pendingNoteSave.current);
+      pendingNoteSave.current = null;
+    }
+    persistPrivateNote(privateNote, noteRevision.current);
+  }
+
   const flaggedFields = new Set([
     ...app.hardFilterReasons.flatMap((reason) => REASON_FIELDS[reason.code] ?? []),
     ...(app.flags ?? []).flatMap((flag) => FLAG_FIELDS[flag.category] ?? []),
@@ -193,51 +259,71 @@ export function CandidateDetail(props: {
       </div>
       {app.coApplicantName ? <p className="co-applicant-line">Co-applicant: {app.coApplicantName}</p> : null}
 
-      <div className="status-panel">
-        <p className="status-source-line">{SOURCE_DESCRIPTIONS[app.statusSource]}</p>
-        {app.stale ? (
-          <p className="stale-note">New AI findings since this was last reviewed — you may want to look again.</p>
-        ) : null}
-        {/* The toggle is source ownership: "Automatic" (machine-decided) vs. a
-            human-pinned status. Automatic clears the override; the helper line
-            shows the current automatic verdict. */}
-        <div className="status-decider">
-          <span className="status-decider-label">Decided by:</span>
-          <div className="segmented" role="group" aria-label="Status decided by">
-            <button
-              type="button"
-              className="segment"
-              aria-pressed={!isHuman}
-              disabled={!isHuman}
-              onClick={() => props.onClearOverride(app.id)}
-            >
-              Automatic
-            </button>
-            <button
-              type="button"
-              className="segment"
-              aria-pressed={isHuman && app.status === "eligible"}
-              disabled={isHuman && app.status === "eligible"}
-              onClick={() => props.onOverrideStatus(app.id, "eligible")}
-            >
-              Eligible
-            </button>
-            <button
-              type="button"
-              className="segment"
-              aria-pressed={isHuman && app.status === "ineligible"}
-              disabled={isHuman && app.status === "ineligible"}
-              onClick={() => props.onOverrideStatus(app.id, "ineligible")}
-            >
-              Ineligible
-            </button>
-          </div>
-          {isHuman ? (
-            <p className="status-decider-hint">
-              Reviewer override. Automatic would mark this {autoLabel.toLowerCase()}.
-            </p>
+      <div className="detail-review-row">
+        <div className="status-panel">
+          <p className="status-source-line">{SOURCE_DESCRIPTIONS[app.statusSource]}</p>
+          {app.stale ? (
+            <p className="stale-note">New AI findings since this was last reviewed — you may want to look again.</p>
           ) : null}
+          {/* The toggle is source ownership: "Automatic" (machine-decided) vs. a
+              human-pinned status. Automatic clears the override; the helper line
+              shows the current automatic verdict. */}
+          <div className="status-decider">
+            <span className="status-decider-label">Decided by:</span>
+            <div className="segmented" role="group" aria-label="Status decided by">
+              <button
+                type="button"
+                className="segment"
+                aria-pressed={!isHuman}
+                disabled={!isHuman}
+                onClick={() => props.onClearOverride(app.id)}
+              >
+                Automatic
+              </button>
+              <button
+                type="button"
+                className="segment"
+                aria-pressed={isHuman && app.status === "eligible"}
+                disabled={isHuman && app.status === "eligible"}
+                onClick={() => props.onOverrideStatus(app.id, "eligible")}
+              >
+                Eligible
+              </button>
+              <button
+                type="button"
+                className="segment"
+                aria-pressed={isHuman && app.status === "ineligible"}
+                disabled={isHuman && app.status === "ineligible"}
+                onClick={() => props.onOverrideStatus(app.id, "ineligible")}
+              >
+                Ineligible
+              </button>
+            </div>
+            {isHuman ? (
+              <p className="status-decider-hint">
+                Reviewer override. Automatic would mark this {autoLabel.toLowerCase()}.
+              </p>
+            ) : null}
+          </div>
         </div>
+        <section className="private-note-panel">
+          <div className="private-note-heading">
+            <h4>My notes</h4>
+          </div>
+          <textarea
+            ref={privateNoteRef}
+            aria-label="Private notes"
+            value={privateNote}
+            onChange={(event) => updatePrivateNote(event.target.value)}
+            onBlur={flushPrivateNote}
+            placeholder="Add a private note about this applicant…"
+            rows={2}
+          />
+          <div className="private-note-print">{privateNote}</div>
+          {noteStatus !== "saved" ? (
+            <p>{noteStatus === "saving" ? "Saving…" : "Could not save — try again."}</p>
+          ) : null}
+        </section>
       </div>
       {app.hardFilterReasons.length > 0 ? (
         <div className="filter-reasons">
@@ -269,10 +355,6 @@ export function CandidateDetail(props: {
       {app.dimensionScores && app.dimensionScores.length > 0 ? (
         <div className="dimension-scores">
           <h4>Fit dimensions</h4>
-          <p className="dimension-scores-hint">
-            Ordered by how much each dimension moved this candidate's ranking — strengths and weaknesses together, most
-            decisive first. Colour shows the score: green strong, blue moderate, amber weak.
-          </p>
           <ul>
             {app.dimensionScores.map((s) => {
               const sb = scoreBand(s.score);

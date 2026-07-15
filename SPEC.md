@@ -913,7 +913,7 @@ Criteria comparison should identify:
 - Criteria unique to a member
 - Plain-language summaries of each member's priorities, such as "prioritized practical co-op labour and clear participation commitment"
 
-Members should be able to write manual candidate notes separate from AI-generated rationale.
+Members can write private, per-applicant notes separate from AI-generated rationale. Notes belong to their author, stay out of AI inputs and shared reports, and never appear to other members; they remain on the author's printed candidate detail.
 
 For now, any user may finalize the merged recommendation list. In practice this is the MOMI chair's job, but a special chair account/role is not required for the initial design.
 
@@ -946,7 +946,7 @@ Screening runs should preserve enough source information to understand what appl
 
 When criteria are revised after a completed run, the default behavior should be to update/overwrite the same run. The user should also be able to choose to create a separate new run instead.
 
-Manual candidate notes may be visible to other members immediately.
+Manual candidate notes are private to their author.
 
 AI-generated criteria summaries do not need a dedicated editing workflow for the initial design.
 

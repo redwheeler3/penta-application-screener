@@ -9,7 +9,9 @@ free-form dicts — their keys are raw form-field names (data like
 
 from typing import Any
 
-from app.schemas.base import ResponseModel
+from pydantic import Field
+
+from app.schemas.base import RequestModel, ResponseModel
 
 
 class HardFilterReason(ResponseModel):
@@ -70,6 +72,13 @@ class ApplicationDetail(ApplicationSummary):
     raw_row: dict[str, Any] | None = None
     ai_narrative: str | None = None
     dimension_scores: list[DimensionContributionOut] | None = None
+    # The current reviewer's private note. It is intentionally not part of the
+    # application, source row, AI input, or any shared report.
+    private_note: str = ""
+
+
+class PrivateNoteUpdate(RequestModel):
+    note: str = Field(max_length=10_000)
 
 
 class ApplicationEnvelope(ResponseModel):
