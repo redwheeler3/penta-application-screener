@@ -118,7 +118,8 @@
         "definition_b": "The depth and breadth of licensed or practised physical-trade skills (electrical, plumbing, masonry, mechanics, arboriculture, upholstery, carpentry, etc.) the household can contribute to building maintenance and repair, reducing reliance on outside contractors."
       },
       "expected": "merge",
-      "label_rationale": "MERGE: both definitions score the same core capacity — deployable building-system trades that reduce contractor spend — and would rank a licensed tradesperson identically. Definition B's extension to unlicensed crafts (upholstery, carpentry) is a minor addition against a heavily shared core, too marginal to justify a separate axis for THIS pool. The unlicensed-carpenter case is real in principle but not systematic. NOTE: this is a labelled instance of single-call instability — the production confirm KEPT this same pair in run 5 (on that same carpenter case) then MERGED it in run 6, same pair, same near-identical scoring, opposite verdict. Human label is MERGE (the divergence is trivial for this pool). Doubles as calibration material for whether a single confirm call is stable enough or the multi-judge escalation is warranted.",
+      "contested": true,
+      "label_rationale": "CONTESTED — both verdicts are defensible from the definitions alone, so this is review material, not an answer key. The MERGE reading (the human leaning): both definitions score the same core capacity — deployable building-system trades that reduce contractor spend — and would rank a licensed tradesperson identically; definition B's extension to unlicensed crafts (upholstery, carpentry) is too marginal to justify a separate axis FOR THIS POOL. The KEEP reading is equally coherent: formal certification for legally-regulated work vs. practical breadth is a real, consequential distinction (an unlicensed carpenter scores high on hands-on, low on licensed). The decision turns on how MATERIAL that divergence is in this specific pool — which only the score distribution settles, and that distribution is deliberately withheld from both production and the judge (see ai-evals.md: r/divergence stay out of the confirm step). So neither the model nor the judge can resolve it from the inputs; the split is inherent, not a defect. Evidence: the production confirm itself KEPT this pair in run 5 then MERGED it in run 6 on identical input — and the judge reproduced the KEEP side (2026-07-16). What matters for calibration is not which side the judge picks but whether it is CONSISTENT across repeated runs; instability is the escalation-ladder signal, not the verdict direction.",
       "provenance": {
         "pass_models": {
           "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
@@ -136,6 +137,65 @@
         }
       },
       "source": "Rank run 6 (2026-07-16), consolidate_audit pair licensed_trade_skills <- hands_on_trade_skills (a real MERGE). licensed_trade_skills def from runs 3/4 (stable, the kept/older key); hands_on_trade_skills def from run 5 (the live scored dimension whose vector fed the nomination in both runs 5 and 6). The SAME pair was KEPT in run 5 — see label_rationale on single-call instability."
+    },
+    {
+      "key": "health_safety_decompose_merge",
+      "pass": "decomposition",
+      "title": "Three health/safety discovery dimensions are one concept and should fold together",
+      "task": "These definitions were each discovered as a separate dimension by parallel discovery workers, then folded into ONE settled axis by decomposition. Decide MERGE (they are one concept, the fold is correct) or KEEP (at least one is a genuinely distinct axis that should not have been folded in).",
+      "evidence": {
+        "definition_1": "The household's professional health or safety expertise that could benefit co-op members directly (e.g. first aid, CPR, occupational health).",
+        "definition_2": "Whether the household brings health, medical, or first-aid skills that could enhance the safety and wellbeing infrastructure of the co-op community.",
+        "definition_3": "Professional health or safety competencies — nursing, first-aid training, CPR instruction — that the household could deploy to improve building safety and member wellbeing."
+      },
+      "expected": "merge",
+      "label_rationale": "MERGE: all three definitions describe the same concept — professional health/safety competence (first-aid, CPR, nursing, occupational health) deployable for member wellbeing — differing only in wording and examples, not in what they measure. An applicant would score identically against all three, so they are one axis, not three; the decomposition fold is correct. This is the clean, non-contested MERGE flavor for the DECOMPOSITION pass (N discovery carvings of one concept), distinct from consolidation's pairwise post-score merges: decompose judges from definitions ALONE, pre-score, with no correlation signal at all — exactly what the model saw. Complements pet_situation_ownership_merge (a clean consolidation merge) with a clean decompose merge.",
+      "provenance": {
+        "pass_models": {
+          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+          "Dimension matching": "us.anthropic.claude-sonnet-4-6",
+          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+        },
+        "pass_prompt_versions": {
+          "Pattern discovery": "f393349e9733",
+          "Dimension decomposition": "733871632036",
+          "Dimension matching": "bcf254622976",
+          "Dimension scoring": "1c405eb75d53",
+          "Dimension consolidation": "d73b755d3075"
+        }
+      },
+      "source": "Rank run 6 (2026-07-16), decompose_audit settled axis health_safety_skill (source_keys health_safety_skill, health_and_safety_skill, health_and_safety_skills; decision: 'All three keys are identical in definition and scoring — only the key formatting differs across reports. Straightforward merge.'). The three definitions are exact slices of run 6's raw discovery reports (fan_out_audit)."
+    },
+    {
+      "key": "time_vs_commitment_decompose_keep",
+      "pass": "decomposition",
+      "title": "Discretionary time availability and participation commitment are distinct and should stay separate",
+      "task": "These two definitions were discovered as separate dimensions by parallel discovery workers. Decomposition settled them as TWO distinct axes rather than folding them into one. Decide MERGE (they are really one concept and should have been folded together) or KEEP (they are genuinely distinct axes, correctly kept apart).",
+      "evidence": {
+        "definition_a": "The household's self-reported availability of spare time for co-op commitments, net of outside obligations such as touring schedules, intensive hobbies, or other regular commitments.",
+        "definition_b": "How concretely and specifically the household commits to co-op work obligations — work-day attendance, committee seats, maintenance rotations — in their own words."
+      },
+      "expected": "keep",
+      "label_rationale": "KEEP: these are capacity vs. intent — genuinely distinct axes. A is how much spare time the household actually has; B is how concretely they commit to co-op work in their own words. The concrete divergence: a household can be genuinely committed yet honestly acknowledge thin hours (high B, low A), or make bold commitments with no honest accounting of constraints (high B, low A the other way), or have open weekends but say little specific (high A, low B). Capacity and stated intent do not move together, so folding them would hide whether a promising applicant actually has the time to deliver. This is the KEEP flavor for the DECOMPOSITION pass — the discipline of NOT over-folding when N carvings look adjacent but measure different things, the mirror of health_safety_decompose_merge (a correct fold). Judged from definitions alone, pre-score, as the decomposer saw them.",
+      "provenance": {
+        "pass_models": {
+          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+          "Dimension matching": "us.anthropic.claude-sonnet-4-6",
+          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+        },
+        "pass_prompt_versions": {
+          "Pattern discovery": "f393349e9733",
+          "Dimension decomposition": "733871632036",
+          "Dimension matching": "bcf254622976",
+          "Dimension scoring": "1c405eb75d53",
+          "Dimension consolidation": "d73b755d3075"
+        }
+      },
+      "source": "Rank run 7 (2026-07-16), decompose_audit — settled axes discretionary_time_availability and participation_commitment_explicitness were kept distinct (decision on the former: 'Kept distinct from participation_commitment_explicitness (intent vs. capacity — a household can be genuinely committed but honestly acknowledge thin hours...)'). Representative definitions are exact slices of run 7's raw discovery reports (fan_out_audit); decompose settled entries do not store definitions, so they were reconstructed from source keys."
     }
   ]
 }

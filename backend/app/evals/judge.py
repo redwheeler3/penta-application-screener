@@ -59,7 +59,16 @@ class JudgeCase:
     (or a judge disagreement) can weigh the label instead of trusting a bare verdict.
     ``provenance`` is the models + prompt versions of the run this evidence came from
     (empty for a case whose source run wasn't retained). ``source`` names the origin run/
-    fixture for traceability."""
+    fixture for traceability.
+
+    ``contested`` marks a case where BOTH verdicts are defensible from the evidence the
+    model is given — the decision turns on information neither production nor the judge
+    can see (e.g. how MATERIAL a real-in-principle divergence is for THIS pool, which only
+    the withheld score distribution settles). For a contested case ``expected`` is the
+    human's *leaning*, not an answer key: agreement is neither pass nor fail, and a
+    disagreement is expected, healthy review material — never a signal to tune the judge.
+    A steady judge should be *consistent* on a contested case; instability across repeated
+    runs is the escalation-ladder signal, not the direction of any single verdict."""
 
     key: str
     title: str
@@ -69,6 +78,12 @@ class JudgeCase:
     label_rationale: str = ""
     provenance: dict[str, object] = None  # type: ignore[assignment]
     source: str = ""
+    contested: bool = False
+    # Which AI step produced the output under review ("consolidation", "decomposition",
+    # …). The harness is step-agnostic — the same MERGE/KEEP verdict serves consolidation's
+    # pairwise post-score merges and decomposition's N-way pre-score folds — but the label
+    # lets the report group by step and a reader see coverage across the pipeline.
+    pass_name: str = "consolidation"
 
     def __post_init__(self) -> None:
         if self.provenance is None:
@@ -88,6 +103,8 @@ def load_cases(path: Path = CASES_PATH) -> tuple[JudgeCase, ...]:
             label_rationale=c.get("label_rationale", ""),
             provenance=c.get("provenance") or {},
             source=c.get("source", ""),
+            contested=c.get("contested", False),
+            pass_name=c.get("pass", "consolidation"),
         )
         for c in data["cases"]
     )
@@ -105,6 +122,14 @@ class JudgeResult:
     @property
     def agrees_with_label(self) -> bool:
         return self.report.verdict == self.case.expected
+
+    @property
+    def marker(self) -> str:
+        """How to read this result. A contested case can't pass/fail on verdict direction
+        (both are defensible) — it's always review material, so it never shows ``[ok]``."""
+        if self.case.contested:
+            return "[contested]"
+        return "[ok]" if self.agrees_with_label else "[review]"
 
 
 def build_prompt(case: JudgeCase) -> str:
@@ -133,13 +158,14 @@ def judge_case(provider: AIProvider, case: JudgeCase, *, model_id: str = DEFAULT
 def format_report(results: list[JudgeResult]) -> str:
     lines = ["LLM judge evals — manual, non-gating", f"Prompt: {PROMPT_VERSION}", ""]
     for result in results:
-        marker = "[ok]" if result.agrees_with_label else "[review]"
+        expected_label = "leaning" if result.case.contested else "expected"
         lines.extend(
             (
-                f"{marker} {result.case.title}",
-                f"  expected {result.case.expected.value}; judge returned {result.report.verdict.value}",
+                f"{result.marker} [{result.case.pass_name}] {result.case.title}",
+                f"  {expected_label} {result.case.expected.value}; judge returned {result.report.verdict.value}",
                 f"  {result.report.reason}",
                 f"  {result.model_id} / {result.input_tokens} in -> {result.output_tokens} out / ${result.cost_usd:.4f}",
+                "  " + "-" * 60,  # separator so each call is easy to tell apart
             )
         )
     return "\n".join(lines)

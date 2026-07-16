@@ -187,6 +187,46 @@ A fourth case balances the set with a clear MERGE:
   on the `consolidate_audit` pair row (added 2026-07-16), so a merge case is
   self-contained from the audit alone — no discovery-report spelunking.
 
+A fifth case is deliberately **contested** — a first-class category, not a
+degenerate label:
+
+- `trade_skills_licensed_handson_merge` (r=0.925) — licensed vs. hands-on trade
+  skills. Both verdicts are defensible *from the definitions the model is given*:
+  MERGE (the same core capacity; the unlicensed-crafts extension is marginal) and
+  KEEP (formal certification vs. practical breadth is a real distinction) are each
+  coherent. The decision turns on how MATERIAL the divergence is for THIS pool —
+  which only the withheld score distribution settles — so neither production nor
+  the judge can resolve it from the inputs. Evidence that it is genuinely
+  under-determined: the production confirm KEPT it in run 5 then MERGED it in run 6
+  on identical input, and the calibration judge reproduced the KEEP side.
+
+  A contested case carries `contested: true`; its `expected` is the human's
+  *leaning*, not an answer key. The judge command marks it `[contested]` (never
+  `[ok]`/`[review]`) and prints "leaning" rather than "expected". Agreement is
+  neither pass nor fail — it is always review material. This keeps the eval honest:
+  some decisions are legitimately under-determined by the evidence, and an eval that
+  forced a verdict on them would just be punishing the judge for a defensible call.
+  What matters for a contested case is **consistency across repeated runs**, not
+  which side a single run picks — instability there is the escalation-ladder signal
+  (multi-judge vote), the verdict *direction* is not.
+
+A sixth case extends coverage to a **second AI step** — decomposition, not
+consolidation. Each case carries a `pass` field (default `consolidation`) so the
+report groups by step and coverage across the pipeline is visible:
+
+- `health_safety_decompose_merge` — three health/safety dimensions, each
+  discovered by a different parallel discovery worker, folded into one settled
+  axis by decomposition ("all three keys are identical in definition and scoring";
+  a clean same-concept fold). Labelled MERGE. This exercises a genuinely different
+  judgement from the consolidation cases: decomposition judges from **definitions
+  alone, pre-score, with no correlation signal**, and folds N carvings at once
+  rather than adjudicating a pair. The harness is step-agnostic — the same
+  MERGE/KEEP verdict serves both — so the only per-step additions are the `pass`
+  label and the case's own self-describing `task`. Evidence is the three
+  definitions exactly as the decomposition call saw them (from run 6's raw
+  discovery reports); the model's own "straightforward merge" decision is withheld
+  from the judge, per the fidelity rule.
+
 Two earlier generalized historical cases (a health/social merge and a
 decomposition routing drift) were dropped: their source runs were not retained,
 so they could never be made exact, and a generalized case masquerading as exact
@@ -207,7 +247,10 @@ judge until it agrees. It may mean:
 - the product policy needs a clearer merge rule.
 
 The judge's role is to expose this uncertainty for human review, not to create a
-self-confirming answer key.
+self-confirming answer key. When the third bullet is the settled explanation —
+the label is legitimately debatable because the evidence under-determines it — the
+case graduates to the `contested` category above, where disagreement is expected
+by construction rather than treated as a signal about either side.
 
 ## Design rules
 
@@ -235,8 +278,10 @@ Before treating judge agreement as a meaningful quality measure:
    the set to exact-by-construction from future runs is the retention discipline
    (see `.clinerules`: durability lives in committed fixtures).
 2. Build a small balanced labelled set: clear merges, clear keeps,
-   narrative/output contradictions, and intentionally ambiguous cases. (One
-   exact KEEP seeded; the balanced set is the next labelling session.)
+   narrative/output contradictions, and intentionally ambiguous cases.
+   **In progress (2026-07-16):** three clear KEEPs, one clear MERGE, and one
+   contested case seeded. Still owed: a narrative/output-contradiction case (the
+   decompose routing-drift signature — SPEC golden case #2).
 3. Calibrate the judge on the clear cases first. Ambiguous cases remain review
    material, not pass/fail scoring.
 4. Add persistence and a trend view only after the labelled set is useful.
