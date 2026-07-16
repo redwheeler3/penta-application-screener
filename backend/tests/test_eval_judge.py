@@ -51,7 +51,7 @@ def test_judge_case_agrees_when_verdict_matches_label() -> None:
 
 
 def test_judge_report_marks_a_disagreement_for_review() -> None:
-    case = load_cases()[0]
+    case = next(c for c in load_cases() if not c.contested)
     disagreeing = JudgeVerdict.MERGE if case.expected != JudgeVerdict.MERGE else JudgeVerdict.KEEP
     provider = MockProvider()
     provider.queue(JudgeReport(verdict=disagreeing, reason="Deliberately opposite verdict."))
@@ -62,3 +62,20 @@ def test_judge_report_marks_a_disagreement_for_review() -> None:
     report = format_report([result])
     assert report.startswith("LLM judge evals — manual, non-gating")
     assert "[review]" in report
+
+
+def test_contested_case_never_marks_ok_regardless_of_verdict() -> None:
+    # A contested case is review material either way — both verdicts are defensible, so
+    # it must never read as a pass, and its label is a "leaning", not "expected".
+    contested = next((c for c in load_cases() if c.contested), None)
+    assert contested is not None, "expected at least one contested case in the committed set"
+
+    for verdict in (JudgeVerdict.MERGE, JudgeVerdict.KEEP):
+        provider = MockProvider()
+        provider.queue(JudgeReport(verdict=verdict, reason="Either way is defensible."))
+        result = judge_case(provider, contested)
+        assert result.marker == "[contested]"
+        report = format_report([result])
+        assert "[contested]" in report
+        assert "[ok]" not in report
+        assert "leaning" in report
