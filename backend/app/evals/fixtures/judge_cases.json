@@ -5,14 +5,15 @@
       "title": "Co-operative values alignment vs. communal social orientation should stay apart",
       "task": "Decide MERGE or KEEP for these two definitions.",
       "evidence": {
+        "key_a": "cooperative_values_alignment",
         "definition_a": "The extent to which the applicant articulates a genuine, intrinsic alignment with co-operative values — mutual aid, democratic governance, shared responsibility, community accountability — as distinct from purely instrumental motivations such as affordability or housing security.",
-        "definition_b": "The degree to which the household frames its home life as embedded in shared, communal living — actively seeking neighbourly relationships, informal mutual care, and shared social life — versus preferring a private, self-contained household that happens to share a building.",
-        "score_vector_summary": "The two score vectors correlate at r=0.84 across the pool — most households sit similarly on both. The concepts differ in kind: A is ideological (endorsing the co-op governance/mutual-aid model), B is behavioural (wanting a socially embedded, neighbourly home life). A household can hold strong co-op values yet prefer a private home life (high A, low B), or be intensely social without any ideological commitment to co-operation (low A, high B)."
+        "key_b": "communal_social_orientation",
+        "definition_b": "The degree to which the household frames its home life as embedded in shared, communal living — actively seeking neighbourly relationships, informal mutual care, and shared social life — versus preferring a private, self-contained household that happens to share a building."
       },
       "expected": "keep",
-      "label_rationale": "KEEP: the r=0.84 correlation is a real confound (people drawn to co-ops often score high on both), not evidence of one concept. The definitions measure different things — values/ideology vs. social behaviour — and the pole text names concrete cases where they diverge (values-aligned-but-private; social-but-not-ideological). Merging would collapse a distinction the committee may want to weigh separately: a governance-minded member and a block-party organiser are both assets for different reasons. This case tests that the judge does not over-merge on correlation alone (the mirror of a genuine MERGE where definitions subsume each other).",
+      "label_rationale": "KEEP: the pair correlates at r=0.84 (a real confound — people drawn to co-ops often score high on both), but the definitions measure different things — values/ideology (A) vs. social behaviour (B). A household can hold strong co-op values yet prefer a private home life (high A, low B), or be intensely social without ideological commitment (low A, high B). Merging would collapse a distinction the committee may want to weigh separately. This tests whether the judge, from the DEFINITIONS ALONE (as production sees them), infers the diverging applicant and resists over-merging on the near-identical scoring.",
       "provenance": {
-        "note": "Source run predates provenance capture (2026-07-16); models/prompt versions were not retained for the baseline Rank. Evidence text is an exact, unmodified slice of the committed fixture. Cases captured after provenance capture carry exact pass_models/pass_prompt_versions."
+        "note": "Source run predates provenance capture (2026-07-16); models/prompt versions were not retained for the baseline Rank. Definitions are an exact, unmodified slice of the committed rank_baseline.json fixture."
       },
       "source": "app/evals/fixtures/rank_baseline.json (dimensions cooperative_values_alignment, communal_social_orientation)"
     },
@@ -21,12 +22,13 @@
       "title": "Co-operative disposition vs. community-building orientation should stay apart",
       "task": "Decide MERGE or KEEP for these two definitions.",
       "evidence": {
+        "key_a": "cooperative_disposition",
         "definition_a": "The degree to which the household articulates genuine philosophical commitment to mutual aid, democratic governance, and shared responsibility as motivating their application — as opposed to treating co-op membership primarily as an instrumental housing vehicle.",
-        "definition_b": "The household's active investment in cultivating social bonds with neighbours — hosting, organising events, welcoming newcomers, building genuine interpersonal relationships — as evidenced by current social habits and articulated aspirations, beyond minimum co-op compliance.",
-        "score_vector_summary": "The two score vectors correlate at r=0.858 across the pool. A is philosophical motivation (why the applicant wants co-op living — ideology vs. cheap rent); B is active social behaviour (do they host, organise, cultivate neighbourly bonds). An ideologically committed but introverted applicant scores high on A and low on B."
+        "key_b": "community_building_orientation",
+        "definition_b": "The household's active investment in cultivating social bonds with neighbours — hosting, organising events, welcoming newcomers, building genuine interpersonal relationships — as evidenced by current social habits and articulated aspirations, beyond minimum co-op compliance."
       },
       "expected": "keep",
-      "label_rationale": "KEEP: the consolidation pass judged this a confound at r=0.858, and the divergent case is concrete — an applicant who genuinely values democratic governance and mutual aid yet does not host, organise, or cultivate neighbourly bonds scores high on A and low on B. Philosophical motivation and active social investment are distinct axes; merging would hide whether a household's co-op fit rests on values or on sociability. Tests judge resistance to over-merging correlated-but-distinct axes.",
+      "label_rationale": "KEEP: the pair correlates at r=0.858 but is a confound. A is philosophical motivation (why the applicant wants co-op living); B is active social behaviour (do they host, organise, cultivate neighbourly bonds). An ideologically committed but introverted applicant scores high on A and low on B. Philosophical motivation and active social investment are distinct axes; merging would hide whether fit rests on values or sociability. Tests judge resistance to over-merging correlated-but-distinct axes, reasoning from definitions alone.",
       "provenance": {
         "pass_models": {
           "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
@@ -43,19 +45,20 @@
           "Dimension consolidation": "d73b755d3075"
         }
       },
-      "source": "Rank run 4 (2026-07-16), consolidate_audit pair cooperative_disposition ~ community_building_orientation; both definitions from run 4's dimension_report."
+      "source": "Rank run 4 (2026-07-16), consolidate_audit pair cooperative_disposition ~ community_building_orientation (KEEP); both definitions from run 4's dimension_report."
     },
     {
       "key": "specificity_vs_followthrough_keep",
       "title": "Essay specificity vs. follow-through reliability should stay apart",
       "task": "Decide MERGE or KEEP for these two definitions.",
       "evidence": {
+        "key_a": "essay_specificity_and_concreteness",
         "definition_a": "The degree to which the household's essays cite specific past actions, named roles, concrete outcomes, and verifiable evidence rather than generic claims, vague platitudes, or corporate-filler language.",
-        "definition_b": "Evidence — from prior roles rather than stated intention — that the household consistently completes tasks, closes loops, and does the unglamorous low-visibility work that sustains a volunteer-run organisation.",
-        "score_vector_summary": "The two score vectors correlate at r=0.887 across the pool. A is a property of the writing (how specific and concrete the essays are); B is a property of the behavioural track record (does the applicant actually follow through). A reliable but inarticulate applicant who consistently does unglamorous work yet writes in generic platitudes scores high on B and low on A."
+        "key_b": "follow_through_reliability",
+        "definition_b": "Evidence — from prior roles rather than stated intention — that the household consistently completes tasks, closes loops, and does the unglamorous low-visibility work that sustains a volunteer-run organisation."
       },
       "expected": "keep",
-      "label_rationale": "KEEP: r=0.887 is a strong correlation but a real confound — writing quality and behavioural reliability are different axes. The concrete diverging case is a reliable-but-inarticulate applicant (high follow-through, low essay specificity), and its inverse (a polished writer with no track record). Merging would conflate 'writes well' with 'does the work', a distinction that matters for a volunteer-run co-op. Tests that the judge does not merge on a high correlation when the definitions measure different kinds of thing (writing vs. conduct).",
+      "label_rationale": "KEEP: the pair correlates at r=0.887 but is a confound — writing quality (A) and behavioural reliability (B) are different axes. A reliable but inarticulate applicant scores high on B and low on A (and the inverse: a polished writer with no track record). Merging would conflate 'writes well' with 'does the work', a distinction that matters for a volunteer-run co-op. Tests that the judge does not merge on a high correlation when the definitions measure different kinds of thing (writing vs. conduct), reasoning from definitions alone.",
       "provenance": {
         "pass_models": {
           "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
@@ -72,19 +75,20 @@
           "Dimension consolidation": "d73b755d3075"
         }
       },
-      "source": "Rank run 4 (2026-07-16), consolidate_audit pair essay_specificity_and_concreteness ~ follow_through_reliability (a cross-run fork-heal; essay_specificity def from run 4, follow_through_reliability def recovered from run 1 where it was last a live dimension)."
+      "source": "Rank run 4 (2026-07-16), consolidate_audit pair essay_specificity_and_concreteness ~ follow_through_reliability (KEEP; cross-run fork-heal — essay_specificity def from run 4, follow_through_reliability def recovered from run 1 where it was last a live dimension)."
     },
     {
       "key": "pet_situation_ownership_merge",
       "title": "Pet ownership and pet situation are the same axis and should merge",
       "task": "Decide MERGE or KEEP for these two definitions.",
       "evidence": {
+        "key_a": "pet_ownership",
         "definition_a": "The number and type of pets in the household, which affects shared outdoor spaces, common areas, allergen exposure among neighbours, and the practical management of communal living.",
-        "definition_b": "The nature and number of pets the household brings, relevant to shared-space use, neighbour comfort, and any co-op pet policies.",
-        "score_vector_summary": "The two score vectors correlate at r=0.904 across the pool — the highest of any nominated pair. Both measure the same thing: the number and type of pets and their implications for communal living. Definition B adds a 'disclosure clarity' nuance, but it is too marginal to make any applicant score high on one and low on the other."
+        "key_b": "pet_situation",
+        "definition_b": "The nature and number of pets the household brings, relevant to shared-space use, neighbour comfort, and any co-op pet policies."
       },
       "expected": "merge",
-      "label_rationale": "MERGE: both definitions score the same applicant the same way for the same reason — pet count/type and its effect on communal living. There is no concrete applicant who lands genuinely high on one and low on the other (definition B's 'disclosure clarity' addendum is too marginal to create a real divergence), which is the bar for keeping apart. At r=0.904 with subsuming definitions, this is a true duplicate; keeping it apart would inflate the criteria set with a redundant axis. This is the balancing MERGE against the three KEEP cases — it tests that the judge will actually merge a genuine duplicate, not just resist over-merging.",
+      "label_rationale": "MERGE: both definitions score the same applicant the same way for the same reason — pet count/type and its effect on communal living. There is no concrete applicant who lands genuinely high on one and low on the other (definition B's 'disclosure clarity'/policy nuance is too marginal to create a real divergence), which is the bar for keeping apart. At r=0.904 with subsuming definitions, a true duplicate. The clean, non-contested MERGE that balances the KEEP cases.",
       "provenance": {
         "pass_models": {
           "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
@@ -101,19 +105,20 @@
           "Dimension consolidation": "d73b755d3075"
         }
       },
-      "source": "Rank run 5 (2026-07-16), consolidate_audit pair pet_ownership <- pet_situation (a real MERGE, merges: {pet_situation: pet_ownership}). pet_ownership def from run 3 (the kept/older key); pet_situation def recovered from run 5's raw discovery report (worker 1), since the merge removed it from the settled report and the pre-fix audit row did not capture definition_drop."
+      "source": "Rank run 5 (2026-07-16), consolidate_audit pair pet_ownership <- pet_situation (a real MERGE). pet_ownership def from run 3 (the kept/older key); pet_situation def recovered from run 5's raw discovery report (worker 1), since the merge removed it from the settled report and the pre-fix audit row did not capture definition_drop."
     },
     {
       "key": "trade_skills_licensed_handson_merge",
       "title": "Licensed trade skills and hands-on trade skills are the same axis and should merge",
       "task": "Decide MERGE or KEEP for these two definitions.",
       "evidence": {
+        "key_a": "licensed_trade_skills",
         "definition_a": "The extent to which the household holds formal trade qualifications (electrical, plumbing, mechanical, masonry, arboriculture) that allow legally-regulated building-system repairs to be performed in-house without a contractor.",
-        "definition_b": "The depth and breadth of licensed or practised physical-trade skills (electrical, plumbing, masonry, mechanics, arboriculture, upholstery, carpentry, etc.) the household can contribute to building maintenance and repair, reducing reliance on outside contractors.",
-        "score_vector_summary": "The two score vectors correlate at r=0.925. Both center on the same trades (electrical, plumbing, masonry, mechanics, arboriculture) and the same purpose — reducing the co-op's reliance on outside contractors — and would score a licensed tradesperson identically. Definition B extends to a few unlicensed crafts (upholstery, carpentry); the only proposed divergence is a skilled carpenter/upholsterer with no formal license scoring high on B and low on A."
+        "key_b": "hands_on_trade_skills",
+        "definition_b": "The depth and breadth of licensed or practised physical-trade skills (electrical, plumbing, masonry, mechanics, arboriculture, upholstery, carpentry, etc.) the household can contribute to building maintenance and repair, reducing reliance on outside contractors."
       },
       "expected": "merge",
-      "label_rationale": "MERGE: both definitions score the same core capacity — deployable building-system trades that reduce contractor spend — and would rank a licensed tradesperson identically. Definition B's extension to unlicensed crafts (upholstery, carpentry) is a minor addition against a heavily shared core, and does not create a meaningful divergence for THIS pool. The unlicensed-carpenter case is real in principle but too marginal to justify a separate axis at r=0.925. NOTE: this case is a labelled instance of single-call instability — the consolidation confirm KEPT this same pair one run earlier (run 5) on the strength of that same carpenter case, then MERGED it in run 6 with the rationale adopted here. Same pair, same r=0.925, opposite verdict. The human label is MERGE (the divergence is trivial for this pool); the case doubles as calibration material for whether a single confirm call is stable enough or the multi-judge escalation is warranted.",
+      "label_rationale": "MERGE: both definitions score the same core capacity — deployable building-system trades that reduce contractor spend — and would rank a licensed tradesperson identically. Definition B's extension to unlicensed crafts (upholstery, carpentry) is a minor addition against a heavily shared core, too marginal to justify a separate axis for THIS pool. The unlicensed-carpenter case is real in principle but not systematic. NOTE: this is a labelled instance of single-call instability — the production confirm KEPT this same pair in run 5 (on that same carpenter case) then MERGED it in run 6, same pair, same near-identical scoring, opposite verdict. Human label is MERGE (the divergence is trivial for this pool). Doubles as calibration material for whether a single confirm call is stable enough or the multi-judge escalation is warranted.",
       "provenance": {
         "pass_models": {
           "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
@@ -130,7 +135,7 @@
           "Dimension consolidation": "d73b755d3075"
         }
       },
-      "source": "Rank run 6 (2026-07-16), consolidate_audit pair licensed_trade_skills <- hands_on_trade_skills (a real MERGE, r=0.925). licensed_trade_skills def from runs 3/4 (stable, the kept/older key); hands_on_trade_skills def from run 5 (the live scored dimension whose vector fed the r=0.925 nomination in both runs 5 and 6). The SAME pair was KEPT in run 5 — see label_rationale on single-call instability."
+      "source": "Rank run 6 (2026-07-16), consolidate_audit pair licensed_trade_skills <- hands_on_trade_skills (a real MERGE). licensed_trade_skills def from runs 3/4 (stable, the kept/older key); hands_on_trade_skills def from run 5 (the live scored dimension whose vector fed the nomination in both runs 5 and 6). The SAME pair was KEPT in run 5 — see label_rationale on single-call instability."
     }
   ]
 }
