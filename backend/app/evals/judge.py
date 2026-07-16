@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import dataclass
+from pathlib import Path
 
 from app.ai.analysis import derive_prompt_version
 from app.ai.pricing import cost_usd
@@ -19,6 +20,15 @@ from app.ai.provider import AIProvider
 from app.ai.schemas import JudgeReport, JudgeVerdict
 
 DEFAULT_MODEL = "us.anthropic.claude-sonnet-4-6"
+
+# The committed set of human-labelled judge cases. Each is an EXACT slice of a real Rank
+# (PII-safe criterion/audit text) plus its label, the rationale for that label, and the
+# provenance (models + prompt versions) of the run it came from — so a verdict is always
+# attributable to the exact prompt+model that produced the output under review. Grow it by
+# hand when a run surfaces a judge-worthy decision: copy the exact criterion/audit text
+# and the run's provenance out of a recorded fixture into a new entry with a human label +
+# rationale. Never hand-fabricate an "exact" case — a lost run stays lost.
+CASES_PATH = Path(__file__).parent / "fixtures" / "judge_cases.json"
 
 SYSTEM_PROMPT = """You are a careful evaluator of AI-generated housing co-op ranking criteria. You judge the supplied criterion text and audit record only; you do not rank applicants or infer missing facts."""
 
@@ -43,42 +53,44 @@ PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 
 @dataclass(frozen=True)
 class JudgeCase:
-    """A human-labelled semantic check with PII-safe criterion/audit evidence."""
+    """A human-labelled semantic check with PII-safe criterion/audit evidence.
+
+    ``label_rationale`` records WHY the human assigned ``expected`` — so a future reader
+    (or a judge disagreement) can weigh the label instead of trusting a bare verdict.
+    ``provenance`` is the models + prompt versions of the run this evidence came from
+    (empty for a case whose source run wasn't retained). ``source`` names the origin run/
+    fixture for traceability."""
 
     key: str
     title: str
     task: str
     evidence: dict[str, object]
     expected: JudgeVerdict
+    label_rationale: str = ""
+    provenance: dict[str, object] = None  # type: ignore[assignment]
+    source: str = ""
+
+    def __post_init__(self) -> None:
+        if self.provenance is None:
+            object.__setattr__(self, "provenance", {})
 
 
-# These seed cases come from human review of real runs, but retain only
-# generalized criterion/audit text. They intentionally exercise two different
-# failure signatures: a semantic merge judgement and narrative/output drift.
-SEED_CASES = (
-    JudgeCase(
-        key="health_social_consolidation",
-        title="Health and social-professional contribution should merge",
-        task="Decide MERGE or KEEP for these two definitions.",
-        evidence={
-            "definition_a": "Professional healthcare capability that lets a household provide first-aid, CPR training, and health resources to co-op members.",
-            "definition_b": "Professional health or social-service capability that contributes to member welfare, including first-aid, CPR training, and health resources.",
-            "score_vector_summary": "25 of 26 households move in lockstep across these two scores. One household differs substantially: it has social-service experience but no healthcare credential.",
-        },
-        expected=JudgeVerdict.MERGE,
-    ),
-    JudgeCase(
-        key="decompose_routing_drift",
-        title="Decomposition routing must follow its written decision",
-        task="Decide MATCHES or MISMATCHES between this decision and recorded routing.",
-        evidence={
-            "decision": "The source dimension is about commitment to serving on a committee, not governance administration skill; fold it into participation commitment.",
-            "recorded_settled_axis": "governance_administration_skill",
-            "recorded_source_key": "governance_committee_commitment",
-        },
-        expected=JudgeVerdict.MISMATCHES,
-    ),
-)
+def load_cases(path: Path = CASES_PATH) -> tuple[JudgeCase, ...]:
+    """The committed human-labelled cases. Exact slices of real Ranks; see ``CASES_PATH``."""
+    data = json.loads(path.read_text())
+    return tuple(
+        JudgeCase(
+            key=c["key"],
+            title=c["title"],
+            task=c["task"],
+            evidence=c["evidence"],
+            expected=JudgeVerdict(c["expected"]),
+            label_rationale=c.get("label_rationale", ""),
+            provenance=c.get("provenance") or {},
+            source=c.get("source", ""),
+        )
+        for c in data["cases"]
+    )
 
 
 @dataclass(frozen=True)
@@ -134,9 +146,10 @@ def format_report(results: list[JudgeResult]) -> str:
 
 
 def main() -> None:
+    all_cases = load_cases()
     parser = argparse.ArgumentParser(description="Run manual non-gating LLM judge evals.")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Bedrock inference-profile model ID")
-    parser.add_argument("--case", choices=[case.key for case in SEED_CASES], help="Run one labelled case")
+    parser.add_argument("--case", choices=[case.key for case in all_cases], help="Run one labelled case")
     args = parser.parse_args()
 
     from app.ai.strands_provider import StrandsProvider
@@ -149,7 +162,7 @@ def main() -> None:
     finally:
         db.close()
     provider = StrandsProvider(region=settings.ai.region, max_pool_connections=1)
-    cases = [case for case in SEED_CASES if args.case in (None, case.key)]
+    cases = [case for case in all_cases if args.case in (None, case.key)]
     print(format_report([judge_case(provider, case, model_id=args.model) for case in cases]))
 
 

@@ -112,23 +112,33 @@ It excludes applicant names, contact data, raw rows, essays, and model narrative
 that can quote those sources. Evals consume this snapshot; they never feed a
 verdict back into the application.
 
-The current judge is a first checkpoint with two PII-safe seed cases encoded as
-generalized historical findings. The findings came from real runs, but the
-inputs are not yet exact captured artifacts from the fixture or current database.
-That is sufficient to prove the command and review workflow, not to calibrate a
-reliable judge.
+Judge cases are committed in `backend/app/evals/fixtures/judge_cases.json` and
+loaded by `load_cases()` (no longer hardcoded). Each case carries the exact
+PII-safe criterion/audit evidence, the human `expected` verdict, a written
+`label_rationale` (the *why*, so a disagreement is weighed against recorded
+reasoning rather than a bare verdict), the `provenance` of its source run
+(models + prompt versions), and a `source` pointer. The label rationale is
+deliberately kept OUT of the judge prompt — revealing the expected verdict would
+defeat the evaluation.
+
+The seed case is an exact slice of the committed `rank_baseline.json` fixture: a
+genuine KEEP on a high-correlation pair (r=0.84, co-operative values alignment
+vs. communal social orientation), which tests that the judge resists
+over-merging on correlation alone. Its source run predates provenance capture,
+so its `provenance` is a note rather than exact metadata; cases captured after
+provenance capture carry exact `pass_models`/`pass_prompt_versions`. Two earlier
+generalized historical cases (a health/social merge and a decomposition routing
+drift) were dropped: their source runs were not retained, so they could never be
+made exact, and a generalized case masquerading as exact is worse than none.
 
 ## Human labels and judge disagreements
 
-The first two seed cases have labels based on prior manual analysis recorded in
-the project specification. They are not yet a formal independently-labelled
-dataset. One case is deliberately contested: the existing judgement says two
-health/social contribution criteria should merge because their scores move
-together for nearly the full pool; the judge currently says to keep them apart
-because one edge case distinguishes social-service from healthcare credentials.
-
-That disagreement is useful evidence, but not an instruction to tune the judge
-until it agrees. It may mean:
+The seed case's label is based on manual analysis recorded with the case (its
+`label_rationale`). It is a starting point, not yet a formal
+independently-labelled dataset. A judge disagreement on it — for instance the
+judge merging the values/social pair on its r=0.84 correlation despite the
+recorded KEEP rationale — is useful evidence, not an instruction to tune the
+judge until it agrees. It may mean:
 
 - the judge is over-weighting an edge case;
 - the generalized case omitted important context;
@@ -156,11 +166,16 @@ self-confirming answer key.
 
 Before treating judge agreement as a meaningful quality measure:
 
-1. Move seed cases into a dedicated PII-safe fixture with exact relevant
+1. ~~Move seed cases into a dedicated PII-safe fixture with exact relevant
    production artifacts, production model/prompt metadata, a human label, and a
-   written label rationale.
+   written label rationale.~~ **Done (2026-07-16):** cases live in
+   `judge_cases.json` with exact evidence, label + rationale, and provenance;
+   the fixture recorder now captures per-pass models + prompt versions. Growing
+   the set to exact-by-construction from future runs is the retention discipline
+   (see `.clinerules`: durability lives in committed fixtures).
 2. Build a small balanced labelled set: clear merges, clear keeps,
-   narrative/output contradictions, and intentionally ambiguous cases.
+   narrative/output contradictions, and intentionally ambiguous cases. (One
+   exact KEEP seeded; the balanced set is the next labelling session.)
 3. Calibrate the judge on the clear cases first. Ambiguous cases remain review
    material, not pass/fail scoring.
 4. Add persistence and a trend view only after the labelled set is useful.

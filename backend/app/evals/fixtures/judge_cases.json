@@ -1,0 +1,20 @@
+{
+  "cases": [
+    {
+      "key": "values_vs_social_keep",
+      "title": "Co-operative values alignment vs. communal social orientation should stay apart",
+      "task": "Decide MERGE or KEEP for these two definitions.",
+      "evidence": {
+        "definition_a": "The extent to which the applicant articulates a genuine, intrinsic alignment with co-operative values — mutual aid, democratic governance, shared responsibility, community accountability — as distinct from purely instrumental motivations such as affordability or housing security.",
+        "definition_b": "The degree to which the household frames its home life as embedded in shared, communal living — actively seeking neighbourly relationships, informal mutual care, and shared social life — versus preferring a private, self-contained household that happens to share a building.",
+        "score_vector_summary": "The two score vectors correlate at r=0.84 across the pool — most households sit similarly on both. The concepts differ in kind: A is ideological (endorsing the co-op governance/mutual-aid model), B is behavioural (wanting a socially embedded, neighbourly home life). A household can hold strong co-op values yet prefer a private home life (high A, low B), or be intensely social without any ideological commitment to co-operation (low A, high B)."
+      },
+      "expected": "keep",
+      "label_rationale": "KEEP: the r=0.84 correlation is a real confound (people drawn to co-ops often score high on both), not evidence of one concept. The definitions measure different things — values/ideology vs. social behaviour — and the pole text names concrete cases where they diverge (values-aligned-but-private; social-but-not-ideological). Merging would collapse a distinction the committee may want to weigh separately: a governance-minded member and a block-party organiser are both assets for different reasons. This case tests that the judge does not over-merge on correlation alone (the mirror of a genuine MERGE where definitions subsume each other).",
+      "provenance": {
+        "note": "Source run predates provenance capture (2026-07-16); models/prompt versions were not retained for the baseline Rank. Evidence text is an exact, unmodified slice of the committed fixture. Cases captured after provenance capture carry exact pass_models/pass_prompt_versions."
+      },
+      "source": "app/evals/fixtures/rank_baseline.json (dimensions cooperative_values_alignment, communal_social_orientation)"
+    }
+  ]
+}
