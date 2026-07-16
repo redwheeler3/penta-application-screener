@@ -15,6 +15,93 @@
         "note": "Source run predates provenance capture (2026-07-16); models/prompt versions were not retained for the baseline Rank. Evidence text is an exact, unmodified slice of the committed fixture. Cases captured after provenance capture carry exact pass_models/pass_prompt_versions."
       },
       "source": "app/evals/fixtures/rank_baseline.json (dimensions cooperative_values_alignment, communal_social_orientation)"
+    },
+    {
+      "key": "disposition_vs_community_keep",
+      "title": "Co-operative disposition vs. community-building orientation should stay apart",
+      "task": "Decide MERGE or KEEP for these two definitions.",
+      "evidence": {
+        "definition_a": "The degree to which the household articulates genuine philosophical commitment to mutual aid, democratic governance, and shared responsibility as motivating their application — as opposed to treating co-op membership primarily as an instrumental housing vehicle.",
+        "definition_b": "The household's active investment in cultivating social bonds with neighbours — hosting, organising events, welcoming newcomers, building genuine interpersonal relationships — as evidenced by current social habits and articulated aspirations, beyond minimum co-op compliance.",
+        "score_vector_summary": "The two score vectors correlate at r=0.858 across the pool. A is philosophical motivation (why the applicant wants co-op living — ideology vs. cheap rent); B is active social behaviour (do they host, organise, cultivate neighbourly bonds). An ideologically committed but introverted applicant scores high on A and low on B."
+      },
+      "expected": "keep",
+      "label_rationale": "KEEP: the consolidation pass judged this a confound at r=0.858, and the divergent case is concrete — an applicant who genuinely values democratic governance and mutual aid yet does not host, organise, or cultivate neighbourly bonds scores high on A and low on B. Philosophical motivation and active social investment are distinct axes; merging would hide whether a household's co-op fit rests on values or on sociability. Tests judge resistance to over-merging correlated-but-distinct axes.",
+      "provenance": {
+        "pass_models": {
+          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+          "Dimension matching": "us.anthropic.claude-sonnet-4-6",
+          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+        },
+        "pass_prompt_versions": {
+          "Pattern discovery": "f393349e9733",
+          "Dimension decomposition": "733871632036",
+          "Dimension matching": "bcf254622976",
+          "Dimension scoring": "1c405eb75d53",
+          "Dimension consolidation": "d73b755d3075"
+        }
+      },
+      "source": "Rank run 4 (2026-07-16), consolidate_audit pair cooperative_disposition ~ community_building_orientation; both definitions from run 4's dimension_report."
+    },
+    {
+      "key": "specificity_vs_followthrough_keep",
+      "title": "Essay specificity vs. follow-through reliability should stay apart",
+      "task": "Decide MERGE or KEEP for these two definitions.",
+      "evidence": {
+        "definition_a": "The degree to which the household's essays cite specific past actions, named roles, concrete outcomes, and verifiable evidence rather than generic claims, vague platitudes, or corporate-filler language.",
+        "definition_b": "Evidence — from prior roles rather than stated intention — that the household consistently completes tasks, closes loops, and does the unglamorous low-visibility work that sustains a volunteer-run organisation.",
+        "score_vector_summary": "The two score vectors correlate at r=0.887 across the pool. A is a property of the writing (how specific and concrete the essays are); B is a property of the behavioural track record (does the applicant actually follow through). A reliable but inarticulate applicant who consistently does unglamorous work yet writes in generic platitudes scores high on B and low on A."
+      },
+      "expected": "keep",
+      "label_rationale": "KEEP: r=0.887 is a strong correlation but a real confound — writing quality and behavioural reliability are different axes. The concrete diverging case is a reliable-but-inarticulate applicant (high follow-through, low essay specificity), and its inverse (a polished writer with no track record). Merging would conflate 'writes well' with 'does the work', a distinction that matters for a volunteer-run co-op. Tests that the judge does not merge on a high correlation when the definitions measure different kinds of thing (writing vs. conduct).",
+      "provenance": {
+        "pass_models": {
+          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+          "Dimension matching": "us.anthropic.claude-sonnet-4-6",
+          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+        },
+        "pass_prompt_versions": {
+          "Pattern discovery": "f393349e9733",
+          "Dimension decomposition": "733871632036",
+          "Dimension matching": "bcf254622976",
+          "Dimension scoring": "1c405eb75d53",
+          "Dimension consolidation": "d73b755d3075"
+        }
+      },
+      "source": "Rank run 4 (2026-07-16), consolidate_audit pair essay_specificity_and_concreteness ~ follow_through_reliability (a cross-run fork-heal; essay_specificity def from run 4, follow_through_reliability def recovered from run 1 where it was last a live dimension)."
+    },
+    {
+      "key": "pet_situation_ownership_merge",
+      "title": "Pet ownership and pet situation are the same axis and should merge",
+      "task": "Decide MERGE or KEEP for these two definitions.",
+      "evidence": {
+        "definition_a": "The number and type of pets in the household, which affects shared outdoor spaces, common areas, allergen exposure among neighbours, and the practical management of communal living.",
+        "definition_b": "The nature and number of pets the household brings, relevant to shared-space use, neighbour comfort, and any co-op pet policies.",
+        "score_vector_summary": "The two score vectors correlate at r=0.904 across the pool — the highest of any nominated pair. Both measure the same thing: the number and type of pets and their implications for communal living. Definition B adds a 'disclosure clarity' nuance, but it is too marginal to make any applicant score high on one and low on the other."
+      },
+      "expected": "merge",
+      "label_rationale": "MERGE: both definitions score the same applicant the same way for the same reason — pet count/type and its effect on communal living. There is no concrete applicant who lands genuinely high on one and low on the other (definition B's 'disclosure clarity' addendum is too marginal to create a real divergence), which is the bar for keeping apart. At r=0.904 with subsuming definitions, this is a true duplicate; keeping it apart would inflate the criteria set with a redundant axis. This is the balancing MERGE against the three KEEP cases — it tests that the judge will actually merge a genuine duplicate, not just resist over-merging.",
+      "provenance": {
+        "pass_models": {
+          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+          "Dimension matching": "us.anthropic.claude-sonnet-4-6",
+          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+        },
+        "pass_prompt_versions": {
+          "Pattern discovery": "f393349e9733",
+          "Dimension decomposition": "733871632036",
+          "Dimension matching": "bcf254622976",
+          "Dimension scoring": "1c405eb75d53",
+          "Dimension consolidation": "d73b755d3075"
+        }
+      },
+      "source": "Rank run 5 (2026-07-16), consolidate_audit pair pet_ownership <- pet_situation (a real MERGE, merges: {pet_situation: pet_ownership}). pet_ownership def from run 3 (the kept/older key); pet_situation def recovered from run 5's raw discovery report (worker 1), since the merge removed it from the settled report and the pre-fix audit row did not capture definition_drop."
     }
   ]
 }

@@ -217,6 +217,14 @@ def consolidate_dimensions(
                 "r": round(p.r, 3),
                 "merged": mergeable,
                 "reason": reason,
+                # The two definitions the confirm call actually judged — captured here so
+                # a KEEP/MERGE decision is self-contained (an eval or reviewer can rebuild
+                # what the model compared without spelunking prior runs for the drop key's
+                # definition, which is a PRIOR-run key when a fork is healed cross-run and
+                # so isn't in this run's report). The eval-relevant artifact, per the
+                # capture-to-fixture rule.
+                "definition_keep": definitions.get(p.keep, ""),
+                "definition_drop": definitions.get(p.drop, ""),
             }
         )
     return Consolidation(

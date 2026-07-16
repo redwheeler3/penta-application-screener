@@ -121,15 +121,38 @@ reasoning rather than a bare verdict), the `provenance` of its source run
 deliberately kept OUT of the judge prompt — revealing the expected verdict would
 defeat the evaluation.
 
-The seed case is an exact slice of the committed `rank_baseline.json` fixture: a
-genuine KEEP on a high-correlation pair (r=0.84, co-operative values alignment
-vs. communal social orientation), which tests that the judge resists
-over-merging on correlation alone. Its source run predates provenance capture,
-so its `provenance` is a note rather than exact metadata; cases captured after
-provenance capture carry exact `pass_models`/`pass_prompt_versions`. Two earlier
-generalized historical cases (a health/social merge and a decomposition routing
-drift) were dropped: their source runs were not retained, so they could never be
-made exact, and a generalized case masquerading as exact is worse than none.
+The seed cases are three exact KEEPs on high-correlation dimension pairs — the
+judge's most important discipline is resisting over-merge on correlation alone,
+and each pair correlates strongly (r=0.84–0.89) yet measures a genuinely distinct
+axis:
+
+- `values_vs_social_keep` (r=0.84) — co-operative values (ideology) vs. communal
+  social orientation (behaviour). From the committed `rank_baseline.json`; its
+  source run predates provenance capture, so its `provenance` is a note.
+- `disposition_vs_community_keep` (r=0.86) — philosophical co-op motivation vs.
+  active social investment (hosting, organising). From Rank run 4, with exact
+  `pass_models`/`pass_prompt_versions`.
+- `specificity_vs_followthrough_keep` (r=0.89) — essay writing quality vs.
+  behavioural follow-through. A cross-run fork-heal: `essay_specificity`'s
+  definition is from run 4, `follow_through_reliability`'s recovered from run 1
+  (the last run it was a live dimension). Exact provenance from run 4.
+
+A fourth case balances the set with a clear MERGE:
+
+- `pet_situation_ownership_merge` (r=0.904) — pet ownership vs. pet situation,
+  a genuine duplicate the consolidation pass merged. Tests that the judge will
+  actually merge a true duplicate, not just resist over-merging. From Rank run 5.
+  This one is a worked example of why definition capture matters: the merge
+  removed `pet_situation` from the settled report, and the run predated the
+  audit-capture fix, so its definition had to be recovered from run 5's raw
+  discovery report. Runs after the fix carry `definition_keep`/`definition_drop`
+  on the `consolidate_audit` pair row (added 2026-07-16), so a merge case is
+  self-contained from the audit alone — no discovery-report spelunking.
+
+Two earlier generalized historical cases (a health/social merge and a
+decomposition routing drift) were dropped: their source runs were not retained,
+so they could never be made exact, and a generalized case masquerading as exact
+is worse than none.
 
 ## Human labels and judge disagreements
 

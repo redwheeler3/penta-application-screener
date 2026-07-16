@@ -8,10 +8,25 @@ re-merge a dead key with no definition to judge (a phantom merge). ``canonical_r
 membership is the live-key gate.
 """
 
-from app.ai.dimension_consolidate import nominate_pairs
+from app.ai.dimension_consolidate import consolidate_dimensions, nominate_pairs
+from app.ai.mock_provider import MockProvider
+from app.ai.schemas import (
+    ConsolidationReport,
+    ConsolidationVerdict,
+    PoolDimension,
+    PoolDimensionReport,
+)
+from app.schemas.settings import AppSettings
 
 # Two candidates scored identically → r = 1.0, well above any threshold.
 _SAME = {1: 0.1, 2: 0.5, 3: 0.9, 4: 0.3}
+
+
+def _dim(key: str) -> PoolDimension:
+    return PoolDimension(
+        key=key, name=key, definition=f"definition of {key}",
+        high_end="hi", low_end="lo", why_it_differentiates="w",
+    )
 
 
 def test_nominates_a_correlated_live_pair() -> None:
@@ -40,3 +55,47 @@ def test_skips_a_run_key_absent_from_canonical_rank() -> None:
     vectors = {"a": _SAME, "b": _SAME}
     pairs = nominate_pairs(["a"], {"b": 1}, vectors, threshold=0.85)  # "a" unranked
     assert pairs == []
+
+
+def _consolidate_one_pair(*, same_concept: bool) -> dict:
+    """Run consolidate_dimensions on a single nominated pair (new_axis × prior_axis) and
+    return its one audit row. ``prior_axis`` is a PRIOR-run key: live + score-vectored,
+    but NOT in this run's report — the cross-run fork-heal case, where the drop key's
+    definition would be lost on a merge without audit capture."""
+    provider = MockProvider()
+    provider.queue(
+        ConsolidationReport(
+            verdicts=[ConsolidationVerdict(
+                key_a="prior_axis", key_b="new_axis",
+                same_concept=same_concept, reason="test verdict",
+            )]
+        )
+    )
+    result = consolidate_dimensions(
+        provider,
+        report=PoolDimensionReport(dimensions=[_dim("new_axis")]),
+        canonical_rank={"prior_axis": 1, "new_axis": 2},  # both live; prior older
+        vectors={"new_axis": _SAME, "prior_axis": _SAME},
+        definitions={"new_axis": "definition of new_axis", "prior_axis": "definition of prior_axis"},
+        settings=AppSettings(),
+    )
+    assert len(result.audit) == 1
+    return result.audit[0]
+
+
+def test_audit_row_captures_both_judged_definitions_on_keep() -> None:
+    # A KEEP: the audit must carry both definitions so a reviewer/eval can rebuild what
+    # the confirm call compared, including the prior-side key that's not in this report.
+    row = _consolidate_one_pair(same_concept=False)
+    assert row["merged"] is False
+    assert row["definition_keep"] == "definition of prior_axis"
+    assert row["definition_drop"] == "definition of new_axis"
+
+
+def test_audit_row_captures_both_definitions_on_merge() -> None:
+    # A MERGE removes the dropped dim from the report downstream, so the audit row is the
+    # ONLY durable record of the dropped definition — it must be captured here.
+    row = _consolidate_one_pair(same_concept=True)
+    assert row["merged"] is True
+    assert row["definition_keep"] == "definition of prior_axis"
+    assert row["definition_drop"] == "definition of new_axis"
