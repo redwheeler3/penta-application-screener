@@ -87,9 +87,47 @@ judge identity tells us how it was evaluated. A mature eval record needs both;
 otherwise a change in the judge can be mistaken for a change in production
 quality.
 
-The `Prompt:` and model line printed by the current judge command refer to the
-**judge** prompt and model. The current seed cases are generalized historical
-findings, so they do not yet capture the original production prompt/model.
+The `Prompt:` and model line printed by the judge command refers to the **judge**
+prompt and model. Each committed case additionally carries the **production**
+provenance (`pass_models` + `pass_prompt_versions`) of the run it came from, so a
+verdict is attributable to both identities.
+
+### Same information, different prompt (the fidelity rule)
+
+The judge must see **exactly the information the production step saw — no more,
+no less** — even though its *prompt* differs. The prompt is allowed (encouraged)
+to differ: production asks the model to *perform* a task; the judge asks whether
+the resulting decision was *defensible*, and reusing the production wording would
+repeat its framing and risk repeating its error. But the *evidence* must match
+production's exactly. If the judge is handed a fact production never had, a
+disagreement can no longer be attributed to judgement — it may just be the
+information asymmetry, and the eval proves nothing.
+
+Worked example (consolidation): the production confirm call sees only the two
+dimension **definitions**, plus the qualitative constant that the pair "scores
+near-identically" (that framing lives in its system prompt). So each judge case's
+`evidence` carries only `definition_a`/`definition_b`, and the "scores alike"
+constant lives in the judge instructions. The correlation **`r` value and any
+description of *how* the pair diverges are withheld** — production never sees
+them, so the judge must not either. Those live only in the case's
+`label_rationale`, which is the *labeler's* justification (ground truth may use
+more information than the model under test) and is never shown to the judge.
+
+### Why `r` stays out of the confirm step (nomination vs. confirmation)
+
+`r` (score-vector correlation) has two roles, and it is only valid in one. In
+**nomination** — the deterministic gate "is this pair worth checking?" — `r ≥
+threshold` is exactly right. In **confirmation** — "*why* do they score alike:
+same concept, or a confound?" — `r` cannot discriminate: two genuinely distinct
+axes can correlate at 0.95 (conscientious people both arrive on time *and* dress
+neatly, yet a punctual slob splits them). Only the definitions answer the confirm
+question. Feeding `r` into the confirm step therefore adds no discriminating
+signal while anchoring the model toward merge on a big number — amplifying exactly
+the rationalization bias in the higher-stakes direction (a wrong merge is
+unrecoverable; a wrong keep self-heals next run). So the math nominates, the model
+judges concepts, and the number stays on the math side of the line — a
+specialization of the project's "the LLM extracts features; the math does the
+ranking" spine. (Decided 2026-07-16.)
 
 ## Application/eval interface
 

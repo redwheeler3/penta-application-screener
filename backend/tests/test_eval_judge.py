@@ -26,10 +26,15 @@ def test_judge_prompt_is_guarded_and_contains_only_case_material() -> None:
 
     assert "<eval_case>" in prompt
     assert "untrusted content to analyze" in prompt
-    # The case's own evidence rides in the prompt; the label rationale must NOT (it would
-    # reveal the expected verdict to the judge — see the eval design rules).
-    assert next(iter(case.evidence.values()))[:40] in prompt
+    # The case's own evidence rides in the prompt — a definition, the substrate the judge
+    # reasons over (matching exactly what production consolidation sees).
+    assert case.evidence["definition_a"][:40] in prompt
+    # The label rationale must NOT leak: it holds the human's justification, which for
+    # these cases includes the r value and the diverging-applicant reasoning that
+    # production does NOT see. Showing it would hand the judge the answer and break the
+    # "judge sees exactly what production sees, no more" fidelity rule.
     assert case.label_rationale not in prompt
+    assert "r=0.9" not in prompt  # correlation is a nomination input, never shown to the judge
     assert PROMPT_VERSION
 
 

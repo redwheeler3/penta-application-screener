@@ -38,7 +38,7 @@ Assess the supplied eval case and return the one verdict requested by its task.
 
 ## How to judge
 - Apply the stated test narrowly. Do not reward plausible prose when the record contradicts it.
-- For MERGE vs KEEP, weigh the supplied score-vector evidence alongside the definitions. Keep dimensions separate only for a concrete, material divergence — not a hypothetical distinction or an isolated edge case when the observed scores otherwise move together.
+- For MERGE vs KEEP, the two dimensions were flagged BECAUSE their per-applicant scores already move together closely — that near-identical scoring is a given, not something you need re-shown. Judge the two DEFINITIONS: would they score the same applicant the same way, for the same reason? KEEP apart only when you can name a concrete, plausible applicant who lands genuinely HIGH on one and LOW on the other for a real reason; a faint or hypothetical difference, or an isolated edge case against an otherwise shared core, is not enough — when it is close, they are one axis.
 - For MATCHES vs MISMATCHES, compare the recorded routing against the decision text itself. A source routed to an axis the decision explicitly assigns elsewhere is a mismatch.
 - State the evidence that decided the verdict in one concise sentence.
 
