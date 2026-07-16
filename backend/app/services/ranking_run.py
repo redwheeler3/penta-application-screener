@@ -302,6 +302,11 @@ def apply_consolidation(
             {merges.get(k, k) for k in favourited}
         )
 
+    # Persisted for EVERY run the pass ran on, merges or not. Each pair row carries both
+    # judged definitions (definition_keep/definition_drop), so this audit is the durable,
+    # self-contained record of a consolidation decision — critical on a MERGE, where the
+    # dropped dimension has just been removed from dimension_report above and would
+    # otherwise leave no definition behind to evaluate the merge against.
     criteria["consolidate_audit"] = {
         "merges": merges,
         "pairs": audit,
