@@ -102,6 +102,35 @@
         }
       },
       "source": "Rank run 5 (2026-07-16), consolidate_audit pair pet_ownership <- pet_situation (a real MERGE, merges: {pet_situation: pet_ownership}). pet_ownership def from run 3 (the kept/older key); pet_situation def recovered from run 5's raw discovery report (worker 1), since the merge removed it from the settled report and the pre-fix audit row did not capture definition_drop."
+    },
+    {
+      "key": "trade_skills_licensed_handson_merge",
+      "title": "Licensed trade skills and hands-on trade skills are the same axis and should merge",
+      "task": "Decide MERGE or KEEP for these two definitions.",
+      "evidence": {
+        "definition_a": "The extent to which the household holds formal trade qualifications (electrical, plumbing, mechanical, masonry, arboriculture) that allow legally-regulated building-system repairs to be performed in-house without a contractor.",
+        "definition_b": "The depth and breadth of licensed or practised physical-trade skills (electrical, plumbing, masonry, mechanics, arboriculture, upholstery, carpentry, etc.) the household can contribute to building maintenance and repair, reducing reliance on outside contractors.",
+        "score_vector_summary": "The two score vectors correlate at r=0.925. Both center on the same trades (electrical, plumbing, masonry, mechanics, arboriculture) and the same purpose — reducing the co-op's reliance on outside contractors — and would score a licensed tradesperson identically. Definition B extends to a few unlicensed crafts (upholstery, carpentry); the only proposed divergence is a skilled carpenter/upholsterer with no formal license scoring high on B and low on A."
+      },
+      "expected": "merge",
+      "label_rationale": "MERGE: both definitions score the same core capacity — deployable building-system trades that reduce contractor spend — and would rank a licensed tradesperson identically. Definition B's extension to unlicensed crafts (upholstery, carpentry) is a minor addition against a heavily shared core, and does not create a meaningful divergence for THIS pool. The unlicensed-carpenter case is real in principle but too marginal to justify a separate axis at r=0.925. NOTE: this case is a labelled instance of single-call instability — the consolidation confirm KEPT this same pair one run earlier (run 5) on the strength of that same carpenter case, then MERGED it in run 6 with the rationale adopted here. Same pair, same r=0.925, opposite verdict. The human label is MERGE (the divergence is trivial for this pool); the case doubles as calibration material for whether a single confirm call is stable enough or the multi-judge escalation is warranted.",
+      "provenance": {
+        "pass_models": {
+          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+          "Dimension matching": "us.anthropic.claude-sonnet-4-6",
+          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+        },
+        "pass_prompt_versions": {
+          "Pattern discovery": "f393349e9733",
+          "Dimension decomposition": "733871632036",
+          "Dimension matching": "bcf254622976",
+          "Dimension scoring": "1c405eb75d53",
+          "Dimension consolidation": "d73b755d3075"
+        }
+      },
+      "source": "Rank run 6 (2026-07-16), consolidate_audit pair licensed_trade_skills <- hands_on_trade_skills (a real MERGE, r=0.925). licensed_trade_skills def from runs 3/4 (stable, the kept/older key); hands_on_trade_skills def from run 5 (the live scored dimension whose vector fed the r=0.925 nomination in both runs 5 and 6). The SAME pair was KEPT in run 5 — see label_rationale on single-call instability."
     }
   ]
 }
