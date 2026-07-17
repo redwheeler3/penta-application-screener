@@ -166,6 +166,7 @@ def consolidate_dimensions(
     canonical_rank: dict[str, int],
     vectors: dict[str, dict[int, float]],
     definitions: dict[str, str],
+    names: dict[str, str] | None = None,
     settings: AppSettings,
     on_delta: DeltaSink | None = None,
 ) -> Consolidation:
@@ -173,11 +174,16 @@ def consolidate_dimensions(
 
     ``definitions`` maps every candidate key (this run's dimensions AND prior keys that
     could be nominated) to its definition, so the confirm prompt can judge a this-run ×
-    prior-key pair. Returns a ``Consolidation``. When correlation nominates nothing (the
-    common case), returns empty at zero cost — no model call. Otherwise one confirm call
-    adjudicates the flagged pairs; only ``same_concept`` verdicts become merges
-    (``drop -> keep``), each aliasing the newer key to the older/canonical one.
+    prior-key pair. ``names`` maps those same keys to their user-facing mint name, captured
+    into the audit alongside the definitions so the Insights panel can label each pair by
+    name (a merged ``drop`` key is removed from the report right after, so its name — like
+    its definition — must be snapshotted here or it's lost). Returns a ``Consolidation``.
+    When correlation nominates nothing (the common case), returns empty at zero cost — no
+    model call. Otherwise one confirm call adjudicates the flagged pairs; only
+    ``same_concept`` verdicts become merges (``drop -> keep``), each aliasing the newer key
+    to the older/canonical one.
     """
+    names = names or {}
     run_keys = [d.key for d in report.dimensions]
     pairs = nominate_pairs(
         run_keys, canonical_rank, vectors,
@@ -225,6 +231,12 @@ def consolidate_dimensions(
                 # capture-to-fixture rule.
                 "definition_keep": definitions.get(p.keep, ""),
                 "definition_drop": definitions.get(p.drop, ""),
+                # The user-facing names, snapshotted for the SAME reason as the definitions:
+                # a merged drop key is removed from the report right after, so the Insights
+                # panel can't look its name up later. Empty string when a key predates name
+                # capture (older run) — the panel then falls back to the bare key.
+                "name_keep": names.get(p.keep, ""),
+                "name_drop": names.get(p.drop, ""),
             }
         )
     return Consolidation(

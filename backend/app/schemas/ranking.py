@@ -93,6 +93,10 @@ class SettledDimensionOut(ResponseModel):
     name: str
     source_keys: list[str]
     source_report_map: dict[str, list[int]] = {}
+    # source key → its user-facing name, so the panel labels each input axis by name +
+    # key (mirroring the Matching tab). Empty for runs whose fan-out wasn't captured; the
+    # UI then falls back to the bare source key.
+    source_names: dict[str, str] = {}
     from_committee_request: bool = False
     decision: str
 
@@ -128,11 +132,17 @@ class DecomposeAuditResponse(ResponseModel):
 
 class ConsolidatedPairOut(ResponseModel):
     """One correlation-nominated duplicate pair and its confirm verdict, for the trace:
-    ``keep``/``drop`` keys (older kept, newer aliased on a merge), the correlation ``r``
-    that nominated it, whether it ``merged``, and the model's ``reason``."""
+    ``keep``/``drop`` keys (older kept, newer aliased on a merge), their user-facing names
+    (``keepName``/``dropName`` — snapshotted at consolidation time, since a merged drop key
+    is removed from the report right after), the correlation ``r`` that nominated it,
+    whether it ``merged``, and the model's ``reason``."""
 
     keep: str
     drop: str
+    # Snapshotted mint names; empty when the key predates name capture (older run) — the
+    # panel then falls back to the bare key.
+    keep_name: str = ""
+    drop_name: str = ""
     r: float
     merged: bool
     reason: str = ""

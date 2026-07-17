@@ -1533,32 +1533,17 @@ h1 {
   font-weight: 600;
 }
 
+/* One source axis in a settled merge's "From" cell: its name (plain) over its key
+   (.match-audit-key). Space consecutive sources apart so a multi-source merge reads as
+   a stacked list, not one run-on block. */
+.decompose-source + .decompose-source {
+  margin-top: 0.4rem;
+}
+
 /* The "(R0, R3)" discoverer labels after a source key on the Decomposition tab —
    dimmer than the key so they read as provenance, not part of the name. */
 .decompose-source-reports {
   color: #9ca3af;
-}
-
-/* Consolidation "PAIR" cell: the two dimension keys with a separator between them.
-   A flex row (not the block-stacked .match-audit-key) so the keys and separator read
-   as one grouped "A → B" unit, wrapping cleanly in a narrow column instead of leaving
-   the separator floating on its own line. */
-.consolidate-pair {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.3rem 0.4rem;
-}
-
-.consolidate-pair-key {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.7rem;
-  color: var(--ink);
-}
-
-.consolidate-pair-sep {
-  font-size: 0.7rem;
-  color: var(--muted);
 }
 
 /* Fallback when a matched prior dimension's name is unknown (audit written before
