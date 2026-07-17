@@ -252,7 +252,16 @@ def apply_consolidation(
     persist a ``DimensionAlias`` row (so future matches adopt the canonical key), drop
     the loser from this run's ``dimension_report``, and remove it from every tier — the
     winner already carries its own tier placement + cached scores, so the loser's rows
-    simply become orphaned cache (harmless, like any dropped dimension). Weights are
+    simply become orphaned cache (harmless, like any dropped dimension).
+
+    A merge can also heal a CROSS-RUN fork, where the surviving ``keep`` is a PRIOR-run
+    key that never appeared in THIS run (this run discovered only the newer ``drop``
+    twin; the definition-match pass missed it, but score-vector correlation caught it).
+    There the winner is *not* already in the report, so dropping the loser alone would
+    delete the axis entirely. Instead we surface the canonical prior key itself — bring
+    back its frozen MINT record and restore the working tier the committee last placed
+    it in — rather than renaming ``drop`` (keys must never be mixed up: cache identity
+    and committee tier/flag history both ride on the exact key). Weights are
     re-derived from the collapsed tiers. Always records the ``consolidate_audit``
     (even with zero merges — the pass ran), for Insights. The pass's cost lands in the
     run cost ledger, not here.
@@ -290,15 +299,44 @@ def apply_consolidation(
                 row.reason = reason
 
         report = criteria.get("dimension_report") or {}
-        report["dimensions"] = [
+        report_dims = [
             d for d in report.get("dimensions", []) if d.get("key") not in merges
         ]
+
+        # Cross-run fork heal: a surviving ``keep`` that isn't in this run's report is a
+        # PRIOR-run key this run never re-discovered on its own — only the newer ``drop``
+        # twin surfaced, the definition-match pass missed the fork, and score-vector
+        # correlation caught it here. Dropping the loser alone would delete the axis, so
+        # surface the canonical key itself: bring back its FROZEN MINT record (never the
+        # drop's re-worded text — cache identity rides on the exact key), and restore the
+        # working tier the committee last placed it in (same revival path a normally
+        # re-surfacing key takes, via tier_history's most-recent placement).
+        present = {d.get("key") for d in report_dims}
+        resurfaced = [k for k in dict.fromkeys(merges.values()) if k not in present]
+        if resurfaced:
+            history = all_known_dimensions(db)
+            mint_by_key = {d.key: d for d in history.dimensions} if history else {}
+            _scaffold, most_recent_tier_by_key, _known = tier_history(db)
+            # Only keys we can actually rebuild from a mint record get surfaced+placed.
+            resurfaced = [k for k in resurfaced if k in mint_by_key]
+            report_dims.extend(mint_by_key[k].model_dump(mode="json") for k in resurfaced)
+        report["dimensions"] = report_dims
         criteria["dimension_report"] = report
 
         tiers = [
             {**t, "dimension_keys": [k for k in t.get("dimension_keys", []) if k not in merges]}
             for t in (criteria.get("tiers") or [])
         ]
+        if resurfaced:
+            tier_by_id = {t["id"]: t for t in tiers}
+            placed = {k for t in tiers for k in t["dimension_keys"]}
+            for keep_key in resurfaced:
+                target = most_recent_tier_by_key.get(keep_key)
+                # Restore its last working-tier placement; an unknown/absent tier or a
+                # last-left-in-Ignore key stays unplaced (lands in the derived Ignore
+                # zone) — mirrors carry_forward_layout, never forces a tier.
+                if keep_key not in placed and target is not None and target in tier_by_id:
+                    tier_by_id[target]["dimension_keys"].append(keep_key)
         criteria["tiers"] = tiers
         surviving = [d.get("key") for d in report["dimensions"]]
         criteria["weights"] = weights_from_tiers(surviving, tiers)
