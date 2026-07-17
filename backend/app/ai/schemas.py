@@ -145,6 +145,8 @@ class JudgeVerdict(StrEnum):
     MISMATCHES = "mismatches"
     SUPPORTED = "supported"
     UNSUPPORTED = "unsupported"
+    FLAG_SUPPORTED = "flag_supported"
+    FLAG_UNSUPPORTED = "flag_unsupported"
 
 
 class JudgeReport(BaseModel):
