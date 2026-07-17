@@ -379,6 +379,75 @@ runs to date it finds **zero** real drift — decompose is behaving well — so 
 seeded. It earns its keep the run it finally catches one. Subtle no-key-named drift remains
 the LLM judge's job (that's the `matches`/`mismatches` task applied to a decision).
 
+## Judge-vs-human agreement metrics (built 2026-07-16)
+
+Best practice (Arize, Evidently, Pragmatic Engineer, 2025/26) is unanimous: before you
+trust an LLM-as-judge, **validate it against human labels with real metrics** — an
+eyeballed "5/5" isn't validation. So a normal `python -m app.evals.judge` run now prints,
+after the per-case verdicts, a `score_agreement` summary (`app/evals/agreement.py`):
+
+- **Overall agreement** — share of *decisive* cases the judge matched, plus **Cohen's
+  kappa** (chance-corrected; raw agreement inflates when one label dominates the set).
+- **Per-AI-step agreement** — so a strong `supported`/`matches` score can't hide weak
+  `unsupported`/`mismatches` performance (the field's "85% overall can still be unusable"
+  warning).
+- **Failure-detection recall + precision** — *the number that matters*: of the cases
+  whose human label flags a PROBLEM (`unsupported` / `mismatches` / `flag_unsupported`),
+  how many did the judge catch, and how many of its problem-calls were right? A judge
+  that aces clean cases but misses over-reaches is worse than an overall score implies.
+
+**Contested cases are excluded from every scored metric** and reported separately: their
+label is a human *leaning*, not ground truth, so scoring the judge against it would
+penalise a defensible call (the field: don't force binary on genuinely indeterminate
+cases). It's aggregate-only, no extra cost (same calls as the per-case run), and — like
+the rest — non-gating. `merge`/`keep` cases contribute to overall agreement + kappa but
+not to failure-recall (neither side is inherently "the problem" — noted in the report so
+it isn't a silent omission).
+
+**Best-practices audit (2026-07-16) — where we stand.** Held the system up against the
+current LLM-as-judge literature. Aligned, some ahead of typical practice: code-vs-judge
+split (deterministic invariants gate CI, judge handles semantics); fixed categorical
+verdicts, never 1–10 scores ("easiest to misuse"); the **contested** category (the field's
+independently-arrived-at `needs_review` for indeterminate cases); label + rationale +
+separate evidence fields; the fidelity rule; judge never gates CI. Gaps this audit
+surfaced, now partly closed: **agreement metrics** (this section — was the top gap: we had
+no kappa/recall, only eyeballed agreement). Still open, deferred with reason: a **holdout
+set** (our cases are both calibration and test — small set, revisit as it grows); **judge
+drift tracking** over model/prompt versions (the deferred judge-score-persistence item —
+validated as real by the research, still gated on a run cadence); and a **bias audit**
+(self-preference — judge and production are both Claude; verbosity — the coop_motivation
+case hinted richer text scored favourably). Documented as known risks, not yet measured.
+
+**First real agreement run (2026-07-16) — what measuring bought us.** The first scored
+run came in at **86% overall / kappa 0.83 / failure-recall 4/6 (67%)** — and the recall
+number is the whole point: a per-case skim of green checks read "great," but the metric
+said the judge missed a third of the problem cases. The three disagreements resolved into
+two findings, handled by the discipline "a disagreement re-examines the label or is
+recorded — never tunes the judge":
+
+- **Label bug fixed (agreement rose honestly to 91% / kappa 0.89 / recall 71%).** The
+  judge called a 0.0-on-EMPTY-evidence score *unsupported*; our label said *supported*
+  (leaning on the low_end pole). The judge was right and we agreed: the eval judges "is
+  the CITED evidence sufficient?", and an empty evidence field cites nothing — it can't
+  justify any score, high or low. `score_outdoor_grounds_absent_*` flipped
+  supported→unsupported, making our two empty-evidence cases internally consistent
+  (empty→0.0 and empty→0.5 are both unsupported). Agreement rose because a label improved,
+  not because the judge was tuned.
+- **Known judge weakness kept on the record (recall capped at 71% by design).** The judge
+  consistently rules a name≠email mismatch a *supported* fake-contact flag; we hold it's
+  benign over-reach (people routinely use non-name emails) and kept both cases
+  `flag_unsupported`. These stay as genuine judge misses — NOT relabelled to agree, NOT
+  used to tune the judge. So **the judge over-flags name/email mismatches** is a measured,
+  documented limitation to weigh before trusting it on screening over-reaches. (It ruled
+  consistently on both instances — stable, just more aggressive than we want.)
+
+**Production-scoring watch-item surfaced by the flip.** Calling empty-evidence scores
+unsupported implies the scoring pass's floor-to-0.0-on-absence (which emits an empty
+`evidence` field) produces scores this eval judges unsupported. The pass should arguably
+cite something ("no outdoor skills mentioned") or withhold a score for a truly-absent
+dimension — a scoring-prompt question, not a judge fix. Recorded, not yet acted on (still
+few data points; consistent with the confidence-calibration watch-item's discipline).
+
 ## Stability harness (built 2026-07-16)
 
 `python -m app.evals.judge --stability K` judges each selected case **K times on

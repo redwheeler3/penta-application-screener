@@ -286,8 +286,20 @@ def main() -> None:
     if args.stability:
         reports = [stability_run(provider, c, k=args.stability, model_id=args.model) for c in cases]
         print(format_stability(reports))
-    else:
-        print(format_report([judge_case(provider, case, model_id=args.model) for case in cases]))
+        return
+
+    # Default run: judge every selected case once, print the per-case verdicts, then the
+    # judge-vs-human agreement summary — the "is the judge trustworthy?" headline. The
+    # summary is the aggregate of the same calls (no extra cost), so it always accompanies
+    # a full run. Skipped for a single --case run, where an n=1 agreement stat is noise.
+    from app.evals.agreement import format_agreement, score_agreement
+
+    results = [judge_case(provider, case, model_id=args.model) for case in cases]
+    print(format_report(results))
+    scored = [r for r in results if not r.case.contested]
+    if len(scored) >= 2:
+        print()
+        print(format_agreement(score_agreement(results)))
 
 
 if __name__ == "__main__":

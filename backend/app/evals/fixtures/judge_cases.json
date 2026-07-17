@@ -198,9 +198,9 @@
       "source": "Rank run 7 (2026-07-16), decompose_audit — settled axes discretionary_time_availability and participation_commitment_explicitness were kept distinct (decision on the former: 'Kept distinct from participation_commitment_explicitness (intent vs. capacity — a household can be genuinely committed but honestly acknowledge thin hours...)'). Representative definitions are exact slices of run 7's raw discovery reports (fan_out_audit); decompose settled entries do not store definitions, so they were reconstructed from source keys."
     },
     {
-      "key": "score_outdoor_grounds_absent_supported",
+      "key": "score_outdoor_grounds_absent_unsupported",
       "pass": "scoring",
-      "title": "Zero on outdoor-grounds skills for an applicant who cited nothing is defensible",
+      "title": "A 0.0 on an EMPTY evidence field is unsupported — no citation justifies any score",
       "task": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
       "evidence": {
         "dimension": "outdoor_grounds_skills",
@@ -210,8 +210,8 @@
         "cited_evidence": "",
         "score": 0.0
       },
-      "expected": "supported",
-      "label_rationale": "SUPPORTED: the low_end is explicitly 'no adult mentions any outdoor or grounds skills / nothing outdoors is mentioned', and the applicant cited nothing on this axis. A 0.0 correctly reflects absence of evidence against the stated low pole — the textbook defensible-absence case (the scoring pass is told absence is a low score, not a guess, and here it held).",
+      "expected": "unsupported",
+      "label_rationale": "UNSUPPORTED — LABEL FLIPPED supported→unsupported 2026-07-16 after the judge disagreed (and we agreed with it). The eval judges 'is the CITED evidence sufficient for this score?', and the evidence field is EMPTY — it cites nothing, so it can't justify any score, not even 0.0. The original 'supported' reasoning leaned on the low_end pole ('nothing mentioned') to argue absence→0.0 is defensible, but that conflates two things: the low_end describes what a low SCORE means, not what an empty EVIDENCE field justifies. The judge's rule is cleaner and internally consistent with the empty→0.5 case (also unsupported): an empty citation supports no specific value, high or low. Flipped toward the judge on the merits, not to force agreement. NOTE (production-scoring watch-item): this means the scoring pass's floor-to-0.0-on-absence, which emits an empty evidence field, produces scores this eval calls unsupported — the pass should arguably cite something ('no outdoor skills mentioned') or withhold a score for a truly-absent dimension. See ai-evals.md; a scoring-prompt question, not a judge fix.",
       "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 1",
       "provenance": {
         "pass_models": {"Pattern discovery": "us.anthropic.claude-sonnet-4-6", "Dimension decomposition": "us.anthropic.claude-sonnet-4-6", "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0", "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"},
