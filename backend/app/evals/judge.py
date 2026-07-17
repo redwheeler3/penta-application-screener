@@ -220,12 +220,18 @@ def format_stability(reports: list[StabilityReport]) -> str:
             marker = "[contested-split]"
         else:
             marker = "[UNSTABLE]"
+        # Always show the seed for comparison — "leaning" for a contested case (both
+        # verdicts defensible), "label" otherwise. Flag when the majority disagrees with
+        # it: for a non-contested case a mismatch is a real review signal; for a contested
+        # case it's expected (the seed is only a lean), but the reader should still SEE it.
+        seed_word = "leaning" if r.case.contested else "label"
+        disagrees = r.majority != r.case.expected
+        note = "  <- majority differs from seed" if disagrees else ""
         lines.extend(
             (
                 f"{marker} [{r.case.pass_name}] {r.case.title}",
                 f"  {r.agreement:.0%} agreement over {k} runs — {tally}",
-                f"  majority: {r.majority.value}"
-                + ("" if r.case.contested else f"; label: {r.case.expected.value}"),
+                f"  majority: {r.majority.value}; {seed_word}: {r.case.expected.value}{note}",
                 f"  total ${r.total_cost_usd:.4f}",
                 "  " + "-" * 60,
             )

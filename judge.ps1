@@ -1,6 +1,7 @@
 param(
     [string]$Model,
-    [string]$Case
+    [string]$Case,
+    [int]$Stability
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,6 +11,9 @@ if ($Model) {
 }
 if ($Case) {
     $arguments += "--case", $Case
+}
+if ($Stability) {
+    $arguments += "--stability", $Stability
 }
 
 Push-Location (Join-Path $PSScriptRoot "backend")

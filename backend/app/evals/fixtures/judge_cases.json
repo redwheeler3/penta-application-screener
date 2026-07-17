@@ -108,8 +108,8 @@
       "source": "Rank run 5 (2026-07-16), consolidate_audit pair pet_ownership <- pet_situation (a real MERGE). pet_ownership def from run 3 (the kept/older key); pet_situation def recovered from run 5's raw discovery report (worker 1), since the merge removed it from the settled report and the pre-fix audit row did not capture definition_drop."
     },
     {
-      "key": "trade_skills_licensed_handson_merge",
-      "title": "Licensed trade skills and hands-on trade skills are the same axis and should merge",
+      "key": "trade_skills_licensed_handson_keep",
+      "title": "Licensed trade skills vs. hands-on trade skills — distinct, stay apart (contested)",
       "task": "Decide MERGE or KEEP for these two definitions.",
       "evidence": {
         "key_a": "licensed_trade_skills",
@@ -117,9 +117,9 @@
         "key_b": "hands_on_trade_skills",
         "definition_b": "The depth and breadth of licensed or practised physical-trade skills (electrical, plumbing, masonry, mechanics, arboriculture, upholstery, carpentry, etc.) the household can contribute to building maintenance and repair, reducing reliance on outside contractors."
       },
-      "expected": "merge",
+      "expected": "keep",
       "contested": true,
-      "label_rationale": "CONTESTED — both verdicts are defensible from the definitions alone, so this is review material, not an answer key. The MERGE reading (the human leaning): both definitions score the same core capacity — deployable building-system trades that reduce contractor spend — and would rank a licensed tradesperson identically; definition B's extension to unlicensed crafts (upholstery, carpentry) is too marginal to justify a separate axis FOR THIS POOL. The KEEP reading is equally coherent: formal certification for legally-regulated work vs. practical breadth is a real, consequential distinction (an unlicensed carpenter scores high on hands-on, low on licensed). The decision turns on how MATERIAL that divergence is in this specific pool — which only the score distribution settles, and that distribution is deliberately withheld from both production and the judge (see ai-evals.md: r/divergence stay out of the confirm step). So neither the model nor the judge can resolve it from the inputs; the split is inherent, not a defect. Evidence: the production confirm itself KEPT this pair in run 5 then MERGED it in run 6 on identical input — and the judge reproduced the KEEP side (2026-07-16). What matters for calibration is not which side the judge picks but whether it is CONSISTENT across repeated runs; instability is the escalation-ladder signal, not the verdict direction.",
+      "label_rationale": "CONTESTED — both verdicts are defensible from the definitions alone, so this is review material, not an answer key. LEANING FLIPPED merge→keep 2026-07-16 (recorded, not silent): the human leaning was originally MERGE (the shared core is deployable building trades; the unlicensed-crafts extension seemed too marginal to matter for this pool). On reflection the leaning is now KEEP, on a definitions-first principle held INDEPENDENTLY of the judge — 'if two axes measure genuinely different things (formal certification for legally-regulated work vs. practical breadth), they stay apart; we don't reach in to merge distinct concepts just because they rarely diverge in one pool.' This is NOT the judge dictating the label: the judge returning keep (5/5 on 2026-07-16, and 4/1 before) merely turned out to AGREE with a reconsidered human view; the principle would hold if the judge said merge. The case stays CONTESTED because the MERGE reading remains genuinely coherent — at r=0.925 almost no applicant diverges, so treating them as one axis for THIS pool loses little, and that argument is real, not wrong. What that means: agreement is still not pass/fail here; consistency across repeated runs is the signal, and the judge is steady (5/5 keep) AND steadier than the production confirm, which flip-flopped keep→merge→merge across runs 5/6/7 on drifting definitions. (The score distribution that would settle materiality is deliberately withheld from both production and the judge — see ai-evals.md: r/divergence stay out of the confirm step.)",
       "provenance": {
         "pass_models": {
           "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
