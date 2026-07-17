@@ -308,7 +308,12 @@ class DecomposedDimension(BaseModel):
             "snake_case key only for a genuinely new merged concept. Unique within the set."
         )
     )
-    name: str = Field(description="Short human-readable label for the committee UI.")
+    name: str = Field(
+        description=(
+            "Short human-readable label for the committee UI — prefer the most concise "
+            "of the merged sources (or one you write)."
+        )
+    )
     definition: str = Field(
         description="1-2 neutral sentences defining what this settled axis measures.",
     )
