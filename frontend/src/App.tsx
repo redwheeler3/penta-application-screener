@@ -466,37 +466,26 @@ export function App() {
     await saveTiers(tiers, keys);
   }
 
-  // Persist discovery seeds (favourites + proposals) for the current run. Both feed
-  // the NEXT Rank's discovery. Optimistically update rankingRun (where the
-  // composer reads seed state) for instant feedback; reconcile from the response.
-  async function saveSeeds(next: { favouritedKeys?: string[]; proposedDimensions?: string[] }) {
+  // Persist pending free-text proposals for the current run — they feed the NEXT Rank's
+  // discovery. Optimistically update rankingRun (where the composer reads proposal
+  // state) for instant feedback; reconcile from the response.
+  async function saveSeeds(next: { proposedDimensions?: string[] }) {
     if (!rankingRun) return;
     const optimistic = {
       ...rankingRun,
-      ...(next.favouritedKeys !== undefined ? { favouritedKeys: next.favouritedKeys } : {}),
       ...(next.proposedDimensions !== undefined ? { proposedDimensions: next.proposedDimensions } : {}),
     };
     setRankingRun(optimistic);
-    const response = await api.saveSeeds({
-      favouritedKeys: next.favouritedKeys,
-      proposedDimensions: next.proposedDimensions,
-    });
+    const response = await api.saveSeeds({ proposedDimensions: next.proposedDimensions });
     if (response.ok) {
-      const echoed: { favouritedKeys: string[]; proposedDimensions: string[] } = await response.json();
+      const echoed: { proposedDimensions: string[] } = await response.json();
       setRankingRun((run) =>
-        run ? { ...run, favouritedKeys: echoed.favouritedKeys, proposedDimensions: echoed.proposedDimensions } : run,
+        run ? { ...run, proposedDimensions: echoed.proposedDimensions } : run,
       );
     } else {
       showError("Could not save the suggested criteria.");
       refreshRankingRun(); // reconcile back to server truth
     }
-  }
-
-  function toggleFavourite(key: string, favourited: boolean) {
-    if (!rankingRun) return;
-    const current = rankingRun.favouritedKeys;
-    const nextKeys = favourited ? [...current, key] : current.filter((k) => k !== key);
-    saveSeeds({ favouritedKeys: nextKeys });
   }
 
   function addProposal(text: string) {
@@ -716,11 +705,9 @@ export function App() {
                 ranking={ranking}
                 rankingRun={rankingRun}
                 tiers={tiers}
-                favouritedKeys={rankingRun?.favouritedKeys ?? []}
                 proposedDimensions={rankingRun?.proposedDimensions ?? []}
                 onSaveTiers={(next) => saveTiers(next)}
                 onAcknowledgeNew={acknowledgeNewDimensions}
-                onToggleFavourite={toggleFavourite}
                 onAddProposal={addProposal}
                 onRemoveProposal={removeProposal}
                 onSelectApplication={viewApplication}

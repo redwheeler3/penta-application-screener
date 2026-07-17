@@ -95,7 +95,7 @@ class PoolDimension(BaseModel):
         default=False,
         description=(
             "Set true ONLY for a dimension you created in response to a committee "
-            "request (a favourited or proposed axis the prompt asked you to "
+            "request (a kept or proposed axis the prompt asked you to "
             "consider). A dimension you discovered on your own stays false. If one "
             "request splits into several dimensions, mark each of them true."
         ),
@@ -220,10 +220,12 @@ class DimensionMatch(BaseModel):
 
 
 class DimensionMatchReport(BaseModel):
-    """The high-confidence identity matches from new dimensions to prior ones,
-    strictly one-to-one. Unmatched new dimensions are absent — they start in Ignore
-    for the committee to triage. Absence is safe (a missed match costs a re-drag; a
-    wrong match would move tier intent onto the wrong concept).
+    """The high-confidence identity matches from new dimensions to prior ones. Each new
+    dimension maps to at most one prior; several new dimensions MAY map to the same prior
+    (a prior axis re-carved into twins this run, collapsed on adoption). Unmatched new
+    dimensions are absent — they start in Ignore for the committee to triage. Absence is
+    safe (a missed match costs a re-drag; a wrong match would move tier intent onto the
+    wrong concept).
     """
 
     matches: list[DimensionMatch] = Field(
@@ -340,8 +342,8 @@ class DecomposedDimension(BaseModel):
     from_committee_request: bool = Field(
         default=False,
         description=(
-            "True if ANY source dimension was committee-requested (a proposed/"
-            "favourited axis). A committee request must never be silently merged away, "
+            "True if ANY source dimension was committee-requested (a proposed or "
+            "kept axis). A committee request must never be silently merged away, "
             "so this flag rides through a merge — see decision reasoning if it was folded."
         ),
     )

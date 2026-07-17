@@ -112,27 +112,46 @@ def adopt_matched_keys(
     freezes both. (Discovery's fresh re-read is genuinely more current, but that only
     matters for a dimension we re-score — an unmatched one, below.)
 
-    An unmatched dimension keeps its fresh key and fresh text (→ cache miss → scored
-    fresh, so text and score are aligned by construction). Guard: never adopt a key
-    already taken by another dimension here (would duplicate); rare, only if the LLM
-    re-coins an old key for a different concept.
+    A genuinely unmatched dimension keeps its fresh key and fresh text (→ cache miss →
+    scored fresh, so text and score are aligned by construction).
+
+    Many-to-one collapse: the match map is a function of new_key, but several new keys
+    MAY point at the SAME prior key — discovery re-carved one prior axis into multiple
+    twins this run (the matcher recognized them all as that one prior concept). They must
+    become ONE dimension, not several: the first adopts the prior key + text, and each
+    later twin of the same prior axis is DROPPED (it is a redundant re-carving of an axis
+    already present, so folding it in reuses the prior cached score rather than
+    double-weighting one concept). Dropping the twin — rather than keeping its fresh key —
+    is the difference between a collapse and a silent double-count.
+
+    Final de-dup: a dimension may also resolve to a key already taken for a reason OTHER
+    than a match — e.g. a kept axis re-added by the D9 guard under its canonical key while
+    a drifted re-discovery of the same concept ALSO matches back to that key. A key must
+    be unique (cache identity rides on it), so any such later collision is dropped too;
+    the matched/adopted dimension (whose prior text pairs with its cached score) wins.
     """
     prior_by_key = {d.key: d for d in prior.dimensions} if prior is not None else {}
     taken: set[str] = set()
     dims = []
     for dim in report.dimensions:
         old_key = new_to_old.get(dim.key)
-        matched = old_key is not None and old_key not in taken and old_key in prior_by_key
-        if matched:
+        is_match = old_key is not None and old_key in prior_by_key
+        if is_match and old_key in taken:
+            # A re-carved twin of a prior axis already adopted this pass → collapse into
+            # it (the prior cached score is reused; emitting it again would double-count).
+            continue
+        if is_match:
             # Adopt the prior dimension's key AND text (they pair with the cached
             # score), but keep the FRESH from_committee_request flag — that is this
             # run's provenance (did the committee ask for this axis now?), not part of
-            # the scored concept, and it drives auto-favouriting in create_run.
+            # the scored concept, and it drives the D9 never-vanish guard downstream.
             adopted = prior_by_key[old_key].model_copy(
                 update={"from_committee_request": dim.from_committee_request}
             )
         else:
-            adopted = dim  # unmatched → keep fresh key + text (scored fresh below)
+            adopted = dim  # genuinely unmatched → keep fresh key + text (scored fresh below)
+        if adopted.key in taken:
+            continue  # duplicate key (see final de-dup above) — first occurrence wins
         taken.add(adopted.key)
         dims.append(adopted)
     return report.model_copy(update={"dimensions": dims})
@@ -148,7 +167,6 @@ def create_run(
     name: str = "Ranking run",
     tier_layout: list[dict] | None = None,
     new_dimension_keys: list[str] | None = None,
-    prior_favourited_keys: list[str] | None = None,
     match_audit: dict | None = None,
     fan_out_audit: dict | None = None,
     decompose_audit: dict | None = None,
@@ -161,19 +179,15 @@ def create_run(
     ``new_dimension_keys`` are the unmatched new dimensions to flag in the UI; empty
     on a first run.
 
-    ``favourited_keys`` (the durable "keep across re-runs" set) is the union of
-    ``prior_favourited_keys`` carried forward (matched dimensions kept their prior
-    key via ``adopt_matched_keys``, so this is plain key equality) and every
-    dimension the model flagged ``from_committee_request`` (a proposed/favourited
-    axis it just realized) — pruned to keys that actually exist in this report.
-    Pending ``proposed_dimensions`` are consumed by the run, so the new run stores
-    an empty list (they are now real dimensions).
+    There is no stored "kept" set: an axis is kept iff the committee placed it in a
+    working (non-Ignore) tier, and ``tier_layout`` already carries those placements
+    forward across re-runs (see ``carry_forward_layout``). ``kept_keys`` derives the
+    set from the tiers at read time, so it can't drift. Pending ``proposed_dimensions``
+    are consumed by the run, so the new run stores an empty list (they are now real
+    dimensions).
     """
     layout = tier_layout if tier_layout is not None else default_tier_layout()
     dimension_keys = [d.key for d in report.dimensions]
-    valid_keys = set(dimension_keys)
-    favourited = {k for k in (prior_favourited_keys or []) if k in valid_keys}
-    favourited |= {d.key for d in report.dimensions if d.from_committee_request}
     # Link the run to the sync whose pool it ranked over — the most recent import. This
     # records the run's data provenance (which imported pool it scored), which the eval
     # synthetic-source guard reads to decide whether the pool's evidence is safe to commit.
@@ -194,9 +208,8 @@ def create_run(
             "tiers": layout,
             "weights": weights_from_tiers(dimension_keys, layout),
             "new_dimension_keys": new_dimension_keys or [],
-            # Durable "keep these axes across re-runs"; carried forward + auto-added
-            # for axes the committee requested. Proposals are consumed, so empty here.
-            "favourited_keys": sorted(favourited),
+            # No stored "kept" set: tier placement is the keep signal (see kept_keys).
+            # Proposals are consumed by this run, so empty here.
             "proposed_dimensions": [],
             "discovery_model_id": model_id,
             "discovery_narrative": narrative,
@@ -271,7 +284,7 @@ def apply_consolidation(
     # A single run's merges can form a chain: if C→B correlates higher than B→A, the
     # confirm loop emits {C: B, B: A}. Flatten every drop to its TERMINAL survivor
     # ({C: A, B: A}) so aliases point straight at the winner and every by-value lookup
-    # below (favourite transfer especially) lands on a key that still exists, not a
+    # below (tier-placement transfer especially) lands on a key that still exists, not a
     # mid-chain key that was itself dropped.
     merges = _flatten_merges(merges)
 
@@ -323,10 +336,39 @@ def apply_consolidation(
         report["dimensions"] = report_dims
         criteria["dimension_report"] = report
 
+        # Placement is now the sole "keep" signal (and the weight source), so a merge
+        # must carry the committee's tier intent from the DROPPED twin to the survivor —
+        # otherwise a member's "Critical" placement on the dropped key would silently
+        # vanish. The survivor inherits the HIGHEST-priority working tier among the keys
+        # collapsing into it (tier order = priority, top = heaviest); a twin left in
+        # Ignore contributes no placement. This subsumes the old favourite-transfer.
+        old_tiers = criteria.get("tiers") or []
+        placement = {k: i for i, t in enumerate(old_tiers) for k in t.get("dimension_keys", [])}
+        target_index: dict[str, int] = {}
+        for drop_key, keep_key in merges.items():
+            candidates = [placement[k] for k in (drop_key, keep_key) if k in placement]
+            if candidates:
+                best = min(candidates)
+                prior = target_index.get(keep_key, placement.get(keep_key))
+                target_index[keep_key] = best if prior is None else min(prior, best)
+
         tiers = [
-            {**t, "dimension_keys": [k for k in t.get("dimension_keys", []) if k not in merges]}
-            for t in (criteria.get("tiers") or [])
+            {
+                **t,
+                "dimension_keys": [
+                    k
+                    for k in t.get("dimension_keys", [])
+                    # Drop the losers, and pull a survivor out of its old tier if it's
+                    # being promoted into a different one below (avoid a duplicate).
+                    if k not in merges and target_index.get(k, idx) == idx
+                ],
+            }
+            for idx, t in enumerate(old_tiers)
         ]
+        for keep_key, idx in target_index.items():
+            if idx < len(tiers) and keep_key not in tiers[idx]["dimension_keys"]:
+                tiers[idx]["dimension_keys"].append(keep_key)
+
         if resurfaced:
             tier_by_id = {t["id"]: t for t in tiers}
             placed = {k for t in tiers for k in t["dimension_keys"]}
@@ -344,13 +386,6 @@ def apply_consolidation(
         criteria["new_dimension_keys"] = [
             k for k in (criteria.get("new_dimension_keys") or []) if k not in merges
         ]
-        # A merged-away key can't stay favourited (it no longer exists in the run). If
-        # the committee favourited the dropped key, the favourite transfers to the
-        # surviving canonical key so the intent — "keep this axis" — is preserved.
-        favourited = criteria.get("favourited_keys") or []
-        criteria["favourited_keys"] = sorted(
-            {merges.get(k, k) for k in favourited}
-        )
 
     # Persisted for EVERY run the pass ran on, merges or not. Each pair row carries both
     # judged definitions (definition_keep/definition_drop), so this audit is the durable,
@@ -519,13 +554,23 @@ def dimension_weights(run: RankingRun) -> dict[str, float]:
     return {k: float(v) for k, v in ((run.criteria or {}).get("weights") or {}).items()}
 
 
-def favourited_keys(run: RankingRun) -> list[str]:
-    """Dimension keys the committee favourited — kept (re-fed to discovery) across
-    re-runs. Only keys still present in the run's report are returned.
+def kept_keys(run: RankingRun) -> list[str]:
+    """Dimension keys the committee has KEPT — every key placed in a working
+    (non-Ignore) tier. A kept axis is guaranteed to survive the next Rank (injected
+    at decomposition as MUST-survive); Ignore is the only "fair game to drop/re-carve"
+    bucket. There is no separate stored set: tier placement IS the keep signal, so
+    this derives from the run's tiers and can never drift out of sync with them
+    (``carry_forward_layout`` already carries placements across re-runs and merges).
+
+    Only keys still present in the run's report are returned (a stale tier entry
+    naming a dropped dimension is ignored). Ignore is synthesized from what's unplaced,
+    so it is never in ``stored_tiers`` — reading the stored working tiers already
+    excludes it.
     """
     report = current_dimension_report(run)
     valid = {d.key for d in report.dimensions} if report is not None else set()
-    return [k for k in (run.criteria or {}).get("favourited_keys", []) if k in valid]
+    placed = {key for tier in stored_tiers(run) for key in tier.get("dimension_keys", [])}
+    return sorted(placed & valid)
 
 
 def proposed_dimensions(run: RankingRun) -> list[str]:
@@ -713,33 +758,29 @@ def fan_out_audit_view(run: RankingRun) -> dict | None:
     return {"k": audit.get("k", len(passes)), "passes": passes}
 
 
-def set_seeds(
+def set_proposals(
     db: Session,
     run: RankingRun,
     *,
-    favourited_keys: list[str] | None = None,
     proposed_dimensions: list[str] | None = None,
 ) -> RankingRun:
-    """Persist the committee's discovery seeds between runs: which existing
-    dimensions are favourited and which free-text axes are proposed. Each arg is
-    applied only when provided, so the caller can update one without touching the
-    other. Favourites are validated against the run's real dimension keys.
+    """Persist the committee's pending free-text proposals between runs — the axes a
+    member wants the next Rank to ground in the pool. A no-op when ``None`` is passed.
+    (Keeping an existing axis across re-runs is tier placement, not a stored seed;
+    see ``kept_keys``.)
     """
+    if proposed_dimensions is None:
+        return run
     criteria = dict(run.criteria or {})
-    if favourited_keys is not None:
-        report = current_dimension_report(run)
-        valid = {d.key for d in report.dimensions} if report is not None else set()
-        criteria["favourited_keys"] = sorted({k for k in favourited_keys if k in valid})
-    if proposed_dimensions is not None:
-        # Trim blanks/whitespace and dedupe while preserving order.
-        seen: set[str] = set()
-        cleaned: list[str] = []
-        for text in proposed_dimensions:
-            t = text.strip()
-            if t and t not in seen:
-                seen.add(t)
-                cleaned.append(t)
-        criteria["proposed_dimensions"] = cleaned
+    # Trim blanks/whitespace and dedupe while preserving order.
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for text in proposed_dimensions:
+        t = text.strip()
+        if t and t not in seen:
+            seen.add(t)
+            cleaned.append(t)
+    criteria["proposed_dimensions"] = cleaned
     run.criteria = criteria  # reassign so SQLAlchemy tracks the JSON change
     db.commit()
     db.refresh(run)

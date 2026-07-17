@@ -41,8 +41,8 @@ function CriteriaDetail(props: { dim: PoolDimension | null }): ReactNode {
 }
 
 // The "add your own" composer + the pending-proposal list.
-// Steers the NEXT run's discovery: a proposal (free text) or a ★ favourite both feed
-// the next Rank as "strongly consider"; the AI may refine, split, or skip them.
+// Steers the NEXT run's discovery: a proposal (free text) feeds the next Rank as
+// "strongly consider"; the AI may refine, split, or skip it.
 function CriteriaComposer(props: {
   proposedDimensions: string[];
   onAddProposal: (text: string) => void;
@@ -106,19 +106,15 @@ export function RankingView(props: {
   ranking: RankingResponse;
   rankingRun: CurrentRunResponse | null;
   tiers: Tier[] | null;
-  favouritedKeys: string[];
   proposedDimensions: string[];
   onSaveTiers: (next: Tier[]) => void;
   onAcknowledgeNew: (keys: string[]) => void;
-  onToggleFavourite: (key: string, favourited: boolean) => void;
   onAddProposal: (text: string) => void;
   onRemoveProposal: (text: string) => void;
   onSelectApplication: (id: number) => void;
 }): ReactNode {
   const { ranking, rankingRun, tiers } = props;
   const labelFor = (key: string) => rankingRun?.dimensions.find((d) => d.key === key)?.name ?? key;
-  // Default to [] so a run persisted before the seed feature can't crash.
-  const favourited = new Set(props.favouritedKeys ?? []);
   const proposedDimensions = props.proposedDimensions ?? [];
   // Which criterion's description is open (one at a time, shown below the tiers), and
   // whether the "add your own" composer is revealed. The criteria live as the tier
@@ -133,8 +129,8 @@ export function RankingView(props: {
         <div>
           <h3>Candidate ranking</h3>
           <p className="ranking-subhead">
-            Drag criteria into importance tiers to re-rank; tap a criterion to read what it measures, or star it
-            to keep it when you re-rank.
+            Drag criteria into importance tiers to re-rank; tap a criterion to read what it measures. Any criterion
+            in a tier is kept when you re-rank — only those left in Ignore can be dropped or re-carved.
           </p>
         </div>
         <button type="button" className="secondary-button no-print" onClick={() => window.print()}>
@@ -144,8 +140,9 @@ export function RankingView(props: {
       </div>
 
       {/* Tier-list: drag criteria into importance tiers; the ranking re-sorts on each
-          edit (deterministic, no model call). The criteria's descriptions, ★ favourite,
-          and "add your own" composer are folded in here (no separate criteria panel). */}
+          edit (deterministic, no model call). The criteria's descriptions and the "add
+          your own" composer are folded in here (no separate criteria panel). A criterion
+          in any working tier is kept on re-run; Ignore is the only droppable bucket. */}
       {tiers && rankingRun ? (
         <>
           <p className="criteria-head-title no-print">
@@ -164,7 +161,6 @@ export function RankingView(props: {
                 // immediately when a dimension is placed or acknowledged.
                 newKeys={new Set(ranking.newDimensionKeys)}
                 revivedKeys={new Set(ranking.revivedDimensionKeys)}
-                favourited={favourited}
                 openKey={openKey}
                 addOpen={addOpen}
                 onToggleAdd={() => setAddOpen((v) => !v)}
@@ -177,7 +173,6 @@ export function RankingView(props: {
                 }
                 onAcknowledge={props.onAcknowledgeNew}
                 onChange={props.onSaveTiers}
-                onToggleFav={props.onToggleFavourite}
                 // Selecting a criterion just sets it (never toggles back to empty),
                 // so a click that also nudges the drag sensor can't end up clearing
                 // the panel — and the description stays put when re-tapped.

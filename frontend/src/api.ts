@@ -146,10 +146,10 @@ export function saveTiers(next: Tier[], acknowledgedKeys: string[]): Promise<Res
   });
 }
 
-// Persist discovery seeds for the current run. Each field is optional so the UI can
-// update favourites without touching proposals (and vice versa). The next Rank reads
-// these from the run, so they take effect on its discovery pass.
-export function saveSeeds(seeds: { favouritedKeys?: string[]; proposedDimensions?: string[] }): Promise<Response> {
+// Persist pending free-text proposals for the current run. The next Rank reads these
+// from the run, so they take effect on its discovery pass. (Keeping an existing axis
+// across re-runs is tier placement — see saveTiers — not a seed.)
+export function saveSeeds(seeds: { proposedDimensions?: string[] }): Promise<Response> {
   return fetch(url("/ranking/seeds"), {
     method: "PUT",
     credentials: "include",

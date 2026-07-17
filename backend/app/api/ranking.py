@@ -8,7 +8,7 @@ Flow the UI drives:
   3. GET  /ranking/current — the current run's criteria + summary.
   4. GET  /ranking — the ranked shortlist (math over cached scores).
   5. GET/PUT /ranking/tiers — the committee's importance-tier weighting.
-  6. PUT  /ranking/seeds — discovery seeds (favourites + proposals) for next run.
+  6. PUT  /ranking/seeds — pending free-text proposals for the next run.
 
 The committee never runs the three sub-passes individually, so they're exposed as
 one Rank step; the passes stay separate underneath (distinct schemas, cache kinds,
@@ -119,15 +119,15 @@ from app.services.ranking_run import (
     dimension_weights,
     display_tiers,
     fan_out_audit_view,
-    favourited_keys,
     get_current_run,
+    kept_keys,
     key_history,
     mark_ranking_current,
     match_audit_view,
     proposed_dimensions,
     ranking_is_current,
     revived_flag_keys,
-    set_seeds,
+    set_proposals,
     set_tiers,
     tier_history,
 )
@@ -252,9 +252,10 @@ def _run_payload(db: Session) -> CurrentRunResponse | None:
         # Of those flagged keys, the ones seen in an EARLIER run (revived), derived
         # from history — the frontend colours these blue vs. amber for genuinely-new.
         revived_dimension_keys=revived_flag_keys(db, run),
-        # Committee discovery seeds: favourited dimension keys (kept across re-runs)
-        # and pending free-text proposals (fed to the next Rank, then consumed).
-        favourited_keys=favourited_keys(run),
+        # Kept axes: every dimension in a working (non-Ignore) tier — guaranteed to
+        # survive the next Rank. Derived from tier placement (see kept_keys). Plus any
+        # pending free-text proposals (fed to the next Rank, then consumed).
+        kept_keys=kept_keys(run),
         proposed_dimensions=proposed_dimensions(run),
     )
 
@@ -633,15 +634,16 @@ def rank_run(
         immediately_prior_keys = {d.key for d in prior_report.dimensions} if prior_report else set()
         # Committee asks split by what each needs (SPEC "Fan-Out Redesign", committee-axis
         # injection). PROPOSALS are untested free-text hypotheses → seeded into discovery
-        # (worker 0 only) so it grounds them in the pool and gates on variance. FAVOURITES
-        # are prior dimensions already grounded + scored → injected at DECOMPOSITION, not
-        # discovery, so all K discoverers stay blind (seeding them would correlate the
-        # samples and cost coverage). An empty set leaves discovery fully blind (first-run).
-        prior_favourites = favourited_keys(prior_run) if prior_run else []
-        favourite_dims = [
+        # (worker 0 only) so it grounds them in the pool and gates on variance. KEPT axes
+        # (those the committee placed in a working tier) are prior dimensions already
+        # grounded + scored → injected at DECOMPOSITION, not discovery, so all K
+        # discoverers stay blind (seeding them would correlate the samples and cost
+        # coverage). An empty set leaves discovery fully blind (first-run).
+        prior_kept = kept_keys(prior_run) if prior_run else []
+        kept_dims = [
             d
             for d in (prior_report.dimensions if prior_report else [])
-            if d.key in set(prior_favourites)
+            if d.key in set(prior_kept)
         ]
         seeds = DiscoverySeeds(
             proposed=proposed_dimensions(prior_run) if prior_run else [],
@@ -706,29 +708,29 @@ def rank_run(
                 # below consumes it unchanged; source_keys + the per-axis merge reasoning
                 # are preserved separately in decompose_audit.
                 delta_queue.put(_Stage(CRITERIA_STAGES["settling"]))
-                # Favourites are injected HERE (not into discovery): the settling call sees
-                # every carving at once, so it folds any re-discovered twin into the
-                # favourite (reusing its key → match adopts it → cached scores carry
-                # forward) and keeps it present regardless.
+                # Kept axes are injected HERE (not into discovery): the settling call sees
+                # every carving at once, so it folds any re-discovered twin into the kept
+                # axis (reusing its key → match adopts it → cached scores carry forward)
+                # and keeps it present regardless.
                 _t0 = time.perf_counter()
                 decomposition, decompose_narrative, decompose_cost = decompose_dimensions(
                     provider, reports=fan_out_reports, settings=settings,
-                    favourites=favourite_dims, on_delta=on_delta,
+                    kept=kept_dims, on_delta=on_delta,
                 )
                 durations["Dimension decomposition"] = round((time.perf_counter() - _t0) * 1000)
-                # D9 guard: a committee ask (proposal OR favourite) must never be silently
+                # D9 guard: a committee ask (proposal OR kept axis) must never be silently
                 # merged away. Deterministic backstop for the prompt — repairs flag-loss on
                 # merge and re-adds any ask decomposition dropped; `folded` lists asks merged
                 # INTO another axis, surfaced to the committee (never a silent vanish).
                 decomposition, folded_requests = enforce_committee_requests(
-                    decomposition, fan_out_reports, favourites=favourite_dims
+                    decomposition, fan_out_reports, kept=kept_dims
                 )
                 # The settled why_it_differentiates is carried forward from each axis's
-                # primary source (the discoverer/favourite that actually read the pool),
+                # primary source (the discoverer/kept axis that actually read the pool),
                 # NOT written by the decomposer (which never sees the pool). See
                 # to_pool_report / DecomposedDimension.
                 report = to_pool_report(
-                    decomposition, fan_out_reports, favourites=favourite_dims
+                    decomposition, fan_out_reports, kept=kept_dims
                 )
                 narrative = decompose_narrative or fan_out.narrative
                 # Pass 2: identity-match new dimensions onto ALL prior dimensions (not
@@ -858,11 +860,9 @@ def rank_run(
         run = create_run(
             db, report=report, settings=settings, model_id=settings.ai.discovery_model,
             narrative=narrative,
+            # Tier placements (carried forward above) ARE the kept set — no separate
+            # field to thread through; create_run clears the consumed proposals.
             tier_layout=layout, new_dimension_keys=new_dimension_keys,
-            # Carry prior favourites forward (by key, post-match); create_run unions
-            # in any dimension the model flagged from_committee_request and clears
-            # the consumed proposals.
-            prior_favourited_keys=prior_favourites,
             match_audit=match_audit,
             fan_out_audit=fan_out_audit,
             decompose_audit=decompose_audit,
@@ -872,7 +872,11 @@ def rank_run(
             NoticeEvent(
                 phase=CRITERIA,
                 dimensions=len(report.dimensions),
-                carried_forward=len(new_to_old),
+                # Distinct prior dimensions reused, not mapping entries: when discovery
+                # re-carves one prior axis into several twins they all map to the same
+                # prior key and collapse to ONE dimension, so counting entries would
+                # overcount against the (collapsed) `dimensions` shown alongside.
+                carried_forward=len(set(new_to_old.values())),
                 new_dimensions=len(new_dimension_keys),
             )
         )
@@ -1053,8 +1057,9 @@ def _ranking_payload(db: Session, run) -> RankingResponse:
         # round-trip (moving or acknowledging a flagged dimension clears it).
         new_dimension_keys=(run.criteria or {}).get("new_dimension_keys", []),
         revived_dimension_keys=revived_flag_keys(db, run),
-        # Discovery seeds, so the criteria composer stays in sync after a tier/seed save.
-        favourited_keys=favourited_keys(run),
+        # Kept axes (derived from tiers) + pending proposals, so the tier list and
+        # composer stay in sync after a tier/seed save.
+        kept_keys=kept_keys(run),
         proposed_dimensions=proposed_dimensions(run),
     )
 
@@ -1119,10 +1124,11 @@ def update_tiers(
 
 # --- Discovery seeds ---------------------------------------------------------
 #
-# Between runs, the committee can favourite existing dimensions (keep them across
-# re-runs) and propose free-text axes. Both steer the NEXT Rank's discovery, then:
-# favourites persist; proposals are consumed when a run realizes them. No model
-# call here — just persistence; the seeds take effect on the next /ranking/run.
+# Between runs, the committee can propose free-text axes that steer the NEXT Rank's
+# discovery; a proposal is consumed once a run realizes it into a real dimension.
+# (Keeping an existing axis across re-runs is no longer a separate action — placing
+# it in a working tier keeps it; see kept_keys.) No model call here — just
+# persistence; the proposals take effect on the next /ranking/run.
 
 
 @router.put("/seeds", response_model=SeedsResponse)
@@ -1131,19 +1137,12 @@ def update_seeds(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> SeedsResponse:
-    """Persist the committee's discovery seeds for the current run (favourited
-    dimension keys + pending proposals). Returns the current seed state. 409 before
-    a run exists — there are no dimensions to favourite and nowhere to store yet.
+    """Persist the committee's pending free-text proposals for the current run.
+    Returns the current seed state. 409 before a run exists — there is nowhere to
+    store yet.
     """
     run = get_current_run(db)
     if run is None or current_dimension_report(run) is None:
         raise Problem("run_required", detail="Discover patterns before adding seeds.")
-    set_seeds(
-        db, run,
-        favourited_keys=body.favourited_keys,
-        proposed_dimensions=body.proposed_dimensions,
-    )
-    return SeedsResponse(
-        favourited_keys=favourited_keys(run),
-        proposed_dimensions=proposed_dimensions(run),
-    )
+    set_proposals(db, run, proposed_dimensions=body.proposed_dimensions)
+    return SeedsResponse(proposed_dimensions=proposed_dimensions(run))
