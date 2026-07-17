@@ -76,6 +76,7 @@ from app.schemas.events import (
     RankSummary,
     StageEvent,
     ThinkingEvent,
+    WarningEvent,
     emit,
 )
 from app.schemas.insights import CostReport, LastRunsReport, MetricsReport
@@ -689,7 +690,8 @@ def rank_run(
                 # Insights panel show each discoverer — and reasoning has proven vital for
                 # debugging (see .clinerules).
                 fan_out_audit = {
-                    "k": len(fan_out.passes),
+                    "k": len(fan_out.passes),  # survivors (the reports decomposition saw)
+                    "failed_count": fan_out.failed_count,  # workers that timed out/errored
                     "passes": [
                         {"report": p.report.model_dump(mode="json"), "narrative": p.narrative}
                         for p in fan_out.passes
@@ -789,6 +791,22 @@ def rank_run(
             fan_out_reports, decomposition, decompose_cost, folded_requests,
             fan_out_audit,
         ) = criteria_outcome["ok"]
+        # Some (not all) fan-out discovery workers failed — the run proceeded on the
+        # survivors (see discover_patterns_fanout). Warn the committee it ran degraded:
+        # amber, non-fatal. All-fail already aborted upstream as a fatal criteria error.
+        _failed = fan_out_audit.get("failed_count", 0)
+        if _failed:
+            _survived = fan_out_audit["k"]
+            yield emit(
+                WarningEvent(
+                    phase=CRITERIA,
+                    message=(
+                        f"{_failed} of {_failed + _survived} discovery workers failed "
+                        f"(likely a Bedrock timeout); continued on the {_survived} that "
+                        f"succeeded. Criteria may be slightly less diverse — re-rank to retry."
+                    ),
+                )
+            )
         # fan_out_audit (each discoverer's report + narrative) was built in do_criteria
         # where the passes were in scope; see there.
         # Decompose audit: per settled axis, the source_keys it absorbed + the merge/keep

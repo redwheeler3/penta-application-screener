@@ -12,13 +12,16 @@ across jobs; screening uses the single phase ``"screen"``):
     progress   — one item finished within a phase
     thinking   — streamed model reasoning (rank's criteria phase only)
     notice     — a mid-stream structured update (rank's criteria_done)
+    warning    — the run degraded but is continuing (a yellow, non-fatal toast)
     item_error — one item failed, NON-fatal; the stream continues
     error      — a fatal phase failure; the stream ends
     summary    — final totals (job-specific fields + shared cost)
 
 ``item_error`` vs ``error`` is deliberate: a per-item failure (one applicant) must
 not be shown as a run-fatal toast, which is what a single merged ``error`` type
-would cause.
+would cause. ``warning`` is a third severity between them: run-level (not per-item)
+but non-fatal — e.g. some (not all) fan-out discovery workers timed out and the run
+proceeded on the survivors. The client shows it amber and keeps going.
 """
 
 from typing import Literal
@@ -65,6 +68,16 @@ class NoticeEvent(ResponseModel):
     dimensions: int
     carried_forward: int
     new_dimensions: int
+
+
+class WarningEvent(ResponseModel):
+    """The run degraded but is continuing — a run-level, non-fatal notice shown as an
+    amber toast (between the green summary and a fatal red error). E.g. a minority of
+    fan-out discovery workers timed out; the run proceeded on the survivors."""
+
+    type: Literal["warning"] = "warning"
+    phase: str
+    message: str
 
 
 class ItemErrorEvent(ResponseModel):

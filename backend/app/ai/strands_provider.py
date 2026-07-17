@@ -36,10 +36,11 @@ class StrandsProvider:
         self._models: dict[tuple[str, int], BedrockModel] = {}
         self._models_lock = threading.Lock()
 
-    # Default Bedrock read timeout (s). Fine for the per-applicant passes and single
-    # discovery calls, but the fan-out DECOMPOSITION call streams a large reasoned set
-    # and blows this (confirmed twice) — that call passes a longer read_timeout, keyed
-    # separately in the model cache so the default stays put for everything else.
+    # Default Bedrock read timeout (s). Right for the per-applicant passes (screening,
+    # scoring). The heavy pool-wide synthesis passes stream a large reasoned set and blow
+    # this, so they pass their own longer read_timeout (discovery: DISCOVERY_READ_TIMEOUT;
+    # decomposition: DECOMPOSE_READ_TIMEOUT), keyed separately in the model cache so the
+    # tight default stays put for everything else.
     DEFAULT_READ_TIMEOUT = 120
 
     def _model_for(self, model_id: str, read_timeout: int | None = None) -> BedrockModel:

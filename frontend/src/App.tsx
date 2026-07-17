@@ -88,6 +88,13 @@ export function App() {
     // No auto-dismiss: errors stay until the user reads and dismisses them.
   }
 
+  function showWarning(message: string) {
+    const id = (toastSeq.current += 1);
+    setToasts((current) => [...current, { id, message, variant: "warning" }]);
+    // No auto-dismiss: a degraded-run warning should stay until the user reads it,
+    // like an error — it's non-fatal but worth a deliberate acknowledgement.
+  }
+
   function dismissToast(id: number) {
     setToasts((current) => current.filter((t) => t.id !== id));
   }
@@ -389,6 +396,10 @@ export function App() {
             // Live model reasoning from the opaque calls (discovery + match, and
             // consolidation); append as it streams so the box carries the whole run.
             setCriteriaThinking((prior) => prior + event.text);
+          } else if (event.type === "warning") {
+            // Run-level but non-fatal (e.g. some discovery workers timed out); the run
+            // continued on the survivors. Amber toast — informational, not a failure.
+            showWarning(event.message || "The run completed with a warning.");
           } else if (event.type === "error") {
             // Fatal phase failure (e.g. the criteria thread crashed); ends the stream.
             showError(event.message || "Ranking failed.");
