@@ -774,11 +774,17 @@ async def test_consolidation_streams_thinking_deltas() -> None:
     assert consolidate_phase_idx < first_consolidate_thinking_idx
 
 
-def test_apply_consolidation_transfers_a_favourite_off_a_merged_key() -> None:
-    # A merged-away key can't stay favourited (it no longer exists). If the committee
-    # favourited the dropped key, the favourite transfers to the surviving canonical key.
+def test_apply_consolidation_transfers_tier_placement_off_a_merged_key() -> None:
+    # "Kept" is derived from tier placement, so a merge must carry the committee's tier
+    # intent from the dropped twin to the survivor — otherwise a member's placement (and
+    # the keep guarantee it confers) would silently vanish with the dropped key.
     from app.schemas.settings import AppSettings
-    from app.services.ranking_run import apply_consolidation, create_run
+    from app.services.ranking_run import (
+        apply_consolidation,
+        create_run,
+        kept_keys,
+        set_tiers,
+    )
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
     report = PoolDimensionReport(dimensions=[
@@ -787,12 +793,12 @@ def test_apply_consolidation_transfers_a_favourite_off_a_merged_key() -> None:
         PoolDimension(key="financial_stewardship", name="Financial stewardship",
                       definition="bookkeeping", high_end="high", low_end="low", why_it_differentiates="v"),
     ])
-    run = create_run(
-        db, report=report, settings=AppSettings(), model_id="m",
-        narrative=None,
-        prior_favourited_keys=["financial_stewardship"],  # the key that will be merged away
-    )
-    assert run.criteria["favourited_keys"] == ["financial_stewardship"]
+    run = create_run(db, report=report, settings=AppSettings(), model_id="m", narrative=None)
+    # The committee places ONLY the key that will be merged away into a working tier —
+    # the survivor sits in Ignore (unplaced).
+    set_tiers(db, run, [{"id": "tier-s", "label": "Critical",
+                         "dimension_keys": ["financial_stewardship"]}])
+    assert kept_keys(run) == ["financial_stewardship"]
 
     apply_consolidation(
         db, run,
@@ -801,10 +807,11 @@ def test_apply_consolidation_transfers_a_favourite_off_a_merged_key() -> None:
                 "r": 0.94, "merged": True, "reason": "same concept"}],
         narrative=None,
     )
-    # The favourite moved to the survivor, not left dangling on the dropped key.
-    assert run.criteria["favourited_keys"] == ["financial_literacy"]
+    # The survivor inherited the dropped twin's Critical placement, so it stays kept.
+    assert kept_keys(run) == ["financial_literacy"]
     keys = {d["key"] for d in run.criteria["dimension_report"]["dimensions"]}
     assert keys == {"financial_literacy"}
+    assert run.criteria["tiers"][0]["dimension_keys"] == ["financial_literacy"]
 
 
 def test_apply_consolidation_reconfirming_an_existing_alias_is_idempotent() -> None:
@@ -846,13 +853,19 @@ def test_apply_consolidation_reconfirming_an_existing_alias_is_idempotent() -> N
 
 def test_apply_consolidation_flattens_an_in_run_chain() -> None:
     # A single run can confirm a chain: {C: B, B: A} when C↔B correlates higher than
-    # B↔A. Every drop must resolve to the terminal survivor A — including a favourite on
-    # the innermost key C, which would otherwise land on B, itself dropped from the run.
+    # B↔A. Every drop must resolve to the terminal survivor A — including the tier
+    # placement on the innermost key C, which would otherwise land on B, itself dropped
+    # from the run.
     from sqlalchemy import select
 
     from app.db.models import DimensionAlias
     from app.schemas.settings import AppSettings
-    from app.services.ranking_run import apply_consolidation, create_run
+    from app.services.ranking_run import (
+        apply_consolidation,
+        create_run,
+        kept_keys,
+        set_tiers,
+    )
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
     report = PoolDimensionReport(dimensions=[
@@ -860,11 +873,9 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
         PoolDimension(key="b_mid", name="B", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
         PoolDimension(key="c_newest", name="C", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
     ])
-    run = create_run(
-        db, report=report, settings=AppSettings(), model_id="m",
-        narrative=None,
-        prior_favourited_keys=["c_newest"],  # favourite on the innermost link of the chain
-    )
+    run = create_run(db, report=report, settings=AppSettings(), model_id="m", narrative=None)
+    # Place ONLY the innermost link C in a working tier; A and B sit in Ignore.
+    set_tiers(db, run, [{"id": "tier-s", "label": "Critical", "dimension_keys": ["c_newest"]}])
 
     apply_consolidation(
         db, run,
@@ -876,10 +887,11 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
         narrative=None,
     )
 
-    # Only the terminal survivor remains, and the favourite followed the full chain to it.
+    # Only the terminal survivor remains, and C's placement followed the full chain to it.
     keys = {d["key"] for d in run.criteria["dimension_report"]["dimensions"]}
     assert keys == {"a_oldest"}
-    assert run.criteria["favourited_keys"] == ["a_oldest"]
+    assert kept_keys(run) == ["a_oldest"]
+    assert run.criteria["tiers"][0]["dimension_keys"] == ["a_oldest"]
     # Both aliases point straight at the survivor — no mid-chain key persisted.
     aliases = {a.alias_key: a.canonical_key for a in db.scalars(select(DimensionAlias))}
     assert aliases == {"c_newest": "a_oldest", "b_mid": "a_oldest"}
@@ -1202,7 +1214,7 @@ async def test_d9_committee_request_folded_into_merge_is_surfaced_not_lost() -> 
     audit = run.criteria["decompose_audit"]
     # The fold is surfaced: playground_use -> child_wellbeing.
     assert {"request_key": "playground_use", "into_key": "child_wellbeing"} in audit["folded_requests"]
-    # The flag was repaired on the settled axis (drives auto-favourite + the badge).
+    # The flag was repaired on the settled axis (drives the D9 trail + the badge).
     settled_axis = next(d for d in audit["settled"] if d["key"] == "child_wellbeing")
     assert settled_axis["from_committee_request"] is True
 
@@ -1279,12 +1291,12 @@ def test_fan_out_seeds_only_worker_0_the_rest_stay_blind() -> None:
     assert len(seeded) == 1, "exactly one discoverer should carry the proposal"
 
 
-def test_enforce_committee_requests_guarantees_an_unsurfaced_favourite() -> None:
-    # A favourite that NO discovery report re-surfaced (so it's absent from the settled
-    # set) must be re-added by the guard — a favourite is never dropped.
+def test_enforce_committee_requests_guarantees_an_unsurfaced_kept_axis() -> None:
+    # A kept axis that NO discovery report re-surfaced (so it's absent from the settled
+    # set) must be re-added by the guard — a kept axis is never dropped.
     from app.ai.dimension_decompose import enforce_committee_requests
 
-    favourite = PoolDimension(
+    kept_axis = PoolDimension(
         key="participation_commitment", name="Participation commitment",
         definition="Willingness to do shared work.", high_end="high", low_end="low", why_it_differentiates="varies",
     )
@@ -1299,12 +1311,180 @@ def test_enforce_committee_requests_guarantees_an_unsurfaced_favourite() -> None
             ),
         ],
     )
-    corrected, folded = enforce_committee_requests(settled, [], favourites=[favourite])
+    corrected, folded = enforce_committee_requests(settled, [], kept=[kept_axis])
     keys = {d.key for d in corrected.dimensions}
     assert "participation_commitment" in keys  # re-added, not lost
     readded = next(d for d in corrected.dimensions if d.key == "participation_commitment")
     assert readded.from_committee_request is True
     assert folded == []  # kept standalone, not folded into another axis
+
+
+def test_adopt_matched_keys_dedupes_a_d9_readd_colliding_with_a_matched_key() -> None:
+    # A kept axis re-added by the D9 guard under its canonical key can collide with a
+    # DRIFTED re-discovery of the same concept that ALSO matches back to that key. A key
+    # must be unique (cache identity), so the matched dimension wins and the redundant
+    # re-add is dropped — never two dims sharing a key (which would 500 on the cache's
+    # UNIQUE constraint).
+    from app.services.ranking_run import adopt_matched_keys
+
+    prior = PoolDimensionReport(dimensions=[
+        PoolDimension(key="participation_commitment", name="Participation commitment",
+                      definition="prior text", high_end="high", low_end="low", why_it_differentiates="v"),
+    ])
+    # This run: a drifted re-discovery of the same axis + the D9-re-added canonical key.
+    report = PoolDimensionReport(dimensions=[
+        PoolDimension(key="stated_participation", name="Stated participation",
+                      definition="fresh text", high_end="high", low_end="low", why_it_differentiates="v"),
+        PoolDimension(key="participation_commitment", name="Participation commitment",
+                      definition="re-added", high_end="high", low_end="low", why_it_differentiates="v",
+                      from_committee_request=True),
+    ])
+    adopted = adopt_matched_keys(
+        report, {"stated_participation": "participation_commitment"}, prior
+    )
+    keys = [d.key for d in adopted.dimensions]
+    assert keys == ["participation_commitment"]  # de-duped to one
+    # The MATCHED dimension won — it carries the prior text the cached score pairs with.
+    assert adopted.dimensions[0].definition == "prior text"
+
+
+def test_adopt_matched_keys_collapses_two_twins_onto_one_prior() -> None:
+    # Many-to-one: discovery re-carved ONE prior axis into TWO twins this run, and the
+    # matcher recognized both as that prior concept. They must collapse into a SINGLE
+    # dimension under the prior key (reusing its cached score), not survive as two axes
+    # that double-weight one concept.
+    from app.services.ranking_run import adopt_matched_keys
+
+    prior = PoolDimensionReport(dimensions=[
+        PoolDimension(key="participation_commitment", name="Participation commitment",
+                      definition="prior text", high_end="high", low_end="low", why_it_differentiates="v"),
+    ])
+    report = PoolDimensionReport(dimensions=[
+        PoolDimension(key="committee_participation", name="Committee participation",
+                      definition="fresh a", high_end="high", low_end="low", why_it_differentiates="v"),
+        PoolDimension(key="workday_participation", name="Workday participation",
+                      definition="fresh b", high_end="high", low_end="low", why_it_differentiates="v"),
+    ])
+    # BOTH twins map to the same prior key (the sanitizer now allows this).
+    adopted = adopt_matched_keys(
+        report,
+        {"committee_participation": "participation_commitment",
+         "workday_participation": "participation_commitment"},
+        prior,
+    )
+    keys = [d.key for d in adopted.dimensions]
+    assert keys == ["participation_commitment"]  # collapsed to one
+    # The prior text (and its cached score) is what survives — not either fresh carving.
+    assert adopted.dimensions[0].definition == "prior text"
+
+
+def test_match_dimensions_allows_many_new_onto_one_prior() -> None:
+    # The sanitizer keeps several new->same-old pairs (a re-carved prior axis), dropping
+    # only a repeated NEW key or an unknown key. (Previously it forced strict one-to-one,
+    # silently discarding the second twin -> a double-counted concept downstream.)
+    from unittest.mock import MagicMock
+
+    from app.ai.dimension_matching import match_dimensions
+    from app.ai.schemas import DimensionMatch, DimensionMatchReport
+    from app.schemas.settings import AppSettings
+
+    old = PoolDimensionReport(dimensions=[
+        PoolDimension(key="participation_commitment", name="P", definition="d",
+                      high_end="h", low_end="l", why_it_differentiates="v"),
+    ])
+    new = PoolDimensionReport(dimensions=[
+        PoolDimension(key="committee_participation", name="A", definition="d",
+                      high_end="h", low_end="l", why_it_differentiates="v"),
+        PoolDimension(key="workday_participation", name="B", definition="d",
+                      high_end="h", low_end="l", why_it_differentiates="v"),
+    ])
+    provider = MagicMock()
+    provider.structured_output.return_value = MagicMock(
+        output=DimensionMatchReport(matches=[
+            DimensionMatch(new_key="committee_participation", old_key="participation_commitment"),
+            DimensionMatch(new_key="workday_participation", old_key="participation_commitment"),
+        ]),
+        narrative=None,
+        model_id="m",
+        usage=MagicMock(input_tokens=1, output_tokens=1),
+    )
+    mapping, _narrative, _cost = match_dimensions(
+        provider, old=old, new=new, settings=AppSettings()
+    )
+    assert mapping == {
+        "committee_participation": "participation_commitment",
+        "workday_participation": "participation_commitment",
+    }
+
+
+def test_match_dimensions_forces_self_match_over_a_wrong_llm_match() -> None:
+    # A key present in BOTH lists (e.g. a committee-kept axis, injected at decomposition
+    # under its exact prior key) IS its own prior axis by the frozen-key invariant. If the
+    # LLM wrongly maps it onto a DIFFERENT prior key, the sanitizer overrides that to a
+    # self-match — so the kept axis can never be matched away from itself and vanish.
+    from unittest.mock import MagicMock
+
+    from app.ai.dimension_matching import match_dimensions
+    from app.ai.schemas import DimensionMatch, DimensionMatchReport
+    from app.schemas.settings import AppSettings
+
+    old = PoolDimensionReport(dimensions=[
+        PoolDimension(key="participation_commitment", name="P", definition="d",
+                      high_end="h", low_end="l", why_it_differentiates="v"),
+        PoolDimension(key="financial_stability", name="F", definition="d",
+                      high_end="h", low_end="l", why_it_differentiates="v"),
+    ])
+    # The kept axis recurs under its exact key; a fresh axis is genuinely new.
+    new = PoolDimensionReport(dimensions=[
+        PoolDimension(key="participation_commitment", name="P", definition="d",
+                      high_end="h", low_end="l", why_it_differentiates="v"),
+    ])
+    provider = MagicMock()
+    provider.structured_output.return_value = MagicMock(
+        # The model wrongly maps the kept key onto a DIFFERENT prior key.
+        output=DimensionMatchReport(matches=[
+            DimensionMatch(new_key="participation_commitment", old_key="financial_stability"),
+        ]),
+        narrative=None,
+        model_id="m",
+        usage=MagicMock(input_tokens=1, output_tokens=1),
+    )
+    mapping, _narrative, _cost = match_dimensions(
+        provider, old=old, new=new, settings=AppSettings()
+    )
+    # Overridden to a self-match — NOT the wrong financial_stability mapping.
+    assert mapping == {"participation_commitment": "participation_commitment"}
+
+
+def test_adopt_self_matched_key_restores_frozen_prior_text() -> None:
+    # A scored key the decomposer reworded (new text under the same key) must adopt its
+    # FROZEN prior text wholesale — the cached score was computed against the prior text,
+    # so name/definition/poles must all revert. (Self-match => adopt_matched_keys pulls the
+    # prior dimension entirely; the decomposer's rewording is discarded.)
+    from app.services.ranking_run import adopt_matched_keys
+
+    prior = PoolDimensionReport(dimensions=[
+        PoolDimension(key="participation_commitment", name="Participation commitment",
+                      definition="prior def", high_end="prior hi", low_end="prior lo",
+                      why_it_differentiates="prior why"),
+    ])
+    # Same key, but the decomposer reworded everything.
+    new = PoolDimensionReport(dimensions=[
+        PoolDimension(key="participation_commitment", name="Reworded",
+                      definition="reworded def", high_end="new hi", low_end="new lo",
+                      why_it_differentiates="reworded why"),
+    ])
+    # match_dimensions would force the self-match; pass it explicitly here.
+    adopted = adopt_matched_keys(
+        new, {"participation_commitment": "participation_commitment"}, prior
+    )
+    dim = adopted.dimensions[0]
+    assert dim.key == "participation_commitment"
+    assert dim.name == "Participation commitment"  # frozen prior text, not "Reworded"
+    assert dim.definition == "prior def"
+    assert dim.high_end == "prior hi"
+    assert dim.low_end == "prior lo"
+    assert dim.why_it_differentiates == "prior why"
 
 
 def test_settled_why_is_carried_from_source_not_decomposer() -> None:
@@ -1522,13 +1702,17 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
         route_criteria(provider, a_pattern_report())
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
+        # Tier participation_commitment into Critical; leave skills_offered in Ignore
+        # (unplaced) so discovery is free to drop it — a KEPT (tiered) dimension can no
+        # longer be dropped (it's injected at decomposition), so only an Ignored one can
+        # exercise the drop path this test relies on.
         await client.put(
             "/ranking/tiers",
             json={
                 "tiers": [
                     {"id": "tier-s", "label": "Critical", "dimensionKeys": ["participation_commitment"], "ignore": False},
-                    {"id": "tier-a", "label": "Important", "dimensionKeys": ["skills_offered"], "ignore": False},
-                    {"id": "ignore", "label": "Ignore", "dimensionKeys": [], "ignore": True},
+                    {"id": "tier-a", "label": "Important", "dimensionKeys": [], "ignore": False},
+                    {"id": "ignore", "label": "Ignore", "dimensionKeys": ["skills_offered"], "ignore": True},
                 ]
             },
         )
@@ -1617,7 +1801,9 @@ async def test_dropped_prior_dimension_is_not_revived() -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         # Run 1: discover participation_commitment + skills_offered; score; then the
-        # committee tiers skills_offered into Critical (durable intent).
+        # committee tiers participation_commitment into Critical and leaves skills_offered
+        # in Ignore (unplaced) — only an Ignored dimension can be dropped by discovery now
+        # (a kept/tiered one is injected at decomposition and can't vanish).
         route_criteria(provider, a_pattern_report())
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
@@ -1625,9 +1811,9 @@ async def test_dropped_prior_dimension_is_not_revived() -> None:
             "/ranking/tiers",
             json={
                 "tiers": [
-                    {"id": "tier-s", "label": "Critical", "dimensionKeys": ["skills_offered"], "ignore": False},
-                    {"id": "tier-a", "label": "Important", "dimensionKeys": ["participation_commitment"], "ignore": False},
-                    {"id": "ignore", "label": "Ignore", "dimensionKeys": [], "ignore": True},
+                    {"id": "tier-s", "label": "Critical", "dimensionKeys": ["participation_commitment"], "ignore": False},
+                    {"id": "tier-a", "label": "Important", "dimensionKeys": [], "ignore": False},
+                    {"id": "ignore", "label": "Ignore", "dimensionKeys": ["skills_offered"], "ignore": True},
                 ]
             },
         )
@@ -1701,8 +1887,10 @@ async def test_three_run_gap_flags_dimension_as_revived_not_new() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        # Run 1: discover participation_commitment + skills_offered; tier skills_offered
-        # into Critical (the committee's durable intent).
+        # Run 1: discover participation_commitment + skills_offered; tier
+        # participation_commitment into Critical and leave skills_offered in Ignore
+        # (unplaced) — only an Ignored dimension can be dropped by discovery now, so the
+        # gap this test needs must be on an Ignored key.
         route_criteria(provider, a_pattern_report())
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
@@ -1710,9 +1898,9 @@ async def test_three_run_gap_flags_dimension_as_revived_not_new() -> None:
             "/ranking/tiers",
             json={
                 "tiers": [
-                    {"id": "tier-s", "label": "Critical", "dimensionKeys": ["skills_offered"], "ignore": False},
-                    {"id": "tier-a", "label": "Important", "dimensionKeys": ["participation_commitment"], "ignore": False},
-                    {"id": "ignore", "label": "Ignore", "dimensionKeys": [], "ignore": True},
+                    {"id": "tier-s", "label": "Critical", "dimensionKeys": ["participation_commitment"], "ignore": False},
+                    {"id": "tier-a", "label": "Important", "dimensionKeys": [], "ignore": False},
+                    {"id": "ignore", "label": "Ignore", "dimensionKeys": ["skills_offered"], "ignore": True},
                 ]
             },
         )
@@ -1759,10 +1947,14 @@ async def test_three_run_gap_flags_dimension_as_revived_not_new() -> None:
         assert "skills_offered" in {d["key"] for d in current["dimensions"]}
         assert current["revivedDimensionKeys"] == ["skills_offered"]
         assert current["newDimensionKeys"] == ["skills_offered"]  # flagged set holds it
-        # It restored its Critical placement across the gap (durable committee intent).
+        # It restored its LAST placement across the gap (durable committee intent): it was
+        # in Ignore before the gap, so it returns to Ignore — while participation_commitment
+        # keeps its Critical placement.
         layout = (await client.get("/ranking/tiers")).json()["tiers"]
         by_label = {t["label"]: t for t in layout}
-        assert by_label["Critical"]["dimensionKeys"] == ["skills_offered"]
+        assert by_label["Critical"]["dimensionKeys"] == ["participation_commitment"]
+        ignore = next(t for t in layout if t.get("ignore"))
+        assert "skills_offered" in ignore["dimensionKeys"]
 
         # The ranking payload (what the tier-list UI reads) agrees, so the blue badge
         # renders: revived on a working-tier chip, not gated to Ignore.
@@ -1885,12 +2077,12 @@ async def test_dimension_scores_null_before_run() -> None:
         assert detail["dimensionScores"] is None
 
 
-# --- Discovery seeds (favourites + proposed dimensions) ----------------------
+# --- Discovery seeds (proposed dimensions) + kept-axis injection -------------
 
 
 def _pattern_report_with_requested() -> PoolDimensionReport:
     """A discovery result where the model flagged one dimension as created from a
-    committee request (the auto-favourite signal)."""
+    committee proposal (the D9 never-vanish signal)."""
     return PoolDimensionReport(
         dimensions=[
             PoolDimension(
@@ -1939,10 +2131,11 @@ def test_build_prompt_includes_proposed_seeds() -> None:
 
 
 @pytest.mark.anyio
-async def test_proposed_dimension_seeds_discovery_then_clears_and_auto_favourites() -> None:
+async def test_proposed_dimension_seeds_discovery_then_clears() -> None:
     # A proposed axis is fed to discovery; the model returns a dimension flagged
-    # from_committee_request. After the run: the proposal is consumed (cleared) and
-    # the flagged dimension is auto-favourited.
+    # from_committee_request. After the run: the proposal is consumed (cleared). It is
+    # NOT auto-kept — a brand-new proposal lands in Ignore for the committee to tier
+    # (tiers-only keep rule); it survives THIS run via the within-run D9 guard.
     app, db, provider = setup_app(role=UserRole.MEMBER)
     add_eligible(db, email="a@x.com", raw_hash="h1")
 
@@ -1959,7 +2152,6 @@ async def test_proposed_dimension_seeds_discovery_then_clears_and_auto_favourite
             json={"proposedDimensions": ["school-age kids who'd use the playground"]},
         )).json()
         assert seeds["proposedDimensions"] == ["school-age kids who'd use the playground"]
-        assert seeds["favouritedKeys"] == []
 
         # Re-run: discovery now returns a report flagging the requested dimension.
         provider.calls.clear()
@@ -1972,16 +2164,19 @@ async def test_proposed_dimension_seeds_discovery_then_clears_and_auto_favourite
         discovery_prompt = next(c.prompt for c in provider.calls if "<applicant_pool>" in c.prompt)
         assert "school-age kids who'd use the playground" in discovery_prompt
 
-        # After the run: proposal consumed (cleared); flagged dimension auto-favourited.
+        # After the run: proposal consumed (cleared). The new axis is present but NOT
+        # kept — it lands unplaced (Ignore) awaiting a tier, so kept_keys excludes it.
         current = (await client.get("/ranking/current")).json()
         assert current["proposedDimensions"] == []
-        assert current["favouritedKeys"] == ["playground_age_children"]
+        assert "playground_age_children" not in current["keptKeys"]
+        assert current["keptKeys"] == []
 
 
 @pytest.mark.anyio
-async def test_favourited_dimension_is_injected_at_decomposition_not_discovery() -> None:
-    # A favourite is injected at DECOMPOSITION (by name + definition), NOT seeded into
-    # discovery — so all K discoverers stay blind. It stays favourited across the re-run.
+async def test_tiered_dimension_is_kept_and_injected_at_decomposition_not_discovery() -> None:
+    # Placing a dimension in a working tier KEEPS it: on re-run it's injected at
+    # DECOMPOSITION (by name + definition), NOT seeded into discovery — so all K
+    # discoverers stay blind. It stays kept (tiered) across the re-run.
     app, db, provider = setup_app(role=UserRole.MEMBER)
     add_eligible(db, email="a@x.com", raw_hash="h1")
 
@@ -1991,13 +2186,15 @@ async def test_favourited_dimension_is_injected_at_decomposition_not_discovery()
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
-        # Favourite an existing dimension.
-        seeds = (await client.put(
-            "/ranking/seeds", json={"favouritedKeys": ["participation_commitment"]},
+        # Keep an existing dimension by tiering it (Critical).
+        ranking = (await client.put(
+            "/ranking/tiers",
+            json={"tiers": [{"id": "tier-s", "label": "Critical",
+                             "dimensionKeys": ["participation_commitment"], "ignore": False}]},
         )).json()
-        assert seeds["favouritedKeys"] == ["participation_commitment"]
+        assert ranking["keptKeys"] == ["participation_commitment"]
 
-        # Re-run: the favourite recurs (match pass maps it back to its prior key).
+        # Re-run: the kept axis recurs (match pass maps it back to its prior key).
         provider.calls.clear()
         route_criteria(provider, a_pattern_report())
         provider.route(
@@ -2007,19 +2204,19 @@ async def test_favourited_dimension_is_injected_at_decomposition_not_discovery()
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
-        # Discovery stays BLIND — the favourite is NOT in the discovery prompt.
+        # Discovery stays BLIND — the kept axis is NOT in the discovery prompt.
         discovery_prompt = next(c.prompt for c in provider.calls if "<applicant_pool>" in c.prompt)
         assert "<requested_axes>" not in discovery_prompt
         assert "Willingness to do shared work." not in discovery_prompt
 
-        # The favourite's name + definition reached the DECOMPOSITION prompt instead.
+        # The kept axis's name + definition reached the DECOMPOSITION prompt instead.
         decompose_prompt = next(c.prompt for c in provider.calls if "<discovery_reports>" in c.prompt)
-        assert "<favourite_axes>" in decompose_prompt
+        assert "<kept_axes>" in decompose_prompt
         assert "Willingness to do shared work." in decompose_prompt
 
-        # It is still favourited after the re-run.
+        # It is still kept (its Critical placement carried forward) after the re-run.
         current = (await client.get("/ranking/current")).json()
-        assert "participation_commitment" in current["favouritedKeys"]
+        assert "participation_commitment" in current["keptKeys"]
 
 
 @pytest.mark.anyio
@@ -2030,25 +2227,6 @@ async def test_put_seeds_before_run_is_409() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         resp = await client.put("/ranking/seeds", json={"proposedDimensions": ["x"]})
         assert resp.status_code == 409
-
-
-@pytest.mark.anyio
-async def test_put_seeds_rejects_unknown_favourite_key() -> None:
-    # Favouriting a key that isn't a real dimension is silently dropped (validated
-    # against the run's report), so a stale key can't poison the seed set.
-    app, db, provider = setup_app(role=UserRole.MEMBER)
-    add_eligible(db, email="a@x.com", raw_hash="h1")
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        route_criteria(provider, a_pattern_report())
-        provider.route("applicant_id", a_scoring_report())
-        await stream_events(client, "/ranking/run")
-
-        seeds = (await client.put(
-            "/ranking/seeds",
-            json={"favouritedKeys": ["participation_commitment", "not_a_real_key"]},
-        )).json()
-        assert seeds["favouritedKeys"] == ["participation_commitment"]
 
 
 @pytest.mark.anyio

@@ -298,8 +298,9 @@ export type RankingResponse = {
   // Subset of newDimensionKeys that are "revived" (seen in an earlier run, dropped,
   // now back) — the UI badges these blue vs. amber "new". new = flagged − revived.
   revivedDimensionKeys: string[];
-  // Discovery seeds, echoed so the composer stays in sync after a tier/seed save.
-  favouritedKeys: string[];
+  // Kept axes: every dimension in a working (non-Ignore) tier — guaranteed to survive
+  // the next Rank. Derived from tier placement. Echoed so the tier list stays in sync.
+  keptKeys: string[];
   proposedDimensions: string[];
 };
 
@@ -327,9 +328,10 @@ export type CurrentRunResponse = {
   // Subset of newDimensionKeys that are "revived" (seen in an earlier run, dropped,
   // now back) — badged blue vs. amber "new". new = flagged − revived.
   revivedDimensionKeys: string[];
-  // Discovery seeds (see api): favourited dimension keys kept across re-runs, and
-  // pending free-text proposals fed to the next Rank then consumed.
-  favouritedKeys: string[];
+  // Kept axes: every dimension in a working (non-Ignore) tier — guaranteed to survive
+  // the next Rank (derived from tier placement). Plus pending free-text proposals fed
+  // to the next Rank then consumed.
+  keptKeys: string[];
   proposedDimensions: string[];
 };
 

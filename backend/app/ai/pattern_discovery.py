@@ -37,15 +37,15 @@ class DiscoverySeeds:
     each in the applicants' own words, sharpen it into a measurable axis, and apply
     the pool-variance gate (omit it if the pool genuinely doesn't vary on it). The
     model flags each dimension it creates from a proposal with
-    ``from_committee_request`` so the caller can auto-favourite it.
+    ``from_committee_request`` so the D9 backstop guarantees it survives decomposition.
 
-    Only proposals ride here. FAVOURITES are NOT seeded into discovery: a favourite
-    is a prior dimension that already has a pool-grounded definition and cached
-    scores, so it needs a *guarantee it stays on the table*, not re-discovery. It is
-    injected at the decomposition step instead (see ``dimension_decompose``), which
-    keeps all K discoverers blind — seeding all K on the same axes would correlate
-    the samples and dent the coverage the fan-out exists to buy (SPEC "Fan-Out
-    Redesign", committee-axis injection).
+    Only proposals ride here. KEPT axes are NOT seeded into discovery: a kept axis
+    is a prior dimension (one the committee tiered) that already has a pool-grounded
+    definition and cached scores, so it needs a *guarantee it stays on the table*, not
+    re-discovery. It is injected at the decomposition step instead (see
+    ``dimension_decompose``), which keeps all K discoverers blind — seeding all K on the
+    same axes would correlate the samples and dent the coverage the fan-out exists to buy
+    (SPEC "Fan-Out Redesign", committee-axis injection).
     """
 
     proposed: list[str] = field(default_factory=list)
@@ -247,7 +247,7 @@ def discover_patterns_fanout(
     discovery to ground it in the pool and gate it on variance — but seeding all K on
     the same axes would correlate the samples and dent the coverage the fan-out exists
     to buy. So worker 0 grounds the proposal; workers 1..K-1 stay blind, preserving
-    K-1 independent samples. (Favourites don't come through here at all — they inject
+    K-1 independent samples. (Kept axes don't come through here at all — they inject
     at decomposition; see ``DiscoverySeeds`` and the redesign notes.)
 
     ``k`` ≥ 1; k=1 is a single call (degenerate fan-out) and, being worker 0, still

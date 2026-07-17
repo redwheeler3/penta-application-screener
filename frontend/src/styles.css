@@ -2609,34 +2609,6 @@ h1 {
   box-shadow: 0 0 0 1px var(--penta-green);
 }
 
-/* ★ favourite toggle on a chip (keep this axis across re-runs). */
-.tier-chip-fav {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.1rem;
-  border: none;
-  background: none;
-  cursor: pointer;
-  color: var(--muted);
-  border-radius: 4px;
-  line-height: 0;
-}
-
-.tier-chip-fav:hover {
-  color: var(--penta-green);
-}
-
-.tier-chip-fav.is-fav {
-  color: #d97706; /* amber star when favourited */
-}
-
-/* The kept-star shown on the DragOverlay copy so a favourited chip looks the same
-   while being dragged. */
-.tier-chip-fav-icon {
-  color: #d97706;
-  flex-shrink: 0;
-}
-
 /* The floating DragOverlay copy: lifted off the page and showing the grabbing
    cursor while it tracks the pointer across tiers. */
 .tier-chip-overlay {

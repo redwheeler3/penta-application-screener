@@ -38,7 +38,7 @@ class CurrentRunResponse(ResponseModel):
     # now back) rather than genuinely new — derived from history at read time. The
     # frontend colours these blue ("Revived") vs. amber ("New"); new = flagged − revived.
     revived_dimension_keys: list[str] = []
-    favourited_keys: list[str] = []
+    kept_keys: list[str] = []
     proposed_dimensions: list[str] = []
 
 
@@ -235,7 +235,7 @@ class RankingResponse(ResponseModel):
     candidates: list[RankedCandidateOut]
     new_dimension_keys: list[str] = []
     revived_dimension_keys: list[str] = []
-    favourited_keys: list[str] = []
+    kept_keys: list[str] = []
     proposed_dimensions: list[str] = []
 
 
@@ -253,9 +253,8 @@ class TiersResponse(ResponseModel):
 
 
 class SeedsResponse(ResponseModel):
-    """PUT /ranking/seeds — the current discovery seed state."""
+    """PUT /ranking/seeds — the current pending-proposal state."""
 
-    favourited_keys: list[str] = []
     proposed_dimensions: list[str] = []
 
 
@@ -277,6 +276,5 @@ class TierLayoutUpdate(RequestModel):
 
 
 class SeedsUpdate(RequestModel):
-    # Both optional so the UI can update one without clobbering the other.
-    favourited_keys: list[str] | None = None
+    # Optional so a no-op PUT leaves proposals untouched.
     proposed_dimensions: list[str] | None = None

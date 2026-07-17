@@ -159,15 +159,15 @@ def test_adopt_unmatched_keeps_fresh_text() -> None:
     assert adopted.dimensions[0].definition == "fresh def"
 
 
-def test_adopt_never_creates_a_duplicate_key() -> None:
-    # If two new dims would both adopt the same prior key (or an adopted key
-    # collides with another dim's untouched key), the second keeps its own key.
+def test_adopt_collapses_two_new_onto_one_prior_key() -> None:
+    # Two new dims both matching the SAME prior key are a prior axis re-carved into twins
+    # this run: they COLLAPSE into one dimension under the prior key (reusing its cached
+    # score), never survive as two (which would double-weight one concept) and never
+    # duplicate the key (which would 500 on the cache's UNIQUE constraint).
     new = report("x", "y")
     adopted = adopt_matched_keys(new, {"x": "shared", "y": "shared"}, report("shared"))
     keys = [d.key for d in adopted.dimensions]
-    assert keys[0] == "shared"
-    assert keys[1] == "y"  # could not also be "shared" — kept its own
-    assert len(set(keys)) == 2  # no duplicates
+    assert keys == ["shared"]  # collapsed to one, no duplicate, no stray "y"
 
 
 # --- carry_forward_layout: matched vs. new, and the prior-Ignored case ---

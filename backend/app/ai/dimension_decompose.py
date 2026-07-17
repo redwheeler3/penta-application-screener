@@ -113,39 +113,39 @@ def _reports_block(reports: list[PoolDimensionReport]) -> str:
     return f"<discovery_reports>\n{json.dumps(payload, indent=2, default=str)}\n</discovery_reports>"
 
 
-def _favourites_block(favourites: list[PoolDimension]) -> str:
-    """The committee's favourited axes, rendered as a prompt section. Empty string
-    when there are none, so an un-favourited run's prompt is unchanged.
+def _kept_block(kept: list[PoolDimension]) -> str:
+    """The committee's kept axes, rendered as a prompt section. Empty string when there
+    are none, so a first-run (nothing kept yet) prompt is unchanged.
 
-    Favourites are prior dimensions the committee chose to keep. Unlike discovery
-    reports (which the model may prune), a favourite MUST end up in the settled set —
-    it is injected here (not seeded into the blind K discoverers) so the settling call,
-    which sees every carving at once, can fold any re-discovered twin INTO the
-    favourite (reusing its key so match adopts it and cached scores carry forward)
-    rather than emitting a redundant near-duplicate.
+    Kept axes are prior dimensions the committee placed in a working tier. Unlike
+    discovery reports (which the model may prune), a kept axis MUST end up in the settled
+    set — it is injected here (not seeded into the blind K discoverers) so the settling
+    call, which sees every carving at once, can fold any re-discovered twin INTO the kept
+    axis (reusing its key so match adopts it and cached scores carry forward) rather than
+    emitting a redundant near-duplicate.
     """
-    if not favourites:
+    if not kept:
         return ""
     payload = [
         {"key": d.key, "name": d.name, "definition": d.definition}
-        for d in favourites
+        for d in kept
     ]
     return f"""\
 
-## Committee favourites (MUST survive)
-The `<favourite_axes>` block lists axes the committee explicitly kept from a prior run. EACH one MUST appear in your settled set — reuse its exact `key`, and set `from_committee_request: true` on it. If a discovery report re-surfaced the same concept under a different key, FOLD that discovered axis into the favourite (list both in `source_keys`, keep the favourite's key) rather than emitting two. A favourite is never dropped, even if no discovery report named it — carry it through on its own.
+## Committee-kept axes (MUST survive)
+The `<kept_axes>` block lists axes the committee explicitly kept from a prior run (by tiering them). EACH one MUST appear in your settled set — reuse its exact `key`, and set `from_committee_request: true` on it. If a discovery report re-surfaced the same concept under a different key, FOLD that discovered axis into the kept axis (list both in `source_keys`, keep the kept axis's key) rather than emitting two. A kept axis is never dropped, even if no discovery report named it — carry it through on its own.
 
-<favourite_axes>
+<kept_axes>
 {json.dumps(payload, indent=2, default=str)}
-</favourite_axes>
+</kept_axes>
 """
 
 
 def build_prompt(
     reports: list[PoolDimensionReport],
-    favourites: list[PoolDimension] | None = None,
+    kept: list[PoolDimension] | None = None,
 ) -> str:
-    return f"{_INSTRUCTIONS}{_favourites_block(favourites or [])}\n\n{_reports_block(reports)}"
+    return f"{_INSTRUCTIONS}{_kept_block(kept or [])}\n\n{_reports_block(reports)}"
 
 
 # --- Cost estimation (non-prompt) ---
@@ -173,31 +173,31 @@ def estimate_decompose(reports: list[PoolDimensionReport], settings: AppSettings
 def to_pool_report(
     decomposition: DecompositionReport,
     input_reports: list[PoolDimensionReport] | None = None,
-    favourites: list[PoolDimension] | None = None,
+    kept: list[PoolDimension] | None = None,
 ) -> PoolDimensionReport:
     """Project the settled ``DecompositionReport`` onto a ``PoolDimensionReport`` — the
     shape the rest of the rank chain (match pass, scoring, storage) already speaks. The
     decomposition-only fields (``source_keys``, ``decision``) are dropped here; they are
     preserved separately in the decompose audit (see ``decompose_audit_payload``). The
-    ``from_committee_request`` flag rides through, since it drives auto-favouriting and
-    the D9 committee-request protection downstream.
+    ``from_committee_request`` flag rides through, since it drives the D9
+    committee-request protection downstream.
 
     ``why_it_differentiates`` is NOT taken from the decomposition (it doesn't produce
     one — see ``DecomposedDimension``). Instead it is carried forward from the PRIMARY
     source axis: the discoverer that coined this axis read the pool, so its ``why`` is
     the real, essay-grounded one. The primary source is the first ``source_key`` that
-    resolves to an input dimension (or an injected ``favourite``, which carries its own
+    resolves to an input dimension (or an injected ``kept`` axis, which carries its own
     prior pool-grounded ``why``). Falls back to an empty string only if no source key
-    resolves — which shouldn't happen once favourites are included, since every settled
-    axis's sources are drawn from the reports or the favourites.
+    resolves — which shouldn't happen once kept axes are included, since every settled
+    axis's sources are drawn from the reports or the kept axes.
     """
     why_by_key: dict[str, str] = {}
     for report in input_reports or []:
         for dim in report.dimensions:
             # First writer wins — a key repeated across K reports keeps report 0's why.
             why_by_key.setdefault(dim.key, dim.why_it_differentiates)
-    for fav in favourites or []:
-        why_by_key.setdefault(fav.key, fav.why_it_differentiates)
+    for kept_dim in kept or []:
+        why_by_key.setdefault(kept_dim.key, kept_dim.why_it_differentiates)
 
     def _carried_why(d: DecomposedDimension) -> str:
         for sk in d.source_keys:
@@ -224,7 +224,7 @@ def to_pool_report(
 def enforce_committee_requests(
     decomposition: DecompositionReport,
     input_reports: list[PoolDimensionReport],
-    favourites: list[PoolDimension] | None = None,
+    kept: list[PoolDimension] | None = None,
 ) -> tuple[DecompositionReport, list[dict]]:
     """D9 guard (SPEC "Fan-Out Redesign", D9): a committee ask must never be silently
     merged away. Deterministic backstop for the prompt instruction — prompts guide, they
@@ -233,27 +233,27 @@ def enforce_committee_requests(
     Two sources of "committee ask" are guarded, identically:
       - **Proposals**, which entered via a discovery report and are marked
         ``from_committee_request`` on their input dimension.
-      - **Favourites** (``favourites``), prior dimensions injected at decomposition (NOT
-        into discovery). They are never in ``input_reports``, so they are folded into the
-        ask set here by their own key — a favourite is an even harder guarantee than a
-        proposal (the committee already chose it), so the same "never vanish" repair
-        applies.
+      - **Kept axes** (``kept``), prior dimensions injected at decomposition (NOT into
+        discovery) because the committee tiered them. They are never in ``input_reports``,
+        so they are folded into the ask set here by their own key — a kept axis is an even
+        harder guarantee than a proposal (the committee already weighted it), so the same
+        "never vanish" repair applies.
 
     Three failure modes repaired here, computed from the ask set vs. what decomposition
     returned:
       - **Flag loss on merge:** an asked-for key was absorbed into a settled axis, but
         that axis came back ``from_committee_request: false`` — the provenance that drives
-        auto-favouriting and the UI badge. We force the flag back true.
+        the UI badge and the D9 trail. We force the flag back true.
       - **Silent drop:** an asked-for key appears in NO settled axis's ``source_keys`` —
         decomposition dropped it. We re-add it as its own settled axis (restoring the
-        input/favourite text) so it cannot vanish.
+        input/kept text) so it cannot vanish.
 
     Returns the corrected report and a ``folded`` list — the asked-for axes merged INTO
     another axis (not kept standalone), each ``{request_key, into_key}`` — so the caller
-    can surface "your proposal/favourite X was folded into Y" (never a silent
+    can surface "your proposal/kept axis X was folded into Y" (never a silent
     disappearance). An axis kept under its own key is not "folded" and isn't listed.
     """
-    # Both proposals (flagged in the reports) and favourites (injected separately) are
+    # Both proposals (flagged in the reports) and kept axes (injected separately) are
     # committee asks with the same never-vanish guarantee, keyed by their dimension key.
     requested = {
         d.key: d
@@ -261,8 +261,8 @@ def enforce_committee_requests(
         for d in r.dimensions
         if d.from_committee_request
     }
-    for fav in favourites or []:
-        requested.setdefault(fav.key, fav)
+    for kept_dim in kept or []:
+        requested.setdefault(kept_dim.key, kept_dim)
     if not requested:
         return decomposition, []
 
@@ -343,19 +343,19 @@ def decompose_dimensions(
     *,
     reports: list[PoolDimensionReport],
     settings: AppSettings,
-    favourites: list[PoolDimension] | None = None,
+    kept: list[PoolDimension] | None = None,
     on_delta: DeltaSink | None = None,
 ) -> tuple[DecompositionReport, str | None, PassCost]:
     """Single-call baseline: settle the K reports into one finest-non-overlapping set.
 
-    ``favourites`` are prior dimensions the committee kept; they are injected into the
-    prompt so the settling call folds any re-discovered twin into them (reusing keys) and
-    keeps them present regardless (the ``enforce_committee_requests`` backstop guarantees
-    it deterministically). Returns ``(report, narrative, cost_usd)``. Runs on the
-    discovery (synthesis) model — the same hard judgment discovery makes, across reports.
-    With fewer than 2 reports there is nothing to settle; the sole report's dimensions are
-    returned wrapped as a trivial decomposition (favourites are folded in by the backstop
-    downstream) at no cost.
+    ``kept`` are prior dimensions the committee kept (by tiering them); they are injected
+    into the prompt so the settling call folds any re-discovered twin into them (reusing
+    keys) and keeps them present regardless (the ``enforce_committee_requests`` backstop
+    guarantees it deterministically). Returns ``(report, narrative, cost_usd)``. Runs on
+    the discovery (synthesis) model — the same hard judgment discovery makes, across
+    reports. With fewer than 2 reports there is nothing to settle; the sole report's
+    dimensions are returned wrapped as a trivial decomposition (kept axes are folded in by
+    the backstop downstream) at no cost.
     """
     if len(reports) < 2:
         only = reports[0] if reports else PoolDimensionReport(dimensions=[])
@@ -379,7 +379,7 @@ def decompose_dimensions(
     result = provider.structured_output(
         model_id=settings.ai.decompose_model,
         schema=DecompositionReport,
-        prompt=build_prompt(reports, favourites),
+        prompt=build_prompt(reports, kept),
         system_prompt=SYSTEM_PROMPT,
         on_delta=on_delta,
         read_timeout=DECOMPOSE_READ_TIMEOUT,
