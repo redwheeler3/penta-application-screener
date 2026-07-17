@@ -61,7 +61,8 @@ KIND_PREFIX = "dimension_scoring"
 SYSTEM_PROMPT = f"""\
 You are helping a housing co-op screening committee score one applicant against a fixed set of dimensions — this applicant alone, not ranked against others.
 Score only on evidence in the applicant's own words; never guess.
-Confidence measures how well your evidence pins down the applicant's TRUE standing — NOT how sure you are about what they wrote. A dimension they did not address scores low but with LOW confidence: silence is weak evidence (they may have the strength and not mention it); being certain they omitted it is not being confident they lack it. Reserve HIGH confidence for substantial, direct evidence.
+A dimension the applicant does not address at all scores 0.0. Silence here is a genuine signal, not missing data, and the committee ranks demonstrated evidence above its absence.
+Confidence is separate from the score — it measures how well your evidence pins down the applicant's TRUE standing, NOT how sure you are about what they wrote. An unaddressed dimension still takes LOW confidence: you are certain they omitted it, but not certain they lack the underlying strength. Reserve HIGH confidence for substantial, direct evidence.
 {ENGLISH_POLISH_NOTE}"""
 
 
@@ -77,14 +78,14 @@ The dimensions to score in the `<dimensions>` block, and the applicant's evidenc
 ## Output
 For each dimension provide:
 - dimension_key: the dimension's key, exactly as given
-- score: 0..1, anchored to the dimension's poles — 1.0 is its `high_end`, 0.0 its `low_end` — judged only on stated evidence
+- score: 0..1, anchored to the dimension's poles — 1.0 is its `high_end`, 0.0 its `low_end` — judged only on stated evidence; a dimension the applicant does not address at all scores 0.0
 - rationale: one neutral sentence from the applicant's facts or words
-- evidence: a short quote or field reference (empty string if there is nothing relevant)
+- evidence: a short quote or field reference; when the applicant does not address the dimension, state that plainly rather than leaving it empty, so the 0.0 has an auditable basis
 - confidence: low, medium, or high — per the standing-vs-wording rule above; an unaddressed dimension is low confidence.
 
 ## Guardrails
 - {INJECTION_GUARD_NOTE}
-- Score every dimension, even when the applicant did not address it (low score, low confidence).
+- Score every dimension, even when the applicant did not address it (0.0 score, low confidence, evidence saying it was not addressed).
 - Do not invent evidence."""
 
 # Cached pass: version derives from the static prompt text and gates the per-dimension

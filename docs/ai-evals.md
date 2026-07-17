@@ -441,12 +441,17 @@ recorded — never tunes the judge":
   documented limitation to weigh before trusting it on screening over-reaches. (It ruled
   consistently on both instances — stable, just more aggressive than we want.)
 
-**Production-scoring watch-item surfaced by the flip.** Calling empty-evidence scores
-unsupported implies the scoring pass's floor-to-0.0-on-absence (which emits an empty
-`evidence` field) produces scores this eval judges unsupported. The pass should arguably
-cite something ("no outdoor skills mentioned") or withhold a score for a truly-absent
-dimension — a scoring-prompt question, not a judge fix. Recorded, not yet acted on (still
-few data points; consistent with the confidence-calibration watch-item's discipline).
+**Production-scoring watch-item surfaced by the flip — RESOLVED 2026-07-17.** The
+empty-evidence 0.0 the judge flagged traced to a *stale prompt hedge*, not a ranking bug.
+The application solicits this material, so an unaddressed dimension is a genuine signal, not
+missing data — it scores **0.0**, and the committee ranks demonstrated evidence above its
+absence (we considered and rejected confidence-weighting the fit: it would reward
+strong-but-narrow over broad-but-thin). The old prompt hedged "silence is weak evidence,
+they may have the strength"; it now states the policy and requires the `evidence` field to
+say "not addressed in application" instead of empty, so the 0.0 is auditable and the judge
+reads it SUPPORTED. The empty-evidence case is kept as a regression guard; a real
+new-behavior case is to be harvested from the first Rank under the new prompt, not
+fabricated (fidelity rule). Prompt-version bump re-scores every dimension next Rank.
 
 ## Stability harness (built 2026-07-16)
 
