@@ -314,12 +314,30 @@ FK). `python -m app.evals.capture_scores` proposes opaque-indexed candidate case
 run, guard-gated, `evidence_source`-stamped; a human labels `expected` + rationale before
 they land in `judge_cases.json` (capture never labels).
 
-Three seeded cases show the spectrum: empty evidence → 0.0 against an absence-defined low
-pole (**supported**), a 50/50 income split → 0.95 dual-earner resilience (**supported**),
-and a mid 0.5 on **empty** evidence (**unsupported** — an unanchored guess, the
-score-not-grounded failure the category exists to catch). Note the deliberate boundary:
-this asks "is the CITED evidence sufficient?", NOT "did the pass cite the BEST evidence?"
-(the latter needs full applicant text — a different, harder eval, deferred).
+Three "clear" seeded cases show the basic spectrum: empty evidence → 0.0 against an
+absence-defined low pole (**supported**), a 50/50 income split → 0.95 dual-earner
+resilience (**supported**), and a mid 0.5 on **empty** evidence (**unsupported** — an
+unanchored guess, the score-not-grounded failure the category exists to catch). Note the
+deliberate boundary: this asks "is the CITED evidence sufficient?", NOT "did the pass cite
+the BEST evidence?" (the latter needs full applicant text — a different, harder eval,
+deferred).
+
+**Adversarial cases — because a clean sweep on clear cases proves too little.** A first
+judge pass went 10/10, which prompted a leak audit: confirmed the prompt serializes ONLY
+`task` + `evidence` (no `expected`, `label_rationale`, `title`, `key`, or `provenance`
+reaches the model — the only occurrence of the verdict words is the task's own "SUPPORTED
+or UNSUPPORTED" choice-list, which names both options equally, not a tell). So no leak —
+but the clear cases are *easy by construction* (surface cue = answer: empty→low,
+rich→high), so 10/10 shows the judge handles clear cases, NOT that it discriminates. A
+"empty=unsupported, full=supported" pattern-matcher would also pass them. Two adversarial
+cases were added where the **surface cue fights the correct answer**, to tell a real judge
+from a cue-matcher: (a) `coop_motivation` — rich, values-flavoured evidence at 0.7, but
+half of it is *environmental* ethics (off-axis for *co-operative* motivation), so the
+correct verdict is **unsupported** despite the "lots of nice text" cue (an exact 0.7 slice
+— a real overclaim the pass made); (b) `child_age_profile` — a terse "Children ages 14,
+11, 8" at 0.65, **supported** because for an age-profile dimension the bare ages ARE the
+complete evidence, testing that the judge doesn't equate brevity with insufficiency. These
+are the cases whose result actually means something.
 
 ## Stability harness (built 2026-07-16)
 
