@@ -74,14 +74,15 @@ function ConsolidateAuditBody(props: { audit: ConsolidateAuditResponse }): React
       <table className="match-audit-table">
         <thead>
           <tr>
-            {/* Unified inputs → keeper layout: the newer "Retired" dimension (the
-                candidate aliased away ON A MERGE) on the left flows into the surviving
-                canonical "Kept" dimension on the right — mirroring Matching and
-                Decomposition. The Verdict column carries whether the retirement actually
-                happened (a "kept apart" pair retires nothing; both survive). */}
-            <th>Retired</th>
-            <th aria-label="merges into" />
-            <th>Kept</th>
+            {/* Headers are verdict-NEUTRAL — "Newer"/"Older" is the pair's true orientation
+                by canonical rank, accurate whether or not it merged. The arrow is the
+                CANDIDATE merge direction (newer → older): on a merge that fold happened; on
+                a kept-apart pair we decided NOT to merge in that direction, which the
+                Verdict column states. So the arrow reads correctly on every row while the
+                headers avoid asserting a "Retired"/"Kept" outcome that only holds on merges. */}
+            <th>Newer</th>
+            <th aria-label="candidate merge into" />
+            <th>Older</th>
             <th>Correlation</th>
             <th>Verdict</th>
             <th>Why</th>
