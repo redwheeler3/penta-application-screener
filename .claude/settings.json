@@ -18,7 +18,9 @@
       "Bash(tail*)",
       "Bash(wc*)",
       "Bash(grep*)",
-      "Bash(rg*)"
+      "Bash(rg*)",
+      "Bash(echo*)",
+      "Bash(sed*)"
     ]
   },
   "hooks": {
