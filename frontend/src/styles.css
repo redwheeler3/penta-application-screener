@@ -2857,3 +2857,91 @@ h1 {
   }
 }
 
+
+/* --- Evals tab ------------------------------------------------------------- */
+/* Like .insights-view / .ranking-view: .panel has no padding, so supply the inset. */
+.evals-view { display: grid; gap: 18px; padding: 1.25rem; }
+.evals-header h3 { margin: 0 0 6px; }
+.eval-hint { color: var(--muted); font-size: 0.88rem; max-width: 72ch; }
+
+/* One eval's subtab body: description + actions + tables, roomily spaced. */
+.eval-section { display: grid; gap: 16px; }
+.eval-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.eval-section-actions { display: flex; gap: 10px; align-items: center; }
+.eval-card-desc { margin: 0; color: var(--muted); font-size: 0.9rem; max-width: 70ch; }
+
+/* Inline run-confirm reuses .run-confirm (workflow pre-spend card); just round it here
+   since it isn't sitting flush against a panel header in this context. */
+.eval-run-confirm { border: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: 8px; }
+
+/* Live streamed reasoning — same monospace "thinking" feel as the Rank box. */
+.eval-thinking {
+  margin: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  color: var(--muted);
+}
+.eval-error { margin: 0; color: #b91c1c; font-size: 0.85rem; }
+
+.eval-result { display: grid; gap: 10px; }
+.eval-headline { font-size: 0.85rem; font-weight: 600; }
+.eval-subhead { display: block; font-size: 0.78rem; font-weight: 700; color: var(--muted); margin: 8px 0 2px; }
+
+/* Tables: generous row padding, header row, aligned tops. */
+.eval-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.eval-table th {
+  text-align: left;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 4px 10px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.eval-table td { padding: 8px 10px; border-top: 1px solid var(--line); vertical-align: top; }
+.eval-table tr.ok td:first-child { color: #16a34a; font-weight: 700; }
+.eval-table tr.fail td:first-child { color: #dc2626; font-weight: 700; }
+.eval-table tr.concern-row td:first-child { color: #b45309; font-weight: 700; }
+
+.eval-cases-table .eval-cell-key { font-weight: 600; white-space: nowrap; }
+.eval-cell-dim { font-weight: 600; }
+.eval-cell-sub { color: var(--muted); font-size: 0.78rem; }
+.eval-cell-input { max-width: 34ch; }
+.eval-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; }
+.eval-muted { color: var(--muted); }
+
+.eval-check-detail { color: #b91c1c; font-size: 0.75rem; margin-top: 2px; }
+.eval-verdict { font-weight: 600; color: #075985; }
+.eval-cell-actions { white-space: nowrap; }
+.eval-link {
+  border: 0; background: none; padding: 0 6px 0 0; cursor: pointer;
+  color: var(--penta-green-dark); font-size: 0.78rem; text-decoration: underline;
+}
+.eval-link:disabled { color: var(--muted); cursor: not-allowed; text-decoration: none; }
+
+/* Case editor: a JSON textarea in a bordered card. */
+.eval-editor {
+  display: grid; gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--penta-green-soft);
+}
+.eval-editor-head { display: flex; flex-direction: column; gap: 2px; }
+.eval-editor-text {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  resize: vertical;
+}

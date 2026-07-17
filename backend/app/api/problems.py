@@ -33,6 +33,7 @@ PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     "unchanged_pool": (409, "Screening already up to date"),
     "cap_exceeded": (402, "Spending cap exceeded"),
     "unknown_dimension_key": (400, "Unknown dimension key"),
+    "invalid_case": (422, "Invalid eval case"),
     # Sync / Google Sheets.
     "google_sheet_not_configured": (400, "No Google Sheet configured"),
     "google_credentials_expired": (401, "Google credentials expired"),

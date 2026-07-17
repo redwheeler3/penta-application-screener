@@ -296,3 +296,23 @@ class DimensionAlias(TimestampMixin, Base):
     alias_key: Mapped[str] = mapped_column(String(200), unique=True, index=True, nullable=False)
     canonical_key: Mapped[str] = mapped_column(String(200), index=True, nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class EvalRun(TimestampMixin, Base):
+    """One run of an eval fired from the Evals tab — the durable, queryable record.
+
+    Stores the structured ``result`` (the eval's response model, camelCase JSON as the UI
+    reads it) plus ``thinking`` (the streamed NON-judge model reasoning, so we can later
+    "eval the eval"). ``prompt_version`` stamps the exact prompt exercised, so a result is
+    attributable and trends across a prompt edit are readable. Kept in the DB (not files)
+    so "agreement over the last N runs" is a plain query, consistent with how the cost
+    ledger and ranking runs already persist operational history. Synthetic-data only.
+    """
+
+    __tablename__ = "eval_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    eval_key: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
+    prompt_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    result: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    thinking: Mapped[str | None] = mapped_column(Text, nullable=True)

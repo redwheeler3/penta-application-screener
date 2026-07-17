@@ -143,15 +143,25 @@ def _judge_defensible(
 
 
 def run_case(
-    provider: AIProvider, case: GoldenCase, *, scoring_model: str, judge_model: str
+    provider: AIProvider,
+    case: GoldenCase,
+    *,
+    scoring_model: str,
+    judge_model: str,
+    on_delta: object = None,
 ) -> CaseResult:
-    """Score one golden case through the REAL prompt, then grade it (assertions + judge)."""
+    """Score one golden case through the REAL prompt, then grade it (assertions + judge).
+
+    ``on_delta``, when given, streams the SCORING model's reasoning as it generates (the
+    non-judge output the Evals tab surfaces live). Omitted by the CLI — result is identical.
+    """
     applicant_block = json.dumps(case.applicant, indent=2, default=str)
     result = provider.structured_output(
         model_id=scoring_model,
         schema=DimensionScoringReport,
         prompt=_build_prompt(applicant_block, [case.dimension]),
         system_prompt=SYSTEM_PROMPT,
+        on_delta=on_delta,  # type: ignore[arg-type]
     )
     produced = {s.dimension_key: s for s in result.output.scores}
     score = produced.get(case.dimension.key)

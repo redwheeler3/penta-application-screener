@@ -180,6 +180,49 @@ export function savePrivateNote(id: number, note: string): Promise<Response> {
   });
 }
 
+// --- Evals tab -------------------------------------------------------------
+
+// The runnable evals + their spend estimates (free; no model calls).
+export function fetchEvalCatalog(): Promise<Response> {
+  return fetch(url("/evals/catalog"), { credentials: "include" });
+}
+
+// Deterministic invariants + review signals over the baseline fixture (free).
+export function fetchEvalInvariants(): Promise<Response> {
+  return fetch(url("/evals/invariants"), { credentials: "include" });
+}
+
+// The eval's cases, straight from its committed JSON fixture (free).
+export function fetchEvalCases(evalKey: string): Promise<Response> {
+  return fetch(url(`/evals/cases/${evalKey}`), { credentials: "include" });
+}
+
+// Upsert one case (by its `key`) into the eval's fixture FILE. Validated server-side;
+// the operator commits the changed file to git deliberately.
+export function saveEvalCase(evalKey: string, evalCase: unknown): Promise<Response> {
+  return fetch(url(`/evals/cases/${evalKey}`), {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ case: evalCase }),
+  });
+}
+
+// Start a streaming eval run (live_scoring | judge | stability). Returns the raw
+// Response so the caller reads its NDJSON body via streamNdjson. Spends model $.
+// `caseKey` runs just that one case (per-row run); `k` sets stability repeats.
+export function runEval(
+  key: "live_scoring" | "judge" | "stability",
+  opts?: { k?: number; caseKey?: string },
+): Promise<Response> {
+  const path = key === "live_scoring" ? "/evals/live-scoring" : `/evals/${key}`;
+  const params = new URLSearchParams();
+  if (key === "stability" && opts?.k) params.set("k", String(opts.k));
+  if (opts?.caseKey) params.set("case", opts.caseKey);
+  const q = params.toString() ? `?${params}` : "";
+  return fetch(url(path + q), { method: "POST", credentials: "include" });
+}
+
 // Read an NDJSON stream, invoking `onEvent` for each parsed line. Used by the
 // screening and Rank runs, which stream progress then a summary.
 export async function streamNdjson(body: ReadableStream<Uint8Array>, onEvent: (event: any) => void): Promise<void> {
