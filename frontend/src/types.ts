@@ -411,7 +411,7 @@ export type FanOutAuditResponse = {
 
 // A notification toast. Success toasts auto-dismiss; error toasts persist until
 // dismissed (and offer a copy button), so a failure can't scroll away unread.
-export type Toast = { id: number; message: string; variant: "success" | "error" };
+export type Toast = { id: number; message: string; variant: "success" | "error" | "warning" };
 
 export type ScreeningEstimateResponse = {
   total: number;

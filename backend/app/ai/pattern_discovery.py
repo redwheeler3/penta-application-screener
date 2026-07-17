@@ -150,6 +150,13 @@ def eligible_applications(db: Session) -> list[Application]:
 # ~4900 output tokens (each dim carries key/name/definition/why).
 _DISCOVERY_OUTPUT_TOKENS = 4900
 
+# A discovery call is the same heavy pool-wide synthesis as decomposition, and under the
+# K-parallel fan-out several run at once — so it needs the same headroom over the
+# provider's 120s default, not the default. A real run timed out at 120s here (2026-07-16);
+# decomposition already raises its own (DECOMPOSE_READ_TIMEOUT). Kept per-pass, not global,
+# so the per-applicant passes keep the tight default.
+DISCOVERY_READ_TIMEOUT = 600
+
 
 def estimate_discovery(applications: list[Application], settings: AppSettings) -> float:
     """Projected cost of the single discovery call, scaled by pool size. Discovery
@@ -181,6 +188,7 @@ def _discover_from_prompt(
         prompt=prompt,
         system_prompt=SYSTEM_PROMPT,
         on_delta=on_delta,
+        read_timeout=DISCOVERY_READ_TIMEOUT,
     )
     return result.output, result.narrative, PassCost.from_usage(result.model_id, result.usage)
 
@@ -209,6 +217,11 @@ class FanOutDiscovery:
     passes: list[DiscoveryPass]
     narrative: str | None
     cost: PassCost
+    # How many of the K workers failed (timeout/error). The fan-out is redundant by
+    # design — decomposition merges however many reports survive — so a minority failing
+    # degrades diversity but does not abort; only ALL K failing is fatal (nothing to
+    # decompose). Surfaced so the run can warn the committee it proceeded degraded.
+    failed_count: int = 0
 
     @property
     def reports(self) -> list[PoolDimensionReport]:
@@ -239,9 +252,17 @@ def discover_patterns_fanout(
 
     ``k`` ≥ 1; k=1 is a single call (degenerate fan-out) and, being worker 0, still
     grounds any proposal. ``on_delta`` streams only the first call's reasoning as the
-    live "thinking"; the rest are silent to keep the stream coherent. A worker that
-    raises propagates (the caller treats a failed criteria phase as fatal, same as the
-    single-call path).
+    live "thinking"; the rest are silent to keep the stream coherent.
+
+    **Partial-failure tolerant (2026-07-16):** the fan-out is redundant by design —
+    decomposition settles however many reports come back — so a worker that raises
+    (e.g. a Bedrock read timeout under parallel load) is collected, not propagated, and
+    the run proceeds on the survivors with ``failed_count`` set. Only when ALL K fail is
+    there nothing to decompose, and *that* raises (the caller treats it as a fatal
+    criteria-phase failure, same as before). Losing worker 0 (the proposal-seeded/
+    streaming one) is tolerated too: proposals are a soft grounding hint, and a surviving
+    blind worker still produces a usable report — the D9 committee-request guard
+    downstream is the hard backstop that a proposal isn't lost.
     """
     from app.ai.analysis import run_in_pool
 
@@ -267,11 +288,17 @@ def discover_patterns_fanout(
     passes: list[DiscoveryPass] = []
     live_narrative: str | None = None
     total_cost = PassCost()
+    failed_count = 0
+    last_error: Exception | None = None
     for index, outcome, error in run_in_pool(
         list(range(k)), call=_call, max_workers=min(k, settings.ai.max_workers)
     ):
         if error is not None:
-            raise error
+            # Collect, don't propagate — a survivor is enough (see docstring). Keep the
+            # last error so an all-fail abort can report a real cause, not a bare count.
+            failed_count += 1
+            last_error = error
+            continue
         report, narrative, cost = outcome
         # Pair each report with its OWN narrative (not by completion order) so the
         # per-discoverer panel shows the right reasoning next to the right dimensions.
@@ -280,4 +307,11 @@ def discover_patterns_fanout(
             live_narrative = narrative  # the one that streamed as live "thinking"
         total_cost += cost
 
-    return FanOutDiscovery(passes=passes, narrative=live_narrative, cost=total_cost)
+    if not passes:
+        # All K failed — nothing to decompose. This is the only fatal case (raise the real
+        # underlying error so the caller's "Finding criteria failed: <cause>" is accurate).
+        raise last_error if last_error is not None else RuntimeError("All discovery workers failed.")
+
+    return FanOutDiscovery(
+        passes=passes, narrative=live_narrative, cost=total_cost, failed_count=failed_count
+    )
