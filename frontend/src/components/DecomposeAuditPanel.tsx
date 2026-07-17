@@ -106,16 +106,16 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
               <tr key={d.key}>
                 <td>
                   {/* Name + key (mirroring the Matching tab), then the merge / request /
-                      folded-in tags. */}
+                      folded-in tags (each spaced off the name with .decompose-tag). */}
                   {d.name}
-                  {isMerge ? <span className="match-audit-new">merge</span> : null}
+                  {isMerge ? <span className="decompose-tag match-audit-new">merge</span> : null}
                   {d.fromCommitteeRequest ? (
-                    <span className="match-audit-key-unnamed" title="Committee-requested axis">
+                    <span className="decompose-tag match-audit-key-unnamed" title="Committee-requested axis">
                       requested
                     </span>
                   ) : null}
                   {folded ? (
-                    <span className="match-audit-key-unnamed" title="A committee request folded in here">
+                    <span className="decompose-tag match-audit-key-unnamed" title="A committee request folded in here">
                       folded in: {folded}
                     </span>
                   ) : null}

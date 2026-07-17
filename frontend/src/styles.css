@@ -1533,6 +1533,13 @@ h1 {
   font-weight: 600;
 }
 
+/* Inline tags after a settled dimension's name (merge / requested / folded-in): space
+   them off the name so they don't butt against it (.match-audit-new and
+   .match-audit-key-unnamed carry no margin of their own). */
+.decompose-tag {
+  margin-left: 0.4rem;
+}
+
 /* One source axis in a settled merge's "From" cell: its name (plain) over its key
    (.match-audit-key). Space consecutive sources apart so a multi-source merge reads as
    a stacked list, not one run-on block. */
