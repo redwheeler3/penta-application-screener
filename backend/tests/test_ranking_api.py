@@ -885,6 +885,64 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
     assert aliases == {"c_newest": "a_oldest", "b_mid": "a_oldest"}
 
 
+def test_merged_alias_does_not_donate_its_definition_to_the_canonical_key() -> None:
+    # Key/text immutability: a key's descriptive text is frozen at mint, because the
+    # score cache is keyed by key and scores were computed against that text. Regression
+    # for the real leak: a broad hands_on_trade was aliased onto narrow licensed_trade,
+    # then a LATER run re-surfaced only the broad concept — so history built newest-first
+    # (and keyed by mint definition oldest-first) must still report licensed_trade with
+    # its NARROW mint text, never the broad donation, else the definition divorces from
+    # the narrow-computed cached scores. Both history builders (all_known_dimensions for
+    # match, key_history for consolidation) must hold the invariant.
+    from app.schemas.settings import AppSettings
+    from app.services.ranking_run import (
+        all_known_dimensions,
+        apply_consolidation,
+        create_run,
+        key_history,
+    )
+
+    _app, db, _ = setup_app(role=UserRole.MEMBER)
+    narrow = "Formal licensed trade qualifications only (legally-regulated work)."
+    broad = "Any licensed OR practised hands-on trade skill, incl. unlicensed crafts."
+
+    def _dim(key: str, definition: str) -> PoolDimension:
+        return PoolDimension(key=key, name=key, definition=definition,
+                             high_end="hi", low_end="lo", why_it_differentiates="v")
+
+    # Run 1: mint the narrow key. Its cached scores (not modelled here) belong to THIS text.
+    create_run(db, report=PoolDimensionReport(dimensions=[_dim("licensed_trade", narrow)]),
+               settings=AppSettings(), model_id="m", narrative=None)
+    # Run 2: a broader duplicate appears alongside, and is merged INTO the narrow key
+    # (older key wins the merge). This writes the alias hands_on_trade -> licensed_trade.
+    run2 = create_run(db, report=PoolDimensionReport(dimensions=[
+        _dim("licensed_trade", narrow), _dim("hands_on_trade", broad),
+    ]), settings=AppSettings(), model_id="m", narrative=None)
+    apply_consolidation(
+        db, run2,
+        merges={"hands_on_trade": "licensed_trade"},
+        audit=[{"keep": "licensed_trade", "drop": "hands_on_trade", "r": 0.93,
+                "merged": True, "reason": "same axis"}],
+        narrative=None,
+    )
+    # Run 3: the broad concept re-surfaces under its OWN key, and the canonical narrow key
+    # does NOT appear on its own. This is the trigger: a newest-first history builder would
+    # reach the broad re-discovery (resolved via alias to licensed_trade) BEFORE the narrow
+    # canonical's own mint, and donate the broad text to the narrow key.
+    create_run(db, report=PoolDimensionReport(dimensions=[_dim("hands_on_trade", broad)]),
+               settings=AppSettings(), model_id="m", narrative=None)
+
+    # all_known_dimensions (match target set) must report the NARROW mint.
+    known = all_known_dimensions(db)
+    lt = next(d for d in known.dimensions if d.key == "licensed_trade")
+    assert lt.definition == narrow, "match history donated the broad def onto the narrow key"
+    assert not any(d.key == "hands_on_trade" for d in known.dimensions), "alias key re-entered"
+
+    # key_history (consolidation confirm input) must ALSO report the NARROW mint.
+    _rank, defs = key_history(db)
+    assert defs["licensed_trade"] == narrow, "key_history donated/drifted the broad def"
+
+
 @pytest.mark.anyio
 async def test_post_score_consolidation_keeps_confound_apart() -> None:
     # A nominated pair the confirm call rejects (a confound) is NOT merged: both dims
