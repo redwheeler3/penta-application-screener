@@ -350,8 +350,15 @@ def key_history(db: Session) -> tuple[dict[str, int], dict[str, str]]:
 
     ``canonical_rank[key]`` = the id of the EARLIEST run the key appeared in — so a
     lower rank means older, and consolidation keeps the older key on a merge (maximizing
-    cache carry-forward). ``definitions[key]`` = the key's most-recent definition, for
-    the confirm prompt to judge a nominated pair. One pass over all runs, oldest first.
+    cache carry-forward). ``definitions[key]`` = the key's MINT definition (its earliest
+    appearance), for the confirm prompt to judge a nominated pair. One pass, oldest first.
+
+    Definition is the mint, not the newest, for the same key/text immutability reason as
+    ``all_known_dimensions``: a key's cached scores were computed against the text it was
+    minted with, so the confirm call must judge that text — not a later re-worded version
+    that would divorce the definition from the scores it reasons about. Rank and
+    definition therefore come from the SAME (earliest) run; they used to disagree (rank
+    oldest, definition newest), which let a key's judged wording drift off its scores.
     """
     runs = db.scalars(select(RankingRun).order_by(RankingRun.id.asc())).all()
     rank: dict[str, int] = {}
@@ -362,13 +369,13 @@ def key_history(db: Session) -> tuple[dict[str, int], dict[str, str]]:
             continue
         for dim in report.dimensions:
             rank.setdefault(dim.key, run.id)  # first (oldest) run wins the rank
-            definitions[dim.key] = dim.definition  # last (newest) wins the definition
+            definitions.setdefault(dim.key, dim.definition)  # and the mint definition
     return rank, definitions
 
 
 def all_known_dimensions(db: Session) -> PoolDimensionReport | None:
-    """Every distinct dimension ever discovered, one entry per key (most recent
-    definition kept), as a synthetic report for the identity-match pass.
+    """Every distinct concept ever discovered, one entry per key, each carrying the text
+    it was MINTED with — a synthetic report for the identity-match pass.
 
     The match pass matches a fresh discovery against this whole history, not just the
     last run — so a concept that fell out of a run and re-surfaced is recognized and
@@ -377,31 +384,45 @@ def all_known_dimensions(db: Session) -> PoolDimensionReport | None:
     few per run, and (because the score cache is keyed by dimension key) lets those
     re-adopted keys reuse their cached scores. See SPEC "Matching scope".
 
-    Consolidation aliases are resolved to their canonical key here, so a key a prior
-    run retired as a duplicate never re-enters the match target set — a re-minted
-    duplicate matches onto the canonical key instead. Returns None when no run has ever
-    discovered dimensions.
+    **Key/text immutability invariant.** A key's descriptive text (definition, poles,
+    why-it-differentiates) is FROZEN when the key is minted and never changes, because
+    the score cache is keyed by key and every cached score was computed against that
+    frozen text. Different text ⇒ a different key. So this returns each key's *own mint*
+    definition (its earliest appearance), and a retired alias key NEVER donates its
+    wording to the canonical key it merged into: the canonical's text was frozen at its
+    own mint and its scores match THAT text, so overwriting it with a duplicate's
+    (differently-scoped) wording would silently divorce the definition from the scores.
+    (This bug did occur: a run-6 merge aliased a broad `hands_on_trade_skills` onto the
+    narrow-minted `licensed_trade_skills`; the donation made match+adopt carry the broad
+    text forward onto run-1's narrow scores. Freezing to the mint prevents it and
+    self-heals — the narrow mint is what the cached scores were computed against.)
+
+    Consolidation aliases are still resolved to their canonical key, so a key a prior run
+    retired as a duplicate never re-enters the match target set — but only the canonical's
+    OWN entry supplies text; the alias contributes nothing. Returns None when no run has
+    ever discovered dimensions.
     """
     aliases = alias_map(db)
-    # Newest run first, so the first time we see a key we take its latest definition.
-    runs = db.scalars(select(RankingRun).order_by(RankingRun.id.desc())).all()
-    latest_by_key: dict[str, PoolDimension] = {}
+    # Oldest run first, so the first time we see a key is its MINT — the frozen text its
+    # cached scores were computed against. A later run's re-worded re-discovery of the
+    # same key is ignored (the invariant: text can't drift under a key).
+    runs = db.scalars(select(RankingRun).order_by(RankingRun.id.asc())).all()
+    minted_by_key: dict[str, PoolDimension] = {}
     for run in runs:
         report = current_dimension_report(run)
         if report is None:
             continue
         for dim in report.dimensions:
             canonical = aliases.get(dim.key, dim.key)
-            if canonical in latest_by_key:
+            # Only a key's OWN appearance defines its text — never an alias donation.
+            # (canonical is the older key, minted before any alias key appears, so its
+            # own mint is always seen first; an alias-key dim is skipped entirely.)
+            if canonical != dim.key or canonical in minted_by_key:
                 continue
-            # A retired alias key contributes its definition under the canonical key
-            # only if the canonical hasn't already supplied one (newest-run-first).
-            latest_by_key[canonical] = (
-                dim if canonical == dim.key else dim.model_copy(update={"key": canonical})
-            )
-    if not latest_by_key:
+            minted_by_key[canonical] = dim
+    if not minted_by_key:
         return None
-    return PoolDimensionReport(dimensions=list(latest_by_key.values()))
+    return PoolDimensionReport(dimensions=list(minted_by_key.values()))
 
 
 def ranking_is_current(db: Session, run: RankingRun | None, settings: AppSettings) -> bool:
