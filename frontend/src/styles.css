@@ -2011,29 +2011,30 @@ h1 {
 .dimension-score-fill {
   display: block;
   height: 100%;
-  /* Thermometer feel: a floor width so even a near-zero score shows a sliver of
-     its band colour (amber for weak) rather than reading as a blank track. */
+  /* The bar maps the signed -1..+1 score onto 0..100% width, so 0 (neutral) sits at
+     the halfway mark. A floor width keeps even a -1 showing a sliver of its band hue. */
   min-width: 0.5rem;
   background: var(--penta-green);
   border-radius: 999px;
 }
 
-/* Bar fill coloured by score band so the bar's length AND hue both read merit:
-   green strong, blue moderate, amber weak — matching the ranked-row labels. */
+/* Bar fill coloured by score band so the bar's length AND hue both read standing:
+   top quarter green (strong), middle halves blue (neutral), bottom quarter red (weak)
+   — matching the ranked-row labels. */
 .dimension-score-fill.score-strong {
   background: #16a34a;
 }
 
-.dimension-score-fill.score-moderate {
+.dimension-score-fill.score-neutral {
   background: #0284c7;
 }
 
 .dimension-score-fill.score-weak {
-  background: #d97706;
+  background: #dc2626;
 }
 
-/* The merit verdict in words, coloured to match the bar. This is the signal; the
-   confidence beside it is deliberately neutral so colour never implies merit it
+/* The standing verdict in words, coloured to match the bar. This is the signal; the
+   confidence beside it is deliberately neutral so colour never implies a standing it
    doesn't have (a confidently-low score must not read green). */
 .dimension-score-band {
   font-size: 0.72rem;
@@ -2045,12 +2046,12 @@ h1 {
   color: #166534;
 }
 
-.dimension-score-band.score-moderate {
+.dimension-score-band.score-neutral {
   color: #075985;
 }
 
 .dimension-score-band.score-weak {
-  color: #b45309;
+  color: #b91c1c;
 }
 
 .dimension-score-confidence {
@@ -2441,10 +2442,10 @@ h1 {
 }
 
 .ranking-contribution-label.score-weak {
-  color: #b45309;
+  color: #b91c1c;
 }
 
-.ranking-contribution-label.score-moderate {
+.ranking-contribution-label.score-neutral {
   color: #075985;
 }
 

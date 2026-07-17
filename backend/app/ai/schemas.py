@@ -163,27 +163,30 @@ class DimensionScore(BaseModel):
         description="The PoolDimension.key this score is for. Must match a discovered dimension.",
     )
     score: float = Field(
-        ge=0.0,
+        ge=-1.0,
         le=1.0,
         description=(
-            "How strongly this candidate exhibits the dimension, 0..1, judged "
-            "only on stated evidence. Absence of evidence is a low score, not a "
-            "guess."
+            "How strongly this candidate exhibits the dimension, from -1 (the "
+            "`low_end` pole) through 0 (neutral / no signal either way) to +1 (the "
+            "`high_end` pole), judged only on stated evidence. A negative score needs "
+            "evidence of a genuine low; absence of evidence is 0 (neutral), NEVER "
+            "negative — even if the `low_end` wording mentions absence, that pole means "
+            "a demonstrated low, not mere silence."
         ),
     )
     rationale: str = Field(
         description="One neutral sentence explaining the score from what the applicant said.",
     )
     evidence: str = Field(
-        description="Short quote or field reference grounding the score. No full essays. Empty if nothing stated.",
+        description="Short quote or field reference grounding the score. No full essays. If the dimension is unaddressed (score 0), say so plainly rather than leaving it empty.",
     )
     confidence: ScoreConfidence = Field(
         description=(
             "How well the evidence pins down the applicant's TRUE standing on "
             "this dimension — not how sure you are about what they wrote. A "
-            "dimension the applicant did not address is LOW confidence even when "
-            "you are certain it went unmentioned: silence is weak evidence, since "
-            "they may have the strength and simply not have stated it."
+            "dimension the applicant did not address is LOW confidence (its score "
+            "is 0/neutral): you are certain it went unmentioned, but not where the "
+            "applicant truly stands. Reserve HIGH for substantial, direct evidence."
         ),
     )
 

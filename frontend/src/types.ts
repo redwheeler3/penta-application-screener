@@ -282,7 +282,7 @@ export type RankedCandidate = {
   applicationId: number;
   name: string | null;
   rank: number; // 1-based position
-  fit: number; // 0..1 weighted average — supporting detail, not the headline
+  fit: number; // -1..+1 weighted average — supporting detail, not the headline
   band: string; // relative pool-position label (Strong fit … Limited)
   contributions: DimensionContribution[];
 };

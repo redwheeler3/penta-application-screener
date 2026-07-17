@@ -363,7 +363,7 @@ export function CandidateDetail(props: {
                   <div className="dimension-score-head">
                     <span className="dimension-score-name">{s.name}</span>
                     <span className="dimension-score-bar" aria-hidden="true">
-                      <span className={`dimension-score-fill ${sb.cls}`} style={{ width: `${Math.round(s.score * 100)}%` }} />
+                      <span className={`dimension-score-fill ${sb.cls}`} style={{ width: `${Math.round(((s.score + 1) / 2) * 100)}%` }} />
                     </span>
                     <span className={`dimension-score-band ${sb.cls}`}>{sb.label}</span>
                     <span className="dimension-score-confidence">{s.confidence} confidence</span>
