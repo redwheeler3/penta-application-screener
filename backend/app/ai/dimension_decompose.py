@@ -75,6 +75,7 @@ You are given K independent discovery reports for the same applicant pool, in th
 
 ## Output
 For each settled axis: `key` (reuse an input key when it's essentially that axis; mint a new snake_case key only for a genuinely merged concept), `name`, `definition` (what it measures, no direction), `high_end` (the more-desirable-fit pole, concrete, never "depends"), `low_end` (the opposite pole), `source_keys` (ALL absorbed input keys), `from_committee_request`, and `decision` (the reasoning — for a merge, the score-alike assertion; for a kept-distinct axis, why).
+- `name` is a short committee-facing label — PREFER THE MOST CONCISE name among the merged sources (or one you write).
 - Do NOT describe what varies across the applicant pool ("why it differentiates"): you have the reports' definitions, not the pool itself, so any such claim would be unfounded. Report only what you CAN judge from the definitions — identity (`key`/`name`/`definition`) and merge reasoning (`decision`). The pool-grounded "why" is carried forward from the source reports automatically.
 
 ## Guardrails
