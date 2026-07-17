@@ -885,6 +885,75 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
     assert aliases == {"c_newest": "a_oldest", "b_mid": "a_oldest"}
 
 
+def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
+    # Cross-run fork heal: this run discovered only the NEWER twin (child_age_profile);
+    # the definition-match pass missed the fork, so the surviving canonical key
+    # (child_age_profile_community_fit, a PRIOR-run key) is NOT in this run's report.
+    # Consolidation must drop the newer twin AND surface the canonical prior key with its
+    # frozen MINT record, restored to the tier the committee last placed it in — never
+    # rename the twin (keys must not be mixed up). Regression for the bug where the axis
+    # vanished from the report entirely while the Insights panel showed the merge.
+    from sqlalchemy import select
+
+    from app.db.models import DimensionAlias
+    from app.schemas.settings import AppSettings
+    from app.services.ranking_run import apply_consolidation, create_run
+
+    _app, db, _ = setup_app(role=UserRole.MEMBER)
+    canonical_def = "Ages of children, reflecting shared-space interaction and supervision load."
+
+    # Run 1: mint the canonical key and place it in the Important tier.
+    create_run(
+        db,
+        report=PoolDimensionReport(dimensions=[
+            PoolDimension(key="child_age_profile_community_fit", name="Children's Age Profile",
+                          definition=canonical_def, high_end="school-age+", low_end="all under 3",
+                          why_it_differentiates="ages span the pool"),
+        ]),
+        settings=AppSettings(), model_id="m", narrative=None,
+        tier_layout=[
+            {"id": "tier-s", "label": "Critical", "dimension_keys": []},
+            {"id": "tier-a", "label": "Important", "dimension_keys": ["child_age_profile_community_fit"]},
+            {"id": "tier-b", "label": "Minor", "dimension_keys": []},
+        ],
+    )
+
+    # Run 2: only the NEWER twin surfaces (match missed the fork). Its wording differs —
+    # if the heal renamed it, that re-worded text would ride under the canonical key.
+    run2 = create_run(
+        db,
+        report=PoolDimensionReport(dimensions=[
+            PoolDimension(key="child_age_profile", name="Household Children's Ages",
+                          definition="A re-worded, differently-scoped take on child ages.",
+                          high_end="teens", low_end="infants", why_it_differentiates="v"),
+        ]),
+        settings=AppSettings(), model_id="m", narrative=None,
+    )
+
+    apply_consolidation(
+        db, run2,
+        merges={"child_age_profile": "child_age_profile_community_fit"},
+        audit=[{"keep": "child_age_profile_community_fit", "drop": "child_age_profile",
+                "r": 0.803, "merged": True, "reason": "same age axis"}],
+        narrative=None,
+    )
+
+    dims = {d["key"]: d for d in run2.criteria["dimension_report"]["dimensions"]}
+    # The newer twin is gone; the canonical prior key is surfaced in its place.
+    assert set(dims) == {"child_age_profile_community_fit"}
+    # Surfaced with its FROZEN MINT record — never the twin's re-worded text.
+    assert dims["child_age_profile_community_fit"]["definition"] == canonical_def
+    # Restored to the working tier the committee last placed it in (Important).
+    tiers = {t["id"]: t["dimension_keys"] for t in run2.criteria["tiers"]}
+    assert tiers["tier-a"] == ["child_age_profile_community_fit"]
+    # Weight is derived for the surfaced key, not the dropped twin.
+    assert "child_age_profile_community_fit" in run2.criteria["weights"]
+    assert "child_age_profile" not in run2.criteria["weights"]
+    # The alias still points the newer twin at the canonical key for future matches.
+    aliases = {a.alias_key: a.canonical_key for a in db.scalars(select(DimensionAlias))}
+    assert aliases == {"child_age_profile": "child_age_profile_community_fit"}
+
+
 def test_merged_alias_does_not_donate_its_definition_to_the_canonical_key() -> None:
     # Key/text immutability: a key's descriptive text is frozen at mint, because the
     # score cache is keyed by key and scores were computed against that text. Regression
