@@ -78,3 +78,30 @@ def test_restore_rejects_a_corrupt_backup(temp_engine, tmp_path):
     # A corrupt backup must be rejected before it can clobber the live DB.
     with pytest.raises(Exception, match=r"integrity|malformed|not a database"):
         backup.restore_backup(bogus, engine=temp_engine)
+
+
+def test_in_memory_session_snapshot_is_a_noop_not_a_cwd_dump(tmp_path, monkeypatch):
+    # Regression: the auto post-Rank snapshot uses the request session's engine. The test
+    # suite binds an in-memory engine (:memory:), whose path used to resolve to
+    # <cwd>/:memory: — so backups_dir landed under backend/ and every rank test dumped a
+    # real backup there (50 leaked files from one afternoon). create_from_session must
+    # cleanly NO-OP (return None) for a non-file-backed DB, writing nothing.
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    # Run from a temp cwd so a regression (writing to <cwd>/backups) is caught here, not
+    # silently under the repo.
+    monkeypatch.chdir(tmp_path)
+    mem = create_engine("sqlite:///:memory:")
+    with Session(mem) as session:
+        result = backup.create_from_session(session, tag="rank")
+
+    assert result is None
+    assert not (tmp_path / "backups").exists()
+
+
+def test_sqlite_path_rejects_in_memory(tmp_path):
+    from sqlalchemy import create_engine
+
+    with pytest.raises(RuntimeError, match="file-backed"):
+        backup._sqlite_path(create_engine("sqlite:///:memory:"))
