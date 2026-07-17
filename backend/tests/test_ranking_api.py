@@ -954,6 +954,86 @@ def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
     assert aliases == {"child_age_profile": "child_age_profile_community_fit"}
 
 
+def test_consolidate_audit_view_resolves_pair_names() -> None:
+    # The view labels each pair by name. It prefers the snapshotted name, then falls back
+    # to a resolved name so a pair written BEFORE name capture (no name_keep/name_drop in
+    # the stored audit) still shows names: a key present in a report resolves via history,
+    # and a key minted-and-retired within this run (never in any report) resolves via the
+    # run's own decompose artifacts. Only a truly traceless key stays a bare key.
+    from app.schemas.settings import AppSettings
+    from app.services.ranking_run import consolidate_audit_view, create_run
+
+    _app, db, _ = setup_app(role=UserRole.MEMBER)
+
+    def _dim(key: str, name: str) -> PoolDimension:
+        return PoolDimension(key=key, name=name, definition="d",
+                             high_end="hi", low_end="lo", why_it_differentiates="v")
+
+    # A run whose report has the survivor key, whose decompose audit names a key that was
+    # retired within the run (so it's in no report), and whose consolidate_audit pairs
+    # carry NO snapshotted names (the pre-capture shape).
+    run = create_run(
+        db,
+        report=PoolDimensionReport(dimensions=[_dim("survivor", "Survivor Axis")]),
+        settings=AppSettings(), model_id="m", narrative=None,
+    )
+    criteria = dict(run.criteria)
+    criteria["decompose_audit"] = {
+        "settled": [{"key": "retired_within_run", "name": "Retired Within Run", "source_keys": []}],
+    }
+    criteria["consolidate_audit"] = {
+        "merges": {"retired_within_run": "survivor"},
+        "pairs": [
+            # No name_keep/name_drop — the old audit shape.
+            {"keep": "survivor", "drop": "retired_within_run", "r": 0.9, "merged": True, "reason": "same"},
+            {"keep": "survivor", "drop": "traceless", "r": 0.87, "merged": False, "reason": "confound"},
+        ],
+        "narrative": None,
+    }
+    run.criteria = criteria
+    db.commit()
+
+    view = consolidate_audit_view(db, run)
+    by_drop = {p["drop"]: p for p in view["pairs"]}
+    # Survivor resolves from its report (via history); retired-within-run from the run's
+    # own decompose names; a key with no trace anywhere stays "" (UI → bare key).
+    assert by_drop["retired_within_run"]["keep_name"] == "Survivor Axis"
+    assert by_drop["retired_within_run"]["drop_name"] == "Retired Within Run"
+    assert by_drop["traceless"]["drop_name"] == ""
+
+
+def test_consolidate_audit_view_prefers_the_snapshotted_name() -> None:
+    # When a pair DOES carry a snapshotted name (the current write path), the view uses it
+    # verbatim — the snapshot is the frozen mint name and must win over any later re-name.
+    from app.schemas.settings import AppSettings
+    from app.services.ranking_run import consolidate_audit_view, create_run
+
+    _app, db, _ = setup_app(role=UserRole.MEMBER)
+    run = create_run(
+        db,
+        report=PoolDimensionReport(dimensions=[PoolDimension(
+            key="survivor", name="Later Renamed", definition="d",
+            high_end="hi", low_end="lo", why_it_differentiates="v")]),
+        settings=AppSettings(), model_id="m", narrative=None,
+    )
+    criteria = dict(run.criteria)
+    criteria["consolidate_audit"] = {
+        "merges": {},
+        "pairs": [{
+            "keep": "survivor", "drop": "gone", "r": 0.9, "merged": False, "reason": "r",
+            "name_keep": "Snapshot Keep Name", "name_drop": "Snapshot Drop Name",
+        }],
+        "narrative": None,
+    }
+    run.criteria = criteria
+    db.commit()
+
+    view = consolidate_audit_view(db, run)
+    p = view["pairs"][0]
+    assert p["keep_name"] == "Snapshot Keep Name"  # snapshot wins over the report's "Later Renamed"
+    assert p["drop_name"] == "Snapshot Drop Name"
+
+
 def test_merged_alias_does_not_donate_its_definition_to_the_canonical_key() -> None:
     # Key/text immutability: a key's descriptive text is frozen at mint, because the
     # score cache is keyed by key and scores were computed against that text. Regression

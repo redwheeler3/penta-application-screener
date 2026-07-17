@@ -95,6 +95,10 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
           <tr>
             <th>Settled dimension</th>
             <th>From</th>
+            {/* Whether this axis folded several re-carvings together (merged) or is one
+                source carried through (distinct) — the decomposition analogue of the
+                Consolidation tab's Verdict column. */}
+            <th>Verdict</th>
             <th>Why</th>
           </tr>
         </thead>
@@ -105,10 +109,10 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
             return (
               <tr key={d.key}>
                 <td>
-                  {/* Name + key (mirroring the Matching tab), then the merge / request /
-                      folded-in tags (each spaced off the name with .decompose-tag). */}
+                  {/* Name + key (mirroring the Matching tab), then the request / folded-in
+                      attribute tags (each spaced off the name with .decompose-tag). The
+                      merged/distinct verdict lives in its own column. */}
                   {d.name}
-                  {isMerge ? <span className="decompose-tag match-audit-new">merge</span> : null}
                   {d.fromCommitteeRequest ? (
                     <span className="decompose-tag match-audit-key-unnamed" title="Committee-requested axis">
                       requested
@@ -144,6 +148,15 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
                       </div>
                     );
                   })}
+                </td>
+                <td>
+                  {isMerge ? (
+                    <span className="match-audit-new">merged</span>
+                  ) : (
+                    // One source, nothing to fold — a distinct axis. "distinct" mirrors the
+                    // Consolidation tab's language for its non-merged rows.
+                    <span className="match-audit-key-unnamed">distinct</span>
+                  )}
                 </td>
                 <td>{d.decision}</td>
               </tr>

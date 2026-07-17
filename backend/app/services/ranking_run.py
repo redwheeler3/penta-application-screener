@@ -626,19 +626,46 @@ def decompose_audit_view(run: RankingRun) -> dict | None:
     }
 
 
-def consolidate_audit_view(run: RankingRun) -> dict | None:
+def consolidate_audit_view(db: Session, run: RankingRun) -> dict | None:
     """The run's consolidation audit — the correlation-nominated duplicate pairs and the
     confirm verdict on each — shaped for the trace viewer, or None on runs that predate
     the pass (no ``criteria.consolidate_audit``).
 
-    ``pairs`` are every nominated pair with its correlation ``r``, whether it ``merged``,
-    and the model's ``reason``. ``merges`` is the applied ``drop_key -> keep_key`` map.
-    Thin pass-through with defaults, mirroring the other ``*_audit_view`` accessors.
+    ``pairs`` are every nominated pair with its keep/drop keys + user-facing names, the
+    correlation ``r``, whether it ``merged``, and the model's ``reason``. ``merges`` is the
+    applied ``drop_key -> keep_key`` map.
+
+    Names prefer the value SNAPSHOTTED into the pair at consolidation time (the durable
+    record — a merged drop key leaves the report, so its name can't be looked up later),
+    falling back to the key's name from history/this run's own artifacts. The fallback
+    covers pairs written before name capture existed: a prior-run key resolves via its
+    MINT name across all reports; a key minted AND retired within THIS run (so never in
+    any report) resolves via this run's own decompose/fan-out names. Only a key with no
+    trace anywhere stays nameless, and the UI then shows the bare key.
     """
     audit = (run.criteria or {}).get("consolidate_audit")
     if not audit:
         return None
-    pairs = audit.get("pairs", [])
+    # Resolution map: cross-run mint names, then overlaid with this run's own settled +
+    # discovered names (covers a within-run mint-then-retire that never reached a report).
+    _rank, _defs, names = key_history(db)
+    resolve = dict(names)
+    criteria = run.criteria or {}
+    # `or {}` on each audit: they're stored as null on runs that predate that pass.
+    for s in (criteria.get("decompose_audit") or {}).get("settled", []):
+        resolve.setdefault(s.get("key"), s.get("name", ""))
+    for p in (criteria.get("fan_out_audit") or {}).get("passes", []):
+        for dim in (p.get("report") or {}).get("dimensions", []):
+            resolve.setdefault(dim.get("key"), dim.get("name", ""))
+    pairs = [
+        {
+            **p,
+            # Snapshot first (truthy), then resolved name, then "" (UI → bare key).
+            "keep_name": p.get("name_keep") or resolve.get(p.get("keep"), ""),
+            "drop_name": p.get("name_drop") or resolve.get(p.get("drop"), ""),
+        }
+        for p in audit.get("pairs", [])
+    ]
     return {
         "merges": audit.get("merges", {}),
         "pairs": pairs,
