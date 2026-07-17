@@ -2033,6 +2033,13 @@ h1 {
   background: #dc2626;
 }
 
+/* An exactly-neutral score (0.0) shows no bar at all — the fill matches the
+   track colour so only the empty background reads, visually distinct from a
+   mild lean that still falls inside the neutral band. */
+.dimension-score-fill.is-zero {
+  background: var(--line);
+}
+
 /* The standing verdict in words, coloured to match the bar. This is the signal; the
    confidence beside it is deliberately neutral so colour never implies a standing it
    doesn't have (a confidently-low score must not read green). */
