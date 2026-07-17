@@ -16,13 +16,15 @@ export function bandClass(band: string): string {
   return band.toLowerCase().replace(/[^a-z]+/g, "-");
 }
 
-// A dimension SCORE (0..1) as a qualitative band + CSS modifier — the applicant's
-// strength on that axis (not the model's confidence). Colour ramp strong→green,
-// moderate→blue, weak→amber.
+// A dimension SCORE (signed, -1..+1) as a qualitative band + CSS modifier — the
+// applicant's standing on that axis (not the model's confidence). The scale is split
+// into quarters: top quarter [0.5, +1] is a demonstrated strength (green); bottom
+// quarter [-1, -0.5) is a demonstrated low (red); the two middle quarters [-0.5, 0.5)
+// are neutral/weak-signal, where an unaddressed dimension (score 0) sits (blue).
 export function scoreBand(score: number): { label: string; cls: string } {
-  if (score >= 0.66) return { label: "Strong", cls: "score-strong" };
-  if (score >= 0.33) return { label: "Moderate", cls: "score-moderate" };
-  return { label: "Weak", cls: "score-weak" };
+  if (score >= 0.5) return { label: "Strong", cls: "score-strong" };
+  if (score < -0.5) return { label: "Weak", cls: "score-weak" };
+  return { label: "Neutral", cls: "score-neutral" };
 }
 
 // Percent complete (0–100) for a screening run, used for both the label text

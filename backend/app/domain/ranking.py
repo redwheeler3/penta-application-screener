@@ -75,14 +75,16 @@ class RankedCandidate:
     application_id: int
     name: str | None
     rank: int  # 1-based position in the ranking
-    fit: float  # 0..1 weighted average; supporting detail, not the headline
+    fit: float  # -1..+1 weighted average; supporting detail, not the headline
     band: str  # relative pool-position label (see BANDS)
     contributions: list[DimensionContribution]
 
 
 def _fit(scores: list[ScoredDimension], weights: dict[str, float]) -> float:
-    """Weight-normalized average over dimensions with positive weight. Returns
-    0.0 when no dimension carries weight (nothing to rank on yet).
+    """Weight-normalized average over dimensions with positive weight, on the signed
+    -1..+1 score scale. Returns 0.0 (neutral) when no dimension carries weight (nothing
+    to rank on yet) — the same constant for every candidate, so relative order is
+    unaffected in that degenerate case.
     """
     weighted_sum = 0.0
     total_weight = 0.0

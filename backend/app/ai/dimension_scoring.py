@@ -61,8 +61,8 @@ KIND_PREFIX = "dimension_scoring"
 SYSTEM_PROMPT = f"""\
 You are helping a housing co-op screening committee score one applicant against a fixed set of dimensions — this applicant alone, not ranked against others.
 Score only on evidence in the applicant's own words; never guess.
-A dimension the applicant does not address at all scores 0.0. Silence here is a genuine signal, not missing data, and the committee ranks demonstrated evidence above its absence.
-Confidence is separate from the score — it measures how well your evidence pins down the applicant's TRUE standing, NOT how sure you are about what they wrote. An unaddressed dimension still takes LOW confidence: you are certain they omitted it, but not certain they lack the underlying strength. Reserve HIGH confidence for substantial, direct evidence.
+Score from -1 (`low_end` pole) to +1 (`high_end` pole), with 0 neutral. An unaddressed dimension scores 0: silence is never negative, even when a `low_end` is worded as absence ("no skills mentioned") — that pole means a DEMONSTRATED low.
+Confidence measures how well your evidence pins down the applicant's TRUE standing, not your certainty about their wording. An unaddressed dimension is LOW confidence; reserve HIGH for substantial, direct evidence.
 {ENGLISH_POLISH_NOTE}"""
 
 
@@ -78,14 +78,14 @@ The dimensions to score in the `<dimensions>` block, and the applicant's evidenc
 ## Output
 For each dimension provide:
 - dimension_key: the dimension's key, exactly as given
-- score: 0..1, anchored to the dimension's poles — 1.0 is its `high_end`, 0.0 its `low_end` — judged only on stated evidence; a dimension the applicant does not address at all scores 0.0
+- score: -1..+1, anchored to the dimension's poles — +1 is `high_end`, -1 is `low_end`, 0 is neutral — judged only on stated evidence; an unaddressed dimension scores 0
 - rationale: one neutral sentence from the applicant's facts or words
-- evidence: a short quote or field reference; when the applicant does not address the dimension, state that plainly rather than leaving it empty, so the 0.0 has an auditable basis
-- confidence: low, medium, or high — per the standing-vs-wording rule above; an unaddressed dimension is low confidence.
+- evidence: a short quote or field reference; if the dimension is unaddressed, say so plainly rather than leaving it empty
+- confidence: low, medium, or high per the rule above; an unaddressed dimension is low confidence.
 
 ## Guardrails
 - {INJECTION_GUARD_NOTE}
-- Score every dimension, even when the applicant did not address it (0.0 score, low confidence, evidence saying it was not addressed).
+- Score every dimension, even an unaddressed one (0, low confidence, evidence noting it was not addressed).
 - Do not invent evidence."""
 
 # Cached pass: version derives from the static prompt text and gates the per-dimension
@@ -111,8 +111,9 @@ def _build_prompt(applicant_block: str, dimensions: list[PoolDimension]) -> str:
 def _dimensions_block(dimensions: list[PoolDimension]) -> str:
     """The candidate's uncached dimensions to score, as compact JSON for the prompt.
 
-    Includes ``high_end``/``low_end`` — the concrete meaning of a 1.0 vs. a 0.0 score —
-    so the model anchors each score to the axis's own poles rather than an implicit scale.
+    Includes ``high_end``/``low_end`` — the concrete meaning of a +1 vs. a -1 score (0 is
+    neutral) — so the model anchors each score to the axis's own poles rather than an
+    implicit scale.
     """
     dims = [
         {
@@ -436,7 +437,12 @@ def _assemble(
     fresh: dict[str, DimensionScore],
 ) -> DimensionScoringReport:
     """Merge cached + fresh scores into the candidate's full report, one entry per
-    dimension (fresh wins on overlap; an omitted dimension gets a low placeholder)."""
+    dimension (fresh wins on overlap). A dimension with no score at all (the model
+    omitted it despite the retry logic — normally that raises IncompleteScoringError
+    before reaching here) gets a NEUTRAL placeholder (0, the signed-scale midpoint): we
+    have no evidence, so fabricating a low score would sink the candidate on a model
+    glitch (the same silence-is-not-a-weakness rule the prompt applies to an unaddressed
+    dimension)."""
     scores: list[DimensionScore] = []
     for dim in report.dimensions:
         score = fresh.get(dim.key) or cached.get(dim.key)

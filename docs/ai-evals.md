@@ -441,17 +441,46 @@ recorded — never tunes the judge":
   documented limitation to weigh before trusting it on screening over-reaches. (It ruled
   consistently on both instances — stable, just more aggressive than we want.)
 
-**Production-scoring watch-item surfaced by the flip — RESOLVED 2026-07-17.** The
-empty-evidence 0.0 the judge flagged traced to a *stale prompt hedge*, not a ranking bug.
-The application solicits this material, so an unaddressed dimension is a genuine signal, not
-missing data — it scores **0.0**, and the committee ranks demonstrated evidence above its
-absence (we considered and rejected confidence-weighting the fit: it would reward
-strong-but-narrow over broad-but-thin). The old prompt hedged "silence is weak evidence,
-they may have the strength"; it now states the policy and requires the `evidence` field to
-say "not addressed in application" instead of empty, so the 0.0 is auditable and the judge
-reads it SUPPORTED. The empty-evidence case is kept as a regression guard; a real
-new-behavior case is to be harvested from the first Rank under the new prompt, not
-fabricated (fidelity rule). Prompt-version bump re-scores every dimension next Rank.
+**Absence policy — settled at NEUTRAL 2026-07-17 (after two intermediate positions).** The
+empty-evidence score the judge flagged sent us through three positions on how an
+*unaddressed* dimension should score, and it's worth recording the whole arc because the
+final answer reverses an earlier same-day decision on purpose:
+
+1. **Empty→0.0 with empty evidence (old prompt).** The judge called it unsupported — an
+   empty citation justifies no score. Correct.
+2. **0.0 with a stated basis ("not addressed in application").** First fix: keep flooring
+   absence to 0.0 but make it auditable, on the rationale "the application solicits this,
+   so silence is a genuine signal the committee ranks below demonstrated evidence."
+3. **0.5 NEUTRAL on the [0,1] scale.** Viewing a single dimension in isolation exposed the
+   flaw in #2: flooring absence to 0.0 ranks someone who said *nothing* **below** someone who
+   explicitly says they're a poor fit ("my calendar is packed, minimum hours only"). That
+   inversion is indefensible — **silence is not evidence.** So absence should be neutral
+   (0.5). BUT a re-score revealed the prompt kept losing: **66 of 99 zeros were absence-worded
+   yet still scored 0.0**, most at HIGH confidence. Two forces beat the "0.5" instruction: the
+   model's deep prior that **0 = nothing**, and many `low_end` poles literally *worded as
+   absence* ("no skills mentioned") — so silence pattern-matched the low pole. On a [0,1]
+   scale "nothing" and "worst" collide at 0, so neutral-in-the-middle never won.
+4. **Signed −1..+1 scale (final, 2026-07-17).** Separate "nothing" from "worst" by moving to
+   **−1 (low_end) · 0 (neutral/no-signal) · +1 (high_end)**. Now the model's "0 = nothing"
+   prior lands *exactly* where we want silence, instead of fighting it. Mathematically
+   identical to 0/0.5/1 (an affine remap — all ranking math is scale-invariant: fit,
+   pool_mean, impact, relative bands, Pearson), but **cognitively** the right frame for an
+   LLM. Plus an explicit prompt line for the residual pole-text force: *"a `low_end` worded
+   as absence still means a DEMONSTRATED low — an unaddressed dimension scores 0, not −1."*
+   `DimensionScore.score` constraint widened to `ge=-1.0`; neutral placeholder 0.0; UI bar
+   remaps [−1,+1]→[0,100%] (neutral at centre) and bands to red (bottom quarter) / blue (two
+   middle quarters, where silence sits) / green (top quarter).
+
+Accepted consequence (Jeff, explicit): a candidate who addresses almost nothing floats to
+neutral and thus ranks **above** one who is explicitly a poor fit — fair, because we have no
+evidence against the silent one. Kept the clean top-down fit formula (confidence
+surfaced-not-folded; confidence-weighting rejected as it would reward strong-but-narrow over
+broad-but-thorough). Two judge cases guard the signed-scale absence rule: an empty citation
+can't justify a negative score, and evidence saying "not addressed" can't justify a negative
+score (the exact pole-floor bug signature). A real new-behavior case (evidence="not
+addressed…", 0 → supported) is still to be harvested from a Rank under the new prompt, not
+fabricated (fidelity rule). Prompt-version bump re-scores every dimension next Rank; the
+next re-score is the *measurement* of whether the signed scale actually fixed the 66 leaks.
 
 ## Stability harness (built 2026-07-16)
 

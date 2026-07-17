@@ -44,6 +44,27 @@ def test_equal_weight_fit_is_plain_average() -> None:
     assert row.fit == 0.5
 
 
+def test_signed_scores_rank_correctly_with_negatives() -> None:
+    # The signed -1..+1 scale: a strength (+0.8) beats silence (0.0) beats a demonstrated
+    # low (-0.8). Fit is the plain weighted average, so it goes negative for a poor fit,
+    # and the descending sort still orders them right.
+    candidates = [
+        candidate(1, a=0.8, b=0.8),    # fit +0.8 — strong
+        candidate(2, a=0.0, b=0.0),    # fit  0.0 — neutral / silent
+        candidate(3, a=-0.8, b=-0.8),  # fit -0.8 — demonstrated poor fit
+    ]
+    ranked = rank_candidates(candidates, EQUAL)
+    assert [r.application_id for r in ranked] == [1, 2, 3]
+    assert ranked[0].fit == pytest.approx(0.8)
+    assert ranked[1].fit == pytest.approx(0.0)
+    assert ranked[2].fit == pytest.approx(-0.8)
+    # Silence (2) ranks ABOVE the demonstrated low (3) — the whole point of neutral=0.
+    # Impact is signed off the pool mean (0.0 here): strong is +, poor is -.
+    strong = next(c for c in ranked[0].contributions if c.dimension_key == "a")
+    poor = next(c for c in ranked[2].contributions if c.dimension_key == "a")
+    assert strong.impact > 0 > poor.impact
+
+
 def test_orders_by_fit_descending_with_stable_tiebreak() -> None:
     candidates = [
         candidate(3, a=0.2, b=0.2),  # fit 0.2
