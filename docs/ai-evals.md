@@ -339,6 +339,46 @@ correct verdict is **unsupported** despite the "lots of nice text" cue (an exact
 complete evidence, testing that the judge doesn't equate brevity with insufficiency. These
 are the cases whose result actually means something.
 
+## Coverage across the AI steps (2026-07-16)
+
+The judge harness is step-agnostic — each AI step is just a verdict pair + a per-step
+evidence shape on the shared `JudgeCase`/`stability_run` machinery. As of tonight it
+covers **five of the six** model steps:
+
+| AI step | Judge question | Verdict pair | Cases |
+| --- | --- | --- | --- |
+| Screening | Is the flag warranted by its cited evidence + policy? | `flag_supported`/`flag_unsupported` | 9 (6 supported, 3 over-reach) |
+| Discovery | *(covered via decomposition — discovery output is its input)* | — | — |
+| Decomposition | Same-concept fold? / narrative-vs-routing drift | `merge`/`keep`; drift via detector | 2 folds + drift aid |
+| Matching | Is this new dim the same concept as the prior it matched? | `matches`/`mismatches` | 3 (2 match, 1 constructed mismatch) |
+| Consolidation | Merge or keep this correlated pair? | `merge`/`keep` | 5 |
+| Scoring | Does the cited evidence support the score? | `supported`/`unsupported` | 5 |
+
+**Screening** reuses the score-defensibility pattern exactly (it also cites applicant
+text), so its cases go through the same synthetic-source guard, and `capture_screening.py`
+mirrors `capture_scores.py`. One fidelity nuance: pet-policy flags are judged against the
+policy, so the capturer injects the *resolved* policy line the pass actually saw (from
+settings) — not just whatever the flag's quote happened to name — so the judge isn't ruling
+on a partial policy. The over-reach cases (child surname differs from parents; email name ≠
+applicant name) are the discriminating ones — real flags the pass produced that a screener
+shouldn't act on.
+
+**Matching** is definition-only (no PII), so cases need no guard. Run 2's 25 real matches
+all inspected correct (the pass is high-bar by design), so there was no natural
+`mismatches` to catch — one is *constructed* by pairing two real verbatim definitions from
+different concepts (trade skills vs. financial governance), clearly flagged as constructed.
+A wrong match is the pass's high-stakes error (it corrupts a carried-forward score), so
+having the mismatch direction covered matters even absent a live failure.
+
+**Decomposition drift** (`app/evals/decompose_drift.py`) is a *manual hunting aid*, not a
+seeded case or a gate: run it by hand to surface candidate narrative-vs-routing
+contradictions (prose claims a key folds in here, but it routed elsewhere — SPEC golden
+case #2). It's a tightened heuristic (suppresses the benign "distinct from X" and
+"X's component is covered by Y" split-routing patterns that naively flagged 22/run); on the
+runs to date it finds **zero** real drift — decompose is behaving well — so no case is
+seeded. It earns its keep the run it finally catches one. Subtle no-key-named drift remains
+the LLM judge's job (that's the `matches`/`mismatches` task applied to a decision).
+
 ## Stability harness (built 2026-07-16)
 
 `python -m app.evals.judge --stability K` judges each selected case **K times on
