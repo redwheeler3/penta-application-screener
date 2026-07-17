@@ -74,7 +74,12 @@ function ConsolidateAuditBody(props: { audit: ConsolidateAuditResponse }): React
       <table className="match-audit-table">
         <thead>
           <tr>
-            <th>Pair</th>
+            {/* The pair is oriented older → newer. "Kept" is the surviving canonical
+                dimension; "Retired" is the newer one aliased into it ON A MERGE — the
+                Verdict column carries whether the retirement actually happened (a
+                "kept apart" pair retires nothing; both survive). */}
+            <th>Kept</th>
+            <th>Retired</th>
             <th>Correlation</th>
             <th>Verdict</th>
             <th>Why</th>
@@ -84,13 +89,14 @@ function ConsolidateAuditBody(props: { audit: ConsolidateAuditResponse }): React
           {audit.pairs.map((p) => (
             <tr key={`${p.keep}:${p.drop}`}>
               <td>
-                <div className="consolidate-pair">
-                  {/* Always the candidate merge direction (newer → older); the Verdict
-                      column says whether it actually merged. */}
-                  <code className="consolidate-pair-key">{p.drop}</code>
-                  <span className="consolidate-pair-sep">→</span>
-                  <code className="consolidate-pair-key">{p.keep}</code>
-                </div>
+                {/* Name + key (mirroring the Matching tab); fall back to the bare key when
+                    the name predates capture. */}
+                {p.keepName ? p.keepName : <span className="match-audit-key-unnamed">(dimension)</span>}
+                <span className="match-audit-key">{p.keep}</span>
+              </td>
+              <td>
+                {p.dropName ? p.dropName : <span className="match-audit-key-unnamed">(dimension)</span>}
+                <span className="match-audit-key">{p.drop}</span>
               </td>
               <td>r={p.r.toFixed(2)}</td>
               <td>

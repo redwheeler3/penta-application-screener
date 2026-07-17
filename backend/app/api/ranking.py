@@ -912,7 +912,7 @@ def rank_run(
         # these deltas to the SAME reasoning box the criteria phase filled.
         yield emit(PhaseEvent(phase=CONSOLIDATE))
         _t0 = time.perf_counter()
-        canonical_rank, known_defs = key_history(db)
+        canonical_rank, known_defs, known_names = key_history(db)
 
         consolidate_queue: queue.Queue[str | None] = queue.Queue()
         consolidate_outcome: dict[str, Any] = {}
@@ -925,6 +925,7 @@ def rank_run(
                     canonical_rank=canonical_rank,
                     vectors=load_score_vectors(db),
                     definitions=known_defs,
+                    names=known_names,
                     settings=settings,
                     on_delta=consolidate_queue.put,
                 )

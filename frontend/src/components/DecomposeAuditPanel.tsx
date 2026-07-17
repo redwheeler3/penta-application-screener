@@ -105,7 +105,9 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
             return (
               <tr key={d.key}>
                 <td>
-                  <span className="match-audit-key">{d.key}</span>
+                  {/* Name + key (mirroring the Matching tab), then the merge / request /
+                      folded-in tags. */}
+                  {d.name}
                   {isMerge ? <span className="match-audit-new">merge</span> : null}
                   {d.fromCommitteeRequest ? (
                     <span className="match-audit-key-unnamed" title="Committee-requested axis">
@@ -117,22 +119,29 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
                       folded in: {folded}
                     </span>
                   ) : null}
+                  <span className="match-audit-key">{d.key}</span>
                 </td>
                 <td>
                   {d.sourceKeys.map((k) => {
                     // Which discoverer(s) coined this source key — "R0, R3" — so the
                     // committee can see independent re-discovery vs. a single origin.
                     const reports = d.sourceReportMap[k] ?? [];
+                    // The source's own name (name + key, like Matching); absent when the
+                    // fan-out wasn't captured, so we fall back to just the key below.
+                    const sourceName = d.sourceNames[k];
                     return (
-                      <span key={k} className="match-audit-key">
-                        {k}
-                        {reports.length > 0 ? (
-                          <span className="decompose-source-reports">
-                            {" "}
-                            ({reports.map((i) => `R${i}`).join(", ")})
-                          </span>
-                        ) : null}
-                      </span>
+                      <div key={k} className="decompose-source">
+                        {sourceName ? sourceName : null}
+                        <span className="match-audit-key">
+                          {k}
+                          {reports.length > 0 ? (
+                            <span className="decompose-source-reports">
+                              {" "}
+                              ({reports.map((i) => `R${i}`).join(", ")})
+                            </span>
+                          ) : null}
+                        </span>
+                      </div>
                     );
                   })}
                 </td>

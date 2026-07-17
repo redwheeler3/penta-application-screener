@@ -1008,7 +1008,7 @@ def test_merged_alias_does_not_donate_its_definition_to_the_canonical_key() -> N
     assert not any(d.key == "hands_on_trade" for d in known.dimensions), "alias key re-entered"
 
     # key_history (consolidation confirm input) must ALSO report the NARROW mint.
-    _rank, defs = key_history(db)
+    _rank, defs, _names = key_history(db)
     assert defs["licensed_trade"] == narrow, "key_history donated/drifted the broad def"
 
 

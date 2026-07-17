@@ -77,6 +77,7 @@ def _consolidate_one_pair(*, same_concept: bool) -> dict:
         canonical_rank={"prior_axis": 1, "new_axis": 2},  # both live; prior older
         vectors={"new_axis": _SAME, "prior_axis": _SAME},
         definitions={"new_axis": "definition of new_axis", "prior_axis": "definition of prior_axis"},
+        names={"new_axis": "New Axis", "prior_axis": "Prior Axis"},
         settings=AppSettings(),
     )
     assert len(result.audit) == 1
@@ -90,6 +91,16 @@ def test_audit_row_captures_both_judged_definitions_on_keep() -> None:
     assert row["merged"] is False
     assert row["definition_keep"] == "definition of prior_axis"
     assert row["definition_drop"] == "definition of new_axis"
+
+
+def test_audit_row_captures_both_names() -> None:
+    # The audit must also snapshot both user-facing names, for the SAME reason as the
+    # definitions: a merged drop key is removed from the report, so the Insights panel
+    # can't resolve its name later. keep = the prior (older) key, drop = this run's newer.
+    row = _consolidate_one_pair(same_concept=True)
+    assert row["merged"] is True
+    assert row["name_keep"] == "Prior Axis"
+    assert row["name_drop"] == "New Axis"
 
 
 def test_audit_row_captures_both_definitions_on_merge() -> None:

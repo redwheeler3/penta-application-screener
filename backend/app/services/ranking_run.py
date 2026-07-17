@@ -395,24 +395,27 @@ def alias_map(db: Session) -> dict[str, str]:
     return resolved
 
 
-def key_history(db: Session) -> tuple[dict[str, int], dict[str, str]]:
-    """For consolidation: (canonical_rank, definitions) over every key ever discovered.
+def key_history(db: Session) -> tuple[dict[str, int], dict[str, str], dict[str, str]]:
+    """For consolidation: (canonical_rank, definitions, names) over every key ever discovered.
 
     ``canonical_rank[key]`` = the id of the EARLIEST run the key appeared in — so a
     lower rank means older, and consolidation keeps the older key on a merge (maximizing
     cache carry-forward). ``definitions[key]`` = the key's MINT definition (its earliest
-    appearance), for the confirm prompt to judge a nominated pair. One pass, oldest first.
+    appearance), for the confirm prompt to judge a nominated pair. ``names[key]`` = the
+    key's MINT user-facing name, for the audit to label the pair with names, not just
+    keys. One pass, oldest first.
 
-    Definition is the mint, not the newest, for the same key/text immutability reason as
-    ``all_known_dimensions``: a key's cached scores were computed against the text it was
-    minted with, so the confirm call must judge that text — not a later re-worded version
-    that would divorce the definition from the scores it reasons about. Rank and
-    definition therefore come from the SAME (earliest) run; they used to disagree (rank
-    oldest, definition newest), which let a key's judged wording drift off its scores.
+    Definition (and name) is the mint, not the newest, for the same key/text immutability
+    reason as ``all_known_dimensions``: a key's cached scores were computed against the
+    text it was minted with, so the confirm call must judge that text — not a later
+    re-worded version that would divorce the definition from the scores it reasons about.
+    Rank and definition therefore come from the SAME (earliest) run; they used to disagree
+    (rank oldest, definition newest), which let a key's judged wording drift off its scores.
     """
     runs = db.scalars(select(RankingRun).order_by(RankingRun.id.asc())).all()
     rank: dict[str, int] = {}
     definitions: dict[str, str] = {}
+    names: dict[str, str] = {}
     for run in runs:
         report = current_dimension_report(run)
         if report is None:
@@ -420,7 +423,8 @@ def key_history(db: Session) -> tuple[dict[str, int], dict[str, str]]:
         for dim in report.dimensions:
             rank.setdefault(dim.key, run.id)  # first (oldest) run wins the rank
             definitions.setdefault(dim.key, dim.definition)  # and the mint definition
-    return rank, definitions
+            names.setdefault(dim.key, dim.name)  # and the mint name
+    return rank, definitions, names
 
 
 def all_known_dimensions(db: Session) -> PoolDimensionReport | None:
@@ -589,16 +593,24 @@ def decompose_audit_view(run: RankingRun) -> dict | None:
     # Which discovery report(s) coined each source key, derived from the fan-out audit
     # (source key -> [report index]). A key in several reports = independent re-discovery.
     # Empty on runs whose fan-out wasn't captured; the UI then just omits the R-labels.
+    # Same pass also collects each source key's user-facing name (source key -> name), so
+    # the panel can show a merge's inputs by name, not just key. A key absent here (fan-out
+    # uncaptured) simply has no name entry; the UI falls back to the bare key.
     key_to_reports: dict[str, list[int]] = {}
+    key_to_name: dict[str, str] = {}
     fan_out = (run.criteria or {}).get("fan_out_audit") or {}
     for i, p in enumerate(fan_out.get("passes", [])):
         for dim in (p.get("report") or {}).get("dimensions", []):
             key_to_reports.setdefault(dim.get("key"), []).append(i)
+            key_to_name.setdefault(dim.get("key"), dim.get("name", ""))
     settled = [
         {
             **s,
             "source_report_map": {
                 sk: key_to_reports[sk] for sk in s.get("source_keys", []) if sk in key_to_reports
+            },
+            "source_names": {
+                sk: key_to_name[sk] for sk in s.get("source_keys", []) if sk in key_to_name
             },
         }
         for s in audit.get("settled", [])

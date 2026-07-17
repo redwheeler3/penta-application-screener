@@ -372,6 +372,9 @@ export type DecomposeAuditResponse = {
     // source key → discovery report indices that coined it (e.g. {trade_skills: [0, 3]}),
     // so the UI can label a source "trade_skills (R0, R3)". Empty if fan-out uncaptured.
     sourceReportMap: Record<string, number[]>;
+    // source key → its user-facing name, so a source shows as name + key (like Matching).
+    // Empty if fan-out uncaptured; the UI then falls back to the bare source key.
+    sourceNames: Record<string, string>;
     fromCommitteeRequest: boolean;
     decision: string;
   }[];
@@ -389,9 +392,19 @@ export type ConsolidateAuditResponse = {
   runId: number;
   // Applied merges: dropped (newer) key → kept (older canonical) key.
   merges: Record<string, string>;
-  // Every nominated pair: keep/drop keys, the correlation r that flagged it, whether it
-  // merged, and the confirm call's reason.
-  pairs: { keep: string; drop: string; r: number; merged: boolean; reason: string }[];
+  // Every nominated pair: keep/drop keys + their user-facing names (snapshotted at
+  // consolidation time — a merged drop key leaves the report, so its name can't be
+  // resolved later; empty when the key predates name capture), the correlation r that
+  // flagged it, whether it merged, and the confirm call's reason.
+  pairs: {
+    keep: string;
+    drop: string;
+    keepName: string;
+    dropName: string;
+    r: number;
+    merged: boolean;
+    reason: string;
+  }[];
   nominatedCount: number;
   mergedCount: number;
   // The confirm call's free-text reasoning (markdown). Null if none surfaced.
