@@ -4,7 +4,21 @@
       "Bash(uv run pytest *)",
       "Bash(npx tsc --noEmit *)",
       "Bash(.venv/bin/python -m pytest *)",
-      "Bash(./.venv/bin/python -m pytest *)"
+      "Bash(./.venv/bin/python -m pytest *)",
+      "Bash(uv run ruff check*)",
+      "Bash(npm run build*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(ls*)",
+      "Bash(cd*)",
+      "Bash(cat*)",
+      "Bash(head*)",
+      "Bash(tail*)",
+      "Bash(wc*)",
+      "Bash(grep*)",
+      "Bash(rg*)"
     ]
   },
   "hooks": {
