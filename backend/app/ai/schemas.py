@@ -132,15 +132,19 @@ class ScoreConfidence(StrEnum):
 class JudgeVerdict(StrEnum):
     """A manual eval judge's semantic verdict.
 
-    These labels cover the first two eval case families: whether a proposed
-    consolidation is correct, and whether a decomposition audit agrees with
-    its own recorded decision.
+    One enum across eval case families, paired by the task each case poses:
+    consolidation/decomposition merges (MERGE/KEEP), decomposition routing drift
+    (MATCHES/MISMATCHES), and dimension-score defensibility (SUPPORTED/UNSUPPORTED —
+    does the cited evidence support the score?). Future steps add their own pair
+    (e.g. screening flag support) on the same pattern.
     """
 
     MERGE = "merge"
     KEEP = "keep"
     MATCHES = "matches"
     MISMATCHES = "mismatches"
+    SUPPORTED = "supported"
+    UNSUPPORTED = "unsupported"
 
 
 class JudgeReport(BaseModel):
