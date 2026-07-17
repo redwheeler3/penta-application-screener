@@ -131,3 +131,19 @@ def test_stability_run_marks_a_contested_flip_as_split_not_unstable() -> None:
     # A contested case flipping is expected — informational, not an alarm.
     assert "[contested-split]" in out
     assert "[UNSTABLE]" not in out
+    # The seed is always shown for comparison, worded "leaning" for a contested case.
+    assert "leaning:" in out
+
+
+def test_stability_report_flags_when_majority_differs_from_seed() -> None:
+    # The escalation-relevant case: a steady verdict that DISAGREES with the seed (like
+    # trade-skills' keep x5 vs. a merge leaning) must be visible, not hidden.
+    case = next(c for c in load_cases() if not c.contested)
+    other = JudgeVerdict.MERGE if case.expected != JudgeVerdict.MERGE else JudgeVerdict.KEEP
+    provider = MockProvider()
+    _queue_verdicts(provider, [other] * 5)
+
+    out = format_stability([stability_run(provider, case, k=5)])
+
+    assert "[stable]" in out  # steady...
+    assert "differs from seed" in out  # ...but disagrees with the label — flagged

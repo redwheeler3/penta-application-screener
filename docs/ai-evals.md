@@ -190,15 +190,21 @@ A fourth case balances the set with a clear MERGE:
 A fifth case is deliberately **contested** — a first-class category, not a
 degenerate label:
 
-- `trade_skills_licensed_handson_merge` (r=0.925) — licensed vs. hands-on trade
+- `trade_skills_licensed_handson_keep` (r=0.925) — licensed vs. hands-on trade
   skills. Both verdicts are defensible *from the definitions the model is given*:
   MERGE (the same core capacity; the unlicensed-crafts extension is marginal) and
   KEEP (formal certification vs. practical breadth is a real distinction) are each
   coherent. The decision turns on how MATERIAL the divergence is for THIS pool —
   which only the withheld score distribution settles — so neither production nor
-  the judge can resolve it from the inputs. Evidence that it is genuinely
-  under-determined: the production confirm KEPT it in run 5 then MERGED it in run 6
-  on identical input, and the calibration judge reproduced the KEEP side.
+  the judge can resolve it from the inputs. The leaning was **flipped merge→keep
+  (2026-07-16, recorded in the case's `label_rationale`)** on a definitions-first
+  principle held independently of the judge — distinct concepts stay apart, we
+  don't merge just because they rarely diverge in one pool. Crucially this was NOT
+  the judge dictating the label: the judge (keep, 5/5 on the stability run) merely
+  agreed with a reconsidered human view, and the case stays `contested` because the
+  MERGE argument remains genuinely coherent. A worked example of the honest way to
+  change a label — reconsider the merits, record why, keep the ambiguity — vs. the
+  rubber-stamp trap of tuning the label to match the judge.
 
   A contested case carries `contested: true`; its `expected` is the human's
   *leaning*, not an answer key. The judge command marks it `[contested]` (never
