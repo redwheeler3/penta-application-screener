@@ -497,3 +497,35 @@ direction). `agreement` is the modal verdict's share of K. Costs K× a normal ru
 it stays a deliberate manual invocation. This is the tool step 3's calibration uses:
 run the clear cases at K≥5 and confirm they don't flip before trusting the judge; the
 decision to build (or not build) multi-agent escalation reads these numbers.
+
+## Live scoring eval (built 2026-07-17)
+
+`python -m app.evals.live_scoring` (or `./live-scoring-eval.sh`) closes the gap the other
+evals leave: the judge cases and the `properties.py` invariants both grade a *recorded*
+artifact, so they catch a bad re-baseline and code rot but are **blind to a prompt/model
+regression** — the model never runs. The signed-scale absence bug proved it: the invariant
+suite stayed green through the whole regression because the frozen fixture never changed.
+This eval **tests the actual prompt** — freeze the INPUTS, run the REAL prompt+model, grade
+the FRESH output. That distinction (frozen *output* = regression test; frozen *input* + live
+output = prompt eval) is the one that matters.
+
+Golden inputs live in `fixtures/scoring_golden.json`: hand-authored **synthetic** applicants
+(fictional, so committable with no synthetic-pool guard) + one dimension each, run through
+the exact production `dimension_scoring` prompt on the configured scoring model. Two grader
+tiers, by what each can honestly decide:
+- **Deterministic assertions** (the bulk, cheap, unambiguous): score in `[-1, 1]`, an
+  unaddressed dimension scores 0 (neutral — the flagship regression check), a stated
+  confidence, non-empty evidence. These are what an `assert` can settle.
+- **Rubric judge** (the subjective residue): for a case asserting "this SHOULD score
+  high/low", it reuses the validated `judge.py` SUPPORTED/UNSUPPORTED rubric to ask whether
+  the produced score is defensible against its evidence — not a reference-match to an
+  "expected" number (open-ended scoring has no single right answer; a reference-match would
+  be brittle).
+
+Makes real model calls (costs money, non-deterministic), so it is an explicit opt-in run,
+**never in pytest/CI**. The CI half is `tests/test_live_scoring.py`: a structural guard that
+the golden fixture loads and is well-formed (both poles, a checkable expectation, bounds in
+range) with no model call — so a malformed fixture fails at commit time, not spend time.
+`score_equals` uses a tolerance (the model isn't fully deterministic even at temp 0); pin 0
+tightly (the value we most care about) and assert ranges/properties elsewhere rather than
+exact scores.

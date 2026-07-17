@@ -1,0 +1,82 @@
+{
+  "_comment": "Golden inputs for the LIVE scoring eval (app/evals/live_scoring.py). Each case is a hand-authored SYNTHETIC applicant + one dimension, run through the REAL production scoring prompt+model. Fictional data only (no real applicants), so it is safe to commit. `expect` states the crisp, deterministic property the output must satisfy; `judge` (optional) asks the rubric judge the subjective question. Grow by adding cases; keep applicants terse.",
+  "cases": [
+    {
+      "key": "absence_scores_neutral",
+      "note": "Applicant never mentions trade skills -> silence must score 0 (neutral), never negative.",
+      "applicant": {
+        "facts": {"household_adults": 2, "employment": "grade-school teacher"},
+        "essays": {
+          "introduce_yourself": "We love reading and community potlucks.",
+          "why_coop": "We want neighbours who look out for each other."
+        }
+      },
+      "dimension": {
+        "key": "licensed_trade_skills",
+        "name": "Licensed trade skills",
+        "definition": "Whether an adult holds a licensed/certified trade (electrician, plumber, gasfitter, Red Seal) they explicitly offer toward co-op maintenance.",
+        "high_end": "At least one adult holds a current trade licence and explicitly offers it for co-op maintenance.",
+        "low_end": "No adult holds or mentions any licensed trade."
+      },
+      "expect": {"score_equals": 0.0, "confidence": "low"}
+    },
+    {
+      "key": "strong_evidence_scores_high",
+      "note": "Explicit, direct strength -> clearly positive.",
+      "applicant": {
+        "facts": {"household_adults": 2, "employment": "licensed electrician (Red Seal)"},
+        "essays": {
+          "skills": "I'm a Red Seal electrician and I'll handle the co-op's electrical maintenance and safety checks myself.",
+          "why_coop": "I want to contribute my trade to a place I live."
+        }
+      },
+      "dimension": {
+        "key": "licensed_trade_skills",
+        "name": "Licensed trade skills",
+        "definition": "Whether an adult holds a licensed/certified trade (electrician, plumber, gasfitter, Red Seal) they explicitly offer toward co-op maintenance.",
+        "high_end": "At least one adult holds a current trade licence and explicitly offers it for co-op maintenance.",
+        "low_end": "No adult holds or mentions any licensed trade."
+      },
+      "expect": {"score_min": 0.5},
+      "judge": "Does the cited evidence genuinely justify a high (near +1) score on this dimension?"
+    },
+    {
+      "key": "demonstrated_low_scores_negative",
+      "note": "Applicant addresses the dimension and states a genuine limitation -> a real negative, not silence.",
+      "applicant": {
+        "facts": {"household_adults": 1, "employment": "touring musician"},
+        "essays": {
+          "available_time": "I'm honest that between touring most weekends and two other boards I sit on, my calendar is packed — I could only manage the bare minimum co-op hours."
+        }
+      },
+      "dimension": {
+        "key": "available_time_for_coop_work",
+        "name": "Realistic available time for co-op work",
+        "definition": "How much discretionary time the household realistically has for co-op shifts and committee work after accounting for self-reported external commitments.",
+        "high_end": "Sparse outside commitments and abundant free time; offers more than the minimum share.",
+        "low_end": "A genuinely packed schedule that leaves only minimum hours for co-op duties."
+      },
+      "expect": {"score_max": -0.2},
+      "judge": "Does the cited evidence genuinely justify a low (negative) score on this dimension?"
+    },
+    {
+      "key": "absence_worded_low_pole_still_neutral",
+      "note": "The regression that motivated the signed scale: low_end is WORDED as absence, applicant is silent -> must still be 0, not negative.",
+      "applicant": {
+        "facts": {"household_adults": 2, "employment": "nurse; barista"},
+        "essays": {
+          "introduce_yourself": "We're quiet, reliable, and keep to ourselves mostly.",
+          "why_coop": "Stable, affordable housing near work."
+        }
+      },
+      "dimension": {
+        "key": "governance_board_experience",
+        "name": "Governance / board experience",
+        "definition": "Prior experience serving on a board, council, or committee that involved shared decision-making.",
+        "high_end": "Has served on a board/council/committee and describes the governance work.",
+        "low_end": "No board, council, or committee experience mentioned anywhere."
+      },
+      "expect": {"score_equals": 0.0, "confidence": "low"}
+    }
+  ]
+}
