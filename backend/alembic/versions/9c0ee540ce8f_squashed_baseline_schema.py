@@ -1,8 +1,8 @@
-"""baseline schema
+"""squashed baseline schema
 
-Revision ID: 5d3446b2ca50
+Revision ID: 9c0ee540ce8f
 Revises: 
-Create Date: 2026-07-09 15:58:33.778083
+Create Date: 2026-07-16 17:50:44.805650
 """
 
 from collections.abc import Sequence
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = '5d3446b2ca50'
+revision: str = '9c0ee540ce8f'
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -47,12 +47,20 @@ def upgrade() -> None:
     op.create_index(op.f('ix_applications_primary_email'), 'applications', ['primary_email'], unique=True)
     op.create_index(op.f('ix_applications_status'), 'applications', ['status'], unique=False)
     op.create_index(op.f('ix_applications_status_source'), 'applications', ['status_source'], unique=False)
+    op.create_table('dimension_aliases',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('alias_key', sa.String(length=200), nullable=False),
+    sa.Column('canonical_key', sa.String(length=200), nullable=False),
+    sa.Column('reason', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_dimension_aliases_alias_key'), 'dimension_aliases', ['alias_key'], unique=True)
+    op.create_index(op.f('ix_dimension_aliases_canonical_key'), 'dimension_aliases', ['canonical_key'], unique=False)
     op.create_table('run_cost_ledger',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('kind', sa.String(length=20), nullable=False),
-    sa.Column('fresh_usd', sa.Float(), nullable=False),
-    sa.Column('cached_saved_usd', sa.Float(), nullable=False),
-    sa.Column('passes', sa.JSON(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.PrimaryKeyConstraint('id')
@@ -109,6 +117,20 @@ def upgrade() -> None:
     op.create_index(op.f('ix_application_ai_results_cache_key'), 'application_ai_results', ['cache_key'], unique=True)
     op.create_index(op.f('ix_application_ai_results_kind'), 'application_ai_results', ['kind'], unique=False)
     op.create_index(op.f('ix_application_ai_results_prompt_version'), 'application_ai_results', ['prompt_version'], unique=False)
+    op.create_table('application_notes',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('application_id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('note', sa.Text(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.ForeignKeyConstraint(['application_id'], ['applications.id'], ),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('application_id', 'user_id')
+    )
+    op.create_index(op.f('ix_application_notes_application_id'), 'application_notes', ['application_id'], unique=False)
+    op.create_index(op.f('ix_application_notes_user_id'), 'application_notes', ['user_id'], unique=False)
     op.create_table('google_credentials',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
@@ -132,13 +154,39 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['source_sync_run_id'], ['sync_runs.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('run_pass_cost',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('run_id', sa.Integer(), nullable=False),
+    sa.Column('label', sa.String(length=80), nullable=False),
+    sa.Column('model_id', sa.String(length=200), nullable=False),
+    sa.Column('calls', sa.Integer(), nullable=False),
+    sa.Column('input_tokens', sa.Integer(), nullable=False),
+    sa.Column('output_tokens', sa.Integer(), nullable=False),
+    sa.Column('cost_usd', sa.Float(), nullable=False),
+    sa.Column('cached_count', sa.Integer(), nullable=False),
+    sa.Column('cached_saved_usd', sa.Float(), nullable=False),
+    sa.Column('duration_ms', sa.Integer(), nullable=False),
+    sa.Column('failed_calls', sa.Integer(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.ForeignKeyConstraint(['run_id'], ['run_cost_ledger.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_run_pass_cost_label'), 'run_pass_cost', ['label'], unique=False)
+    op.create_index(op.f('ix_run_pass_cost_run_id'), 'run_pass_cost', ['run_id'], unique=False)
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_run_pass_cost_run_id'), table_name='run_pass_cost')
+    op.drop_index(op.f('ix_run_pass_cost_label'), table_name='run_pass_cost')
+    op.drop_table('run_pass_cost')
     op.drop_table('ranking_runs')
     op.drop_table('google_credentials')
+    op.drop_index(op.f('ix_application_notes_user_id'), table_name='application_notes')
+    op.drop_index(op.f('ix_application_notes_application_id'), table_name='application_notes')
+    op.drop_table('application_notes')
     op.drop_index(op.f('ix_application_ai_results_prompt_version'), table_name='application_ai_results')
     op.drop_index(op.f('ix_application_ai_results_kind'), table_name='application_ai_results')
     op.drop_index(op.f('ix_application_ai_results_cache_key'), table_name='application_ai_results')
@@ -150,6 +198,9 @@ def downgrade() -> None:
     op.drop_table('sync_runs')
     op.drop_index(op.f('ix_run_cost_ledger_kind'), table_name='run_cost_ledger')
     op.drop_table('run_cost_ledger')
+    op.drop_index(op.f('ix_dimension_aliases_canonical_key'), table_name='dimension_aliases')
+    op.drop_index(op.f('ix_dimension_aliases_alias_key'), table_name='dimension_aliases')
+    op.drop_table('dimension_aliases')
     op.drop_index(op.f('ix_applications_status_source'), table_name='applications')
     op.drop_index(op.f('ix_applications_status'), table_name='applications')
     op.drop_index(op.f('ix_applications_primary_email'), table_name='applications')
