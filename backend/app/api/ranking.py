@@ -317,7 +317,7 @@ def current_consolidate_audit(
     run = get_current_run(db)
     if run is None:
         return None
-    view = consolidate_audit_view(run)
+    view = consolidate_audit_view(db, run)
     if view is None:
         return None
     return ConsolidateAuditResponse(run_id=run.id, **view)
