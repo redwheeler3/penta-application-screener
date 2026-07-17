@@ -291,8 +291,35 @@ Before treating judge agreement as a meaningful quality measure:
 3. Calibrate the judge on the clear cases first. Ambiguous cases remain review
    material, not pass/fail scoring.
 4. Add persistence and a trend view only after the labelled set is useful.
-5. Design a separate safe evidence fixture before adding score-defensibility
-   cases, because that category is closest to applicant text.
+5. ~~Design a separate safe evidence fixture before adding score-defensibility
+   cases, because that category is closest to applicant text.~~ **Done
+   (2026-07-16):** see "Score-defensibility evals" below — the safe substrate
+   turned out to be a synthetic-source guard, not a separate scrubbed fixture.
+
+## Score-defensibility evals (built 2026-07-16)
+
+The highest-value judge category: **does the applicant's cited `evidence` support the
+`score` the scoring pass gave?** (`SUPPORTED`/`UNSUPPORTED`.) It is the one category that
+must show the judge an applicant quote — the quote is the thing under test — so it can't
+follow the "strip all applicant text" rule the other categories use.
+
+**Safe substrate = a synthetic-source guard, not a scrubbed fixture.** A quote is
+committable only when its pool is synthetic. The DB can't infer synthetic-vs-real (both
+arrive as a Google Sheet id on `SyncRun`), so `app/evals/synthetic_guard.py` holds an
+allowlist of known-synthetic sheet ids; `require_synthetic_pool(run)` traces a run →
+its source `SyncRun` → sheet id and **refuses** anything not allowlisted (fail-safe: a
+real deployment's sheet is rejected by default). To make that link exist, `create_run`
+now stamps `RankingRun.source_sync_run_id` with the latest import (it was a latent unused
+FK). `python -m app.evals.capture_scores` proposes opaque-indexed candidate cases from a
+run, guard-gated, `evidence_source`-stamped; a human labels `expected` + rationale before
+they land in `judge_cases.json` (capture never labels).
+
+Three seeded cases show the spectrum: empty evidence → 0.0 against an absence-defined low
+pole (**supported**), a 50/50 income split → 0.95 dual-earner resilience (**supported**),
+and a mid 0.5 on **empty** evidence (**unsupported** — an unanchored guess, the
+score-not-grounded failure the category exists to catch). Note the deliberate boundary:
+this asks "is the CITED evidence sufficient?", NOT "did the pass cite the BEST evidence?"
+(the latter needs full applicant text — a different, harder eval, deferred).
 
 ## Stability harness (built 2026-07-16)
 

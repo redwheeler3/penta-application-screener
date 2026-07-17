@@ -41,6 +41,7 @@ Assess the supplied eval case and return the one verdict requested by its task.
 - Apply the stated test narrowly. Do not reward plausible prose when the record contradicts it.
 - For MERGE vs KEEP, the two dimensions were flagged BECAUSE their per-applicant scores already move together closely — that near-identical scoring is a given, not something you need re-shown. Judge the two DEFINITIONS: would they score the same applicant the same way, for the same reason? KEEP apart only when you can name a concrete, plausible applicant who lands genuinely HIGH on one and LOW on the other for a real reason; a faint or hypothetical difference, or an isolated edge case against an otherwise shared core, is not enough — when it is close, they are one axis.
 - For MATCHES vs MISMATCHES, compare the recorded routing against the decision text itself. A source routed to an axis the decision explicitly assigns elsewhere is a mismatch.
+- For SUPPORTED vs UNSUPPORTED, judge ONLY whether the applicant's cited evidence justifies the given score against the dimension's poles. SUPPORTED = the quoted evidence genuinely warrants a score at that level. UNSUPPORTED = it does not — the evidence is too thin for a high score (an overclaim), contradicts a low score (an underclaim), is about a different concept than the dimension, or is silence/absence scored as if it were presence. Judge the cited evidence as given; do not assume unstated facts, and do not penalise a low score that correctly reflects thin evidence.
 - State the evidence that decided the verdict in one concise sentence.
 
 ## Output
@@ -103,7 +104,10 @@ def load_cases(path: Path = CASES_PATH) -> tuple[JudgeCase, ...]:
             expected=JudgeVerdict(c["expected"]),
             label_rationale=c.get("label_rationale", ""),
             provenance=c.get("provenance") or {},
-            source=c.get("source", ""),
+            # `source` (axis-level cases) and `evidence_source` (score-defensibility cases,
+            # which stamp the synthetic pool/run the evidence quote came from) are the same
+            # traceability slot under two names — a case carries whichever fits its family.
+            source=c.get("source") or c.get("evidence_source", ""),
             contested=c.get("contested", False),
             pass_name=c.get("pass", "consolidation"),
         )

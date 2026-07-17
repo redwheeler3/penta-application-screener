@@ -196,6 +196,69 @@
         }
       },
       "source": "Rank run 7 (2026-07-16), decompose_audit — settled axes discretionary_time_availability and participation_commitment_explicitness were kept distinct (decision on the former: 'Kept distinct from participation_commitment_explicitness (intent vs. capacity — a household can be genuinely committed but honestly acknowledge thin hours...)'). Representative definitions are exact slices of run 7's raw discovery reports (fan_out_audit); decompose settled entries do not store definitions, so they were reconstructed from source keys."
+    },
+    {
+      "key": "score_outdoor_grounds_absent_supported",
+      "pass": "scoring",
+      "title": "Zero on outdoor-grounds skills for an applicant who cited nothing is defensible",
+      "task": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
+      "evidence": {
+        "dimension": "outdoor_grounds_skills",
+        "dimension_definition": "Whether the household can contribute skilled labour to outdoor and grounds upkeep — arboriculture, horticulture, composting, food gardening, storm-damage clearance, landscaping — that would otherwise require hired specialists.",
+        "high_end": "At least one adult is a certified arborist and/or experienced year-round gardener who explicitly offers to manage shared beds, compost, tree health, and grounds safety after weather events.",
+        "low_end": "No adult mentions any outdoor or grounds skills; contributions are limited to generic unskilled tasks or nothing outdoors is mentioned at all.",
+        "cited_evidence": "",
+        "score": 0.0
+      },
+      "expected": "supported",
+      "label_rationale": "SUPPORTED: the low_end is explicitly 'no adult mentions any outdoor or grounds skills / nothing outdoors is mentioned', and the applicant cited nothing on this axis. A 0.0 correctly reflects absence of evidence against the stated low pole — the textbook defensible-absence case (the scoring pass is told absence is a low score, not a guess, and here it held).",
+      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 1",
+      "provenance": {
+        "pass_models": {"Pattern discovery": "us.anthropic.claude-sonnet-4-6", "Dimension decomposition": "us.anthropic.claude-sonnet-4-6", "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0", "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"},
+        "pass_prompt_versions": {"Pattern discovery": "f393349e9733", "Dimension decomposition": "733871632036", "Dimension matching": "bcf254622976", "Dimension scoring": "1c405eb75d53", "Dimension consolidation": "d73b755d3075"}
+      }
+    },
+    {
+      "key": "score_income_split_supported",
+      "pass": "scoring",
+      "title": "High dual-earner-resilience score is supported by a near-50/50 income split",
+      "task": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
+      "evidence": {
+        "dimension": "income_concentration_risk",
+        "dimension_definition": "How evenly household income is distributed between the two adults, measuring the household's resilience if one earner's income is interrupted through job loss, illness, parental leave, or relationship change.",
+        "high_end": "Income is split near-equally between both adults (each contributing roughly 40–60% of total), so the household can continue meeting obligations even if either income is disrupted.",
+        "low_end": "Income is heavily concentrated in one earner (one adult contributing 80%+ of total household income), making the household highly vulnerable to that earner's income being interrupted.",
+        "cited_evidence": "\"applicant_income\": 45000, \"co_applicant_income\": 45000",
+        "score": 0.95
+      },
+      "expected": "supported",
+      "label_rationale": "SUPPORTED: a 45000/45000 split is exactly 50/50, squarely in the high_end's 'each contributing roughly 40–60%' band. The cited structured evidence directly and fully warrants the near-top score — no inference beyond what was cited.",
+      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 1",
+      "provenance": {
+        "pass_models": {"Pattern discovery": "us.anthropic.claude-sonnet-4-6", "Dimension decomposition": "us.anthropic.claude-sonnet-4-6", "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0", "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"},
+        "pass_prompt_versions": {"Pattern discovery": "f393349e9733", "Dimension decomposition": "733871632036", "Dimension matching": "bcf254622976", "Dimension scoring": "1c405eb75d53", "Dimension consolidation": "d73b755d3075"}
+      }
+    },
+    {
+      "key": "score_conflict_history_midscore_no_evidence_unsupported",
+      "pass": "scoring",
+      "title": "A mid 0.5 score on empty cited evidence is not defensible",
+      "task": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
+      "evidence": {
+        "dimension": "conflict_history_transparency",
+        "dimension_definition": "Whether the applicant discloses prior governance conflicts or interpersonal friction in collective settings, and the quality of reflection shown about what was learned.",
+        "high_end": "Discloses relevant past conflicts honestly, demonstrates clear reflection and growth, and frames the experience as a learning opportunity that makes them a more effective member.",
+        "low_end": "Has disclosed a governance conflict (court dispute, board clashes) with limited reflection, or has not disclosed any relevant history where it is implied.",
+        "cited_evidence": "",
+        "score": 0.5
+      },
+      "expected": "unsupported",
+      "label_rationale": "UNSUPPORTED: a mid score of 0.5 rests on NO cited evidence. Silence is weak evidence — the scoring rule says absence should score low (with low confidence), not land at the midpoint. A 0.5 on empty evidence reads as an unanchored guess rather than a reading of what the applicant said, which is exactly the score-not-grounded-in-evidence failure this eval exists to catch. (Contrast the outdoor-grounds case, where empty evidence correctly produced 0.0 against an absence-defined low pole.)",
+      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 1",
+      "provenance": {
+        "pass_models": {"Pattern discovery": "us.anthropic.claude-sonnet-4-6", "Dimension decomposition": "us.anthropic.claude-sonnet-4-6", "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0", "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"},
+        "pass_prompt_versions": {"Pattern discovery": "f393349e9733", "Dimension decomposition": "733871632036", "Dimension matching": "bcf254622976", "Dimension scoring": "1c405eb75d53", "Dimension consolidation": "d73b755d3075"}
+      }
     }
   ]
 }
