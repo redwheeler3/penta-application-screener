@@ -529,3 +529,33 @@ range) with no model call — so a malformed fixture fails at commit time, not s
 `score_equals` uses a tolerance (the model isn't fully deterministic even at temp 0); pin 0
 tightly (the value we most care about) and assert ranges/properties elsewhere rather than
 exact scores.
+
+## In-UI eval cockpit — the Evals tab (built 2026-07-17)
+
+The evals also run from the app (a top-level **Evals** tab), not just the CLI — the goal
+is friction reduction: the easier they are to run, the more they get run. Developer/
+operator surface only (not committee-facing). Three **subtabs**: Invariants (free), Live
+scoring (the golden dataset), and **Judge** — which merges judge+agreement and stability
+because they run the *same* case set two ways (one-pass verdict+agreement vs. K-repeat
+flip check), so one subtab, one cases table, two run buttons. Each runnable subtab shows
+its **cases** (the input dataset) and **results** in one table, whole-set run buttons, and
+**per-row run** links — one per run mode, so a Judge row offers both "judge" and
+"stability" on that single case (test one case cheaply before spending on all 25). The
+model's reasoning streams live.
+
+Boundaries that keep this honest (dependency flows evals→app, never app→evals):
+- **The tab calls the same runners the CLI does** (`run_case`, `judge_case`,
+  `stability_run`, `run_invariants`) — one code path, so the UI and terminal can't drift.
+- **Runs stream** via the same NDJSON vocabulary as Rank/Screen (`thinking` deltas then a
+  terminal `summary`); the non-judge scoring model's reasoning is what streams. The
+  spend-confirm reuses the workflow's `.run-confirm` card, and the call-count comes from a
+  free `/evals/catalog`. Invariants + catalog make no model calls.
+- **Runs persist** to an `EvalRun` DB row (result + streamed reasoning) — operational
+  telemetry, queryable for trends, and the raw material to "eval the eval" later.
+- **Cases stay in the versioned JSON fixtures**, NOT the DB. The dataset is a versioned
+  artifact: git history, PR review, the fidelity rule, and the CI structural guards all
+  ride on the file. The tab edits the file (`PUT /evals/cases/{key}`, validated), and you
+  `git commit` deliberately — UI convenience without losing versioning. (Results→DB,
+  dataset→version-control is the deliberate split.) A save reformats the file to
+  `json.dumps(indent=2)`, so the first UI edit of a hand-authored fixture churns formatting
+  once, then stays clean.

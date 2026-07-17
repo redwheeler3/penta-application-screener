@@ -486,3 +486,88 @@ export type RankProgress = {
   total: number;
   stage?: CriteriaStage | null;
 };
+
+// --- Evals tab (in-UI eval cockpit) -----------------------------------------
+// Mirrors backend/app/schemas/evals.py. The catalog is free; runs stream NDJSON
+// (thinking lines then a summary carrying one of the result shapes below).
+export type EvalDescriptor = {
+  key: "invariants" | "live_scoring" | "judge" | "stability";
+  label: string;
+  description: string;
+  spends: boolean;
+  estimatedCalls: number;
+};
+
+export type InvariantOut = { check: string; passed: boolean; violations: string[] };
+export type SignalOut = { check: string; notes: string[]; hasConcern: boolean };
+export type InvariantsResult = {
+  hasFixture: boolean;
+  dimensions: number;
+  invariants: InvariantOut[];
+  signals: SignalOut[];
+};
+
+export type LiveScoringCase = {
+  key: string;
+  passed: boolean;
+  score: number;
+  confidence: string;
+  evidence: string;
+  failures: string[];
+  judgeVerdict: string | null;
+};
+export type LiveScoringResult = {
+  scoringPromptVersion: string;
+  scoringModel: string;
+  judgeModel: string;
+  passed: number;
+  total: number;
+  cases: LiveScoringCase[];
+};
+
+export type AgreementResult = {
+  nScored: number;
+  nAgree: number;
+  nContested: number;
+  agreement: number;
+  kappa: number | null;
+  perCategory: Record<string, [number, number]>;
+  failureTotal: number;
+  failureCaught: number;
+  failureRecall: number | null;
+  failurePrecision: number | null;
+};
+export type JudgeCaseOut = {
+  key: string;
+  passName: string;
+  title: string;
+  marker: string;
+  expected: string;
+  verdict: string;
+  contested: boolean;
+  reason: string;
+};
+export type JudgeResult = {
+  judgePromptVersion: string;
+  judgeModel: string;
+  cases: JudgeCaseOut[];
+  agreement: AgreementResult | null;
+};
+
+export type StabilityCaseOut = {
+  key: string;
+  passName: string;
+  title: string;
+  marker: string;
+  majority: string;
+  seed: string;
+  agreement: number;
+  flipped: boolean;
+  tally: Record<string, number>;
+};
+export type StabilityResult = {
+  judgePromptVersion: string;
+  judgeModel: string;
+  k: number;
+  cases: StabilityCaseOut[];
+};

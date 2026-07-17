@@ -114,6 +114,19 @@ class RankSummary(ResponseModel):
     total_cost_usd: float
 
 
+class EvalSummaryEvent(ResponseModel):
+    """Terminal event of a streaming eval run — carries the full structured result as
+    ``result`` (one of the eval response models in schemas/evals.py) plus where the run
+    was persisted. The frontend renders ``result`` into the eval's results panel once the
+    live "thinking" stream has finished. ``eval`` names which eval produced it so the
+    client routes the payload to the right renderer."""
+
+    type: Literal["summary"] = "summary"
+    eval: str  # "live_scoring" | "judge" | "stability"
+    saved_path: str | None = None  # server-side path the run was recorded to
+    result: dict  # the eval's response model, already camelCase-serialized
+
+
 def emit(event: ResponseModel) -> str:
     """Serialize one event to a camelCase NDJSON line."""
     return event.model_dump_json(by_alias=True) + "\n"
