@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -155,6 +156,83 @@ def judge_case(provider: AIProvider, case: JudgeCase, *, model_id: str = DEFAULT
     )
 
 
+@dataclass(frozen=True)
+class StabilityReport:
+    """The outcome of judging one case K times on FIXED inputs — the escalation-ladder
+    measurement. The question is not "did the judge agree with the label?" (one call
+    answers that) but "does the SAME call, on the SAME evidence, return the SAME verdict
+    every time?" A single confirm call that flip-flops run-to-run on identical inputs is
+    the noise that justifies spending up on multi-judge voting; a steady one does not.
+
+    ``majority`` is the modal verdict; ``agreement`` is its share of K (1.0 = perfectly
+    stable, 0.5 = a coin flip on a two-way call). ``flipped`` is True when more than one
+    distinct verdict appeared at all — the cheap headline signal."""
+
+    case: JudgeCase
+    verdicts: list[JudgeVerdict]
+    total_cost_usd: float
+
+    @property
+    def counts(self) -> dict[JudgeVerdict, int]:
+        return dict(Counter(self.verdicts))
+
+    @property
+    def majority(self) -> JudgeVerdict:
+        return Counter(self.verdicts).most_common(1)[0][0]
+
+    @property
+    def agreement(self) -> float:
+        """Modal verdict's share of the runs (1.0 = every run agreed)."""
+        return Counter(self.verdicts).most_common(1)[0][1] / len(self.verdicts)
+
+    @property
+    def flipped(self) -> bool:
+        """True if the judge did not return the same verdict every time."""
+        return len(set(self.verdicts)) > 1
+
+
+def stability_run(
+    provider: AIProvider, case: JudgeCase, *, k: int = 5, model_id: str = DEFAULT_MODEL
+) -> StabilityReport:
+    """Judge ``case`` ``k`` times on identical inputs and report verdict stability.
+
+    Every call sees the exact same prompt (the case's evidence is fixed), so any variation
+    in the returned verdict is the model's own run-to-run noise — the thing the escalation
+    ladder needs measured, not a difference in what the model was shown."""
+    results = [judge_case(provider, case, model_id=model_id) for _ in range(k)]
+    return StabilityReport(
+        case=case,
+        verdicts=[r.report.verdict for r in results],
+        total_cost_usd=sum(r.cost_usd for r in results),
+    )
+
+
+def format_stability(reports: list[StabilityReport]) -> str:
+    lines = ["LLM judge stability — K runs per case on fixed inputs", f"Prompt: {PROMPT_VERSION}", ""]
+    for r in reports:
+        k = len(r.verdicts)
+        tally = ", ".join(f"{v.value} x{n}" for v, n in Counter(r.verdicts).most_common())
+        # A non-contested case that flips is the real alarm; a contested one flipping is
+        # expected, so it reads as informational rather than a failure.
+        if not r.flipped:
+            marker = "[stable]"
+        elif r.case.contested:
+            marker = "[contested-split]"
+        else:
+            marker = "[UNSTABLE]"
+        lines.extend(
+            (
+                f"{marker} [{r.case.pass_name}] {r.case.title}",
+                f"  {r.agreement:.0%} agreement over {k} runs — {tally}",
+                f"  majority: {r.majority.value}"
+                + ("" if r.case.contested else f"; label: {r.case.expected.value}"),
+                f"  total ${r.total_cost_usd:.4f}",
+                "  " + "-" * 60,
+            )
+        )
+    return "\n".join(lines)
+
+
 def format_report(results: list[JudgeResult]) -> str:
     lines = ["LLM judge evals — manual, non-gating", f"Prompt: {PROMPT_VERSION}", ""]
     for result in results:
@@ -176,6 +254,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run manual non-gating LLM judge evals.")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Bedrock inference-profile model ID")
     parser.add_argument("--case", choices=[case.key for case in all_cases], help="Run one labelled case")
+    parser.add_argument(
+        "--stability", type=int, metavar="K", default=None,
+        help="Judge each selected case K times on fixed inputs and report verdict stability "
+             "(the escalation-ladder measurement). Costs K times the normal run.",
+    )
     args = parser.parse_args()
 
     from app.ai.strands_provider import StrandsProvider
@@ -189,7 +272,11 @@ def main() -> None:
         db.close()
     provider = StrandsProvider(region=settings.ai.region, max_pool_connections=1)
     cases = [case for case in all_cases if args.case in (None, case.key)]
-    print(format_report([judge_case(provider, case, model_id=args.model) for case in cases]))
+    if args.stability:
+        reports = [stability_run(provider, c, k=args.stability, model_id=args.model) for c in cases]
+        print(format_stability(reports))
+    else:
+        print(format_report([judge_case(provider, case, model_id=args.model) for case in cases]))
 
 
 if __name__ == "__main__":

@@ -287,3 +287,19 @@ Before treating judge agreement as a meaningful quality measure:
 4. Add persistence and a trend view only after the labelled set is useful.
 5. Design a separate safe evidence fixture before adding score-defensibility
    cases, because that category is closest to applicant text.
+
+## Stability harness (built 2026-07-16)
+
+`python -m app.evals.judge --stability K` judges each selected case **K times on
+fixed inputs** and reports verdict stability, rather than a single agree/disagree.
+This is the escalation-ladder measurement: the open question is not "did the judge
+agree with the label?" (one call answers that) but "does the same call, on the same
+evidence, return the same verdict every time?" A non-contested case that flips
+run-to-run is flagged `[UNSTABLE]` — that noise is what would justify spending up on
+the multi-agent shape (N-judge voting / adversarial skeptic). A perfectly steady case
+reads `[stable]`; a contested case that splits reads `[contested-split]` (expected,
+informational — for a contested case, *consistency* is the signal, not verdict
+direction). `agreement` is the modal verdict's share of K. Costs K× a normal run, so
+it stays a deliberate manual invocation. This is the tool step 3's calibration uses:
+run the clear cases at K≥5 and confirm they don't flip before trusting the judge; the
+decision to build (or not build) multi-agent escalation reads these numbers.
