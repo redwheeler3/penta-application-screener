@@ -2234,6 +2234,17 @@ h1 {
   padding-top: 0.75rem;
 }
 
+/* Estimate-vs-actual reconciliation note, inline after the run label. Muted normal
+   weight so it reads as secondary to the run name; amber only when actual > estimate. */
+.cost-recon {
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.cost-recon-over {
+  color: #92400e;
+}
+
 /* Passes indent under their run group. */
 .cost-pass-name {
   padding-left: 1.5rem !important;

@@ -21,6 +21,22 @@ const tokensCell = (input: number, output: number) =>
   input || output ? `${tok(input)} → ${tok(output)}` : "—";
 type InsightRunKind = "screen" | "rank" | "rank_scores";
 
+// Estimate-vs-actual reconciliation: the pre-run projection next to what the run actually
+// spent, with drift %. Only shown when an estimate was captured (0 on pre-capture runs).
+// The estimate is an upper-bound ceiling (see _rank_estimate), so actual under estimate is
+// the expected, healthy case; actual OVER estimate is the one worth flagging (amber).
+function reconciliation(run: LastRunCost): ReactNode {
+  if (run.estimatedUsd <= 0) return null;
+  const drift = run.freshUsd - run.estimatedUsd;
+  const pct = Math.round((drift / run.estimatedUsd) * 100);
+  const over = drift > 0;
+  return (
+    <span className={`cost-recon ${over ? "cost-recon-over" : ""}`}>
+      {` · est ${money(run.estimatedUsd)}, actual ${money(run.freshUsd)} (${pct >= 0 ? "+" : ""}${pct}%)`}
+    </span>
+  );
+}
+
 const RUN_LABELS: Record<InsightRunKind, string> = {
   screen: "Screen",
   rank: "Discover criteria & rank",
@@ -85,7 +101,7 @@ export function CostPanel(): ReactNode {
               ) : (
                 <tbody key={i}>
                   <tr className="cost-group-head">
-                    <td>{RUN_LABELS[run.kind as InsightRunKind]}</td>
+                    <td>{RUN_LABELS[run.kind as InsightRunKind]}{reconciliation(run)}</td>
                     <td className="cost-num" />
                     <td className="cost-num" />
                     <td className="cost-num" />

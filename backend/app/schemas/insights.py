@@ -75,6 +75,9 @@ class LastRunCost(ResponseModel):
     at: str  # ISO timestamp of the run
     fresh_usd: float
     cached_saved_usd: float
+    # The pre-run projection shown at the confirmation card, for estimate-vs-actual
+    # reconciliation. 0.0 on runs recorded before this was captured (renders as "—").
+    estimated_usd: float
     passes: list[LastRunPass]
 
 
