@@ -14,7 +14,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cmd=$(jq -r \".tool_input.command // \\\"\\\"\"); if printf \"%s\" \"$cmd\" | grep -Eq \"git[[:space:]]+commit\"; then printf \"%s\" '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"Confirm: commit? (.clinerules — only when your last message asked).\"}}'; elif printf \"%s\" \"$cmd\" | grep -Eq \"reset-db\\.sh|rm[[:space:]].*\\.(db|sqlite|sqlite3)\"; then printf \"%s\" '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"Confirm: reset/delete the DB? Irreversible — real runs, no backup.\"}}'; fi"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-db.sh\""
           }
         ]
       }
