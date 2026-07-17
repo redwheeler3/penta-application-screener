@@ -13,7 +13,7 @@ __pycache__/
 .env.*
 backend/secrets/
 
-# Databases and applicant data
+# Databases and applicant data (incl. backend/data/backups/ — PII-bearing DB snapshots)
 *.db
 *.sqlite
 *.sqlite3

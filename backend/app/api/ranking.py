@@ -15,6 +15,7 @@ one Rank step; the passes stay separate underneath (distinct schemas, cache kind
 status behavior).
 """
 
+import logging
 import queue
 import threading
 import time
@@ -967,6 +968,19 @@ def rank_run(
             },
             durations_ms=durations,
         )
+
+        # Snapshot the DB now that the run's (expensive, non-deterministic) output is
+        # persisted — this is the only durable record once the live DB moves on, so it is
+        # captured automatically rather than left to someone remembering. Best-effort: a
+        # backup failure must never fail a completed Rank, so it is logged and swallowed.
+        try:
+            from app.services.backup import create_from_session
+
+            create_from_session(db, tag="rank")
+        except Exception:
+            logging.getLogger("app.api").exception(
+                "Post-rank DB backup failed (run is saved; backup skipped)"
+            )
 
         yield emit(
             RankSummary(
