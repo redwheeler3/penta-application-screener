@@ -92,9 +92,13 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
 
       <table className="match-audit-table">
         <thead>
+          {/* Unified inputs → keeper layout: the source axes (candidates) on the left flow
+              into the settled dimension (keeper) on the right, mirroring Matching and
+              Consolidation. */}
           <tr>
+            <th>Source axes</th>
+            <th aria-label="settles into" />
             <th>Settled dimension</th>
-            <th>From</th>
             {/* Whether this axis folded several re-carvings together (merged) or is one
                 source carried through (distinct) — the decomposition analogue of the
                 Consolidation tab's Verdict column. */}
@@ -108,23 +112,6 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
             const folded = foldedInto.get(d.key);
             return (
               <tr key={d.key}>
-                <td>
-                  {/* Name + key (mirroring the Matching tab), then the request / folded-in
-                      attribute tags (each spaced off the name with .decompose-tag). The
-                      merged/distinct verdict lives in its own column. */}
-                  {d.name}
-                  {d.fromCommitteeRequest ? (
-                    <span className="decompose-tag match-audit-key-unnamed" title="Committee-requested axis">
-                      requested
-                    </span>
-                  ) : null}
-                  {folded ? (
-                    <span className="decompose-tag match-audit-key-unnamed" title="A committee request folded in here">
-                      folded in: {folded}
-                    </span>
-                  ) : null}
-                  <span className="match-audit-key">{d.key}</span>
-                </td>
                 <td>
                   {d.sourceKeys.map((k) => {
                     // Which discoverer(s) coined this source key — "R0, R3" — so the
@@ -148,6 +135,24 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
                       </div>
                     );
                   })}
+                </td>
+                <td className="match-audit-arrow" aria-hidden="true">→</td>
+                <td>
+                  {/* Name + key (mirroring the Matching tab), then the request / folded-in
+                      attribute tags (each spaced off the name with .decompose-tag). The
+                      merged/distinct verdict lives in its own column. */}
+                  {d.name}
+                  {d.fromCommitteeRequest ? (
+                    <span className="decompose-tag match-audit-key-unnamed" title="Committee-requested axis">
+                      requested
+                    </span>
+                  ) : null}
+                  {folded ? (
+                    <span className="decompose-tag match-audit-key-unnamed" title="A committee request folded in here">
+                      folded in: {folded}
+                    </span>
+                  ) : null}
+                  <span className="match-audit-key">{d.key}</span>
                 </td>
                 <td>
                   {isMerge ? (

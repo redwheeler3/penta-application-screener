@@ -95,8 +95,13 @@ function MatchAuditBody(props: { audit: MatchAuditResponse }): ReactNode {
 
       <table className="match-audit-table">
         <thead>
+          {/* Unified inputs → keeper layout: this run's settled dimension (candidate) on
+              the left flows into the prior dimension it reuses (keeper) on the right —
+              mirroring Decomposition and Consolidation. A row with no match is genuinely
+              new, so the arrow flows into the "new" marker. */}
           <tr>
             <th>Settled dimension</th>
+            <th aria-label="reuses" />
             <th>Reused from</th>
           </tr>
         </thead>
@@ -110,6 +115,7 @@ function MatchAuditBody(props: { audit: MatchAuditResponse }): ReactNode {
                   {d.fromCommitteeRequest ? <span className="match-audit-tag">requested</span> : null}
                   <span className="match-audit-key">{d.key}</span>
                 </td>
+                <td className="match-audit-arrow" aria-hidden="true">→</td>
                 <td>
                   {matchedTo ? (
                     <>

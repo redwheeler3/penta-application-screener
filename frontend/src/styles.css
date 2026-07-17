@@ -1533,6 +1533,18 @@ h1 {
   font-weight: 600;
 }
 
+/* The unifying "inputs → keeper" arrow between the two dimension columns on every
+   Insights relationship tab (Matching, Decomposition, Consolidation): candidates on the
+   left flow into the surviving/settled dimension on the right. A narrow, centred,
+   non-wrapping cell so the arrow sits mid-row and reads as the flow direction. */
+.match-audit-arrow {
+  width: 1.5rem;
+  text-align: center;
+  color: var(--muted);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
 /* Inline tags after a settled dimension's name (merge / requested / folded-in): space
    them off the name so they don't butt against it (.match-audit-new and
    .match-audit-key-unnamed carry no margin of their own). */
