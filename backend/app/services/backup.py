@@ -35,11 +35,18 @@ _TAG_RE = re.compile(r"[^a-z0-9-]+")
 
 
 def _sqlite_path(engine: Engine) -> Path:
-    """The on-disk path of ``engine``'s SQLite database. Raises if the engine is not
-    SQLite (backups are a local-SQLite convenience, not a prod strategy)."""
+    """The on-disk path of ``engine``'s SQLite database. Raises if the engine is not a
+    FILE-BACKED SQLite DB — backups are a local-SQLite convenience, not a prod strategy,
+    and an in-memory DB (``:memory:``, the test engine) has nothing on disk to copy.
+
+    Rejecting ``:memory:`` explicitly matters: ``Path(":memory:").resolve()`` would
+    otherwise resolve to ``<cwd>/:memory:``, so ``backups_dir`` would land under the
+    process CWD (``backend/``) and every rank test's auto-snapshot would dump a real
+    backup there. The guard turns that into a clean skip (the auto-snapshot caller
+    treats it as best-effort)."""
     url = engine.url
-    if url.get_backend_name() != "sqlite" or not url.database:
-        raise RuntimeError("DB backups are only supported for a local SQLite database.")
+    if url.get_backend_name() != "sqlite" or not url.database or url.database == ":memory:":
+        raise RuntimeError("DB backups require a file-backed local SQLite database.")
     return Path(url.database).resolve()
 
 
@@ -101,13 +108,26 @@ def create_and_prune(*, engine: Engine | None = None, tag: str = "manual",
     return dest
 
 
-def create_from_session(session: Session, *, tag: str, keep: int = DEFAULT_KEEP) -> Path:
-    """Snapshot the DB the given ``session`` is bound to. Used by the request path (the
-    auto post-Rank snapshot) so it honors a test's overridden engine instead of the global
-    — otherwise tests would back up the real DB. bind is an Engine for our sessionmakers."""
+def create_from_session(session: Session, *, tag: str, keep: int = DEFAULT_KEEP) -> Path | None:
+    """Snapshot the DB the given ``session`` is bound to, or return None if that DB isn't
+    file-backed (nothing to snapshot). Used by the request path (the auto post-Rank
+    snapshot) so it honors a test's overridden engine instead of the global — otherwise
+    tests would back up the real DB. bind is an Engine for our sessionmakers.
+
+    A test binds an in-memory engine (``:memory:``); there's nothing on disk to copy, so
+    this is a clean no-op (None), NOT an error — the auto-snapshot shouldn't fire, and
+    shouldn't need the caller's try/except to swallow a raise for the normal test path."""
     bind = session.get_bind()
     eng = bind if isinstance(bind, Engine) else default_engine
+    if not _is_file_backed(eng):
+        return None
     return create_and_prune(engine=eng, tag=tag, keep=keep)
+
+
+def _is_file_backed(engine: Engine) -> bool:
+    """True when ``engine`` is a file-backed SQLite DB (so a backup is meaningful)."""
+    url = engine.url
+    return url.get_backend_name() == "sqlite" and bool(url.database) and url.database != ":memory:"
 
 
 def restore_backup(source: Path, *, engine: Engine | None = None) -> Path:
