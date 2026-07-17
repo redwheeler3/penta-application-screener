@@ -24,7 +24,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.schemas import PoolDimension, PoolDimensionReport
-from app.db.models import Application, ApplicationStatus, DimensionAlias, RankingRun
+from app.db.models import (
+    Application,
+    ApplicationStatus,
+    DimensionAlias,
+    RankingRun,
+    SyncRun,
+)
 from app.schemas.settings import AppSettings
 
 
@@ -168,9 +174,15 @@ def create_run(
     valid_keys = set(dimension_keys)
     favourited = {k for k in (prior_favourited_keys or []) if k in valid_keys}
     favourited |= {d.key for d in report.dimensions if d.from_committee_request}
+    # Link the run to the sync whose pool it ranked over — the most recent import. This
+    # records the run's data provenance (which imported pool it scored), which the eval
+    # synthetic-source guard reads to decide whether the pool's evidence is safe to commit.
+    # None when nothing has been imported yet (shouldn't happen — ranking needs a pool).
+    latest_sync_id = db.scalar(select(SyncRun.id).order_by(SyncRun.id.desc()).limit(1))
     run = RankingRun(
         name=name,
         status="patterns_discovered",
+        source_sync_run_id=latest_sync_id,
         criteria={
             "dimension_report": report.model_dump(mode="json"),
             # Everything this run's ranking depends on — pool + rank-chain prompt and
