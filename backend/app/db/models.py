@@ -210,6 +210,12 @@ class RunCostLedger(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     kind: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # screen | rank | rank_scores
+    # The pre-run cost projection (the number the confirmation card showed the committee),
+    # captured so estimate-vs-actual drift is queryable after the fact — the project has
+    # been bitten by an estimate that disagreed with reality (SPEC Pillar 1). 0.0 on runs
+    # recorded before this column existed (server_default), and on kinds that had no
+    # pre-run estimate surface.
+    estimated_usd: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
 
     passes: Mapped[list[RunPassCost]] = relationship(
         back_populates="run", cascade="all, delete-orphan", order_by="RunPassCost.id"
