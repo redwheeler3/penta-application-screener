@@ -4,8 +4,10 @@ from app.evals.judge import (
     PROMPT_VERSION,
     build_prompt,
     format_report,
+    format_stability,
     judge_case,
     load_cases,
+    stability_run,
 )
 
 
@@ -79,3 +81,53 @@ def test_contested_case_never_marks_ok_regardless_of_verdict() -> None:
         assert "[contested]" in report
         assert "[ok]" not in report
         assert "leaning" in report
+
+
+def _queue_verdicts(provider, verdicts):
+    for v in verdicts:
+        provider.queue(JudgeReport(verdict=v, reason="test"))
+
+
+def test_stability_run_reports_perfect_agreement_when_verdict_is_steady() -> None:
+    case = next(c for c in load_cases() if not c.contested)
+    provider = MockProvider()
+    _queue_verdicts(provider, [case.expected] * 5)
+
+    report = stability_run(provider, case, k=5)
+
+    assert len(report.verdicts) == 5
+    assert report.agreement == 1.0
+    assert report.flipped is False
+    assert report.majority == case.expected
+    assert report.total_cost_usd > 0
+    assert "[stable]" in format_stability([report])
+
+
+def test_stability_run_flags_a_flip_on_a_non_contested_case() -> None:
+    case = next(c for c in load_cases() if not c.contested)
+    provider = MockProvider()
+    # 3 vs 2 split → flipped, 60% agreement, majority is the 3-side.
+    _queue_verdicts(provider, [JudgeVerdict.MERGE, JudgeVerdict.KEEP,
+                               JudgeVerdict.MERGE, JudgeVerdict.KEEP, JudgeVerdict.MERGE])
+
+    report = stability_run(provider, case, k=5)
+
+    assert report.flipped is True
+    assert report.agreement == 0.6
+    assert report.majority == JudgeVerdict.MERGE
+    assert "[UNSTABLE]" in format_stability([report])
+
+
+def test_stability_run_marks_a_contested_flip_as_split_not_unstable() -> None:
+    contested = next((c for c in load_cases() if c.contested), None)
+    assert contested is not None
+    provider = MockProvider()
+    _queue_verdicts(provider, [JudgeVerdict.MERGE, JudgeVerdict.KEEP, JudgeVerdict.MERGE])
+
+    report = stability_run(provider, contested, k=3)
+
+    assert report.flipped is True
+    out = format_stability([report])
+    # A contested case flipping is expected — informational, not an alarm.
+    assert "[contested-split]" in out
+    assert "[UNSTABLE]" not in out
