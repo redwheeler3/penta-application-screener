@@ -259,6 +259,48 @@
         "pass_models": {"Pattern discovery": "us.anthropic.claude-sonnet-4-6", "Dimension decomposition": "us.anthropic.claude-sonnet-4-6", "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0", "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"},
         "pass_prompt_versions": {"Pattern discovery": "f393349e9733", "Dimension decomposition": "733871632036", "Dimension matching": "bcf254622976", "Dimension scoring": "1c405eb75d53", "Dimension consolidation": "d73b755d3075"}
       }
+    },
+    {
+      "key": "score_coop_motivation_offtopic_evidence_unsupported",
+      "pass": "scoring",
+      "title": "Adversarial: rich but partly off-axis evidence does not support a high co-op-motivation score",
+      "task": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
+      "evidence": {
+        "dimension": "coop_motivation_intrinsic",
+        "dimension_definition": "The degree to which the applicant's stated motivation for seeking co-op housing centres on cooperative values — mutual aid, shared responsibility, community-building — as ends in themselves, as opposed to primarily instrumental goals such as rent affordability or housing stability.",
+        "high_end": "Articulates a genuine co-operative philosophy lived independently of this application — mutual aid over individualism, democratic responsibility as meaningful in itself — demonstrated through past behaviour such as food sharing, tool libraries, or carpool networks.",
+        "low_end": "States that cost or stability is the primary or exclusive driver; co-op participation is framed as a necessary condition of the housing deal rather than a desired feature in itself ('mainly the rent is cheap'; 'we'd save the co-op money — that's it really').",
+        "cited_evidence": "We'd rather build something together than rent in isolation. We camp and kayak whenever we can and pack out more trash than we bring.",
+        "score": 0.7
+      },
+      "expected": "unsupported",
+      "label_rationale": "UNSUPPORTED (adversarial — surface cue misleads): the evidence LOOKS rich and values-laden, but only 'build something together rather than rent in isolation' is on-axis for CO-OPERATIVE motivation (mutual aid, shared responsibility). The camping/kayaking/leave-no-trace clause is ENVIRONMENTAL ethics — a different value, off-axis for this dimension — yet it visibly props up the score. A 0.7 leans toward the high_end's 'genuine co-operative philosophy lived independently, demonstrated through past behaviour such as food sharing, tool libraries, carpool networks'; a single generic 'build together' line plus off-topic outdoorsiness doesn't reach that. This tests whether the judge checks that the cited evidence is on-CONCEPT, not just abundant/nice-sounding — a pattern-matcher that rewards rich text would wrongly call it SUPPORTED. (This is an EXACT slice — the production scoring pass genuinely gave 0.7 here, which is what makes it a real overclaim to catch, not a synthetic one.)",
+      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 1. Exact slice — score + evidence + definition all verbatim from the run.",
+      "provenance": {
+        "pass_models": {"Pattern discovery": "us.anthropic.claude-sonnet-4-6", "Dimension decomposition": "us.anthropic.claude-sonnet-4-6", "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0", "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"},
+        "pass_prompt_versions": {"Pattern discovery": "f393349e9733", "Dimension decomposition": "733871632036", "Dimension matching": "bcf254622976", "Dimension scoring": "1c405eb75d53", "Dimension consolidation": "d73b755d3075"}
+      }
+    },
+    {
+      "key": "score_child_ages_terse_but_sufficient_supported",
+      "pass": "scoring",
+      "title": "Adversarial: a terse age list is sufficient evidence for an age-profile score",
+      "task": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
+      "evidence": {
+        "dimension": "child_age_profile_community_fit",
+        "dimension_definition": "The ages of children in the household, reflecting how they will interact with co-op shared spaces, need adult supervision, and potentially benefit from or contribute to community programmes.",
+        "high_end": "Children are school-age or older (roughly 8+), are more self-sufficient in shared spaces, and may participate meaningfully in community programmes aimed at youth.",
+        "low_end": "All children are toddlers or infants (under 3), requiring intensive adult supervision in shared spaces and contributing less independently to community life.",
+        "cited_evidence": "Children ages 14, 11, 8",
+        "score": 0.65
+      },
+      "expected": "supported",
+      "label_rationale": "SUPPORTED (adversarial — inverse trap): the evidence is terse, so a judge that equates brevity with thinness would wrongly call it UNSUPPORTED. But for an AGE-PROFILE dimension the bare ages ARE the complete evidence — nothing more is needed. All three children (14, 11, 8) sit in the high_end's '8+, more self-sufficient, may participate in youth programmes' band, so 0.65 is well-grounded. Tests that the judge does not penalise sufficient-but-short evidence — the mirror of the overclaim case.",
+      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 1. Definition from run 1's raw discovery report (fan_out_audit); score + evidence verbatim.",
+      "provenance": {
+        "pass_models": {"Pattern discovery": "us.anthropic.claude-sonnet-4-6", "Dimension decomposition": "us.anthropic.claude-sonnet-4-6", "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0", "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"},
+        "pass_prompt_versions": {"Pattern discovery": "f393349e9733", "Dimension decomposition": "733871632036", "Dimension matching": "bcf254622976", "Dimension scoring": "1c405eb75d53", "Dimension consolidation": "d73b755d3075"}
+      }
     }
   ]
 }
