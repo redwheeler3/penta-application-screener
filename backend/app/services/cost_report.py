@@ -63,6 +63,7 @@ def record_run_cost(
     kind: str,
     passes: dict[str, PassCost],
     durations_ms: dict[str, int] | None = None,
+    estimated_usd: float = 0.0,
 ) -> None:
     """Persist a completed run's per-pass cost (``kind`` = "screen" | "rank" |
     "rank_scores"), one
@@ -71,12 +72,15 @@ def record_run_cost(
     label to its ``PassCost`` (a pass that made no call still passes a zero cost, so the
     row set always covers the canonical labels). ``durations_ms`` maps a label to the
     pass's wall-clock (measured by the caller, not summed from PassCost — see the model
-    docstring); a label absent from it records 0. Commits its own rows so a later failure
-    can't lose them.
+    docstring); a label absent from it records 0. ``estimated_usd`` is the pre-run cost
+    projection the caller showed the committee, stored for estimate-vs-actual
+    reconciliation (0.0 when the kind has no pre-run estimate surface). Commits its own
+    rows so a later failure can't lose them.
     """
     durations_ms = durations_ms or {}
     header = RunCostLedger(
         kind=kind,
+        estimated_usd=round(estimated_usd, 6),
         passes=[
             RunPassCost(
                 label=label,
@@ -183,6 +187,7 @@ def _last_run(db: Session, kind: str) -> LastRunCost | None:
         at=row.created_at.isoformat(),
         fresh_usd=round(sum(p.fresh_usd for p in passes), 6),
         cached_saved_usd=round(sum(p.cached_saved_usd for p in passes), 6),
+        estimated_usd=round(row.estimated_usd, 6),
         passes=passes,
     )
 

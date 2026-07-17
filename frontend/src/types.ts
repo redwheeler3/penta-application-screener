@@ -211,6 +211,7 @@ export type LastRunCost = {
   at: string; // ISO timestamp
   freshUsd: number;
   cachedSavedUsd: number;
+  estimatedUsd: number; // pre-run projection; 0 on runs recorded before capture (show "—")
   passes: LastRunPass[];
 };
 

@@ -353,3 +353,34 @@ def test_rerun_estimate_prefers_measured_history() -> None:
 
     est = estimate_dimension_scoring(db, settings)
     assert est["estimated_usd"] == round((2 * 0.10 + 1 * 0.40) / 3, 4)
+
+
+def test_estimate_is_recorded_and_surfaced_for_reconciliation() -> None:
+    # Pillar 1 reconciliation: the pre-run estimate passed to record_run_cost is stored on
+    # the ledger and surfaces on the last-run report next to the actual fresh spend, so
+    # estimate-vs-actual drift is visible after the fact.
+    from app.ai.pricing import PassCost
+    from app.services.cost_report import last_runs_report, record_run_cost
+
+    db = make_db()
+    record_run_cost(
+        db, kind="rank",
+        passes={"Dimension scoring": PassCost(calls=1, cost_usd=0.12)},
+        estimated_usd=0.30,  # ceiling estimate; actual came in under it
+    )
+
+    rank = last_runs_report(db).rank
+    assert rank is not None
+    assert rank.estimated_usd == 0.30
+    assert rank.fresh_usd == 0.12  # actual under the ceiling — the healthy case
+
+
+def test_estimate_defaults_to_zero_when_not_provided() -> None:
+    # A record without an estimate (or a pre-capture run) reports 0.0 — the UI renders "—".
+    from app.ai.pricing import PassCost
+    from app.services.cost_report import last_runs_report, record_run_cost
+
+    db = make_db()
+    record_run_cost(db, kind="screen", passes={"Screening": PassCost(calls=1, cost_usd=0.05)})
+
+    assert last_runs_report(db).screen.estimated_usd == 0.0

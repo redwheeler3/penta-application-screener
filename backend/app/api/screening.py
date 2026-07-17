@@ -173,6 +173,7 @@ def run(
             kind="screen",
             passes={"Screening": tally.as_pass_cost(settings.ai.screening_model)},
             durations_ms={"Screening": round((time.perf_counter() - started) * 1000)},
+            estimated_usd=float(estimate_result["estimated_usd"]),
         )
 
         yield emit(
