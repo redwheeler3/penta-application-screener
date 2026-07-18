@@ -498,6 +498,19 @@ export type EvalDescriptor = {
   estimatedCalls: number;
 };
 
+// The most recent persisted run for a tab (GET /evals/last-run), so switching subtabs and
+// coming back restores the last result instead of a blank tab. `result` is the same shape
+// the streaming summary carries for that evalKey; no thinking narration is restored.
+export type LastEvalRun = {
+  found: boolean;
+  evalKey: "invariants" | "live_scoring" | "judge" | "stability" | "";
+  ranAt: string;
+  promptVersion: string;
+  currentPromptVersion: string;
+  stale: boolean;
+  result: any;
+};
+
 export type InvariantOut = { check: string; description: string; passed: boolean; violations: string[] };
 export type InvariantsResult = {
   hasFixture: boolean;

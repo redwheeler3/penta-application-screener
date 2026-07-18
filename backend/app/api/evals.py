@@ -64,6 +64,7 @@ from app.schemas.evals import (
     InvariantsResponse,
     JudgeCaseOut,
     JudgeRunResponse,
+    LastRunResponse,
     LiveScoringCaseOut,
     LiveScoringResponse,
     SaveCaseRequest,
@@ -104,7 +105,7 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
     """List the runnable evals + how many model calls each run costs (for the UI's
     spend-confirm). Free — computed from the committed fixtures, no model calls."""
     golden = load_golden()
-    live_calls = sum(2 if c.judge else 1 for c in golden)  # score (+ judge if the case asks)
+    live_calls = len(golden) * 2  # every case: one score call + one judge call
     n_judge = len(load_cases())
     return EvalCatalogResponse(evals=[
         EvalDescriptor(
@@ -180,6 +181,53 @@ def rebaseline(
     except RuntimeError as exc:
         raise Problem("run_required", detail=str(exc)) from exc
     return _invariants_response()
+
+
+def _current_prompt_version(eval_key: str, db: Session) -> str:
+    """The prompt version a fresh run of ``eval_key`` would exercise right now — so a
+    rehydrated last run can be flagged stale when the prompt has since changed. Judge and
+    stability share the judge prompt; live_scoring uses the scoring prompt."""
+    if eval_key == "live_scoring":
+        from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_PROMPT_VERSION
+
+        return SCORING_PROMPT_VERSION
+    if eval_key in ("judge", "stability"):
+        return JUDGE_PROMPT_VERSION
+    return ""
+
+
+@router.get("/last-run", response_model=LastRunResponse)
+def last_run(
+    keys: str, user: User = Depends(require_current_user), db: Session = Depends(get_db)
+) -> LastRunResponse:
+    """The most recent persisted run among the comma-separated ``keys`` (a tab restores its
+    last run on remount — Live scoring passes ``live_scoring``; Judge passes
+    ``judge,stability``). Returns the result JSON as the UI reads it, WITHOUT the thinking
+    narration, plus a ``stale`` flag when the run's prompt no longer matches the current one.
+    Free (a single indexed read)."""
+    wanted = [k.strip() for k in keys.split(",") if k.strip()]
+    row = (
+        db.query(EvalRun)
+        .filter(EvalRun.eval_key.in_(wanted))
+        # id.desc() breaks a created_at tie (two runs in the same tick) — autoincrement id
+        # is insertion order, so this is a stable "most recent".
+        .order_by(EvalRun.created_at.desc(), EvalRun.id.desc())
+        .first()
+        if wanted
+        else None
+    )
+    if row is None:
+        return LastRunResponse(found=False)
+    current = _current_prompt_version(row.eval_key, db)
+    return LastRunResponse(
+        found=True,
+        eval_key=row.eval_key,
+        ran_at=row.created_at.isoformat(),
+        prompt_version=row.prompt_version or "",
+        current_prompt_version=current,
+        stale=bool(current and row.prompt_version and row.prompt_version != current),
+        result=row.result,
+    )
 
 
 # --- cases (read the versioned dataset; edit through the UI to the JSON file) -
@@ -357,9 +405,10 @@ def run_judge(
         results = []
         for c in cases:
             on_delta(f"\n\n### [{c.pass_name}] {c.title}\n")
+            on_delta(f"Judging on `{JUDGE_MODEL}` — _{c.task}_\n\n")
             results.append(judge_case(provider, c, model_id=JUDGE_MODEL))
             r = results[-1]
-            on_delta(f"→ {r.report.verdict.value}: {r.report.reason}\n")
+            on_delta(f"**{r.report.verdict.value}** — {r.report.reason}\n")
         case_out = [
             JudgeCaseOut(
                 key=r.case.key, pass_name=r.case.pass_name, title=r.case.title,

@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { fetchEvalCases, runEval, saveEvalCase, streamNdjson } from "../../api";
+import { fetchEvalCases, fetchLastEvalRun, runEval, saveEvalCase, streamNdjson } from "../../api";
+import type { LastEvalRun } from "../../types";
 import { EvalCaseDetail } from "./EvalCaseDetail";
 import { EvalCaseEditor } from "./EvalCaseEditor";
 import { HarvestPanel } from "./HarvestPanel";
@@ -21,6 +22,9 @@ type Confirm = { mode: RunMode; caseKey?: string; calls: number } | null;
 export function RunnableEval(props: {
   // "live_scoring" | "judge" — the fixture whose cases we read/edit (stability shares judge's).
   caseEvalKey: "live_scoring" | "judge";
+  // The eval keys whose last run restores this tab on remount (Live scoring: ["live_scoring"];
+  // Judge: ["judge", "stability"] — the two share the tab, so the newer of the two shows).
+  runKeys: RunMode["evalKey"][];
   description: string;
   modes: RunMode[];
   // Group cases under headings by this case field (e.g. "pass" for judge); undefined = flat.
@@ -36,6 +40,9 @@ export function RunnableEval(props: {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [run, setRun] = useState<RunState>({ running: false, thinking: "", result: null, ranMode: modes[0].evalKey, error: null });
+  // Set when the shown result was REHYDRATED from a past run (not this session); null for a
+  // live run. Drives the "last run · prompt" marker so history is never mistaken for fresh.
+  const [restored, setRestored] = useState<LastEvalRun | null>(null);
   const thinkingRef = useRef<HTMLDivElement>(null);
 
   const loadCases = () => {
@@ -44,12 +51,34 @@ export function RunnableEval(props: {
       .then((d) => setCases(d?.cases ?? []));
   };
   useEffect(loadCases, [caseEvalKey]);
+
+  // On mount, restore the last persisted run for this tab so switching subtabs and coming
+  // back shows what you last saw (result + case dots) instead of a blank tab. Thinking is
+  // not restored (per the outcome-not-replay choice); a fresh run clears `restored`.
   useEffect(() => {
+    let live = true;
+    fetchLastEvalRun(props.runKeys)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: LastEvalRun | null) => {
+        if (!live || !d?.found) return;
+        setRestored(d);
+        setRun((r) => ({ ...r, result: d.result, ranMode: d.evalKey as RunMode["evalKey"] }));
+      });
+    return () => {
+      live = false;
+    };
+    // props.runKeys is a stable per-tab literal; joining keeps the dep primitive.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.runKeys.join(",")]);
+  useEffect(() => {
+    // Keep the newest line in view as it streams in (the box is a small capped scroller,
+    // like the Rank reasoning box).
     const el = thinkingRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   });
 
   async function doRun(mode: RunMode, caseKey?: string) {
+    setRestored(null); // a live run supersedes any rehydrated history
     setRun({ running: true, thinking: "", result: null, ranMode: mode.evalKey, error: null });
     try {
       const resp = await runEval(mode.evalKey, { caseKey });
@@ -148,6 +177,7 @@ export function RunnableEval(props: {
           </div>
         </div>
       ) : null}
+      {restored?.found ? <RestoredMarker run={restored} /> : null}
       {run.result ? <RunHeadline evalKey={run.ranMode} result={run.result} /> : null}
 
       <div className="eval-master-detail">
@@ -180,7 +210,7 @@ export function RunnableEval(props: {
                   <button
                     key={m.evalKey}
                     type="button"
-                    className="secondary-button"
+                    className="primary-button"
                     disabled={run.running}
                     onClick={() => setConfirm({ mode: m, caseKey: String(selectedCase.key), calls: perCaseCalls(m) })}
                   >
@@ -189,7 +219,7 @@ export function RunnableEval(props: {
                 ))}
                 <button
                   type="button"
-                  className="secondary-button"
+                  className="secondary-button eval-detail-edit"
                   disabled={run.running}
                   onClick={() => {
                     setSaveError(null);
@@ -270,6 +300,34 @@ function resultOk(ranMode: RunMode["evalKey"], r: any): boolean {
   if (ranMode === "live_scoring") return r.passed;
   if (ranMode === "stability") return r.marker === "[stable]";
   return r.marker === "[ok]";
+}
+
+// Marks a REHYDRATED result as history (not a fresh run): when it ran + which prompt, and
+// an amber warning when that prompt no longer matches the current one (so a stale result is
+// never read as live). A fresh run clears it.
+function RestoredMarker(props: { run: LastEvalRun }): ReactNode {
+  const { run } = props;
+  return (
+    <div className={`eval-restored${run.stale ? " stale" : ""}`}>
+      Last run {relativeTime(run.ranAt)} · prompt {run.promptVersion || "—"}
+      {run.stale ? ` · prompt has since changed (now ${run.currentPromptVersion}) — re-run to refresh` : ""}
+    </div>
+  );
+}
+
+// A compact "2h ago" / "3d ago" from an ISO timestamp; falls back to the date for old runs.
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "earlier";
+  const secs = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (secs < 60) return "just now";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
 }
 
 // A run's headline block: pass/total + agreement (judge) / K (stability) / prompt+model.
