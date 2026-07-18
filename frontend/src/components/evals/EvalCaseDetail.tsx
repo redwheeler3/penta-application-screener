@@ -51,7 +51,10 @@ const BLOCK_CONSUMER: Record<string, { badge: string; tone: string }> = {
   prompt: { badge: "the question put to the judge", tone: "judge" },
 };
 
-const BLOCK_ORDER = ["metadata", "input", "evidence", "judge", "prompt"];
+// Model-facing blocks lead (they're the POINT of the case — what actually reaches a model);
+// the harness-only `metadata` bookkeeping trails last, so the view never opens on "no model
+// sees this" while burying what the model does see.
+const BLOCK_ORDER = ["input", "evidence", "prompt", "judge", "metadata"];
 
 export function EvalCaseDetail(props: { evalCase: Record<string, unknown> }): ReactNode {
   const c = props.evalCase;
