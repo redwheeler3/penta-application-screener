@@ -47,7 +47,7 @@ from app.evals.case_store import (
     save_case,
 )
 from app.evals.fixture import FIXTURE_PATH, load, record
-from app.evals.invariants import INVARIANTS, run_invariants
+from app.evals.invariants import INVARIANT_DESCRIPTIONS, INVARIANTS, run_invariants
 from app.evals.judge import DEFAULT_MODEL as JUDGE_MODEL
 from app.evals.judge import PROMPT_VERSION as JUDGE_PROMPT_VERSION
 from app.evals.judge import judge_case, load_cases, stability_run
@@ -147,6 +147,7 @@ def _invariants_response() -> InvariantsResponse:
     invariant_out = [
         InvariantOut(
             check=(name := check.__name__.removeprefix("check_")),
+            description=INVARIANT_DESCRIPTIONS.get(name, ""),
             passed=name not in by_check,
             violations=by_check.get(name, []),
         )

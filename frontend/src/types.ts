@@ -498,7 +498,7 @@ export type EvalDescriptor = {
   estimatedCalls: number;
 };
 
-export type InvariantOut = { check: string; passed: boolean; violations: string[] };
+export type InvariantOut = { check: string; description: string; passed: boolean; violations: string[] };
 export type InvariantsResult = {
   hasFixture: boolean;
   dimensions: number;

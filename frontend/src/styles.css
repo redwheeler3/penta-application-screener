@@ -2889,15 +2889,19 @@ h1 {
   background: #f8fafc;
   border: 1px solid var(--line);
 }
-.eval-headline { font-size: 0.85rem; font-weight: 600; }
+.eval-headline { font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; }
 
-/* Invariants: a stacked list of pass/fail rows (not a cramped table). */
-.eval-invariant { display: flex; align-items: baseline; gap: 8px; font-size: 0.9rem; padding: 4px 0; }
+/* Invariants: a stacked list — each is a check heading, a plain-language description,
+   and any violations. */
+.eval-invariant { display: grid; gap: 3px; padding: 8px 0; border-top: 1px solid var(--line); }
+.eval-invariant:first-of-type { border-top: 0; }
+.eval-invariant-headrow { display: flex; align-items: baseline; gap: 8px; font-size: 0.9rem; }
 .eval-invariant-mark { font-weight: 700; }
 .eval-invariant.ok .eval-invariant-mark { color: #16a34a; }
 .eval-invariant.fail .eval-invariant-mark { color: #dc2626; }
 .eval-invariant-name { font-weight: 600; }
-.eval-invariant-violations { flex-basis: 100%; margin-left: 16px; }
+.eval-invariant-desc { margin: 0 0 0 18px; color: var(--muted); font-size: 0.82rem; line-height: 1.5; max-width: 90ch; }
+.eval-invariant-violations { margin-left: 18px; }
 
 /* Master-detail: case list on the left, full detail/editor on the right. */
 .eval-master-detail {

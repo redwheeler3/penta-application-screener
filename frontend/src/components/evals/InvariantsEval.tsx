@@ -36,9 +36,9 @@ export function InvariantsEval(): ReactNode {
   return (
     <div className="eval-section">
       <p className="eval-card-desc">
-        Deterministic checks over the committed baseline fixture — every dimension has both
-        poles, none keys on a protected attribute. Free and instant; a breach is always a bug
-        (these gate CI). Re-baseline re-records the fixture from the current Rank.
+        Deterministic checks over the committed baseline fixture — every dimension defines
+        both poles, and none scores on a protected attribute. Free and instant; a breach is
+        always a bug (these gate CI). Re-baseline re-records the fixture from the current Rank.
       </p>
 
       {confirming ? (
@@ -52,7 +52,7 @@ export function InvariantsEval(): ReactNode {
       ) : null}
 
       <div className="eval-section-actions">
-        <button type="button" className="secondary-button" onClick={() => setConfirming(true)} disabled={rebasing}>
+        <button type="button" className="primary-button" onClick={() => setConfirming(true)} disabled={rebasing}>
           {rebasing ? "Re-baselining…" : "Re-baseline from current Rank"}
         </button>
       </div>
@@ -67,8 +67,11 @@ export function InvariantsEval(): ReactNode {
           <div className="eval-headline">{result.dimensions} dimensions in the baseline</div>
           {result.invariants.map((inv) => (
             <div key={inv.check} className={`eval-invariant ${inv.passed ? "ok" : "fail"}`}>
-              <span className="eval-invariant-mark">{inv.passed ? "✓" : "✗"}</span>
-              <span className="eval-invariant-name">{inv.check}</span>
+              <div className="eval-invariant-headrow">
+                <span className="eval-invariant-mark">{inv.passed ? "✓" : "✗"}</span>
+                <span className="eval-invariant-name">{inv.check}</span>
+              </div>
+              {inv.description ? <p className="eval-invariant-desc">{inv.description}</p> : null}
               {inv.violations.length ? (
                 <div className="eval-invariant-violations">
                   {inv.violations.map((v) => (

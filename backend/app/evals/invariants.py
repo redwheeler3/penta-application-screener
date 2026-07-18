@@ -48,7 +48,7 @@ def _key(d: dict) -> str:
 
 
 def check_poles_present(fixture: EvalFixture) -> list[Violation]:
-    """Every dimension defines BOTH poles and they differ. A 0..1 score is meaningless
+    """Every dimension defines BOTH poles and they differ. A -1..+1 score is meaningless
     without a stated high and low end — this is the mechanical form of the household-size
     'direction is policy-dependent' punt we fixed. Empty or duplicated pole → breach."""
     out: list[Violation] = []
@@ -81,6 +81,24 @@ def check_no_protected_attributes(fixture: EvalFixture) -> list[Violation]:
 # for a string check to flag reliably; it's a semantic judgement, left to the discovery
 # prompt's own guard and, later, an LLM-judge eval.)
 INVARIANTS = [check_poles_present, check_no_protected_attributes]
+
+# One plain-language line per check, keyed by its report name (function name minus
+# ``check_``). Surfaced under each check's heading in the AI Quality → Invariants tab, so
+# the description lives with the check and can't drift from the UI.
+INVARIANT_DESCRIPTIONS: dict[str, str] = {
+    "poles_present": (
+        "Every dimension must state a distinct high_end and low_end. A -1..+1 score is "
+        "meaningless without both poles — an empty or identical pair has no direction, so "
+        "the ranker can't say what a high (+1) vs. low (-1) score means."
+    ),
+    "no_protected_attributes": (
+        "No dimension may score applicants on a protected attribute. A coarse whole-word "
+        "scan of each dimension's key/name/definition/poles for unambiguous terms (racial, "
+        "ethnicity, religion, nationality, immigration, citizenship, sexual orientation, "
+        "disability, marital status). A blunt net for the blatant case — human review is "
+        "the real backstop for subtler wording."
+    ),
+}
 
 
 def run_invariants(fixture: EvalFixture) -> list[Violation]:
