@@ -18,7 +18,8 @@
         "high_end": "At least one adult holds a current trade licence and explicitly offers it for co-op maintenance.",
         "low_end": "No adult holds or mentions any licensed trade."
       },
-      "expect": {"score_equals": 0.0, "confidence": "low"}
+      "expect": {"score_equals": 0.0, "confidence": "low"},
+      "judge": "Given the dimension and the applicant's cited evidence, decide whether the returned score and confidence are SUPPORTED or UNSUPPORTED by that evidence — judge the score as produced, whatever its value."
     },
     {
       "key": "strong_evidence_scores_high",
@@ -38,7 +39,7 @@
         "low_end": "No adult holds or mentions any licensed trade."
       },
       "expect": {"score_min": 0.5},
-      "judge": "Does the cited evidence genuinely justify a high (near +1) score on this dimension?"
+      "judge": "Given the dimension and the applicant's cited evidence, decide whether the returned score and confidence are SUPPORTED or UNSUPPORTED by that evidence — judge the score as produced, whatever its value."
     },
     {
       "key": "demonstrated_low_scores_negative",
@@ -57,7 +58,7 @@
         "low_end": "A genuinely packed schedule that leaves only minimum hours for co-op duties."
       },
       "expect": {"score_max": -0.2},
-      "judge": "Does the cited evidence genuinely justify a low (negative) score on this dimension?"
+      "judge": "Given the dimension and the applicant's cited evidence, decide whether the returned score and confidence are SUPPORTED or UNSUPPORTED by that evidence — judge the score as produced, whatever its value."
     },
     {
       "key": "absence_worded_low_pole_still_neutral",
@@ -76,7 +77,8 @@
         "high_end": "Has served on a board/council/committee and describes the governance work.",
         "low_end": "No board, council, or committee experience mentioned anywhere."
       },
-      "expect": {"score_equals": 0.0, "confidence": "low"}
+      "expect": {"score_equals": 0.0, "confidence": "low"},
+      "judge": "Given the dimension and the applicant's cited evidence, decide whether the returned score and confidence are SUPPORTED or UNSUPPORTED by that evidence — judge the score as produced, whatever its value."
     }
   ]
 }

@@ -153,5 +153,24 @@ class HarvestResponse(ResponseModel):
     candidates: list[dict] = []
 
 
+# --- last run (rehydrate a tab on remount) ----------------------------------
+
+
+class LastRunResponse(ResponseModel):
+    """The most recent persisted run among a tab's eval keys, so switching subtabs and
+    coming back restores what you last saw instead of a blank tab. Carries the result JSON
+    (as the UI reads it) but NOT the ``thinking`` narration — the tab shows the outcome +
+    per-case dots, not the replayed reasoning. ``stale`` is True when the run's prompt no
+    longer matches the current one, so a rehydrated result is never mistaken for live."""
+
+    found: bool
+    eval_key: str = ""
+    ran_at: str = ""  # ISO-8601 timestamp of the run
+    prompt_version: str = ""  # the prompt the run exercised
+    current_prompt_version: str = ""  # the prompt in effect NOW
+    stale: bool = False  # prompt_version != current_prompt_version
+    result: dict = {}
+
+
 # --- run request ------------------------------------------------------------
 # (Only stability takes a param; others run with server defaults.)

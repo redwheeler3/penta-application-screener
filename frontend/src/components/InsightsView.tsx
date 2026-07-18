@@ -99,19 +99,21 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
         ) : activeTab === "live_scoring" ? (
           <RunnableEval
             caseEvalKey="live_scoring"
+            runKeys={["live_scoring"]}
             description="Run hand-authored synthetic applicants through the REAL scoring prompt + model, then grade each with deterministic assertions and the rubric judge. Tests the actual prompt, not a recorded artifact."
-            modes={[{ evalKey: "live_scoring", label: "Run live scoring", rowLabel: "run", calls: calls("live_scoring") }]}
+            modes={[{ evalKey: "live_scoring", label: "Run live scoring", rowLabel: "Run", calls: calls("live_scoring") }]}
           />
         ) : activeTab === "judge" ? (
           <RunnableEval
             caseEvalKey="judge"
+            runKeys={["judge", "stability"]}
             groupBy="pass"
             harvestable
             description="The judge case set, run two ways over the SAME cases: a one-pass judge run reports judge-vs-human agreement; a stability run judges each case K times to see if a verdict flips. Cases are grouped by the production pass they exercise."
             modes={
               [
-                { evalKey: "judge", label: "Run judge + agreement", rowLabel: "judge", calls: calls("judge") },
-                { evalKey: "stability", label: "Run stability (K=5)", rowLabel: "stability", calls: calls("stability") },
+                { evalKey: "judge", label: "Run judge + agreement", rowLabel: "Run judge", calls: calls("judge") },
+                { evalKey: "stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("stability") },
               ] as RunMode[]
             }
           />

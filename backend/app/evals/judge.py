@@ -145,7 +145,12 @@ def build_prompt(case: JudgeCase) -> str:
 
 
 def judge_case(provider: AIProvider, case: JudgeCase, *, model_id: str = DEFAULT_MODEL) -> JudgeResult:
-    """Run exactly one judge call for one manually selected case."""
+    """Run exactly one judge call for one manually selected case.
+
+    No ``on_delta``: a judge call is a tight structured_output (the model just fills the
+    verdict tool), so it emits ~no free-form reasoning to stream. The Evals tab instead
+    EMULATES the thinking box by narrating the returned verdict+reason (see the runners),
+    which is deterministic and works under the mock provider too."""
     result = provider.structured_output(
         model_id=model_id,
         schema=JudgeReport,

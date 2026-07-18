@@ -196,6 +196,45 @@ async def test_run_requires_login() -> None:
     assert resp.status_code == 401
 
 
+async def test_last_run_is_empty_before_any_run() -> None:
+    app, _db, _p = setup_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        body = (await client.get("/evals/last-run?keys=judge,stability")).json()
+    assert body["found"] is False
+
+
+async def test_last_run_returns_the_most_recent_among_keys() -> None:
+    app, db, _p = setup_app()
+    # Two persisted runs; the query restores the newest across the requested keys. Insertion
+    # order stands in for recency (created_at defaults on commit, autoincrement id breaks ties).
+    db.add(EvalRun(eval_key="judge", prompt_version="old", result={"n": 1}, thinking="t"))
+    db.commit()
+    db.add(EvalRun(eval_key="stability", prompt_version="newer", result={"n": 2}, thinking="t"))
+    db.commit()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        body = (await client.get("/evals/last-run?keys=judge,stability")).json()
+    assert body["found"] is True
+    assert body["evalKey"] == "stability"
+    assert body["result"] == {"n": 2}
+    assert body["ranAt"]  # ISO timestamp present
+
+
+async def test_last_run_flags_a_stale_prompt() -> None:
+    # A run whose stored prompt no longer matches the current judge prompt is flagged stale,
+    # so a rehydrated result can't be mistaken for one produced by the prompt in effect now.
+    app, db, _p = setup_app()
+    db.add(EvalRun(eval_key="judge", prompt_version="stale-version", result={}, thinking=None))
+    db.commit()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        body = (await client.get("/evals/last-run?keys=judge")).json()
+    assert body["found"] is True
+    assert body["stale"] is True
+    assert body["currentPromptVersion"]  # the real judge prompt version
+
+
 async def test_get_cases_reads_the_fixture() -> None:
     app, _db, _p = setup_app()
     transport = ASGITransport(app=app)

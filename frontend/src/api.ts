@@ -203,6 +203,14 @@ export function fetchEvalCases(evalKey: string): Promise<Response> {
   return fetch(url(`/evals/cases/${evalKey}`), { credentials: "include" });
 }
 
+// The most recent persisted run among `keys` (comma-joined), to restore a tab on remount.
+// Result JSON only (no thinking narration); carries a `stale` flag when the prompt changed.
+export function fetchLastEvalRun(keys: string[]): Promise<Response> {
+  return fetch(url(`/evals/last-run?keys=${encodeURIComponent(keys.join(","))}`), {
+    credentials: "include",
+  });
+}
+
 // Propose unlabelled judge cases from the CURRENT run's scoring/screening output (the
 // fidelity-preserving harvest). Guard-gated server-side; 409 no run, 422 non-synthetic pool.
 export function harvestEvalCases(family: "scoring" | "screening"): Promise<Response> {
