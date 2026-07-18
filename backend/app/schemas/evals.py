@@ -109,6 +109,46 @@ class LiveConsolidationStabilityResponse(ResponseModel):
     cases: list[LiveConsolidationStabilityCaseOut] = []
 
 
+# --- live matching (categorical: exact-match, no judge tier) -----------------
+
+
+class LiveMatchingCaseOut(ResponseModel):
+    key: str
+    passed: bool
+    verdict: str  # "matches" | "mismatches" — what the real match prompt produced
+    expected: str  # the human label
+    contested: bool
+    reason: str  # narration of the mapping the model returned
+    failures: list[str] = []
+    judge_verdict: str | None = None  # independent label-audit verdict, when a judge ran
+
+
+class LiveMatchingResponse(ResponseModel):
+    prompt_version: str
+    model: str
+    passed: int
+    total: int
+    cases: list[LiveMatchingCaseOut] = []
+
+
+class LiveMatchingStabilityCaseOut(ResponseModel):
+    key: str
+    marker: str  # "[stable]" | "[UNSTABLE]" | "[contested-split]"
+    majority: str  # modal verdict over K
+    expected: str
+    contested: bool
+    agreement: float
+    flipped: bool
+    tally: dict[str, int]
+
+
+class LiveMatchingStabilityResponse(ResponseModel):
+    prompt_version: str
+    model: str
+    k: int
+    cases: list[LiveMatchingStabilityCaseOut] = []
+
+
 # --- judge + agreement ------------------------------------------------------
 
 

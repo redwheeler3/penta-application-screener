@@ -20,7 +20,7 @@ import { MetricsPanel } from "./MetricsPanel";
 
 type Tab =
   | "discovery" | "decompose" | "match" | "consolidate" | "cost" | "metrics"
-  | "invariants" | "live_scoring" | "live_consolidation" | "judge";
+  | "invariants" | "live_scoring" | "live_consolidation" | "live_matching" | "judge";
 
 export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNode {
   const [catalog, setCatalog] = useState<EvalDescriptor[] | null>(null);
@@ -46,6 +46,7 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
     { id: "invariants", label: "Invariants", group: "eval" },
     { id: "live_scoring", label: "Live scoring", group: "eval" },
     { id: "live_consolidation", label: "Live consolidation", group: "eval" },
+    { id: "live_matching", label: "Live matching", group: "eval" },
     { id: "judge", label: "Judge", group: "eval" },
   ];
 
@@ -118,6 +119,18 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
               [
                 { evalKey: "live_consolidation", label: "Run live consolidation", rowLabel: "Run", calls: calls("live_consolidation") },
                 { evalKey: "live_consolidation_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("live_consolidation_stability") },
+              ] as RunMode[]
+            }
+          />
+        ) : activeTab === "live_matching" ? (
+          <RunnableEval
+            caseEvalKey="live_matching"
+            runKeys={["live_matching", "live_matching_stability"]}
+            description="Run golden prior/new dimension pairs through the REAL identity-match prompt + model, then grade matches/mismatches against the label by exact match. Stability runs each pair K times to see if the verdict flips. Tests the actual prompt, not a recorded artifact. A wrong match corrupts a carried-forward score, so the constructed mismatch pair guards that direction."
+            modes={
+              [
+                { evalKey: "live_matching", label: "Run live matching", rowLabel: "Run", calls: calls("live_matching") },
+                { evalKey: "live_matching_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("live_matching_stability") },
               ] as RunMode[]
             }
           />

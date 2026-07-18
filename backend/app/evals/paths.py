@@ -24,3 +24,4 @@ FIXTURE_PATH = EVAL_DATA_DIR / "rank_baseline.json"
 # REAL production prompt (see app/evals/live_*.py and docs/eval-case-schema.md).
 GOLDEN_PATH = EVAL_DATA_DIR / "scoring_golden.json"  # scoring (the first live eval)
 CONSOLIDATION_GOLDEN_PATH = EVAL_DATA_DIR / "consolidation_golden.json"
+MATCHING_GOLDEN_PATH = EVAL_DATA_DIR / "matching_golden.json"
