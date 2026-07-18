@@ -107,7 +107,7 @@ def main() -> None:
     print(
         f"\n# {len(cases)} candidate(s) proposed. These are UNLABELLED — set `expected` and "
         "`label_rationale`,\n# rename the key, and move the diagnostic ones into "
-        "app/evals/fixtures/judge_cases.json.",
+        "eval-data/judge_cases.json.",
     )
 
 
