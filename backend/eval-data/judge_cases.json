@@ -2,206 +2,253 @@
   "cases": [
     {
       "key": "values_vs_social_keep",
-      "title": "Co-operative values alignment vs. communal social orientation should stay apart",
-      "task": "Decide MERGE or KEEP for these two definitions.",
+      "metadata": {
+        "title": "Co-operative values alignment vs. communal social orientation should stay apart",
+        "expected": "keep",
+        "label_rationale": "KEEP: the pair correlates at r=0.84 (a real confound — people drawn to co-ops often score high on both), but the definitions measure different things — values/ideology (A) vs. social behaviour (B). A household can hold strong co-op values yet prefer a private home life (high A, low B), or be intensely social without ideological commitment (low A, high B). Merging would collapse a distinction the committee may want to weigh separately. This tests whether the judge, from the DEFINITIONS ALONE (as production sees them), infers the diverging applicant and resists over-merging on the near-identical scoring.",
+        "provenance": {
+          "note": "Source run predates provenance capture (2026-07-16); models/prompt versions were not retained for the baseline Rank. Definitions are an exact, unmodified slice of the committed rank_baseline.json fixture."
+        },
+        "source": "app/evals/fixtures/rank_baseline.json (dimensions cooperative_values_alignment, communal_social_orientation)"
+      },
       "evidence": {
         "key_a": "cooperative_values_alignment",
         "definition_a": "The extent to which the applicant articulates a genuine, intrinsic alignment with co-operative values — mutual aid, democratic governance, shared responsibility, community accountability — as distinct from purely instrumental motivations such as affordability or housing security.",
         "key_b": "communal_social_orientation",
         "definition_b": "The degree to which the household frames its home life as embedded in shared, communal living — actively seeking neighbourly relationships, informal mutual care, and shared social life — versus preferring a private, self-contained household that happens to share a building."
       },
-      "expected": "keep",
-      "label_rationale": "KEEP: the pair correlates at r=0.84 (a real confound — people drawn to co-ops often score high on both), but the definitions measure different things — values/ideology (A) vs. social behaviour (B). A household can hold strong co-op values yet prefer a private home life (high A, low B), or be intensely social without ideological commitment (low A, high B). Merging would collapse a distinction the committee may want to weigh separately. This tests whether the judge, from the DEFINITIONS ALONE (as production sees them), infers the diverging applicant and resists over-merging on the near-identical scoring.",
-      "provenance": {
-        "note": "Source run predates provenance capture (2026-07-16); models/prompt versions were not retained for the baseline Rank. Definitions are an exact, unmodified slice of the committed rank_baseline.json fixture."
-      },
-      "source": "app/evals/fixtures/rank_baseline.json (dimensions cooperative_values_alignment, communal_social_orientation)"
+      "prompt": {
+        "question": "Decide MERGE or KEEP for these two definitions."
+      }
     },
     {
       "key": "disposition_vs_community_keep",
-      "title": "Co-operative disposition vs. community-building orientation should stay apart",
-      "task": "Decide MERGE or KEEP for these two definitions.",
+      "metadata": {
+        "title": "Co-operative disposition vs. community-building orientation should stay apart",
+        "expected": "keep",
+        "label_rationale": "KEEP: the pair correlates at r=0.858 but is a confound. A is philosophical motivation (why the applicant wants co-op living); B is active social behaviour (do they host, organise, cultivate neighbourly bonds). An ideologically committed but introverted applicant scores high on A and low on B. Philosophical motivation and active social investment are distinct axes; merging would hide whether fit rests on values or sociability. Tests judge resistance to over-merging correlated-but-distinct axes, reasoning from definitions alone.",
+        "provenance": {
+          "pass_models": {
+            "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+            "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+            "Dimension matching": "us.anthropic.claude-sonnet-4-6",
+            "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Pattern discovery": "f393349e9733",
+            "Dimension decomposition": "733871632036",
+            "Dimension matching": "bcf254622976",
+            "Dimension scoring": "1c405eb75d53",
+            "Dimension consolidation": "d73b755d3075"
+          }
+        },
+        "source": "Rank run 4 (2026-07-16), consolidate_audit pair cooperative_disposition ~ community_building_orientation (KEEP); both definitions from run 4's dimension_report."
+      },
       "evidence": {
         "key_a": "cooperative_disposition",
         "definition_a": "The degree to which the household articulates genuine philosophical commitment to mutual aid, democratic governance, and shared responsibility as motivating their application — as opposed to treating co-op membership primarily as an instrumental housing vehicle.",
         "key_b": "community_building_orientation",
         "definition_b": "The household's active investment in cultivating social bonds with neighbours — hosting, organising events, welcoming newcomers, building genuine interpersonal relationships — as evidenced by current social habits and articulated aspirations, beyond minimum co-op compliance."
       },
-      "expected": "keep",
-      "label_rationale": "KEEP: the pair correlates at r=0.858 but is a confound. A is philosophical motivation (why the applicant wants co-op living); B is active social behaviour (do they host, organise, cultivate neighbourly bonds). An ideologically committed but introverted applicant scores high on A and low on B. Philosophical motivation and active social investment are distinct axes; merging would hide whether fit rests on values or sociability. Tests judge resistance to over-merging correlated-but-distinct axes, reasoning from definitions alone.",
-      "provenance": {
-        "pass_models": {
-          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
-          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
-          "Dimension matching": "us.anthropic.claude-sonnet-4-6",
-          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
-        },
-        "pass_prompt_versions": {
-          "Pattern discovery": "f393349e9733",
-          "Dimension decomposition": "733871632036",
-          "Dimension matching": "bcf254622976",
-          "Dimension scoring": "1c405eb75d53",
-          "Dimension consolidation": "d73b755d3075"
-        }
-      },
-      "source": "Rank run 4 (2026-07-16), consolidate_audit pair cooperative_disposition ~ community_building_orientation (KEEP); both definitions from run 4's dimension_report."
+      "prompt": {
+        "question": "Decide MERGE or KEEP for these two definitions."
+      }
     },
     {
       "key": "specificity_vs_followthrough_keep",
-      "title": "Essay specificity vs. follow-through reliability should stay apart",
-      "task": "Decide MERGE or KEEP for these two definitions.",
+      "metadata": {
+        "title": "Essay specificity vs. follow-through reliability should stay apart",
+        "expected": "keep",
+        "label_rationale": "KEEP: the pair correlates at r=0.887 but is a confound — writing quality (A) and behavioural reliability (B) are different axes. A reliable but inarticulate applicant scores high on B and low on A (and the inverse: a polished writer with no track record). Merging would conflate 'writes well' with 'does the work', a distinction that matters for a volunteer-run co-op. Tests that the judge does not merge on a high correlation when the definitions measure different kinds of thing (writing vs. conduct), reasoning from definitions alone.",
+        "provenance": {
+          "pass_models": {
+            "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+            "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+            "Dimension matching": "us.anthropic.claude-sonnet-4-6",
+            "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Pattern discovery": "f393349e9733",
+            "Dimension decomposition": "733871632036",
+            "Dimension matching": "bcf254622976",
+            "Dimension scoring": "1c405eb75d53",
+            "Dimension consolidation": "d73b755d3075"
+          }
+        },
+        "source": "Rank run 4 (2026-07-16), consolidate_audit pair essay_specificity_and_concreteness ~ follow_through_reliability (KEEP; cross-run fork-heal — essay_specificity def from run 4, follow_through_reliability def recovered from run 1 where it was last a live dimension)."
+      },
       "evidence": {
         "key_a": "essay_specificity_and_concreteness",
         "definition_a": "The degree to which the household's essays cite specific past actions, named roles, concrete outcomes, and verifiable evidence rather than generic claims, vague platitudes, or corporate-filler language.",
         "key_b": "follow_through_reliability",
         "definition_b": "Evidence — from prior roles rather than stated intention — that the household consistently completes tasks, closes loops, and does the unglamorous low-visibility work that sustains a volunteer-run organisation."
       },
-      "expected": "keep",
-      "label_rationale": "KEEP: the pair correlates at r=0.887 but is a confound — writing quality (A) and behavioural reliability (B) are different axes. A reliable but inarticulate applicant scores high on B and low on A (and the inverse: a polished writer with no track record). Merging would conflate 'writes well' with 'does the work', a distinction that matters for a volunteer-run co-op. Tests that the judge does not merge on a high correlation when the definitions measure different kinds of thing (writing vs. conduct), reasoning from definitions alone.",
-      "provenance": {
-        "pass_models": {
-          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
-          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
-          "Dimension matching": "us.anthropic.claude-sonnet-4-6",
-          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
-        },
-        "pass_prompt_versions": {
-          "Pattern discovery": "f393349e9733",
-          "Dimension decomposition": "733871632036",
-          "Dimension matching": "bcf254622976",
-          "Dimension scoring": "1c405eb75d53",
-          "Dimension consolidation": "d73b755d3075"
-        }
-      },
-      "source": "Rank run 4 (2026-07-16), consolidate_audit pair essay_specificity_and_concreteness ~ follow_through_reliability (KEEP; cross-run fork-heal — essay_specificity def from run 4, follow_through_reliability def recovered from run 1 where it was last a live dimension)."
+      "prompt": {
+        "question": "Decide MERGE or KEEP for these two definitions."
+      }
     },
     {
       "key": "pet_situation_ownership_merge",
-      "title": "Pet ownership and pet situation are the same axis and should merge",
-      "task": "Decide MERGE or KEEP for these two definitions.",
+      "metadata": {
+        "title": "Pet ownership and pet situation are the same axis and should merge",
+        "expected": "merge",
+        "label_rationale": "MERGE: both definitions score the same applicant the same way for the same reason — pet count/type and its effect on communal living. There is no concrete applicant who lands genuinely high on one and low on the other (definition B's 'disclosure clarity'/policy nuance is too marginal to create a real divergence), which is the bar for keeping apart. At r=0.904 with subsuming definitions, a true duplicate. The clean, non-contested MERGE that balances the KEEP cases.",
+        "provenance": {
+          "pass_models": {
+            "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+            "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+            "Dimension matching": "us.anthropic.claude-sonnet-4-6",
+            "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Pattern discovery": "f393349e9733",
+            "Dimension decomposition": "733871632036",
+            "Dimension matching": "bcf254622976",
+            "Dimension scoring": "1c405eb75d53",
+            "Dimension consolidation": "d73b755d3075"
+          }
+        },
+        "source": "Rank run 5 (2026-07-16), consolidate_audit pair pet_ownership <- pet_situation (a real MERGE). pet_ownership def from run 3 (the kept/older key); pet_situation def recovered from run 5's raw discovery report (worker 1), since the merge removed it from the settled report and the pre-fix audit row did not capture definition_drop."
+      },
       "evidence": {
         "key_a": "pet_ownership",
         "definition_a": "The number and type of pets in the household, which affects shared outdoor spaces, common areas, allergen exposure among neighbours, and the practical management of communal living.",
         "key_b": "pet_situation",
         "definition_b": "The nature and number of pets the household brings, relevant to shared-space use, neighbour comfort, and any co-op pet policies."
       },
-      "expected": "merge",
-      "label_rationale": "MERGE: both definitions score the same applicant the same way for the same reason — pet count/type and its effect on communal living. There is no concrete applicant who lands genuinely high on one and low on the other (definition B's 'disclosure clarity'/policy nuance is too marginal to create a real divergence), which is the bar for keeping apart. At r=0.904 with subsuming definitions, a true duplicate. The clean, non-contested MERGE that balances the KEEP cases.",
-      "provenance": {
-        "pass_models": {
-          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
-          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
-          "Dimension matching": "us.anthropic.claude-sonnet-4-6",
-          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
-        },
-        "pass_prompt_versions": {
-          "Pattern discovery": "f393349e9733",
-          "Dimension decomposition": "733871632036",
-          "Dimension matching": "bcf254622976",
-          "Dimension scoring": "1c405eb75d53",
-          "Dimension consolidation": "d73b755d3075"
-        }
-      },
-      "source": "Rank run 5 (2026-07-16), consolidate_audit pair pet_ownership <- pet_situation (a real MERGE). pet_ownership def from run 3 (the kept/older key); pet_situation def recovered from run 5's raw discovery report (worker 1), since the merge removed it from the settled report and the pre-fix audit row did not capture definition_drop."
+      "prompt": {
+        "question": "Decide MERGE or KEEP for these two definitions."
+      }
     },
     {
       "key": "trade_skills_licensed_handson_keep",
-      "title": "Licensed trade skills vs. hands-on trade skills — distinct, stay apart (contested)",
-      "task": "Decide MERGE or KEEP for these two definitions.",
+      "metadata": {
+        "title": "Licensed trade skills vs. hands-on trade skills — distinct, stay apart (contested)",
+        "expected": "keep",
+        "contested": true,
+        "label_rationale": "CONTESTED — both verdicts are defensible from the definitions alone, so this is review material, not an answer key. LEANING FLIPPED merge→keep 2026-07-16 (recorded, not silent): the human leaning was originally MERGE (the shared core is deployable building trades; the unlicensed-crafts extension seemed too marginal to matter for this pool). On reflection the leaning is now KEEP, on a definitions-first principle held INDEPENDENTLY of the judge — 'if two axes measure genuinely different things (formal certification for legally-regulated work vs. practical breadth), they stay apart; we don't reach in to merge distinct concepts just because they rarely diverge in one pool.' This is NOT the judge dictating the label: the judge returning keep (5/5 on 2026-07-16, and 4/1 before) merely turned out to AGREE with a reconsidered human view; the principle would hold if the judge said merge. The case stays CONTESTED because the MERGE reading remains genuinely coherent — at r=0.925 almost no applicant diverges, so treating them as one axis for THIS pool loses little, and that argument is real, not wrong. What that means: agreement is still not pass/fail here; consistency across repeated runs is the signal, and the judge is steady (5/5 keep) AND steadier than the production confirm, which flip-flopped keep→merge→merge across runs 5/6/7 on drifting definitions. (The score distribution that would settle materiality is deliberately withheld from both production and the judge — see ai-evals.md: r/divergence stay out of the confirm step.)",
+        "provenance": {
+          "pass_models": {
+            "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+            "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+            "Dimension matching": "us.anthropic.claude-sonnet-4-6",
+            "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Pattern discovery": "f393349e9733",
+            "Dimension decomposition": "733871632036",
+            "Dimension matching": "bcf254622976",
+            "Dimension scoring": "1c405eb75d53",
+            "Dimension consolidation": "d73b755d3075"
+          }
+        },
+        "source": "Rank run 6 (2026-07-16), consolidate_audit pair licensed_trade_skills <- hands_on_trade_skills (a real MERGE). licensed_trade_skills def from runs 3/4 (stable, the kept/older key); hands_on_trade_skills def from run 5 (the live scored dimension whose vector fed the nomination in both runs 5 and 6). The SAME pair was KEPT in run 5 — see label_rationale on single-call instability."
+      },
       "evidence": {
         "key_a": "licensed_trade_skills",
         "definition_a": "The extent to which the household holds formal trade qualifications (electrical, plumbing, mechanical, masonry, arboriculture) that allow legally-regulated building-system repairs to be performed in-house without a contractor.",
         "key_b": "hands_on_trade_skills",
         "definition_b": "The depth and breadth of licensed or practised physical-trade skills (electrical, plumbing, masonry, mechanics, arboriculture, upholstery, carpentry, etc.) the household can contribute to building maintenance and repair, reducing reliance on outside contractors."
       },
-      "expected": "keep",
-      "contested": true,
-      "label_rationale": "CONTESTED — both verdicts are defensible from the definitions alone, so this is review material, not an answer key. LEANING FLIPPED merge→keep 2026-07-16 (recorded, not silent): the human leaning was originally MERGE (the shared core is deployable building trades; the unlicensed-crafts extension seemed too marginal to matter for this pool). On reflection the leaning is now KEEP, on a definitions-first principle held INDEPENDENTLY of the judge — 'if two axes measure genuinely different things (formal certification for legally-regulated work vs. practical breadth), they stay apart; we don't reach in to merge distinct concepts just because they rarely diverge in one pool.' This is NOT the judge dictating the label: the judge returning keep (5/5 on 2026-07-16, and 4/1 before) merely turned out to AGREE with a reconsidered human view; the principle would hold if the judge said merge. The case stays CONTESTED because the MERGE reading remains genuinely coherent — at r=0.925 almost no applicant diverges, so treating them as one axis for THIS pool loses little, and that argument is real, not wrong. What that means: agreement is still not pass/fail here; consistency across repeated runs is the signal, and the judge is steady (5/5 keep) AND steadier than the production confirm, which flip-flopped keep→merge→merge across runs 5/6/7 on drifting definitions. (The score distribution that would settle materiality is deliberately withheld from both production and the judge — see ai-evals.md: r/divergence stay out of the confirm step.)",
-      "provenance": {
-        "pass_models": {
-          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
-          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
-          "Dimension matching": "us.anthropic.claude-sonnet-4-6",
-          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
-        },
-        "pass_prompt_versions": {
-          "Pattern discovery": "f393349e9733",
-          "Dimension decomposition": "733871632036",
-          "Dimension matching": "bcf254622976",
-          "Dimension scoring": "1c405eb75d53",
-          "Dimension consolidation": "d73b755d3075"
-        }
-      },
-      "source": "Rank run 6 (2026-07-16), consolidate_audit pair licensed_trade_skills <- hands_on_trade_skills (a real MERGE). licensed_trade_skills def from runs 3/4 (stable, the kept/older key); hands_on_trade_skills def from run 5 (the live scored dimension whose vector fed the nomination in both runs 5 and 6). The SAME pair was KEPT in run 5 — see label_rationale on single-call instability."
+      "prompt": {
+        "question": "Decide MERGE or KEEP for these two definitions."
+      }
     },
     {
       "key": "health_safety_decompose_merge",
-      "pass": "decomposition",
-      "title": "Three health/safety discovery dimensions are one concept and should fold together",
-      "task": "These definitions were each discovered as a separate dimension by parallel discovery workers, then folded into ONE settled axis by decomposition. Decide MERGE (they are one concept, the fold is correct) or KEEP (at least one is a genuinely distinct axis that should not have been folded in).",
+      "metadata": {
+        "pass": "decomposition",
+        "title": "Three health/safety discovery dimensions are one concept and should fold together",
+        "expected": "merge",
+        "label_rationale": "MERGE: all three definitions describe the same concept — professional health/safety competence (first-aid, CPR, nursing, occupational health) deployable for member wellbeing — differing only in wording and examples, not in what they measure. An applicant would score identically against all three, so they are one axis, not three; the decomposition fold is correct. This is the clean, non-contested MERGE flavor for the DECOMPOSITION pass (N discovery carvings of one concept), distinct from consolidation's pairwise post-score merges: decompose judges from definitions ALONE, pre-score, with no correlation signal at all — exactly what the model saw. Complements pet_situation_ownership_merge (a clean consolidation merge) with a clean decompose merge.",
+        "provenance": {
+          "pass_models": {
+            "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+            "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+            "Dimension matching": "us.anthropic.claude-sonnet-4-6",
+            "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Pattern discovery": "f393349e9733",
+            "Dimension decomposition": "733871632036",
+            "Dimension matching": "bcf254622976",
+            "Dimension scoring": "1c405eb75d53",
+            "Dimension consolidation": "d73b755d3075"
+          }
+        },
+        "source": "Rank run 6 (2026-07-16), decompose_audit settled axis health_safety_skill (source_keys health_safety_skill, health_and_safety_skill, health_and_safety_skills; decision: 'All three keys are identical in definition and scoring — only the key formatting differs across reports. Straightforward merge.'). The three definitions are exact slices of run 6's raw discovery reports (fan_out_audit)."
+      },
       "evidence": {
         "definition_1": "The household's professional health or safety expertise that could benefit co-op members directly (e.g. first aid, CPR, occupational health).",
         "definition_2": "Whether the household brings health, medical, or first-aid skills that could enhance the safety and wellbeing infrastructure of the co-op community.",
         "definition_3": "Professional health or safety competencies — nursing, first-aid training, CPR instruction — that the household could deploy to improve building safety and member wellbeing."
       },
-      "expected": "merge",
-      "label_rationale": "MERGE: all three definitions describe the same concept — professional health/safety competence (first-aid, CPR, nursing, occupational health) deployable for member wellbeing — differing only in wording and examples, not in what they measure. An applicant would score identically against all three, so they are one axis, not three; the decomposition fold is correct. This is the clean, non-contested MERGE flavor for the DECOMPOSITION pass (N discovery carvings of one concept), distinct from consolidation's pairwise post-score merges: decompose judges from definitions ALONE, pre-score, with no correlation signal at all — exactly what the model saw. Complements pet_situation_ownership_merge (a clean consolidation merge) with a clean decompose merge.",
-      "provenance": {
-        "pass_models": {
-          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
-          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
-          "Dimension matching": "us.anthropic.claude-sonnet-4-6",
-          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
-        },
-        "pass_prompt_versions": {
-          "Pattern discovery": "f393349e9733",
-          "Dimension decomposition": "733871632036",
-          "Dimension matching": "bcf254622976",
-          "Dimension scoring": "1c405eb75d53",
-          "Dimension consolidation": "d73b755d3075"
-        }
-      },
-      "source": "Rank run 6 (2026-07-16), decompose_audit settled axis health_safety_skill (source_keys health_safety_skill, health_and_safety_skill, health_and_safety_skills; decision: 'All three keys are identical in definition and scoring — only the key formatting differs across reports. Straightforward merge.'). The three definitions are exact slices of run 6's raw discovery reports (fan_out_audit)."
+      "prompt": {
+        "question": "These definitions were each discovered as a separate dimension by parallel discovery workers, then folded into ONE settled axis by decomposition. Decide MERGE (they are one concept, the fold is correct) or KEEP (at least one is a genuinely distinct axis that should not have been folded in)."
+      }
     },
     {
       "key": "time_vs_commitment_decompose_keep",
-      "pass": "decomposition",
-      "title": "Discretionary time availability and participation commitment are distinct and should stay separate",
-      "task": "These two definitions were discovered as separate dimensions by parallel discovery workers. Decomposition settled them as TWO distinct axes rather than folding them into one. Decide MERGE (they are really one concept and should have been folded together) or KEEP (they are genuinely distinct axes, correctly kept apart).",
+      "metadata": {
+        "pass": "decomposition",
+        "title": "Discretionary time availability and participation commitment are distinct and should stay separate",
+        "expected": "keep",
+        "label_rationale": "KEEP: these are capacity vs. intent — genuinely distinct axes. A is how much spare time the household actually has; B is how concretely they commit to co-op work in their own words. The concrete divergence: a household can be genuinely committed yet honestly acknowledge thin hours (high B, low A), or make bold commitments with no honest accounting of constraints (high B, low A the other way), or have open weekends but say little specific (high A, low B). Capacity and stated intent do not move together, so folding them would hide whether a promising applicant actually has the time to deliver. This is the KEEP flavor for the DECOMPOSITION pass — the discipline of NOT over-folding when N carvings look adjacent but measure different things, the mirror of health_safety_decompose_merge (a correct fold). Judged from definitions alone, pre-score, as the decomposer saw them.",
+        "provenance": {
+          "pass_models": {
+            "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+            "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+            "Dimension matching": "us.anthropic.claude-sonnet-4-6",
+            "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Pattern discovery": "f393349e9733",
+            "Dimension decomposition": "733871632036",
+            "Dimension matching": "bcf254622976",
+            "Dimension scoring": "1c405eb75d53",
+            "Dimension consolidation": "d73b755d3075"
+          }
+        },
+        "source": "Rank run 7 (2026-07-16), decompose_audit — settled axes discretionary_time_availability and participation_commitment_explicitness were kept distinct (decision on the former: 'Kept distinct from participation_commitment_explicitness (intent vs. capacity — a household can be genuinely committed but honestly acknowledge thin hours...)'). Representative definitions are exact slices of run 7's raw discovery reports (fan_out_audit); decompose settled entries do not store definitions, so they were reconstructed from source keys."
+      },
       "evidence": {
         "definition_a": "The household's self-reported availability of spare time for co-op commitments, net of outside obligations such as touring schedules, intensive hobbies, or other regular commitments.",
         "definition_b": "How concretely and specifically the household commits to co-op work obligations — work-day attendance, committee seats, maintenance rotations — in their own words."
       },
-      "expected": "keep",
-      "label_rationale": "KEEP: these are capacity vs. intent — genuinely distinct axes. A is how much spare time the household actually has; B is how concretely they commit to co-op work in their own words. The concrete divergence: a household can be genuinely committed yet honestly acknowledge thin hours (high B, low A), or make bold commitments with no honest accounting of constraints (high B, low A the other way), or have open weekends but say little specific (high A, low B). Capacity and stated intent do not move together, so folding them would hide whether a promising applicant actually has the time to deliver. This is the KEEP flavor for the DECOMPOSITION pass — the discipline of NOT over-folding when N carvings look adjacent but measure different things, the mirror of health_safety_decompose_merge (a correct fold). Judged from definitions alone, pre-score, as the decomposer saw them.",
-      "provenance": {
-        "pass_models": {
-          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
-          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
-          "Dimension matching": "us.anthropic.claude-sonnet-4-6",
-          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
-        },
-        "pass_prompt_versions": {
-          "Pattern discovery": "f393349e9733",
-          "Dimension decomposition": "733871632036",
-          "Dimension matching": "bcf254622976",
-          "Dimension scoring": "1c405eb75d53",
-          "Dimension consolidation": "d73b755d3075"
-        }
-      },
-      "source": "Rank run 7 (2026-07-16), decompose_audit — settled axes discretionary_time_availability and participation_commitment_explicitness were kept distinct (decision on the former: 'Kept distinct from participation_commitment_explicitness (intent vs. capacity — a household can be genuinely committed but honestly acknowledge thin hours...)'). Representative definitions are exact slices of run 7's raw discovery reports (fan_out_audit); decompose settled entries do not store definitions, so they were reconstructed from source keys."
+      "prompt": {
+        "question": "These two definitions were discovered as separate dimensions by parallel discovery workers. Decomposition settled them as TWO distinct axes rather than folding them into one. Decide MERGE (they are really one concept and should have been folded together) or KEEP (they are genuinely distinct axes, correctly kept apart)."
+      }
     },
     {
       "key": "score_outdoor_grounds_absent_unsupported",
-      "pass": "scoring",
-      "title": "A NEGATIVE score on an empty evidence field is unsupported — no citation justifies a demonstrated low",
-      "task": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
+      "metadata": {
+        "pass": "scoring",
+        "title": "A NEGATIVE score on an empty evidence field is unsupported — no citation justifies a demonstrated low",
+        "expected": "unsupported",
+        "label_rationale": "UNSUPPORTED — an EMPTY evidence field cites nothing, so it cannot justify a demonstrated low (-0.6). On the signed -1..+1 scale (2026-07-17): -1 is the low_end pole, 0 neutral, +1 high_end; silence scores 0 (neutral), NEVER negative — you cannot tell an unmentioned strength from a real weakness from a never-asked topic. A negative score with no citation is the classic underclaim/absence-as-presence error the rubric names. Regression guard for the pole-floor bug: the model was reading silence (and low poles WORDED as absence, e.g. 'no skills mentioned') as a demonstrated low. Originally captured empty-evidence 0.0 under prompt 1c405eb75d53; reframed to the signed scale where a negative (not 0.0) is the unsupported case. See ai-evals.md.",
+        "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 1",
+        "provenance": {
+          "pass_models": {
+            "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+            "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+            "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Pattern discovery": "f393349e9733",
+            "Dimension decomposition": "733871632036",
+            "Dimension matching": "bcf254622976",
+            "Dimension scoring": "1c405eb75d53",
+            "Dimension consolidation": "d73b755d3075"
+          }
+        }
+      },
       "evidence": {
         "dimension": "outdoor_grounds_skills",
         "dimension_definition": "Whether the household can contribute skilled labour to outdoor and grounds upkeep — arboriculture, horticulture, composting, food gardening, storm-damage clearance, landscaping — that would otherwise require hired specialists.",
@@ -210,30 +257,19 @@
         "cited_evidence": "",
         "score": -0.6
       },
-      "expected": "unsupported",
-      "label_rationale": "UNSUPPORTED — an EMPTY evidence field cites nothing, so it cannot justify a demonstrated low (-0.6). On the signed -1..+1 scale (2026-07-17): -1 is the low_end pole, 0 neutral, +1 high_end; silence scores 0 (neutral), NEVER negative — you cannot tell an unmentioned strength from a real weakness from a never-asked topic. A negative score with no citation is the classic underclaim/absence-as-presence error the rubric names. Regression guard for the pole-floor bug: the model was reading silence (and low poles WORDED as absence, e.g. 'no skills mentioned') as a demonstrated low. Originally captured empty-evidence 0.0 under prompt 1c405eb75d53; reframed to the signed scale where a negative (not 0.0) is the unsupported case. See ai-evals.md.",
-      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 1",
-      "provenance": {
-        "pass_models": {
-          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
-          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
-          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
-        },
-        "pass_prompt_versions": {
-          "Pattern discovery": "f393349e9733",
-          "Dimension decomposition": "733871632036",
-          "Dimension matching": "bcf254622976",
-          "Dimension scoring": "1c405eb75d53",
-          "Dimension consolidation": "d73b755d3075"
-        }
+      "prompt": {
+        "question": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence."
       }
     },
     {
       "key": "score_absence_worded_negative_unsupported",
-      "pass": "scoring",
-      "title": "Evidence saying 'not addressed' cannot support a negative score — silence is not a demonstrated low",
-      "task": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
+      "metadata": {
+        "pass": "scoring",
+        "title": "Evidence saying 'not addressed' cannot support a negative score — silence is not a demonstrated low",
+        "expected": "unsupported",
+        "label_rationale": "UNSUPPORTED — the cited evidence literally states the dimension was NOT ADDRESSED, yet the score is -0.7 (near the low_end pole). Silence is not evidence of a demonstrated low: an unaddressed dimension must score 0 (neutral). This is the signature of the pole-floor bug (2026-07-17) — the low_end here is WORDED as an absence ('No adult holds or mentions any licensed trade'), and the model wrongly read the applicant's silence as matching that pole. A correct score is 0; -0.7 is an underclaim the evidence contradicts. Synthetic/illustrative case built to guard the signed-scale absence rule; not a real pool slice.",
+        "evidence_source": "synthetic — illustrative guard for the signed-scale absence rule"
+      },
       "evidence": {
         "dimension": "licensed_trade_skills",
         "dimension_definition": "Whether an adult holds a licensed/certified trade (electrician, plumber, gasfitter, Red Seal) they explicitly offer toward co-op maintenance.",
@@ -242,15 +278,34 @@
         "cited_evidence": "Not addressed in application.",
         "score": -0.7
       },
-      "expected": "unsupported",
-      "label_rationale": "UNSUPPORTED — the cited evidence literally states the dimension was NOT ADDRESSED, yet the score is -0.7 (near the low_end pole). Silence is not evidence of a demonstrated low: an unaddressed dimension must score 0 (neutral). This is the signature of the pole-floor bug (2026-07-17) — the low_end here is WORDED as an absence ('No adult holds or mentions any licensed trade'), and the model wrongly read the applicant's silence as matching that pole. A correct score is 0; -0.7 is an underclaim the evidence contradicts. Synthetic/illustrative case built to guard the signed-scale absence rule; not a real pool slice.",
-      "evidence_source": "synthetic — illustrative guard for the signed-scale absence rule"
+      "prompt": {
+        "question": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence."
+      }
     },
     {
       "key": "score_income_split_supported",
-      "pass": "scoring",
-      "title": "High dual-earner-resilience score is supported by a near-50/50 income split",
-      "task": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
+      "metadata": {
+        "pass": "scoring",
+        "title": "High dual-earner-resilience score is supported by a near-50/50 income split",
+        "expected": "supported",
+        "label_rationale": "SUPPORTED: a 45000/45000 split is exactly 50/50, squarely in the high_end's 'each contributing roughly 40–60%' band. The cited structured evidence directly and fully warrants the near-top score — no inference beyond what was cited.",
+        "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 1",
+        "provenance": {
+          "pass_models": {
+            "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+            "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+            "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Pattern discovery": "f393349e9733",
+            "Dimension decomposition": "733871632036",
+            "Dimension matching": "bcf254622976",
+            "Dimension scoring": "1c405eb75d53",
+            "Dimension consolidation": "d73b755d3075"
+          }
+        }
+      },
       "evidence": {
         "dimension": "income_concentration_risk",
         "dimension_definition": "How evenly household income is distributed between the two adults, measuring the household's resilience if one earner's income is interrupted through job loss, illness, parental leave, or relationship change.",
@@ -259,30 +314,34 @@
         "cited_evidence": "\"applicant_income\": 45000, \"co_applicant_income\": 45000",
         "score": 0.95
       },
-      "expected": "supported",
-      "label_rationale": "SUPPORTED: a 45000/45000 split is exactly 50/50, squarely in the high_end's 'each contributing roughly 40–60%' band. The cited structured evidence directly and fully warrants the near-top score — no inference beyond what was cited.",
-      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 1",
-      "provenance": {
-        "pass_models": {
-          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
-          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
-          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
-        },
-        "pass_prompt_versions": {
-          "Pattern discovery": "f393349e9733",
-          "Dimension decomposition": "733871632036",
-          "Dimension matching": "bcf254622976",
-          "Dimension scoring": "1c405eb75d53",
-          "Dimension consolidation": "d73b755d3075"
-        }
+      "prompt": {
+        "question": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence."
       }
     },
     {
       "key": "score_conflict_history_midscore_no_evidence_unsupported",
-      "pass": "scoring",
-      "title": "A mid 0.5 score on empty cited evidence is not defensible",
-      "task": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
+      "metadata": {
+        "pass": "scoring",
+        "title": "A mid 0.5 score on empty cited evidence is not defensible",
+        "expected": "unsupported",
+        "label_rationale": "UNSUPPORTED: a mid score of 0.5 rests on NO cited evidence. Silence is weak evidence — the scoring rule says absence should score low (with low confidence), not land at the midpoint. A 0.5 on empty evidence reads as an unanchored guess rather than a reading of what the applicant said, which is exactly the score-not-grounded-in-evidence failure this eval exists to catch. (Contrast the outdoor-grounds case, where empty evidence correctly produced 0.0 against an absence-defined low pole.)",
+        "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 1",
+        "provenance": {
+          "pass_models": {
+            "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+            "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+            "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Pattern discovery": "f393349e9733",
+            "Dimension decomposition": "733871632036",
+            "Dimension matching": "bcf254622976",
+            "Dimension scoring": "1c405eb75d53",
+            "Dimension consolidation": "d73b755d3075"
+          }
+        }
+      },
       "evidence": {
         "dimension": "conflict_history_transparency",
         "dimension_definition": "Whether the applicant discloses prior governance conflicts or interpersonal friction in collective settings, and the quality of reflection shown about what was learned.",
@@ -291,30 +350,35 @@
         "cited_evidence": "",
         "score": 0.5
       },
-      "expected": "unsupported",
-      "label_rationale": "UNSUPPORTED: a mid score of 0.5 rests on NO cited evidence. Silence is weak evidence — the scoring rule says absence should score low (with low confidence), not land at the midpoint. A 0.5 on empty evidence reads as an unanchored guess rather than a reading of what the applicant said, which is exactly the score-not-grounded-in-evidence failure this eval exists to catch. (Contrast the outdoor-grounds case, where empty evidence correctly produced 0.0 against an absence-defined low pole.)",
-      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 1",
-      "provenance": {
-        "pass_models": {
-          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
-          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
-          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
-        },
-        "pass_prompt_versions": {
-          "Pattern discovery": "f393349e9733",
-          "Dimension decomposition": "733871632036",
-          "Dimension matching": "bcf254622976",
-          "Dimension scoring": "1c405eb75d53",
-          "Dimension consolidation": "d73b755d3075"
-        }
+      "prompt": {
+        "question": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence."
       }
     },
     {
       "key": "score_coop_motivation_offtopic_evidence_contested",
-      "pass": "scoring",
-      "title": "Contested: rich but partly off-axis evidence at 0.7 co-op-motivation",
-      "task": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
+      "metadata": {
+        "pass": "scoring",
+        "title": "Contested: rich but partly off-axis evidence at 0.7 co-op-motivation",
+        "expected": "unsupported",
+        "contested": true,
+        "label_rationale": "CONTESTED — both verdicts are defensible; leaning unsupported. The UNSUPPORTED reading: only 'build something together rather than rent in isolation' is on-axis for CO-OPERATIVE motivation; the camping/kayaking/leave-no-trace clause is ENVIRONMENTAL ethics (off-axis) yet props up the score, and 0.7 leans toward a high_end that wants co-operative philosophy demonstrated through past behaviour (food sharing, tool libraries, carpool networks) which a single generic line doesn't reach. The SUPPORTED reading (which the judge gave, 2026-07-16): 'build something together rather than rent in isolation' directly expresses co-op living as an end in itself with no instrumental framing, and that alone can carry a moderate 0.7 above the midpoint regardless of the off-axis extra. RELABELLED contested (from a firm unsupported) after the judge surfaced the coherent second reading — it was borderline when seeded (originally floated as possibly-contested). The turn on how much weight one genuine on-axis clause carries is a real judgement call the evidence under-determines, so agreement here is review material, not pass/fail; consistency across runs is the signal. Not the judge dictating the label — the label moved because the judge exposed a defensible alternative, and we agreed it was genuinely two-sided.",
+        "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 1. Exact slice — score + evidence + definition all verbatim from the run.",
+        "provenance": {
+          "pass_models": {
+            "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+            "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+            "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Pattern discovery": "f393349e9733",
+            "Dimension decomposition": "733871632036",
+            "Dimension matching": "bcf254622976",
+            "Dimension scoring": "1c405eb75d53",
+            "Dimension consolidation": "d73b755d3075"
+          }
+        }
+      },
       "evidence": {
         "dimension": "coop_motivation_intrinsic",
         "dimension_definition": "The degree to which the applicant's stated motivation for seeking co-op housing centres on cooperative values — mutual aid, shared responsibility, community-building — as ends in themselves, as opposed to primarily instrumental goals such as rent affordability or housing stability.",
@@ -323,31 +387,34 @@
         "cited_evidence": "We'd rather build something together than rent in isolation. We camp and kayak whenever we can and pack out more trash than we bring.",
         "score": 0.7
       },
-      "expected": "unsupported",
-      "contested": true,
-      "label_rationale": "CONTESTED — both verdicts are defensible; leaning unsupported. The UNSUPPORTED reading: only 'build something together rather than rent in isolation' is on-axis for CO-OPERATIVE motivation; the camping/kayaking/leave-no-trace clause is ENVIRONMENTAL ethics (off-axis) yet props up the score, and 0.7 leans toward a high_end that wants co-operative philosophy demonstrated through past behaviour (food sharing, tool libraries, carpool networks) which a single generic line doesn't reach. The SUPPORTED reading (which the judge gave, 2026-07-16): 'build something together rather than rent in isolation' directly expresses co-op living as an end in itself with no instrumental framing, and that alone can carry a moderate 0.7 above the midpoint regardless of the off-axis extra. RELABELLED contested (from a firm unsupported) after the judge surfaced the coherent second reading — it was borderline when seeded (originally floated as possibly-contested). The turn on how much weight one genuine on-axis clause carries is a real judgement call the evidence under-determines, so agreement here is review material, not pass/fail; consistency across runs is the signal. Not the judge dictating the label — the label moved because the judge exposed a defensible alternative, and we agreed it was genuinely two-sided.",
-      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 1. Exact slice — score + evidence + definition all verbatim from the run.",
-      "provenance": {
-        "pass_models": {
-          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
-          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
-          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
-        },
-        "pass_prompt_versions": {
-          "Pattern discovery": "f393349e9733",
-          "Dimension decomposition": "733871632036",
-          "Dimension matching": "bcf254622976",
-          "Dimension scoring": "1c405eb75d53",
-          "Dimension consolidation": "d73b755d3075"
-        }
+      "prompt": {
+        "question": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence."
       }
     },
     {
       "key": "score_child_ages_underclaim_unsupported",
-      "pass": "scoring",
-      "title": "A 0.65 for children all in the 8+ high band is an underclaim",
-      "task": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
+      "metadata": {
+        "pass": "scoring",
+        "title": "A 0.65 for children all in the 8+ high band is an underclaim",
+        "expected": "unsupported",
+        "label_rationale": "UNSUPPORTED — the score is too LOW for the cited evidence (an underclaim). All three children (14, 11, 8) sit squarely in the high_end band ('8+, self-sufficient, may participate in youth programmes') with none in the low_end's under-3 range, so the evidence warrants a score near the top (~0.85), not a middling 0.65. LABEL FLIPPED supported→unsupported (2026-07-16): this was seeded expecting SUPPORTED (reasoning 'terse ages are sufficient evidence, so 0.65 is fine'), but the judge caught a sharper point we agreed with — sufficiency of the evidence is not the question; whether the SCORE matches the pole is, and 0.65 undersells clear high-band ages. Flipped on the merits, toward the judge, because its argument is correct — not to make the judge agree (the judge is untouched). PRODUCTION SIGNAL worth watching: if the scoring pass systematically lands mid-range on evidence that clearly hits a high pole, that is a scoring-prompt weakness (under-anchoring to the poles), separate from this eval — logged here, to investigate on the scoring side, not by changing the judge.",
+        "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 1. Definition from run 1's raw discovery report (fan_out_audit); score + evidence verbatim.",
+        "provenance": {
+          "pass_models": {
+            "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+            "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+            "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Pattern discovery": "f393349e9733",
+            "Dimension decomposition": "733871632036",
+            "Dimension matching": "bcf254622976",
+            "Dimension scoring": "1c405eb75d53",
+            "Dimension consolidation": "d73b755d3075"
+          }
+        }
+      },
       "evidence": {
         "dimension": "child_age_profile_community_fit",
         "dimension_definition": "The ages of children in the household, reflecting how they will interact with co-op shared spaces, need adult supervision, and potentially benefit from or contribute to community programmes.",
@@ -356,30 +423,27 @@
         "cited_evidence": "Children ages 14, 11, 8",
         "score": 0.65
       },
-      "expected": "unsupported",
-      "label_rationale": "UNSUPPORTED — the score is too LOW for the cited evidence (an underclaim). All three children (14, 11, 8) sit squarely in the high_end band ('8+, self-sufficient, may participate in youth programmes') with none in the low_end's under-3 range, so the evidence warrants a score near the top (~0.85), not a middling 0.65. LABEL FLIPPED supported→unsupported (2026-07-16): this was seeded expecting SUPPORTED (reasoning 'terse ages are sufficient evidence, so 0.65 is fine'), but the judge caught a sharper point we agreed with — sufficiency of the evidence is not the question; whether the SCORE matches the pole is, and 0.65 undersells clear high-band ages. Flipped on the merits, toward the judge, because its argument is correct — not to make the judge agree (the judge is untouched). PRODUCTION SIGNAL worth watching: if the scoring pass systematically lands mid-range on evidence that clearly hits a high pole, that is a scoring-prompt weakness (under-anchoring to the poles), separate from this eval — logged here, to investigate on the scoring side, not by changing the judge.",
-      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 1. Definition from run 1's raw discovery report (fan_out_audit); score + evidence verbatim.",
-      "provenance": {
-        "pass_models": {
-          "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
-          "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
-          "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-          "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
-        },
-        "pass_prompt_versions": {
-          "Pattern discovery": "f393349e9733",
-          "Dimension decomposition": "733871632036",
-          "Dimension matching": "bcf254622976",
-          "Dimension scoring": "1c405eb75d53",
-          "Dimension consolidation": "d73b755d3075"
-        }
+      "prompt": {
+        "question": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence."
       }
     },
     {
       "key": "screen_pet_two_dogs_cat_supported",
-      "pass": "screening",
-      "title": "Two dogs and a cat against a 1-dog/1-cat policy is a supported pet flag",
-      "task": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence.",
+      "metadata": {
+        "pass": "screening",
+        "title": "Two dogs and a cat against a 1-dog/1-cat policy is a supported pet flag",
+        "expected": "flag_supported",
+        "label_rationale": "FLAG_SUPPORTED: 'Two dogs and a cat' directly exceeds the cited policy (max 1 dog, 1 cat). Evidence and policy plainly substantiate the concern.",
+        "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
+        "provenance": {
+          "pass_models": {
+            "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+          },
+          "pass_prompt_versions": {
+            "Screening": "1e59d793e78b"
+          }
+        }
+      },
       "evidence": {
         "flag_category": "pet_policy",
         "flag_severity": "notable",
@@ -387,23 +451,27 @@
         "cited_evidence": "pets_text: 'Two dogs and a cat'",
         "co_op_pet_policy": "at most 1 dog(s); at most 1 cat(s); no other/exotic pets"
       },
-      "expected": "flag_supported",
-      "label_rationale": "FLAG_SUPPORTED: 'Two dogs and a cat' directly exceeds the cited policy (max 1 dog, 1 cat). Evidence and policy plainly substantiate the concern.",
-      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
-      "provenance": {
-        "pass_models": {
-          "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-        },
-        "pass_prompt_versions": {
-          "Screening": "1e59d793e78b"
-        }
+      "prompt": {
+        "question": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence."
       }
     },
     {
       "key": "screen_pet_rabbit_other_pets_supported",
-      "pass": "screening",
-      "title": "A rabbit against a 'no other/exotic pets' policy is a supported pet flag",
-      "task": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence.",
+      "metadata": {
+        "pass": "screening",
+        "title": "A rabbit against a 'no other/exotic pets' policy is a supported pet flag",
+        "expected": "flag_supported",
+        "label_rationale": "FLAG_SUPPORTED: the policy explicitly bars 'other/exotic pets', and a rabbit is neither a dog nor a cat, so it falls under 'other' — a genuine violation. Note the policy line is included in the case (fidelity): without it, the quote alone ('at most 1 dog and 1 cat') could look like it doesn't cover rabbits; with it, the flag is clearly warranted.",
+        "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
+        "provenance": {
+          "pass_models": {
+            "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+          },
+          "pass_prompt_versions": {
+            "Screening": "1e59d793e78b"
+          }
+        }
+      },
       "evidence": {
         "flag_category": "pet_policy",
         "flag_severity": "notable",
@@ -411,240 +479,272 @@
         "cited_evidence": "pets_text: 'One rabbit'; first essay mentions fostering rescue animals",
         "co_op_pet_policy": "at most 1 dog(s); at most 1 cat(s); no other/exotic pets"
       },
-      "expected": "flag_supported",
-      "label_rationale": "FLAG_SUPPORTED: the policy explicitly bars 'other/exotic pets', and a rabbit is neither a dog nor a cat, so it falls under 'other' — a genuine violation. Note the policy line is included in the case (fidelity): without it, the quote alone ('at most 1 dog and 1 cat') could look like it doesn't cover rabbits; with it, the flag is clearly warranted.",
-      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
-      "provenance": {
-        "pass_models": {
-          "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-        },
-        "pass_prompt_versions": {
-          "Screening": "1e59d793e78b"
-        }
+      "prompt": {
+        "question": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence."
       }
     },
     {
       "key": "screen_fake_contact_asdf_email_supported",
-      "pass": "screening",
-      "title": "A keyboard-mash placeholder email is a supported fake-contact flag",
-      "task": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence.",
+      "metadata": {
+        "pass": "screening",
+        "title": "A keyboard-mash placeholder email is a supported fake-contact flag",
+        "expected": "flag_supported",
+        "label_rationale": "FLAG_SUPPORTED: 'asdf@asdf.asdf' is an unmistakable placeholder/keyboard-mash, not a real address — the cited evidence is the concern itself.",
+        "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
+        "provenance": {
+          "pass_models": {
+            "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+          },
+          "pass_prompt_versions": {
+            "Screening": "1e59d793e78b"
+          }
+        }
+      },
       "evidence": {
         "flag_category": "fake_contact",
         "flag_severity": "notable",
         "flag_summary": "Applicant email appears to be a placeholder (keyboard mashing pattern).",
         "cited_evidence": "applicant_email: asdf@asdf.asdf"
       },
-      "expected": "flag_supported",
-      "label_rationale": "FLAG_SUPPORTED: 'asdf@asdf.asdf' is an unmistakable placeholder/keyboard-mash, not a real address — the cited evidence is the concern itself.",
-      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
-      "provenance": {
-        "pass_models": {
-          "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-        },
-        "pass_prompt_versions": {
-          "Screening": "1e59d793e78b"
-        }
+      "prompt": {
+        "question": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence."
       }
     },
     {
       "key": "screen_inconsistency_parent_of_two_vs_four_supported",
-      "pass": "screening",
-      "title": "'Parent of two' vs. four children on the form is a supported inconsistency flag",
-      "task": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence.",
+      "metadata": {
+        "pass": "screening",
+        "title": "'Parent of two' vs. four children on the form is a supported inconsistency flag",
+        "expected": "flag_supported",
+        "label_rationale": "FLAG_SUPPORTED: a stated 'parent of two' directly contradicts a form listing four children — a real, evidenced internal inconsistency worth a screener's review.",
+        "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
+        "provenance": {
+          "pass_models": {
+            "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+          },
+          "pass_prompt_versions": {
+            "Screening": "1e59d793e78b"
+          }
+        }
+      },
       "evidence": {
         "flag_category": "internal_inconsistency",
         "flag_severity": "notable",
         "flag_summary": "Essay states applicant is 'devoted parent of two' but the form lists four children in the household.",
         "cited_evidence": "Essay 1: 'devoted parent of two' vs. child_details listing 4 children"
       },
-      "expected": "flag_supported",
-      "label_rationale": "FLAG_SUPPORTED: a stated 'parent of two' directly contradicts a form listing four children — a real, evidenced internal inconsistency worth a screener's review.",
-      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
-      "provenance": {
-        "pass_models": {
-          "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-        },
-        "pass_prompt_versions": {
-          "Screening": "1e59d793e78b"
-        }
+      "prompt": {
+        "question": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence."
       }
     },
     {
       "key": "screen_inconsistency_no_skills_then_electrician_supported",
-      "pass": "screening",
-      "title": "'No handy skills' then listing electrician/drywall is a supported inconsistency flag",
-      "task": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence.",
+      "metadata": {
+        "pass": "screening",
+        "title": "'No handy skills' then listing electrician/drywall is a supported inconsistency flag",
+        "expected": "flag_supported",
+        "label_rationale": "FLAG_SUPPORTED: the essay self-contradicts within one passage — 'no handy skills' immediately followed by certified electrician + drywall/tiling. The quote directly shows the inconsistency.",
+        "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
+        "provenance": {
+          "pass_models": {
+            "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+          },
+          "pass_prompt_versions": {
+            "Screening": "1e59d793e78b"
+          }
+        }
+      },
       "evidence": {
         "flag_category": "internal_inconsistency",
         "flag_severity": "notable",
         "flag_summary": "Essay 2 opens by stating no handy skills, then immediately lists certified electrician, drywall/tiling, and first-aid training.",
         "cited_evidence": "Skills essay: 'don't really have any handy skills to offer. That said, I'm a certified electrician, my partner does drywall and tiling'"
       },
-      "expected": "flag_supported",
-      "label_rationale": "FLAG_SUPPORTED: the essay self-contradicts within one passage — 'no handy skills' immediately followed by certified electrician + drywall/tiling. The quote directly shows the inconsistency.",
-      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
-      "provenance": {
-        "pass_models": {
-          "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-        },
-        "pass_prompt_versions": {
-          "Screening": "1e59d793e78b"
-        }
+      "prompt": {
+        "question": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence."
       }
     },
     {
       "key": "screen_placeholder_child_name_tbd_supported",
-      "pass": "screening",
-      "title": "A child listed as 'TBD' is a supported placeholder-name flag",
-      "task": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence.",
+      "metadata": {
+        "pass": "screening",
+        "title": "A child listed as 'TBD' is a supported placeholder-name flag",
+        "expected": "flag_supported",
+        "label_rationale": "FLAG_SUPPORTED: 'TBD' for both names of a named age-5 child is a genuine placeholder worth surfacing — the evidence is the concern.",
+        "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
+        "provenance": {
+          "pass_models": {
+            "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+          },
+          "pass_prompt_versions": {
+            "Screening": "1e59d793e78b"
+          }
+        }
+      },
       "evidence": {
         "flag_category": "placeholder_name",
         "flag_severity": "notable",
         "flag_summary": "Child's first and last name are listed as 'TBD' rather than an actual name.",
         "cited_evidence": "child_details: first_name and last_name both 'TBD', though age (5) is provided"
       },
-      "expected": "flag_supported",
-      "label_rationale": "FLAG_SUPPORTED: 'TBD' for both names of a named age-5 child is a genuine placeholder worth surfacing — the evidence is the concern.",
-      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
-      "provenance": {
-        "pass_models": {
-          "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-        },
-        "pass_prompt_versions": {
-          "Screening": "1e59d793e78b"
-        }
+      "prompt": {
+        "question": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence."
       }
     },
     {
       "key": "screen_child_surname_differs_unsupported",
-      "pass": "screening",
-      "title": "Flagging a child's differing surname as an inconsistency over-reaches",
-      "task": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence.",
+      "metadata": {
+        "pass": "screening",
+        "title": "Flagging a child's differing surname as an inconsistency over-reaches",
+        "expected": "flag_unsupported",
+        "label_rationale": "FLAG_UNSUPPORTED: a child having a different surname from the adults is entirely normal (blended families, kept/hyphenated names, adoption, guardianship, cultural naming). The cited evidence (three differing surnames) is real but does not substantiate an 'inconsistency' concern — the flag reads normal family variation as a problem. An over-reach the judge should catch.",
+        "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
+        "provenance": {
+          "pass_models": {
+            "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+          },
+          "pass_prompt_versions": {
+            "Screening": "1e59d793e78b"
+          }
+        }
+      },
       "evidence": {
         "flag_category": "internal_inconsistency",
         "flag_severity": "notable",
         "flag_summary": "Child's surname (Nguyen) differs from both applicant (Mehta) and co-applicant (Garcia).",
         "cited_evidence": "applicant_name: Peyton Mehta; co_applicant_name: Jordan Garcia; child last_name: Nguyen"
       },
-      "expected": "flag_unsupported",
-      "label_rationale": "FLAG_UNSUPPORTED: a child having a different surname from the adults is entirely normal (blended families, kept/hyphenated names, adoption, guardianship, cultural naming). The cited evidence (three differing surnames) is real but does not substantiate an 'inconsistency' concern — the flag reads normal family variation as a problem. An over-reach the judge should catch.",
-      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
-      "provenance": {
-        "pass_models": {
-          "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-        },
-        "pass_prompt_versions": {
-          "Screening": "1e59d793e78b"
-        }
+      "prompt": {
+        "question": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence."
       }
     },
     {
       "key": "screen_name_email_mismatch_jules_unsupported",
-      "pass": "screening",
-      "title": "Flagging an email whose name differs from the applicant over-reaches (fake_contact)",
-      "task": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence.",
+      "metadata": {
+        "pass": "screening",
+        "title": "Flagging an email whose name differs from the applicant over-reaches (fake_contact)",
+        "expected": "flag_unsupported",
+        "label_rationale": "FLAG_UNSUPPORTED: an email address not containing the applicant's name is common and benign — old addresses, nicknames, a partner's or shared account, privacy choices. The mismatch is real but does not substantiate a 'fake contact' concern; the flag over-reads a routine pattern as suspicious.",
+        "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
+        "provenance": {
+          "pass_models": {
+            "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+          },
+          "pass_prompt_versions": {
+            "Screening": "1e59d793e78b"
+          }
+        }
+      },
       "evidence": {
         "flag_category": "fake_contact",
         "flag_severity": "notable",
         "flag_summary": "Applicant email address contains a different person's name than the listed applicant.",
         "cited_evidence": "Applicant name is 'Jules Abara' but email is 'sandra.mitchell97@icloud.com'"
       },
-      "expected": "flag_unsupported",
-      "label_rationale": "FLAG_UNSUPPORTED: an email address not containing the applicant's name is common and benign — old addresses, nicknames, a partner's or shared account, privacy choices. The mismatch is real but does not substantiate a 'fake contact' concern; the flag over-reads a routine pattern as suspicious.",
-      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
-      "provenance": {
-        "pass_models": {
-          "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-        },
-        "pass_prompt_versions": {
-          "Screening": "1e59d793e78b"
-        }
+      "prompt": {
+        "question": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence."
       }
     },
     {
       "key": "screen_name_email_mismatch_wren_unsupported",
-      "pass": "screening",
-      "title": "Name != email flagged as inconsistency over-reaches (same pattern, consistency check)",
-      "task": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence.",
+      "metadata": {
+        "pass": "screening",
+        "title": "Name != email flagged as inconsistency over-reaches (same pattern, consistency check)",
+        "expected": "flag_unsupported",
+        "label_rationale": "FLAG_UNSUPPORTED: same over-reach as the Jules/sandra case — a name that differs from the email local-part is normal and not evidence of any inconsistency worth flagging. Kept as a second instance of the same pattern to test that the judge rules consistently on it.",
+        "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
+        "provenance": {
+          "pass_models": {
+            "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+          },
+          "pass_prompt_versions": {
+            "Screening": "1e59d793e78b"
+          }
+        }
+      },
       "evidence": {
         "flag_category": "internal_inconsistency",
         "flag_severity": "notable",
         "flag_summary": "Applicant name and email address do not match: form shows 'Wren Rossi' but email is 'reeseanderson@protonmail.com'.",
         "cited_evidence": "applicant_name: 'Wren Rossi' vs. applicant_email: 'reeseanderson@protonmail.com'"
       },
-      "expected": "flag_unsupported",
-      "label_rationale": "FLAG_UNSUPPORTED: same over-reach as the Jules/sandra case — a name that differs from the email local-part is normal and not evidence of any inconsistency worth flagging. Kept as a second instance of the same pattern to test that the judge rules consistently on it.",
-      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2",
-      "provenance": {
-        "pass_models": {
-          "Screening": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-        },
-        "pass_prompt_versions": {
-          "Screening": "1e59d793e78b"
-        }
+      "prompt": {
+        "question": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence."
       }
     },
     {
       "key": "match_trade_skills_same_concept_matches",
-      "pass": "matching",
-      "title": "Trade-skills re-discovery is the same concept as the prior key — matches",
-      "task": "Decide MATCHES or MISMATCHES: does the NEW dimension mean the same underlying concept as the PRIOR dimension it was matched to?",
+      "metadata": {
+        "pass": "matching",
+        "title": "Trade-skills re-discovery is the same concept as the prior key — matches",
+        "expected": "matches",
+        "label_rationale": "MATCHES: both measure the same concept — household trade qualifications (electrical/plumbing/mechanical) that enable in-house building repairs without a contractor. The new key's slightly narrower trade list is a re-wording, not a different concept; an applicant would score the same on both. A correct carry-forward match.",
+        "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2 match_audit (building_systems_trade_skills -> hands_on_trade_skill_depth); definitions verbatim (new from run 2, prior from run 1).",
+        "provenance": {
+          "pass_models": {
+            "Dimension matching": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Dimension matching": "bcf254622976"
+          }
+        }
+      },
       "evidence": {
         "new_dimension": "Whether adults in the household hold licensed or certified trade qualifications directly applicable to building maintenance — electrical, plumbing, mechanical — that would allow work without calling an outside contractor.",
         "prior_dimension": "The extent to which the household holds licensed or demonstrably practised trade qualifications — electrical, plumbing, mechanical, masonry, arboriculture, etc. — that cover common building-system repairs without hiring external contractors."
       },
-      "expected": "matches",
-      "label_rationale": "MATCHES: both measure the same concept — household trade qualifications (electrical/plumbing/mechanical) that enable in-house building repairs without a contractor. The new key's slightly narrower trade list is a re-wording, not a different concept; an applicant would score the same on both. A correct carry-forward match.",
-      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2 match_audit (building_systems_trade_skills -> hands_on_trade_skill_depth); definitions verbatim (new from run 2, prior from run 1).",
-      "provenance": {
-        "pass_models": {
-          "Dimension matching": "us.anthropic.claude-sonnet-4-6"
-        },
-        "pass_prompt_versions": {
-          "Dimension matching": "bcf254622976"
-        }
+      "prompt": {
+        "question": "Decide MATCHES or MISMATCHES: does the NEW dimension mean the same underlying concept as the PRIOR dimension it was matched to?"
       }
     },
     {
       "key": "match_social_services_bridge_different_names_matches",
-      "pass": "matching",
-      "title": "Same concept under different names (social-services vs. community-bridge) — matches",
-      "task": "Decide MATCHES or MISMATCHES: does the NEW dimension mean the same underlying concept as the PRIOR dimension it was matched to?",
+      "metadata": {
+        "pass": "matching",
+        "title": "Same concept under different names (social-services vs. community-bridge) — matches",
+        "expected": "matches",
+        "label_rationale": "MATCHES despite differing names/keys: both measure connecting members to public services/benefits/support networks (social-work-style navigation). The concept is identical; only the label differs (social_services_navigation vs. community_bridge). Tests that the judge matches by concept, not surface wording — the pass's core discipline.",
+        "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2 match_audit (social_services_navigation_skill -> community_bridge_role); definitions verbatim.",
+        "provenance": {
+          "pass_models": {
+            "Dimension matching": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Dimension matching": "bcf254622976"
+          }
+        }
+      },
       "evidence": {
         "new_dimension": "Whether household adults have professional expertise in connecting community members with city services, benefits, or support networks — useful for helping co-op members in need.",
         "prior_dimension": "Whether the household brings skills that connect co-op members to the broader community or to public services — social work, community interpretation, newcomer navigation, or linking neighbours to city benefits and supports."
       },
-      "expected": "matches",
-      "label_rationale": "MATCHES despite differing names/keys: both measure connecting members to public services/benefits/support networks (social-work-style navigation). The concept is identical; only the label differs (social_services_navigation vs. community_bridge). Tests that the judge matches by concept, not surface wording — the pass's core discipline.",
-      "evidence_source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2 match_audit (social_services_navigation_skill -> community_bridge_role); definitions verbatim.",
-      "provenance": {
-        "pass_models": {
-          "Dimension matching": "us.anthropic.claude-sonnet-4-6"
-        },
-        "pass_prompt_versions": {
-          "Dimension matching": "bcf254622976"
-        }
+      "prompt": {
+        "question": "Decide MATCHES or MISMATCHES: does the NEW dimension mean the same underlying concept as the PRIOR dimension it was matched to?"
       }
     },
     {
       "key": "match_trade_vs_finance_constructed_mismatches",
-      "pass": "matching",
-      "title": "Constructed: trade skills is NOT the same concept as financial governance — mismatches",
-      "task": "Decide MATCHES or MISMATCHES: does the NEW dimension mean the same underlying concept as the PRIOR dimension it was matched to?",
+      "metadata": {
+        "pass": "matching",
+        "title": "Constructed: trade skills is NOT the same concept as financial governance — mismatches",
+        "expected": "mismatches",
+        "label_rationale": "MISMATCHES: these are plainly different concepts — physical building trades (wiring, plumbing) vs. financial management (bookkeeping, audits). A licensed electrician with no finance background scores high on one and low on the other, so a match here would be wrong. CONSTRUCTED case: both definitions are verbatim from real run-2 dimensions, but this pairing was NOT produced by the match pass (its 25 real matches all inspected correct — no natural over-match to catch). Pairing them deliberately tests the MISMATCHES direction; matching cases are definition-only so this carries no PII. A wrong match is the pass's high-stakes error (it corrupts a carried-forward score), so having a MISMATCHES case matters even when the live pass hasn't erred.",
+        "evidence_source": "CONSTRUCTED (not a real match-pass output): new = run-2 building_systems_trade_skills def, prior = run-2 financial_governance_experience def. Synthetic pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y. Definitions verbatim; the PAIRING is authored to exercise the mismatch verdict.",
+        "provenance": {
+          "pass_models": {
+            "Dimension matching": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Dimension matching": "bcf254622976"
+          }
+        }
+      },
       "evidence": {
         "new_dimension": "Whether adults in the household hold licensed or certified trade qualifications directly applicable to building maintenance — electrical, plumbing, mechanical — that would allow work without calling an outside contractor.",
         "prior_dimension": "Depth of hands-on experience managing or auditing collective finances — bookkeeping, budget preparation, account reconciliation, audit readiness, and treasurer roles in a co-op or comparable shared-governance organisation."
       },
-      "expected": "mismatches",
-      "label_rationale": "MISMATCHES: these are plainly different concepts — physical building trades (wiring, plumbing) vs. financial management (bookkeeping, audits). A licensed electrician with no finance background scores high on one and low on the other, so a match here would be wrong. CONSTRUCTED case: both definitions are verbatim from real run-2 dimensions, but this pairing was NOT produced by the match pass (its 25 real matches all inspected correct — no natural over-match to catch). Pairing them deliberately tests the MISMATCHES direction; matching cases are definition-only so this carries no PII. A wrong match is the pass's high-stakes error (it corrupts a carried-forward score), so having a MISMATCHES case matters even when the live pass hasn't erred.",
-      "evidence_source": "CONSTRUCTED (not a real match-pass output): new = run-2 building_systems_trade_skills def, prior = run-2 financial_governance_experience def. Synthetic pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y. Definitions verbatim; the PAIRING is authored to exercise the mismatch verdict.",
-      "provenance": {
-        "pass_models": {
-          "Dimension matching": "us.anthropic.claude-sonnet-4-6"
-        },
-        "pass_prompt_versions": {
-          "Dimension matching": "bcf254622976"
-        }
+      "prompt": {
+        "question": "Decide MATCHES or MISMATCHES: does the NEW dimension mean the same underlying concept as the PRIOR dimension it was matched to?"
       }
     }
   ]

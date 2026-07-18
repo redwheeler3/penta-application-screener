@@ -10,22 +10,29 @@ import { type FieldObject, StructuredFields } from "./StructuredFields";
 // inventing structure. Save writes to the versioned fixture FILE (server-validated); the
 // operator commits to git.
 
+// Fields are grouped by CONSUMER (see each fixture's `_comment`): metadata is harness-only;
+// input goes to the scoring model; evidence + judge/prompt are what the judge sees.
 const TEMPLATES: Record<string, FieldObject> = {
   live_scoring: {
     key: "",
-    note: "",
-    applicant: { facts: {}, essays: { essay: "" } },
-    dimension: { key: "", name: "", definition: "", high_end: "", low_end: "" },
-    expect: { score_equals: 0 },
+    metadata: { note: "", expect: { score_equals: 0 } },
+    input: {
+      applicant: { facts: {}, essays: { essay: "" } },
+      dimension: { key: "", name: "", definition: "", high_end: "", low_end: "" },
+    },
+    judge: {
+      question:
+        "Given the dimension and the applicant's cited evidence, decide whether the returned score and confidence are SUPPORTED or UNSUPPORTED by that evidence — judge the score as produced, whatever its value.",
+    },
   },
   judge: {
     key: "",
-    pass: "scoring",
-    title: "",
-    task: "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
+    metadata: { pass: "scoring", title: "", expected: "supported", label_rationale: "" },
     evidence: { dimension: "", dimension_definition: "", cited_evidence: "", score: 0 },
-    expected: "supported",
-    label_rationale: "",
+    prompt: {
+      question:
+        "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
+    },
   },
 };
 

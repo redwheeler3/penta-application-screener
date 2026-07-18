@@ -86,22 +86,25 @@ class CaseResult:
 
 
 def load_golden(path: Path = GOLDEN_PATH) -> tuple[GoldenCase, ...]:
+    """Load the golden cases, flattening the by-consumer blocks (metadata / input / judge —
+    see the fixture's `_comment`) into the flat GoldenCase the runner uses. The on-disk
+    grouping documents WHO sees each field; the runner doesn't care, so it's flattened here."""
     data = json.loads(path.read_text())
     return tuple(
         GoldenCase(
             key=c["key"],
-            applicant=c["applicant"],
+            applicant=c["input"]["applicant"],
             dimension=PoolDimension(
-                key=c["dimension"]["key"],
-                name=c["dimension"]["name"],
-                definition=c["dimension"]["definition"],
-                high_end=c["dimension"]["high_end"],
-                low_end=c["dimension"]["low_end"],
+                key=c["input"]["dimension"]["key"],
+                name=c["input"]["dimension"]["name"],
+                definition=c["input"]["dimension"]["definition"],
+                high_end=c["input"]["dimension"]["high_end"],
+                low_end=c["input"]["dimension"]["low_end"],
                 why_it_differentiates="",
             ),
-            expect=c["expect"],
-            judge=c["judge"],  # required: the single-source judge question (KeyError if absent)
-            note=c.get("note", ""),
+            expect=c["metadata"]["expect"],
+            judge=c["judge"]["question"],  # single-source judge question (KeyError if absent)
+            note=c["metadata"].get("note", ""),
         )
         for c in data["cases"]
     )

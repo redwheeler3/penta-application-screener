@@ -143,13 +143,21 @@ that can quote those sources. Evals consume this snapshot; they never feed a
 verdict back into the application.
 
 Judge cases are committed in `backend/eval-data/judge_cases.json` and
-loaded by `load_cases()` (no longer hardcoded). Each case carries the exact
-PII-safe criterion/audit evidence, the human `expected` verdict, a written
-`label_rationale` (the *why*, so a disagreement is weighed against recorded
-reasoning rather than a bare verdict), the `provenance` of its source run
-(models + prompt versions), and a `source` pointer. The label rationale is
-deliberately kept OUT of the judge prompt — revealing the expected verdict would
-defeat the evaluation.
+loaded by `load_cases()` (no longer hardcoded). Each case's fields are grouped
+by CONSUMER, so it's explicit — on disk and in the UI — which reach the model:
+
+- `evidence` and `prompt` (the `question`) are exactly what the judge SEES.
+- `metadata` is harness-only and NEVER enters the prompt: the human `expected`
+  verdict, the written `label_rationale` (the *why*, so a disagreement is weighed
+  against recorded reasoning rather than a bare verdict), the `provenance` of its
+  source run (models + prompt versions), a `source`/`evidence_source` pointer, the
+  `title`, and the `pass` it exercises.
+
+Keeping the label rationale (and the whole metadata block) OUT of the judge prompt
+is the fidelity rule: revealing the expected verdict would defeat the evaluation.
+The AI Quality → Judge tab badges each block with who consumes it. The golden
+scoring fixture uses the same by-consumer grouping (`metadata` / `input` — sent to
+the scoring model / `judge` — the question), documented in its `_comment`.
 
 The seed cases are three exact KEEPs on high-correlation dimension pairs — the
 judge's most important discipline is resisting over-merge on correlation alone,

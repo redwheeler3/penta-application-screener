@@ -62,13 +62,19 @@ def propose_cases(db: Session, run: RankingRun, *, limit: int | None = None) -> 
                 evidence["co_op_pet_policy"] = pet_policy
             cases.append({
                 "key": f"screen_{flag.get('category')}_applicant{idx}_{i}__RELABEL",
-                "pass": "screening",
-                "title": f"[LABEL ME] {flag.get('category')} flag on applicant {idx}",
-                "task": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence.",
+                # metadata: harness-only, never sent to the judge (the human fills SET_ME).
+                "metadata": {
+                    "pass": "screening",
+                    "title": f"[LABEL ME] {flag.get('category')} flag on applicant {idx}",
+                    "expected": "SET_ME: flag_supported | flag_unsupported",
+                    "label_rationale": "SET_ME: why the cited evidence does (or doesn't) warrant this flag.",
+                    "evidence_source": f"synthetic-pool sheet {sheet_id}, run {run.id}, applicant idx {idx}",
+                },
+                # evidence + prompt: exactly what the judge sees.
                 "evidence": evidence,
-                "expected": "SET_ME: flag_supported | flag_unsupported",
-                "label_rationale": "SET_ME: why the cited evidence does (or doesn't) warrant this flag.",
-                "evidence_source": f"synthetic-pool sheet {sheet_id}, run {run.id}, applicant idx {idx}",
+                "prompt": {
+                    "question": "Given the screening flag and its cited evidence (plus any stated policy), decide whether the flag is FLAG_SUPPORTED or FLAG_UNSUPPORTED by that evidence.",
+                },
             })
     if limit is not None:
         cases = cases[:limit]

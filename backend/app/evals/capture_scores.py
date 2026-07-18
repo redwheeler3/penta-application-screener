@@ -64,9 +64,15 @@ def propose_cases(db: Session, run: RankingRun, *, limit: int | None = None) -> 
         idx = opaque[r.application_id]
         cases.append({
             "key": f"score_{key}_applicant{idx}__RELABEL",
-            "pass": "scoring",
-            "title": f"[LABEL ME] score {out.get('score')} on {key} for applicant {idx}",
-            "task": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
+            # metadata: harness-only, never sent to the judge (the human fills SET_ME fields).
+            "metadata": {
+                "pass": "scoring",
+                "title": f"[LABEL ME] score {out.get('score')} on {key} for applicant {idx}",
+                "expected": "SET_ME: supported | unsupported",
+                "label_rationale": "SET_ME: why this score is (un)supported by the cited evidence.",
+                "evidence_source": f"synthetic-pool sheet {sheet_id}, run {run.id}, applicant idx {idx}",
+            },
+            # evidence + prompt: exactly what the judge sees.
             "evidence": {
                 "dimension": key,
                 "dimension_definition": dim.definition,
@@ -75,9 +81,9 @@ def propose_cases(db: Session, run: RankingRun, *, limit: int | None = None) -> 
                 "cited_evidence": out.get("evidence", ""),
                 "score": out.get("score"),
             },
-            "expected": "SET_ME: supported | unsupported",
-            "label_rationale": "SET_ME: why this score is (un)supported by the cited evidence.",
-            "evidence_source": f"synthetic-pool sheet {sheet_id}, run {run.id}, applicant idx {idx}",
+            "prompt": {
+                "question": "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
+            },
         })
     if limit is not None:
         cases = cases[:limit]
