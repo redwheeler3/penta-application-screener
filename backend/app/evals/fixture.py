@@ -5,7 +5,7 @@ WHAT'S IN IT (all model output ABOUT the criteria, never applicant PII):
     why_it_differentiates / from_committee_request — the discovery+decompose output.
   - ``decompose`` / ``match`` / ``consolidate``: the audit trails (merge decisions,
     carry-forward map, nominated pairs) — reasoning about axes, not people.
-  - ``score_vectors``: per-dimension arrays of 0..1 scores. Candidates are keyed by an
+  - ``score_vectors``: per-dimension arrays of -1..+1 scores. Candidates are keyed by an
     OPAQUE INDEX (0, 1, 2, …), not their real application_id — the fixture records the
     SHAPE of how scores vary across the pool, which is what the properties check, with no
     way to tie a column back to a person.

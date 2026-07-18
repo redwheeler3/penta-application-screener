@@ -113,6 +113,7 @@ class StabilityRunResponse(ResponseModel):
 
 class InvariantOut(ResponseModel):
     check: str
+    description: str = ""  # plain-language "what this check verifies", shown under the heading
     passed: bool
     violations: list[str] = []  # "subject: detail" strings
 
