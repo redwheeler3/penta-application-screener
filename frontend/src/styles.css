@@ -2992,6 +2992,26 @@ h1 {
 }
 .eval-editor-head { display: flex; flex-direction: column; gap: 2px; }
 
+/* Harvest-from-run: a collapsible proposer of candidate cases. */
+.eval-harvest { border: 1px solid var(--line); border-radius: 8px; }
+.eval-harvest-toggle {
+  width: 100%; text-align: left; border: 0; background: none; cursor: pointer;
+  padding: 10px 14px; font-weight: 600; font-size: 0.85rem; color: var(--ink);
+}
+.eval-harvest-body { padding: 0 14px 14px; display: grid; gap: 10px; }
+.eval-harvest-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.eval-harvest-item {
+  display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff;
+  cursor: pointer; font-size: 0.82rem;
+}
+.eval-harvest-item:hover { border-color: var(--penta-green); background: var(--penta-green-soft); }
+.eval-harvest-pass {
+  font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700;
+  color: var(--muted); flex: 0 0 auto;
+}
+.eval-harvest-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* Structured field editor. */
 .eval-fields { display: grid; gap: 10px; }
 .eval-fields.depth-1, .eval-fields.depth-2 {

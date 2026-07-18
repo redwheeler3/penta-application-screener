@@ -529,8 +529,8 @@ The evals run from the app under the **AI Quality** tab (renamed from Insights; 
 holds both *observability* — Discovery/Decomposition/Matching/Consolidation/Cost/Trends,
 "what the AI did + cost" — and *evals* — "is the AI any good", separated by a divider in
 the subtab strip). This is the only run surface; the `judge.sh` / `python -m app.evals.*`
-CLI wrappers were retired (only the fixture-capture helpers remain — see the "harvest from
-current run" SPEC item). Developer/operator surface only (not committee-facing). The eval
+CLI wrappers were retired, and case *harvesting* is now a UI action too (see the Judge
+subtab below). Developer/operator surface only (not committee-facing). The eval
 subtabs:
 - **Invariants** — free deterministic checks; a styled "Re-baseline from current Rank"
   action re-records the committed fixture (replaced the `python -m app.evals.fixture` CLI).
@@ -538,7 +538,12 @@ subtabs:
 - **Judge** — the judge case set, run two ways over the *same* cases (one-pass agreement,
   K-repeat stability); cases **grouped by the production pass** each exercises
   (consolidation/decomposition/matching/scoring/screening), so you read the judge's
-  accuracy per prompt.
+  accuracy per prompt. A "Harvest cases from current run" panel proposes fidelity-preserving
+  candidate cases from the current Rank's scoring/screening output (`GET /evals/harvest/…`,
+  synthetic-pool-gated, opaque-indexed); picking one opens it in the editor pre-filled with
+  `SET_ME` placeholders to label + save. This is the sanctioned "copy an exact slice from a
+  real run" path — the hand-editor can't be, since it can't pull the real evidence the model
+  saw — and it supersedes the `capture_scores`/`capture_screening` CLIs.
 
 Each runnable subtab is **master-detail**: a grouped case list on the left, a case's FULL
 input on the right (every field, nested objects rendered in full — no truncation), with the
