@@ -17,7 +17,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.evals.paths import CONSOLIDATION_GOLDEN_PATH, GOLDEN_PATH, JUDGE_CASES_PATH
+from app.evals.paths import (
+    CONSOLIDATION_GOLDEN_PATH,
+    GOLDEN_PATH,
+    JUDGE_CASES_PATH,
+    MATCHING_GOLDEN_PATH,
+)
 
 # eval_key -> (fixture path, required per-case fields). Fields are grouped into by-consumer
 # blocks (see each fixture's `_comment` and docs/eval-case-schema.md): a top-level `key`
@@ -26,6 +31,7 @@ from app.evals.paths import CONSOLIDATION_GOLDEN_PATH, GOLDEN_PATH, JUDGE_CASES_
 _FIXTURES: dict[str, tuple[Path, tuple[str, ...]]] = {
     "live_scoring": (GOLDEN_PATH, ("key", "metadata", "input", "judge")),
     "live_consolidation": (CONSOLIDATION_GOLDEN_PATH, ("key", "metadata", "given")),
+    "live_matching": (MATCHING_GOLDEN_PATH, ("key", "metadata", "given")),
     "judge": (JUDGE_CASES_PATH, ("key", "metadata", "evidence", "prompt")),
 }
 

@@ -1,0 +1,95 @@
+{
+  "_comment": "Golden cases for the LIVE matching eval (app/evals/live_matching.py). Each case is ONE prior + ONE new dimension descriptor, run through the REAL production identity-match prompt+model, graded matches/mismatches against `metadata.expected` by exact match (categorical → no judge tier; see docs/ai-evals.md 'Grader architecture'). `given.prior`/`given.new` are the descriptor lists the match pass compares (single-element here for a focused case); a MATCH = the model mapped new→prior. Fields grouped by consumer (docs/eval-case-schema.md). Definitions are exact slices of real runs. A wrong match corrupts a carried-forward score, so the MISMATCHES direction matters even when the live pass hasn't erred — hence a constructed mismatch pair.",
+  "cases": [
+    {
+      "key": "trade_skills_same_concept_matches",
+      "metadata": {
+        "expected": "matches",
+        "note": "Re-worded same concept — new key's narrower trade list is wording, not a different concept.",
+        "pass": "matching",
+        "label_rationale": "MATCHES: both measure household trade qualifications (electrical/plumbing/mechanical) that enable in-house building repairs without a contractor. The new key's slightly narrower list is a re-wording; an applicant scores the same on both. A correct carry-forward match.",
+        "source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2 match_audit (building_systems_trade_skills -> hands_on_trade_skill_depth); definitions verbatim (new from run 2, prior from run 1).",
+        "provenance": {
+          "pass_models": {"Dimension matching": "us.anthropic.claude-sonnet-4-6"},
+          "pass_prompt_versions": {"Dimension matching": "bcf254622976"}
+        }
+      },
+      "given": {
+        "prior": [
+          {
+            "key": "hands_on_trade_skill_depth",
+            "name": "Hands-on trade skill depth",
+            "definition": "The extent to which the household holds licensed or demonstrably practised trade qualifications — electrical, plumbing, mechanical, masonry, arboriculture, etc. — that cover common building-system repairs without hiring external contractors."
+          }
+        ],
+        "new": [
+          {
+            "key": "building_systems_trade_skills",
+            "name": "Building-systems trade skills",
+            "definition": "Whether adults in the household hold licensed or certified trade qualifications directly applicable to building maintenance — electrical, plumbing, mechanical — that would allow work without calling an outside contractor."
+          }
+        ]
+      }
+    },
+    {
+      "key": "social_services_bridge_different_names_matches",
+      "metadata": {
+        "expected": "matches",
+        "note": "Same concept under different names — matches by concept, not surface wording.",
+        "pass": "matching",
+        "label_rationale": "MATCHES despite differing names/keys: both measure connecting members to public services/benefits/support networks (social-work-style navigation). The concept is identical; only the label differs. Tests that the pass matches by concept, not surface wording — its core discipline.",
+        "source": "synthetic-pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y, run 2 match_audit (social_services_navigation_skill -> community_bridge_role); definitions verbatim.",
+        "provenance": {
+          "pass_models": {"Dimension matching": "us.anthropic.claude-sonnet-4-6"},
+          "pass_prompt_versions": {"Dimension matching": "bcf254622976"}
+        }
+      },
+      "given": {
+        "prior": [
+          {
+            "key": "community_bridge_role",
+            "name": "Community bridge role",
+            "definition": "Whether the household brings skills that connect co-op members to the broader community or to public services — social work, community interpretation, newcomer navigation, or linking neighbours to city benefits and supports."
+          }
+        ],
+        "new": [
+          {
+            "key": "social_services_navigation_skill",
+            "name": "Social-services navigation skill",
+            "definition": "Whether household adults have professional expertise in connecting community members with city services, benefits, or support networks — useful for helping co-op members in need."
+          }
+        ]
+      }
+    },
+    {
+      "key": "trade_vs_finance_constructed_mismatches",
+      "metadata": {
+        "expected": "mismatches",
+        "note": "CONSTRUCTED pair — physical building trades vs. financial management are plainly different concepts; a match would be wrong.",
+        "pass": "matching",
+        "label_rationale": "MISMATCHES: physical building trades (wiring, plumbing) vs. financial management (bookkeeping, audits). A licensed electrician with no finance background scores high on one, low on the other — a match would corrupt a carried-forward score. CONSTRUCTED: both definitions are verbatim run-2 dimensions, but this pairing was NOT produced by the match pass (its real matches all inspected correct); the pairing is authored to exercise the mismatch direction, the pass's high-stakes error.",
+        "source": "CONSTRUCTED (not a real match-pass output): new = run-2 building_systems_trade_skills def, prior = run-2 financial_governance_experience def. Synthetic pool sheet 1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y. Definitions verbatim; the PAIRING is authored.",
+        "provenance": {
+          "pass_models": {"Dimension matching": "us.anthropic.claude-sonnet-4-6"},
+          "pass_prompt_versions": {"Dimension matching": "bcf254622976"}
+        }
+      },
+      "given": {
+        "prior": [
+          {
+            "key": "financial_governance_experience",
+            "name": "Financial governance experience",
+            "definition": "Depth of hands-on experience managing or auditing collective finances — bookkeeping, budget preparation, account reconciliation, audit readiness, and treasurer roles in a co-op or comparable shared-governance organisation."
+          }
+        ],
+        "new": [
+          {
+            "key": "building_systems_trade_skills",
+            "name": "Building-systems trade skills",
+            "definition": "Whether adults in the household hold licensed or certified trade qualifications directly applicable to building maintenance — electrical, plumbing, mechanical — that would allow work without calling an outside contractor."
+          }
+        ]
+      }
+    }
+  ]
+}

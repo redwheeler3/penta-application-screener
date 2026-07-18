@@ -235,6 +235,7 @@ export function runEval(
   key:
     | "live_scoring" | "live_scoring_stability"
     | "live_consolidation" | "live_consolidation_stability"
+    | "live_matching" | "live_matching_stability"
     | "judge" | "stability",
   opts?: { k?: number; caseKey?: string },
 ): Promise<Response> {
@@ -244,8 +245,10 @@ export function runEval(
     : key === "live_scoring_stability" ? "/evals/live-scoring-stability"
     : key === "live_consolidation" ? "/evals/live-consolidation"
     : key === "live_consolidation_stability" ? "/evals/live-consolidation-stability"
+    : key === "live_matching" ? "/evals/live-matching"
+    : key === "live_matching_stability" ? "/evals/live-matching-stability"
     : `/evals/${key}`;
-  const kMode = key === "stability" || key === "live_consolidation_stability" || key === "live_scoring_stability";
+  const kMode = key.endsWith("_stability");
   const params = new URLSearchParams();
   if (kMode && opts?.k) params.set("k", String(opts.k));
   if (opts?.caseKey) params.set("case", opts.caseKey);

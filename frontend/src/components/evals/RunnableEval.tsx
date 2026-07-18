@@ -14,15 +14,14 @@ import type { FieldObject } from "./StructuredFields";
 // spend-confirmed inline (the workflow card, not window.confirm). The model's reasoning
 // streams as rendered markdown; results merge back onto each case row + into the detail.
 
-export type RunMode = { evalKey: "live_scoring" | "live_scoring_stability" | "live_consolidation" | "live_consolidation_stability" | "judge" | "stability"; label: string; rowLabel: string; calls: number };
+export type RunMode = { evalKey: "live_scoring" | "live_scoring_stability" | "live_consolidation" | "live_consolidation_stability" | "live_matching" | "live_matching_stability" | "judge" | "stability"; label: string; rowLabel: string; calls: number };
 
 type RunState = { running: boolean; thinking: string; result: any | null; ranMode: RunMode["evalKey"]; error: string | null };
 type Confirm = { mode: RunMode; caseKey?: string; calls: number } | null;
 
 export function RunnableEval(props: {
-  // The fixture whose cases we read/edit (stability shares judge's; live-stability, when it
-  // lands, shares its pass's golden set).
-  caseEvalKey: "live_scoring" | "live_consolidation" | "judge";
+  // The fixture whose cases we read/edit (a pass's stability mode shares its golden set).
+  caseEvalKey: "live_scoring" | "live_consolidation" | "live_matching" | "judge";
   // The eval keys whose last run restores this tab on remount (Live scoring: ["live_scoring"];
   // Judge: ["judge", "stability"] — the two share the tab, so the newer of the two shows).
   runKeys: RunMode["evalKey"][];
@@ -303,7 +302,7 @@ export function RunnableEval(props: {
 // wobble IS the review event.
 function dotFor(mode: RunMode["evalKey"], result: any): "ok" | "fail" | "contested" {
   if (result.marker === "[contested-split]") return "contested";  // stability wobble
-  if (mode === "live_consolidation" && result.contested) {
+  if ((mode === "live_consolidation" || mode === "live_matching") && result.contested) {
     return result.verdict === result.expected ? "ok" : "contested";  // agree = green, diverge = amber
   }
   return resultOk(mode, result) ? "ok" : "fail";
@@ -388,9 +387,8 @@ function CaseList(props: {
 }
 
 function resultOk(ranMode: RunMode["evalKey"], r: any): boolean {
-  if (ranMode === "live_scoring" || ranMode === "live_consolidation") return r.passed;
-  if (ranMode === "stability" || ranMode === "live_consolidation_stability" || ranMode === "live_scoring_stability")
-    return r.marker === "[stable]";
+  if (ranMode === "live_scoring" || ranMode === "live_consolidation" || ranMode === "live_matching") return r.passed;
+  if (ranMode.endsWith("_stability") || ranMode === "stability") return r.marker === "[stable]";
   return r.marker === "[ok]";
 }
 
@@ -433,18 +431,20 @@ function RunHeadline(props: { evalKey: RunMode["evalKey"]; result: any }): React
       </div>
     );
   }
-  if (evalKey === "live_consolidation") {
+  if (evalKey === "live_consolidation" || evalKey === "live_matching") {
+    const pass = evalKey === "live_matching" ? "matching" : "consolidation";
     return (
       <div className="eval-headline">
-        {result.passed}/{result.total} passed · consolidation {result.promptVersion} · {result.model}
+        {result.passed}/{result.total} passed · {pass} {result.promptVersion} · {result.model}
       </div>
     );
   }
   if (evalKey === "stability") {
     return <div className="eval-headline">K={result.k} · {result.judgeModel}</div>;
   }
-  if (evalKey === "live_consolidation_stability") {
-    return <div className="eval-headline">K={result.k} · consolidation {result.promptVersion} · {result.model}</div>;
+  if (evalKey === "live_consolidation_stability" || evalKey === "live_matching_stability") {
+    const pass = evalKey === "live_matching_stability" ? "matching" : "consolidation";
+    return <div className="eval-headline">K={result.k} · {pass} {result.promptVersion} · {result.model}</div>;
   }
   if (evalKey === "live_scoring_stability") {
     return <div className="eval-headline">K={result.k} · scoring {result.scoringPromptVersion} · {result.scoringModel}</div>;
@@ -488,7 +488,7 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
             </div>
           ))}
         </div>
-      ) : evalKey === "live_consolidation" ? (
+      ) : evalKey === "live_consolidation" || evalKey === "live_matching" ? (
         <div className="eval-case-result-body">
           expected <span className="eval-mono">{r.expected}</span> → produced{" "}
           <span className="eval-mono">{r.verdict}</span>
@@ -508,7 +508,7 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
             {" · "}score {r.scoreMin?.toFixed(2)}..{r.scoreMax?.toFixed(2)}
           </span>
         </div>
-      ) : evalKey === "stability" || evalKey === "live_consolidation_stability" ? (
+      ) : evalKey === "stability" || evalKey === "live_consolidation_stability" || evalKey === "live_matching_stability" ? (
         <div className="eval-case-result-body">
           <span className="eval-mono">{r.marker}</span> {Math.round(r.agreement * 100)}% agreement over K —{" "}
           {Object.entries(r.tally).map(([v, n]) => `${v}×${n}`).join(", ")}

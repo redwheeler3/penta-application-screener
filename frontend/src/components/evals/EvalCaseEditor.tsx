@@ -39,6 +39,14 @@ const TEMPLATES: Record<string, FieldObject> = {
         "Decide MERGE (same underlying concept, a duplicate) or KEEP (genuinely distinct axes that only correlate) for these two dimension definitions.",
     },
   },
+  live_matching: {
+    key: "",
+    metadata: { pass: "matching", note: "", expected: "matches", label_rationale: "" },
+    given: {
+      prior: [{ key: "", name: "", definition: "" }],
+      new: [{ key: "", name: "", definition: "" }],
+    },
+  },
   judge: {
     key: "",
     metadata: { pass: "scoring", title: "", expected: "supported", label_rationale: "" },
@@ -51,7 +59,7 @@ const TEMPLATES: Record<string, FieldObject> = {
 };
 
 export function EvalCaseEditor(props: {
-  evalKey: "live_scoring" | "live_consolidation" | "judge";
+  evalKey: "live_scoring" | "live_consolidation" | "live_matching" | "judge";
   existing: Record<string, unknown> | null;
   error: string | null; // server-side validation error, if any
   onCancel: () => void;
