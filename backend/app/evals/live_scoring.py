@@ -16,8 +16,8 @@ Two grader tiers, by what each can honestly decide:
     the cited evidence. Reuses ``judge.py`` so the judge is the same validated one.
 
 Inputs are FICTIONAL (see fixtures/scoring_golden.json), so no synthetic-pool guard is
-needed. This costs real model calls and is non-deterministic, so it is an explicit opt-in
-run (``python -m app.evals.live_scoring``), never part of pytest/CI.
+needed. This costs real model calls and is non-deterministic, so it runs from the Evals
+tab (POST /evals/live-scoring, deliberate + spend-confirmed), never as part of pytest/CI.
 """
 
 from __future__ import annotations
@@ -182,57 +182,5 @@ def run_case(
     )
 
 
-def format_report(results: list[CaseResult]) -> str:
-    from app.ai.dimension_scoring import PROMPT_VERSION
-
-    passed = sum(1 for r in results if r.passed)
-    lines = [
-        "Live scoring eval — golden inputs → REAL prompt+model → assertions + rubric judge",
-        f"Scoring prompt: {PROMPT_VERSION}",
-        f"{passed}/{len(results)} cases passed",
-        "",
-    ]
-    for r in results:
-        marker = "[ok]" if r.passed else "[FAIL]"
-        lines.append(f"{marker} {r.case.key}: score={r.score} conf={r.confidence}")
-        lines.append(f"  evidence: {r.evidence[:100]}")
-        for f in r.failures:
-            lines.append(f"  ✗ {f}")
-        if r.judge_verdict is not None:
-            jm = "ok" if r.judge_verdict == JudgeVerdict.SUPPORTED else "FAIL"
-            lines.append(f"  judge[{jm}]: {r.judge_verdict.value}")
-        lines.append("  " + "-" * 60)
-    return "\n".join(lines)
-
-
-def main() -> None:
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Run the live scoring eval (real model calls).")
-    parser.add_argument("--scoring-model", default=None, help="Override the scoring model")
-    parser.add_argument("--judge-model", default=None, help="Override the judge model")
-    args = parser.parse_args()
-
-    from app.ai.strands_provider import StrandsProvider
-    from app.db.session import SessionLocal
-    from app.evals.judge import DEFAULT_MODEL as JUDGE_DEFAULT
-    from app.services.settings import get_app_settings
-
-    db = SessionLocal()
-    try:
-        settings = get_app_settings(db)
-    finally:
-        db.close()
-    scoring_model = args.scoring_model or settings.ai.dimension_scoring_model
-    judge_model = args.judge_model or JUDGE_DEFAULT
-    provider = StrandsProvider(region=settings.ai.region, max_pool_connections=1)
-
-    results = [
-        run_case(provider, c, scoring_model=scoring_model, judge_model=judge_model)
-        for c in load_golden()
-    ]
-    print(format_report(results))
-
-
-if __name__ == "__main__":
-    main()
+# NB: no CLI entry point. The live scoring eval runs from the Evals tab
+# (POST /evals/live-scoring, which calls load_golden/run_case directly).

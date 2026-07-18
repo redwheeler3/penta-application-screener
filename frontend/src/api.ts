@@ -187,9 +187,15 @@ export function fetchEvalCatalog(): Promise<Response> {
   return fetch(url("/evals/catalog"), { credentials: "include" });
 }
 
-// Deterministic invariants + review signals over the baseline fixture (free).
+// Deterministic invariants over the baseline fixture (free).
 export function fetchEvalInvariants(): Promise<Response> {
   return fetch(url("/evals/invariants"), { credentials: "include" });
+}
+
+// Re-record the invariant baseline fixture from the current Rank (writes the committed
+// rank_baseline.json — commit to git afterward). Returns the fresh invariants.
+export function rebaselineEval(): Promise<Response> {
+  return fetch(url("/evals/baseline"), { method: "POST", credentials: "include" });
 }
 
 // The eval's cases, straight from its committed JSON fixture (free).

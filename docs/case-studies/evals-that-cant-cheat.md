@@ -138,11 +138,12 @@ the source instead of policing it forever.
 
 ## What shipped
 
-`app/evals/`: a fixture recorder (PII-safe by construction), a properties module split
-into hard-fail **invariants** and report-only **signals**, a pytest gate over the
-invariants, and a `python -m app.evals.run` report. LLM-as-judge evals — the ones that
-*can* assess "did consolidation over-merge in a way a human would object to" — are
-deliberately deferred to their own command, watched as a trend, never the commit gate.
+`app/evals/`: a fixture recorder (PII-safe by construction), a properties module of
+hard-fail **invariants**, and a pytest gate over the invariants. LLM-as-judge evals — the
+ones that *can* assess "did consolidation over-merge in a way a human would object to" —
+are deliberately kept off the commit gate: they run from the in-app Evals tab, watched as
+a trend. (Report-only judgement *signals* once lived alongside the invariants but were
+retired — the Insights tab shows them better over the live run.)
 That's not a scoping cut; it's the same principle as Move 1, one layer up.
 
 ## The transferable core

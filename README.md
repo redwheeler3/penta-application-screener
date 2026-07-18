@@ -186,18 +186,13 @@ npm run build
 
 ## Manual AI Quality Audit
 
-Run the non-gating LLM judge against its PII-safe labelled cases. It makes paid
-Bedrock calls only when invoked; it never runs during Rank or the test suite.
-
-```sh
-bash ./judge.sh              # macOS/Linux
-bash ./judge.sh --case decompose_routing_drift
-```
-
-```powershell
-./judge.ps1             # Windows PowerShell
-./judge.ps1 -Case decompose_routing_drift
-```
+Run the evals — the non-gating LLM judge, live scoring, stability, and the
+deterministic invariants — from the in-app **Evals** tab. The spending evals make
+paid Bedrock calls only when you confirm a run; nothing here runs during Rank or the
+test suite. Each subtab shows its cases, runs whole-set or per-case, streams the
+model's reasoning, and persists every run. (Re-baselining the invariant fixture and
+harvesting cases from a real Rank remain CLI tools — see `app/evals/fixture.py` and
+`app/evals/capture_scores.py`.)
 
 ## Status
 

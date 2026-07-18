@@ -3,6 +3,7 @@ import {
   fetchEvalCases,
   fetchEvalCatalog,
   fetchEvalInvariants,
+  rebaselineEval,
   runEval,
   saveEvalCase,
   streamNdjson,
@@ -109,6 +110,8 @@ export function EvalsView(): ReactNode {
 function InvariantsSection(): ReactNode {
   const [result, setResult] = useState<InvariantsResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [rebasing, setRebasing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -121,6 +124,28 @@ function InvariantsSection(): ReactNode {
   };
   useEffect(load, []);
 
+  async function rebaseline() {
+    if (
+      !window.confirm(
+        "Re-record the invariant baseline from the CURRENT Rank? This overwrites the " +
+          "committed rank_baseline.json — you then commit it to git. Only do this after " +
+          "confirming the current run's output is good.",
+      )
+    ) {
+      return;
+    }
+    setRebasing(true);
+    setError(null);
+    const resp = await rebaselineEval();
+    setRebasing(false);
+    if (resp.ok) {
+      setResult(await resp.json());
+    } else {
+      const problem = await resp.json().catch(() => null);
+      setError(problem?.detail ?? `Re-baseline failed (${resp.status})`);
+    }
+  }
+
   return (
     <div className="eval-section">
       <div className="eval-section-head">
@@ -128,10 +153,16 @@ function InvariantsSection(): ReactNode {
           Deterministic checks over the committed baseline fixture (poles present, no protected
           attributes). Free, instant — runs over the last blessed Rank.
         </p>
-        <button type="button" className="secondary-button" onClick={load} disabled={loading}>
-          {loading ? "Refreshing…" : "Refresh"}
-        </button>
+        <div className="eval-section-actions">
+          <button type="button" className="secondary-button" onClick={load} disabled={loading || rebasing}>
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+          <button type="button" className="secondary-button" onClick={rebaseline} disabled={loading || rebasing}>
+            {rebasing ? "Re-baselining…" : "Re-baseline from current Rank"}
+          </button>
+        </div>
       </div>
+      {error ? <p className="eval-error">{error}</p> : null}
       {result?.hasFixture === false ? (
         <p className="eval-hint">No baseline fixture recorded yet.</p>
       ) : result ? (

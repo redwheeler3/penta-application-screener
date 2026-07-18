@@ -177,7 +177,8 @@ def _to_json(fixture: EvalFixture) -> dict:
 
 def record(db: Session, path: Path = FIXTURE_PATH) -> EvalFixture:
     """Record the current Rank to ``path`` (pretty JSON, git-committed). Deliberate:
-    run this to (re)baseline after blessing a run's output."""
+    re-baseline after blessing a run's output — invoked from the Evals tab
+    (POST /evals/baseline), then committed to git."""
     run = get_current_run(db)
     if run is None:
         raise RuntimeError("No ranking run to record — run a Rank first.")
@@ -204,20 +205,5 @@ def load(path: Path = FIXTURE_PATH) -> EvalFixture:
     )
 
 
-def main() -> None:
-    """CLI: ``uv run python -m app.evals.fixture`` records the current Rank."""
-    from app.db.session import SessionLocal
-
-    db = SessionLocal()
-    try:
-        fixture = record(db)
-    finally:
-        db.close()
-    print(
-        f"Recorded {len(fixture.dimensions)} dimensions, "
-        f"{len(fixture.score_vectors)} score vectors → {FIXTURE_PATH}"
-    )
-
-
-if __name__ == "__main__":
-    main()
+# NB: no CLI entry point. Re-baselining runs from the Evals tab (POST /evals/baseline,
+# which calls record(db)); `load`/`build_fixture` here are imported by the tab and tests.
