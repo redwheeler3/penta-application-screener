@@ -1,18 +1,13 @@
-"""Eval checks over a recorded Rank, split into two kinds by whether they can honestly
-pass/fail deterministically:
+"""Deterministic INVARIANT checks over a recorded Rank — things that are ALWAYS a bug
+regardless of pool (a dimension missing a pole, a criterion keyed on a protected class).
+Pure and discovered-green: they pass on a blessed fixture because the output is genuinely
+good, NOT because the assertion was tuned around the data. These hard-fail pytest.
 
-  INVARIANTS — things that are ALWAYS a bug regardless of pool. Pure, deterministic, and
-  discovered-green (they pass on a blessed fixture because the output is genuinely good,
-  NOT because the assertion was tuned around the data). These hard-fail pytest.
-
-  SIGNALS — judgement calls a human must make (is a high-correlation pair an escaped
-  duplicate or a legitimate confound? is a carry-forward rate healthy?). A model's output
-  varies here for real reasons, so these are REPORTED and watched, never hard-failed —
-  forcing them green would just teach us to weaken the check.
-
-The line matters: an invariant you'd have to soften to keep green isn't an invariant, it's
-a signal. Overlap started life mis-filed as an invariant and moved here for exactly that
-reason. The score-vector math is imported from production so "correlated" has one meaning.
+Only invariants live here. Judgement observations that can't honestly pass/fail (high-r
+dimension pairs, carry-forward rate) were once "signals" reported alongside these, but
+they duplicate — worse — what the Insights tab (Consolidation, Matching) shows over the
+live run, so they were dropped. An invariant you'd have to soften to keep green isn't an
+invariant; if one appears, it belongs in the LLM-judge evals, not here.
 """
 
 from __future__ import annotations
@@ -20,7 +15,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from app.ai.score_vectors import MIN_SUPPORT, pearson
 from app.evals.fixture import EvalFixture
 
 # --- invariants ---------------------------------------------------------------------
@@ -93,84 +87,4 @@ def run_invariants(fixture: EvalFixture) -> list[Violation]:
     out: list[Violation] = []
     for check in INVARIANTS:
         out.extend(check(fixture))
-    return out
-
-
-# --- signals ------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class Signal:
-    """A judgement-worthy observation — NOT a pass/fail. ``note`` says what a human should
-    weigh; ``concern`` flags the ones most worth a look (still not a failure)."""
-
-    check: str
-    note: str
-    concern: bool = False
-
-
-def _aligned(a: list[float | None], b: list[float | None]) -> tuple[list[float], list[float]]:
-    """The two vectors over the columns BOTH filled (drop a None in either)."""
-    xs, ys = [], []
-    for x, y in zip(a, b, strict=True):
-        if x is not None and y is not None:
-            xs.append(x)
-            ys.append(y)
-    return xs, ys
-
-
-def signal_overlap(fixture: EvalFixture, threshold: float = 0.8) -> list[Signal]:
-    """Report every pair of THIS run's dimensions whose score vectors correlate at/above
-    ``threshold``. Not a failure: a high-r pair may be an escaped duplicate OR a genuine
-    confound the committee wants kept apart — only a human knows which, so we surface it
-    for review rather than assert on it. (This is the check that was mis-filed as an
-    invariant; it can't honestly pass/fail without a human, so it's a signal.)"""
-    keys = [d["key"] for d in fixture.dimensions if d.get("key") in fixture.score_vectors]
-    pairs: list[tuple[float, str, str]] = []
-    for i, a in enumerate(keys):
-        for b in keys[i + 1:]:
-            xs, ys = _aligned(fixture.score_vectors[a], fixture.score_vectors[b])
-            if len(xs) < MIN_SUPPORT:
-                continue
-            r = pearson(xs, ys)
-            if r is not None and r >= threshold:
-                pairs.append((r, a, b))
-    pairs.sort(reverse=True)
-    return [
-        Signal("overlap", f"r={r:.2f}  {a} ~ {b}", concern=True) for r, a, b in pairs
-    ] or [Signal("overlap", f"no pair correlates ≥ {threshold}")]
-
-
-def signal_match_rate(fixture: EvalFixture) -> list[Signal]:
-    """Report the carry-forward rate (how many of this run's dimensions matched a prior
-    one). Not a failure: a high rate is expected once the set stabilises. Flag only the
-    degenerate ends — 0% (nothing carried, a possible match-pass miss) or 100% (nothing
-    new, worth confirming discovery still explored) — as worth a look."""
-    match = fixture.match
-    if not match:
-        return [Signal("match_rate", "first run — no prior dimensions to match against")]
-    raw = match.get("raw_discovery_dimensions") or []
-    mapping = match.get("new_to_old") or {}
-    total = len(raw)
-    if total == 0:
-        return [Signal("match_rate", "no discovery dimensions recorded")]
-    matched = sum(1 for d in raw if d.get("key") in mapping)
-    rate = matched / total
-    degenerate = matched == 0 or matched == total
-    return [
-        Signal(
-            "match_rate",
-            f"{matched}/{total} carried forward ({rate:.0%})",
-            concern=degenerate,
-        )
-    ]
-
-
-SIGNALS = [signal_overlap, signal_match_rate]
-
-
-def run_signals(fixture: EvalFixture) -> list[Signal]:
-    out: list[Signal] = []
-    for sig in SIGNALS:
-        out.extend(sig(fixture))
     return out

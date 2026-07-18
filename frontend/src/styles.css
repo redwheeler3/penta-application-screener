@@ -2862,13 +2862,13 @@ h1 {
 /* Like .insights-view / .ranking-view: .panel has no padding, so supply the inset. */
 .evals-view { display: grid; gap: 18px; padding: 1.25rem; }
 .evals-header h3 { margin: 0 0 6px; }
-.eval-hint { color: var(--muted); font-size: 0.88rem; max-width: 72ch; }
+.eval-hint { color: var(--muted); font-size: 0.88rem; max-width: 100ch; }
 
 /* One eval's subtab body: description + actions + tables, roomily spaced. */
 .eval-section { display: grid; gap: 16px; }
 .eval-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .eval-section-actions { display: flex; gap: 10px; align-items: center; }
-.eval-card-desc { margin: 0; color: var(--muted); font-size: 0.9rem; max-width: 70ch; }
+.eval-card-desc { margin: 0; color: var(--muted); font-size: 0.9rem; max-width: 100ch; }
 
 /* Inline run-confirm reuses .run-confirm (workflow pre-spend card); just round it here
    since it isn't sitting flush against a panel header in this context. */

@@ -8,9 +8,9 @@ These pass on the fixture because the recorded output is genuinely good, NOT bec
 checks were tuned to it — if a real run regresses, re-record only after a human confirms
 the new output is actually fine (rebaseline with a reason), never by weakening a check.
 
-The SIGNAL checks (overlap, match-rate) are deliberately NOT here: they're judgement
-calls a human reads via ``python -m app.evals.run``, not pass/fail gates. Putting them in
-CI would just pressure us to soften them.
+Only invariants gate CI. Judgement observations (overlap, carry-forward rate) that can't
+honestly pass/fail aren't checked here or in the Evals tab — the Insights tab shows them
+over the live run, better. Putting them in CI would just pressure us to soften them.
 """
 
 import pytest
