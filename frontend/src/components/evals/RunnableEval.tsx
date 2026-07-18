@@ -134,22 +134,27 @@ export function RunnableEval(props: {
   const selectedResult = selected ? caseResults[selected] : undefined;
   const perCaseCalls = (m: RunMode) => (cases?.length ? Math.max(1, Math.round(m.calls / cases.length)) : 1);
 
+  // The spend-confirm renders INLINE next to the button that triggered it: the whole-set
+  // buttons at the top, a per-case button down in the detail pane. Keyed by whether the
+  // pending confirm carries a caseKey, so it never appears far from what launched it.
+  const renderConfirm = () => (
+    <InlineConfirm
+      title={confirm!.caseKey ? `Run case “${confirm!.caseKey}”?` : `${confirm!.mode.label}?`}
+      body={`This makes ~${confirm!.calls} model call${confirm!.calls === 1 ? "" : "s"} and costs real money.`}
+      onConfirm={() => {
+        const t = confirm!;
+        setConfirm(null);
+        void doRun(t.mode, t.caseKey);
+      }}
+      onCancel={() => setConfirm(null)}
+    />
+  );
+
   return (
     <div className="eval-section">
       <p className="eval-card-desc">{props.description}</p>
 
-      {confirm ? (
-        <InlineConfirm
-          title={confirm.caseKey ? `Run case “${confirm.caseKey}”?` : `${confirm.mode.label}?`}
-          body={`This makes ~${confirm.calls} model call${confirm.calls === 1 ? "" : "s"} and costs real money.`}
-          onConfirm={() => {
-            const t = confirm;
-            setConfirm(null);
-            void doRun(t.mode, t.caseKey);
-          }}
-          onCancel={() => setConfirm(null)}
-        />
-      ) : null}
+      {confirm && !confirm.caseKey ? renderConfirm() : null}
 
       <div className="eval-section-actions">
         {modes.map((m) => (
@@ -246,6 +251,7 @@ export function RunnableEval(props: {
                   Edit
                 </button>
               </div>
+              {confirm?.caseKey === String(selectedCase.key) ? renderConfirm() : null}
               {selectedResult ? (
                 <CaseResult evalKey={selectedResult.ranMode} result={selectedResult.result} />
               ) : null}
