@@ -40,6 +40,11 @@ export function RunnableEval(props: {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [run, setRun] = useState<RunState>({ running: false, thinking: "", result: null, ranMode: modes[0].evalKey, error: null });
+  // Per-case results, keyed by case key, each with the mode it was run under (so a case run
+  // under judge vs. stability shows the right dot). A WHOLE-SET run replaces this map; a
+  // PER-CASE run merges just its one entry — so running one case never wipes the others'
+  // dots/results (the bug where running case B cleared case A's green result).
+  const [caseResults, setCaseResults] = useState<Record<string, { ranMode: RunMode["evalKey"]; result: any }>>({});
   // Set when the shown result was REHYDRATED from a past run (not this session); null for a
   // live run. Drives the "last run · prompt" marker so history is never mistaken for fresh.
   const [restored, setRestored] = useState<LastEvalRun | null>(null);
@@ -63,6 +68,11 @@ export function RunnableEval(props: {
         if (!live || !d?.found) return;
         setRestored(d);
         setRun((r) => ({ ...r, result: d.result, ranMode: d.evalKey as RunMode["evalKey"] }));
+        // Seed the per-case dots/results from the restored run too.
+        const cases: any[] = d.result?.cases ?? [];
+        const seeded: Record<string, { ranMode: RunMode["evalKey"]; result: any }> = {};
+        for (const c of cases) seeded[c.key] = { ranMode: d.evalKey as RunMode["evalKey"], result: c };
+        setCaseResults(seeded);
       });
     return () => {
       live = false;
@@ -88,8 +98,17 @@ export function RunnableEval(props: {
       }
       await streamNdjson(resp.body, (e) => {
         if (e.type === "thinking") setRun((r) => ({ ...r, thinking: r.thinking + e.text }));
-        else if (e.type === "summary") setRun((r) => ({ ...r, running: false, result: e.result }));
-        else if (e.type === "error") setRun((r) => ({ ...r, running: false, error: e.message }));
+        else if (e.type === "summary") {
+          setRun((r) => ({ ...r, running: false, result: e.result }));
+          // Fold the per-case results into the accumulated map: a WHOLE-SET run replaces it;
+          // a PER-CASE run merges only its one case, so it never clears the other cases' dots.
+          const cases: any[] = e.result?.cases ?? [];
+          setCaseResults((prev) => {
+            const next = caseKey ? { ...prev } : {};
+            for (const c of cases) next[c.key] = { ranMode: mode.evalKey, result: c };
+            return next;
+          });
+        } else if (e.type === "error") setRun((r) => ({ ...r, running: false, error: e.message }));
       });
       setRun((r) => (r.running ? { ...r, running: false } : r));
     } catch (err) {
@@ -110,10 +129,8 @@ export function RunnableEval(props: {
     }
   }
 
-  const resultByKey: Record<string, any> = {};
-  if (run.result?.cases) for (const c of run.result.cases) resultByKey[c.key] = c;
-
   const selectedCase = cases?.find((c) => c.key === selected) ?? null;
+  const selectedResult = selected ? caseResults[selected] : undefined;
   const perCaseCalls = (m: RunMode) => (cases?.length ? Math.max(1, Math.round(m.calls / cases.length)) : 1);
 
   return (
@@ -186,8 +203,7 @@ export function RunnableEval(props: {
             cases={cases}
             groupBy={props.groupBy}
             selected={selected}
-            resultByKey={resultByKey}
-            ranMode={run.ranMode}
+            caseResults={caseResults}
             onSelect={(k) => {
               setSelected(k);
               setEditing(null);
@@ -229,8 +245,8 @@ export function RunnableEval(props: {
                   Edit
                 </button>
               </div>
-              {resultByKey[String(selectedCase.key)] ? (
-                <CaseResult evalKey={run.ranMode} result={resultByKey[String(selectedCase.key)]} />
+              {selectedResult ? (
+                <CaseResult evalKey={selectedResult.ranMode} result={selectedResult.result} />
               ) : null}
               <EvalCaseDetail evalCase={selectedCase} />
             </div>
@@ -248,8 +264,7 @@ function CaseList(props: {
   cases: Record<string, unknown>[] | null;
   groupBy?: string;
   selected: string | null;
-  resultByKey: Record<string, any>;
-  ranMode: RunMode["evalKey"];
+  caseResults: Record<string, { ranMode: RunMode["evalKey"]; result: any }>;
   onSelect: (key: string) => void;
 }): ReactNode {
   const { cases } = props;
@@ -278,8 +293,8 @@ function CaseList(props: {
           {g.heading ? <div className="eval-case-group-head">{g.heading}</div> : null}
           {g.items.map((c) => {
             const key = String(c.key);
-            const r = props.resultByKey[key];
-            const dot = r ? (resultOk(props.ranMode, r) ? "ok" : "fail") : null;
+            const entry = props.caseResults[key];
+            const dot = entry ? (resultOk(entry.ranMode, entry.result) ? "ok" : "fail") : null;
             return (
               <button
                 key={key}
