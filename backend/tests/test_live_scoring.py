@@ -15,7 +15,7 @@ from app.ai.schemas import (
     JudgeVerdict,
     ScoreConfidence,
 )
-from app.evals.live_scoring import load_golden, run_case
+from app.evals.live_scoring import load_golden, run_case, stability_run
 
 _EXPECT_KEYS = {"score_equals", "score_min", "score_max", "confidence"}
 
@@ -103,3 +103,37 @@ def test_run_case_works_without_a_sink() -> None:
 
     result = run_case(provider, case, scoring_model="m", judge_model="j")
     assert result.score == 0.0
+
+
+def _score_provider(case, scores: list[float]) -> MockProvider:
+    """A provider that returns the given scores in order across successive scoring calls (no
+    judge — stability skips it). Uses the FIFO queue so each call pops the next score."""
+    provider = MockProvider()
+    for s in scores:
+        provider.queue(DimensionScoringReport(scores=[DimensionScore(
+            dimension_key=case.dimension.key, score=s,
+            confidence=ScoreConfidence.LOW, rationale="r", evidence="e",
+        )]))
+    return provider
+
+
+def test_stability_stable_when_assertion_holds_every_run() -> None:
+    """An absence case (expects score≈0) that scores ~0 every run is [stable] — the assertion
+    passes on all K, no flip."""
+    case = next(c for c in load_golden() if "score_equals" in c.expect)
+    res = stability_run(_score_provider(case, [0.0, 0.02, -0.01, 0.0]), case, scoring_model="m", k=4)
+    assert not res.stability.flipped
+    assert res.stability.marker == "[stable]"
+    assert res.stability.agreement == 1.0
+
+
+def test_stability_unstable_when_score_crosses_the_assertion_boundary() -> None:
+    """The real signal: the score wanders ACROSS the pass/fail line — some runs pass the
+    assertion, some fail — so the pass/fail flips even though no single number repeats."""
+    case = next(c for c in load_golden() if "score_equals" in c.expect)  # expects ~0.0
+    # 0.0 passes (≈0), 0.8 fails (far from 0): the assertion outcome flips.
+    res = stability_run(_score_provider(case, [0.0, 0.8, 0.0, 0.9]), case, scoring_model="m", k=4)
+    assert res.stability.flipped
+    assert res.stability.marker == "[UNSTABLE]"
+    assert set(res.stability.tally) == {"pass", "fail"}
+    assert res.score_spread == (0.0, 0.9)

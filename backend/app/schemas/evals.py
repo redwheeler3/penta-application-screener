@@ -52,6 +52,23 @@ class LiveScoringResponse(ResponseModel):
     cases: list[LiveScoringCaseOut] = []
 
 
+class LiveScoringStabilityCaseOut(ResponseModel):
+    key: str
+    marker: str  # "[stable]" | "[UNSTABLE]" (scoring cases are never contested)
+    agreement: float  # modal pass/fail outcome's share of K
+    flipped: bool  # the assertion pass/fail wandered across runs
+    tally: dict[str, int]  # "pass"/"fail" -> count
+    score_min: float  # score spread across the K runs — informational (model noise)
+    score_max: float
+
+
+class LiveScoringStabilityResponse(ResponseModel):
+    scoring_prompt_version: str
+    scoring_model: str
+    k: int
+    cases: list[LiveScoringStabilityCaseOut] = []
+
+
 # --- live consolidation (categorical: exact-match, no judge tier) ------------
 
 

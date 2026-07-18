@@ -14,7 +14,7 @@ import type { FieldObject } from "./StructuredFields";
 // spend-confirmed inline (the workflow card, not window.confirm). The model's reasoning
 // streams as rendered markdown; results merge back onto each case row + into the detail.
 
-export type RunMode = { evalKey: "live_scoring" | "live_consolidation" | "live_consolidation_stability" | "judge" | "stability"; label: string; rowLabel: string; calls: number };
+export type RunMode = { evalKey: "live_scoring" | "live_scoring_stability" | "live_consolidation" | "live_consolidation_stability" | "judge" | "stability"; label: string; rowLabel: string; calls: number };
 
 type RunState = { running: boolean; thinking: string; result: any | null; ranMode: RunMode["evalKey"]; error: string | null };
 type Confirm = { mode: RunMode; caseKey?: string; calls: number } | null;
@@ -262,7 +262,7 @@ export function RunnableEval(props: {
                     disabled={run.running}
                     onClick={() => setConfirm({ mode: m, caseKey: String(selectedCase.key), calls: perCaseCalls(m) })}
                   >
-                    {m.rowLabel}
+                    {run.running ? "Running…" : m.rowLabel}
                   </button>
                 ))}
                 <button
@@ -383,7 +383,8 @@ function CaseList(props: {
 
 function resultOk(ranMode: RunMode["evalKey"], r: any): boolean {
   if (ranMode === "live_scoring" || ranMode === "live_consolidation") return r.passed;
-  if (ranMode === "stability" || ranMode === "live_consolidation_stability") return r.marker === "[stable]";
+  if (ranMode === "stability" || ranMode === "live_consolidation_stability" || ranMode === "live_scoring_stability")
+    return r.marker === "[stable]";
   return r.marker === "[ok]";
 }
 
@@ -439,6 +440,9 @@ function RunHeadline(props: { evalKey: RunMode["evalKey"]; result: any }): React
   if (evalKey === "live_consolidation_stability") {
     return <div className="eval-headline">K={result.k} · consolidation {result.promptVersion} · {result.model}</div>;
   }
+  if (evalKey === "live_scoring_stability") {
+    return <div className="eval-headline">K={result.k} · scoring {result.scoringPromptVersion} · {result.scoringModel}</div>;
+  }
   const a = result.agreement;
   return (
     <div className="eval-headline">
@@ -490,6 +494,14 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
             </span>
           ) : null}
           {r.reason ? <div className="eval-case-result-ev">{r.reason}</div> : null}
+        </div>
+      ) : evalKey === "live_scoring_stability" ? (
+        <div className="eval-case-result-body">
+          <span className="eval-mono">{r.marker}</span> {Math.round(r.agreement * 100)}% agreement over K —{" "}
+          {Object.entries(r.tally).map(([v, n]) => `${v}×${n}`).join(", ")}
+          <span className="eval-verdict">
+            {" · "}score {r.scoreMin?.toFixed(2)}..{r.scoreMax?.toFixed(2)}
+          </span>
         </div>
       ) : evalKey === "stability" || evalKey === "live_consolidation_stability" ? (
         <div className="eval-case-result-body">

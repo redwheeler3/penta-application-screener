@@ -42,6 +42,7 @@ from app.ai.schemas import (
 from app.evals.paths import (
     GOLDEN_PATH,
 )
+from app.evals.stability import StabilityReport, run_stability
 
 # Absolute tolerance for a "score_equals" expectation. The model is non-deterministic even
 # at temp 0, and 0 (neutral) is the value we most care about pinning — a tiny drift off 0.0
@@ -169,6 +170,22 @@ def _emit(on_delta: object, text: str) -> None:
         on_delta(text)  # type: ignore[operator]
 
 
+def _score_once(provider: AIProvider, case: GoldenCase, *, scoring_model: str) -> DimensionScore | None:
+    """Run the REAL scoring prompt once on the case's applicant+dimension and return the
+    produced DimensionScore (or None if the model returned no score for the dimension).
+    Shared by the single graded run and the K-run stability check so both exercise the
+    identical production call."""
+    applicant_block = json.dumps(case.applicant, indent=2, default=str)
+    result = provider.structured_output(
+        model_id=scoring_model,
+        schema=DimensionScoringReport,
+        prompt=_build_prompt(applicant_block, [case.dimension]),
+        system_prompt=SYSTEM_PROMPT,
+    )
+    produced = {s.dimension_key: s for s in result.output.scores}
+    return produced.get(case.dimension.key)
+
+
 def run_case(
     provider: AIProvider,
     case: GoldenCase,
@@ -186,16 +203,8 @@ def run_case(
     its grounding, the assertion outcomes, and the judge's verdict+reason are exactly what a
     reader wants to watch. Deterministic; identical result whether or not a sink is given.
     """
-    applicant_block = json.dumps(case.applicant, indent=2, default=str)
     _emit(on_delta, f"Scoring **{case.dimension.name}** on `{scoring_model}`…\n\n")
-    result = provider.structured_output(
-        model_id=scoring_model,
-        schema=DimensionScoringReport,
-        prompt=_build_prompt(applicant_block, [case.dimension]),
-        system_prompt=SYSTEM_PROMPT,
-    )
-    produced = {s.dimension_key: s for s in result.output.scores}
-    score = produced.get(case.dimension.key)
+    score = _score_once(provider, case, scoring_model=scoring_model)
     if score is None:
         _emit(on_delta, f"⚠️ Model returned no score for `{case.dimension.key}`.\n")
         return CaseResult(
@@ -230,5 +239,63 @@ def run_case(
     )
 
 
+@dataclass(frozen=True)
+class ScoringStabilityResult:
+    """K runs of the REAL scoring prompt on one fixed golden case. Scoring is CONTINUOUS, so
+    the stability question isn't 'did the exact number repeat' (it never will — 0.02 vs 0.05
+    is noise) but 'did the case's PASS/FAIL hold across runs' — i.e. did the score wander
+    across the assertion boundary. The flip is measured on the assertion outcome (pass/fail),
+    via the shared stability core; the score spread (min..max) is the supporting detail that
+    shows how noisy the model was."""
+
+    case: GoldenCase
+    stability: StabilityReport  # outcomes are "pass"/"fail" tokens
+    scores: list[float]
+
+    @property
+    def score_spread(self) -> tuple[float, float]:
+        real = [s for s in self.scores if s == s]  # drop NaN (no-score runs)
+        return (min(real), max(real)) if real else (float("nan"), float("nan"))
+
+
+def stability_run(
+    provider: AIProvider,
+    case: GoldenCase,
+    *,
+    scoring_model: str,
+    k: int = 5,
+    on_delta: object = None,
+) -> ScoringStabilityResult:
+    """Score one golden case K times on fixed input and report whether its ASSERTION pass/fail
+    held. No judge — this measures the production scoring prompt's own run-to-run stability
+    (the judge's stability is a separate question). The outcome token per run is 'pass'/'fail'
+    on the deterministic assertions; the shared core tallies the flip, and the score spread is
+    surfaced as informational."""
+    _emit(on_delta, f"Scoring **{case.dimension.name}** x{k} on `{scoring_model}`…\n\n")
+    scores: list[float] = []
+    runs = {"i": 0}
+
+    def run_once() -> str:
+        runs["i"] += 1
+        score = _score_once(provider, case, scoring_model=scoring_model)
+        if score is None:
+            scores.append(float("nan"))
+            _emit(on_delta, f"- run {runs['i']}: **no score** → fail\n")
+            return "fail"
+        scores.append(score.score)
+        outcome = "fail" if _check_expectations(score, case.expect) else "pass"
+        _emit(on_delta, f"- run {runs['i']}: score {score.score:+.2f} → **{outcome}**\n")
+        return outcome
+
+    # A scoring golden case has no "contested" notion; a pass/fail flip is always a real signal.
+    report = run_stability(run_once, k=k, contested=False)
+    out = ScoringStabilityResult(case=case, stability=report, scores=scores)
+    lo, hi = out.score_spread
+    tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())
+    _emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally} · score {lo:+.2f}..{hi:+.2f}\n")
+    return out
+
+
 # NB: no CLI entry point. The live scoring eval runs from the Evals tab
-# (POST /evals/live-scoring, which calls load_golden/run_case directly).
+# (POST /evals/live-scoring and /evals/live-scoring-stability, which call
+# load_golden/run_case/stability_run directly).

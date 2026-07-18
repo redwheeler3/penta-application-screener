@@ -232,17 +232,22 @@ export function saveEvalCase(evalKey: string, evalCase: unknown): Promise<Respon
 // Response so the caller reads its NDJSON body via streamNdjson. Spends model $.
 // `caseKey` runs just that one case (per-row run); `k` sets stability repeats.
 export function runEval(
-  key: "live_scoring" | "live_consolidation" | "live_consolidation_stability" | "judge" | "stability",
+  key:
+    | "live_scoring" | "live_scoring_stability"
+    | "live_consolidation" | "live_consolidation_stability"
+    | "judge" | "stability",
   opts?: { k?: number; caseKey?: string },
 ): Promise<Response> {
   // Live evals use a hyphenated path; judge/stability use the bare key.
   const path =
     key === "live_scoring" ? "/evals/live-scoring"
+    : key === "live_scoring_stability" ? "/evals/live-scoring-stability"
     : key === "live_consolidation" ? "/evals/live-consolidation"
     : key === "live_consolidation_stability" ? "/evals/live-consolidation-stability"
     : `/evals/${key}`;
+  const kMode = key === "stability" || key === "live_consolidation_stability" || key === "live_scoring_stability";
   const params = new URLSearchParams();
-  if ((key === "stability" || key === "live_consolidation_stability") && opts?.k) params.set("k", String(opts.k));
+  if (kMode && opts?.k) params.set("k", String(opts.k));
   if (opts?.caseKey) params.set("case", opts.caseKey);
   const q = params.toString() ? `?${params}` : "";
   return fetch(url(path + q), { method: "POST", credentials: "include" });
