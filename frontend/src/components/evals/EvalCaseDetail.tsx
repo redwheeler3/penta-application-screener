@@ -45,7 +45,9 @@ function Value(props: { value: unknown }): ReactNode {
 // entry (e.g. a legacy or unknown block) renders without a badge rather than a wrong one.
 const BLOCK_CONSUMER: Record<string, { badge: string; tone: string }> = {
   metadata: { badge: "harness only — no model sees this", tone: "neutral" },
-  input: { badge: "sent to the scoring model", tone: "model" },
+  given: { badge: "sent to the model under test", tone: "model" },
+  produced: { badge: "the recorded output being judged", tone: "model" },
+  input: { badge: "sent to the scoring model", tone: "model" },  // legacy scoring/live shape
   evidence: { badge: "sent to the judge", tone: "judge" },
   judge: { badge: "the question put to the judge", tone: "judge" },
   prompt: { badge: "the question put to the judge", tone: "judge" },
@@ -54,7 +56,7 @@ const BLOCK_CONSUMER: Record<string, { badge: string; tone: string }> = {
 // Model-facing blocks lead (they're the POINT of the case — what actually reaches a model);
 // the harness-only `metadata` bookkeeping trails last, so the view never opens on "no model
 // sees this" while burying what the model does see.
-const BLOCK_ORDER = ["input", "evidence", "prompt", "judge", "metadata"];
+const BLOCK_ORDER = ["given", "input", "produced", "evidence", "prompt", "judge", "metadata"];
 
 export function EvalCaseDetail(props: { evalCase: Record<string, unknown> }): ReactNode {
   const c = props.evalCase;

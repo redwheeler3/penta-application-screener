@@ -51,6 +51,8 @@ from app.evals.invariants import INVARIANT_DESCRIPTIONS, INVARIANTS, run_invaria
 from app.evals.judge import DEFAULT_MODEL as JUDGE_MODEL
 from app.evals.judge import PROMPT_VERSION as JUDGE_PROMPT_VERSION
 from app.evals.judge import judge_case, load_cases, stability_run
+from app.evals.live_consolidate import load_cases as load_consolidation_cases
+from app.evals.live_consolidate import run_case as run_consolidation_case
 from app.evals.live_scoring import load_golden, run_case
 from app.evals.synthetic_guard import NonSyntheticPoolError
 from app.schemas.base import ResponseModel
@@ -65,6 +67,8 @@ from app.schemas.evals import (
     JudgeCaseOut,
     JudgeRunResponse,
     LastRunResponse,
+    LiveConsolidationCaseOut,
+    LiveConsolidationResponse,
     LiveScoringCaseOut,
     LiveScoringResponse,
     SaveCaseRequest,
@@ -107,6 +111,9 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
     golden = load_golden()
     live_calls = len(golden) * 2  # every case: one score call + one judge call
     n_judge = len(load_cases())
+    consolidation = load_consolidation_cases()
+    # One confirm call per case + one judge call per case that carries a judge question.
+    consolidation_calls = len(consolidation) + sum(1 for c in consolidation if c.judge)
     return EvalCatalogResponse(evals=[
         EvalDescriptor(
             key="invariants", label="Invariants",
@@ -119,6 +126,13 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
             description=f"Run {len(golden)} golden synthetic inputs through the REAL scoring "
             "prompt+model, then grade with assertions + the rubric judge.",
             spends=True, estimated_calls=live_calls,
+        ),
+        EvalDescriptor(
+            key="live_consolidation", label="Live consolidation",
+            description=f"Run {len(consolidation)} golden dimension pairs through the REAL "
+            "consolidation prompt+model; grade merge/keep against the label (exact match). "
+            "A case with a judge question also runs the judge as a label audit.",
+            spends=True, estimated_calls=consolidation_calls,
         ),
         EvalDescriptor(
             key="judge", label="Judge + agreement",
@@ -191,6 +205,12 @@ def _current_prompt_version(eval_key: str, db: Session) -> str:
         from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_PROMPT_VERSION
 
         return SCORING_PROMPT_VERSION
+    if eval_key == "live_consolidation":
+        from app.ai.dimension_consolidate import (
+            PROMPT_VERSION as CONSOLIDATE_PROMPT_VERSION,
+        )
+
+        return CONSOLIDATE_PROMPT_VERSION
     if eval_key in ("judge", "stability"):
         return JUDGE_PROMPT_VERSION
     return ""
@@ -387,6 +407,52 @@ def run_live_scoring(
         )
 
     return _stream(db, "live_scoring", SCORING_PROMPT_VERSION, work)
+
+
+@router.post("/live-consolidation")
+def run_live_consolidation(
+    case: str | None = None,
+    user: User = Depends(require_current_user),
+    provider: AIProvider = Depends(get_ai_provider),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Stream a live-consolidation run: golden dimension pairs → the REAL consolidation
+    confirm prompt+model → merge/keep graded against the label by exact match. ``case`` runs
+    just that one pair (per-row run); omitted runs all. Contested cases are reported but
+    excluded from passed/total. A case carrying a ``judge`` question ALSO runs the independent
+    judge as a label audit (informational — never gates the pass/fail)."""
+    from app.ai.dimension_consolidate import (
+        PROMPT_VERSION as CONSOLIDATE_PROMPT_VERSION,
+    )
+
+    settings = get_app_settings(db)
+    model = settings.ai.consolidate_model
+    cases = _select(list(load_consolidation_cases()), case, lambda c: c.key)
+
+    def work(on_delta) -> LiveConsolidationResponse:
+        results = []
+        for c in cases:
+            on_delta(f"\n\n### {c.key}\n")
+            results.append(run_consolidation_case(
+                provider, c, consolidate_model=model, judge_model=JUDGE_MODEL, on_delta=on_delta,
+            ))
+        scored = [r for r in results if not r.case.contested]
+        return LiveConsolidationResponse(
+            prompt_version=CONSOLIDATE_PROMPT_VERSION,
+            model=model,
+            passed=sum(1 for r in scored if r.passed),
+            total=len(scored),
+            cases=[
+                LiveConsolidationCaseOut(
+                    key=r.case.key, passed=r.passed, verdict=r.verdict,
+                    expected=r.case.expected, contested=r.case.contested,
+                    reason=r.reason, failures=r.failures, judge_verdict=r.judge_verdict,
+                )
+                for r in results
+            ],
+        )
+
+    return _stream(db, "live_consolidation", CONSOLIDATE_PROMPT_VERSION, work)
 
 
 @router.post("/judge")

@@ -25,6 +25,20 @@ const TEMPLATES: Record<string, FieldObject> = {
         "Given the dimension and the applicant's cited evidence, decide whether the returned score and confidence are SUPPORTED or UNSUPPORTED by that evidence — judge the score as produced, whatever its value.",
     },
   },
+  live_consolidation: {
+    key: "",
+    metadata: { pass: "consolidation", note: "", expected: "keep", label_rationale: "" },
+    given: {
+      pair: [
+        { key: "", name: "", definition: "" },
+        { key: "", name: "", definition: "" },
+      ],
+    },
+    judge: {
+      question:
+        "Decide MERGE (same underlying concept, a duplicate) or KEEP (genuinely distinct axes that only correlate) for these two dimension definitions.",
+    },
+  },
   judge: {
     key: "",
     metadata: { pass: "scoring", title: "", expected: "supported", label_rationale: "" },
@@ -37,7 +51,7 @@ const TEMPLATES: Record<string, FieldObject> = {
 };
 
 export function EvalCaseEditor(props: {
-  evalKey: "live_scoring" | "judge";
+  evalKey: "live_scoring" | "live_consolidation" | "judge";
   existing: Record<string, unknown> | null;
   error: string | null; // server-side validation error, if any
   onCancel: () => void;

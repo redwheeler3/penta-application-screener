@@ -232,10 +232,14 @@ export function saveEvalCase(evalKey: string, evalCase: unknown): Promise<Respon
 // Response so the caller reads its NDJSON body via streamNdjson. Spends model $.
 // `caseKey` runs just that one case (per-row run); `k` sets stability repeats.
 export function runEval(
-  key: "live_scoring" | "judge" | "stability",
+  key: "live_scoring" | "live_consolidation" | "judge" | "stability",
   opts?: { k?: number; caseKey?: string },
 ): Promise<Response> {
-  const path = key === "live_scoring" ? "/evals/live-scoring" : `/evals/${key}`;
+  // Live evals use a hyphenated path; judge/stability use the bare key.
+  const path =
+    key === "live_scoring" ? "/evals/live-scoring"
+    : key === "live_consolidation" ? "/evals/live-consolidation"
+    : `/evals/${key}`;
   const params = new URLSearchParams();
   if (key === "stability" && opts?.k) params.set("k", String(opts.k));
   if (opts?.caseKey) params.set("case", opts.caseKey);

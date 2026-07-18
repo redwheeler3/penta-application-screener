@@ -20,7 +20,7 @@ import { MetricsPanel } from "./MetricsPanel";
 
 type Tab =
   | "discovery" | "decompose" | "match" | "consolidate" | "cost" | "metrics"
-  | "invariants" | "live_scoring" | "judge";
+  | "invariants" | "live_scoring" | "live_consolidation" | "judge";
 
 export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNode {
   const [catalog, setCatalog] = useState<EvalDescriptor[] | null>(null);
@@ -45,6 +45,7 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
     { id: "metrics", label: "Trends", group: "obs" },
     { id: "invariants", label: "Invariants", group: "eval" },
     { id: "live_scoring", label: "Live scoring", group: "eval" },
+    { id: "live_consolidation", label: "Live consolidation", group: "eval" },
     { id: "judge", label: "Judge", group: "eval" },
   ];
 
@@ -102,6 +103,13 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
             runKeys={["live_scoring"]}
             description="Run hand-authored synthetic applicants through the REAL scoring prompt + model, then grade each with deterministic assertions and the rubric judge. Tests the actual prompt, not a recorded artifact."
             modes={[{ evalKey: "live_scoring", label: "Run live scoring", rowLabel: "Run", calls: calls("live_scoring") }]}
+          />
+        ) : activeTab === "live_consolidation" ? (
+          <RunnableEval
+            caseEvalKey="live_consolidation"
+            runKeys={["live_consolidation"]}
+            description="Run golden dimension pairs through the REAL consolidation prompt + model, then grade merge/keep against the label by exact match. Tests the actual prompt, not a recorded artifact. Contested pairs are shown but not scored."
+            modes={[{ evalKey: "live_consolidation", label: "Run live consolidation", rowLabel: "Run", calls: calls("live_consolidation") }]}
           />
         ) : activeTab === "judge" ? (
           <RunnableEval

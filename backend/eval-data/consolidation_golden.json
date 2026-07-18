@@ -1,0 +1,117 @@
+{
+  "_comment": "Golden cases for the LIVE consolidation eval (app/evals/live_consolidate.py). Each case is ONE candidate pair of dimension definitions, run through the REAL production consolidation confirm prompt+model, graded merge/keep against `metadata.expected` by exact match (categorical → no judge tier; see docs/ai-evals.md 'Grader architecture'). Fields grouped by consumer (docs/eval-case-schema.md): `metadata` is harness-only; `given.pair` is the two descriptors the confirm call compares; `judge` (optional) marks a case for the periodic label-audit. Definitions are exact slices of real runs (see each metadata.source). Spans easy (clear merge/keep) + hard-but-decided (contested, high-correlation confounds).",
+  "cases": [
+    {
+      "key": "pet_ownership_situation_merge",
+      "metadata": {
+        "expected": "merge",
+        "note": "Clean, unambiguous merge — both definitions measure pet count/type and its effect on communal living.",
+        "pass": "consolidation",
+        "label_rationale": "MERGE: both definitions score the same applicant the same way for the same reason — pet count/type and its effect on shared spaces. No concrete applicant lands high on one and low on the other. The clean non-contested MERGE.",
+        "source": "Rank run 5 (2026-07-16), consolidate_audit pair pet_ownership <- pet_situation. pet_ownership def from run 3 (kept/older key); pet_situation def recovered from run 5's raw discovery report (worker 1).",
+        "provenance": {
+          "pass_models": {"Dimension consolidation": "us.anthropic.claude-sonnet-4-6"},
+          "pass_prompt_versions": {"Dimension consolidation": "d73b755d3075"}
+        }
+      },
+      "given": {
+        "pair": [
+          {
+            "key": "pet_ownership",
+            "name": "Pet ownership",
+            "definition": "The number and type of pets in the household, which affects shared outdoor spaces, common areas, allergen exposure among neighbours, and the practical management of communal living."
+          },
+          {
+            "key": "pet_situation",
+            "name": "Pet situation",
+            "definition": "The nature and number of pets the household brings, relevant to shared-space use, neighbour comfort, and any co-op pet policies."
+          }
+        ]
+      }
+    },
+    {
+      "key": "values_vs_social_keep",
+      "metadata": {
+        "expected": "keep",
+        "note": "High-correlation confound: values/ideology (A) vs. social behaviour (B) — distinct axes that co-occur.",
+        "pass": "consolidation",
+        "label_rationale": "KEEP: the pair correlates at r=0.84 (people drawn to co-ops score high on both) but measures different things — values/ideology (A) vs. social behaviour (B). A household can hold strong co-op values yet prefer a private home life (high A, low B), or be intensely social without ideological commitment (low A, high B). Tests judge resistance to over-merging on correlation alone, from definitions.",
+        "source": "app/evals/fixtures/rank_baseline.json (dimensions cooperative_values_alignment, communal_social_orientation).",
+        "provenance": {
+          "note": "Source run predates provenance capture (2026-07-16); definitions are an exact slice of the committed rank_baseline.json fixture."
+        }
+      },
+      "given": {
+        "pair": [
+          {
+            "key": "cooperative_values_alignment",
+            "name": "Co-operative values alignment",
+            "definition": "The extent to which the applicant articulates a genuine, intrinsic alignment with co-operative values — mutual aid, democratic governance, shared responsibility, community accountability — as distinct from purely instrumental motivations such as affordability or housing security."
+          },
+          {
+            "key": "communal_social_orientation",
+            "name": "Communal social orientation",
+            "definition": "The degree to which the household frames its home life as embedded in shared, communal living — actively seeking neighbourly relationships, informal mutual care, and shared social life — versus preferring a private, self-contained household that happens to share a building."
+          }
+        ]
+      }
+    },
+    {
+      "key": "specificity_vs_followthrough_keep",
+      "metadata": {
+        "expected": "keep",
+        "note": "High-correlation confound: writing quality (A) vs. behavioural reliability (B).",
+        "pass": "consolidation",
+        "label_rationale": "KEEP: the pair correlates at r=0.887 but is a confound — writing quality (A) and behavioural reliability (B) are different axes. A reliable but inarticulate applicant scores high on B and low on A (and inverse). Merging would conflate 'writes well' with 'does the work'.",
+        "source": "Rank run 4 (2026-07-16), consolidate_audit pair essay_specificity_and_concreteness ~ follow_through_reliability (KEEP; essay_specificity def from run 4, follow_through_reliability def recovered from run 1).",
+        "provenance": {
+          "pass_models": {"Dimension consolidation": "us.anthropic.claude-sonnet-4-6"},
+          "pass_prompt_versions": {"Dimension consolidation": "d73b755d3075"}
+        }
+      },
+      "given": {
+        "pair": [
+          {
+            "key": "essay_specificity_and_concreteness",
+            "name": "Essay specificity and concreteness",
+            "definition": "The degree to which the household's essays cite specific past actions, named roles, concrete outcomes, and verifiable evidence rather than generic claims, vague platitudes, or corporate-filler language."
+          },
+          {
+            "key": "follow_through_reliability",
+            "name": "Follow-through reliability",
+            "definition": "Evidence — from prior roles rather than stated intention — that the household consistently completes tasks, closes loops, and does the unglamorous low-visibility work that sustains a volunteer-run organisation."
+          }
+        ]
+      }
+    },
+    {
+      "key": "trade_skills_licensed_handson_contested",
+      "metadata": {
+        "expected": "keep",
+        "note": "CONTESTED — both verdicts defensible; leaning keep. Not an answer key; consistency across runs is the signal, not direction.",
+        "pass": "consolidation",
+        "contested": true,
+        "label_rationale": "CONTESTED — both verdicts are defensible from the definitions alone, so this is review material, not an answer key. LEANING keep on a definitions-first principle (formal certification for legally-regulated work vs. practical breadth are genuinely different things). The MERGE reading is also coherent: at r=0.925 almost no applicant diverges, so treating them as one axis for this pool loses little. Agreement is not pass/fail here; consistency across repeated runs is.",
+        "source": "Rank run 6 (2026-07-16), consolidate_audit pair licensed_trade_skills <- hands_on_trade_skills. licensed_trade_skills def from runs 3/4 (stable); hands_on_trade_skills def from run 5.",
+        "provenance": {
+          "pass_models": {"Dimension consolidation": "us.anthropic.claude-sonnet-4-6"},
+          "pass_prompt_versions": {"Dimension consolidation": "d73b755d3075"}
+        }
+      },
+      "given": {
+        "pair": [
+          {
+            "key": "licensed_trade_skills",
+            "name": "Licensed trade skills",
+            "definition": "The extent to which the household holds formal trade qualifications (electrical, plumbing, mechanical, masonry, arboriculture) that allow legally-regulated building-system repairs to be performed in-house without a contractor."
+          },
+          {
+            "key": "hands_on_trade_skills",
+            "name": "Hands-on trade skills",
+            "definition": "The depth and breadth of licensed or practised physical-trade skills (electrical, plumbing, masonry, mechanics, arboriculture, upholstery, carpentry, etc.) the household can contribute to building maintenance and repair, reducing reliance on outside contractors."
+          }
+        ]
+      }
+    }
+  ]
+}

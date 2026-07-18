@@ -16,7 +16,11 @@ from pathlib import Path
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 EVAL_DATA_DIR = _BACKEND_ROOT / "eval-data"
 
-# Judge cases (semantic verdicts), live-scoring golden inputs, and the invariant baseline.
+# Judge cases (semantic verdicts) and the invariant baseline.
 JUDGE_CASES_PATH = EVAL_DATA_DIR / "judge_cases.json"
-GOLDEN_PATH = EVAL_DATA_DIR / "scoring_golden.json"
 FIXTURE_PATH = EVAL_DATA_DIR / "rank_baseline.json"
+
+# Live per-pass golden inputs: each `<pass>_golden.json` holds cases run through that pass's
+# REAL production prompt (see app/evals/live_*.py and docs/eval-case-schema.md).
+GOLDEN_PATH = EVAL_DATA_DIR / "scoring_golden.json"  # scoring (the first live eval)
+CONSOLIDATION_GOLDEN_PATH = EVAL_DATA_DIR / "consolidation_golden.json"

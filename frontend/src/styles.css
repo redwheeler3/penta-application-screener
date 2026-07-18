@@ -2977,6 +2977,7 @@ h1 {
 .eval-case-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
 .eval-case-dot.ok { background: #16a34a; }
 .eval-case-dot.fail { background: #dc2626; }
+.eval-case-dot.contested { background: #d97706; }  /* amber: informational, not pass/fail */
 
 /* Detail pane: full case, no truncation. */
 .eval-detail-pane { min-width: 0; }
@@ -3035,9 +3036,11 @@ h1 {
 }
 .eval-case-result.ok { background: #f0fdf4; border-color: #bbf7d0; }
 .eval-case-result.fail { background: #fef2f2; border-color: #fecaca; }
+.eval-case-result.contested { background: #fffbeb; border-color: #fde68a; }
 .eval-case-result-head { font-weight: 700; font-size: 0.82rem; }
 .eval-case-result.ok .eval-case-result-head { color: #166534; }
 .eval-case-result.fail .eval-case-result-head { color: #b91c1c; }
+.eval-case-result.contested .eval-case-result-head { color: #b45309; }
 .eval-case-result-body { font-size: 0.82rem; margin-top: 4px; }
 .eval-case-result-ev { color: var(--muted); font-size: 0.8rem; margin-top: 4px; font-style: italic; }
 
