@@ -49,7 +49,7 @@ from app.evals.judge import DEFAULT_MODEL as JUDGE_MODEL
 from app.evals.judge import PROMPT_VERSION as JUDGE_PROMPT_VERSION
 from app.evals.judge import judge_case, load_cases, stability_run
 from app.evals.live_scoring import load_golden, run_case
-from app.evals.properties import INVARIANTS, SIGNALS, run_invariants, run_signals
+from app.evals.properties import INVARIANTS, run_invariants
 from app.schemas.base import ResponseModel
 from app.schemas.evals import (
     AgreementOut,
@@ -63,7 +63,6 @@ from app.schemas.evals import (
     LiveScoringCaseOut,
     LiveScoringResponse,
     SaveCaseRequest,
-    SignalOut,
     StabilityCaseOut,
     StabilityRunResponse,
 )
@@ -106,7 +105,7 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
         EvalDescriptor(
             key="invariants", label="Invariants",
             description="Deterministic checks on the committed baseline fixture (poles "
-            "present, no protected attributes) + review signals. Free, instant.",
+            "present, no protected attributes). Free, instant.",
             spends=False, estimated_calls=0,
         ),
         EvalDescriptor(
@@ -132,8 +131,9 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
 
 @router.get("/invariants", response_model=InvariantsResponse)
 def invariants(user: User = Depends(require_current_user)) -> InvariantsResponse:
-    """Run the deterministic invariants + review signals over the committed fixture.
-    Free (no model calls). Mirrors ``python -m app.evals.run``."""
+    """Run the deterministic invariants over the committed fixture. Free (no model calls).
+    (Judgement signals — overlap, carry-forward rate — live on the Insights tab over the
+    live run, which shows them better; they aren't duplicated here.)"""
     if not FIXTURE_PATH.exists():
         return InvariantsResponse(has_fixture=False, dimensions=0)
     fixture = load()
@@ -148,20 +148,8 @@ def invariants(user: User = Depends(require_current_user)) -> InvariantsResponse
         )
         for check in INVARIANTS
     ]
-    sig_by: dict[str, list] = {}
-    for s in run_signals(fixture):
-        sig_by.setdefault(s.check, []).append(s)
-    signal_out = [
-        SignalOut(
-            check=(name := sig.__name__.removeprefix("signal_")),
-            notes=[s.note for s in sig_by.get(name, [])],
-            has_concern=any(s.concern for s in sig_by.get(name, [])),
-        )
-        for sig in SIGNALS
-    ]
     return InvariantsResponse(
-        has_fixture=True, dimensions=len(fixture.dimensions),
-        invariants=invariant_out, signals=signal_out,
+        has_fixture=True, dimensions=len(fixture.dimensions), invariants=invariant_out,
     )
 
 

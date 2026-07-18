@@ -117,17 +117,10 @@ class InvariantOut(ResponseModel):
     violations: list[str] = []  # "subject: detail" strings
 
 
-class SignalOut(ResponseModel):
-    check: str
-    notes: list[str] = []
-    has_concern: bool = False
-
-
 class InvariantsResponse(ResponseModel):
     has_fixture: bool
     dimensions: int
     invariants: list[InvariantOut] = []
-    signals: list[SignalOut] = []
 
 
 # --- cases (the versioned dataset, read/edited through the UI) --------------

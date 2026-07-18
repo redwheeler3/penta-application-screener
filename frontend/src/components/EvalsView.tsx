@@ -126,7 +126,7 @@ function InvariantsSection(): ReactNode {
       <div className="eval-section-head">
         <p className="eval-card-desc">
           Deterministic checks over the committed baseline fixture (poles present, no protected
-          attributes) + review signals. Free, instant — runs over the last blessed Rank.
+          attributes). Free, instant — runs over the last blessed Rank.
         </p>
         <button type="button" className="secondary-button" onClick={load} disabled={loading}>
           {loading ? "Refreshing…" : "Refresh"}
@@ -161,28 +161,6 @@ function InvariantsSection(): ReactNode {
               ))}
             </tbody>
           </table>
-          {result.signals.length ? (
-            <>
-              <div className="eval-subhead">Signals (review, never block)</div>
-              <table className="eval-table">
-                <tbody>
-                  {result.signals.map((s) => (
-                    <tr key={s.check} className={s.hasConcern ? "concern-row" : ""}>
-                      <td>{s.hasConcern ? "!" : ""}</td>
-                      <td>{s.check}</td>
-                      <td>
-                        {s.notes.map((n) => (
-                          <div key={n} className="eval-check-detail">
-                            {n}
-                          </div>
-                        ))}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          ) : null}
         </div>
       ) : (
         <p className="eval-hint">Loading…</p>

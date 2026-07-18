@@ -499,12 +499,10 @@ export type EvalDescriptor = {
 };
 
 export type InvariantOut = { check: string; passed: boolean; violations: string[] };
-export type SignalOut = { check: string; notes: string[]; hasConcern: boolean };
 export type InvariantsResult = {
   hasFixture: boolean;
   dimensions: number;
   invariants: InvariantOut[];
-  signals: SignalOut[];
 };
 
 export type LiveScoringCase = {

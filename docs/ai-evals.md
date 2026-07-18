@@ -33,16 +33,16 @@ the test suite.
 
 ### Deterministic property evals
 
-`backend/app/evals/` reads a committed, PII-safe Rank fixture. These checks split
-into two honest categories:
+`backend/app/evals/properties.py` reads a committed, PII-safe Rank fixture and runs
+**invariants** — checks that are ALWAYS a bug regardless of pool (a dimension missing a
+pole; a criterion keyed on a protected class). A breach fails pytest.
 
-| Category | Example | Behaviour |
-| --- | --- | --- |
-| Invariant | Every dimension has distinct high/low poles | Fails pytest: a breach is always a bug |
-| Signal | Two dimensions have highly correlated score vectors | Reports for review: correlation can be legitimate |
-
-Do not turn a judgement signal into a hard gate merely to make it measurable.
-A check that would need weakening to stay green is a signal, not an invariant.
+The invariant/signal distinction still matters conceptually — a check you'd have to
+soften to keep green is a *signal* (a judgement call), not an invariant, and belongs in
+the LLM-judge evals, not the CI gate. Two such signals once lived here (high-correlation
+dimension pairs; carry-forward rate), but they duplicated — worse — what the **Insights
+tab** shows over the *live* run (Consolidation nominations with verdicts; the Matching
+reuse rate), so they were retired. Only invariants remain in `properties.py`.
 
 ### Manual LLM judge
 
