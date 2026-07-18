@@ -2974,10 +2974,14 @@ h1 {
   color: var(--muted);
   white-space: nowrap;
 }
+/* One dot per run mode (live, stability): a tight fixed-width cluster so the case keys stay
+   left-aligned whether a case has 0, 1, or 2 results. */
+.eval-case-dots { display: inline-flex; gap: 3px; flex: 0 0 auto; }
 .eval-case-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
 .eval-case-dot.ok { background: #16a34a; }
 .eval-case-dot.fail { background: #dc2626; }
 .eval-case-dot.contested { background: #d97706; }  /* amber: informational, not pass/fail */
+.eval-case-dot.empty { background: none; border: 1px solid var(--line); }  /* mode not run yet */
 
 /* Detail pane: full case, no truncation. */
 .eval-detail-pane { min-width: 0; }

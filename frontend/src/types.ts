@@ -490,26 +490,33 @@ export type RankProgress = {
 // --- Evals tab (in-UI eval cockpit) -----------------------------------------
 // Mirrors backend/app/schemas/evals.py. The catalog is free; runs stream NDJSON
 // (thinking lines then a summary carrying one of the result shapes below).
+export type EvalKey =
+  | "invariants" | "live_scoring" | "live_consolidation" | "live_consolidation_stability"
+  | "judge" | "stability";
+
 export type EvalDescriptor = {
-  key: "invariants" | "live_scoring" | "judge" | "stability";
+  key: EvalKey;
   label: string;
   description: string;
   spends: boolean;
   estimatedCalls: number;
 };
 
-// The most recent persisted run for a tab (GET /evals/last-run), so switching subtabs and
-// coming back restores the last result instead of a blank tab. `result` is the same shape
-// the streaming summary carries for that evalKey; no thinking narration is restored.
+// One restored run (GET /evals/last-run): the newest persisted run for a single eval key.
+// `result` is the same shape the streaming summary carries for that evalKey; no thinking
+// narration is restored.
 export type LastEvalRun = {
-  found: boolean;
-  evalKey: "invariants" | "live_scoring" | "judge" | "stability" | "";
+  evalKey: EvalKey;
   ranAt: string;
   promptVersion: string;
   currentPromptVersion: string;
   stale: boolean;
   result: any;
 };
+
+// The newest run PER KEY for a tab, so a tab running >1 eval (live + stability) restores
+// both. One entry per requested key that has any persisted run.
+export type LastEvalRuns = { runs: LastEvalRun[] };
 
 export type InvariantOut = { check: string; description: string; passed: boolean; violations: string[] };
 export type InvariantsResult = {

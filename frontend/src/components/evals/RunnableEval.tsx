@@ -14,7 +14,7 @@ import type { FieldObject } from "./StructuredFields";
 // spend-confirmed inline (the workflow card, not window.confirm). The model's reasoning
 // streams as rendered markdown; results merge back onto each case row + into the detail.
 
-export type RunMode = { evalKey: "live_scoring" | "live_consolidation" | "judge" | "stability"; label: string; rowLabel: string; calls: number };
+export type RunMode = { evalKey: "live_scoring" | "live_consolidation" | "live_consolidation_stability" | "judge" | "stability"; label: string; rowLabel: string; calls: number };
 
 type RunState = { running: boolean; thinking: string; result: any | null; ranMode: RunMode["evalKey"]; error: string | null };
 type Confirm = { mode: RunMode; caseKey?: string; calls: number } | null;
@@ -41,14 +41,17 @@ export function RunnableEval(props: {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [run, setRun] = useState<RunState>({ running: false, thinking: "", result: null, ranMode: modes[0].evalKey, error: null });
-  // Per-case results, keyed by case key, each with the mode it was run under (so a case run
-  // under judge vs. stability shows the right dot). A WHOLE-SET run replaces this map; a
-  // PER-CASE run merges just its one entry — so running one case never wipes the others'
-  // dots/results (the bug where running case B cleared case A's green result).
-  const [caseResults, setCaseResults] = useState<Record<string, { ranMode: RunMode["evalKey"]; result: any }>>({});
-  // Set when the shown result was REHYDRATED from a past run (not this session); null for a
-  // live run. Drives the "last run · prompt" marker so history is never mistaken for fresh.
-  const [restored, setRestored] = useState<LastEvalRun | null>(null);
+  // Per-case results, nested case key → mode → result. Nesting by MODE lets a case hold its
+  // live-run result AND its stability result at once (running stability no longer clobbers
+  // the live dot, and vice versa). A whole-set run replaces every case's entry FOR THAT MODE;
+  // a per-case run merges just its one case+mode — so no run wipes another case's or another
+  // mode's result.
+  type ModeResults = Partial<Record<RunMode["evalKey"], any>>;
+  const [caseResults, setCaseResults] = useState<Record<string, ModeResults>>({});
+  // Rehydrated past runs (not this session), one per mode that had one — drives the "last
+  // run · prompt" marker so history is never mistaken for fresh. A fresh run of a mode clears
+  // that mode's entry.
+  const [restored, setRestored] = useState<Record<string, LastEvalRun>>({});
   const thinkingRef = useRef<HTMLDivElement>(null);
 
   const loadCases = () => {
@@ -58,22 +61,31 @@ export function RunnableEval(props: {
   };
   useEffect(loadCases, [caseEvalKey]);
 
-  // On mount, restore the last persisted run for this tab so switching subtabs and coming
-  // back shows what you last saw (result + case dots) instead of a blank tab. Thinking is
-  // not restored (per the outcome-not-replay choice); a fresh run clears `restored`.
+  // On mount, restore the last persisted run PER MODE for this tab so switching subtabs and
+  // coming back shows what you last saw (result + case dots) instead of a blank tab — and a
+  // tab with two evals (live + stability) restores BOTH. Thinking is not restored (per the
+  // outcome-not-replay choice); a fresh run of a mode clears that mode's restored marker.
   useEffect(() => {
     let live = true;
     fetchLastEvalRun(props.runKeys)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: LastEvalRun | null) => {
-        if (!live || !d?.found) return;
-        setRestored(d);
-        setRun((r) => ({ ...r, result: d.result, ranMode: d.evalKey as RunMode["evalKey"] }));
-        // Seed the per-case dots/results from the restored run too.
-        const cases: any[] = d.result?.cases ?? [];
-        const seeded: Record<string, { ranMode: RunMode["evalKey"]; result: any }> = {};
-        for (const c of cases) seeded[c.key] = { ranMode: d.evalKey as RunMode["evalKey"], result: c };
+      .then((d: { runs?: LastEvalRun[] } | null) => {
+        if (!live || !d?.runs?.length) return;
+        const byMode: Record<string, LastEvalRun> = {};
+        const seeded: Record<string, ModeResults> = {};
+        for (const run of d.runs) {
+          const mode = run.evalKey as RunMode["evalKey"];
+          byMode[mode] = run;
+          for (const c of (run.result?.cases ?? []) as any[]) {
+            (seeded[c.key] ??= {})[mode] = c;
+          }
+        }
+        setRestored(byMode);
         setCaseResults(seeded);
+        // Show the newest restored run's headline (the runs come newest-first per key; pick
+        // the most recent overall for the headline/detail summary).
+        const newest = d.runs.reduce((a, b) => (a.ranAt >= b.ranAt ? a : b));
+        setRun((r) => ({ ...r, result: newest.result, ranMode: newest.evalKey as RunMode["evalKey"] }));
       });
     return () => {
       live = false;
@@ -89,7 +101,12 @@ export function RunnableEval(props: {
   });
 
   async function doRun(mode: RunMode, caseKey?: string) {
-    setRestored(null); // a live run supersedes any rehydrated history
+    // A fresh run of a mode supersedes only THAT mode's rehydrated history (the other mode's
+    // restored marker stays).
+    setRestored((prev) => {
+      const { [mode.evalKey]: _drop, ...rest } = prev;
+      return rest;
+    });
     setRun({ running: true, thinking: "", result: null, ranMode: mode.evalKey, error: null });
     try {
       const resp = await runEval(mode.evalKey, { caseKey });
@@ -101,12 +118,18 @@ export function RunnableEval(props: {
         if (e.type === "thinking") setRun((r) => ({ ...r, thinking: r.thinking + e.text }));
         else if (e.type === "summary") {
           setRun((r) => ({ ...r, running: false, result: e.result }));
-          // Fold the per-case results into the accumulated map: a WHOLE-SET run replaces it;
-          // a PER-CASE run merges only its one case, so it never clears the other cases' dots.
+          // Merge this run's per-case results under THIS MODE, preserving other modes'
+          // results on each case. A whole-set run replaces every case's entry for this mode
+          // (clear the mode first); a per-case run touches only its one case+mode.
           const cases: any[] = e.result?.cases ?? [];
           setCaseResults((prev) => {
-            const next = caseKey ? { ...prev } : {};
-            for (const c of cases) next[c.key] = { ranMode: mode.evalKey, result: c };
+            const next: Record<string, ModeResults> = {};
+            for (const [k, modeMap] of Object.entries(prev)) {
+              // On a whole-set run, drop this mode from every case (a stale case not in the
+              // new results shouldn't keep an old dot); a per-case run keeps everything.
+              next[k] = caseKey ? { ...modeMap } : { ...modeMap, [mode.evalKey]: undefined };
+            }
+            for (const c of cases) (next[c.key] ??= {})[mode.evalKey] = c;
             return next;
           });
         } else if (e.type === "error") setRun((r) => ({ ...r, running: false, error: e.message }));
@@ -200,7 +223,9 @@ export function RunnableEval(props: {
           </div>
         </div>
       ) : null}
-      {restored?.found ? <RestoredMarker run={restored} /> : null}
+      {Object.values(restored).map((r) => (
+        <RestoredMarker key={r.evalKey} run={r} label={modes.find((m) => m.evalKey === r.evalKey)?.label} />
+      ))}
       {run.result ? <RunHeadline evalKey={run.ranMode} result={run.result} /> : null}
 
       <div className="eval-master-detail">
@@ -210,6 +235,7 @@ export function RunnableEval(props: {
             groupBy={props.groupBy}
             selected={selected}
             caseResults={caseResults}
+            modes={modes}
             onSelect={(k) => {
               setSelected(k);
               setEditing(null);
@@ -252,9 +278,13 @@ export function RunnableEval(props: {
                 </button>
               </div>
               {confirm?.caseKey === String(selectedCase.key) ? renderConfirm() : null}
-              {selectedResult ? (
-                <CaseResult evalKey={selectedResult.ranMode} result={selectedResult.result} />
-              ) : null}
+              {selectedResult
+                ? modes
+                    .filter((m) => selectedResult[m.evalKey])
+                    .map((m) => (
+                      <CaseResult key={m.evalKey} evalKey={m.evalKey} result={selectedResult[m.evalKey]} />
+                    ))
+                : null}
               <EvalCaseDetail evalCase={selectedCase} />
             </div>
           ) : (
@@ -266,12 +296,22 @@ export function RunnableEval(props: {
   );
 }
 
+// One mode's result read as a dot: contested (informational), else ok/fail.
+function dotFor(mode: RunMode["evalKey"], result: any): "ok" | "fail" | "contested" {
+  const contested = (mode === "live_consolidation" && result.contested) || result.marker === "[contested-split]";
+  if (contested) return "contested";
+  return resultOk(mode, result) ? "ok" : "fail";
+}
+
 // The case list, optionally grouped by a field (judge: by production pass).
 function CaseList(props: {
   cases: Record<string, unknown>[] | null;
   groupBy?: string;
   selected: string | null;
-  caseResults: Record<string, { ranMode: RunMode["evalKey"]; result: any }>;
+  caseResults: Record<string, Record<string, any>>;
+  // The tab's run modes, in button order — one dot per mode so live + stability read as two
+  // distinct indicators (not one aggregate that hides which check is in what state).
+  modes: RunMode[];
   onSelect: (key: string) => void;
 }): ReactNode {
   const { cases } = props;
@@ -300,13 +340,12 @@ function CaseList(props: {
           {g.heading ? <div className="eval-case-group-head">{g.heading}</div> : null}
           {g.items.map((c) => {
             const key = String(c.key);
-            const entry = props.caseResults[key];
-            // A contested consolidation case is informational (◐), never a red fail dot.
-            const dot = entry
-              ? entry.ranMode === "live_consolidation" && entry.result.contested
-                ? "contested"
-                : resultOk(entry.ranMode, entry.result) ? "ok" : "fail"
-              : null;
+            const modeMap = props.caseResults[key] ?? {};
+            // ALWAYS one dot per mode, in button order (left = first mode, e.g. live; right =
+            // stability). A mode not yet run shows grey, so position tells you which ran: e.g.
+            // green+grey = live passed, stability not run yet. Only render the cluster once a
+            // tab has >1 mode OR any result exists (a single-mode tab with no runs stays clean).
+            const showDots = props.modes.length > 1 || props.modes.some((m) => modeMap[m.evalKey]);
             return (
               <button
                 key={key}
@@ -314,7 +353,21 @@ function CaseList(props: {
                 className={`eval-case-item${props.selected === key ? " selected" : ""}`}
                 onClick={() => props.onSelect(key)}
               >
-                {dot ? <span className={`eval-case-dot ${dot}`} aria-hidden="true" /> : null}
+                {showDots ? (
+                  <span className="eval-case-dots">
+                    {props.modes.map((m) => {
+                      const result = modeMap[m.evalKey];
+                      const dot = result ? dotFor(m.evalKey, result) : "empty";
+                      return (
+                        <span
+                          key={m.evalKey}
+                          className={`eval-case-dot ${dot}`}
+                          title={`${m.label}: ${result ? dot : "not run"}`}
+                        />
+                      );
+                    })}
+                  </span>
+                ) : null}
                 <span className="eval-case-item-key">{key}</span>
                 {meta(c).expected ? (
                   <span className="eval-case-item-expected">{String(meta(c).expected)}</span>
@@ -330,18 +383,19 @@ function CaseList(props: {
 
 function resultOk(ranMode: RunMode["evalKey"], r: any): boolean {
   if (ranMode === "live_scoring" || ranMode === "live_consolidation") return r.passed;
-  if (ranMode === "stability") return r.marker === "[stable]";
+  if (ranMode === "stability" || ranMode === "live_consolidation_stability") return r.marker === "[stable]";
   return r.marker === "[ok]";
 }
 
-// Marks a REHYDRATED result as history (not a fresh run): when it ran + which prompt, and
-// an amber warning when that prompt no longer matches the current one (so a stale result is
-// never read as live). A fresh run clears it.
-function RestoredMarker(props: { run: LastEvalRun }): ReactNode {
-  const { run } = props;
+// Marks a REHYDRATED result as history (not a fresh run): which eval, when it ran + which
+// prompt, and an amber warning when that prompt no longer matches the current one (so a stale
+// result is never read as live). A tab with two evals shows one marker each. A fresh run of a
+// mode clears its marker. ``label`` names the eval (e.g. "Run stability") when the tab has >1.
+function RestoredMarker(props: { run: LastEvalRun; label?: string }): ReactNode {
+  const { run, label } = props;
   return (
     <div className={`eval-restored${run.stale ? " stale" : ""}`}>
-      Last run {relativeTime(run.ranAt)} · prompt {run.promptVersion || "—"}
+      {label ? `${label}: ` : ""}last run {relativeTime(run.ranAt)} · prompt {run.promptVersion || "—"}
       {run.stale ? ` · prompt has since changed (now ${run.currentPromptVersion}) — re-run to refresh` : ""}
     </div>
   );
@@ -382,6 +436,9 @@ function RunHeadline(props: { evalKey: RunMode["evalKey"]; result: any }): React
   if (evalKey === "stability") {
     return <div className="eval-headline">K={result.k} · {result.judgeModel}</div>;
   }
+  if (evalKey === "live_consolidation_stability") {
+    return <div className="eval-headline">K={result.k} · consolidation {result.promptVersion} · {result.model}</div>;
+  }
   const a = result.agreement;
   return (
     <div className="eval-headline">
@@ -402,9 +459,9 @@ function RunHeadline(props: { evalKey: RunMode["evalKey"]; result: any }): React
 // One case's result, shown in the detail pane above its input.
 function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactNode {
   const { evalKey, result: r } = props;
-  // A contested consolidation case has no honest pass/fail on verdict direction — show it
-  // as informational (◐), never a red ✗.
-  const contested = evalKey === "live_consolidation" && r.contested;
+  // A contested case has no honest pass/fail — show it as informational (◐), never a red ✗:
+  // a live-consolidation contested pair, or a stability run that came back a [contested-split].
+  const contested = (evalKey === "live_consolidation" && r.contested) || r.marker === "[contested-split]";
   const ok = resultOk(evalKey, r);
   const cls = contested ? "contested" : ok ? "ok" : "fail";
   const head = contested ? "◐ contested" : ok ? "✓ passed" : "✗ failed";
@@ -434,7 +491,7 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
           ) : null}
           {r.reason ? <div className="eval-case-result-ev">{r.reason}</div> : null}
         </div>
-      ) : evalKey === "stability" ? (
+      ) : evalKey === "stability" || evalKey === "live_consolidation_stability" ? (
         <div className="eval-case-result-body">
           <span className="eval-mono">{r.marker}</span> {Math.round(r.agreement * 100)}% agreement over K —{" "}
           {Object.entries(r.tally).map(([v, n]) => `${v}×${n}`).join(", ")}

@@ -74,6 +74,24 @@ class LiveConsolidationResponse(ResponseModel):
     cases: list[LiveConsolidationCaseOut] = []
 
 
+class LiveConsolidationStabilityCaseOut(ResponseModel):
+    key: str
+    marker: str  # "[stable]" | "[UNSTABLE]" | "[contested-split]"
+    majority: str  # modal verdict over K
+    expected: str  # the label (for reference)
+    contested: bool
+    agreement: float  # modal verdict's share of K
+    flipped: bool
+    tally: dict[str, int]  # verdict -> count
+
+
+class LiveConsolidationStabilityResponse(ResponseModel):
+    prompt_version: str
+    model: str
+    k: int
+    cases: list[LiveConsolidationStabilityCaseOut] = []
+
+
 # --- judge + agreement ------------------------------------------------------
 
 
@@ -178,20 +196,27 @@ class HarvestResponse(ResponseModel):
 # --- last run (rehydrate a tab on remount) ----------------------------------
 
 
-class LastRunResponse(ResponseModel):
-    """The most recent persisted run among a tab's eval keys, so switching subtabs and
-    coming back restores what you last saw instead of a blank tab. Carries the result JSON
-    (as the UI reads it) but NOT the ``thinking`` narration — the tab shows the outcome +
-    per-case dots, not the replayed reasoning. ``stale`` is True when the run's prompt no
-    longer matches the current one, so a rehydrated result is never mistaken for live."""
+class LastRun(ResponseModel):
+    """The most recent persisted run for ONE eval key. Carries the result JSON (as the UI
+    reads it) but NOT the ``thinking`` narration — the tab shows the outcome + per-case dots,
+    not the replayed reasoning. ``stale`` is True when the run's prompt no longer matches the
+    current one, so a rehydrated result is never mistaken for live."""
 
-    found: bool
-    eval_key: str = ""
-    ran_at: str = ""  # ISO-8601 timestamp of the run
+    eval_key: str
+    ran_at: str  # ISO-8601 timestamp of the run
     prompt_version: str = ""  # the prompt the run exercised
     current_prompt_version: str = ""  # the prompt in effect NOW
     stale: bool = False  # prompt_version != current_prompt_version
     result: dict = {}
+
+
+class LastRunResponse(ResponseModel):
+    """The most recent persisted run for EACH of a tab's eval keys — so a tab that runs more
+    than one eval (e.g. live consolidation + its stability) restores BOTH on remount, not just
+    whichever ran last. One ``LastRun`` per key that has any persisted run; empty ⇒ nothing to
+    restore."""
+
+    runs: list[LastRun] = []
 
 
 # --- run request ------------------------------------------------------------

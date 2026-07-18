@@ -87,11 +87,11 @@
     {
       "key": "trade_skills_licensed_handson_contested",
       "metadata": {
-        "expected": "keep",
-        "note": "CONTESTED — both verdicts defensible; leaning keep. Not an answer key; consistency across runs is the signal, not direction.",
+        "expected": "merge",
+        "note": "CONTESTED — both verdicts defensible; leaning merge. Not an answer key; consistency across runs is the signal, not direction.",
         "pass": "consolidation",
         "contested": true,
-        "label_rationale": "CONTESTED — both verdicts are defensible from the definitions alone, so this is review material, not an answer key. LEANING keep on a definitions-first principle (formal certification for legally-regulated work vs. practical breadth are genuinely different things). The MERGE reading is also coherent: at r=0.925 almost no applicant diverges, so treating them as one axis for this pool loses little. Agreement is not pass/fail here; consistency across repeated runs is.",
+        "label_rationale": "CONTESTED — both verdicts are defensible from the definitions alone, so this is review material, not an answer key. LEANING merge: at r=0.925 almost no applicant diverges, so treating them as one axis for this pool loses little, and the production prompt is stable on merge (confirmed by a live-stability run). The KEEP reading is also coherent on a definitions-first principle (formal certification for legally-regulated work vs. practical breadth are genuinely different things). Agreement is not pass/fail here; consistency across repeated runs is.",
         "source": "Rank run 6 (2026-07-16), consolidate_audit pair licensed_trade_skills <- hands_on_trade_skills. licensed_trade_skills def from runs 3/4 (stable); hands_on_trade_skills def from run 5.",
         "provenance": {
           "pass_models": {"Dimension consolidation": "us.anthropic.claude-sonnet-4-6"},
