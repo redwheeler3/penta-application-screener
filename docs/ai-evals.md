@@ -61,6 +61,55 @@ It is intentionally **manual and non-gating**:
 - it cannot modify criteria, scores, rankings, or the database;
 - a disagreement is a review signal, not an automated correction.
 
+## Grader architecture — match the grader to the output shape (decided 2026-07-18)
+
+Before extending live evals from scoring to the other four passes, we researched best
+practice on a specific fork: for each golden case, do you want **three signals** —
+(1) the human label, (2) the production output vs. the label, (3) an independent
+LLM-judge verdict — triangulated? Or is that over-built? A verified multi-source review
+(OpenAI evals + graders guides, promptfoo, Sebastian Raschka, Galtea; 23/25 claims
+confirmed 3-0 under adversarial check) gave a clear, shape-driven answer.
+
+**Match the grader to the output type:**
+
+- **Categorical passes** (consolidation `merge`/`keep`, decomposition `merge`/`keep`,
+  matching `matches`/`mismatches`, screening `flag_supported`/`flag_unsupported`): the
+  correct grader is a **deterministic exact-match** of the production verdict against the
+  human label. An LLM judge on the *same* categorical case is **redundant and does not earn
+  its per-call cost** — correctness is already solved by direct comparison. *"When the task
+  has a deterministic correctness check, do not use a judge"* (Galtea); wrapping one around
+  it *"adds latency, cost, and a non-zero chance of being wrong about something that has a
+  definitive answer."* The debated three-way design is over-engineered here; the two-signal
+  (production-vs-expected) assertion is the routine regression net.
+- **Scoring** (continuous −1..+1): the one genuinely open-ended pass, where many values are
+  defensible and no single label is "right." Here the judge earns its keep — deterministic
+  assertions pin properties (`score_equals`/`min`/`max`, `confidence`) AND a defensibility
+  judge checks the produced score's *reasoning*. This is why scoring is the only live eval
+  with a judge tier.
+
+**What this means for the Judge tab (the reframing — answers the parked "how useful is
+judge-the-judge?" question).** The research does NOT say drop it; it says stop using it as a
+*routine grader* and use it for its two legitimate, validated roles:
+
+1. **Label auditing.** *"For subjective tasks, assuming reliable human ground truth [is a
+   mistake]"* — on a subjective call like merge/keep, a judge that disagrees with our
+   `expected` is a signal that the **label may be wrong**, not the judge. That is exactly the
+   Judge tab's value: *"are our expected values defensible?"*
+2. **Calibration.** Before trusting *any* judge (including scoring's defensibility judge) you
+   must measure its agreement against human labels — Cohen's κ, target ≈ human-human ~0.80;
+   reference-free judging collapses to κ≈0.14 on hard cases, so the judge must always see the
+   reference. The Judge tab *is* that agreement-measurement apparatus.
+
+So the Judge tab is **demoted from grader to periodic audit/calibration instrument**: it is
+run occasionally to ask "are our labels sound, and is our judge sound?", not as a per-run
+regression gate. The routine regression net is the live per-pass evals with exact-match
+graders (cheap, deterministic). Consequence for its data: the Judge tab **owns no case files
+of its own** — it reads every pass's `<pass>_golden.json` and audits the `metadata.expected`
+of cases that carry a `judge` block. `judge_cases.json` is being retired *after* its content
+is mined into the per-pass golden files (its scoring/screening recordings live on as live
+golden cases; its categorical definition-pairs become consolidation/matching/decomposition
+golden cases). One shared case schema serves both consumers — see `docs/eval-case-schema.md`.
+
 ## Production vs. judge identity
 
 There are two independent prompts and models:
