@@ -50,22 +50,14 @@ reuse rate), so they were retired. Only invariants remain in `properties.py`.
 honestly, such as whether a proposed merge loses a meaningful distinction or
 whether a structured decomposition result follows its own written decision.
 
-Run it explicitly:
-
-```sh
-bash ./judge.sh
-bash ./judge.sh --case decompose_routing_drift
-```
-
-```powershell
-./judge.ps1
-./judge.ps1 -Case decompose_routing_drift
-```
+Run it from the in-app **Evals tab** → Judge subtab: a whole-set "Run judge +
+agreement" or a per-case "judge"/"stability" run. (There is no CLI wrapper any more;
+the tab calls the same `judge_case`/`stability_run` functions directly.)
 
 It is intentionally **manual and non-gating**:
 
 - it never runs during Rank, pytest, or normal CI;
-- it makes paid Bedrock calls only when someone invokes it;
+- it makes paid Bedrock calls only when someone confirms a run in the tab;
 - it cannot modify criteria, scores, rankings, or the database;
 - a disagreement is a review signal, not an automated correction.
 
@@ -383,8 +375,9 @@ the LLM judge's job (that's the `matches`/`mismatches` task applied to a decisio
 
 Best practice (Arize, Evidently, Pragmatic Engineer, 2025/26) is unanimous: before you
 trust an LLM-as-judge, **validate it against human labels with real metrics** — an
-eyeballed "5/5" isn't validation. So a normal `python -m app.evals.judge` run now prints,
-after the per-case verdicts, a `score_agreement` summary (`app/evals/agreement.py`):
+eyeballed "5/5" isn't validation. So a whole-set judge run (the Evals tab → Judge →
+"Run judge + agreement") returns, after the per-case verdicts, a `score_agreement`
+summary (`app/evals/agreement.py`):
 
 - **Overall agreement** — share of *decisive* cases the judge matched, plus **Cohen's
   kappa** (chance-corrected; raw agreement inflates when one label dominates the set).
@@ -484,7 +477,7 @@ next re-score is the *measurement* of whether the signed scale actually fixed th
 
 ## Stability harness (built 2026-07-16)
 
-`python -m app.evals.judge --stability K` judges each selected case **K times on
+The Evals tab → Judge → "Run stability (K=5)" (or a per-case "stability" link) judges each selected case **K times on
 fixed inputs** and reports verdict stability, rather than a single agree/disagree.
 This is the escalation-ladder measurement: the open question is not "did the judge
 agree with the label?" (one call answers that) but "does the same call, on the same
@@ -500,7 +493,7 @@ decision to build (or not build) multi-agent escalation reads these numbers.
 
 ## Live scoring eval (built 2026-07-17)
 
-`python -m app.evals.live_scoring` (or `./live-scoring-eval.sh`) closes the gap the other
+The live scoring eval (Evals tab → Live scoring) closes the gap the other
 evals leave: the judge cases and the `properties.py` invariants both grade a *recorded*
 artifact, so they catch a bad re-baseline and code rot but are **blind to a prompt/model
 regression** — the model never runs. The signed-scale absence bug proved it: the invariant
@@ -522,8 +515,8 @@ tiers, by what each can honestly decide:
   "expected" number (open-ended scoring has no single right answer; a reference-match would
   be brittle).
 
-Makes real model calls (costs money, non-deterministic), so it is an explicit opt-in run,
-**never in pytest/CI**. The CI half is `tests/test_live_scoring.py`: a structural guard that
+Makes real model calls (costs money, non-deterministic), so it is a deliberate,
+spend-confirmed tab run, **never in pytest/CI**. The CI half is `tests/test_live_scoring.py`: a structural guard that
 the golden fixture loads and is well-formed (both poles, a checkable expectation, bounds in
 range) with no model call — so a malformed fixture fails at commit time, not spend time.
 `score_equals` uses a tolerance (the model isn't fully deterministic even at temp 0); pin 0
@@ -532,20 +525,25 @@ exact scores.
 
 ## In-UI eval cockpit — the Evals tab (built 2026-07-17)
 
-The evals also run from the app (a top-level **Evals** tab), not just the CLI — the goal
-is friction reduction: the easier they are to run, the more they get run. Developer/
-operator surface only (not committee-facing). Three **subtabs**: Invariants (free), Live
-scoring (the golden dataset), and **Judge** — which merges judge+agreement and stability
-because they run the *same* case set two ways (one-pass verdict+agreement vs. K-repeat
-flip check), so one subtab, one cases table, two run buttons. Each runnable subtab shows
-its **cases** (the input dataset) and **results** in one table, whole-set run buttons, and
-**per-row run** links — one per run mode, so a Judge row offers both "judge" and
-"stability" on that single case (test one case cheaply before spending on all 25). The
-model's reasoning streams live.
+The evals run from the app (a top-level **Evals** tab) — the goal is friction reduction:
+the easier they are to run, the more they get run. This is now the *only* run surface;
+the old `judge.sh` / `python -m app.evals.*` CLI wrappers were retired once the tab
+existed (only the fixture-capture helpers — `capture_scores.py`, re-baseline via the tab —
+remain as the sanctioned way to harvest a case from a real Rank). Developer/operator
+surface only (not committee-facing). Three **subtabs**: Invariants (free; a "Re-baseline
+from current Rank" action re-records the committed fixture, replacing the old
+`python -m app.evals.fixture` CLI), Live scoring (the golden dataset), and **Judge** —
+which merges judge+agreement and stability because they run the *same* case set two ways
+(one-pass verdict+agreement vs. K-repeat flip check), so one subtab, one cases table, two
+run buttons. Each runnable subtab shows its **cases** (the input dataset) and **results**
+in one table, whole-set run buttons, and **per-row run** links — one per run mode, so a
+Judge row offers both "judge" and "stability" on that single case (test one case cheaply
+before spending on all 25). The model's reasoning streams live.
 
 Boundaries that keep this honest (dependency flows evals→app, never app→evals):
-- **The tab calls the same runners the CLI does** (`run_case`, `judge_case`,
-  `stability_run`, `run_invariants`) — one code path, so the UI and terminal can't drift.
+- **The tab calls the eval runner functions directly** (`run_case`, `judge_case`,
+  `stability_run`, `run_invariants`, `record`) — the modules stay; only their CLI entry
+  points were removed, so there is one code path with no CLI/UI drift.
 - **Runs stream** via the same NDJSON vocabulary as Rank/Screen (`thinking` deltas then a
   terminal `summary`); the non-judge scoring model's reasoning is what streams. The
   spend-confirm reuses the workflow's `.run-confirm` card, and the call-count comes from a

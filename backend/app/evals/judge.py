@@ -3,12 +3,11 @@
 The deterministic evals catch properties a program can prove. This module is
 the deliberately separate manual audit for questions that need judgement. It
 only reads PII-safe criterion/audit text and never runs as part of pytest or a
-Rank; invoking ``python -m app.evals.judge`` is the explicit spend boundary.
+Rank; it runs from the Evals tab (POST /evals/judge), the explicit spend boundary.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 from collections import Counter
 from dataclasses import dataclass
@@ -260,47 +259,6 @@ def format_report(results: list[JudgeResult]) -> str:
     return "\n".join(lines)
 
 
-def main() -> None:
-    all_cases = load_cases()
-    parser = argparse.ArgumentParser(description="Run manual non-gating LLM judge evals.")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="Bedrock inference-profile model ID")
-    parser.add_argument("--case", choices=[case.key for case in all_cases], help="Run one labelled case")
-    parser.add_argument(
-        "--stability", type=int, metavar="K", default=None,
-        help="Judge each selected case K times on fixed inputs and report verdict stability "
-             "(the escalation-ladder measurement). Costs K times the normal run.",
-    )
-    args = parser.parse_args()
-
-    from app.ai.strands_provider import StrandsProvider
-    from app.db.session import SessionLocal
-    from app.services.settings import get_app_settings
-
-    db = SessionLocal()
-    try:
-        settings = get_app_settings(db)
-    finally:
-        db.close()
-    provider = StrandsProvider(region=settings.ai.region, max_pool_connections=1)
-    cases = [case for case in all_cases if args.case in (None, case.key)]
-    if args.stability:
-        reports = [stability_run(provider, c, k=args.stability, model_id=args.model) for c in cases]
-        print(format_stability(reports))
-        return
-
-    # Default run: judge every selected case once, print the per-case verdicts, then the
-    # judge-vs-human agreement summary — the "is the judge trustworthy?" headline. The
-    # summary is the aggregate of the same calls (no extra cost), so it always accompanies
-    # a full run. Skipped for a single --case run, where an n=1 agreement stat is noise.
-    from app.evals.agreement import format_agreement, score_agreement
-
-    results = [judge_case(provider, case, model_id=args.model) for case in cases]
-    print(format_report(results))
-    scored = [r for r in results if not r.case.contested]
-    if len(scored) >= 2:
-        print()
-        print(format_agreement(score_agreement(results)))
-
-
-if __name__ == "__main__":
-    main()
+# NB: no CLI entry point. The judge runs from the Evals tab (POST /evals/judge, which
+# calls judge_case/stability_run/load_cases directly). format_report/format_stability are
+# retained as tested formatting helpers documenting the marker semantics.

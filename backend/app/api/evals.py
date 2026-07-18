@@ -44,7 +44,7 @@ from app.evals.case_store import (
     list_cases,
     save_case,
 )
-from app.evals.fixture import FIXTURE_PATH, load
+from app.evals.fixture import FIXTURE_PATH, load, record
 from app.evals.judge import DEFAULT_MODEL as JUDGE_MODEL
 from app.evals.judge import PROMPT_VERSION as JUDGE_PROMPT_VERSION
 from app.evals.judge import judge_case, load_cases, stability_run
@@ -130,10 +130,10 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
 
 
 @router.get("/invariants", response_model=InvariantsResponse)
-def invariants(user: User = Depends(require_current_user)) -> InvariantsResponse:
-    """Run the deterministic invariants over the committed fixture. Free (no model calls).
-    (Judgement signals — overlap, carry-forward rate — live on the Insights tab over the
-    live run, which shows them better; they aren't duplicated here.)"""
+def _invariants_response() -> InvariantsResponse:
+    """Run the invariants over the committed fixture and shape the response. Shared by the
+    GET and the re-baseline POST (which returns the invariants of the freshly-recorded
+    fixture)."""
     if not FIXTURE_PATH.exists():
         return InvariantsResponse(has_fixture=False, dimensions=0)
     fixture = load()
@@ -151,6 +151,29 @@ def invariants(user: User = Depends(require_current_user)) -> InvariantsResponse
     return InvariantsResponse(
         has_fixture=True, dimensions=len(fixture.dimensions), invariants=invariant_out,
     )
+
+
+def invariants(user: User = Depends(require_current_user)) -> InvariantsResponse:
+    """Run the deterministic invariants over the committed fixture. Free (no model calls).
+    (Judgement signals — overlap, carry-forward rate — live on the Insights tab over the
+    live run, which shows them better; they aren't duplicated here.)"""
+    return _invariants_response()
+
+
+@router.post("/baseline", response_model=InvariantsResponse)
+def rebaseline(
+    user: User = Depends(require_current_user), db: Session = Depends(get_db)
+) -> InvariantsResponse:
+    """Re-record the invariant baseline fixture from the CURRENT Rank (the tab action that
+    replaces the old `python -m app.evals.fixture` CLI). Writes the committed
+    rank_baseline.json — a deliberate re-bless, committed to git afterward — then returns
+    the invariants of the fresh fixture. Free (no model calls; reads the stored run).
+    409 if there is no current Rank to record."""
+    try:
+        record(db)
+    except RuntimeError as exc:
+        raise Problem("run_required", detail=str(exc)) from exc
+    return _invariants_response()
 
 
 # --- cases (read the versioned dataset; edit through the UI to the JSON file) -

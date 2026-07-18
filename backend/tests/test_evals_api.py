@@ -159,6 +159,16 @@ async def test_run_unknown_case_is_404() -> None:
     assert resp.status_code == 404
 
 
+async def test_rebaseline_requires_a_current_run() -> None:
+    # Re-baseline records the CURRENT Rank's fixture; with no run in the DB it's a 409
+    # (run_required), never a silent empty write.
+    app, _db, _p = setup_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        resp = await client.post("/evals/baseline")
+    assert resp.status_code == 409
+
+
 async def test_run_requires_login() -> None:
     app, _db, _p = setup_app()
     app.dependency_overrides.pop(require_current_user)  # simulate logged-out
