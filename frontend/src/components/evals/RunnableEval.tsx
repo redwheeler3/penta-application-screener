@@ -296,10 +296,16 @@ export function RunnableEval(props: {
   );
 }
 
-// One mode's result read as a dot: contested (informational), else ok/fail.
+// One mode's result read as a dot. Contested cases are never red (both verdicts defensible),
+// but they aren't always amber either: on a SINGLE run, agreeing with the leaning is the
+// fine, unremarkable outcome (green) — only a DIVERGENCE from the leaning is review-worthy
+// (amber). A stability run that actually wobbled ([contested-split]) stays amber — the
+// wobble IS the review event.
 function dotFor(mode: RunMode["evalKey"], result: any): "ok" | "fail" | "contested" {
-  const contested = (mode === "live_consolidation" && result.contested) || result.marker === "[contested-split]";
-  if (contested) return "contested";
+  if (result.marker === "[contested-split]") return "contested";  // stability wobble
+  if (mode === "live_consolidation" && result.contested) {
+    return result.verdict === result.expected ? "ok" : "contested";  // agree = green, diverge = amber
+  }
   return resultOk(mode, result) ? "ok" : "fail";
 }
 
@@ -463,12 +469,11 @@ function RunHeadline(props: { evalKey: RunMode["evalKey"]; result: any }): React
 // One case's result, shown in the detail pane above its input.
 function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactNode {
   const { evalKey, result: r } = props;
-  // A contested case has no honest pass/fail — show it as informational (◐), never a red ✗:
-  // a live-consolidation contested pair, or a stability run that came back a [contested-split].
-  const contested = (evalKey === "live_consolidation" && r.contested) || r.marker === "[contested-split]";
-  const ok = resultOk(evalKey, r);
-  const cls = contested ? "contested" : ok ? "ok" : "fail";
-  const head = contested ? "◐ contested" : ok ? "✓ passed" : "✗ failed";
+  // Header color is the single dot decision (dotFor): green when it passed or a contested
+  // case agreed with its leaning; amber for a contested divergence / stability wobble; red
+  // only for a non-contested fail. One source of truth so dot and header can't disagree.
+  const cls = dotFor(evalKey, r);
+  const head = cls === "contested" ? "◐ contested" : cls === "ok" ? "✓ passed" : "✗ failed";
   return (
     <div className={`eval-case-result ${cls}`}>
       <span className="eval-case-result-head">{head}</span>
