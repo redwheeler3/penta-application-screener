@@ -37,6 +37,7 @@ from app.api.dependencies import get_ai_provider, require_current_user
 from app.api.problems import Problem
 from app.db.models import EvalRun, User
 from app.db.session import get_db
+from app.evals import stability
 from app.evals.agreement import score_agreement
 from app.evals.capture_scores import propose_cases as _propose_scores
 from app.evals.capture_screening import propose_cases as _propose_screening
@@ -55,6 +56,7 @@ from app.evals.live_consolidate import load_cases as load_consolidation_cases
 from app.evals.live_consolidate import run_case as run_consolidation_case
 from app.evals.live_consolidate import stability_run as consolidation_stability_run
 from app.evals.live_scoring import load_golden, run_case
+from app.evals.live_scoring import stability_run as scoring_stability_run
 from app.evals.synthetic_guard import NonSyntheticPoolError
 from app.schemas.base import ResponseModel
 from app.schemas.evals import (
@@ -75,6 +77,8 @@ from app.schemas.evals import (
     LiveConsolidationStabilityResponse,
     LiveScoringCaseOut,
     LiveScoringResponse,
+    LiveScoringStabilityCaseOut,
+    LiveScoringStabilityResponse,
     SaveCaseRequest,
     StabilityCaseOut,
     StabilityRunResponse,
@@ -130,6 +134,12 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
             description=f"Run {len(golden)} golden synthetic inputs through the REAL scoring "
             "prompt+model, then grade with assertions + the rubric judge.",
             spends=True, estimated_calls=live_calls,
+        ),
+        EvalDescriptor(
+            key="live_scoring_stability", label="Live scoring — stability",
+            description=f"Run the REAL scoring prompt K times (default K={DEFAULT_STABILITY_K}) per "
+            "golden case on fixed input; flag when a case's assertion pass/fail wanders across runs.",
+            spends=True, estimated_calls=len(golden) * DEFAULT_STABILITY_K,
         ),
         EvalDescriptor(
             key="live_consolidation", label="Live consolidation",
@@ -211,7 +221,7 @@ def _current_prompt_version(eval_key: str, db: Session) -> str:
     """The prompt version a fresh run of ``eval_key`` would exercise right now — so a
     rehydrated last run can be flagged stale when the prompt has since changed. Judge and
     stability share the judge prompt; live_scoring uses the scoring prompt."""
-    if eval_key == "live_scoring":
+    if eval_key in ("live_scoring", "live_scoring_stability"):
         from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_PROMPT_VERSION
 
         return SCORING_PROMPT_VERSION
@@ -420,6 +430,43 @@ def run_live_scoring(
     return _stream(db, "live_scoring", SCORING_PROMPT_VERSION, work)
 
 
+@router.post("/live-scoring-stability")
+def run_live_scoring_stability(
+    k: int = DEFAULT_STABILITY_K,
+    case: str | None = None,
+    user: User = Depends(require_current_user),
+    provider: AIProvider = Depends(get_ai_provider),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Stream a live-scoring STABILITY run: the REAL scoring prompt K times per golden case on
+    fixed input, reporting whether each case's assertion pass/fail held (a flip = the score
+    wandered across the assertion boundary). No judge — measures the production scoring prompt's
+    own stability. ``k`` clamped; ``case`` runs just that one."""
+    from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_PROMPT_VERSION
+
+    k = max(2, min(k, 10))
+    settings = get_app_settings(db)
+    scoring_model = settings.ai.dimension_scoring_model
+    golden = _select(list(load_golden()), case, lambda c: c.key)
+
+    def work(on_delta) -> LiveScoringStabilityResponse:
+        out = []
+        for c in golden:
+            on_delta(f"\n\n### {c.key} (x{k})\n")
+            res = scoring_stability_run(provider, c, scoring_model=scoring_model, k=k, on_delta=on_delta)
+            lo, hi = res.score_spread
+            out.append(LiveScoringStabilityCaseOut(
+                key=c.key, marker=res.stability.marker, agreement=res.stability.agreement,
+                flipped=res.stability.flipped, tally=res.stability.tally,
+                score_min=lo, score_max=hi,
+            ))
+        return LiveScoringStabilityResponse(
+            scoring_prompt_version=SCORING_PROMPT_VERSION, scoring_model=scoring_model, k=k, cases=out,
+        )
+
+    return _stream(db, "live_scoring_stability", SCORING_PROMPT_VERSION, work)
+
+
 @router.post("/live-consolidation")
 def run_live_consolidation(
     case: str | None = None,
@@ -494,7 +541,7 @@ def run_live_consolidation_stability(
             out.append(LiveConsolidationStabilityCaseOut(
                 key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
                 contested=c.contested, agreement=rep.agreement, flipped=rep.flipped,
-                tally=dict(Counter(rep.verdicts).most_common()),
+                tally=rep.tally,
             ))
         return LiveConsolidationStabilityResponse(
             prompt_version=CONSOLIDATE_PROMPT_VERSION, model=model, k=k, cases=out,
@@ -570,12 +617,7 @@ def run_stability(
             on_delta(f"\n\n### [{c.pass_name}] {c.title} (x{k})\n")
             rep = stability_run(provider, c, k=k, model_id=JUDGE_MODEL)
             tally = {v.value: n for v, n in Counter(rep.verdicts).most_common()}
-            if not rep.flipped:
-                marker = "[stable]"
-            elif c.contested:
-                marker = "[contested-split]"
-            else:
-                marker = "[UNSTABLE]"
+            marker = stability.marker(rep.verdicts, contested=c.contested)
             on_delta(f"→ {marker} {rep.agreement:.0%}: {tally}\n")
             out.append(StabilityCaseOut(
                 key=c.key, pass_name=c.pass_name, title=c.title, marker=marker,

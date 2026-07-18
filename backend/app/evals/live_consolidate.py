@@ -24,7 +24,6 @@ non-deterministic, so it runs from the AI Quality tab, never as part of pytest/C
 from __future__ import annotations
 
 import json
-from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -32,6 +31,7 @@ from app.ai.dimension_consolidate import SYSTEM_PROMPT, NominatedPair, build_pro
 from app.ai.provider import AIProvider
 from app.ai.schemas import ConsolidationReport, JudgeReport, JudgeVerdict
 from app.evals.paths import CONSOLIDATION_GOLDEN_PATH
+from app.evals.stability import StabilityReport, run_stability
 
 # The two verdict strings a consolidation case can expect (the categorical label).
 MERGE, KEEP = "merge", "keep"
@@ -211,42 +211,6 @@ def run_case(
     )
 
 
-@dataclass(frozen=True)
-class StabilityReport:
-    """The outcome of running the REAL consolidation confirm K times on the SAME pair — does
-    the production prompt return the same merge/keep verdict every time, or flip-flop on
-    identical input? (Evidence this matters: the run-5/6/7 keep→merge→merge wobble on the
-    trade-skills pair.) ``majority`` is the modal verdict; ``agreement`` its share of K;
-    ``flipped`` True if more than one distinct verdict appeared. For a non-contested case a
-    flip is a FAIL (the prompt is unstable); a contested case is expected to be able to wobble,
-    so its flip is informational, not a failure — mirrors the judge stability semantics."""
-
-    case: ConsolidationCase
-    verdicts: list[str]
-    total_cost_usd: float = 0.0
-
-    @property
-    def majority(self) -> str:
-        return Counter(self.verdicts).most_common(1)[0][0]
-
-    @property
-    def agreement(self) -> float:
-        return Counter(self.verdicts).most_common(1)[0][1] / len(self.verdicts)
-
-    @property
-    def flipped(self) -> bool:
-        return len(set(self.verdicts)) > 1
-
-    @property
-    def marker(self) -> str:
-        """How to read the run: stable = every call agreed; a flip is UNSTABLE for a
-        non-contested case (a real regression signal) but an expected contested-split for a
-        contested one (both verdicts defensible, so wobble is informational)."""
-        if not self.flipped:
-            return "[stable]"
-        return "[contested-split]" if self.case.contested else "[UNSTABLE]"
-
-
 def stability_run(
     provider: AIProvider,
     case: ConsolidationCase,
@@ -256,17 +220,21 @@ def stability_run(
     on_delta: object = None,
 ) -> StabilityReport:
     """Run the REAL confirm prompt ``k`` times on the case's fixed pair and report verdict
-    stability. Every call sees the identical prompt, so any variation is the model's own
-    run-to-run noise — the thing the escalation ladder needs measured. No judge here; this is
-    purely 'is the PRODUCTION prompt stable?' (the judge's own stability lives in judge.py)."""
+    stability (does the production prompt return the same merge/keep every time?). Delegates
+    the tallying/marker to the shared stability core — the only pass-specific part is one
+    confirm call producing one verdict token. Evidence this matters: the run-5/6/7
+    keep→merge→merge wobble on the trade-skills pair."""
     a, b = case.pair
     _emit(on_delta, f"Consolidating **{a['name']}** ~ **{b['name']}** x{k} on `{consolidate_model}`…\n\n")
-    verdicts: list[str] = []
-    for i in range(k):
+    runs = {"i": 0}
+
+    def run_once() -> str:
         verdict, _reason = _confirm_verdict(provider, case, consolidate_model=consolidate_model)
-        verdicts.append(verdict or "?")
-        _emit(on_delta, f"- run {i + 1}: **{verdict or '?'}**\n")
-    report = StabilityReport(case=case, verdicts=verdicts)
-    tally = ", ".join(f"{v} x{n}" for v, n in Counter(verdicts).most_common())
+        runs["i"] += 1
+        _emit(on_delta, f"- run {runs['i']}: **{verdict or '?'}**\n")
+        return verdict or "?"
+
+    report = run_stability(run_once, k=k, contested=case.contested)
+    tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())
     _emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
     return report

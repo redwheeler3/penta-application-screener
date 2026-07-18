@@ -18,6 +18,7 @@ from app.ai.pricing import cost_usd
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider
 from app.ai.schemas import JudgeReport, JudgeVerdict
+from app.evals import stability
 from app.evals.paths import JUDGE_CASES_PATH
 
 DEFAULT_MODEL = "us.anthropic.claude-sonnet-4-6"
@@ -180,9 +181,8 @@ class StabilityReport:
     every time?" A single confirm call that flip-flops run-to-run on identical inputs is
     the noise that justifies spending up on multi-judge voting; a steady one does not.
 
-    ``majority`` is the modal verdict; ``agreement`` is its share of K (1.0 = perfectly
-    stable, 0.5 = a coin flip on a two-way call). ``flipped`` is True when more than one
-    distinct verdict appeared at all — the cheap headline signal."""
+    Keeps the judge's typed ``verdicts`` + cost; the modal/share/flip read-outs delegate to
+    the shared stability core (``app.evals.stability``) so the counting lives in one place."""
 
     case: JudgeCase
     verdicts: list[JudgeVerdict]
@@ -194,17 +194,17 @@ class StabilityReport:
 
     @property
     def majority(self) -> JudgeVerdict:
-        return Counter(self.verdicts).most_common(1)[0][0]
+        return stability.majority(self.verdicts)
 
     @property
     def agreement(self) -> float:
         """Modal verdict's share of the runs (1.0 = every run agreed)."""
-        return Counter(self.verdicts).most_common(1)[0][1] / len(self.verdicts)
+        return stability.agreement(self.verdicts)
 
     @property
     def flipped(self) -> bool:
         """True if the judge did not return the same verdict every time."""
-        return len(set(self.verdicts)) > 1
+        return stability.flipped(self.verdicts)
 
 
 def stability_run(
@@ -228,14 +228,7 @@ def format_stability(reports: list[StabilityReport]) -> str:
     for r in reports:
         k = len(r.verdicts)
         tally = ", ".join(f"{v.value} x{n}" for v, n in Counter(r.verdicts).most_common())
-        # A non-contested case that flips is the real alarm; a contested one flipping is
-        # expected, so it reads as informational rather than a failure.
-        if not r.flipped:
-            marker = "[stable]"
-        elif r.case.contested:
-            marker = "[contested-split]"
-        else:
-            marker = "[UNSTABLE]"
+        marker = stability.marker(r.verdicts, contested=r.case.contested)
         # Always show the seed for comparison — "leaning" for a contested case (both
         # verdicts defensible), "label" otherwise. Flag when the majority disagrees with
         # it: for a non-contested case a mismatch is a real review signal; for a contested

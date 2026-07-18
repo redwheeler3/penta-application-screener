@@ -100,9 +100,14 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
         ) : activeTab === "live_scoring" ? (
           <RunnableEval
             caseEvalKey="live_scoring"
-            runKeys={["live_scoring"]}
-            description="Run hand-authored synthetic applicants through the REAL scoring prompt + model, then grade each with deterministic assertions and the rubric judge. Tests the actual prompt, not a recorded artifact."
-            modes={[{ evalKey: "live_scoring", label: "Run live scoring", rowLabel: "Run", calls: calls("live_scoring") }]}
+            runKeys={["live_scoring", "live_scoring_stability"]}
+            description="Run hand-authored synthetic applicants through the REAL scoring prompt + model, then grade each with deterministic assertions and the rubric judge. Stability runs each case K times to see if its pass/fail wanders (the score crossing the assertion boundary). Tests the actual prompt, not a recorded artifact."
+            modes={
+              [
+                { evalKey: "live_scoring", label: "Run live scoring", rowLabel: "Run", calls: calls("live_scoring") },
+                { evalKey: "live_scoring_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("live_scoring_stability") },
+              ] as RunMode[]
+            }
           />
         ) : activeTab === "live_consolidation" ? (
           <RunnableEval

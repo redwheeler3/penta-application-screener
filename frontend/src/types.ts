@@ -491,7 +491,8 @@ export type RankProgress = {
 // Mirrors backend/app/schemas/evals.py. The catalog is free; runs stream NDJSON
 // (thinking lines then a summary carrying one of the result shapes below).
 export type EvalKey =
-  | "invariants" | "live_scoring" | "live_consolidation" | "live_consolidation_stability"
+  | "invariants" | "live_scoring" | "live_scoring_stability"
+  | "live_consolidation" | "live_consolidation_stability"
   | "judge" | "stability";
 
 export type EvalDescriptor = {
