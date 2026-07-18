@@ -256,11 +256,14 @@ function CaseList(props: {
   if (cases === null) return <p className="eval-hint">Loading cases…</p>;
   if (!cases.length) return <p className="eval-hint">No cases yet.</p>;
 
+  // The grouping/label fields (pass, expected) live in the harness-only `metadata` block.
+  const meta = (c: Record<string, unknown>) => (c.metadata ?? {}) as Record<string, unknown>;
+
   const groups: { heading: string | null; items: Record<string, unknown>[] }[] = [];
   if (props.groupBy) {
     const byGroup = new Map<string, Record<string, unknown>[]>();
     for (const c of cases) {
-      const g = String(c[props.groupBy] ?? "consolidation"); // judge default pass
+      const g = String(meta(c)[props.groupBy] ?? "consolidation"); // judge default pass
       (byGroup.get(g) ?? byGroup.set(g, []).get(g)!).push(c);
     }
     for (const [heading, items] of [...byGroup.entries()].sort()) groups.push({ heading, items });
@@ -286,7 +289,9 @@ function CaseList(props: {
               >
                 {dot ? <span className={`eval-case-dot ${dot}`} aria-hidden="true" /> : null}
                 <span className="eval-case-item-key">{key}</span>
-                {c.expected ? <span className="eval-case-item-expected">{String(c.expected)}</span> : null}
+                {meta(c).expected ? (
+                  <span className="eval-case-item-expected">{String(meta(c).expected)}</span>
+                ) : null}
               </button>
             );
           })}

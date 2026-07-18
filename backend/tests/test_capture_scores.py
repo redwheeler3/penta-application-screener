@@ -75,25 +75,26 @@ def test_synthetic_run_yields_shaped_unlabelled_candidates(db) -> None:
 
     assert len(cases) == 2
     c = cases[0]
-    # Shape the judge needs, plus provenance, minus PII.
-    assert c["pass"] == "scoring"
+    # Grouped by consumer: evidence + prompt are what the judge sees; metadata is harness-only.
+    assert c["metadata"]["pass"] == "scoring"
     assert c["evidence"]["dimension_definition"].startswith("Depth of")
     assert "cited_evidence" in c["evidence"]
     assert "score" in c["evidence"]
-    assert str(_SYNTHETIC) in c["evidence_source"]
+    assert "SUPPORTED" in c["prompt"]["question"]
+    assert str(_SYNTHETIC) in c["metadata"]["evidence_source"]
     # Unlabelled by construction — a human sets these before it becomes a real case.
-    assert c["expected"].startswith("SET_ME")
+    assert c["metadata"]["expected"].startswith("SET_ME")
     assert "RELABEL" in c["key"]
     # Applicant referenced by opaque index only — never the real application_id (42 / 7).
     assert "42" not in str(c)
-    assert "applicant" in c["title"]
+    assert "applicant" in c["metadata"]["title"]
 
 
 def test_opaque_index_hides_real_application_ids(db) -> None:
     run = _seed(db, _SYNTHETIC)
     cases = propose_cases(db, run)
     # ids 7 and 42 map to opaque 0 and 1 (sorted); no case leaks the raw id.
-    sources = " ".join(c["evidence_source"] for c in cases)
+    sources = " ".join(c["metadata"]["evidence_source"] for c in cases)
     assert "idx 0" in sources
     assert "idx 1" in sources
     assert "42" not in sources

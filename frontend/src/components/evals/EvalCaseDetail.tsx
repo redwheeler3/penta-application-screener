@@ -1,8 +1,9 @@
 import { type ReactNode } from "react";
 
 // Read-only, COMPLETE rendering of one eval case — the master-detail counterpart to the
-// case list. Every field is shown in full (no truncation): scalars as labeled values,
-// nested objects (evidence / applicant / dimension / expect) as titled sub-sections.
+// case list. Fields are grouped on disk into by-CONSUMER blocks; this renders each block
+// under a heading with a badge naming WHO sees it, so it's obvious at a glance which fields
+// reach a model and which are harness-only. Every field is shown in full (no truncation).
 // This is the "view" half; editing is EvalCaseEditor.
 
 function label(key: string): string {
@@ -40,26 +41,50 @@ function Value(props: { value: unknown }): ReactNode {
   return <span className="eval-detail-scalar">{String(v)}</span>;
 }
 
-// Field display order: put the identifying/label fields first, then the rest as-authored.
-const LEAD_KEYS = ["key", "title", "task", "note", "expected", "expect"];
+// Per-block "who consumes this" badge. Keyed by the block's field name; a block with no
+// entry (e.g. a legacy or unknown block) renders without a badge rather than a wrong one.
+const BLOCK_CONSUMER: Record<string, { badge: string; tone: string }> = {
+  metadata: { badge: "harness only — no model sees this", tone: "neutral" },
+  input: { badge: "sent to the scoring model", tone: "model" },
+  evidence: { badge: "sent to the judge", tone: "judge" },
+  judge: { badge: "the question put to the judge", tone: "judge" },
+  prompt: { badge: "the question put to the judge", tone: "judge" },
+};
+
+const BLOCK_ORDER = ["metadata", "input", "evidence", "judge", "prompt"];
 
 export function EvalCaseDetail(props: { evalCase: Record<string, unknown> }): ReactNode {
   const c = props.evalCase;
-  const keys = Object.keys(c);
-  const lead = LEAD_KEYS.filter((k) => k in c);
-  const rest = keys.filter((k) => !LEAD_KEYS.includes(k));
-  const ordered = [...lead, ...rest];
+  const blockKeys = Object.keys(c).filter((k) => k !== "key");
+  const ordered = [
+    ...BLOCK_ORDER.filter((k) => blockKeys.includes(k)),
+    ...blockKeys.filter((k) => !BLOCK_ORDER.includes(k)),
+  ];
 
   return (
     <div className="eval-detail" role="region" aria-label={`Case ${String(c.key ?? "")}`}>
-      {ordered.map((k) => (
-        <div key={k} className="eval-detail-field">
-          <span className="eval-detail-fieldname">{label(k)}</span>
-          <div className="eval-detail-fieldval">
-            <Value value={c[k]} />
-          </div>
+      <div className="eval-detail-field">
+        <span className="eval-detail-fieldname">Key</span>
+        <div className="eval-detail-fieldval">
+          <Value value={c.key} />
         </div>
-      ))}
+      </div>
+      {ordered.map((k) => {
+        const consumer = BLOCK_CONSUMER[k];
+        return (
+          <div key={k} className="eval-detail-block">
+            <div className="eval-detail-block-head">
+              <span className="eval-detail-block-name">{label(k)}</span>
+              {consumer ? (
+                <span className={`eval-detail-badge ${consumer.tone}`}>{consumer.badge}</span>
+              ) : null}
+            </div>
+            <div className="eval-detail-block-body">
+              <Value value={c[k]} />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

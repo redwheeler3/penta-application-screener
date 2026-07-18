@@ -3002,6 +3002,30 @@ h1 {
 .eval-detail-val { font-size: 0.86rem; }
 .eval-detail-list { margin: 0; padding-left: 18px; }
 
+/* By-consumer blocks: each is a heading + a "who sees this" badge, so it's obvious which
+   fields reach a model (input → scoring model, evidence/prompt → judge) vs. harness-only. */
+.eval-detail-block { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--line); }
+.eval-detail-block:first-of-type { border-top: 0; padding-top: 4px; }
+.eval-detail-block-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.eval-detail-block-name {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 700;
+}
+.eval-detail-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+.eval-detail-badge.neutral { color: var(--muted); background: #f8fafc; }
+.eval-detail-badge.model { color: #1d4ed8; background: #eff6ff; border-color: #bfdbfe; }
+.eval-detail-badge.judge { color: #7c3aed; background: #f5f3ff; border-color: #ddd6fe; }
+.eval-detail-block-body { font-size: 0.88rem; line-height: 1.5; overflow-wrap: anywhere; }
+
 /* One case's result, shown above its input in the detail pane. */
 .eval-case-result {
   border-radius: 8px;

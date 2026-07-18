@@ -21,7 +21,12 @@ def golden_file(tmp_path, monkeypatch):
     path.write_text(json.dumps({
         "_comment": "keep me",
         "cases": [
-            {"key": "a", "applicant": {"facts": {}}, "dimension": {"key": "d"}, "expect": {"score_equals": 0.0}},
+            {
+                "key": "a",
+                "metadata": {"expect": {"score_equals": 0.0}},
+                "input": {"applicant": {"facts": {}}, "dimension": {"key": "d"}},
+                "judge": {"question": "defensible?"},
+            },
         ],
     }))
     reg = dict(case_store._FIXTURES)
@@ -36,7 +41,12 @@ def test_list_cases_reads_only_real_cases(golden_file) -> None:
 
 
 def test_save_new_case_appends(golden_file) -> None:
-    new = {"key": "b", "applicant": {"facts": {}}, "dimension": {"key": "d"}, "expect": {"score_min": 0.5}}
+    new = {
+        "key": "b",
+        "metadata": {"expect": {"score_min": 0.5}},
+        "input": {"applicant": {"facts": {}}, "dimension": {"key": "d"}},
+        "judge": {"question": "defensible?"},
+    }
     cases = case_store.save_case("live_scoring", new)
     assert [c["key"] for c in cases] == ["a", "b"]
     # Persisted to disk, and the _comment top-level key survived.
@@ -46,20 +56,25 @@ def test_save_new_case_appends(golden_file) -> None:
 
 
 def test_save_existing_key_upserts_in_place(golden_file) -> None:
-    edited = {"key": "a", "applicant": {"facts": {"x": 1}}, "dimension": {"key": "d"}, "expect": {"score_equals": 0.0}}
+    edited = {
+        "key": "a",
+        "metadata": {"expect": {"score_equals": 0.0}},
+        "input": {"applicant": {"facts": {"x": 1}}, "dimension": {"key": "d"}},
+        "judge": {"question": "defensible?"},
+    }
     cases = case_store.save_case("live_scoring", edited)
     assert len(cases) == 1  # replaced, not appended
-    assert cases[0]["applicant"]["facts"] == {"x": 1}
+    assert cases[0]["input"]["applicant"]["facts"] == {"x": 1}
 
 
 def test_save_rejects_missing_required_field(golden_file) -> None:
     with pytest.raises(case_store.CaseValidationError):
-        case_store.save_case("live_scoring", {"key": "c", "applicant": {}})  # no dimension/expect
+        case_store.save_case("live_scoring", {"key": "c", "input": {}})  # no metadata/judge
 
 
 def test_save_rejects_blank_key(golden_file) -> None:
     with pytest.raises(case_store.CaseValidationError):
-        case_store.save_case("live_scoring", {"key": "", "applicant": {}, "dimension": {}, "expect": {}})
+        case_store.save_case("live_scoring", {"key": "", "metadata": {}, "input": {}, "judge": {}})
 
 
 def test_unknown_eval_raises(golden_file) -> None:

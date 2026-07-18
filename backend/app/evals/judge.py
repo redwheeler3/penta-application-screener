@@ -95,23 +95,28 @@ class JudgeCase:
 
 
 def load_cases(path: Path = CASES_PATH) -> tuple[JudgeCase, ...]:
-    """The committed human-labelled cases. Exact slices of real Ranks; see ``CASES_PATH``."""
+    """The committed human-labelled cases. Exact slices of real Ranks; see ``CASES_PATH``.
+
+    Fields are grouped on disk into by-consumer blocks (see the fixture's structure):
+    ``evidence`` and ``prompt`` are what the judge SEES; ``metadata`` (title, label, expected,
+    provenance, …) is harness-only and never enters the prompt. We flatten them into the flat
+    JudgeCase the runner uses — the grouping documents who sees what, the runner is agnostic."""
     data = json.loads(path.read_text())
     return tuple(
         JudgeCase(
             key=c["key"],
-            title=c["title"],
-            task=c["task"],
+            title=(m := c["metadata"])["title"],
+            task=c["prompt"]["question"],
             evidence=c["evidence"],
-            expected=JudgeVerdict(c["expected"]),
-            label_rationale=c.get("label_rationale", ""),
-            provenance=c.get("provenance") or {},
+            expected=JudgeVerdict(m["expected"]),
+            label_rationale=m.get("label_rationale", ""),
+            provenance=m.get("provenance") or {},
             # `source` (axis-level cases) and `evidence_source` (score-defensibility cases,
             # which stamp the synthetic pool/run the evidence quote came from) are the same
             # traceability slot under two names — a case carries whichever fits its family.
-            source=c.get("source") or c.get("evidence_source", ""),
-            contested=c.get("contested", False),
-            pass_name=c.get("pass", "consolidation"),
+            source=m.get("source") or m.get("evidence_source", ""),
+            contested=m.get("contested", False),
+            pass_name=m.get("pass", "consolidation"),
         )
         for c in data["cases"]
     )

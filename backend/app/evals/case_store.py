@@ -19,10 +19,12 @@ from pathlib import Path
 
 from app.evals.paths import GOLDEN_PATH, JUDGE_CASES_PATH
 
-# eval_key -> (fixture path, required per-case fields). Only these files are writable.
+# eval_key -> (fixture path, required per-case fields). Fields are grouped into by-consumer
+# blocks (see each fixture's `_comment`): a top-level `key` plus block objects. Only these
+# files are writable.
 _FIXTURES: dict[str, tuple[Path, tuple[str, ...]]] = {
-    "live_scoring": (GOLDEN_PATH, ("key", "applicant", "dimension", "expect")),
-    "judge": (JUDGE_CASES_PATH, ("key", "title", "task", "evidence", "expected")),
+    "live_scoring": (GOLDEN_PATH, ("key", "metadata", "input", "judge")),
+    "judge": (JUDGE_CASES_PATH, ("key", "metadata", "evidence", "prompt")),
 }
 
 
