@@ -24,6 +24,7 @@ non-deterministic, so it runs from the AI Quality tab, never as part of pytest/C
 from __future__ import annotations
 
 import json
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -121,6 +122,34 @@ def _judge_label(provider: AIProvider, case: ConsolidationCase, *, judge_model: 
     return judge_case(provider, jc, model_id=judge_model).report
 
 
+def _confirm_verdict(
+    provider: AIProvider, case: ConsolidationCase, *, consolidate_model: str
+) -> tuple[str | None, str]:
+    """Run the REAL consolidation confirm prompt once on the case's pair and return
+    ``(verdict, reason)`` — verdict is "merge"/"keep", or None if the model returned no
+    verdict for the pair. Shared by the single-run grade and the K-run stability check, so
+    both exercise the exact same production call."""
+    a, b = case.pair
+    keep_key, drop_key = str(a["key"]), str(b["key"])
+    defs = {keep_key: str(a["definition"]), drop_key: str(b["definition"])}
+    # One nominated pair; the eval supplies it directly (bypassing correlation nomination).
+    pair = NominatedPair(keep=keep_key, drop=drop_key, r=1.0)
+    result = provider.structured_output(
+        model_id=consolidate_model,
+        schema=ConsolidationReport,
+        prompt=build_prompt([pair], defs),
+        system_prompt=SYSTEM_PROMPT,
+    )
+    # The confirm returns one verdict per pair; find ours regardless of key order.
+    verdict_obj = next(
+        (v for v in result.output.verdicts if {v.key_a, v.key_b} == {keep_key, drop_key}),
+        None,
+    )
+    if verdict_obj is None:
+        return None, ""
+    return (MERGE if verdict_obj.same_concept else KEEP), verdict_obj.reason
+
+
 def run_case(
     provider: AIProvider,
     case: ConsolidationCase,
@@ -141,35 +170,19 @@ def run_case(
     wants to watch.
     """
     a, b = case.pair
-    keep_key, drop_key = str(a["key"]), str(b["key"])
-    defs = {keep_key: str(a["definition"]), drop_key: str(b["definition"])}
-    # One nominated pair; the eval supplies it directly (bypassing correlation nomination).
-    pair = NominatedPair(keep=keep_key, drop=drop_key, r=1.0)
 
     _emit(on_delta, f"Consolidating **{a['name']}** ~ **{b['name']}** on `{consolidate_model}`…\n\n")
-    result = provider.structured_output(
-        model_id=consolidate_model,
-        schema=ConsolidationReport,
-        prompt=build_prompt([pair], defs),
-        system_prompt=SYSTEM_PROMPT,
-    )
-    # The confirm returns one verdict per pair; find ours regardless of key order.
-    verdict_obj = next(
-        (v for v in result.output.verdicts if {v.key_a, v.key_b} == {keep_key, drop_key}),
-        None,
-    )
-    if verdict_obj is None:
-        _emit(on_delta, f"⚠️ Model returned no verdict for `{keep_key}` ~ `{drop_key}`.\n")
+    verdict, reason = _confirm_verdict(provider, case, consolidate_model=consolidate_model)
+    if verdict is None:
+        _emit(on_delta, f"⚠️ Model returned no verdict for `{a['key']}` ~ `{b['key']}`.\n")
         return CaseResult(
             case=case, verdict="?", reason="",
             failures=["model returned no verdict for the pair"],
         )
-
-    verdict = MERGE if verdict_obj.same_concept else KEEP
     _emit(
         on_delta,
         f"**Verdict: {verdict}** (expected {case.expected})\n\n"
-        f"- _Reason:_ {verdict_obj.reason}\n\n",
+        f"- _Reason:_ {reason}\n\n",
     )
 
     failures: list[str] = []
@@ -193,6 +206,67 @@ def run_case(
         _emit(on_delta, f"**Judge: {judge_verdict}** — {agree} the label ({case.expected}). {report.reason}\n")
 
     return CaseResult(
-        case=case, verdict=verdict, reason=verdict_obj.reason,
+        case=case, verdict=verdict, reason=reason,
         failures=failures, judge_verdict=judge_verdict,
     )
+
+
+@dataclass(frozen=True)
+class StabilityReport:
+    """The outcome of running the REAL consolidation confirm K times on the SAME pair — does
+    the production prompt return the same merge/keep verdict every time, or flip-flop on
+    identical input? (Evidence this matters: the run-5/6/7 keep→merge→merge wobble on the
+    trade-skills pair.) ``majority`` is the modal verdict; ``agreement`` its share of K;
+    ``flipped`` True if more than one distinct verdict appeared. For a non-contested case a
+    flip is a FAIL (the prompt is unstable); a contested case is expected to be able to wobble,
+    so its flip is informational, not a failure — mirrors the judge stability semantics."""
+
+    case: ConsolidationCase
+    verdicts: list[str]
+    total_cost_usd: float = 0.0
+
+    @property
+    def majority(self) -> str:
+        return Counter(self.verdicts).most_common(1)[0][0]
+
+    @property
+    def agreement(self) -> float:
+        return Counter(self.verdicts).most_common(1)[0][1] / len(self.verdicts)
+
+    @property
+    def flipped(self) -> bool:
+        return len(set(self.verdicts)) > 1
+
+    @property
+    def marker(self) -> str:
+        """How to read the run: stable = every call agreed; a flip is UNSTABLE for a
+        non-contested case (a real regression signal) but an expected contested-split for a
+        contested one (both verdicts defensible, so wobble is informational)."""
+        if not self.flipped:
+            return "[stable]"
+        return "[contested-split]" if self.case.contested else "[UNSTABLE]"
+
+
+def stability_run(
+    provider: AIProvider,
+    case: ConsolidationCase,
+    *,
+    consolidate_model: str,
+    k: int = 5,
+    on_delta: object = None,
+) -> StabilityReport:
+    """Run the REAL confirm prompt ``k`` times on the case's fixed pair and report verdict
+    stability. Every call sees the identical prompt, so any variation is the model's own
+    run-to-run noise — the thing the escalation ladder needs measured. No judge here; this is
+    purely 'is the PRODUCTION prompt stable?' (the judge's own stability lives in judge.py)."""
+    a, b = case.pair
+    _emit(on_delta, f"Consolidating **{a['name']}** ~ **{b['name']}** x{k} on `{consolidate_model}`…\n\n")
+    verdicts: list[str] = []
+    for i in range(k):
+        verdict, _reason = _confirm_verdict(provider, case, consolidate_model=consolidate_model)
+        verdicts.append(verdict or "?")
+        _emit(on_delta, f"- run {i + 1}: **{verdict or '?'}**\n")
+    report = StabilityReport(case=case, verdicts=verdicts)
+    tally = ", ".join(f"{v} x{n}" for v, n in Counter(verdicts).most_common())
+    _emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
+    return report

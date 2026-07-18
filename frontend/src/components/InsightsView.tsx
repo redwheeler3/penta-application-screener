@@ -107,9 +107,14 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
         ) : activeTab === "live_consolidation" ? (
           <RunnableEval
             caseEvalKey="live_consolidation"
-            runKeys={["live_consolidation"]}
-            description="Run golden dimension pairs through the REAL consolidation prompt + model, then grade merge/keep against the label by exact match. Tests the actual prompt, not a recorded artifact. Contested pairs are shown but not scored."
-            modes={[{ evalKey: "live_consolidation", label: "Run live consolidation", rowLabel: "Run", calls: calls("live_consolidation") }]}
+            runKeys={["live_consolidation", "live_consolidation_stability"]}
+            description="Run golden dimension pairs through the REAL consolidation prompt + model, then grade merge/keep against the label by exact match. Stability runs each pair K times to see if the verdict flips. Tests the actual prompt, not a recorded artifact. Contested pairs are shown but not scored."
+            modes={
+              [
+                { evalKey: "live_consolidation", label: "Run live consolidation", rowLabel: "Run", calls: calls("live_consolidation") },
+                { evalKey: "live_consolidation_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("live_consolidation_stability") },
+              ] as RunMode[]
+            }
           />
         ) : activeTab === "judge" ? (
           <RunnableEval

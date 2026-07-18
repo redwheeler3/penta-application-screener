@@ -53,6 +53,7 @@ from app.evals.judge import PROMPT_VERSION as JUDGE_PROMPT_VERSION
 from app.evals.judge import judge_case, load_cases, stability_run
 from app.evals.live_consolidate import load_cases as load_consolidation_cases
 from app.evals.live_consolidate import run_case as run_consolidation_case
+from app.evals.live_consolidate import stability_run as consolidation_stability_run
 from app.evals.live_scoring import load_golden, run_case
 from app.evals.synthetic_guard import NonSyntheticPoolError
 from app.schemas.base import ResponseModel
@@ -66,9 +67,12 @@ from app.schemas.evals import (
     InvariantsResponse,
     JudgeCaseOut,
     JudgeRunResponse,
+    LastRun,
     LastRunResponse,
     LiveConsolidationCaseOut,
     LiveConsolidationResponse,
+    LiveConsolidationStabilityCaseOut,
+    LiveConsolidationStabilityResponse,
     LiveScoringCaseOut,
     LiveScoringResponse,
     SaveCaseRequest,
@@ -133,6 +137,12 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
             "consolidation prompt+model; grade merge/keep against the label (exact match). "
             "A case with a judge question also runs the judge as a label audit.",
             spends=True, estimated_calls=consolidation_calls,
+        ),
+        EvalDescriptor(
+            key="live_consolidation_stability", label="Live consolidation — stability",
+            description=f"Run the REAL consolidation prompt K times (default K={DEFAULT_STABILITY_K}) "
+            f"per pair on fixed input to measure verdict stability. Costs K times a live run.",
+            spends=True, estimated_calls=len(consolidation) * DEFAULT_STABILITY_K,
         ),
         EvalDescriptor(
             key="judge", label="Judge + agreement",
@@ -205,7 +215,7 @@ def _current_prompt_version(eval_key: str, db: Session) -> str:
         from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_PROMPT_VERSION
 
         return SCORING_PROMPT_VERSION
-    if eval_key == "live_consolidation":
+    if eval_key in ("live_consolidation", "live_consolidation_stability"):
         from app.ai.dimension_consolidate import (
             PROMPT_VERSION as CONSOLIDATE_PROMPT_VERSION,
         )
@@ -220,34 +230,35 @@ def _current_prompt_version(eval_key: str, db: Session) -> str:
 def last_run(
     keys: str, user: User = Depends(require_current_user), db: Session = Depends(get_db)
 ) -> LastRunResponse:
-    """The most recent persisted run among the comma-separated ``keys`` (a tab restores its
-    last run on remount — Live scoring passes ``live_scoring``; Judge passes
-    ``judge,stability``). Returns the result JSON as the UI reads it, WITHOUT the thinking
-    narration, plus a ``stale`` flag when the run's prompt no longer matches the current one.
-    Free (a single indexed read)."""
+    """The most recent persisted run for EACH of the comma-separated ``keys`` (a tab restores
+    its last run(s) on remount — Live scoring passes ``live_scoring``; Judge passes
+    ``judge,stability``; Live consolidation passes ``live_consolidation,live_consolidation_stability``).
+    Returns one entry per key that has a run — so a tab running two evals restores BOTH, not
+    just whichever ran last. Result JSON as the UI reads it, WITHOUT the thinking narration;
+    each carries a ``stale`` flag when its prompt no longer matches the current one."""
     wanted = [k.strip() for k in keys.split(",") if k.strip()]
-    row = (
-        db.query(EvalRun)
-        .filter(EvalRun.eval_key.in_(wanted))
-        # id.desc() breaks a created_at tie (two runs in the same tick) — autoincrement id
-        # is insertion order, so this is a stable "most recent".
-        .order_by(EvalRun.created_at.desc(), EvalRun.id.desc())
-        .first()
-        if wanted
-        else None
-    )
-    if row is None:
-        return LastRunResponse(found=False)
-    current = _current_prompt_version(row.eval_key, db)
-    return LastRunResponse(
-        found=True,
-        eval_key=row.eval_key,
-        ran_at=row.created_at.isoformat(),
-        prompt_version=row.prompt_version or "",
-        current_prompt_version=current,
-        stale=bool(current and row.prompt_version and row.prompt_version != current),
-        result=row.result,
-    )
+    runs: list[LastRun] = []
+    for key in wanted:
+        row = (
+            db.query(EvalRun)
+            .filter(EvalRun.eval_key == key)
+            # id.desc() breaks a created_at tie (two runs in the same tick) — autoincrement
+            # id is insertion order, so this is a stable "most recent".
+            .order_by(EvalRun.created_at.desc(), EvalRun.id.desc())
+            .first()
+        )
+        if row is None:
+            continue
+        current = _current_prompt_version(row.eval_key, db)
+        runs.append(LastRun(
+            eval_key=row.eval_key,
+            ran_at=row.created_at.isoformat(),
+            prompt_version=row.prompt_version or "",
+            current_prompt_version=current,
+            stale=bool(current and row.prompt_version and row.prompt_version != current),
+            result=row.result,
+        ))
+    return LastRunResponse(runs=runs)
 
 
 # --- cases (read the versioned dataset; edit through the UI to the JSON file) -
@@ -453,6 +464,43 @@ def run_live_consolidation(
         )
 
     return _stream(db, "live_consolidation", CONSOLIDATE_PROMPT_VERSION, work)
+
+
+@router.post("/live-consolidation-stability")
+def run_live_consolidation_stability(
+    k: int = DEFAULT_STABILITY_K,
+    case: str | None = None,
+    user: User = Depends(require_current_user),
+    provider: AIProvider = Depends(get_ai_provider),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Stream a live-consolidation STABILITY run: the REAL confirm prompt K times per pair on
+    fixed input, reporting verdict stability (flip = the production prompt is unstable). ``k``
+    is clamped so a stray value can't blow up spend. ``case`` runs just that one pair."""
+    from app.ai.dimension_consolidate import (
+        PROMPT_VERSION as CONSOLIDATE_PROMPT_VERSION,
+    )
+
+    k = max(2, min(k, 10))
+    settings = get_app_settings(db)
+    model = settings.ai.consolidate_model
+    cases = _select(list(load_consolidation_cases()), case, lambda c: c.key)
+
+    def work(on_delta) -> LiveConsolidationStabilityResponse:
+        out = []
+        for c in cases:
+            on_delta(f"\n\n### {c.key} (x{k})\n")
+            rep = consolidation_stability_run(provider, c, consolidate_model=model, k=k, on_delta=on_delta)
+            out.append(LiveConsolidationStabilityCaseOut(
+                key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
+                contested=c.contested, agreement=rep.agreement, flipped=rep.flipped,
+                tally=dict(Counter(rep.verdicts).most_common()),
+            ))
+        return LiveConsolidationStabilityResponse(
+            prompt_version=CONSOLIDATE_PROMPT_VERSION, model=model, k=k, cases=out,
+        )
+
+    return _stream(db, "live_consolidation_stability", CONSOLIDATE_PROMPT_VERSION, work)
 
 
 @router.post("/judge")

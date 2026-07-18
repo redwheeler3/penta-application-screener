@@ -15,7 +15,7 @@ from app.ai.schemas import (
     JudgeReport,
     JudgeVerdict,
 )
-from app.evals.live_consolidate import load_cases, run_case
+from app.evals.live_consolidate import load_cases, run_case, stability_run
 
 _VERDICTS = {"merge", "keep"}
 
@@ -111,3 +111,32 @@ def test_judge_runs_as_label_audit_when_question_present() -> None:
     assert result.passed is True  # exact-match still passes; judge never gates
     assert result.judge_verdict == "merge"  # the audit dissent is surfaced
     assert "DISAGREES with the label" in "".join(chunks)
+
+
+def test_stability_stable_when_verdict_never_flips() -> None:
+    """K identical verdicts ⇒ [stable], full agreement, not flipped."""
+    case = next(c for c in load_cases() if not c.contested)
+    provider = _mock_confirm(case, same_concept=(case.expected == "merge"))
+    rep = stability_run(provider, case, consolidate_model="m", k=4)
+    assert not rep.flipped
+    assert rep.agreement == 1.0
+    assert rep.marker == "[stable]"
+
+
+def test_stability_contested_flip_reads_as_contested_split() -> None:
+    """A contested case that flips is expected — marker is [contested-split], never [UNSTABLE]."""
+    base = next((c for c in load_cases() if c.contested), None) or replace(
+        load_cases()[0], contested=True
+    )
+    # A provider that alternates merge/keep across the K calls to force a flip.
+    a, b = base.pair
+    provider = MockProvider()
+    for same in (True, False):  # queue enough alternating verdicts for K=4
+        for _ in range(2):
+            provider.queue(ConsolidationReport(verdicts=[
+                ConsolidationVerdict(key_a=str(a["key"]), key_b=str(b["key"]),
+                                     same_concept=same, reason="t"),
+            ]))
+    rep = stability_run(provider, base, consolidate_model="m", k=4)
+    assert rep.flipped
+    assert rep.marker == "[contested-split]"
