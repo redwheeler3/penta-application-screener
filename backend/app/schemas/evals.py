@@ -52,6 +52,28 @@ class LiveScoringResponse(ResponseModel):
     cases: list[LiveScoringCaseOut] = []
 
 
+# --- live consolidation (categorical: exact-match, no judge tier) ------------
+
+
+class LiveConsolidationCaseOut(ResponseModel):
+    key: str
+    passed: bool
+    verdict: str  # "merge" | "keep" — what the real confirm prompt produced
+    expected: str  # the human label
+    contested: bool  # true ⇒ excluded from passed/total (no honest verdict pass/fail)
+    reason: str
+    failures: list[str] = []
+    judge_verdict: str | None = None  # independent label-audit verdict, when a judge ran
+
+
+class LiveConsolidationResponse(ResponseModel):
+    prompt_version: str
+    model: str
+    passed: int  # non-contested cases whose verdict matched the label
+    total: int  # non-contested cases (contested are reported but not scored)
+    cases: list[LiveConsolidationCaseOut] = []
+
+
 # --- judge + agreement ------------------------------------------------------
 
 

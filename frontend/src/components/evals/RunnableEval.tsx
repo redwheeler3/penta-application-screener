@@ -14,14 +14,15 @@ import type { FieldObject } from "./StructuredFields";
 // spend-confirmed inline (the workflow card, not window.confirm). The model's reasoning
 // streams as rendered markdown; results merge back onto each case row + into the detail.
 
-export type RunMode = { evalKey: "live_scoring" | "judge" | "stability"; label: string; rowLabel: string; calls: number };
+export type RunMode = { evalKey: "live_scoring" | "live_consolidation" | "judge" | "stability"; label: string; rowLabel: string; calls: number };
 
 type RunState = { running: boolean; thinking: string; result: any | null; ranMode: RunMode["evalKey"]; error: string | null };
 type Confirm = { mode: RunMode; caseKey?: string; calls: number } | null;
 
 export function RunnableEval(props: {
-  // "live_scoring" | "judge" — the fixture whose cases we read/edit (stability shares judge's).
-  caseEvalKey: "live_scoring" | "judge";
+  // The fixture whose cases we read/edit (stability shares judge's; live-stability, when it
+  // lands, shares its pass's golden set).
+  caseEvalKey: "live_scoring" | "live_consolidation" | "judge";
   // The eval keys whose last run restores this tab on remount (Live scoring: ["live_scoring"];
   // Judge: ["judge", "stability"] — the two share the tab, so the newer of the two shows).
   runKeys: RunMode["evalKey"][];
@@ -294,7 +295,12 @@ function CaseList(props: {
           {g.items.map((c) => {
             const key = String(c.key);
             const entry = props.caseResults[key];
-            const dot = entry ? (resultOk(entry.ranMode, entry.result) ? "ok" : "fail") : null;
+            // A contested consolidation case is informational (◐), never a red fail dot.
+            const dot = entry
+              ? entry.ranMode === "live_consolidation" && entry.result.contested
+                ? "contested"
+                : resultOk(entry.ranMode, entry.result) ? "ok" : "fail"
+              : null;
             return (
               <button
                 key={key}
@@ -317,7 +323,7 @@ function CaseList(props: {
 }
 
 function resultOk(ranMode: RunMode["evalKey"], r: any): boolean {
-  if (ranMode === "live_scoring") return r.passed;
+  if (ranMode === "live_scoring" || ranMode === "live_consolidation") return r.passed;
   if (ranMode === "stability") return r.marker === "[stable]";
   return r.marker === "[ok]";
 }
@@ -360,6 +366,13 @@ function RunHeadline(props: { evalKey: RunMode["evalKey"]; result: any }): React
       </div>
     );
   }
+  if (evalKey === "live_consolidation") {
+    return (
+      <div className="eval-headline">
+        {result.passed}/{result.total} passed · consolidation {result.promptVersion} · {result.model}
+      </div>
+    );
+  }
   if (evalKey === "stability") {
     return <div className="eval-headline">K={result.k} · {result.judgeModel}</div>;
   }
@@ -383,10 +396,15 @@ function RunHeadline(props: { evalKey: RunMode["evalKey"]; result: any }): React
 // One case's result, shown in the detail pane above its input.
 function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactNode {
   const { evalKey, result: r } = props;
+  // A contested consolidation case has no honest pass/fail on verdict direction — show it
+  // as informational (◐), never a red ✗.
+  const contested = evalKey === "live_consolidation" && r.contested;
   const ok = resultOk(evalKey, r);
+  const cls = contested ? "contested" : ok ? "ok" : "fail";
+  const head = contested ? "◐ contested" : ok ? "✓ passed" : "✗ failed";
   return (
-    <div className={`eval-case-result ${ok ? "ok" : "fail"}`}>
-      <span className="eval-case-result-head">{ok ? "✓ passed" : "✗ failed"}</span>
+    <div className={`eval-case-result ${cls}`}>
+      <span className="eval-case-result-head">{head}</span>
       {evalKey === "live_scoring" ? (
         <div className="eval-case-result-body">
           <span className="eval-mono">score {r.score}</span> · {r.confidence} confidence
@@ -397,6 +415,18 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
               {f}
             </div>
           ))}
+        </div>
+      ) : evalKey === "live_consolidation" ? (
+        <div className="eval-case-result-body">
+          expected <span className="eval-mono">{r.expected}</span> → produced{" "}
+          <span className="eval-mono">{r.verdict}</span>
+          {r.judgeVerdict ? (
+            <span className="eval-verdict">
+              {" · "}judge: {r.judgeVerdict}
+              {r.judgeVerdict !== r.expected ? " (disagrees)" : ""}
+            </span>
+          ) : null}
+          {r.reason ? <div className="eval-case-result-ev">{r.reason}</div> : null}
         </div>
       ) : evalKey === "stability" ? (
         <div className="eval-case-result-body">
