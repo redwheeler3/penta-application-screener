@@ -98,7 +98,7 @@ def main() -> None:
     print(json.dumps({"cases": cases}, indent=2))
     print(
         f"\n# {len(cases)} candidate(s). UNLABELLED — set `expected` + `label_rationale`, "
-        "rename the key,\n# and move the diagnostic ones into app/evals/fixtures/judge_cases.json.",
+        "rename the key,\n# and move the diagnostic ones into eval-data/judge_cases.json.",
     )
 
 

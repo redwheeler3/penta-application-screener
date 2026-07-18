@@ -45,11 +45,11 @@ from app.evals.case_store import (
     save_case,
 )
 from app.evals.fixture import FIXTURE_PATH, load, record
+from app.evals.invariants import INVARIANTS, run_invariants
 from app.evals.judge import DEFAULT_MODEL as JUDGE_MODEL
 from app.evals.judge import PROMPT_VERSION as JUDGE_PROMPT_VERSION
 from app.evals.judge import judge_case, load_cases, stability_run
 from app.evals.live_scoring import load_golden, run_case
-from app.evals.properties import INVARIANTS, run_invariants
 from app.schemas.base import ResponseModel
 from app.schemas.evals import (
     AgreementOut,
@@ -129,7 +129,6 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
     ])
 
 
-@router.get("/invariants", response_model=InvariantsResponse)
 def _invariants_response() -> InvariantsResponse:
     """Run the invariants over the committed fixture and shape the response. Shared by the
     GET and the re-baseline POST (which returns the invariants of the freshly-recorded
@@ -153,6 +152,7 @@ def _invariants_response() -> InvariantsResponse:
     )
 
 
+@router.get("/invariants", response_model=InvariantsResponse)
 def invariants(user: User = Depends(require_current_user)) -> InvariantsResponse:
     """Run the deterministic invariants over the committed fixture. Free (no model calls).
     (Judgement signals — overlap, carry-forward rate — live on the Insights tab over the

@@ -18,17 +18,19 @@ from app.ai.pricing import cost_usd
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider
 from app.ai.schemas import JudgeReport, JudgeVerdict
+from app.evals.paths import JUDGE_CASES_PATH
 
 DEFAULT_MODEL = "us.anthropic.claude-sonnet-4-6"
 
-# The committed set of human-labelled judge cases. Each is an EXACT slice of a real Rank
+# The committed set of human-labelled judge cases (the versioned dataset lives in
+# backend/eval-data/ — see app/evals/paths.py). Each is an EXACT slice of a real Rank
 # (PII-safe criterion/audit text) plus its label, the rationale for that label, and the
 # provenance (models + prompt versions) of the run it came from — so a verdict is always
 # attributable to the exact prompt+model that produced the output under review. Grow it by
 # hand when a run surfaces a judge-worthy decision: copy the exact criterion/audit text
 # and the run's provenance out of a recorded fixture into a new entry with a human label +
 # rationale. Never hand-fabricate an "exact" case — a lost run stays lost.
-CASES_PATH = Path(__file__).parent / "fixtures" / "judge_cases.json"
+CASES_PATH = JUDGE_CASES_PATH
 
 SYSTEM_PROMPT = """You are a careful evaluator of AI-generated housing co-op ranking criteria. You judge the supplied criterion text and audit record only; you do not rank applicants or infer missing facts."""
 

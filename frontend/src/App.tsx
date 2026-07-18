@@ -28,7 +28,6 @@ import type {
 } from "./types";
 import { ApplicationsList } from "./components/ApplicationsList";
 import { CandidateDetail } from "./components/CandidateDetail";
-import { EvalsView } from "./components/EvalsView";
 import { InsightsView } from "./components/InsightsView";
 import { RankingView } from "./components/RankingView";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -537,7 +536,6 @@ export function App() {
   }
 
   const hasGoogleSheetLink = Boolean(saved && resolveSheetId(saved));
-  const hasInsights = workflow.screened || Boolean(rankingRun);
 
   return (
     <main className="app-shell">
@@ -653,35 +651,20 @@ export function App() {
                 Ranking
               </button>
             ) : null}
-            {/* Insights: Screen produces cost/run telemetry before Rank exists.
-                Rank adds the pattern-discovery and carry-forward subtabs. */}
-            {hasInsights ? (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "insights" && !selectedApp}
-                className={`tab-button${activeTab === "insights" && !selectedApp ? " active" : ""}`}
-                onClick={() => {
-                  setSelectedApp(null);
-                  setActiveTab("insights");
-                }}
-              >
-                Insights
-              </button>
-            ) : null}
-            {/* Evals: always available (runs over synthetic data, needs no import/run).
-                Developer/operator surface — quality checks over the AI passes. */}
+            {/* AI Quality: observability (what the AI did + cost, once a run exists) AND
+                evals (invariants/judge/live-scoring, which need no run). Always shown —
+                the eval subtabs work before any Rank. Developer/operator surface. */}
             <button
               type="button"
               role="tab"
-              aria-selected={activeTab === "evals" && !selectedApp}
-              className={`tab-button${activeTab === "evals" && !selectedApp ? " active" : ""}`}
+              aria-selected={activeTab === "insights" && !selectedApp}
+              className={`tab-button${activeTab === "insights" && !selectedApp ? " active" : ""}`}
               onClick={() => {
                 setSelectedApp(null);
-                setActiveTab("evals");
+                setActiveTab("insights");
               }}
             >
-              Evals
+              AI Quality
             </button>
             <button
               type="button"
@@ -727,10 +710,8 @@ export function App() {
                 onRemoveProposal={removeProposal}
                 onSelectApplication={viewApplication}
               />
-            ) : activeTab === "insights" && hasInsights ? (
+            ) : activeTab === "insights" ? (
               <InsightsView run={rankingRun} />
-            ) : activeTab === "evals" ? (
-              <EvalsView />
             ) : (
               <ApplicationsList
                 applications={applications}

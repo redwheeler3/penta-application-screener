@@ -33,16 +33,16 @@ the test suite.
 
 ### Deterministic property evals
 
-`backend/app/evals/properties.py` reads a committed, PII-safe Rank fixture and runs
+`backend/app/evals/invariants.py` reads a committed, PII-safe Rank fixture and runs
 **invariants** — checks that are ALWAYS a bug regardless of pool (a dimension missing a
 pole; a criterion keyed on a protected class). A breach fails pytest.
 
 The invariant/signal distinction still matters conceptually — a check you'd have to
 soften to keep green is a *signal* (a judgement call), not an invariant, and belongs in
 the LLM-judge evals, not the CI gate. Two such signals once lived here (high-correlation
-dimension pairs; carry-forward rate), but they duplicated — worse — what the **Insights
+dimension pairs; carry-forward rate), but they duplicated — worse — what the **AI Quality
 tab** shows over the *live* run (Consolidation nominations with verdicts; the Matching
-reuse rate), so they were retired. Only invariants remain in `properties.py`.
+reuse rate), so they were retired. Only invariants remain in `invariants.py`.
 
 ### Manual LLM judge
 
@@ -50,7 +50,7 @@ reuse rate), so they were retired. Only invariants remain in `properties.py`.
 honestly, such as whether a proposed merge loses a meaningful distinction or
 whether a structured decomposition result follows its own written decision.
 
-Run it from the in-app **Evals tab** → Judge subtab: a whole-set "Run judge +
+Run it from the in-app **AI Quality tab** → Judge subtab: a whole-set "Run judge +
 agreement" or a per-case "judge"/"stability" run. (There is no CLI wrapper any more;
 the tab calls the same `judge_case`/`stability_run` functions directly.)
 
@@ -142,7 +142,7 @@ It excludes applicant names, contact data, raw rows, essays, and model narrative
 that can quote those sources. Evals consume this snapshot; they never feed a
 verdict back into the application.
 
-Judge cases are committed in `backend/app/evals/fixtures/judge_cases.json` and
+Judge cases are committed in `backend/eval-data/judge_cases.json` and
 loaded by `load_cases()` (no longer hardcoded). Each case carries the exact
 PII-safe criterion/audit evidence, the human `expected` verdict, a written
 `label_rationale` (the *why*, so a disagreement is weighed against recorded
@@ -375,7 +375,7 @@ the LLM judge's job (that's the `matches`/`mismatches` task applied to a decisio
 
 Best practice (Arize, Evidently, Pragmatic Engineer, 2025/26) is unanimous: before you
 trust an LLM-as-judge, **validate it against human labels with real metrics** — an
-eyeballed "5/5" isn't validation. So a whole-set judge run (the Evals tab → Judge →
+eyeballed "5/5" isn't validation. So a whole-set judge run (the AI Quality tab → Judge →
 "Run judge + agreement") returns, after the per-case verdicts, a `score_agreement`
 summary (`app/evals/agreement.py`):
 
@@ -477,7 +477,7 @@ next re-score is the *measurement* of whether the signed scale actually fixed th
 
 ## Stability harness (built 2026-07-16)
 
-The Evals tab → Judge → "Run stability (K=5)" (or a per-case "stability" link) judges each selected case **K times on
+The AI Quality tab → Judge → "Run stability (K=5)" (or a per-case "stability" link) judges each selected case **K times on
 fixed inputs** and reports verdict stability, rather than a single agree/disagree.
 This is the escalation-ladder measurement: the open question is not "did the judge
 agree with the label?" (one call answers that) but "does the same call, on the same
@@ -493,8 +493,8 @@ decision to build (or not build) multi-agent escalation reads these numbers.
 
 ## Live scoring eval (built 2026-07-17)
 
-The live scoring eval (Evals tab → Live scoring) closes the gap the other
-evals leave: the judge cases and the `properties.py` invariants both grade a *recorded*
+The live scoring eval (AI Quality tab → Live scoring) closes the gap the other
+evals leave: the judge cases and the `invariants.py` checks both grade a *recorded*
 artifact, so they catch a bad re-baseline and code rot but are **blind to a prompt/model
 regression** — the model never runs. The signed-scale absence bug proved it: the invariant
 suite stayed green through the whole regression because the frozen fixture never changed.
@@ -523,37 +523,51 @@ range) with no model call — so a malformed fixture fails at commit time, not s
 tightly (the value we most care about) and assert ranges/properties elsewhere rather than
 exact scores.
 
-## In-UI eval cockpit — the Evals tab (built 2026-07-17)
+## In-UI eval cockpit — the "AI Quality" tab (built 2026-07-17, rewritten to Insights quality)
 
-The evals run from the app (a top-level **Evals** tab) — the goal is friction reduction:
-the easier they are to run, the more they get run. This is now the *only* run surface;
-the old `judge.sh` / `python -m app.evals.*` CLI wrappers were retired once the tab
-existed (only the fixture-capture helpers — `capture_scores.py`, re-baseline via the tab —
-remain as the sanctioned way to harvest a case from a real Rank). Developer/operator
-surface only (not committee-facing). Three **subtabs**: Invariants (free; a "Re-baseline
-from current Rank" action re-records the committed fixture, replacing the old
-`python -m app.evals.fixture` CLI), Live scoring (the golden dataset), and **Judge** —
-which merges judge+agreement and stability because they run the *same* case set two ways
-(one-pass verdict+agreement vs. K-repeat flip check), so one subtab, one cases table, two
-run buttons. Each runnable subtab shows its **cases** (the input dataset) and **results**
-in one table, whole-set run buttons, and **per-row run** links — one per run mode, so a
-Judge row offers both "judge" and "stability" on that single case (test one case cheaply
-before spending on all 25). The model's reasoning streams live.
+The evals run from the app under the **AI Quality** tab (renamed from Insights; it now
+holds both *observability* — Discovery/Decomposition/Matching/Consolidation/Cost/Trends,
+"what the AI did + cost" — and *evals* — "is the AI any good", separated by a divider in
+the subtab strip). This is the only run surface; the `judge.sh` / `python -m app.evals.*`
+CLI wrappers were retired (only the fixture-capture helpers remain — see the "harvest from
+current run" SPEC item). Developer/operator surface only (not committee-facing). The eval
+subtabs:
+- **Invariants** — free deterministic checks; a styled "Re-baseline from current Rank"
+  action re-records the committed fixture (replaced the `python -m app.evals.fixture` CLI).
+- **Live scoring** — the golden dataset through the real scoring prompt+model.
+- **Judge** — the judge case set, run two ways over the *same* cases (one-pass agreement,
+  K-repeat stability); cases **grouped by the production pass** each exercises
+  (consolidation/decomposition/matching/scoring/screening), so you read the judge's
+  accuracy per prompt.
+
+Each runnable subtab is **master-detail**: a grouped case list on the left, a case's FULL
+input on the right (every field, nested objects rendered in full — no truncation), with the
+run's result shown above it. Whole-set run buttons + per-case run links (one per mode: a
+Judge row runs that one case as judge or stability), all spend-confirmed with the styled
+inline card (never `window.confirm`). The model's reasoning streams live **as rendered
+markdown**.
+
+Editing is **field-level, not raw JSON** (`StructuredFields`): every scalar is a typed
+input, every nested object (evidence / applicant / dimension / expect) is a labeled section
+with add/remove — so any case family is editable without a per-family form or a JSON blob.
+
+Architecture / file hierarchy:
+- **Code** lives in `app/evals/` (modules) and `frontend/src/components/evals/`
+  (InlineConfirm, StructuredFields, EvalCaseDetail, EvalCaseEditor, RunnableEval,
+  InvariantsEval). `properties.py` was renamed `invariants.py` (it holds only invariants).
+- **Data** lives in `backend/eval-data/` — the versioned corpus (`judge_cases.json`,
+  `scoring_golden.json`, `rank_baseline.json`), OUT of the code package. Every module reads
+  its path from `app/evals/paths.py`.
 
 Boundaries that keep this honest (dependency flows evals→app, never app→evals):
 - **The tab calls the eval runner functions directly** (`run_case`, `judge_case`,
-  `stability_run`, `run_invariants`, `record`) — the modules stay; only their CLI entry
-  points were removed, so there is one code path with no CLI/UI drift.
-- **Runs stream** via the same NDJSON vocabulary as Rank/Screen (`thinking` deltas then a
-  terminal `summary`); the non-judge scoring model's reasoning is what streams. The
-  spend-confirm reuses the workflow's `.run-confirm` card, and the call-count comes from a
-  free `/evals/catalog`. Invariants + catalog make no model calls.
-- **Runs persist** to an `EvalRun` DB row (result + streamed reasoning) — operational
-  telemetry, queryable for trends, and the raw material to "eval the eval" later.
-- **Cases stay in the versioned JSON fixtures**, NOT the DB. The dataset is a versioned
-  artifact: git history, PR review, the fidelity rule, and the CI structural guards all
-  ride on the file. The tab edits the file (`PUT /evals/cases/{key}`, validated), and you
-  `git commit` deliberately — UI convenience without losing versioning. (Results→DB,
-  dataset→version-control is the deliberate split.) A save reformats the file to
-  `json.dumps(indent=2)`, so the first UI edit of a hand-authored fixture churns formatting
-  once, then stays clean.
+  `stability_run`, `run_invariants`, `record`) — one code path, no CLI/UI drift.
+- **Runs stream** via the shared NDJSON vocabulary as Rank/Screen (`thinking` deltas then a
+  terminal `summary`); the spend-confirm/call-count come from a free `/evals/catalog`.
+- **Runs persist** to an `EvalRun` DB row (result + streamed reasoning) — telemetry,
+  queryable for trends, raw material to "eval the eval" later.
+- **Cases stay in the versioned JSON dataset**, NOT the DB. Git history, PR review, the
+  fidelity rule, and the CI structural guards all ride on the file. The tab edits the file
+  (`PUT /evals/cases/{key}`, validated), committed to git deliberately. (Results→DB,
+  dataset→version-control is the deliberate split.) A save reformats to `json.dumps(indent=2)`,
+  so the first UI edit of a hand-authored fixture churns formatting once, then stays clean.

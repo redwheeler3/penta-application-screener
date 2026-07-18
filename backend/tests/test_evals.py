@@ -16,7 +16,7 @@ over the live run, better. Putting them in CI would just pressure us to soften t
 import pytest
 
 from app.evals.fixture import FIXTURE_PATH, load
-from app.evals.properties import INVARIANTS
+from app.evals.invariants import INVARIANTS
 
 
 @pytest.mark.skipif(not FIXTURE_PATH.exists(), reason="no eval fixture recorded yet")

@@ -898,6 +898,10 @@ The app should include an eval-oriented design from early development:
 
 An explicit eval dashboard is not required for MVP, but the architecture should make it possible later.
 
+**In-UI eval cockpit — BUILT (2026-07-17), folded into Insights.** The evals run from the app: subtabs for Invariants (free, deterministic, with a "Re-baseline from current Rank" action that replaced the `python -m app.evals.fixture` CLI), Live scoring (golden dataset → real prompt+model), and Judge (the judge case set, run one-pass for agreement or K-repeat for stability, grouped by the production pass each case exercises). Cases are viewed/edited field-by-field (not raw JSON) and written back to the versioned fixture files in `backend/eval-data/` (dataset stays in git; runs persist to the `EvalRun` table). The CLI run/record entry points were retired; the tab calls the same runner functions.
+
+**NEXT (owed): "harvest from current run" in the UI.** The three remaining eval CLIs with a `main()` — `capture_scores.py`, `capture_screening.py`, `decompose_drift.py` — are the *fidelity-preserving* path for turning a real Rank's output into eval cases (opaque-index + synthetic-source guard). The UI's hand-editor deliberately can't replace them (the judge-case fidelity rule forbids fabricating "exact" cases). The next eval task is to surface that capture as a UI action ("harvest candidate cases from the current run" → review → save to the fixture), which then *supersedes* those CLIs and lets them be deleted. Until then they stay as the compliant capture path. (Jeff, 2026-07-17.)
+
 Synthetic/sample applications are not required for MVP. Demos may use real co-op data only with people who are authorized to view it.
 
 ## Multi-Member MOMI Workflow

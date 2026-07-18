@@ -1,6 +1,6 @@
 """Live scoring eval: run golden synthetic inputs through the REAL scoring prompt+model.
 
-The judge eval (``judge.py``) and the invariant checks (``properties.py``) both grade a
+The judge eval (``judge.py``) and the invariant checks (``invariants.py``) both grade a
 *recorded* artifact — so they catch a bad re-baseline and code rot, but are blind to a
 prompt/model regression, because the model never runs. This eval closes that gap: it
 freezes the INPUTS (hand-authored synthetic applicants + one dimension each), runs them
@@ -15,7 +15,7 @@ Two grader tiers, by what each can honestly decide:
     high/low", ask the existing LLM judge whether the produced score is defensible against
     the cited evidence. Reuses ``judge.py`` so the judge is the same validated one.
 
-Inputs are FICTIONAL (see fixtures/scoring_golden.json), so no synthetic-pool guard is
+Inputs are FICTIONAL (see eval-data/scoring_golden.json), so no synthetic-pool guard is
 needed. This costs real model calls and is non-deterministic, so it runs from the Evals
 tab (POST /evals/live-scoring, deliberate + spend-confirmed), never as part of pytest/CI.
 """
@@ -34,8 +34,9 @@ from app.ai.schemas import (
     JudgeVerdict,
     PoolDimension,
 )
-
-GOLDEN_PATH = Path(__file__).parent / "fixtures" / "scoring_golden.json"
+from app.evals.paths import (
+    GOLDEN_PATH,
+)
 
 # Absolute tolerance for a "score_equals" expectation. The model is non-deterministic even
 # at temp 0, and 0 (neutral) is the value we most care about pinning — a tiny drift off 0.0

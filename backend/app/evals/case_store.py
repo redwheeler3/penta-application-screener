@@ -17,13 +17,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.evals.judge import CASES_PATH as JUDGE_PATH
-from app.evals.live_scoring import GOLDEN_PATH
+from app.evals.paths import GOLDEN_PATH, JUDGE_CASES_PATH
 
 # eval_key -> (fixture path, required per-case fields). Only these files are writable.
 _FIXTURES: dict[str, tuple[Path, tuple[str, ...]]] = {
     "live_scoring": (GOLDEN_PATH, ("key", "applicant", "dimension", "expect")),
-    "judge": (JUDGE_PATH, ("key", "title", "task", "evidence", "expected")),
+    "judge": (JUDGE_CASES_PATH, ("key", "title", "task", "evidence", "expected")),
 }
 
 

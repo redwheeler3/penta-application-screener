@@ -30,10 +30,10 @@ from sqlalchemy.orm import Session
 
 from app.ai.score_vectors import load_score_vectors
 from app.db.models import RankingRun, RunCostLedger
+from app.evals.paths import (
+    FIXTURE_PATH,
+)
 from app.services.ranking_run import get_current_run
-
-# The committed fixture the eval tests read. One blessed Rank; re-record deliberately.
-FIXTURE_PATH = Path(__file__).parent / "fixtures" / "rank_baseline.json"
 
 
 @dataclass(frozen=True)
