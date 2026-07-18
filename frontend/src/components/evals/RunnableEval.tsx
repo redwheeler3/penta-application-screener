@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import { fetchEvalCases, runEval, saveEvalCase, streamNdjson } from "../../api";
 import { EvalCaseDetail } from "./EvalCaseDetail";
 import { EvalCaseEditor } from "./EvalCaseEditor";
+import { HarvestPanel } from "./HarvestPanel";
 import { InlineConfirm } from "./InlineConfirm";
 import type { FieldObject } from "./StructuredFields";
 
@@ -24,6 +25,9 @@ export function RunnableEval(props: {
   modes: RunMode[];
   // Group cases under headings by this case field (e.g. "pass" for judge); undefined = flat.
   groupBy?: string;
+  // Judge only: offer "Harvest from current run" — propose fidelity-preserving candidate
+  // cases from the current Rank's scoring/screening output, opened in the editor to label.
+  harvestable?: boolean;
 }): ReactNode {
   const { caseEvalKey, modes } = props;
   const [cases, setCases] = useState<Record<string, unknown>[] | null>(null);
@@ -125,6 +129,16 @@ export function RunnableEval(props: {
           + Add case
         </button>
       </div>
+
+      {props.harvestable ? (
+        <HarvestPanel
+          onEditCandidate={(candidate) => {
+            setSaveError(null);
+            setSelected(null);
+            setEditing({ existing: candidate });
+          }}
+        />
+      ) : null}
 
       {run.error ? <p className="eval-error">{run.error}</p> : null}
       {run.running || run.thinking ? (

@@ -142,5 +142,15 @@ class SaveCaseRequest(RequestModel):
     case: dict
 
 
+class HarvestResponse(ResponseModel):
+    """Unlabelled candidate judge cases proposed from the CURRENT run's output (scoring or
+    screening). Each is a full case dict with placeholder ``expected``/``label_rationale``
+    the operator fills in the editor before saving — capture never labels. ``candidates``
+    excludes cases whose key already exists in the judge set (already harvested)."""
+
+    family: str  # "scoring" | "screening"
+    candidates: list[dict] = []
+
+
 # --- run request ------------------------------------------------------------
 # (Only stability takes a param; others run with server defaults.)

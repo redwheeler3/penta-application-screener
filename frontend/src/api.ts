@@ -203,6 +203,12 @@ export function fetchEvalCases(evalKey: string): Promise<Response> {
   return fetch(url(`/evals/cases/${evalKey}`), { credentials: "include" });
 }
 
+// Propose unlabelled judge cases from the CURRENT run's scoring/screening output (the
+// fidelity-preserving harvest). Guard-gated server-side; 409 no run, 422 non-synthetic pool.
+export function harvestEvalCases(family: "scoring" | "screening"): Promise<Response> {
+  return fetch(url(`/evals/harvest/${family}`), { credentials: "include" });
+}
+
 // Upsert one case (by its `key`) into the eval's fixture FILE. Validated server-side;
 // the operator commits the changed file to git deliberately.
 export function saveEvalCase(evalKey: string, evalCase: unknown): Promise<Response> {

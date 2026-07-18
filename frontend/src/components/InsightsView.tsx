@@ -106,6 +106,7 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
           <RunnableEval
             caseEvalKey="judge"
             groupBy="pass"
+            harvestable
             description="The judge case set, run two ways over the SAME cases: a one-pass judge run reports judge-vs-human agreement; a stability run judges each case K times to see if a verdict flips. Cases are grouped by the production pass they exercise."
             modes={
               [
