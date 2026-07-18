@@ -4,8 +4,9 @@
 routed into a DIFFERENT settled axis — a defect the model's own words prove.)
 
 This is NOT an automated gate — it's a heuristic you run BY HAND (``python -m
-app.evals.decompose_drift``) to surface *candidate* drift for human review when combing a
-run. It scans each settled axis's ``decision`` for snake_case input keys claimed to belong
+scripts.decompose_drift``) to surface *candidate* drift for human review when combing a
+run. It lives in ``scripts/`` (operator diagnostics), not ``app/`` — it has no runtime
+caller; subtle routing drift is otherwise the LLM judge's MATCHES/MISMATCHES job. It scans each settled axis's ``decision`` for snake_case input keys claimed to belong
 here (fold/merge/absorb language), and flags any that routed elsewhere. Deliberately
 scoped down after seeing it on real data: naive "any cross-referenced key" flags 22 benign
 hits per run; the real decompose legitimately names OTHER axes in three innocent ways this

@@ -1,6 +1,6 @@
 """The Tier-1 decompose-drift detector: prose names a key that routed into a different axis."""
 
-from app.evals.decompose_drift import find_drift
+from scripts.decompose_drift import find_drift
 
 
 def test_flags_a_belongs_here_key_that_routed_elsewhere() -> None:

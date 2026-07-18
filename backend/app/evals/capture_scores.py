@@ -10,14 +10,11 @@ This *proposes* candidates only. A human picks the diagnostic ones (an overclaim
 defensible one, an absence-as-presence) and writes the ``expected`` verdict +
 ``label_rationale`` before they enter ``judge_cases.json`` — capture never labels.
 
-    python -m app.evals.capture_scores            # propose from the current run
-    python -m app.evals.capture_scores --limit 40 # cap how many rows are dumped
+``propose_cases`` is invoked from the AI Quality tab's "Harvest from current run" action
+(``GET /evals/harvest/scoring``); there is no CLI entry point.
 """
 
 from __future__ import annotations
-
-import argparse
-import json
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,7 +22,7 @@ from sqlalchemy.orm import Session
 from app.ai.dimension_scoring import KIND_PREFIX
 from app.db.models import ApplicationAIResult, RankingRun
 from app.evals.synthetic_guard import require_synthetic_pool
-from app.services.ranking_run import current_dimension_report, get_current_run
+from app.services.ranking_run import current_dimension_report
 
 
 def _opaque_index(application_ids: list[int]) -> dict[int, int]:
@@ -85,31 +82,3 @@ def propose_cases(db: Session, run: RankingRun, *, limit: int | None = None) -> 
     if limit is not None:
         cases = cases[:limit]
     return cases
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Propose score-defensibility eval cases (guard-gated).")
-    parser.add_argument("--limit", type=int, default=None, help="Max candidate rows to emit")
-    args = parser.parse_args()
-
-    from app.db.session import SessionLocal
-
-    db = SessionLocal()
-    try:
-        run = get_current_run(db)
-        if run is None:
-            raise SystemExit("No ranking run to capture from — run a Rank first.")
-        cases = propose_cases(db, run, limit=args.limit)
-    finally:
-        db.close()
-
-    print(json.dumps({"cases": cases}, indent=2))
-    print(
-        f"\n# {len(cases)} candidate(s) proposed. These are UNLABELLED — set `expected` and "
-        "`label_rationale`,\n# rename the key, and move the diagnostic ones into "
-        "eval-data/judge_cases.json.",
-    )
-
-
-if __name__ == "__main__":
-    main()
