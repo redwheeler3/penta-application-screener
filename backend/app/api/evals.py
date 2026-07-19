@@ -146,16 +146,15 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
     """List the runnable evals + how many model calls each run costs (for the UI's
     spend-confirm). Free — computed from the committed fixtures, no model calls."""
     golden = load_golden()
-    live_calls = len(golden) * 2  # every case: one score call + one judge call
+    live_calls = len(golden)  # one score call per case; live evals are judge-free now
     n_judge = len(load_cases())
     consolidation = load_consolidation_cases()
-    # One confirm call per case + one judge call per case that carries a judge question.
-    consolidation_calls = len(consolidation) + sum(1 for c in consolidation if c.judge)
+    consolidation_calls = len(consolidation)  # one confirm call per case
     matching = load_matching_cases()
-    matching_calls = len(matching) + sum(1 for c in matching if c.judge)
+    matching_calls = len(matching)
     decomposition = load_decomposition_cases()
-    decomposition_calls = len(decomposition) + sum(1 for c in decomposition if c.judge)
-    n_screening = len(load_screening_cases())  # one screening call per applicant, no judge
+    decomposition_calls = len(decomposition)
+    n_screening = len(load_screening_cases())  # one screening call per applicant
     return EvalCatalogResponse(evals=[
         EvalDescriptor(
             key="invariants", label="Invariants",
@@ -166,7 +165,7 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
         EvalDescriptor(
             key="live_scoring", label="Live scoring",
             description=f"Run {len(golden)} golden synthetic inputs through the REAL scoring "
-            "prompt+model, then grade with assertions + the rubric judge.",
+            "prompt+model; grade each produced score against its expected [min, max] band.",
             spends=True, estimated_calls=live_calls,
         ),
         EvalDescriptor(
@@ -178,8 +177,7 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
         EvalDescriptor(
             key="live_consolidation", label="Live consolidation",
             description=f"Run {len(consolidation)} golden dimension pairs through the REAL "
-            "consolidation prompt+model; grade merge/keep against the label (exact match). "
-            "A case with a judge question also runs the judge as a label audit.",
+            "consolidation prompt+model; grade merge/keep against the label (exact match).",
             spends=True, estimated_calls=consolidation_calls,
         ),
         EvalDescriptor(
@@ -191,8 +189,7 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
         EvalDescriptor(
             key="live_matching", label="Live matching",
             description=f"Run {len(matching)} golden prior/new dimension pairs through the REAL "
-            "identity-match prompt+model; grade matches/mismatches against the label (exact match). "
-            "A case with a judge question also runs the judge as a label audit.",
+            "identity-match prompt+model; grade matches/mismatches against the label (exact match).",
             spends=True, estimated_calls=matching_calls,
         ),
         EvalDescriptor(
@@ -205,7 +202,7 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
             key="live_decomposition", label="Live decomposition",
             description=f"Run {len(decomposition)} golden discovery-report sets through the REAL "
             "decomposition prompt+model; grade merge/keep (derived from the settled set) against "
-            "the label (exact match). A case with a judge question also runs the judge as an audit.",
+            "the label (exact match).",
             spends=True, estimated_calls=decomposition_calls,
         ),
         EvalDescriptor(
@@ -482,9 +479,10 @@ def run_live_scoring(
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Stream a live-scoring run: golden inputs → real scoring prompt+model → assertions +
-    rubric judge. The scoring model's reasoning streams as ``thinking``. ``case`` runs just
-    that one golden case (per-row run); omitted runs all."""
+    """Stream a live-scoring run: golden inputs → real scoring prompt+model → deterministic
+    band check (the produced score must fall in the expected [min, max], + confidence). The
+    scoring model's reasoning streams as ``thinking``. ``case`` runs just that one golden case
+    (per-row run); omitted runs all."""
     from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_PROMPT_VERSION
 
     settings = get_app_settings(db)
@@ -495,20 +493,16 @@ def run_live_scoring(
         results = []
         for c in golden:
             on_delta(f"\n\n### {c.key}\n")
-            results.append(run_case(
-                provider, c, scoring_model=scoring_model, judge_model=JUDGE_MODEL, on_delta=on_delta,
-            ))
+            results.append(run_case(provider, c, scoring_model=scoring_model, on_delta=on_delta))
         return LiveScoringResponse(
             scoring_prompt_version=SCORING_PROMPT_VERSION,
             scoring_model=scoring_model,
-            judge_model=JUDGE_MODEL,
             passed=sum(1 for r in results if r.passed),
             total=len(results),
             cases=[
                 LiveScoringCaseOut(
                     key=r.case.key, passed=r.passed, score=r.score, confidence=r.confidence,
                     evidence=r.evidence, failures=r.failures,
-                    judge_verdict=r.judge_verdict.value if r.judge_verdict else None,
                 )
                 for r in results
             ],
@@ -579,7 +573,7 @@ def run_live_consolidation(
         for c in cases:
             on_delta(f"\n\n### {c.key}\n")
             results.append(run_consolidation_case(
-                provider, c, consolidate_model=model, judge_model=JUDGE_MODEL, on_delta=on_delta,
+                provider, c, consolidate_model=model, on_delta=on_delta,
             ))
         scored = [r for r in results if not r.case.contested]
         return LiveConsolidationResponse(
@@ -591,7 +585,7 @@ def run_live_consolidation(
                 LiveConsolidationCaseOut(
                     key=r.case.key, passed=r.passed, verdict=r.verdict,
                     expected=r.case.expected, contested=r.case.contested,
-                    reason=r.reason, failures=r.failures, judge_verdict=r.judge_verdict,
+                    reason=r.reason, failures=r.failures,
                 )
                 for r in results
             ],
@@ -658,7 +652,7 @@ def run_live_matching(
         for c in cases:
             on_delta(f"\n\n### {c.key}\n")
             results.append(run_matching_case(
-                provider, c, match_model=model, judge_model=JUDGE_MODEL, on_delta=on_delta,
+                provider, c, match_model=model, on_delta=on_delta,
             ))
         scored = [r for r in results if not r.case.contested]
         return LiveMatchingResponse(
@@ -668,7 +662,7 @@ def run_live_matching(
                 LiveMatchingCaseOut(
                     key=r.case.key, passed=r.passed, verdict=r.verdict,
                     expected=r.case.expected, contested=r.case.contested,
-                    reason=r.reason, failures=r.failures, judge_verdict=r.judge_verdict,
+                    reason=r.reason, failures=r.failures,
                 )
                 for r in results
             ],
@@ -731,7 +725,7 @@ def run_live_decomposition(
         for c in cases:
             on_delta(f"\n\n### {c.key}\n")
             results.append(run_decomposition_case(
-                provider, c, decompose_model=model, judge_model=JUDGE_MODEL, on_delta=on_delta,
+                provider, c, decompose_model=model, on_delta=on_delta,
             ))
         scored = [r for r in results if not r.case.contested]
         return LiveDecompositionResponse(
@@ -741,7 +735,7 @@ def run_live_decomposition(
                 LiveDecompositionCaseOut(
                     key=r.case.key, passed=r.passed, verdict=r.verdict,
                     expected=r.case.expected, contested=r.case.contested,
-                    reason=r.reason, failures=r.failures, judge_verdict=r.judge_verdict,
+                    reason=r.reason, failures=r.failures,
                 )
                 for r in results
             ],

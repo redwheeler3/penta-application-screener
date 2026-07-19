@@ -53,10 +53,6 @@ class MatchingCase:
     expected: str  # "matches" | "mismatches" — the human label
     contested: bool = False
     note: str = ""
-    # Optional judge question (PRESENCE IS THE SWITCH — docs/eval-case-schema.md): present ⇒
-    # the judge also runs as an independent label audit; absent ⇒ no judge. Categorical pass,
-    # so the exact-match verdict is always the pass/fail; the judge never gates it.
-    judge: str = ""
 
 
 @dataclass(frozen=True)
@@ -65,7 +61,6 @@ class CaseResult:
     verdict: str  # "matches" | "mismatches" — what the real prompt produced
     reason: str  # narration of the mapping the model returned
     failures: list[str] = field(default_factory=list)
-    judge_verdict: str | None = None
 
     @property
     def passed(self) -> bool:
@@ -75,8 +70,8 @@ class CaseResult:
 
 
 def load_cases(path: Path = MATCHING_GOLDEN_PATH) -> tuple[MatchingCase, ...]:
-    """Load the golden matching cases, flattening the by-consumer blocks (metadata / given /
-    judge — see docs/eval-case-schema.md) into the flat runner case."""
+    """Load the golden matching cases, flattening the by-consumer blocks (metadata / given —
+    see docs/eval-case-schema.md) into the flat runner case."""
     data = json.loads(path.read_text())
     cases = []
     for c in data["cases"]:
@@ -89,7 +84,6 @@ def load_cases(path: Path = MATCHING_GOLDEN_PATH) -> tuple[MatchingCase, ...]:
                 expected=meta["expected"],
                 contested=meta.get("contested", False),
                 note=meta.get("note", ""),
-                judge=(c.get("judge") or {}).get("question", ""),
             )
         )
     return tuple(cases)
@@ -135,12 +129,10 @@ def run_case(
     case: MatchingCase,
     *,
     match_model: str,
-    judge_model: str | None = None,
     on_delta: object = None,
 ) -> CaseResult:
-    """Run one golden pair through the REAL match prompt, grade matches/mismatches against the
-    label by exact match, and — when the case carries a judge question AND a ``judge_model`` is
-    given — ALSO run the independent judge as a label audit (informational, never gating)."""
+    """Run one golden pair through the REAL match prompt and grade matches/mismatches against
+    the label by exact match."""
     p, n = case.prior[0], case.new[0]
     _emit(on_delta, f"Matching new **{n['name']}** vs prior **{p['name']}** on `{match_model}`…\n\n")
     verdict, reason = _match_verdict(provider, case, match_model=match_model)
@@ -155,32 +147,7 @@ def run_case(
     else:
         _emit(on_delta, "✓ Verdict matches the label.\n")
 
-    judge_verdict: str | None = None
-    if case.judge and judge_model:
-        _emit(on_delta, f"\nAuditing the label with the judge on `{judge_model}`…\n\n")
-        report = _judge_label(provider, case, judge_model=judge_model)
-        judge_verdict = report.verdict.value
-        agree = "agrees with" if judge_verdict == case.expected else "DISAGREES with"
-        _emit(on_delta, f"**Judge: {judge_verdict}** — {agree} the label ({case.expected}). {report.reason}\n")
-
-    return CaseResult(case=case, verdict=verdict, reason=reason, failures=failures, judge_verdict=judge_verdict)
-
-
-def _judge_label(provider: AIProvider, case: MatchingCase, *, judge_model: str):
-    """Ask the independent rubric judge the case's matches/mismatches question from the two
-    definitions alone — a LABEL AUDIT. Reuses judge.py via a MATCHES/MISMATCHES case."""
-    from app.ai.schemas import JudgeVerdict
-    from app.evals.judge import JudgeCase, judge_case
-
-    jc = JudgeCase(
-        key=f"live-matching::{case.key}",
-        title=case.judge,
-        task=case.judge,
-        evidence={"new_dimension": case.new[0]["definition"], "prior_dimension": case.prior[0]["definition"]},
-        expected=JudgeVerdict(case.expected),
-        pass_name="matching",
-    )
-    return judge_case(provider, jc, model_id=judge_model).report
+    return CaseResult(case=case, verdict=verdict, reason=reason, failures=failures)
 
 
 def stability_run(

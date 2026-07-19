@@ -9,10 +9,11 @@ configured consolidate model, and grades the FRESH verdict.
 
 Grader — categorical, so deterministic exact-match (see docs/ai-evals.md "Grader
 architecture"): consolidation returns merge/keep, and the case carries the human ``expected``
-verdict, so the check is ``produced_verdict == expected``. No judge tier — a judge on a case
-we can exact-match is redundant. (Scoring keeps a judge because it is continuous; the
-categorical passes do not.) A ``contested`` case has no honest pass/fail on verdict direction,
-so it is reported but not counted toward passed/total — its signal is stability, not verdict.
+verdict, so the check is ``produced_verdict == expected``. No judge tier — every live eval is
+deterministic; the independent label-audit judge is the Judge tab's job (it re-produces the
+verdict blind and compares — see ``judge.py``), not an inline per-run cost. A ``contested`` case
+has no honest pass/fail on verdict direction, so it is reported but not counted toward
+passed/total — its signal is stability, not verdict.
 
 The pass bypasses the deterministic NOMINATE stage (correlation) — the eval hands it the pair
 directly — and calls the CONFIRM prompt via ``build_prompt`` + ``structured_output``, exactly
@@ -29,7 +30,7 @@ from pathlib import Path
 
 from app.ai.dimension_consolidate import SYSTEM_PROMPT, NominatedPair, build_prompt
 from app.ai.provider import AIProvider
-from app.ai.schemas import ConsolidationReport, JudgeReport, JudgeVerdict
+from app.ai.schemas import ConsolidationReport
 from app.evals.paths import CONSOLIDATION_GOLDEN_PATH
 from app.evals.stability import StabilityReport, run_stability
 
@@ -45,11 +46,6 @@ class ConsolidationCase:
     expected: str  # "merge" | "keep" — the human label
     contested: bool = False
     note: str = ""
-    # Optional judge question. PRESENCE IS THE SWITCH (docs/eval-case-schema.md): a non-empty
-    # question ⇒ the judge also runs on this case as an independent LABEL AUDIT (its verdict
-    # vs. the label); empty ⇒ no judge. The categorical pass/fail is always exact-match; the
-    # judge never gates it — it only surfaces whether the label itself looks defensible.
-    judge: str = ""
 
 
 @dataclass(frozen=True)
@@ -58,9 +54,6 @@ class CaseResult:
     verdict: str  # "merge" | "keep" — what the real prompt produced
     reason: str
     failures: list[str] = field(default_factory=list)
-    # The judge's independent verdict, when a judge ran (case carried a question); else None.
-    # Informational label-audit signal — NOT part of `passed`.
-    judge_verdict: str | None = None
 
     @property
     def passed(self) -> bool:
@@ -74,7 +67,7 @@ class CaseResult:
 
 def load_cases(path: Path = CONSOLIDATION_GOLDEN_PATH) -> tuple[ConsolidationCase, ...]:
     """Load the golden consolidation cases, flattening the by-consumer blocks (metadata /
-    given / judge — see docs/eval-case-schema.md) into the flat runner case."""
+    given — see docs/eval-case-schema.md) into the flat runner case."""
     data = json.loads(path.read_text())
     cases = []
     for c in data["cases"]:
@@ -87,7 +80,6 @@ def load_cases(path: Path = CONSOLIDATION_GOLDEN_PATH) -> tuple[ConsolidationCas
                 expected=meta["expected"],
                 contested=meta.get("contested", False),
                 note=meta.get("note", ""),
-                judge=(c.get("judge") or {}).get("question", ""),
             )
         )
     return tuple(cases)
@@ -96,30 +88,6 @@ def load_cases(path: Path = CONSOLIDATION_GOLDEN_PATH) -> tuple[ConsolidationCas
 def _emit(on_delta: object, text: str) -> None:
     if on_delta is not None:
         on_delta(text)  # type: ignore[operator]
-
-
-def _judge_label(provider: AIProvider, case: ConsolidationCase, *, judge_model: str) -> JudgeReport:
-    """Ask the independent rubric judge the case's merge/keep question from the two
-    definitions alone — a LABEL AUDIT. Reuses ``judge.py`` (the same validated judge the
-    Judge tab uses) via a MERGE/KEEP case. Returns the full report so the caller can both
-    surface the verdict and narrate the judge's reasoning. Never gates the pass/fail — a judge
-    that disagrees with ``expected`` flags the label as worth re-examining, per the reframed
-    Judge-tab role (docs/ai-evals.md 'Grader architecture')."""
-    from app.evals.judge import JudgeCase, judge_case
-
-    a, b = case.pair
-    jc = JudgeCase(
-        key=f"live-consolidation::{case.key}",
-        title=case.judge,
-        task=case.judge,
-        evidence={
-            "key_a": a["key"], "definition_a": a["definition"],
-            "key_b": b["key"], "definition_b": b["definition"],
-        },
-        expected=JudgeVerdict(case.expected),  # a leaning; the judge's own verdict is what we read
-        pass_name="consolidation",
-    )
-    return judge_case(provider, jc, model_id=judge_model).report
 
 
 def _confirm_verdict(
@@ -155,19 +123,15 @@ def run_case(
     case: ConsolidationCase,
     *,
     consolidate_model: str,
-    judge_model: str | None = None,
     on_delta: object = None,
 ) -> CaseResult:
-    """Run one golden pair through the REAL consolidation confirm prompt, grade the verdict
-    against the label by exact match, and — when the case carries a judge question AND a
-    ``judge_model`` is given — ALSO run the independent judge as a label audit.
+    """Run one golden pair through the REAL consolidation confirm prompt and grade the verdict
+    against the label by exact match.
 
-    The exact-match verdict is the pass/fail regression gate; the judge is informational
-    (surfaced, not gating). ``on_delta``, when given, receives a NARRATION of the run as
-    markdown (the "thinking" the AI Quality tab shows). As in live_scoring, we emulate it from
-    the real model OUTPUT — a tight structured_output call streams ~no free-form reasoning, so
-    there is nothing to stream, but the produced verdict and its grounding are what a reader
-    wants to watch.
+    ``on_delta``, when given, receives a NARRATION of the run as markdown (the "thinking" the
+    AI Quality tab shows). As in live_scoring, we emulate it from the real model OUTPUT — a
+    tight structured_output call streams ~no free-form reasoning, so there is nothing to
+    stream, but the produced verdict and its grounding are what a reader wants to watch.
     """
     a, b = case.pair
 
@@ -194,21 +158,7 @@ def run_case(
     else:
         _emit(on_delta, "✓ Verdict matches the label.\n")
 
-    # Optional label audit: run the independent judge only when the case asks for one (a judge
-    # question is present) AND a judge model was supplied. The judge never gates pass/fail; a
-    # disagreement with the label is a signal to re-examine the label.
-    judge_verdict: str | None = None
-    if case.judge and judge_model:
-        _emit(on_delta, f"\nAuditing the label with the judge on `{judge_model}`…\n\n")
-        report = _judge_label(provider, case, judge_model=judge_model)
-        judge_verdict = report.verdict.value
-        agree = "agrees with" if judge_verdict == case.expected else "DISAGREES with"
-        _emit(on_delta, f"**Judge: {judge_verdict}** — {agree} the label ({case.expected}). {report.reason}\n")
-
-    return CaseResult(
-        case=case, verdict=verdict, reason=reason,
-        failures=failures, judge_verdict=judge_verdict,
-    )
+    return CaseResult(case=case, verdict=verdict, reason=reason, failures=failures)
 
 
 def stability_run(
