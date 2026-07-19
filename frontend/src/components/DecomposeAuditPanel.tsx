@@ -50,9 +50,13 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
 
   // Kept-as-is axes (one source) first, merges after — the merges are the interesting,
   // heavier rows, so grouping them below keeps the plain carry-throughs from being
-  // visually interrupted. Stable sort preserves the model's order within each group.
+  // visually interrupted. Within each group, committee-requested axes lead so the
+  // committee can find its own asks first. Stable sort preserves the model's order
+  // within each (group, origin) bucket.
   const settled = [...audit.settled].sort(
-    (a, b) => Number(a.sourceKeys.length > 1) - Number(b.sourceKeys.length > 1),
+    (a, b) =>
+      Number(a.sourceKeys.length > 1) - Number(b.sourceKeys.length > 1) ||
+      Number(!!b.fromCommitteeRequest) - Number(!!a.fromCommitteeRequest),
   );
 
   return (
@@ -143,8 +147,9 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
                       merged/distinct verdict lives in its own column. */}
                   {d.name}
                   {d.fromCommitteeRequest ? (
-                    <span className="decompose-tag match-audit-key-unnamed" title="Committee-requested axis">
-                      requested
+                    <span className="decompose-tag decompose-requested-tag" title="This dimension was requested by the committee">
+                      <span className="decompose-requested-glyph" aria-hidden="true">★</span>
+                      Committee
                     </span>
                   ) : null}
                   {folded ? (

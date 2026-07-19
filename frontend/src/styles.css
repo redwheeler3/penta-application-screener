@@ -1552,6 +1552,33 @@ h1 {
   margin-left: 0.4rem;
 }
 
+/* Committee-requested axis: the one provenance signal on this row worth surfacing, so
+   it gets a lightly tinted green pill (not the muted italic the neutral tags use) plus a
+   leading ★ anchor the eye can scan for. Borderless on the soft green wash with the ★
+   carrying the green accent — a quiet highlight, not a badge that shouts. */
+.decompose-requested-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--penta-green-dark);
+  background: var(--penta-green-soft);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  /* Nudge up ~0.07em: an inline-flex pill with padding sits ~1.5px below the name text's
+     optical center under `vertical-align: middle`, so raise it to sit on the text line. */
+  vertical-align: 0.07em;
+  white-space: nowrap;
+}
+
+.decompose-requested-glyph {
+  font-size: 0.72rem;
+  line-height: 1;
+  color: var(--penta-green);
+}
+
 /* One source axis in a settled merge's "From" cell: its name (plain) over its key
    (.match-audit-key). Space consecutive sources apart so a multi-source merge reads as
    a stacked list, not one run-on block. */
