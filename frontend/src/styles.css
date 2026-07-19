@@ -2868,14 +2868,6 @@ h1 {
 .eval-verdict { font-weight: 600; color: #075985; }
 .eval-check-detail { color: #b91c1c; font-size: 0.78rem; margin-top: 3px; }
 
-/* Thin separator between the observability subtabs and the eval subtabs. */
-.insights-subtab-divider {
-  width: 1px;
-  align-self: stretch;
-  margin: 0 4px;
-  background: var(--line);
-}
-
 /* Inline run-confirm reuses .run-confirm (workflow pre-spend card); round it since it
    isn't flush against a panel header here. */
 .eval-run-confirm { border: 1px solid var(--line); border-radius: 8px; }

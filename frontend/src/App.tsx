@@ -651,9 +651,9 @@ export function App() {
                 Ranking
               </button>
             ) : null}
-            {/* AI Quality: observability (what the AI did + cost, once a run exists) AND
-                evals (invariants/judge/live-scoring, which need no run). Always shown —
-                the eval subtabs work before any Rank. Developer/operator surface. */}
+            {/* The AI developer/operator surface, split by purpose: Observability (what the
+                AI did + cost, per-run traces once a run exists) and Evals (invariants / live
+                per-pass / judge — need no run, work before any Rank). */}
             <button
               type="button"
               role="tab"
@@ -664,7 +664,19 @@ export function App() {
                 setActiveTab("insights");
               }}
             >
-              AI Quality
+              Observability
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "evals" && !selectedApp}
+              className={`tab-button${activeTab === "evals" && !selectedApp ? " active" : ""}`}
+              onClick={() => {
+                setSelectedApp(null);
+                setActiveTab("evals");
+              }}
+            >
+              Evals
             </button>
             <button
               type="button"
@@ -711,7 +723,9 @@ export function App() {
                 onSelectApplication={viewApplication}
               />
             ) : activeTab === "insights" ? (
-              <InsightsView run={rankingRun} />
+              <InsightsView family="obs" run={rankingRun} />
+            ) : activeTab === "evals" ? (
+              <InsightsView family="eval" run={rankingRun} />
             ) : (
               <ApplicationsList
                 applications={applications}
