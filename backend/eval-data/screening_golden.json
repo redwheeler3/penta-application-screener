@@ -34,7 +34,7 @@
           "pets_text": "Two dogs and a cat",
           "applicant_email": "robertov@yahoo.com",
           "co_applicant_email": "meichang@protonmail.com",
-          "co_applicant_phone": "604-555-2074"
+          "co_applicant_phone": "604-736-2074"
         },
         "essays": {
           "Please introduce yourself and your family, including your employment background, interests, and values.": "We camp and kayak whenever we can and pack out more trash than we bring. We value showing up for the people around us, not just for ourselves.",
@@ -76,7 +76,7 @@
           "pets_text": "We have a velociraptor named Kevin. He's leash-trained and very polite.",
           "applicant_email": "quinnkim@protonmail.com",
           "co_applicant_email": "avery.patel@gmail.com",
-          "co_applicant_phone": "778-555-2007"
+          "co_applicant_phone": "778-229-2007"
         },
         "essays": {
           "Please introduce yourself and your family, including your employment background, interests, and values.": "Outside of work I'm a keen cyclist and weekend volunteer at the food bank. Fairness and follow-through are the things we care about most.",
@@ -123,7 +123,7 @@
           "pets_text": "Not applicable, we are not pet owners",
           "applicant_email": "sandra.mitchell97@icloud.com",
           "co_applicant_email": "tomasr@yahoo.com",
-          "co_applicant_phone": "778-555-2103"
+          "co_applicant_phone": "778-229-2103"
         },
         "essays": {
           "Please introduce yourself and your family, including your employment background, interests, and values.": "We grow vegetables on a shared allotment and swap the surplus with neighbours. We value showing up for the people around us, not just for ourselves.",
@@ -170,7 +170,7 @@
           "pets_text": "One dog and one cat",
           "applicant_email": "drewl@yahoo.com",
           "co_applicant_email": "jordangarcia@protonmail.com",
-          "co_applicant_phone": "778-555-2038"
+          "co_applicant_phone": "778-654-2038"
         },
         "essays": {
           "Please introduce yourself and your family, including your employment background, interests, and values.": "We're long-distance runners and help marshal local charity races. We'd rather build something together than rent in isolation.",
@@ -205,7 +205,7 @@
           "pets_text": "One cat",
           "applicant_email": "avery.nguyen@gmail.com",
           "co_applicant_email": "morgan.wilson10@shaw.ca",
-          "co_applicant_phone": "778-555-2000"
+          "co_applicant_phone": "778-379-2000"
         },
         "essays": {
           "Please introduce yourself and your family, including your employment background, interests, and values.": "I read widely, run a small book club, and bake far too much bread. We'd rather build something together than rent in isolation.",
@@ -296,7 +296,7 @@
           "pets_text": "Two cats",
           "applicant_email": "reese.anderson17@icloud.com",
           "co_applicant_email": "taylorc@yahoo.com",
-          "co_applicant_phone": "778-555-2009"
+          "co_applicant_phone": "778-385-2009"
         },
         "essays": {
           "Please introduce yourself and your family, including your employment background, interests, and values.": "Reese Anderson is a dedicated accountant and a devoted parent of two. The Anderson family values hard work, tidiness, and giving back to their community. They look forward to contributing.",
@@ -309,13 +309,14 @@
     {
       "key": "inconsistency_no_skills_then_electrician_fires",
       "metadata": {
-        "note": "Skills essay self-contradicts: \"dont really have any handy skills\" immediately followed by \"Im a certified electrician\".",
+        "note": "Skills essay reads as modesty-then-correction (\"dont really have any handy skills\" -> \"Im a certified electrician\"): a soft internal_inconsistency. ALSO a real pet_policy breach (two cats vs max one), so both must fire.",
         "pass": "screening",
         "source": "synthetic pool, application id 12 (Riley Singh) — an exact slice of a real synthetic record.",
-        "label_rationale": "FLAG_SUPPORTED: the essay self-contradicts within one passage — 'no handy skills' immediately followed by certified electrician + drywall/tiling. The quote directly shows the inconsistency.",
+        "label_rationale": "FLAG_SUPPORTED for internal_inconsistency (the essay disclaims handy skills then immediately lists an electrician + drywall/tiling) AND pet_policy (two cats exceed the max of one).",
         "expected": {
           "fires": [
-            "internal_inconsistency"
+            "internal_inconsistency",
+            "pet_policy"
           ],
           "absent": []
         }
@@ -349,7 +350,7 @@
           "pets_text": "Two cats",
           "applicant_email": "riley.singh21@shaw.ca",
           "co_applicant_email": "drewa@hotmail.com",
-          "co_applicant_phone": "778-555-2015"
+          "co_applicant_phone": "778-229-2015"
         },
         "essays": {
           "Please introduce yourself and your family, including your employment background, interests, and values.": "We restore old bicycles and donate them to newcomers to the city. We try to live simply and share what we have.",
@@ -387,7 +388,7 @@
           "pets_text": "One rabbit",
           "applicant_email": "hiroshitanaka@protonmail.com",
           "co_applicant_email": "emma.larsen@gmail.com",
-          "co_applicant_phone": "778-555-2053"
+          "co_applicant_phone": "778-340-2053"
         },
         "essays": {
           "Please introduce yourself and your family, including your employment background, interests, and values.": "We foster rescue animals and are active in the local pet-adoption network. We believe a good home is one you help take care of.",
@@ -425,7 +426,7 @@
           "pets_text": "One cat",
           "applicant_email": "jenniferr@yahoo.com",
           "co_applicant_email": "markross@protonmail.com",
-          "co_applicant_phone": "778-555-2090"
+          "co_applicant_phone": "778-386-2090"
         },
         "essays": {
           "Please introduce yourself and your family, including your employment background, interests, and values.": "We're into board games and host a monthly potluck for friends. Fairness and follow-through are the things we care about most.",

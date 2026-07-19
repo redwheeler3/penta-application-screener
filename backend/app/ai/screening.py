@@ -55,17 +55,18 @@ The applicant's normalized form fields in the `<fields>` block, and their four e
 
 ## How to judge
 Flag these when clearly present:
-- Names that are obviously placeholders or fake (e.g. 'Baby', 'TBD', 'Test', 'asdf', 'N/A'). A real-looking name is NEVER a flag.
-- Essays that are essentially non-responsive: empty, 'n/a', a single word, or a single short fragment. Brief-but-genuine answers are fine.
+- Names that are obviously placeholders or fake rather than real names. A real-looking name is NEVER a flag.
+- Essays that are essentially non-responsive: empty, a single word, or a single short fragment. Brief-but-genuine answers are fine.
 - Essays that are clearly spam/advertising, or the SAME text copy-pasted across multiple essay answers.
-- Direct factual contradictions between fields (not mere absence of explanation).
-- Contact details that are clearly fake or placeholder: phone numbers with all identical or sequential digits (e.g. '000-000-0000', '111-111-1111'), and email addresses that are obvious placeholders or keyboard mashing (e.g. 'asdf@asdf.asdf', 'test@test.test', 'qwerty@...'). Ordinary personal emails at common providers are fine.
+- Direct factual contradictions between fields, or within or across the essays (not mere absence of explanation).
+- Contact details that are obviously fake or placeholder rather than a real (if unfamiliar) phone number or email address. Ordinary personal emails at common providers are fine.
 - Pet descriptions that violate the co-op pet policy ({{pet_policy}}). The pets field is free text, so account for negation ('no pets') and unclear phrasing.
 
 Do NOT flag (these are normal and must be ignored):
 - A child or co-applicant having a different surname from the applicant. Blended families and differing surnames are common and are NOT suspicious.
 - Missing optional information, or an answer simply being short.
 - Ordinary household context by itself. Only flag a concrete data-integrity concern; family details are not suspicious on their own.
+- Contact information attributed to one member belonging to other family members listed in the application.
 
 ## Guardrails
 - {INJECTION_GUARD_NOTE}
