@@ -2930,18 +2930,18 @@ h1 {
   max-height: none;
   overflow-y: visible;
 }
-/* Current-run summary. Separated from the restored-history block above it (different info:
-   this run's result vs. prior-run markers) — hence the larger top margin. */
-.eval-headline { font-size: 0.85rem; font-weight: 600; margin: 14px 0 10px; }
+/* The per-mode run markers grouped into ONE block, so the parent .eval-section's grid
+   row-gap applies once above the block — not between each stacked marker (which made them
+   spread far apart). Markers sit tight within the block. */
+.eval-runinfo { display: grid; gap: 2px; }
 
-/* Marks a rehydrated (history) result. Muted by default; amber when the run's prompt no
-   longer matches the current one, so a stale result can't read as live. Stacked markers are
-   one group, so the gap between them is tight; the group's outer spacing comes from the
-   headline's top margin below it. */
+/* Marks a run result: one self-contained line (label · result · when · prompt · model).
+   Muted by default; amber when the run's prompt no longer matches the current one, so a
+   stale result can't read as live. */
 .eval-restored {
   font-size: 0.78rem;
   color: var(--muted);
-  margin: 2px 0;
+  margin: 0;
 }
 .eval-restored.stale {
   color: #b45309;
