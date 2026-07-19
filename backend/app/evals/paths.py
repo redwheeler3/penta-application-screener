@@ -16,8 +16,7 @@ from pathlib import Path
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 EVAL_DATA_DIR = _BACKEND_ROOT / "eval-data"
 
-# Judge cases (semantic verdicts) and the invariant baseline.
-JUDGE_CASES_PATH = EVAL_DATA_DIR / "judge_cases.json"
+# The invariant baseline (whole-rank fixture the invariant checks read).
 FIXTURE_PATH = EVAL_DATA_DIR / "rank_baseline.json"
 
 # Live per-pass golden inputs: each `<pass>_golden.json` holds cases run through that pass's

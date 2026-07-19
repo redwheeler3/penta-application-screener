@@ -1,15 +1,16 @@
 """Read/write the eval CASE fixtures for the in-UI cockpit.
 
-The eval dataset (golden scoring cases + judge cases) is a VERSIONED artifact — it lives in
+The eval dataset (the five per-pass golden files) is a VERSIONED artifact — it lives in
 committed JSON, not the DB, so every case change stays a reviewable git diff (the fidelity
 rule and the CI structural guards ride on that). This service lets the Evals tab READ the
 cases into tables and WRITE an edited/added case back to the SAME JSON file the CLI and CI
 read. The operator still ``git add``/commits deliberately — the UI is an editor over the
 versioned file, not a second source of truth.
 
-Write discipline: only these two allowlisted fixture files are ever written, each write is
+Write discipline: only the allowlisted per-pass golden files are ever written, each write is
 validated for the family's required shape, and the file's non-``cases`` top-level keys (the
-golden ``_comment``) are preserved. A bad payload is refused, never partially written.
+``_comment`` and ``judge_background``) are preserved. A bad payload is refused, never
+partially written.
 """
 
 from __future__ import annotations
@@ -21,7 +22,6 @@ from app.evals.paths import (
     CONSOLIDATION_GOLDEN_PATH,
     DECOMPOSITION_GOLDEN_PATH,
     GOLDEN_PATH,
-    JUDGE_CASES_PATH,
     MATCHING_GOLDEN_PATH,
     SCREENING_GOLDEN_PATH,
 )
@@ -31,18 +31,17 @@ from app.evals.paths import (
 # plus block objects (`given` = prompt input; `metadata` = harness-only; `produced`/`judge`
 # optional). Only these files are writable.
 _FIXTURES: dict[str, tuple[Path, tuple[str, ...]]] = {
-    "live_scoring": (GOLDEN_PATH, ("key", "metadata", "input", "judge")),
+    "live_scoring": (GOLDEN_PATH, ("key", "metadata", "given")),
     "live_consolidation": (CONSOLIDATION_GOLDEN_PATH, ("key", "metadata", "given")),
     "live_matching": (MATCHING_GOLDEN_PATH, ("key", "metadata", "given")),
     "live_decomposition": (DECOMPOSITION_GOLDEN_PATH, ("key", "metadata", "given")),
     "live_screening": (SCREENING_GOLDEN_PATH, ("key", "metadata", "given")),
-    "judge": (JUDGE_CASES_PATH, ("key", "metadata", "evidence", "prompt")),
 }
 
 
 class UnknownEvalError(ValueError):
-    """The eval key has no editable case fixture (e.g. invariants/stability, which read
-    the golden/judge sets — stability has no cases of its own)."""
+    """The eval key has no editable case fixture (e.g. invariants; or judge/stability, which
+    read every pass's golden set and own no case files of their own)."""
 
 
 class CaseValidationError(ValueError):
