@@ -23,7 +23,7 @@ export type InsightsFamily = "obs" | "eval";
 
 type Tab =
   | "discovery" | "decompose" | "match" | "consolidate" | "cost" | "metrics"
-  | "invariants" | "live_scoring" | "live_consolidation" | "live_matching" | "live_decomposition" | "judge";
+  | "invariants" | "live_scoring" | "live_consolidation" | "live_matching" | "live_decomposition" | "live_screening" | "judge";
 
 export function InsightsView(props: { family: InsightsFamily; run: CurrentRunResponse | null }): ReactNode {
   const { family } = props;
@@ -36,27 +36,31 @@ export function InsightsView(props: { family: InsightsFamily; run: CurrentRunRes
 
   // Observability subtabs in pipeline order; the per-run trace tabs exist only once a run
   // does, then the cross-run aggregates (Cost, Trends) trail.
-  const obsTabs: { id: Tab; label: string }[] = [
+  // `group` marks a boundary: a thin divider renders where the group changes.
+  const obsTabs: { id: Tab; label: string; group: string }[] = [
     ...(props.run
       ? [
-          { id: "discovery" as Tab, label: "Pattern discovery" },
-          { id: "decompose" as Tab, label: "Decomposition" },
-          { id: "match" as Tab, label: "Matching" },
-          { id: "consolidate" as Tab, label: "Consolidation" },
+          { id: "discovery" as Tab, label: "Pattern discovery", group: "trace" },
+          { id: "decompose" as Tab, label: "Decomposition", group: "trace" },
+          { id: "match" as Tab, label: "Matching", group: "trace" },
+          { id: "consolidate" as Tab, label: "Consolidation", group: "trace" },
         ]
       : []),
-    { id: "cost", label: "Cost" },
-    { id: "metrics", label: "Trends" },
+    { id: "cost", label: "Cost", group: "aggregate" },
+    { id: "metrics", label: "Trends", group: "aggregate" },
   ];
-  // Eval subtabs: Invariants (whole-rank) first, then the live per-pass evals in PIPELINE
-  // order (decompose → match → score → consolidate), then Judge (cross-pass) last.
-  const evalTabs: { id: Tab; label: string }[] = [
-    { id: "invariants", label: "Invariants" },
-    { id: "live_decomposition", label: "Decomposition" },
-    { id: "live_matching", label: "Matching" },
-    { id: "live_scoring", label: "Scoring" },
-    { id: "live_consolidation", label: "Consolidation" },
-    { id: "judge", label: "Judge" },
+  // Eval subtabs in two groups: the per-pass LIVE evals in pipeline order (screening runs
+  // before Rank, then the Rank chain decompose → match → score → consolidate), then the
+  // cross-cutting evals that aren't a single pass — Invariants (whole-rank fixture) and Judge
+  // (cross-pass label audit).
+  const evalTabs: { id: Tab; label: string; group: string }[] = [
+    { id: "live_screening", label: "Screening", group: "pass" },
+    { id: "live_decomposition", label: "Decomposition", group: "pass" },
+    { id: "live_matching", label: "Matching", group: "pass" },
+    { id: "live_scoring", label: "Scoring", group: "pass" },
+    { id: "live_consolidation", label: "Consolidation", group: "pass" },
+    { id: "invariants", label: "Invariants", group: "cross" },
+    { id: "judge", label: "Judge", group: "cross" },
   ];
   const tabs = family === "obs" ? obsTabs : evalTabs;
 
@@ -74,18 +78,24 @@ export function InsightsView(props: { family: InsightsFamily; run: CurrentRunRes
       </div>
 
       <div className="insights-subtabs" role="tablist" aria-label={`${family === "obs" ? "Observability" : "Evals"} sections`}>
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === t.id}
-            className={`insights-subtab${activeTab === t.id ? " active" : ""}`}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
+        {tabs.map((t, i) => {
+          // A thin divider where the group changes (per-pass → cross-cutting; traces → aggregates).
+          const divider = i > 0 && tabs[i - 1].group !== t.group;
+          return (
+            <span key={t.id} style={{ display: "contents" }}>
+              {divider ? <span className="insights-subtab-divider" aria-hidden="true" /> : null}
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === t.id}
+                className={`insights-subtab${activeTab === t.id ? " active" : ""}`}
+                onClick={() => setTab(t.id)}
+              >
+                {t.label}
+              </button>
+            </span>
+          );
+        })}
       </div>
 
       <div className="insights-subtab-body">
@@ -146,6 +156,18 @@ export function InsightsView(props: { family: InsightsFamily; run: CurrentRunRes
               [
                 { evalKey: "live_decomposition", label: "Run live decomposition", rowLabel: "Run", calls: calls("live_decomposition") },
                 { evalKey: "live_decomposition_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("live_decomposition_stability") },
+              ] as RunMode[]
+            }
+          />
+        ) : activeTab === "live_screening" ? (
+          <RunnableEval
+            caseEvalKey="live_screening"
+            runKeys={["live_screening", "live_screening_stability"]}
+            description="Run golden synthetic applicants through the REAL screening prompt + model, then grade the produced flags per-category: expected flags must fire, over-reach guards must stay absent (flagging a benign thing is the costly error since flags gate eligibility), and a clean applicant must raise none. Stability runs each applicant K times to see if the flag set holds."
+            modes={
+              [
+                { evalKey: "live_screening", label: "Run live screening", rowLabel: "Run", calls: calls("live_screening") },
+                { evalKey: "live_screening_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("live_screening_stability") },
               ] as RunMode[]
             }
           />

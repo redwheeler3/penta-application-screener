@@ -495,6 +495,7 @@ export type EvalKey =
   | "live_consolidation" | "live_consolidation_stability"
   | "live_matching" | "live_matching_stability"
   | "live_decomposition" | "live_decomposition_stability"
+  | "live_screening" | "live_screening_stability"
   | "judge" | "stability";
 
 export type EvalDescriptor = {
