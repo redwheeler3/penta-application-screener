@@ -223,7 +223,7 @@ export function RunnableEval(props: {
         </div>
       ) : null}
       {Object.values(restored).map((r) => (
-        <RestoredMarker key={r.evalKey} run={r} label={modes.find((m) => m.evalKey === r.evalKey)?.label} />
+        <RestoredMarker key={r.evalKey} run={r} />
       ))}
       {run.result ? <RunHeadline evalKey={run.ranMode} result={run.result} /> : null}
 
@@ -398,13 +398,21 @@ function resultOk(ranMode: RunMode["evalKey"], r: any): boolean {
 
 // Marks a REHYDRATED result as history (not a fresh run): which eval, when it ran + which
 // prompt, and an amber warning when that prompt no longer matches the current one (so a stale
-// result is never read as live). A tab with two evals shows one marker each. A fresh run of a
-// mode clears its marker. ``label`` names the eval (e.g. "Run stability") when the tab has >1.
-function RestoredMarker(props: { run: LastEvalRun; label?: string }): ReactNode {
-  const { run, label } = props;
+// result is never read as live). A tab with two evals shows one marker each; the label names
+// the pass + mode ("Matching", "Matching stability") so each marker is self-describing.
+function restoredLabel(evalKey: string): string {
+  const stability = evalKey.endsWith("_stability");
+  const base = evalKey.replace(/^live_/, "").replace(/_stability$/, "");
+  const pass = base === "stability" ? "judge" : base;  // judge's stability key is bare "stability"
+  const name = pass.charAt(0).toUpperCase() + pass.slice(1);
+  return stability || evalKey === "stability" ? `${name} stability` : name;
+}
+
+function RestoredMarker(props: { run: LastEvalRun }): ReactNode {
+  const { run } = props;
   return (
     <div className={`eval-restored${run.stale ? " stale" : ""}`}>
-      {label ? `${label}: ` : ""}last run {relativeTime(run.ranAt)} · prompt {run.promptVersion || "—"}
+      {restoredLabel(run.evalKey)} — last run {relativeTime(run.ranAt)} · prompt {run.promptVersion || "—"}
       {run.stale ? ` · prompt has since changed (now ${run.currentPromptVersion}) — re-run to refresh` : ""}
     </div>
   );
