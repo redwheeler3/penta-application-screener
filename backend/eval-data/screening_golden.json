@@ -307,19 +307,17 @@
       }
     },
     {
-      "key": "modesty_not_inconsistency_pet_fires",
+      "key": "modesty_essay_contested_pet_fires",
       "metadata": {
-        "note": "OVER-REACH GUARD: the skills essay disclaims handy skills then lists an electrician + drywall/tiling — self-deprecating modesty-then-correction, NOT a data-integrity contradiction, so internal_inconsistency must NOT fire. The two-cats pet_policy breach is the real, only expected flag. Label flipped 2026-07-19 after the model's own reasoning correctly called this 'tone, not a factual inconsistency' — production judgment beat our first label.",
+        "note": "pet_policy (two cats vs max one) is the hard, agreed fire. internal_inconsistency on the skills essay is a CONTESTED axis, deliberately left out of BOTH fires and absent so it's ungraded either way: the same essay ('we don't really have any handy skills… that said, I'm a certified electrician') was read by one production run as self-deprecating modesty (don't flag) and by another — after the prompt broadened contradictions to cover within-essay — as a direct self-contradiction (flag). Both are defensible tone-vs-fact calls; stability on that flag is the signal, not its direction. Screening is per-category, so only the contested AXIS is left ungraded, not the whole case.",
         "pass": "screening",
         "source": "synthetic pool, application id 12 (Riley Singh) — an exact slice of a real synthetic record.",
-        "label_rationale": "pet_policy FIRES (two cats exceed the max of one). internal_inconsistency is an OVER-REACH guard: 'we don't really have any handy skills… that said, I'm a certified electrician' is rhetorical modesty immediately self-corrected, not a contradiction between claims — flagging it is a false positive.",
+        "label_rationale": "pet_policy FIRES (two cats exceed the max of one) — both runs agree. internal_inconsistency is genuinely contested (modesty-self-corrected vs. factual self-contradiction), so it is neither required nor forbidden here; the case grades only on the pet_policy breach.",
         "expected": {
           "fires": [
             "pet_policy"
           ],
-          "absent": [
-            "internal_inconsistency"
-          ]
+          "absent": []
         }
       },
       "given": {

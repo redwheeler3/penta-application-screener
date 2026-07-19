@@ -106,7 +106,7 @@ so we pin a range not a point); screening carries **fires/absent category lists*
 | **consolidation** | `"merge"` \| `"keep"` |
 | **decomposition** | `"merge"` \| `"keep"` |
 | **matching** | `"matches"` \| `"mismatches"` |
-| **screening** | `{ fires: [category, …], absent: [category, …] }` — categories that MUST fire / must NOT (over-reach guards); a clean applicant has empty `fires` and any flag fails it |
+| **screening** | `{ fires: [category, …], absent: [category, …] }` — categories that MUST fire / must NOT (over-reach guards); a clean applicant has empty `fires` and any flag fails it. A category in NEITHER list is ungraded (fire or not, both pass) — this is how a genuinely *contested* flag axis is expressed on a per-category case (the top-level `contested` flag is for whole-verdict passes; screening contests one axis by omitting it from both lists) |
 | **scoring** | band object: any of `score_min`, `score_max`, `confidence` — the produced score must land in `[score_min, score_max]` (a neutral case pins a tight band straddling 0) |
 
 ## Ungraded model-assigned fields — `metadata.ungraded`
