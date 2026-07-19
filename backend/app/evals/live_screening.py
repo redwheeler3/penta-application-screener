@@ -92,17 +92,21 @@ def _emit(on_delta: object, text: str) -> None:
         on_delta(text)  # type: ignore[operator]
 
 
-def _screen_categories(provider: AIProvider, case: ScreeningCase, *, screening_model: str, settings: AppSettings) -> list[str]:
-    """Run the REAL screening prompt once and return the produced flag categories (in order,
-    duplicates kept — a pass may raise the same category twice). Shared by the single graded
-    run and the K-run stability check."""
+def _screen(provider: AIProvider, case: ScreeningCase, *, screening_model: str, settings: AppSettings) -> tuple[list[str], str]:
+    """Run the REAL screening prompt once and return ``(categories, detail)``. ``categories``
+    are the produced flag categories (in order, duplicates kept — a pass may raise the same
+    twice); ``detail`` pairs each flag with its cited summary/evidence (the model's reasoning
+    for the flags), so a stability flip is explainable. Shared by the graded run and stability."""
     result = provider.structured_output(
         model_id=screening_model,
         schema=ScreeningReport,
         prompt=build_prompt(case._application, settings),  # type: ignore[arg-type]
         system_prompt=SYSTEM_PROMPT,
     )
-    return [f.category.value for f in result.output.flags]
+    flags = result.output.flags
+    categories = [f.category.value for f in flags]
+    detail = "; ".join(f"{f.category.value}: {f.summary}" for f in flags) or "no flags"
+    return categories, detail
 
 
 def _check(case: ScreeningCase, categories: list[str]) -> list[str]:
@@ -134,7 +138,7 @@ def run_case(
     flag categories against the case's fires/absent expectations."""
     name = case.fields.get("applicant_name", case.key)
     _emit(on_delta, f"Screening **{name}** on `{screening_model}`…\n\n")
-    categories = _screen_categories(provider, case, screening_model=screening_model, settings=settings)
+    categories, _detail = _screen(provider, case, screening_model=screening_model, settings=settings)
     shown = ", ".join(categories) if categories else "no flags"
     _emit(on_delta, f"Flags produced: **{shown}**\n\n")
 
@@ -164,12 +168,12 @@ def stability_run(
     _emit(on_delta, f"Screening **{name}** x{k} on `{screening_model}`…\n\n")
     runs = {"i": 0}
 
-    def run_once() -> str:
-        cats = _screen_categories(provider, case, screening_model=screening_model, settings=settings)
+    def run_once() -> tuple[str, str]:
+        cats, detail = _screen(provider, case, screening_model=screening_model, settings=settings)
         runs["i"] += 1
         token = ", ".join(sorted(set(cats))) or "none"
         _emit(on_delta, f"- run {runs['i']}: **{token}**\n")
-        return token
+        return token, detail
 
     # A screening golden case has no "contested" notion; a flag-set flip is always a real signal.
     report = run_stability(run_once, k=k, contested=False)

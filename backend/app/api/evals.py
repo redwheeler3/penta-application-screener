@@ -102,6 +102,7 @@ from app.schemas.evals import (
     LiveScreeningStabilityResponse,
     SaveCaseRequest,
     StabilityCaseOut,
+    StabilityRun,
     StabilityRunResponse,
 )
 from app.schemas.events import EvalSummaryEvent, ThinkingEvent, emit
@@ -128,6 +129,12 @@ def _persist(db: Session, eval_key: str, prompt_version: str, result: ResponseMo
         db.commit()
     except Exception:  # telemetry write; never propagate
         db.rollback()
+
+
+def _runs_out(report) -> list[StabilityRun]:
+    """The per-run outcome+reasoning of a stability report, as wire shapes. Shared by every
+    live pass so a flip carries the model's own 'why' for each of the K runs."""
+    return [StabilityRun(outcome=r.outcome, detail=r.detail) for r in report.runs]
 
 
 # --- free endpoints ---------------------------------------------------------
@@ -537,7 +544,7 @@ def run_live_scoring_stability(
             out.append(LiveScoringStabilityCaseOut(
                 key=c.key, marker=res.stability.marker, agreement=res.stability.agreement,
                 flipped=res.stability.flipped, tally=res.stability.tally,
-                score_min=lo, score_max=hi,
+                score_min=lo, score_max=hi, runs=_runs_out(res.stability),
             ))
         return LiveScoringStabilityResponse(
             scoring_prompt_version=SCORING_PROMPT_VERSION, scoring_model=scoring_model, k=k, cases=out,
@@ -620,7 +627,7 @@ def run_live_consolidation_stability(
             out.append(LiveConsolidationStabilityCaseOut(
                 key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
                 contested=c.contested, agreement=rep.agreement, flipped=rep.flipped,
-                tally=rep.tally,
+                tally=rep.tally, runs=_runs_out(rep),
             ))
         return LiveConsolidationStabilityResponse(
             prompt_version=CONSOLIDATE_PROMPT_VERSION, model=model, k=k, cases=out,
@@ -694,6 +701,7 @@ def run_live_matching_stability(
             out.append(LiveMatchingStabilityCaseOut(
                 key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
                 contested=c.contested, agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
+                runs=_runs_out(rep),
             ))
         return LiveMatchingStabilityResponse(prompt_version=MATCH_PROMPT_VERSION, model=model, k=k, cases=out)
 
@@ -766,6 +774,7 @@ def run_live_decomposition_stability(
             out.append(LiveDecompositionStabilityCaseOut(
                 key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
                 contested=c.contested, agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
+                runs=_runs_out(rep),
             ))
         return LiveDecompositionStabilityResponse(prompt_version=DECOMPOSE_PROMPT_VERSION, model=model, k=k, cases=out)
 
@@ -835,6 +844,7 @@ def run_live_screening_stability(
             out.append(LiveScreeningStabilityCaseOut(
                 key=c.key, marker=rep.marker, majority=rep.majority,
                 agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
+                runs=_runs_out(rep),
             ))
         return LiveScreeningStabilityResponse(prompt_version=version, model=model, k=k, cases=out)
 

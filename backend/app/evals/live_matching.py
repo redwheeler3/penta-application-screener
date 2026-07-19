@@ -101,10 +101,12 @@ def _emit(on_delta: object, text: str) -> None:
 
 
 def _match_verdict(provider: AIProvider, case: MatchingCase, *, match_model: str) -> tuple[str, str]:
-    """Run the REAL identity-match prompt once and return ``(verdict, reason)``. For a focused
+    """Run the REAL identity-match prompt once and return ``(verdict, detail)``. For a focused
     (one prior + one new) case, verdict is ``matches`` when the model mapped the new key onto
-    the prior key, else ``mismatches``; reason narrates what it returned. Shared by the single
-    graded run and the K-run stability check."""
+    the prior key, else ``mismatches``. ``detail`` is the model's own reasoning (its narrative)
+    — the ONLY place a mismatch's 'why' lives, since a non-match is just absence from the match
+    list, so we surface the narrative rather than a canned string. Shared by the single graded
+    run and the K-run stability check."""
     old = PoolDimensionReport(dimensions=[_descriptor_to_dim(d) for d in case.prior])
     new = PoolDimensionReport(dimensions=[_descriptor_to_dim(d) for d in case.new])
     result = provider.structured_output(
@@ -120,9 +122,12 @@ def _match_verdict(provider: AIProvider, case: MatchingCase, *, match_model: str
         (m for m in result.output.matches if m.new_key in new_keys and m.old_key in prior_keys),
         None,
     )
-    if hit is not None:
-        return MATCHES, f"mapped `{hit.new_key}` → `{hit.old_key}`"
-    return MISMATCHES, "no mapping between the pair (treated as genuinely new)"
+    verdict = MATCHES if hit is not None else MISMATCHES
+    # Prefer the model's own reasoning (narrative); fall back to a description of the mapping.
+    detail = (result.narrative or "").strip() or (
+        f"mapped {hit.new_key} → {hit.old_key}" if hit else "no mapping between the pair"
+    )
+    return verdict, detail
 
 
 def run_case(
@@ -193,11 +198,11 @@ def stability_run(
     _emit(on_delta, f"Matching new **{n['name']}** vs prior **{p['name']}** x{k} on `{match_model}`…\n\n")
     runs = {"i": 0}
 
-    def run_once() -> str:
-        verdict, _reason = _match_verdict(provider, case, match_model=match_model)
+    def run_once() -> tuple[str, str]:
+        verdict, detail = _match_verdict(provider, case, match_model=match_model)
         runs["i"] += 1
-        _emit(on_delta, f"- run {runs['i']}: **{verdict}**\n")
-        return verdict
+        _emit(on_delta, f"- run {runs['i']}: **{verdict}** — {detail}\n")
+        return verdict, detail
 
     report = run_stability(run_once, k=k, contested=case.contested)
     tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())

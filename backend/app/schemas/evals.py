@@ -30,6 +30,18 @@ class EvalCatalogResponse(ResponseModel):
     evals: list[EvalDescriptor] = []
 
 
+# --- shared stability shapes ------------------------------------------------
+
+
+class StabilityRun(ResponseModel):
+    """One of the K stability runs: its outcome token plus the model's own reasoning for it,
+    so a flip is self-explaining (the whole point of capturing per-run detail — a mismatch's
+    'why' otherwise lives nowhere). Shared by every live pass's stability response."""
+
+    outcome: str  # the token this run produced (verdict / flag-set / pass|fail)
+    detail: str = ""  # the model's reasoning for this run's outcome
+
+
 # --- live scoring -----------------------------------------------------------
 
 
@@ -60,6 +72,7 @@ class LiveScoringStabilityCaseOut(ResponseModel):
     tally: dict[str, int]  # "pass"/"fail" -> count
     score_min: float  # score spread across the K runs — informational (model noise)
     score_max: float
+    runs: list[StabilityRun] = []  # per-run outcome + the model's reasoning (explains a flip)
 
 
 class LiveScoringStabilityResponse(ResponseModel):
@@ -100,6 +113,7 @@ class LiveConsolidationStabilityCaseOut(ResponseModel):
     agreement: float  # modal verdict's share of K
     flipped: bool
     tally: dict[str, int]  # verdict -> count
+    runs: list[StabilityRun] = []  # per-run outcome + the model's reasoning (explains a flip)
 
 
 class LiveConsolidationStabilityResponse(ResponseModel):
@@ -140,6 +154,7 @@ class LiveMatchingStabilityCaseOut(ResponseModel):
     agreement: float
     flipped: bool
     tally: dict[str, int]
+    runs: list[StabilityRun] = []  # per-run outcome + the model's reasoning (explains a flip)
 
 
 class LiveMatchingStabilityResponse(ResponseModel):
@@ -180,6 +195,7 @@ class LiveDecompositionStabilityCaseOut(ResponseModel):
     agreement: float
     flipped: bool
     tally: dict[str, int]
+    runs: list[StabilityRun] = []  # per-run outcome + the model's reasoning (explains a flip)
 
 
 class LiveDecompositionStabilityResponse(ResponseModel):
@@ -216,6 +232,7 @@ class LiveScreeningStabilityCaseOut(ResponseModel):
     agreement: float
     flipped: bool
     tally: dict[str, int]  # flag-set token -> count
+    runs: list[StabilityRun] = []  # per-run flag-set + the model's reasoning (explains a flip)
 
 
 class LiveScreeningStabilityResponse(ResponseModel):

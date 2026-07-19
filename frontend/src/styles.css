@@ -3049,6 +3049,20 @@ h1 {
 .eval-case-result-body { font-size: 0.82rem; margin-top: 4px; }
 .eval-case-result-ev { color: var(--muted); font-size: 0.8rem; margin-top: 4px; font-style: italic; }
 
+/* Model-produced prose (evidence, reasons, per-run detail) rendered as markdown. Collapse
+   react-markdown's default block margins so a one-line reason reads inline-tight, and let the
+   surrounding style class (muted/italic) still apply. */
+.eval-md > :first-child { margin-top: 0; }
+.eval-md > :last-child { margin-bottom: 0; }
+.eval-md p { margin: 0 0 0.4em; }
+.eval-md ul, .eval-md ol { margin: 0.2em 0; padding-left: 1.3em; }
+.eval-case-result-ev.eval-md { display: block; }
+
+/* Per-run breakdown of a stability case: each of the K runs' outcome + why (explains a flip). */
+.eval-stability-runs { margin: 6px 0 0; padding-left: 1.4em; font-size: 0.8rem; color: var(--muted); }
+.eval-stability-runs li { margin-top: 3px; }
+.eval-stability-runs .eval-case-result-ev { margin-top: 1px; }
+
 /* Case editor: field-level, in a tinted card. */
 .eval-editor {
   display: grid; gap: 14px;
