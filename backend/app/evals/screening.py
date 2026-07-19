@@ -222,7 +222,7 @@ def stability_run(
         cats, detail = _screen(provider, case, screening_model=screening_model, settings=settings)
         runs["i"] += 1
         token = ", ".join(sorted(set(cats))) or "none"
-        _emit(on_delta, f"- run {runs['i']}: **{token}**\n")
+        _emit(on_delta, f"- run {runs['i']}: **{token}** — {detail}\n")
         return token, detail
 
     # A screening golden case has no "contested" notion; a flag-set flip is always a real signal.
