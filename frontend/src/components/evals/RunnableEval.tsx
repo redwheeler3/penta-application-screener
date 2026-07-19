@@ -60,35 +60,37 @@ export function RunnableEval(props: {
   };
   useEffect(loadCases, [caseEvalKey]);
 
-  // On mount, restore the last persisted run PER MODE for this tab so switching subtabs and
-  // coming back shows what you last saw (result + case dots) instead of a blank tab — and a
-  // tab with two evals (live + stability) restores BOTH. Thinking is not restored (per the
-  // outcome-not-replay choice); a fresh run of a mode clears that mode's restored marker.
-  useEffect(() => {
-    let live = true;
+  // Load the last persisted run PER MODE for this tab. Used on mount (so switching subtabs and
+  // coming back shows what you last saw — result + case dots — instead of a blank tab; a tab
+  // with two evals restores BOTH) AND right after a fresh run completes (so its "last run just
+  // now · prompt …" marker reappears without a page reload — the backend persists the row
+  // before it emits the summary, so a re-fetch here always sees the just-finished run). When
+  // ``seedResults`` is true (mount only) it also rehydrates the per-case dots; a post-run
+  // refresh leaves the freshly-merged case results alone. Thinking is never restored (the
+  // outcome-not-replay choice). Returns a promise so callers can await the refresh.
+  const loadLastRuns = (seedResults: boolean) =>
     fetchLastEvalRun(props.runKeys)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { runs?: LastEvalRun[] } | null) => {
-        if (!live || !d?.runs?.length) return;
+        if (!d?.runs?.length) return;
         const byMode: Record<string, LastEvalRun> = {};
+        for (const run of d.runs) byMode[run.evalKey as RunMode["evalKey"]] = run;
+        setRestored(byMode);
+        if (!seedResults) return;
         const seeded: Record<string, ModeResults> = {};
         for (const run of d.runs) {
           const mode = run.evalKey as RunMode["evalKey"];
-          byMode[mode] = run;
           for (const c of (run.result?.cases ?? []) as any[]) {
             (seeded[c.key] ??= {})[mode] = c;
           }
         }
-        setRestored(byMode);
         setCaseResults(seeded);
-        // Show the newest restored run's headline (the runs come newest-first per key; pick
-        // the most recent overall for the headline/detail summary).
+        // Show the newest restored run's headline (pick the most recent overall).
         const newest = d.runs.reduce((a, b) => (a.ranAt >= b.ranAt ? a : b));
         setRun((r) => ({ ...r, result: newest.result, ranMode: newest.evalKey as RunMode["evalKey"] }));
       });
-    return () => {
-      live = false;
-    };
+  useEffect(() => {
+    void loadLastRuns(true);
     // props.runKeys is a stable per-tab literal; joining keeps the dep primitive.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.runKeys.join(",")]);
@@ -131,6 +133,10 @@ export function RunnableEval(props: {
             for (const c of cases) (next[c.key] ??= {})[mode.evalKey] = c;
             return next;
           });
+          // Re-fetch the last-run markers so THIS run's "last run just now · prompt …" marker
+          // reappears immediately (it was cleared when the run started). The row is already
+          // persisted by the time the summary arrives, so this always sees the fresh run.
+          void loadLastRuns(false);
         } else if (e.type === "error") setRun((r) => ({ ...r, running: false, error: e.message }));
       });
       setRun((r) => (r.running ? { ...r, running: false } : r));

@@ -51,14 +51,12 @@ class LiveScoringCaseOut(ResponseModel):
     score: float
     confidence: str
     evidence: str
-    failures: list[str] = []  # deterministic assertion breaches
-    judge_verdict: str | None = None  # rubric judge, when the case asked for one
+    failures: list[str] = []  # deterministic band/confidence breaches
 
 
 class LiveScoringResponse(ResponseModel):
     scoring_prompt_version: str
     scoring_model: str
-    judge_model: str
     passed: int
     total: int
     cases: list[LiveScoringCaseOut] = []
@@ -93,7 +91,6 @@ class LiveConsolidationCaseOut(ResponseModel):
     contested: bool  # true ⇒ excluded from passed/total (no honest verdict pass/fail)
     reason: str
     failures: list[str] = []
-    judge_verdict: str | None = None  # independent label-audit verdict, when a judge ran
 
 
 class LiveConsolidationResponse(ResponseModel):
@@ -134,7 +131,6 @@ class LiveMatchingCaseOut(ResponseModel):
     contested: bool
     reason: str  # narration of the mapping the model returned
     failures: list[str] = []
-    judge_verdict: str | None = None  # independent label-audit verdict, when a judge ran
 
 
 class LiveMatchingResponse(ResponseModel):
@@ -175,7 +171,6 @@ class LiveDecompositionCaseOut(ResponseModel):
     contested: bool
     reason: str  # narration of how the source keys settled
     failures: list[str] = []
-    judge_verdict: str | None = None
 
 
 class LiveDecompositionResponse(ResponseModel):

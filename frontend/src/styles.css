@@ -2930,14 +2930,18 @@ h1 {
   max-height: none;
   overflow-y: visible;
 }
-.eval-headline { font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; }
+/* Current-run summary. Separated from the restored-history block above it (different info:
+   this run's result vs. prior-run markers) — hence the larger top margin. */
+.eval-headline { font-size: 0.85rem; font-weight: 600; margin: 14px 0 10px; }
 
 /* Marks a rehydrated (history) result. Muted by default; amber when the run's prompt no
-   longer matches the current one, so a stale result can't read as live. */
+   longer matches the current one, so a stale result can't read as live. Stacked markers are
+   one group, so the gap between them is tight; the group's outer spacing comes from the
+   headline's top margin below it. */
 .eval-restored {
   font-size: 0.78rem;
   color: var(--muted);
-  margin: 8px 0;
+  margin: 2px 0;
 }
 .eval-restored.stale {
   color: #b45309;

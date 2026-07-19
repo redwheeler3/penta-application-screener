@@ -53,8 +53,6 @@ class DecompositionCase:
     expected: str  # "merge" | "keep" — the human label
     contested: bool = False
     note: str = ""
-    # Optional judge question (PRESENCE IS THE SWITCH — docs/eval-case-schema.md).
-    judge: str = ""
 
     @property
     def _source_keys(self) -> set[str]:
@@ -67,7 +65,6 @@ class CaseResult:
     verdict: str  # "merge" | "keep" — derived from the settled set
     reason: str  # narration of how the source keys settled
     failures: list[str] = field(default_factory=list)
-    judge_verdict: str | None = None
 
     @property
     def passed(self) -> bool:
@@ -78,7 +75,7 @@ class CaseResult:
 
 def load_cases(path: Path = DECOMPOSITION_GOLDEN_PATH) -> tuple[DecompositionCase, ...]:
     """Load the golden decomposition cases, flattening the by-consumer blocks (metadata /
-    given / judge — see docs/eval-case-schema.md) into the flat runner case."""
+    given — see docs/eval-case-schema.md) into the flat runner case."""
     data = json.loads(path.read_text())
     cases = []
     for c in data["cases"]:
@@ -90,7 +87,6 @@ def load_cases(path: Path = DECOMPOSITION_GOLDEN_PATH) -> tuple[DecompositionCas
                 expected=meta["expected"],
                 contested=meta.get("contested", False),
                 note=meta.get("note", ""),
-                judge=(c.get("judge") or {}).get("question", ""),
             )
         )
     return tuple(cases)
@@ -137,12 +133,10 @@ def run_case(
     case: DecompositionCase,
     *,
     decompose_model: str,
-    judge_model: str | None = None,
     on_delta: object = None,
 ) -> CaseResult:
-    """Run one golden set through the REAL decompose prompt, grade merge/keep (derived from the
-    settled set) against the label by exact match, and — when the case carries a judge question
-    AND a ``judge_model`` is given — ALSO run the independent judge as a label audit."""
+    """Run one golden set through the REAL decompose prompt and grade merge/keep (derived from
+    the settled set) against the label by exact match."""
     _emit(on_delta, f"Decomposing {len(case._source_keys)} carvings on `{decompose_model}`…\n\n")
     verdict, reason = _decompose_verdict(provider, case, decompose_model=decompose_model)
     if verdict == "?":
@@ -159,37 +153,7 @@ def run_case(
     else:
         _emit(on_delta, "✓ Verdict matches the label.\n")
 
-    judge_verdict: str | None = None
-    if case.judge and judge_model:
-        _emit(on_delta, f"\nAuditing the label with the judge on `{judge_model}`…\n\n")
-        report = _judge_label(provider, case, judge_model=judge_model)
-        judge_verdict = report.verdict.value
-        agree = "agrees with" if judge_verdict == case.expected else "DISAGREES with"
-        _emit(on_delta, f"**Judge: {judge_verdict}** — {agree} the label ({case.expected}). {report.reason}\n")
-
-    return CaseResult(case=case, verdict=verdict, reason=reason, failures=failures, judge_verdict=judge_verdict)
-
-
-def _judge_label(provider: AIProvider, case: DecompositionCase, *, judge_model: str):
-    """Ask the independent rubric judge the case's merge/keep question from the definitions
-    alone — a LABEL AUDIT. Reuses judge.py via a MERGE/KEEP case; evidence is the numbered
-    definitions the decomposer folded (or kept)."""
-    from app.ai.schemas import JudgeVerdict
-    from app.evals.judge import JudgeCase, judge_case
-
-    evidence = {
-        f"definition_{i + 1}": str(d["definition"])
-        for i, d in enumerate(d for report in case.reports for d in report)
-    }
-    jc = JudgeCase(
-        key=f"live-decompose::{case.key}",
-        title=case.judge,
-        task=case.judge,
-        evidence=evidence,
-        expected=JudgeVerdict(case.expected),
-        pass_name="decomposition",
-    )
-    return judge_case(provider, jc, model_id=judge_model).report
+    return CaseResult(case=case, verdict=verdict, reason=reason, failures=failures)
 
 
 def stability_run(
