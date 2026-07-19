@@ -8,7 +8,7 @@ MockProvider stands in for Bedrock; settings come from a minimal AppSettings.
 
 from app.ai.mock_provider import MockProvider
 from app.ai.schemas import FlagCategory, FlagSeverity, ScreeningFlag, ScreeningReport
-from app.evals.live_screening import load_cases, run_case, stability_run
+from app.evals.screening import load_cases, run_case, stability_run
 from app.schemas.settings import AppSettings
 
 

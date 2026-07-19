@@ -491,11 +491,11 @@ export type RankProgress = {
 // Mirrors backend/app/schemas/evals.py. The catalog is free; runs stream NDJSON
 // (thinking lines then a summary carrying one of the result shapes below).
 export type EvalKey =
-  | "invariants" | "live_scoring" | "live_scoring_stability"
-  | "live_consolidation" | "live_consolidation_stability"
-  | "live_matching" | "live_matching_stability"
-  | "live_decomposition" | "live_decomposition_stability"
-  | "live_screening" | "live_screening_stability"
+  | "invariants" | "scoring" | "scoring_stability"
+  | "consolidation" | "consolidation_stability"
+  | "matching" | "matching_stability"
+  | "decomposition" | "decomposition_stability"
+  | "screening" | "screening_stability"
   | "judge" | "stability";
 
 export type EvalDescriptor = {
@@ -529,7 +529,7 @@ export type InvariantsResult = {
   invariants: InvariantOut[];
 };
 
-export type LiveScoringCase = {
+export type ScoringCase = {
   key: string;
   passed: boolean;
   score: number;
@@ -538,13 +538,13 @@ export type LiveScoringCase = {
   failures: string[];
   judgeVerdict: string | null;
 };
-export type LiveScoringResult = {
+export type ScoringResult = {
   scoringPromptVersion: string;
   scoringModel: string;
   judgeModel: string;
   passed: number;
   total: number;
-  cases: LiveScoringCase[];
+  cases: ScoringCase[];
 };
 
 export type AgreementResult = {

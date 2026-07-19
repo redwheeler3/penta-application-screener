@@ -72,8 +72,8 @@ async def test_catalog_lists_evals_with_spend_flags() -> None:
     assert by_key["invariants"]["spends"] is False
     assert by_key["invariants"]["estimatedCalls"] == 0
     # Spending evals report a positive call estimate for the UI's confirm dialog.
-    assert by_key["live_scoring"]["spends"] is True
-    assert by_key["live_scoring"]["estimatedCalls"] > 0
+    assert by_key["scoring"]["spends"] is True
+    assert by_key["scoring"]["estimatedCalls"] > 0
     assert by_key["stability"]["estimatedCalls"] > by_key["judge"]["estimatedCalls"]
 
 
@@ -88,7 +88,7 @@ async def test_invariants_run_free_over_the_fixture() -> None:
     assert all(inv["passed"] for inv in body["invariants"])
 
 
-async def test_live_scoring_streams_thinking_then_summary_and_persists() -> None:
+async def test_scoring_streams_thinking_then_summary_and_persists() -> None:
     app, db, provider = setup_app()
     # Every scoring call returns a neutral (0) score for the dimension it was asked about;
     # route by schema so scoring and judge calls are disambiguated.
@@ -102,19 +102,19 @@ async def test_live_scoring_streams_thinking_then_summary_and_persists() -> None
     )
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as client:
-        events = await _stream_events(client, "/evals/live-scoring")
+        events = await _stream_events(client, "/evals/scoring")
     kinds = [e["type"] for e in events]
     assert "thinking" in kinds  # reasoning streamed
     summary = next(e for e in events if e["type"] == "summary")
-    assert summary["eval"] == "live_scoring"
+    assert summary["eval"] == "scoring"
     assert summary["result"]["total"] >= 1
     # Persisted exactly one EvalRun row for this run.
-    rows = list(db.scalars(select(EvalRun).where(EvalRun.eval_key == "live_scoring")))
+    rows = list(db.scalars(select(EvalRun).where(EvalRun.eval_key == "scoring")))
     assert len(rows) == 1
     assert rows[0].result["total"] == summary["result"]["total"]
 
 
-async def test_live_scoring_grades_a_real_score() -> None:
+async def test_scoring_grades_a_real_score() -> None:
     app, _db, provider = setup_app()
     # A dimension gets a concrete neutral score; the harness's assertions then grade it.
     def scored(_schema=None):
@@ -131,20 +131,20 @@ async def test_live_scoring_grades_a_real_score() -> None:
     provider.route("cited_evidence", JudgeReport(verdict=JudgeVerdict.SUPPORTED, reason="ok"))
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as client:
-        events = await _stream_events(client, "/evals/live-scoring")
+        events = await _stream_events(client, "/evals/scoring")
     summary = next(e for e in events if e["type"] == "summary")
     # An absence case scored 0.0 should pass its assertion; the result carries per-case rows.
     assert summary["result"]["cases"], "no cases in result"
     assert all("score" in c for c in summary["result"]["cases"])
 
 
-async def test_live_scoring_runs_a_single_case() -> None:
+async def test_scoring_runs_a_single_case() -> None:
     app, _db, provider = setup_app()
     provider.route("<dimensions>", DimensionScoringReport(scores=[]))
     provider.route("cited_evidence", JudgeReport(verdict=JudgeVerdict.SUPPORTED, reason="ok"))
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as client:
-        events = await _stream_events(client, "/evals/live-scoring?case=absence_scores_neutral")
+        events = await _stream_events(client, "/evals/scoring?case=absence_scores_neutral")
     summary = next(e for e in events if e["type"] == "summary")
     # Only the requested case ran.
     assert summary["result"]["total"] == 1
@@ -155,7 +155,7 @@ async def test_run_unknown_case_is_404() -> None:
     app, _db, _p = setup_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as client:
-        resp = await client.post("/evals/live-scoring?case=does_not_exist")
+        resp = await client.post("/evals/scoring?case=does_not_exist")
     assert resp.status_code == 404
 
 
@@ -192,7 +192,7 @@ async def test_run_requires_login() -> None:
     app.dependency_overrides.pop(require_current_user)  # simulate logged-out
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as client:
-        resp = await client.post("/evals/live-scoring")
+        resp = await client.post("/evals/scoring")
     assert resp.status_code == 401
 
 
@@ -250,8 +250,8 @@ async def test_get_cases_reads_the_fixture() -> None:
     app, _db, _p = setup_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as client:
-        body = (await client.get("/evals/cases/live_scoring")).json()
-    assert body["evalKey"] == "live_scoring"
+        body = (await client.get("/evals/cases/scoring")).json()
+    assert body["evalKey"] == "scoring"
     assert body["cases"]
     assert all("key" in c for c in body["cases"])
 
@@ -270,5 +270,5 @@ async def test_put_case_rejects_invalid_payload_without_writing() -> None:
     app, _db, _p = setup_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as client:
-        resp = await client.put("/evals/cases/live_scoring", json={"case": {"key": "x"}})
+        resp = await client.put("/evals/cases/scoring", json={"case": {"key": "x"}})
     assert resp.status_code == 422

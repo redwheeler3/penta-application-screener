@@ -13,7 +13,7 @@ from app.ai.schemas import (
     ConsolidationReport,
     ConsolidationVerdict,
 )
-from app.evals.live_consolidate import load_cases, run_case, stability_run
+from app.evals.consolidate import load_cases, run_case, stability_run
 
 _VERDICTS = {"merge", "keep"}
 

@@ -30,13 +30,13 @@ def golden_file(tmp_path, monkeypatch):
         ],
     }))
     reg = dict(case_store._FIXTURES)
-    reg["live_scoring"] = (path, reg["live_scoring"][1])
+    reg["scoring"] = (path, reg["scoring"][1])
     monkeypatch.setattr(case_store, "_FIXTURES", reg)
     return path
 
 
 def test_list_cases_reads_only_real_cases(golden_file) -> None:
-    cases = case_store.list_cases("live_scoring")
+    cases = case_store.list_cases("scoring")
     assert [c["key"] for c in cases] == ["a"]
 
 
@@ -46,7 +46,7 @@ def test_save_new_case_appends(golden_file) -> None:
         "metadata": {"expected": {"score_min": 0.5}},
         "given": {"applicant": {"facts": {}}, "dimension": {"key": "d"}},
     }
-    cases = case_store.save_case("live_scoring", new)
+    cases = case_store.save_case("scoring", new)
     assert [c["key"] for c in cases] == ["a", "b"]
     # Persisted to disk, and both non-cases top-level keys survived.
     on_disk = json.loads(golden_file.read_text())
@@ -61,19 +61,19 @@ def test_save_existing_key_upserts_in_place(golden_file) -> None:
         "metadata": {"expected": {"score_min": -0.1, "score_max": 0.1}},
         "given": {"applicant": {"facts": {"x": 1}}, "dimension": {"key": "d"}},
     }
-    cases = case_store.save_case("live_scoring", edited)
+    cases = case_store.save_case("scoring", edited)
     assert len(cases) == 1  # replaced, not appended
     assert cases[0]["given"]["applicant"]["facts"] == {"x": 1}
 
 
 def test_save_rejects_missing_required_field(golden_file) -> None:
     with pytest.raises(case_store.CaseValidationError):
-        case_store.save_case("live_scoring", {"key": "c", "given": {}})  # no metadata
+        case_store.save_case("scoring", {"key": "c", "given": {}})  # no metadata
 
 
 def test_save_rejects_blank_key(golden_file) -> None:
     with pytest.raises(case_store.CaseValidationError):
-        case_store.save_case("live_scoring", {"key": "", "metadata": {}, "given": {}})
+        case_store.save_case("scoring", {"key": "", "metadata": {}, "given": {}})
 
 
 def test_unknown_eval_raises(golden_file) -> None:

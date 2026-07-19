@@ -50,30 +50,38 @@ from app.evals.case_store import (
     save_background,
     save_case,
 )
+from app.evals.consolidate import load_cases as load_consolidation_cases
+from app.evals.consolidate import run_case as run_consolidation_case
+from app.evals.consolidate import stability_run as consolidation_stability_run
+from app.evals.decompose import load_cases as load_decomposition_cases
+from app.evals.decompose import run_case as run_decomposition_case
+from app.evals.decompose import stability_run as decomposition_stability_run
 from app.evals.fixture import FIXTURE_PATH, load, record
 from app.evals.invariants import INVARIANT_DESCRIPTIONS, INVARIANTS, run_invariants
 from app.evals.judge import DEFAULT_MODEL as JUDGE_MODEL
 from app.evals.judge import PROMPT_VERSION as JUDGE_PROMPT_VERSION
 from app.evals.judge import judge_case, load_cases, stability_run
-from app.evals.live_consolidate import load_cases as load_consolidation_cases
-from app.evals.live_consolidate import run_case as run_consolidation_case
-from app.evals.live_consolidate import stability_run as consolidation_stability_run
-from app.evals.live_decompose import load_cases as load_decomposition_cases
-from app.evals.live_decompose import run_case as run_decomposition_case
-from app.evals.live_decompose import stability_run as decomposition_stability_run
-from app.evals.live_matching import load_cases as load_matching_cases
-from app.evals.live_matching import run_case as run_matching_case
-from app.evals.live_matching import stability_run as matching_stability_run
-from app.evals.live_scoring import load_golden, run_case
-from app.evals.live_scoring import stability_run as scoring_stability_run
-from app.evals.live_screening import load_cases as load_screening_cases
-from app.evals.live_screening import run_case as run_screening_case
-from app.evals.live_screening import stability_run as screening_stability_run
+from app.evals.matching import load_cases as load_matching_cases
+from app.evals.matching import run_case as run_matching_case
+from app.evals.matching import stability_run as matching_stability_run
+from app.evals.scoring import load_golden, run_case
+from app.evals.scoring import stability_run as scoring_stability_run
+from app.evals.screening import load_cases as load_screening_cases
+from app.evals.screening import run_case as run_screening_case
+from app.evals.screening import stability_run as screening_stability_run
 from app.evals.synthetic_guard import NonSyntheticPoolError
 from app.schemas.base import ResponseModel
 from app.schemas.evals import (
     AgreementOut,
     CasesResponse,
+    ConsolidationCaseOut,
+    ConsolidationResponse,
+    ConsolidationStabilityCaseOut,
+    ConsolidationStabilityResponse,
+    DecompositionCaseOut,
+    DecompositionResponse,
+    DecompositionStabilityCaseOut,
+    DecompositionStabilityResponse,
     EvalCatalogResponse,
     EvalDescriptor,
     HarvestResponse,
@@ -85,28 +93,20 @@ from app.schemas.evals import (
     JudgeRunResponse,
     LastRun,
     LastRunResponse,
-    LiveConsolidationCaseOut,
-    LiveConsolidationResponse,
-    LiveConsolidationStabilityCaseOut,
-    LiveConsolidationStabilityResponse,
-    LiveDecompositionCaseOut,
-    LiveDecompositionResponse,
-    LiveDecompositionStabilityCaseOut,
-    LiveDecompositionStabilityResponse,
-    LiveMatchingCaseOut,
-    LiveMatchingResponse,
-    LiveMatchingStabilityCaseOut,
-    LiveMatchingStabilityResponse,
-    LiveScoringCaseOut,
-    LiveScoringResponse,
-    LiveScoringStabilityCaseOut,
-    LiveScoringStabilityResponse,
-    LiveScreeningCaseOut,
-    LiveScreeningResponse,
-    LiveScreeningStabilityCaseOut,
-    LiveScreeningStabilityResponse,
+    MatchingCaseOut,
+    MatchingResponse,
+    MatchingStabilityCaseOut,
+    MatchingStabilityResponse,
     SaveBackgroundRequest,
     SaveCaseRequest,
+    ScoringCaseOut,
+    ScoringResponse,
+    ScoringStabilityCaseOut,
+    ScoringStabilityResponse,
+    ScreeningCaseOut,
+    ScreeningResponse,
+    ScreeningStabilityCaseOut,
+    ScreeningStabilityResponse,
     StabilityCaseOut,
     StabilityRun,
     StabilityRunResponse,
@@ -151,7 +151,7 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
     """List the runnable evals + how many model calls each run costs (for the UI's
     spend-confirm). Free — computed from the committed fixtures, no model calls."""
     golden = load_golden()
-    live_calls = len(golden)  # one score call per case; live evals are judge-free now
+    scoring_calls = len(golden)  # one score call per case; the per-pass evals are judge-free
     n_judge = len(load_cases())
     consolidation = load_consolidation_cases()
     consolidation_calls = len(consolidation)  # one confirm call per case
@@ -168,65 +168,65 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
             spends=False, estimated_calls=0,
         ),
         EvalDescriptor(
-            key="live_scoring", label="Live scoring",
+            key="scoring", label="Scoring",
             description=f"Run {len(golden)} golden synthetic inputs through the REAL scoring "
             "prompt+model; grade each produced score against its expected [min, max] band.",
-            spends=True, estimated_calls=live_calls,
+            spends=True, estimated_calls=scoring_calls,
         ),
         EvalDescriptor(
-            key="live_scoring_stability", label="Live scoring — stability",
+            key="scoring_stability", label="Scoring — stability",
             description=f"Run the REAL scoring prompt K times (default K={DEFAULT_STABILITY_K}) per "
-            "golden case on fixed input; flag when a case's assertion pass/fail wanders across runs.",
+            "golden case on fixed input; flag when a case's pass/fail wanders across runs.",
             spends=True, estimated_calls=len(golden) * DEFAULT_STABILITY_K,
         ),
         EvalDescriptor(
-            key="live_consolidation", label="Live consolidation",
+            key="consolidation", label="Consolidation",
             description=f"Run {len(consolidation)} golden dimension pairs through the REAL "
             "consolidation prompt+model; grade merge/keep against the label (exact match).",
             spends=True, estimated_calls=consolidation_calls,
         ),
         EvalDescriptor(
-            key="live_consolidation_stability", label="Live consolidation — stability",
+            key="consolidation_stability", label="Consolidation — stability",
             description=f"Run the REAL consolidation prompt K times (default K={DEFAULT_STABILITY_K}) "
-            f"per pair on fixed input to measure verdict stability. Costs K times a live run.",
+            f"per pair on fixed input to measure verdict stability. Costs K times a run.",
             spends=True, estimated_calls=len(consolidation) * DEFAULT_STABILITY_K,
         ),
         EvalDescriptor(
-            key="live_matching", label="Live matching",
+            key="matching", label="Matching",
             description=f"Run {len(matching)} golden prior/new dimension pairs through the REAL "
             "identity-match prompt+model; grade matches/mismatches against the label (exact match).",
             spends=True, estimated_calls=matching_calls,
         ),
         EvalDescriptor(
-            key="live_matching_stability", label="Live matching — stability",
+            key="matching_stability", label="Matching — stability",
             description=f"Run the REAL match prompt K times (default K={DEFAULT_STABILITY_K}) per "
-            "pair on fixed input to measure verdict stability. Costs K times a live run.",
+            "pair on fixed input to measure verdict stability. Costs K times a run.",
             spends=True, estimated_calls=len(matching) * DEFAULT_STABILITY_K,
         ),
         EvalDescriptor(
-            key="live_decomposition", label="Live decomposition",
+            key="decomposition", label="Decomposition",
             description=f"Run {len(decomposition)} golden discovery-report sets through the REAL "
             "decomposition prompt+model; grade merge/keep (derived from the settled set) against "
             "the label (exact match).",
             spends=True, estimated_calls=decomposition_calls,
         ),
         EvalDescriptor(
-            key="live_decomposition_stability", label="Live decomposition — stability",
+            key="decomposition_stability", label="Decomposition — stability",
             description=f"Run the REAL decompose prompt K times (default K={DEFAULT_STABILITY_K}) per "
-            "set on fixed input to measure fold/keep stability. Costs K times a live run.",
+            "set on fixed input to measure fold/keep stability. Costs K times a run.",
             spends=True, estimated_calls=len(decomposition) * DEFAULT_STABILITY_K,
         ),
         EvalDescriptor(
-            key="live_screening", label="Live screening",
+            key="screening", label="Screening",
             description=f"Run {n_screening} golden synthetic applicants through the REAL screening "
             "prompt+model; grade the produced flags per-category (expected fires present, "
             "over-reach guards absent, clean applicants flag-free).",
             spends=True, estimated_calls=n_screening,
         ),
         EvalDescriptor(
-            key="live_screening_stability", label="Live screening — stability",
+            key="screening_stability", label="Screening — stability",
             description=f"Run the REAL screening prompt K times (default K={DEFAULT_STABILITY_K}) per "
-            "applicant on fixed input to measure whether the flag set holds. Costs K times a live run.",
+            "applicant on fixed input to measure whether the flag set holds. Costs K times a run.",
             spends=True, estimated_calls=n_screening * DEFAULT_STABILITY_K,
         ),
         EvalDescriptor(
@@ -295,28 +295,28 @@ def rebaseline(
 def _current_prompt_version(eval_key: str, db: Session) -> str:
     """The prompt version a fresh run of ``eval_key`` would exercise right now — so a
     rehydrated last run can be flagged stale when the prompt has since changed. Judge and
-    stability share the judge prompt; live_scoring uses the scoring prompt."""
-    if eval_key in ("live_scoring", "live_scoring_stability"):
+    stability share the judge prompt; scoring uses the scoring prompt."""
+    if eval_key in ("scoring", "scoring_stability"):
         from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_PROMPT_VERSION
 
         return SCORING_PROMPT_VERSION
-    if eval_key in ("live_consolidation", "live_consolidation_stability"):
+    if eval_key in ("consolidation", "consolidation_stability"):
         from app.ai.dimension_consolidate import (
             PROMPT_VERSION as CONSOLIDATE_PROMPT_VERSION,
         )
 
         return CONSOLIDATE_PROMPT_VERSION
-    if eval_key in ("live_matching", "live_matching_stability"):
+    if eval_key in ("matching", "matching_stability"):
         from app.ai.dimension_matching import PROMPT_VERSION as MATCH_PROMPT_VERSION
 
         return MATCH_PROMPT_VERSION
-    if eval_key in ("live_decomposition", "live_decomposition_stability"):
+    if eval_key in ("decomposition", "decomposition_stability"):
         from app.ai.dimension_decompose import (
             PROMPT_VERSION as DECOMPOSE_PROMPT_VERSION,
         )
 
         return DECOMPOSE_PROMPT_VERSION
-    if eval_key in ("live_screening", "live_screening_stability"):
+    if eval_key in ("screening", "screening_stability"):
         from app.ai.screening import screening_prompt_version
 
         return screening_prompt_version(get_app_settings(db))
@@ -343,8 +343,8 @@ def last_run(
     keys: str, user: User = Depends(require_current_user), db: Session = Depends(get_db)
 ) -> LastRunResponse:
     """The most recent persisted run for EACH of the comma-separated ``keys`` (a tab restores
-    its last run(s) on remount — Live scoring passes ``live_scoring``; Judge passes
-    ``judge,stability``; Live consolidation passes ``live_consolidation,live_consolidation_stability``).
+    its last run(s) on remount — Live scoring passes ``scoring``; Judge passes
+    ``judge,stability``; Live consolidation passes ``consolidation,consolidation_stability``).
     Returns one entry per key that has a run — so a tab running two evals restores BOTH, not
     just whichever ran last. Result JSON as the UI reads it, WITHOUT the thinking narration;
     each carries a ``stale`` flag when its prompt no longer matches the current one."""
@@ -480,7 +480,7 @@ def harvest(family: str, user: User = Depends(require_current_user), db: Session
         proposed = _HARVESTERS[family](db, run)
     except NonSyntheticPoolError as exc:
         raise Problem("invalid_case", detail=str(exc)) from exc
-    # Dedup against the pass's own golden set (scoring -> live_scoring, screening -> live_screening).
+    # Dedup against the pass's own golden set (scoring -> scoring, screening -> screening).
     existing = {c.get("key") for c in list_cases(f"live_{family}")}
     fresh = [c for c in proposed if c.get("key") not in existing]
     return HarvestResponse(family=family, candidates=fresh)
@@ -546,14 +546,14 @@ def _select(items: list, case: str | None, key):
     return picked
 
 
-@router.post("/live-scoring")
-def run_live_scoring(
+@router.post("/scoring")
+def run_scoring(
     case: str | None = None,
     user: User = Depends(require_current_user),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Stream a live-scoring run: golden inputs → real scoring prompt+model → deterministic
+    """Stream a scoring run: golden inputs → real scoring prompt+model → deterministic
     band check (the produced score must fall in the expected [min, max], + confidence). The
     scoring model's reasoning streams as ``thinking``. ``case`` runs just that one golden case
     (per-row run); omitted runs all."""
@@ -563,18 +563,18 @@ def run_live_scoring(
     scoring_model = settings.ai.dimension_scoring_model
     golden = _select(list(load_golden()), case, lambda c: c.key)
 
-    def work(on_delta) -> LiveScoringResponse:
+    def work(on_delta) -> ScoringResponse:
         results = []
         for c in golden:
             on_delta(f"\n\n### {c.key}\n")
             results.append(run_case(provider, c, scoring_model=scoring_model, on_delta=on_delta))
-        return LiveScoringResponse(
+        return ScoringResponse(
             scoring_prompt_version=SCORING_PROMPT_VERSION,
             scoring_model=scoring_model,
             passed=sum(1 for r in results if r.passed),
             total=len(results),
             cases=[
-                LiveScoringCaseOut(
+                ScoringCaseOut(
                     key=r.case.key, passed=r.passed, score=r.score, confidence=r.confidence,
                     evidence=r.evidence, failures=r.failures,
                 )
@@ -582,18 +582,18 @@ def run_live_scoring(
             ],
         )
 
-    return _stream(db, "live_scoring", SCORING_PROMPT_VERSION, work)
+    return _stream(db, "scoring", SCORING_PROMPT_VERSION, work)
 
 
-@router.post("/live-scoring-stability")
-def run_live_scoring_stability(
+@router.post("/scoring-stability")
+def run_scoring_stability(
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
     user: User = Depends(require_current_user),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Stream a live-scoring STABILITY run: the REAL scoring prompt K times per golden case on
+    """Stream a scoring STABILITY run: the REAL scoring prompt K times per golden case on
     fixed input, reporting whether each case's assertion pass/fail held (a flip = the score
     wandered across the assertion boundary). No judge — measures the production scoring prompt's
     own stability. ``k`` clamped; ``case`` runs just that one."""
@@ -604,32 +604,32 @@ def run_live_scoring_stability(
     scoring_model = settings.ai.dimension_scoring_model
     golden = _select(list(load_golden()), case, lambda c: c.key)
 
-    def work(on_delta) -> LiveScoringStabilityResponse:
+    def work(on_delta) -> ScoringStabilityResponse:
         out = []
         for c in golden:
             on_delta(f"\n\n### {c.key} (x{k})\n")
             res = scoring_stability_run(provider, c, scoring_model=scoring_model, k=k, on_delta=on_delta)
             lo, hi = res.score_spread
-            out.append(LiveScoringStabilityCaseOut(
+            out.append(ScoringStabilityCaseOut(
                 key=c.key, marker=res.stability.marker, agreement=res.stability.agreement,
                 flipped=res.stability.flipped, tally=res.stability.tally,
                 score_min=lo, score_max=hi, runs=_runs_out(res.stability),
             ))
-        return LiveScoringStabilityResponse(
+        return ScoringStabilityResponse(
             scoring_prompt_version=SCORING_PROMPT_VERSION, scoring_model=scoring_model, k=k, cases=out,
         )
 
-    return _stream(db, "live_scoring_stability", SCORING_PROMPT_VERSION, work)
+    return _stream(db, "scoring_stability", SCORING_PROMPT_VERSION, work)
 
 
-@router.post("/live-consolidation")
-def run_live_consolidation(
+@router.post("/consolidation")
+def run_consolidation(
     case: str | None = None,
     user: User = Depends(require_current_user),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Stream a live-consolidation run: golden dimension pairs → the REAL consolidation
+    """Stream a consolidation run: golden dimension pairs → the REAL consolidation
     confirm prompt+model → merge/keep graded against the label by exact match. ``case`` runs
     just that one pair (per-row run); omitted runs all. Contested cases are reported but
     excluded from passed/total. A case carrying a ``judge`` question ALSO runs the independent
@@ -642,7 +642,7 @@ def run_live_consolidation(
     model = settings.ai.consolidate_model
     cases = _select(list(load_consolidation_cases()), case, lambda c: c.key)
 
-    def work(on_delta) -> LiveConsolidationResponse:
+    def work(on_delta) -> ConsolidationResponse:
         results = []
         for c in cases:
             on_delta(f"\n\n### {c.key}\n")
@@ -650,13 +650,13 @@ def run_live_consolidation(
                 provider, c, consolidate_model=model, on_delta=on_delta,
             ))
         scored = [r for r in results if not r.case.contested]
-        return LiveConsolidationResponse(
+        return ConsolidationResponse(
             prompt_version=CONSOLIDATE_PROMPT_VERSION,
             model=model,
             passed=sum(1 for r in scored if r.passed),
             total=len(scored),
             cases=[
-                LiveConsolidationCaseOut(
+                ConsolidationCaseOut(
                     key=r.case.key, passed=r.passed, verdict=r.verdict,
                     expected=r.case.expected, contested=r.case.contested,
                     reason=r.reason, failures=r.failures,
@@ -665,18 +665,18 @@ def run_live_consolidation(
             ],
         )
 
-    return _stream(db, "live_consolidation", CONSOLIDATE_PROMPT_VERSION, work)
+    return _stream(db, "consolidation", CONSOLIDATE_PROMPT_VERSION, work)
 
 
-@router.post("/live-consolidation-stability")
-def run_live_consolidation_stability(
+@router.post("/consolidation-stability")
+def run_consolidation_stability(
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
     user: User = Depends(require_current_user),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Stream a live-consolidation STABILITY run: the REAL confirm prompt K times per pair on
+    """Stream a consolidation STABILITY run: the REAL confirm prompt K times per pair on
     fixed input, reporting verdict stability (flip = the production prompt is unstable). ``k``
     is clamped so a stray value can't blow up spend. ``case`` runs just that one pair."""
     from app.ai.dimension_consolidate import (
@@ -688,31 +688,31 @@ def run_live_consolidation_stability(
     model = settings.ai.consolidate_model
     cases = _select(list(load_consolidation_cases()), case, lambda c: c.key)
 
-    def work(on_delta) -> LiveConsolidationStabilityResponse:
+    def work(on_delta) -> ConsolidationStabilityResponse:
         out = []
         for c in cases:
             on_delta(f"\n\n### {c.key} (x{k})\n")
             rep = consolidation_stability_run(provider, c, consolidate_model=model, k=k, on_delta=on_delta)
-            out.append(LiveConsolidationStabilityCaseOut(
+            out.append(ConsolidationStabilityCaseOut(
                 key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
                 contested=c.contested, agreement=rep.agreement, flipped=rep.flipped,
                 tally=rep.tally, runs=_runs_out(rep),
             ))
-        return LiveConsolidationStabilityResponse(
+        return ConsolidationStabilityResponse(
             prompt_version=CONSOLIDATE_PROMPT_VERSION, model=model, k=k, cases=out,
         )
 
-    return _stream(db, "live_consolidation_stability", CONSOLIDATE_PROMPT_VERSION, work)
+    return _stream(db, "consolidation_stability", CONSOLIDATE_PROMPT_VERSION, work)
 
 
-@router.post("/live-matching")
-def run_live_matching(
+@router.post("/matching")
+def run_matching(
     case: str | None = None,
     user: User = Depends(require_current_user),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Stream a live-matching run: golden prior/new dimension pairs → the REAL identity-match
+    """Stream a matching run: golden prior/new dimension pairs → the REAL identity-match
     prompt+model → matches/mismatches graded against the label by exact match. ``case`` runs
     just that one pair. A case with a judge question also runs the judge as a label audit."""
     from app.ai.dimension_matching import PROMPT_VERSION as MATCH_PROMPT_VERSION
@@ -721,7 +721,7 @@ def run_live_matching(
     model = settings.ai.match_model
     cases = _select(list(load_matching_cases()), case, lambda c: c.key)
 
-    def work(on_delta) -> LiveMatchingResponse:
+    def work(on_delta) -> MatchingResponse:
         results = []
         for c in cases:
             on_delta(f"\n\n### {c.key}\n")
@@ -729,11 +729,11 @@ def run_live_matching(
                 provider, c, match_model=model, on_delta=on_delta,
             ))
         scored = [r for r in results if not r.case.contested]
-        return LiveMatchingResponse(
+        return MatchingResponse(
             prompt_version=MATCH_PROMPT_VERSION, model=model,
             passed=sum(1 for r in scored if r.passed), total=len(scored),
             cases=[
-                LiveMatchingCaseOut(
+                MatchingCaseOut(
                     key=r.case.key, passed=r.passed, verdict=r.verdict,
                     expected=r.case.expected, contested=r.case.contested,
                     reason=r.reason, failures=r.failures,
@@ -742,18 +742,18 @@ def run_live_matching(
             ],
         )
 
-    return _stream(db, "live_matching", MATCH_PROMPT_VERSION, work)
+    return _stream(db, "matching", MATCH_PROMPT_VERSION, work)
 
 
-@router.post("/live-matching-stability")
-def run_live_matching_stability(
+@router.post("/matching-stability")
+def run_matching_stability(
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
     user: User = Depends(require_current_user),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Stream a live-matching STABILITY run: the REAL match prompt K times per pair on fixed
+    """Stream a matching STABILITY run: the REAL match prompt K times per pair on fixed
     input, reporting verdict stability. ``k`` clamped; ``case`` runs just that one."""
     from app.ai.dimension_matching import PROMPT_VERSION as MATCH_PROMPT_VERSION
 
@@ -762,29 +762,29 @@ def run_live_matching_stability(
     model = settings.ai.match_model
     cases = _select(list(load_matching_cases()), case, lambda c: c.key)
 
-    def work(on_delta) -> LiveMatchingStabilityResponse:
+    def work(on_delta) -> MatchingStabilityResponse:
         out = []
         for c in cases:
             on_delta(f"\n\n### {c.key} (x{k})\n")
             rep = matching_stability_run(provider, c, match_model=model, k=k, on_delta=on_delta)
-            out.append(LiveMatchingStabilityCaseOut(
+            out.append(MatchingStabilityCaseOut(
                 key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
                 contested=c.contested, agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
                 runs=_runs_out(rep),
             ))
-        return LiveMatchingStabilityResponse(prompt_version=MATCH_PROMPT_VERSION, model=model, k=k, cases=out)
+        return MatchingStabilityResponse(prompt_version=MATCH_PROMPT_VERSION, model=model, k=k, cases=out)
 
-    return _stream(db, "live_matching_stability", MATCH_PROMPT_VERSION, work)
+    return _stream(db, "matching_stability", MATCH_PROMPT_VERSION, work)
 
 
-@router.post("/live-decomposition")
-def run_live_decomposition(
+@router.post("/decomposition")
+def run_decomposition(
     case: str | None = None,
     user: User = Depends(require_current_user),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Stream a live-decomposition run: golden discovery-report sets → the REAL decomposition
+    """Stream a decomposition run: golden discovery-report sets → the REAL decomposition
     prompt+model → merge/keep DERIVED from the settled set (all carvings in one axis = merge;
     spread across ≥2 = keep), graded against the label by exact match. ``case`` runs just that
     one set. A case with a judge question also runs the judge as a label audit."""
@@ -794,7 +794,7 @@ def run_live_decomposition(
     model = settings.ai.decompose_model
     cases = _select(list(load_decomposition_cases()), case, lambda c: c.key)
 
-    def work(on_delta) -> LiveDecompositionResponse:
+    def work(on_delta) -> DecompositionResponse:
         results = []
         for c in cases:
             on_delta(f"\n\n### {c.key}\n")
@@ -802,11 +802,11 @@ def run_live_decomposition(
                 provider, c, decompose_model=model, on_delta=on_delta,
             ))
         scored = [r for r in results if not r.case.contested]
-        return LiveDecompositionResponse(
+        return DecompositionResponse(
             prompt_version=DECOMPOSE_PROMPT_VERSION, model=model,
             passed=sum(1 for r in scored if r.passed), total=len(scored),
             cases=[
-                LiveDecompositionCaseOut(
+                DecompositionCaseOut(
                     key=r.case.key, passed=r.passed, verdict=r.verdict,
                     expected=r.case.expected, contested=r.case.contested,
                     reason=r.reason, failures=r.failures,
@@ -815,18 +815,18 @@ def run_live_decomposition(
             ],
         )
 
-    return _stream(db, "live_decomposition", DECOMPOSE_PROMPT_VERSION, work)
+    return _stream(db, "decomposition", DECOMPOSE_PROMPT_VERSION, work)
 
 
-@router.post("/live-decomposition-stability")
-def run_live_decomposition_stability(
+@router.post("/decomposition-stability")
+def run_decomposition_stability(
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
     user: User = Depends(require_current_user),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Stream a live-decomposition STABILITY run: the REAL decompose prompt K times per set on
+    """Stream a decomposition STABILITY run: the REAL decompose prompt K times per set on
     fixed input, reporting fold/keep stability. ``k`` clamped; ``case`` runs just that one."""
     from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSE_PROMPT_VERSION
 
@@ -835,29 +835,29 @@ def run_live_decomposition_stability(
     model = settings.ai.decompose_model
     cases = _select(list(load_decomposition_cases()), case, lambda c: c.key)
 
-    def work(on_delta) -> LiveDecompositionStabilityResponse:
+    def work(on_delta) -> DecompositionStabilityResponse:
         out = []
         for c in cases:
             on_delta(f"\n\n### {c.key} (x{k})\n")
             rep = decomposition_stability_run(provider, c, decompose_model=model, k=k, on_delta=on_delta)
-            out.append(LiveDecompositionStabilityCaseOut(
+            out.append(DecompositionStabilityCaseOut(
                 key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
                 contested=c.contested, agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
                 runs=_runs_out(rep),
             ))
-        return LiveDecompositionStabilityResponse(prompt_version=DECOMPOSE_PROMPT_VERSION, model=model, k=k, cases=out)
+        return DecompositionStabilityResponse(prompt_version=DECOMPOSE_PROMPT_VERSION, model=model, k=k, cases=out)
 
-    return _stream(db, "live_decomposition_stability", DECOMPOSE_PROMPT_VERSION, work)
+    return _stream(db, "decomposition_stability", DECOMPOSE_PROMPT_VERSION, work)
 
 
-@router.post("/live-screening")
-def run_live_screening(
+@router.post("/screening")
+def run_screening(
     case: str | None = None,
     user: User = Depends(require_current_user),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Stream a live-screening run: golden synthetic applicants → the REAL screening
+    """Stream a screening run: golden synthetic applicants → the REAL screening
     prompt+model → the produced flag list graded per-category (expected fires present, guarded
     categories absent, clean applicants flag-free). ``case`` runs just that one applicant."""
     from app.ai.screening import screening_prompt_version
@@ -867,16 +867,16 @@ def run_live_screening(
     version = screening_prompt_version(settings)
     cases = _select(list(load_screening_cases()), case, lambda c: c.key)
 
-    def work(on_delta) -> LiveScreeningResponse:
+    def work(on_delta) -> ScreeningResponse:
         results = []
         for c in cases:
             on_delta(f"\n\n### {c.key}\n")
             results.append(run_screening_case(provider, c, screening_model=model, settings=settings, on_delta=on_delta))
-        return LiveScreeningResponse(
+        return ScreeningResponse(
             prompt_version=version, model=model,
             passed=sum(1 for r in results if r.passed), total=len(results),
             cases=[
-                LiveScreeningCaseOut(
+                ScreeningCaseOut(
                     key=r.case.key, passed=r.passed, categories=r.categories,
                     fires=r.case.fires, absent=r.case.absent, failures=r.failures,
                 )
@@ -884,18 +884,18 @@ def run_live_screening(
             ],
         )
 
-    return _stream(db, "live_screening", version, work)
+    return _stream(db, "screening", version, work)
 
 
-@router.post("/live-screening-stability")
-def run_live_screening_stability(
+@router.post("/screening-stability")
+def run_screening_stability(
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
     user: User = Depends(require_current_user),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Stream a live-screening STABILITY run: the REAL screening prompt K times per applicant
+    """Stream a screening STABILITY run: the REAL screening prompt K times per applicant
     on fixed input, reporting whether the FLAG SET held. ``k`` clamped; ``case`` runs one."""
     from app.ai.screening import screening_prompt_version
 
@@ -905,19 +905,19 @@ def run_live_screening_stability(
     version = screening_prompt_version(settings)
     cases = _select(list(load_screening_cases()), case, lambda c: c.key)
 
-    def work(on_delta) -> LiveScreeningStabilityResponse:
+    def work(on_delta) -> ScreeningStabilityResponse:
         out = []
         for c in cases:
             on_delta(f"\n\n### {c.key} (x{k})\n")
             rep = screening_stability_run(provider, c, screening_model=model, settings=settings, k=k, on_delta=on_delta)
-            out.append(LiveScreeningStabilityCaseOut(
+            out.append(ScreeningStabilityCaseOut(
                 key=c.key, marker=rep.marker, majority=rep.majority,
                 agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
                 runs=_runs_out(rep),
             ))
-        return LiveScreeningStabilityResponse(prompt_version=version, model=model, k=k, cases=out)
+        return ScreeningStabilityResponse(prompt_version=version, model=model, k=k, cases=out)
 
-    return _stream(db, "live_screening_stability", version, work)
+    return _stream(db, "screening_stability", version, work)
 
 
 def _seed_str(expected: object) -> str:

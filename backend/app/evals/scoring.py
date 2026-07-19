@@ -16,7 +16,7 @@ a score from the SAME ``given`` on an independent model, blind to the label, and
 
 Inputs are FICTIONAL (see eval-data/scoring_golden.json), so no synthetic-pool guard is
 needed. This costs real model calls and is non-deterministic, so it runs from the Evals
-tab (POST /evals/live-scoring, deliberate + spend-confirmed), never as part of pytest/CI.
+tab (POST /evals/scoring, deliberate + spend-confirmed), never as part of pytest/CI.
 """
 
 from __future__ import annotations
@@ -266,5 +266,5 @@ def stability_run(
 
 
 # NB: no CLI entry point. The live scoring eval runs from the Evals tab
-# (POST /evals/live-scoring and /evals/live-scoring-stability, which call
+# (POST /evals/scoring and /evals/scoring-stability, which call
 # load_golden/run_case/stability_run directly).
