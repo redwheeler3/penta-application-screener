@@ -60,6 +60,7 @@ class ScreeningCase:
 class CaseResult:
     case: ScreeningCase
     categories: list[str]  # the flag categories the model actually produced
+    reason: str = ""  # the model's reasoning + per-flag evidence (explains a fire or a miss)
     failures: list[str] = field(default_factory=list)
 
     @property
@@ -197,7 +198,7 @@ def run_case(
             _emit(on_delta, f"❌ {f}\n")
     else:
         _emit(on_delta, "✓ Flags match expectations.\n")
-    return CaseResult(case=case, categories=categories, failures=failures)
+    return CaseResult(case=case, categories=categories, reason=detail, failures=failures)
 
 
 def stability_run(

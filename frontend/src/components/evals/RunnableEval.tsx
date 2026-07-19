@@ -593,6 +593,7 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
               {f}
             </div>
           ))}
+          {r.reason ? <Md text={r.reason} className="eval-case-result-ev" /> : null}
         </div>
       ) : evalKey === "scoring_stability" ? (
         <div className="eval-case-result-body">
