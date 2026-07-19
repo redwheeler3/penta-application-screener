@@ -275,17 +275,19 @@ def stability_run(
     scores: list[float] = []
     runs = {"i": 0}
 
-    def run_once() -> str:
+    def run_once() -> tuple[str, str]:
         runs["i"] += 1
         score = _score_once(provider, case, scoring_model=scoring_model)
         if score is None:
             scores.append(float("nan"))
             _emit(on_delta, f"- run {runs['i']}: **no score** → fail\n")
-            return "fail"
+            return "fail", "model returned no score"
         scores.append(score.score)
         outcome = "fail" if _check_expectations(score, case.expect) else "pass"
+        # Detail = the score + the model's rationale for it (the "why" behind a flip).
+        detail = f"score {score.score:+.2f} ({score.confidence.value}): {score.rationale}"
         _emit(on_delta, f"- run {runs['i']}: score {score.score:+.2f} → **{outcome}**\n")
-        return outcome
+        return outcome, detail
 
     # A scoring golden case has no "contested" notion; a pass/fail flip is always a real signal.
     report = run_stability(run_once, k=k, contested=False)

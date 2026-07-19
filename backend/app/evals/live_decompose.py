@@ -119,13 +119,17 @@ def _decompose_verdict(provider: AIProvider, case: DecompositionCase, *, decompo
     # Which settled axes absorbed any of our source keys?
     landing = [a for a in result.output.dimensions if src & set(a.source_keys)]
     n = len(landing)
+    # Detail = the model's own per-axis decision reasoning (why it folded/kept), not just the
+    # derived count — that's the "why" a flip needs. Fall back to the narrative, then a summary.
+    decisions = " | ".join(a.decision for a in landing if a.decision)
+    narrative = (result.narrative or "").strip()
     if n == 1:
-        return MERGE, f"all {len(src)} carvings folded into one axis `{landing[0].key}`"
+        return MERGE, decisions or narrative or f"all {len(src)} carvings folded into one axis {landing[0].key}"
     if n == 0:
         # No settled axis lists our keys — shouldn't happen (coverage invariant), treat as no-verdict.
         return "?", "no settled axis referenced the input keys"
-    names = ", ".join(f"`{a.key}`" for a in landing)
-    return KEEP, f"kept across {n} distinct axes ({names})"
+    names = ", ".join(a.key for a in landing)
+    return KEEP, decisions or narrative or f"kept across {n} distinct axes ({names})"
 
 
 def run_case(
@@ -202,11 +206,11 @@ def stability_run(
     _emit(on_delta, f"Decomposing {len(case._source_keys)} carvings x{k} on `{decompose_model}`…\n\n")
     runs = {"i": 0}
 
-    def run_once() -> str:
-        verdict, _reason = _decompose_verdict(provider, case, decompose_model=decompose_model)
+    def run_once() -> tuple[str, str]:
+        verdict, reason = _decompose_verdict(provider, case, decompose_model=decompose_model)
         runs["i"] += 1
-        _emit(on_delta, f"- run {runs['i']}: **{verdict}**\n")
-        return verdict
+        _emit(on_delta, f"- run {runs['i']}: **{verdict}** — {reason}\n")
+        return verdict, reason
 
     report = run_stability(run_once, k=k, contested=case.contested)
     tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())

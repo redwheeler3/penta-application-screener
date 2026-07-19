@@ -228,11 +228,12 @@ def stability_run(
     _emit(on_delta, f"Consolidating **{a['name']}** ~ **{b['name']}** x{k} on `{consolidate_model}`…\n\n")
     runs = {"i": 0}
 
-    def run_once() -> str:
-        verdict, _reason = _confirm_verdict(provider, case, consolidate_model=consolidate_model)
+    def run_once() -> tuple[str, str]:
+        verdict, reason = _confirm_verdict(provider, case, consolidate_model=consolidate_model)
         runs["i"] += 1
-        _emit(on_delta, f"- run {runs['i']}: **{verdict or '?'}**\n")
-        return verdict or "?"
+        token = verdict or "?"
+        _emit(on_delta, f"- run {runs['i']}: **{token}** — {reason}\n")
+        return token, reason
 
     report = run_stability(run_once, k=k, contested=case.contested)
     tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())

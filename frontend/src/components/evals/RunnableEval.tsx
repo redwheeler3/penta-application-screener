@@ -488,6 +488,37 @@ function RunHeadline(props: { evalKey: RunMode["evalKey"]; result: any }): React
   );
 }
 
+// Model-produced prose (evidence, reasons, per-run detail) is markdown — the AI writes it
+// that way — so render it as such rather than dumping the raw source. `className` carries the
+// surrounding style (muted/italic); `eval-md` tightens react-markdown's block margins so a
+// one-liner doesn't get paragraph spacing. NB: deterministic, code-generated strings (the
+// `failures` list) are NOT model text and stay plain.
+function Md({ text, className }: { text: string; className?: string }): ReactNode {
+  return (
+    <div className={`eval-md${className ? ` ${className}` : ""}`}>
+      <ReactMarkdown>{text}</ReactMarkdown>
+    </div>
+  );
+}
+
+// The per-run breakdown of a stability case: each of the K runs' outcome + the model's own
+// reasoning for it. This is what makes a flip self-explaining — a bare "3× matches, 2×
+// mismatches" doesn't say WHY the two mismatched; the reasoning does. Older runs (persisted
+// before per-run detail existed) have no `runs`, so render nothing.
+function StabilityRuns({ runs }: { runs?: { outcome: string; detail: string }[] }): ReactNode {
+  if (!runs?.length) return null;
+  return (
+    <ol className="eval-stability-runs">
+      {runs.map((run, i) => (
+        <li key={i}>
+          <span className="eval-mono">{run.outcome}</span>
+          {run.detail ? <Md text={run.detail} className="eval-case-result-ev" /> : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 // One case's result, shown in the detail pane above its input.
 function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactNode {
   const { evalKey, result: r } = props;
@@ -503,7 +534,7 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
         <div className="eval-case-result-body">
           <span className="eval-mono">score {r.score}</span> · {r.confidence} confidence
           {r.judgeVerdict ? <span className="eval-verdict"> · judge: {r.judgeVerdict}</span> : null}
-          {r.evidence ? <div className="eval-case-result-ev">“{r.evidence}”</div> : null}
+          {r.evidence ? <Md text={`“${r.evidence}”`} className="eval-case-result-ev" /> : null}
           {r.failures?.map((f: string) => (
             <div key={f} className="eval-check-detail">
               {f}
@@ -520,7 +551,7 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
               {r.judgeVerdict !== r.expected ? " (disagrees)" : ""}
             </span>
           ) : null}
-          {r.reason ? <div className="eval-case-result-ev">{r.reason}</div> : null}
+          {r.reason ? <Md text={r.reason} className="eval-case-result-ev" /> : null}
         </div>
       ) : evalKey === "live_screening" ? (
         <div className="eval-case-result-body">
@@ -540,17 +571,19 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
           <span className="eval-verdict">
             {" · "}score {r.scoreMin?.toFixed(2)}..{r.scoreMax?.toFixed(2)}
           </span>
+          <StabilityRuns runs={r.runs} />
         </div>
       ) : evalKey === "stability" || evalKey.endsWith("_stability") ? (
         <div className="eval-case-result-body">
           <span className="eval-mono">{r.marker}</span> {Math.round(r.agreement * 100)}% agreement over K —{" "}
           {Object.entries(r.tally).map(([v, n]) => `${v}×${n}`).join(", ")}
+          <StabilityRuns runs={r.runs} />
         </div>
       ) : (
         <div className="eval-case-result-body">
           expected <span className="eval-mono">{r.expected}</span> → judge said{" "}
           <span className="eval-mono">{r.verdict}</span>
-          {r.reason ? <div className="eval-case-result-ev">{r.reason}</div> : null}
+          {r.reason ? <Md text={r.reason} className="eval-case-result-ev" /> : null}
         </div>
       )}
     </div>

@@ -60,14 +60,29 @@ def marker(outcomes: list[T], *, contested: bool) -> str:
 
 
 @dataclass(frozen=True)
-class StabilityReport:
-    """K outcome tokens from running one case K times on fixed input, plus whether the case is
-    contested (which decides how a flip is read). Read-outs delegate to the free functions
-    above; a pass builds this from its own ``run_once`` and reads ``marker``/``agreement``
-    uniformly. (The judge keeps its own typed report and delegates to the same functions.)"""
+class RunDetail:
+    """One run within a stability check: its outcome token + the model's own reasoning for it
+    (the narrative, or a per-outcome reason). Kept per-run so a FLIP explains itself — the run
+    that disagreed shows what the model said that time, not just that it differed."""
 
-    outcomes: list[str]
+    outcome: str
+    detail: str = ""
+
+
+@dataclass(frozen=True)
+class StabilityReport:
+    """K runs of one case on fixed input, plus whether the case is contested (which decides how
+    a flip is read). Each run keeps its outcome AND the model's reasoning (``runs``), so a flip
+    is legible; the read-outs delegate to the free functions above. A pass builds this from its
+    own ``run_once`` and reads ``marker``/``agreement`` uniformly. (The judge keeps its own
+    typed report and delegates to the same functions.)"""
+
+    runs: list[RunDetail]
     contested: bool = False
+
+    @property
+    def outcomes(self) -> list[str]:
+        return [r.outcome for r in self.runs]
 
     @property
     def majority(self) -> str:
@@ -91,8 +106,12 @@ class StabilityReport:
         return dict(Counter(self.outcomes).most_common())
 
 
-def run_stability(run_once: Callable[[], str], *, k: int, contested: bool = False) -> StabilityReport:
+def run_stability(
+    run_once: Callable[[], tuple[str, str]], *, k: int, contested: bool = False
+) -> StabilityReport:
     """Call ``run_once`` ``k`` times (each a fresh model call on the SAME fixed input) and
-    collect the outcome tokens into a StabilityReport. The caller's ``run_once`` is the only
-    pass-specific part — it makes one production call and returns its outcome as a string."""
-    return StabilityReport(outcomes=[run_once() for _ in range(k)], contested=contested)
+    collect the results into a StabilityReport. The caller's ``run_once`` is the only
+    pass-specific part — it makes one production call and returns ``(outcome_token, detail)``,
+    where ``detail`` is the model's reasoning for that run (so a flip is explainable)."""
+    runs = [RunDetail(*run_once()) for _ in range(k)]
+    return StabilityReport(runs=runs, contested=contested)
