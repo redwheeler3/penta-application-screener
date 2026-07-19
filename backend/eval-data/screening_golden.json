@@ -307,18 +307,19 @@
       }
     },
     {
-      "key": "inconsistency_no_skills_then_electrician_fires",
+      "key": "modesty_not_inconsistency_pet_fires",
       "metadata": {
-        "note": "Skills essay reads as modesty-then-correction (\"dont really have any handy skills\" -> \"Im a certified electrician\"): a soft internal_inconsistency. ALSO a real pet_policy breach (two cats vs max one), so both must fire.",
+        "note": "OVER-REACH GUARD: the skills essay disclaims handy skills then lists an electrician + drywall/tiling — self-deprecating modesty-then-correction, NOT a data-integrity contradiction, so internal_inconsistency must NOT fire. The two-cats pet_policy breach is the real, only expected flag. Label flipped 2026-07-19 after the model's own reasoning correctly called this 'tone, not a factual inconsistency' — production judgment beat our first label.",
         "pass": "screening",
         "source": "synthetic pool, application id 12 (Riley Singh) — an exact slice of a real synthetic record.",
-        "label_rationale": "FLAG_SUPPORTED for internal_inconsistency (the essay disclaims handy skills then immediately lists an electrician + drywall/tiling) AND pet_policy (two cats exceed the max of one).",
+        "label_rationale": "pet_policy FIRES (two cats exceed the max of one). internal_inconsistency is an OVER-REACH guard: 'we don't really have any handy skills… that said, I'm a certified electrician' is rhetorical modesty immediately self-corrected, not a contradiction between claims — flagging it is a false positive.",
         "expected": {
           "fires": [
-            "internal_inconsistency",
             "pet_policy"
           ],
-          "absent": []
+          "absent": [
+            "internal_inconsistency"
+          ]
         }
       },
       "given": {
