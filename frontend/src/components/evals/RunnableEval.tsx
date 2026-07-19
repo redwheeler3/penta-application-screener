@@ -14,14 +14,14 @@ import type { FieldObject } from "./StructuredFields";
 // spend-confirmed inline (the workflow card, not window.confirm). The model's reasoning
 // streams as rendered markdown; results merge back onto each case row + into the detail.
 
-export type RunMode = { evalKey: "live_scoring" | "live_scoring_stability" | "live_consolidation" | "live_consolidation_stability" | "live_matching" | "live_matching_stability" | "live_decomposition" | "live_decomposition_stability" | "judge" | "stability"; label: string; rowLabel: string; calls: number };
+export type RunMode = { evalKey: "live_scoring" | "live_scoring_stability" | "live_consolidation" | "live_consolidation_stability" | "live_matching" | "live_matching_stability" | "live_decomposition" | "live_decomposition_stability" | "live_screening" | "live_screening_stability" | "judge" | "stability"; label: string; rowLabel: string; calls: number };
 
 type RunState = { running: boolean; thinking: string; result: any | null; ranMode: RunMode["evalKey"]; error: string | null };
 type Confirm = { mode: RunMode; caseKey?: string; calls: number } | null;
 
 export function RunnableEval(props: {
   // The fixture whose cases we read/edit (a pass's stability mode shares its golden set).
-  caseEvalKey: "live_scoring" | "live_consolidation" | "live_matching" | "live_decomposition" | "judge";
+  caseEvalKey: "live_scoring" | "live_consolidation" | "live_matching" | "live_decomposition" | "live_screening" | "judge";
   // The eval keys whose last run restores this tab on remount (Live scoring: ["live_scoring"];
   // Judge: ["judge", "stability"] — the two share the tab, so the newer of the two shows).
   runKeys: RunMode["evalKey"][];
@@ -391,7 +391,7 @@ function CaseList(props: {
 }
 
 function resultOk(ranMode: RunMode["evalKey"], r: any): boolean {
-  if (ranMode === "live_scoring" || CATEGORICAL_LIVE.has(ranMode)) return r.passed;
+  if (ranMode === "live_scoring" || ranMode === "live_screening" || CATEGORICAL_LIVE.has(ranMode)) return r.passed;
   if (ranMode.endsWith("_stability") || ranMode === "stability") return r.marker === "[stable]";
   return r.marker === "[ok]";
 }
@@ -442,6 +442,16 @@ function RunHeadline(props: { evalKey: RunMode["evalKey"]; result: any }): React
         {result.passed}/{result.total} passed · {pass} {result.promptVersion} · {result.model}
       </div>
     );
+  }
+  if (evalKey === "live_screening") {
+    return (
+      <div className="eval-headline">
+        {result.passed}/{result.total} passed · screening {result.promptVersion} · {result.model}
+      </div>
+    );
+  }
+  if (evalKey === "live_screening_stability") {
+    return <div className="eval-headline">K={result.k} · screening {result.promptVersion} · {result.model}</div>;
   }
   if (evalKey === "stability") {
     return <div className="eval-headline">K={result.k} · {result.judgeModel}</div>;
@@ -503,6 +513,17 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
             </span>
           ) : null}
           {r.reason ? <div className="eval-case-result-ev">{r.reason}</div> : null}
+        </div>
+      ) : evalKey === "live_screening" ? (
+        <div className="eval-case-result-body">
+          flags: <span className="eval-mono">{r.categories?.length ? r.categories.join(", ") : "none"}</span>
+          {r.fires?.length ? <span className="eval-verdict">{" · "}expect: {r.fires.join(", ")}</span> : null}
+          {r.absent?.length ? <span className="eval-verdict">{" · "}guard: no {r.absent.join(", ")}</span> : null}
+          {r.failures?.map((f: string) => (
+            <div key={f} className="eval-check-detail">
+              {f}
+            </div>
+          ))}
         </div>
       ) : evalKey === "live_scoring_stability" ? (
         <div className="eval-case-result-body">

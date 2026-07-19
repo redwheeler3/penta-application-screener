@@ -63,6 +63,9 @@ from app.evals.live_matching import run_case as run_matching_case
 from app.evals.live_matching import stability_run as matching_stability_run
 from app.evals.live_scoring import load_golden, run_case
 from app.evals.live_scoring import stability_run as scoring_stability_run
+from app.evals.live_screening import load_cases as load_screening_cases
+from app.evals.live_screening import run_case as run_screening_case
+from app.evals.live_screening import stability_run as screening_stability_run
 from app.evals.synthetic_guard import NonSyntheticPoolError
 from app.schemas.base import ResponseModel
 from app.schemas.evals import (
@@ -93,6 +96,10 @@ from app.schemas.evals import (
     LiveScoringResponse,
     LiveScoringStabilityCaseOut,
     LiveScoringStabilityResponse,
+    LiveScreeningCaseOut,
+    LiveScreeningResponse,
+    LiveScreeningStabilityCaseOut,
+    LiveScreeningStabilityResponse,
     SaveCaseRequest,
     StabilityCaseOut,
     StabilityRunResponse,
@@ -140,6 +147,7 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
     matching_calls = len(matching) + sum(1 for c in matching if c.judge)
     decomposition = load_decomposition_cases()
     decomposition_calls = len(decomposition) + sum(1 for c in decomposition if c.judge)
+    n_screening = len(load_screening_cases())  # one screening call per applicant, no judge
     return EvalCatalogResponse(evals=[
         EvalDescriptor(
             key="invariants", label="Invariants",
@@ -197,6 +205,19 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
             description=f"Run the REAL decompose prompt K times (default K={DEFAULT_STABILITY_K}) per "
             "set on fixed input to measure fold/keep stability. Costs K times a live run.",
             spends=True, estimated_calls=len(decomposition) * DEFAULT_STABILITY_K,
+        ),
+        EvalDescriptor(
+            key="live_screening", label="Live screening",
+            description=f"Run {n_screening} golden synthetic applicants through the REAL screening "
+            "prompt+model; grade the produced flags per-category (expected fires present, "
+            "over-reach guards absent, clean applicants flag-free).",
+            spends=True, estimated_calls=n_screening,
+        ),
+        EvalDescriptor(
+            key="live_screening_stability", label="Live screening — stability",
+            description=f"Run the REAL screening prompt K times (default K={DEFAULT_STABILITY_K}) per "
+            "applicant on fixed input to measure whether the flag set holds. Costs K times a live run.",
+            spends=True, estimated_calls=n_screening * DEFAULT_STABILITY_K,
         ),
         EvalDescriptor(
             key="judge", label="Judge + agreement",
@@ -285,6 +306,10 @@ def _current_prompt_version(eval_key: str, db: Session) -> str:
         )
 
         return DECOMPOSE_PROMPT_VERSION
+    if eval_key in ("live_screening", "live_screening_stability"):
+        from app.ai.screening import screening_prompt_version
+
+        return screening_prompt_version(get_app_settings(db))
     if eval_key in ("judge", "stability"):
         return JUDGE_PROMPT_VERSION
     return ""
@@ -745,6 +770,75 @@ def run_live_decomposition_stability(
         return LiveDecompositionStabilityResponse(prompt_version=DECOMPOSE_PROMPT_VERSION, model=model, k=k, cases=out)
 
     return _stream(db, "live_decomposition_stability", DECOMPOSE_PROMPT_VERSION, work)
+
+
+@router.post("/live-screening")
+def run_live_screening(
+    case: str | None = None,
+    user: User = Depends(require_current_user),
+    provider: AIProvider = Depends(get_ai_provider),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Stream a live-screening run: golden synthetic applicants → the REAL screening
+    prompt+model → the produced flag list graded per-category (expected fires present, guarded
+    categories absent, clean applicants flag-free). ``case`` runs just that one applicant."""
+    from app.ai.screening import screening_prompt_version
+
+    settings = get_app_settings(db)
+    model = settings.ai.screening_model
+    version = screening_prompt_version(settings)
+    cases = _select(list(load_screening_cases()), case, lambda c: c.key)
+
+    def work(on_delta) -> LiveScreeningResponse:
+        results = []
+        for c in cases:
+            on_delta(f"\n\n### {c.key}\n")
+            results.append(run_screening_case(provider, c, screening_model=model, settings=settings, on_delta=on_delta))
+        return LiveScreeningResponse(
+            prompt_version=version, model=model,
+            passed=sum(1 for r in results if r.passed), total=len(results),
+            cases=[
+                LiveScreeningCaseOut(
+                    key=r.case.key, passed=r.passed, categories=r.categories,
+                    fires=r.case.fires, absent=r.case.absent, failures=r.failures,
+                )
+                for r in results
+            ],
+        )
+
+    return _stream(db, "live_screening", version, work)
+
+
+@router.post("/live-screening-stability")
+def run_live_screening_stability(
+    k: int = DEFAULT_STABILITY_K,
+    case: str | None = None,
+    user: User = Depends(require_current_user),
+    provider: AIProvider = Depends(get_ai_provider),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Stream a live-screening STABILITY run: the REAL screening prompt K times per applicant
+    on fixed input, reporting whether the FLAG SET held. ``k`` clamped; ``case`` runs one."""
+    from app.ai.screening import screening_prompt_version
+
+    k = max(2, min(k, 10))
+    settings = get_app_settings(db)
+    model = settings.ai.screening_model
+    version = screening_prompt_version(settings)
+    cases = _select(list(load_screening_cases()), case, lambda c: c.key)
+
+    def work(on_delta) -> LiveScreeningStabilityResponse:
+        out = []
+        for c in cases:
+            on_delta(f"\n\n### {c.key} (x{k})\n")
+            rep = screening_stability_run(provider, c, screening_model=model, settings=settings, k=k, on_delta=on_delta)
+            out.append(LiveScreeningStabilityCaseOut(
+                key=c.key, marker=rep.marker, majority=rep.majority,
+                agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
+            ))
+        return LiveScreeningStabilityResponse(prompt_version=version, model=model, k=k, cases=out)
+
+    return _stream(db, "live_screening_stability", version, work)
 
 
 @router.post("/judge")

@@ -189,6 +189,42 @@ class LiveDecompositionStabilityResponse(ResponseModel):
     cases: list[LiveDecompositionStabilityCaseOut] = []
 
 
+# --- live screening (per-category over a produced flag list) -----------------
+
+
+class LiveScreeningCaseOut(ResponseModel):
+    key: str
+    passed: bool
+    categories: list[str] = []  # the flag categories the model produced
+    fires: list[str] = []  # categories that were expected to fire
+    absent: list[str] = []  # categories guarded against (over-reach)
+    failures: list[str] = []
+
+
+class LiveScreeningResponse(ResponseModel):
+    prompt_version: str
+    model: str
+    passed: int
+    total: int
+    cases: list[LiveScreeningCaseOut] = []
+
+
+class LiveScreeningStabilityCaseOut(ResponseModel):
+    key: str
+    marker: str
+    majority: str  # the modal flag-set token (e.g. "pet_policy" or "none")
+    agreement: float
+    flipped: bool
+    tally: dict[str, int]  # flag-set token -> count
+
+
+class LiveScreeningStabilityResponse(ResponseModel):
+    prompt_version: str
+    model: str
+    k: int
+    cases: list[LiveScreeningStabilityCaseOut] = []
+
+
 # --- judge + agreement ------------------------------------------------------
 
 

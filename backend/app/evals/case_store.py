@@ -23,6 +23,7 @@ from app.evals.paths import (
     GOLDEN_PATH,
     JUDGE_CASES_PATH,
     MATCHING_GOLDEN_PATH,
+    SCREENING_GOLDEN_PATH,
 )
 
 # eval_key -> (fixture path, required per-case fields). Fields are grouped into by-consumer
@@ -34,6 +35,7 @@ _FIXTURES: dict[str, tuple[Path, tuple[str, ...]]] = {
     "live_consolidation": (CONSOLIDATION_GOLDEN_PATH, ("key", "metadata", "given")),
     "live_matching": (MATCHING_GOLDEN_PATH, ("key", "metadata", "given")),
     "live_decomposition": (DECOMPOSITION_GOLDEN_PATH, ("key", "metadata", "given")),
+    "live_screening": (SCREENING_GOLDEN_PATH, ("key", "metadata", "given")),
     "judge": (JUDGE_CASES_PATH, ("key", "metadata", "evidence", "prompt")),
 }
 

@@ -57,6 +57,14 @@ const TEMPLATES: Record<string, FieldObject> = {
       ],
     },
   },
+  live_screening: {
+    key: "",
+    metadata: { pass: "screening", note: "", expect: { fires: [], absent: [] } },
+    given: {
+      fields: { applicant_name: "", pets_text: "", applicant_email: "" },
+      essays: {},
+    },
+  },
   judge: {
     key: "",
     metadata: { pass: "scoring", title: "", expected: "supported", label_rationale: "" },
@@ -69,7 +77,7 @@ const TEMPLATES: Record<string, FieldObject> = {
 };
 
 export function EvalCaseEditor(props: {
-  evalKey: "live_scoring" | "live_consolidation" | "live_matching" | "live_decomposition" | "judge";
+  evalKey: "live_scoring" | "live_consolidation" | "live_matching" | "live_decomposition" | "live_screening" | "judge";
   existing: Record<string, unknown> | null;
   error: string | null; // server-side validation error, if any
   onCancel: () => void;

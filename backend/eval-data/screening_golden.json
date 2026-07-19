@@ -1,0 +1,218 @@
+{
+  "_comment": "Golden cases for the LIVE screening eval (app/evals/live_screening.py). Each case is a real SYNTHETIC applicant (exact slice from the pool), run through the REAL production screening prompt+model. Screening produces a LIST of integrity flags; the grade is per-CATEGORY: metadata.expect.fires = categories that MUST appear; metadata.expect.absent = categories that must NOT (the over-reach guards — flagging benign things is the costly error since flags gate eligibility). A clean applicant has empty fires and any flag fails it. given.fields (normalized form fields) + given.essays (keyed by the real form-question column) are what the screening prompt receives; metadata is harness-only. See docs/eval-case-schema.md.",
+  "cases": [
+    {
+      "key": "pet_over_limit_fires",
+      "metadata": {
+        "note": "Two dogs and a cat against a 1-dog/1-cat policy — a clear pet_policy flag.",
+        "expect": {
+          "fires": [
+            "pet_policy"
+          ],
+          "absent": []
+        },
+        "pass": "screening",
+        "source": "synthetic pool, application id 59 (Roberto Vega) — an exact slice of a real synthetic record."
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Roberto Vega",
+          "co_applicant_name": "Mei Chang",
+          "child_details": [
+            {
+              "first_name": "Sofia",
+              "last_name": "Vega",
+              "age": 6
+            },
+            {
+              "first_name": "Diego",
+              "last_name": "Vega",
+              "age": 4
+            }
+          ],
+          "pets_text": "Two dogs and a cat",
+          "applicant_email": "robertov@yahoo.com",
+          "co_applicant_email": "meichang@protonmail.com",
+          "co_applicant_phone": "604-555-2074"
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "We camp and kayak whenever we can and pack out more trash than we bring. We value showing up for the people around us, not just for ourselves.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "I'm a heavy-duty mechanic and can keep the boiler room, shared tools, and grounds equipment running. I'll take the toughest maintenance shifts and teach others basic repair skills.",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "I spent six years on the maintenance committee of my last building, scheduling repairs and saving us thousands by doing the work in-house.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "I believe housing works better when neighbours share responsibility, and I'd bring practical maintenance skills to the mix. I'd pitch in on budgeting and make sure the numbers stay honest."
+        }
+      }
+    },
+    {
+      "key": "pet_exotic_velociraptor_fires",
+      "metadata": {
+        "note": "An exotic/undomesticated pet (a \"velociraptor\") against a dogs/cats-only policy — a pet_policy flag.",
+        "expect": {
+          "fires": [
+            "pet_policy"
+          ],
+          "absent": []
+        },
+        "pass": "screening",
+        "source": "synthetic pool, application id 6 (Quinn Kim) — an exact slice of a real synthetic record."
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Quinn Kim",
+          "co_applicant_name": "Avery Patel",
+          "child_details": [
+            {
+              "first_name": "Miles",
+              "last_name": "Anderson",
+              "age": 10
+            },
+            {
+              "first_name": "Maya",
+              "last_name": "Nguyen",
+              "age": 11
+            }
+          ],
+          "pets_text": "We have a velociraptor named Kevin. He's leash-trained and very polite.",
+          "applicant_email": "quinnkim@protonmail.com",
+          "co_applicant_email": "avery.patel@gmail.com",
+          "co_applicant_phone": "778-555-2007"
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "Outside of work I'm a keen cyclist and weekend volunteer at the food bank. Fairness and follow-through are the things we care about most.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "I'm a software developer and could build and maintain a simple booking and maintenance-request system. My partner is reliable about showing up for work hours and weekend cleanups.",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "We volunteered for three years with a community garden collective, which taught us how shared responsibility actually plays out. It taught me to write things down so the next volunteer isn't lost.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "Co-op living matches how we already try to live — shared effort, honest meetings, and looking out for each other. I'd keep the shared spaces cared for and the noticeboard up to date."
+        }
+      }
+    },
+    {
+      "key": "name_email_mismatch_no_flag",
+      "metadata": {
+        "note": "OVER-REACH GUARD: an email local-part that differs from the applicant name is common (old address, shared account) — must NOT raise a fake_contact flag. Production flagged this in run 2; the judge labelled it flag_unsupported.",
+        "expect": {
+          "fires": [],
+          "absent": [
+            "fake_contact"
+          ]
+        },
+        "pass": "screening",
+        "source": "synthetic pool, application id 88 (Jules Abara) — an exact slice of a real synthetic record."
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Jules Abara",
+          "co_applicant_name": "Tomas Reyes",
+          "child_details": [
+            {
+              "first_name": "Lucas",
+              "last_name": "Reyes",
+              "age": 14
+            },
+            {
+              "first_name": "Isabella",
+              "last_name": "Reyes",
+              "age": 11
+            },
+            {
+              "first_name": "Sofia",
+              "last_name": "Reyes",
+              "age": 8
+            }
+          ],
+          "pets_text": "Not applicable, we are not pet owners",
+          "applicant_email": "sandra.mitchell97@icloud.com",
+          "co_applicant_email": "tomasr@yahoo.com",
+          "co_applicant_phone": "778-555-2103"
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "We grow vegetables on a shared allotment and swap the surplus with neighbours. We value showing up for the people around us, not just for ourselves.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "I've chaired a strata maintenance committee and can schedule trades, get quotes, and track warranties. Between us we can cover a regular maintenance shift without much supervision.",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "We haven't lived in a co-op before, but we've been active in our building's tenants' association. I came to value members who simply do what they said they would.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "We want somewhere secure to raise our family and would gladly help with whatever the co-op needs. I'd bring my trade skills to the jobs that would otherwise need a contractor. A couple we garden with are longtime members, and they're the ones who encouraged us to apply because they think we'd slot in well."
+        }
+      }
+    },
+    {
+      "key": "differing_child_surnames_no_flag",
+      "metadata": {
+        "note": "OVER-REACH GUARD: children with surnames differing from the adults is normal (blended families, kept names) — must NOT raise an internal_inconsistency flag.",
+        "expect": {
+          "fires": [],
+          "absent": [
+            "internal_inconsistency"
+          ]
+        },
+        "pass": "screening",
+        "source": "synthetic pool, application id 27 (Sloan Obrien) — an exact slice of a real synthetic record."
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Sloan Obrien",
+          "co_applicant_name": "Jordan Garcia",
+          "child_details": [
+            {
+              "first_name": "Zoe",
+              "last_name": "Nguyen",
+              "age": 13
+            },
+            {
+              "first_name": "Miles",
+              "last_name": "Patel",
+              "age": 14
+            },
+            {
+              "first_name": "Maya",
+              "last_name": "Garcia",
+              "age": 15
+            }
+          ],
+          "pets_text": "One dog and one cat",
+          "applicant_email": "drewl@yahoo.com",
+          "co_applicant_email": "jordangarcia@protonmail.com",
+          "co_applicant_phone": "778-555-2038"
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "We're long-distance runners and help marshal local charity races. We'd rather build something together than rent in isolation.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "I'm a software developer and could build and maintain a simple booking and maintenance-request system. We're organized and good at following through on the boring but necessary tasks.",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "I served two terms on a strata council and know how to read a budget and sit through a long agenda without losing the room. I saw firsthand how a few reliable people keep the whole place afloat.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "I'm drawn to the democratic side of co-ops — I'd rather help govern a place than be a tenant who just complains. I'd help mediate the small frictions before they turn into big ones."
+        }
+      }
+    },
+    {
+      "key": "ordinary_applicant_clean",
+      "metadata": {
+        "note": "A wholly unremarkable applicant — expect ZERO flags. Any flag is a false positive.",
+        "expect": {
+          "fires": [],
+          "absent": []
+        },
+        "pass": "screening",
+        "source": "synthetic pool, application id 1 (Avery Nguyen) — an exact slice of a real synthetic record."
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Avery Nguyen",
+          "co_applicant_name": "Morgan Wilson",
+          "child_details": [
+            {
+              "first_name": "Maya",
+              "last_name": "Garcia",
+              "age": 3
+            }
+          ],
+          "pets_text": "One cat",
+          "applicant_email": "avery.nguyen@gmail.com",
+          "co_applicant_email": "morgan.wilson10@shaw.ca",
+          "co_applicant_phone": "778-555-2000"
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "I read widely, run a small book club, and bake far too much bread. We'd rather build something together than rent in isolation.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "Honestly, neither of us is handy at all. We can't fix things, we don't garden, and we'd be useless on a maintenance shift. We're happy to pay someone, but hands-on work isn't us.",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "I was on the membership committee at a food co-op and handled new-member orientation and the work-shift schedule. I got comfortable chasing quotes, tracking repairs, and closing the loop.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "I think deeply about what it means to share a home with others, and I write and reflect on community as a way of life. I'd bring warmth, good conversation, and a genuine ethic of care."
+        }
+      }
+    }
+  ]
+}
