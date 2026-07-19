@@ -118,7 +118,7 @@ def test_build_prompt_includes_essays_and_pet_policy() -> None:
     assert "Two dogs and a cat" in prompt  # pets text surfaced
     assert "We are a family." in prompt  # essay surfaced
     assert "at most 1 dog(s)" in prompt  # pet policy from settings
-    assert "no other/exotic pets" in prompt
+    assert "only dogs and cats are allowed" in prompt
 
 
 def test_screening_version_changes_with_pet_policy() -> None:
