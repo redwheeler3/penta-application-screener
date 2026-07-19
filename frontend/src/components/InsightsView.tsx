@@ -10,19 +10,23 @@ import { RunnableEval, type RunMode } from "./evals/RunnableEval";
 import { MatchAuditPanel } from "./MatchAuditPanel";
 import { MetricsPanel } from "./MetricsPanel";
 
-// "AI Quality" — the one surface for judging and inspecting the AI (developer/operator, not
-// committee-facing). Two families of subtab under one roof:
-//   OBSERVABILITY (what the AI did + cost): Discovery / Decomposition / Matching /
-//     Consolidation (per-run), Cost, Trends (cross-run).
-//   EVALS (is the AI any good): Invariants (free), Live scoring, Judge (agreement + stability).
-// Evals need no Rank, so this tab shows even before a run — the eval subtabs are always
-// available; the per-run observability subtabs appear once a run exists.
+// The developer/operator surface for inspecting + judging the AI (not committee-facing),
+// split into two top-level tabs by PURPOSE (App.tsx passes `family`):
+//   OBSERVABILITY — what the AI did + cost: the per-run pass traces (Pattern discovery,
+//     Decomposition, Matching, Consolidation) plus cross-run Cost + Trends.
+//   EVALS — is the AI any good: Invariants (whole-rank), the four live per-pass evals, Judge.
+// Subtabs run in PIPELINE ORDER, start→end (discovery → decompose → match → score →
+// consolidate), so both tabs read left-to-right along the process. Eval subtabs drop the
+// "Live" prefix — the tab is already "Evals", so the pass name alone reads clean.
+
+export type InsightsFamily = "obs" | "eval";
 
 type Tab =
   | "discovery" | "decompose" | "match" | "consolidate" | "cost" | "metrics"
   | "invariants" | "live_scoring" | "live_consolidation" | "live_matching" | "live_decomposition" | "judge";
 
-export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNode {
+export function InsightsView(props: { family: InsightsFamily; run: CurrentRunResponse | null }): ReactNode {
+  const { family } = props;
   const [catalog, setCatalog] = useState<EvalDescriptor[] | null>(null);
   useEffect(() => {
     fetchEvalCatalog()
@@ -30,60 +34,58 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
       .then((d) => d && setCatalog(d.evals));
   }, []);
 
-  const perRunTabs: { id: Tab; label: string }[] = props.run
-    ? [
-        { id: "discovery", label: "Pattern discovery" },
-        { id: "decompose", label: "Decomposition" },
-        { id: "match", label: "Matching" },
-        { id: "consolidate", label: "Consolidation" },
-      ]
-    : [];
-  // Observability group + eval group. Cost/Trends are cross-run (always shown); evals always shown.
-  const tabs: { id: Tab; label: string; group: "obs" | "eval" }[] = [
-    ...perRunTabs.map((t) => ({ ...t, group: "obs" as const })),
-    { id: "cost", label: "Cost", group: "obs" },
-    { id: "metrics", label: "Trends", group: "obs" },
-    { id: "invariants", label: "Invariants", group: "eval" },
-    { id: "live_scoring", label: "Live scoring", group: "eval" },
-    { id: "live_consolidation", label: "Live consolidation", group: "eval" },
-    { id: "live_matching", label: "Live matching", group: "eval" },
-    { id: "live_decomposition", label: "Live decomposition", group: "eval" },
-    { id: "judge", label: "Judge", group: "eval" },
+  // Observability subtabs in pipeline order; the per-run trace tabs exist only once a run
+  // does, then the cross-run aggregates (Cost, Trends) trail.
+  const obsTabs: { id: Tab; label: string }[] = [
+    ...(props.run
+      ? [
+          { id: "discovery" as Tab, label: "Pattern discovery" },
+          { id: "decompose" as Tab, label: "Decomposition" },
+          { id: "match" as Tab, label: "Matching" },
+          { id: "consolidate" as Tab, label: "Consolidation" },
+        ]
+      : []),
+    { id: "cost", label: "Cost" },
+    { id: "metrics", label: "Trends" },
   ];
+  // Eval subtabs: Invariants (whole-rank) first, then the live per-pass evals in PIPELINE
+  // order (decompose → match → score → consolidate), then Judge (cross-pass) last.
+  const evalTabs: { id: Tab; label: string }[] = [
+    { id: "invariants", label: "Invariants" },
+    { id: "live_decomposition", label: "Decomposition" },
+    { id: "live_matching", label: "Matching" },
+    { id: "live_scoring", label: "Scoring" },
+    { id: "live_consolidation", label: "Consolidation" },
+    { id: "judge", label: "Judge" },
+  ];
+  const tabs = family === "obs" ? obsTabs : evalTabs;
 
-  const [tab, setTab] = useState<Tab>(props.run ? "discovery" : "invariants");
-  // A per-run tab is only valid with a run; otherwise fall back to the eval side.
-  const perRunActive = ["discovery", "decompose", "match", "consolidate"].includes(tab);
-  const activeTab: Tab = !props.run && perRunActive ? "invariants" : tab;
+  const [tab, setTab] = useState<Tab | null>(null);
+  // Default to the family's first tab; fall back if the current pick isn't in it (e.g. a
+  // per-run obs tab after the run cleared).
+  const activeTab: Tab = tabs.some((t) => t.id === tab) ? (tab as Tab) : tabs[0].id;
 
   const calls = (k: string) => catalog?.find((e) => e.key === k)?.estimatedCalls ?? 0;
 
   return (
     <div className="insights-view">
       <div className="insights-header">
-        <h3>AI Quality</h3>
+        <h3>{family === "obs" ? "Observability" : "Evals"}</h3>
       </div>
 
-      <div className="insights-subtabs" role="tablist" aria-label="AI quality sections">
-        {tabs.map((t, i) => {
-          // A thin divider before the first eval tab, separating observability from evals.
-          const prev = tabs[i - 1];
-          const divider = prev && prev.group === "obs" && t.group === "eval";
-          return (
-            <span key={t.id} style={{ display: "contents" }}>
-              {divider ? <span className="insights-subtab-divider" aria-hidden="true" /> : null}
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === t.id}
-                className={`insights-subtab${activeTab === t.id ? " active" : ""}`}
-                onClick={() => setTab(t.id)}
-              >
-                {t.label}
-              </button>
-            </span>
-          );
-        })}
+      <div className="insights-subtabs" role="tablist" aria-label={`${family === "obs" ? "Observability" : "Evals"} sections`}>
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === t.id}
+            className={`insights-subtab${activeTab === t.id ? " active" : ""}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       <div className="insights-subtab-body">
