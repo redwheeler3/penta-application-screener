@@ -68,7 +68,10 @@ export function InvariantsEval(): ReactNode {
           {result.invariants.map((inv) => (
             <div key={inv.check} className={`eval-invariant ${inv.passed ? "ok" : "fail"}`}>
               <div className="eval-invariant-headrow">
-                <span className="eval-invariant-mark">{inv.passed ? "✓" : "✗"}</span>
+                <span
+                  className={`eval-case-dot ${inv.passed ? "ok" : "fail"}`}
+                  title={inv.passed ? "passed" : "failed"}
+                />
                 <span className="eval-invariant-name">{inv.check}</span>
               </div>
               {inv.description ? <p className="eval-invariant-desc">{inv.description}</p> : null}
