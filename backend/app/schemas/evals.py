@@ -149,6 +149,46 @@ class LiveMatchingStabilityResponse(ResponseModel):
     cases: list[LiveMatchingStabilityCaseOut] = []
 
 
+# --- live decomposition (categorical: exact-match, no judge tier) ------------
+
+
+class LiveDecompositionCaseOut(ResponseModel):
+    key: str
+    passed: bool
+    verdict: str  # "merge" | "keep" — derived from the settled set
+    expected: str
+    contested: bool
+    reason: str  # narration of how the source keys settled
+    failures: list[str] = []
+    judge_verdict: str | None = None
+
+
+class LiveDecompositionResponse(ResponseModel):
+    prompt_version: str
+    model: str
+    passed: int
+    total: int
+    cases: list[LiveDecompositionCaseOut] = []
+
+
+class LiveDecompositionStabilityCaseOut(ResponseModel):
+    key: str
+    marker: str
+    majority: str
+    expected: str
+    contested: bool
+    agreement: float
+    flipped: bool
+    tally: dict[str, int]
+
+
+class LiveDecompositionStabilityResponse(ResponseModel):
+    prompt_version: str
+    model: str
+    k: int
+    cases: list[LiveDecompositionStabilityCaseOut] = []
+
+
 # --- judge + agreement ------------------------------------------------------
 
 

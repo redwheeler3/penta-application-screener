@@ -20,7 +20,7 @@ import { MetricsPanel } from "./MetricsPanel";
 
 type Tab =
   | "discovery" | "decompose" | "match" | "consolidate" | "cost" | "metrics"
-  | "invariants" | "live_scoring" | "live_consolidation" | "live_matching" | "judge";
+  | "invariants" | "live_scoring" | "live_consolidation" | "live_matching" | "live_decomposition" | "judge";
 
 export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNode {
   const [catalog, setCatalog] = useState<EvalDescriptor[] | null>(null);
@@ -47,6 +47,7 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
     { id: "live_scoring", label: "Live scoring", group: "eval" },
     { id: "live_consolidation", label: "Live consolidation", group: "eval" },
     { id: "live_matching", label: "Live matching", group: "eval" },
+    { id: "live_decomposition", label: "Live decomposition", group: "eval" },
     { id: "judge", label: "Judge", group: "eval" },
   ];
 
@@ -131,6 +132,18 @@ export function InsightsView(props: { run: CurrentRunResponse | null }): ReactNo
               [
                 { evalKey: "live_matching", label: "Run live matching", rowLabel: "Run", calls: calls("live_matching") },
                 { evalKey: "live_matching_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("live_matching_stability") },
+              ] as RunMode[]
+            }
+          />
+        ) : activeTab === "live_decomposition" ? (
+          <RunnableEval
+            caseEvalKey="live_decomposition"
+            runKeys={["live_decomposition", "live_decomposition_stability"]}
+            description="Run golden discovery-report sets through the REAL decomposition prompt + model; the merge/keep verdict is derived from the settled set (all carvings folded into one axis = merge; kept across ≥2 = keep), graded against the label by exact match. Stability runs each set K times to see if the fold flips. Guards both over-fold (collapsing distinct axes) and under-fold (weighting one concept N times)."
+            modes={
+              [
+                { evalKey: "live_decomposition", label: "Run live decomposition", rowLabel: "Run", calls: calls("live_decomposition") },
+                { evalKey: "live_decomposition_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("live_decomposition_stability") },
               ] as RunMode[]
             }
           />

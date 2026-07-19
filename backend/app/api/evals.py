@@ -55,6 +55,9 @@ from app.evals.judge import judge_case, load_cases, stability_run
 from app.evals.live_consolidate import load_cases as load_consolidation_cases
 from app.evals.live_consolidate import run_case as run_consolidation_case
 from app.evals.live_consolidate import stability_run as consolidation_stability_run
+from app.evals.live_decompose import load_cases as load_decomposition_cases
+from app.evals.live_decompose import run_case as run_decomposition_case
+from app.evals.live_decompose import stability_run as decomposition_stability_run
 from app.evals.live_matching import load_cases as load_matching_cases
 from app.evals.live_matching import run_case as run_matching_case
 from app.evals.live_matching import stability_run as matching_stability_run
@@ -78,6 +81,10 @@ from app.schemas.evals import (
     LiveConsolidationResponse,
     LiveConsolidationStabilityCaseOut,
     LiveConsolidationStabilityResponse,
+    LiveDecompositionCaseOut,
+    LiveDecompositionResponse,
+    LiveDecompositionStabilityCaseOut,
+    LiveDecompositionStabilityResponse,
     LiveMatchingCaseOut,
     LiveMatchingResponse,
     LiveMatchingStabilityCaseOut,
@@ -131,6 +138,8 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
     consolidation_calls = len(consolidation) + sum(1 for c in consolidation if c.judge)
     matching = load_matching_cases()
     matching_calls = len(matching) + sum(1 for c in matching if c.judge)
+    decomposition = load_decomposition_cases()
+    decomposition_calls = len(decomposition) + sum(1 for c in decomposition if c.judge)
     return EvalCatalogResponse(evals=[
         EvalDescriptor(
             key="invariants", label="Invariants",
@@ -175,6 +184,19 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
             description=f"Run the REAL match prompt K times (default K={DEFAULT_STABILITY_K}) per "
             "pair on fixed input to measure verdict stability. Costs K times a live run.",
             spends=True, estimated_calls=len(matching) * DEFAULT_STABILITY_K,
+        ),
+        EvalDescriptor(
+            key="live_decomposition", label="Live decomposition",
+            description=f"Run {len(decomposition)} golden discovery-report sets through the REAL "
+            "decomposition prompt+model; grade merge/keep (derived from the settled set) against "
+            "the label (exact match). A case with a judge question also runs the judge as an audit.",
+            spends=True, estimated_calls=decomposition_calls,
+        ),
+        EvalDescriptor(
+            key="live_decomposition_stability", label="Live decomposition — stability",
+            description=f"Run the REAL decompose prompt K times (default K={DEFAULT_STABILITY_K}) per "
+            "set on fixed input to measure fold/keep stability. Costs K times a live run.",
+            spends=True, estimated_calls=len(decomposition) * DEFAULT_STABILITY_K,
         ),
         EvalDescriptor(
             key="judge", label="Judge + agreement",
@@ -257,6 +279,12 @@ def _current_prompt_version(eval_key: str, db: Session) -> str:
         from app.ai.dimension_matching import PROMPT_VERSION as MATCH_PROMPT_VERSION
 
         return MATCH_PROMPT_VERSION
+    if eval_key in ("live_decomposition", "live_decomposition_stability"):
+        from app.ai.dimension_decompose import (
+            PROMPT_VERSION as DECOMPOSE_PROMPT_VERSION,
+        )
+
+        return DECOMPOSE_PROMPT_VERSION
     if eval_key in ("judge", "stability"):
         return JUDGE_PROMPT_VERSION
     return ""
@@ -645,6 +673,78 @@ def run_live_matching_stability(
         return LiveMatchingStabilityResponse(prompt_version=MATCH_PROMPT_VERSION, model=model, k=k, cases=out)
 
     return _stream(db, "live_matching_stability", MATCH_PROMPT_VERSION, work)
+
+
+@router.post("/live-decomposition")
+def run_live_decomposition(
+    case: str | None = None,
+    user: User = Depends(require_current_user),
+    provider: AIProvider = Depends(get_ai_provider),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Stream a live-decomposition run: golden discovery-report sets → the REAL decomposition
+    prompt+model → merge/keep DERIVED from the settled set (all carvings in one axis = merge;
+    spread across ≥2 = keep), graded against the label by exact match. ``case`` runs just that
+    one set. A case with a judge question also runs the judge as a label audit."""
+    from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSE_PROMPT_VERSION
+
+    settings = get_app_settings(db)
+    model = settings.ai.decompose_model
+    cases = _select(list(load_decomposition_cases()), case, lambda c: c.key)
+
+    def work(on_delta) -> LiveDecompositionResponse:
+        results = []
+        for c in cases:
+            on_delta(f"\n\n### {c.key}\n")
+            results.append(run_decomposition_case(
+                provider, c, decompose_model=model, judge_model=JUDGE_MODEL, on_delta=on_delta,
+            ))
+        scored = [r for r in results if not r.case.contested]
+        return LiveDecompositionResponse(
+            prompt_version=DECOMPOSE_PROMPT_VERSION, model=model,
+            passed=sum(1 for r in scored if r.passed), total=len(scored),
+            cases=[
+                LiveDecompositionCaseOut(
+                    key=r.case.key, passed=r.passed, verdict=r.verdict,
+                    expected=r.case.expected, contested=r.case.contested,
+                    reason=r.reason, failures=r.failures, judge_verdict=r.judge_verdict,
+                )
+                for r in results
+            ],
+        )
+
+    return _stream(db, "live_decomposition", DECOMPOSE_PROMPT_VERSION, work)
+
+
+@router.post("/live-decomposition-stability")
+def run_live_decomposition_stability(
+    k: int = DEFAULT_STABILITY_K,
+    case: str | None = None,
+    user: User = Depends(require_current_user),
+    provider: AIProvider = Depends(get_ai_provider),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Stream a live-decomposition STABILITY run: the REAL decompose prompt K times per set on
+    fixed input, reporting fold/keep stability. ``k`` clamped; ``case`` runs just that one."""
+    from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSE_PROMPT_VERSION
+
+    k = max(2, min(k, 10))
+    settings = get_app_settings(db)
+    model = settings.ai.decompose_model
+    cases = _select(list(load_decomposition_cases()), case, lambda c: c.key)
+
+    def work(on_delta) -> LiveDecompositionStabilityResponse:
+        out = []
+        for c in cases:
+            on_delta(f"\n\n### {c.key} (x{k})\n")
+            rep = decomposition_stability_run(provider, c, decompose_model=model, k=k, on_delta=on_delta)
+            out.append(LiveDecompositionStabilityCaseOut(
+                key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
+                contested=c.contested, agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
+            ))
+        return LiveDecompositionStabilityResponse(prompt_version=DECOMPOSE_PROMPT_VERSION, model=model, k=k, cases=out)
+
+    return _stream(db, "live_decomposition_stability", DECOMPOSE_PROMPT_VERSION, work)
 
 
 @router.post("/judge")

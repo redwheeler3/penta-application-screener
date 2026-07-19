@@ -1,0 +1,46 @@
+{
+  "_comment": "Golden cases for the LIVE decomposition eval (app/evals/live_decompose.py). Each case is a set of dimension descriptors (each as its own single-dimension discovery report), run through the REAL production decomposition prompt+model. The verdict is derived from how the settled set turned out: MERGE = all the input descriptors folded into ONE settled axis; KEEP = they stayed as ≥2 distinct axes. Graded against `metadata.expected` by exact match (categorical → no judge tier; see docs/ai-evals.md 'Grader architecture'). `given.reports` is the list of discovery reports the decomposer settles (one descriptor each here for a focused case). Definitions are exact slices of real runs.",
+  "cases": [
+    {
+      "key": "health_safety_three_carvings_merge",
+      "metadata": {
+        "expected": "merge",
+        "note": "Three discovery workers carved the same concept (professional health/safety competence) — decomposition should fold all three into one axis.",
+        "pass": "decomposition",
+        "label_rationale": "MERGE: all three definitions describe the same concept — professional health/safety competence (first-aid, CPR, nursing, occupational health) deployable for member wellbeing — differing only in wording and examples, not in what they measure. An applicant scores identically against all three, so they are one axis; the fold is correct. The clean non-contested MERGE for the decomposition pass (N carvings of one concept), judged from definitions alone, pre-score.",
+        "source": "Rank run 6 (2026-07-16), decompose_audit settled axis health_safety_skill (source_keys health_safety_skill, health_and_safety_skill, health_and_safety_skills). The three definitions are exact slices of run 6's raw discovery reports (fan_out_audit).",
+        "provenance": {
+          "pass_models": {"Dimension decomposition": "us.anthropic.claude-sonnet-4-6"},
+          "pass_prompt_versions": {"Dimension decomposition": "733871632036"}
+        }
+      },
+      "given": {
+        "reports": [
+          [{"key": "health_safety_skill", "name": "Health & safety skill", "definition": "The household's professional health or safety expertise that could benefit co-op members directly (e.g. first aid, CPR, occupational health)."}],
+          [{"key": "health_and_safety_skill", "name": "Health and safety skill", "definition": "Whether the household brings health, medical, or first-aid skills that could enhance the safety and wellbeing infrastructure of the co-op community."}],
+          [{"key": "health_and_safety_skills", "name": "Health and safety skills", "definition": "Professional health or safety competencies — nursing, first-aid training, CPR instruction — that the household could deploy to improve building safety and member wellbeing."}]
+        ]
+      }
+    },
+    {
+      "key": "time_vs_commitment_keep",
+      "metadata": {
+        "expected": "keep",
+        "note": "Capacity vs. intent — two adjacent-looking axes that measure different things; decomposition should keep them apart, not over-fold.",
+        "pass": "decomposition",
+        "label_rationale": "KEEP: capacity vs. intent — genuinely distinct axes. A is how much spare time the household actually has; B is how concretely they commit to co-op work in their own words. A household can be genuinely committed yet honestly acknowledge thin hours (high B, low A), or have open weekends but say little specific (high A, low B). Folding them would hide whether a promising applicant actually has the time to deliver. The KEEP flavour for decomposition — NOT over-folding when N carvings look adjacent but measure different things.",
+        "source": "Rank run 7 (2026-07-16), decompose_audit — discretionary_time_availability and participation_commitment_explicitness kept distinct. Representative definitions are exact slices of run 7's raw discovery reports (fan_out_audit).",
+        "provenance": {
+          "pass_models": {"Dimension decomposition": "us.anthropic.claude-sonnet-4-6"},
+          "pass_prompt_versions": {"Dimension decomposition": "733871632036"}
+        }
+      },
+      "given": {
+        "reports": [
+          [{"key": "discretionary_time_availability", "name": "Discretionary time availability", "definition": "The household's self-reported availability of spare time for co-op commitments, net of outside obligations such as touring schedules, intensive hobbies, or other regular commitments."}],
+          [{"key": "participation_commitment_explicitness", "name": "Participation commitment explicitness", "definition": "How concretely and specifically the household commits to co-op work obligations — work-day attendance, committee seats, maintenance rotations — in their own words."}]
+        ]
+      }
+    }
+  ]
+}
