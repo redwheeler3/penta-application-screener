@@ -1,5 +1,6 @@
 {
   "_comment": "Golden cases for the LIVE decomposition eval (app/evals/live_decompose.py). Each case is a set of dimension descriptors (each as its own single-dimension discovery report), run through the REAL production decomposition prompt+model. The verdict is derived from how the settled set turned out: MERGE = all the input descriptors folded into ONE settled axis; KEEP = they stayed as ≥2 distinct axes. Graded against `metadata.expected` by exact match (categorical → no judge tier; see docs/ai-evals.md 'Grader architecture'). `given.reports` is the list of discovery reports the decomposer settles (one descriptor each here for a focused case). Definitions are exact slices of real runs.",
+  "judge_background": "Decomposition takes several dimension definitions that were each discovered separately (by parallel discovery workers) and decides whether they describe ONE concept that should be folded into a single axis (merge), or ≥2 genuinely distinct axes that should stay separate (keep). Judge from the definitions alone, pre-score: merge when they are the same concept differing only in wording/examples; keep when at least one measures a genuinely different thing.",
   "cases": [
     {
       "key": "health_safety_three_carvings_merge",

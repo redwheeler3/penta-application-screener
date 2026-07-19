@@ -128,6 +128,28 @@ def _decompose_verdict(provider: AIProvider, case: DecompositionCase, *, decompo
     return KEEP, decisions or narrative or f"kept across {n} distinct axes ({names})"
 
 
+def judge_reproduce(provider: AIProvider, *, given: dict, expected: str, background: str, model: str):
+    """Blind-judge adapter (see app/evals/reproduce.py): an INDEPENDENT model decides whether the
+    discovery carvings describe ONE concept (merge) or ≥2 distinct axes (keep) from the editable
+    ``background`` + the definitions (never the human label), then we exact-match its verdict
+    against ``expected``. merge/keep has no single 'problem' side, so no failure-recall
+    contribution."""
+    from app.ai.pricing import cost_usd
+    from app.ai.schemas import JudgeReport
+    from app.evals.reproduce import Reproduced, build_judge_prompt
+
+    prompt = build_judge_prompt(
+        given,
+        "These definitions were each discovered separately, then folded into one settled axis. "
+        "Decide 'merge' (they are one concept, the fold is correct) or 'keep' (at least one is a "
+        "genuinely distinct axis), with a reason.",
+    )
+    result = provider.structured_output(model_id=model, schema=JudgeReport, prompt=prompt, system_prompt=background)
+    verdict = result.output.verdict.value
+    cost = cost_usd(result.model_id, result.usage)
+    return Reproduced(verdict, expected, verdict == expected, False, False, result.output.reason, cost)
+
+
 def run_case(
     provider: AIProvider,
     case: DecompositionCase,

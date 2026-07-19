@@ -1,18 +1,19 @@
 {
-  "_comment": "Golden cases for the LIVE screening eval (app/evals/live_screening.py). Each case is a real SYNTHETIC applicant (exact slice from the pool), run through the REAL production screening prompt+model. Screening produces a LIST of integrity flags; the grade is per-CATEGORY: metadata.expect.fires = categories that MUST appear; metadata.expect.absent = categories that must NOT (the over-reach guards — flagging benign things is the costly error since flags gate eligibility). A clean applicant has empty fires and any flag fails it. given.fields (normalized form fields) + given.essays (keyed by the real form-question column) are what the screening prompt receives; metadata is harness-only. See docs/eval-case-schema.md.",
+  "_comment": "Golden cases for the LIVE screening eval (app/evals/live_screening.py). Each case is a real SYNTHETIC applicant (exact slice from the pool), run through the REAL production screening prompt+model. Screening produces a LIST of integrity flags; the grade is per-CATEGORY: metadata.expected.fires = categories that MUST appear; metadata.expected.absent = categories that must NOT (the over-reach guards — flagging benign things is the costly error since flags gate eligibility). A clean applicant has empty fires and any flag fails it. given.fields (normalized form fields) + given.essays (keyed by the real form-question column) are what the screening prompt receives; metadata is harness-only. See docs/eval-case-schema.md.",
+  "judge_background": "Screening reviews an applicant's fields and essays for INFORMATIONAL integrity concerns — never disqualifying, only surfaced for a human to review. Flag genuine concerns such as: internal inconsistencies between fields/essays; placeholder or fake contact details (keyboard-mash emails, obviously bogus phone numbers); placeholder names (e.g. a child named 'TBD'); and pet descriptions that violate the co-op pet policy (at most 1 dog; at most 1 cat; no other/exotic pets — the pets field is free text, so account for negation like 'no pets' and unclear phrasing). Flag ONLY real concerns: a benign detail (e.g. a child with a different surname, or a name/email that simply differ in form) must NOT be flagged — a false flag is the costly error.",
   "cases": [
     {
       "key": "pet_over_limit_fires",
       "metadata": {
         "note": "Two dogs and a cat against a 1-dog/1-cat policy — a clear pet_policy flag.",
-        "expect": {
+        "pass": "screening",
+        "source": "synthetic pool, application id 59 (Roberto Vega) — an exact slice of a real synthetic record.",
+        "expected": {
           "fires": [
             "pet_policy"
           ],
           "absent": []
-        },
-        "pass": "screening",
-        "source": "synthetic pool, application id 59 (Roberto Vega) — an exact slice of a real synthetic record."
+        }
       },
       "given": {
         "fields": {
@@ -47,14 +48,14 @@
       "key": "pet_exotic_velociraptor_fires",
       "metadata": {
         "note": "An exotic/undomesticated pet (a \"velociraptor\") against a dogs/cats-only policy — a pet_policy flag.",
-        "expect": {
+        "pass": "screening",
+        "source": "synthetic pool, application id 6 (Quinn Kim) — an exact slice of a real synthetic record.",
+        "expected": {
           "fires": [
             "pet_policy"
           ],
           "absent": []
-        },
-        "pass": "screening",
-        "source": "synthetic pool, application id 6 (Quinn Kim) — an exact slice of a real synthetic record."
+        }
       },
       "given": {
         "fields": {
@@ -89,14 +90,14 @@
       "key": "name_email_mismatch_no_flag",
       "metadata": {
         "note": "OVER-REACH GUARD: an email local-part that differs from the applicant name is common (old address, shared account) — must NOT raise a fake_contact flag. Production flagged this in run 2; the judge labelled it flag_unsupported.",
-        "expect": {
+        "pass": "screening",
+        "source": "synthetic pool, application id 88 (Jules Abara) — an exact slice of a real synthetic record.",
+        "expected": {
           "fires": [],
           "absent": [
             "fake_contact"
           ]
-        },
-        "pass": "screening",
-        "source": "synthetic pool, application id 88 (Jules Abara) — an exact slice of a real synthetic record."
+        }
       },
       "given": {
         "fields": {
@@ -136,14 +137,14 @@
       "key": "differing_child_surnames_no_flag",
       "metadata": {
         "note": "OVER-REACH GUARD: children with surnames differing from the adults is normal (blended families, kept names) — must NOT raise an internal_inconsistency flag.",
-        "expect": {
+        "pass": "screening",
+        "source": "synthetic pool, application id 27 (Sloan Obrien) — an exact slice of a real synthetic record.",
+        "expected": {
           "fires": [],
           "absent": [
             "internal_inconsistency"
           ]
-        },
-        "pass": "screening",
-        "source": "synthetic pool, application id 27 (Sloan Obrien) — an exact slice of a real synthetic record."
+        }
       },
       "given": {
         "fields": {
@@ -183,12 +184,12 @@
       "key": "ordinary_applicant_clean",
       "metadata": {
         "note": "A wholly unremarkable applicant — expect ZERO flags. Any flag is a false positive.",
-        "expect": {
+        "pass": "screening",
+        "source": "synthetic pool, application id 1 (Avery Nguyen) — an exact slice of a real synthetic record.",
+        "expected": {
           "fires": [],
           "absent": []
-        },
-        "pass": "screening",
-        "source": "synthetic pool, application id 1 (Avery Nguyen) — an exact slice of a real synthetic record."
+        }
       },
       "given": {
         "fields": {

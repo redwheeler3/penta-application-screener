@@ -562,12 +562,11 @@ export type AgreementResult = {
 export type JudgeCaseOut = {
   key: string;
   passName: string;
-  title: string;
   marker: string;
-  expected: string;
-  verdict: string;
+  humanLabel: string;  // the human expected label (compact token)
+  judgeLabel: string;  // what the blind judge independently produced
   contested: boolean;
-  reason: string;
+  detail: string;  // the judge's reproduced output + reasoning
 };
 export type JudgeResult = {
   judgePromptVersion: string;
@@ -579,7 +578,6 @@ export type JudgeResult = {
 export type StabilityCaseOut = {
   key: string;
   passName: string;
-  title: string;
   marker: string;
   majority: string;
   seed: string;

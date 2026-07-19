@@ -530,7 +530,6 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
       {evalKey === "live_scoring" ? (
         <div className="eval-case-result-body">
           <span className="eval-mono">score {r.score}</span> · {r.confidence} confidence
-          {r.judgeVerdict ? <span className="eval-verdict"> · judge: {r.judgeVerdict}</span> : null}
           {r.evidence ? <Md text={`“${r.evidence}”`} className="eval-case-result-ev" /> : null}
           {r.failures?.map((f: string) => (
             <div key={f} className="eval-check-detail">
@@ -542,12 +541,6 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
         <div className="eval-case-result-body">
           expected <span className="eval-mono">{r.expected}</span> → produced{" "}
           <span className="eval-mono">{r.verdict}</span>
-          {r.judgeVerdict ? (
-            <span className="eval-verdict">
-              {" · "}judge: {r.judgeVerdict}
-              {r.judgeVerdict !== r.expected ? " (disagrees)" : ""}
-            </span>
-          ) : null}
           {r.reason ? <Md text={r.reason} className="eval-case-result-ev" /> : null}
         </div>
       ) : evalKey === "live_screening" ? (
@@ -577,10 +570,12 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
           <StabilityRuns runs={r.runs} />
         </div>
       ) : (
+        // Judge (blind label audit): the human label vs. what the blind judge reproduced.
         <div className="eval-case-result-body">
-          expected <span className="eval-mono">{r.expected}</span> → judge said{" "}
-          <span className="eval-mono">{r.verdict}</span>
-          {r.reason ? <Md text={r.reason} className="eval-case-result-ev" /> : null}
+          label <span className="eval-mono">{r.humanLabel}</span> → judge said{" "}
+          <span className="eval-mono">{r.judgeLabel}</span>
+          {r.humanLabel !== r.judgeLabel ? " (disagrees)" : ""}
+          {r.detail ? <Md text={r.detail} className="eval-case-result-ev" /> : null}
         </div>
       )}
     </div>
