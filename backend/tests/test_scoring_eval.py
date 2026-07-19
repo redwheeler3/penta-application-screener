@@ -1,6 +1,6 @@
 """Structural guard for the live scoring eval's golden fixture (M13).
 
-The live eval itself (``app/evals/live_scoring.py``) makes real model calls, so it is an
+The live eval itself (``app/evals/scoring.py``) makes real model calls, so it is an
 opt-in run, NOT part of CI. These tests are the cheap CI half: they confirm the golden
 fixture loads and is well-formed — every case has both poles, a checkable expected band, and
 any bound sits in the signed [-1, 1] range — so a malformed fixture fails at commit time
@@ -14,7 +14,7 @@ from app.ai.schemas import (
     DimensionScoringReport,
     ScoreConfidence,
 )
-from app.evals.live_scoring import load_golden, run_case, stability_run
+from app.evals.scoring import load_golden, run_case, stability_run
 
 _EXPECT_KEYS = {"score_min", "score_max", "confidence"}
 

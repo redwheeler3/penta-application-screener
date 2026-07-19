@@ -10,7 +10,7 @@ from dataclasses import replace
 
 from app.ai.mock_provider import MockProvider
 from app.ai.schemas import DecomposedDimension, DecompositionReport
-from app.evals.live_decompose import load_cases, run_case, stability_run
+from app.evals.decompose import load_cases, run_case, stability_run
 
 _VERDICTS = {"merge", "keep"}
 

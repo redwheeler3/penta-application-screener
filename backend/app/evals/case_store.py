@@ -31,11 +31,11 @@ from app.evals.paths import (
 # plus block objects (`given` = prompt input; `metadata` = harness-only; `produced`/`judge`
 # optional). Only these files are writable.
 _FIXTURES: dict[str, tuple[Path, tuple[str, ...]]] = {
-    "live_scoring": (GOLDEN_PATH, ("key", "metadata", "given")),
-    "live_consolidation": (CONSOLIDATION_GOLDEN_PATH, ("key", "metadata", "given")),
-    "live_matching": (MATCHING_GOLDEN_PATH, ("key", "metadata", "given")),
-    "live_decomposition": (DECOMPOSITION_GOLDEN_PATH, ("key", "metadata", "given")),
-    "live_screening": (SCREENING_GOLDEN_PATH, ("key", "metadata", "given")),
+    "scoring": (GOLDEN_PATH, ("key", "metadata", "given")),
+    "consolidation": (CONSOLIDATION_GOLDEN_PATH, ("key", "metadata", "given")),
+    "matching": (MATCHING_GOLDEN_PATH, ("key", "metadata", "given")),
+    "decomposition": (DECOMPOSITION_GOLDEN_PATH, ("key", "metadata", "given")),
+    "screening": (SCREENING_GOLDEN_PATH, ("key", "metadata", "given")),
 }
 
 
@@ -109,11 +109,11 @@ def save_case(eval_key: str, case: dict) -> list[dict]:
 # The pass whose golden file each editable judge_background lives in. Keyed by the pass name
 # the Judge tab groups by (matches JudgeCase.pass_name), value is the writable eval key.
 _BACKGROUND_PASSES: dict[str, str] = {
-    "scoring": "live_scoring",
-    "consolidation": "live_consolidation",
-    "matching": "live_matching",
-    "decomposition": "live_decomposition",
-    "screening": "live_screening",
+    "scoring": "scoring",
+    "consolidation": "consolidation",
+    "matching": "matching",
+    "decomposition": "decomposition",
+    "screening": "screening",
 }
 
 

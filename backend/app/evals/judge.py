@@ -109,15 +109,15 @@ def _reproduce(provider, case: JudgeCase, *, model_id: str) -> Reproduced:
     """Dispatch to the pass's blind reproduce adapter. Lazy imports avoid an import cycle
     (the live modules don't import judge; judge imports them here, at call time)."""
     if case.pass_name == "scoring":
-        from app.evals.live_scoring import judge_reproduce
+        from app.evals.scoring import judge_reproduce
     elif case.pass_name == "consolidation":
-        from app.evals.live_consolidate import judge_reproduce
+        from app.evals.consolidate import judge_reproduce
     elif case.pass_name == "matching":
-        from app.evals.live_matching import judge_reproduce
+        from app.evals.matching import judge_reproduce
     elif case.pass_name == "decomposition":
-        from app.evals.live_decompose import judge_reproduce
+        from app.evals.decompose import judge_reproduce
     elif case.pass_name == "screening":
-        from app.evals.live_screening import judge_reproduce
+        from app.evals.screening import judge_reproduce
     else:  # pragma: no cover - _PASS_FILES is the closed set
         raise ValueError(f"no reproduce adapter for pass {case.pass_name!r}")
     return judge_reproduce(

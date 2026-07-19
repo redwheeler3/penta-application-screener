@@ -1,7 +1,7 @@
 """Live consolidation eval: run golden dimension pairs through the REAL consolidation
 confirm prompt+model.
 
-Like ``live_scoring.py``, this closes the gap the judge/invariant layers can't: they grade
+Like ``scoring.py``, this closes the gap the judge/invariant layers can't: they grade
 recorded artifacts and are blind to a prompt/model regression because the model never runs.
 This freezes the INPUT (a hand-picked pair of dimension definitions, mined from real runs),
 runs it through the exact production ``dimension_consolidate`` confirm prompt on the
@@ -149,7 +149,7 @@ def run_case(
     against the label by exact match.
 
     ``on_delta``, when given, receives a NARRATION of the run as markdown (the "thinking" the
-    AI Quality tab shows). As in live_scoring, we emulate it from the real model OUTPUT — a
+    AI Quality tab shows). As in scoring, we emulate it from the real model OUTPUT — a
     tight structured_output call streams ~no free-form reasoning, so there is nothing to
     stream, but the produced verdict and its grounding are what a reader wants to watch.
     """

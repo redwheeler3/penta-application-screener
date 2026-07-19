@@ -122,7 +122,7 @@ class EvalSummaryEvent(ResponseModel):
     client routes the payload to the right renderer."""
 
     type: Literal["summary"] = "summary"
-    eval: str  # "live_scoring" | "judge" | "stability"
+    eval: str  # "scoring" | "judge" | "stability"
     saved_path: str | None = None  # server-side path the run was recorded to
     result: dict  # the eval's response model, already camelCase-serialized
 

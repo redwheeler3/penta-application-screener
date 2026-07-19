@@ -19,7 +19,7 @@ from app.schemas.base import RequestModel, ResponseModel
 class EvalDescriptor(ResponseModel):
     """One runnable eval + its cost shape, for the catalog the UI lists."""
 
-    key: str  # "live_scoring" | "judge" | "stability" | "invariants"
+    key: str  # "scoring" | "judge" | "stability" | "invariants"
     label: str
     description: str
     spends: bool  # True if a run makes model calls (UI shows a spend-confirm)
@@ -45,7 +45,7 @@ class StabilityRun(ResponseModel):
 # --- live scoring -----------------------------------------------------------
 
 
-class LiveScoringCaseOut(ResponseModel):
+class ScoringCaseOut(ResponseModel):
     key: str
     passed: bool
     score: float
@@ -54,15 +54,15 @@ class LiveScoringCaseOut(ResponseModel):
     failures: list[str] = []  # deterministic band/confidence breaches
 
 
-class LiveScoringResponse(ResponseModel):
+class ScoringResponse(ResponseModel):
     scoring_prompt_version: str
     scoring_model: str
     passed: int
     total: int
-    cases: list[LiveScoringCaseOut] = []
+    cases: list[ScoringCaseOut] = []
 
 
-class LiveScoringStabilityCaseOut(ResponseModel):
+class ScoringStabilityCaseOut(ResponseModel):
     key: str
     marker: str  # "[stable]" | "[UNSTABLE]" (scoring cases are never contested)
     agreement: float  # modal pass/fail outcome's share of K
@@ -73,17 +73,17 @@ class LiveScoringStabilityCaseOut(ResponseModel):
     runs: list[StabilityRun] = []  # per-run outcome + the model's reasoning (explains a flip)
 
 
-class LiveScoringStabilityResponse(ResponseModel):
+class ScoringStabilityResponse(ResponseModel):
     scoring_prompt_version: str
     scoring_model: str
     k: int
-    cases: list[LiveScoringStabilityCaseOut] = []
+    cases: list[ScoringStabilityCaseOut] = []
 
 
 # --- live consolidation (categorical: exact-match, no judge tier) ------------
 
 
-class LiveConsolidationCaseOut(ResponseModel):
+class ConsolidationCaseOut(ResponseModel):
     key: str
     passed: bool
     verdict: str  # "merge" | "keep" — what the real confirm prompt produced
@@ -93,15 +93,15 @@ class LiveConsolidationCaseOut(ResponseModel):
     failures: list[str] = []
 
 
-class LiveConsolidationResponse(ResponseModel):
+class ConsolidationResponse(ResponseModel):
     prompt_version: str
     model: str
     passed: int  # non-contested cases whose verdict matched the label
     total: int  # non-contested cases (contested are reported but not scored)
-    cases: list[LiveConsolidationCaseOut] = []
+    cases: list[ConsolidationCaseOut] = []
 
 
-class LiveConsolidationStabilityCaseOut(ResponseModel):
+class ConsolidationStabilityCaseOut(ResponseModel):
     key: str
     marker: str  # "[stable]" | "[UNSTABLE]" | "[contested-split]"
     majority: str  # modal verdict over K
@@ -113,17 +113,17 @@ class LiveConsolidationStabilityCaseOut(ResponseModel):
     runs: list[StabilityRun] = []  # per-run outcome + the model's reasoning (explains a flip)
 
 
-class LiveConsolidationStabilityResponse(ResponseModel):
+class ConsolidationStabilityResponse(ResponseModel):
     prompt_version: str
     model: str
     k: int
-    cases: list[LiveConsolidationStabilityCaseOut] = []
+    cases: list[ConsolidationStabilityCaseOut] = []
 
 
 # --- live matching (categorical: exact-match, no judge tier) -----------------
 
 
-class LiveMatchingCaseOut(ResponseModel):
+class MatchingCaseOut(ResponseModel):
     key: str
     passed: bool
     verdict: str  # "matches" | "mismatches" — what the real match prompt produced
@@ -133,15 +133,15 @@ class LiveMatchingCaseOut(ResponseModel):
     failures: list[str] = []
 
 
-class LiveMatchingResponse(ResponseModel):
+class MatchingResponse(ResponseModel):
     prompt_version: str
     model: str
     passed: int
     total: int
-    cases: list[LiveMatchingCaseOut] = []
+    cases: list[MatchingCaseOut] = []
 
 
-class LiveMatchingStabilityCaseOut(ResponseModel):
+class MatchingStabilityCaseOut(ResponseModel):
     key: str
     marker: str  # "[stable]" | "[UNSTABLE]" | "[contested-split]"
     majority: str  # modal verdict over K
@@ -153,17 +153,17 @@ class LiveMatchingStabilityCaseOut(ResponseModel):
     runs: list[StabilityRun] = []  # per-run outcome + the model's reasoning (explains a flip)
 
 
-class LiveMatchingStabilityResponse(ResponseModel):
+class MatchingStabilityResponse(ResponseModel):
     prompt_version: str
     model: str
     k: int
-    cases: list[LiveMatchingStabilityCaseOut] = []
+    cases: list[MatchingStabilityCaseOut] = []
 
 
 # --- live decomposition (categorical: exact-match, no judge tier) ------------
 
 
-class LiveDecompositionCaseOut(ResponseModel):
+class DecompositionCaseOut(ResponseModel):
     key: str
     passed: bool
     verdict: str  # "merge" | "keep" — derived from the settled set
@@ -173,15 +173,15 @@ class LiveDecompositionCaseOut(ResponseModel):
     failures: list[str] = []
 
 
-class LiveDecompositionResponse(ResponseModel):
+class DecompositionResponse(ResponseModel):
     prompt_version: str
     model: str
     passed: int
     total: int
-    cases: list[LiveDecompositionCaseOut] = []
+    cases: list[DecompositionCaseOut] = []
 
 
-class LiveDecompositionStabilityCaseOut(ResponseModel):
+class DecompositionStabilityCaseOut(ResponseModel):
     key: str
     marker: str
     majority: str
@@ -193,17 +193,17 @@ class LiveDecompositionStabilityCaseOut(ResponseModel):
     runs: list[StabilityRun] = []  # per-run outcome + the model's reasoning (explains a flip)
 
 
-class LiveDecompositionStabilityResponse(ResponseModel):
+class DecompositionStabilityResponse(ResponseModel):
     prompt_version: str
     model: str
     k: int
-    cases: list[LiveDecompositionStabilityCaseOut] = []
+    cases: list[DecompositionStabilityCaseOut] = []
 
 
 # --- live screening (per-category over a produced flag list) -----------------
 
 
-class LiveScreeningCaseOut(ResponseModel):
+class ScreeningCaseOut(ResponseModel):
     key: str
     passed: bool
     categories: list[str] = []  # the flag categories the model produced
@@ -212,15 +212,15 @@ class LiveScreeningCaseOut(ResponseModel):
     failures: list[str] = []
 
 
-class LiveScreeningResponse(ResponseModel):
+class ScreeningResponse(ResponseModel):
     prompt_version: str
     model: str
     passed: int
     total: int
-    cases: list[LiveScreeningCaseOut] = []
+    cases: list[ScreeningCaseOut] = []
 
 
-class LiveScreeningStabilityCaseOut(ResponseModel):
+class ScreeningStabilityCaseOut(ResponseModel):
     key: str
     marker: str
     majority: str  # the modal flag-set token (e.g. "pet_policy" or "none")
@@ -230,11 +230,11 @@ class LiveScreeningStabilityCaseOut(ResponseModel):
     runs: list[StabilityRun] = []  # per-run flag-set + the model's reasoning (explains a flip)
 
 
-class LiveScreeningStabilityResponse(ResponseModel):
+class ScreeningStabilityResponse(ResponseModel):
     prompt_version: str
     model: str
     k: int
-    cases: list[LiveScreeningStabilityCaseOut] = []
+    cases: list[ScreeningStabilityCaseOut] = []
 
 
 # --- judge + agreement ------------------------------------------------------

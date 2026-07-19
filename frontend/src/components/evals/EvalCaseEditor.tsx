@@ -13,7 +13,7 @@ import { type FieldObject, StructuredFields } from "./StructuredFields";
 // Fields are grouped by CONSUMER (see each fixture's `_comment`): metadata is harness-only;
 // input goes to the scoring model; evidence + judge/prompt are what the judge sees.
 const TEMPLATES: Record<string, FieldObject> = {
-  live_scoring: {
+  scoring: {
     key: "",
     metadata: { note: "", expect: { score_equals: 0 } },
     input: {
@@ -25,7 +25,7 @@ const TEMPLATES: Record<string, FieldObject> = {
         "Given the dimension and the applicant's cited evidence, decide whether the returned score and confidence are SUPPORTED or UNSUPPORTED by that evidence — judge the score as produced, whatever its value.",
     },
   },
-  live_consolidation: {
+  consolidation: {
     key: "",
     metadata: { pass: "consolidation", note: "", expected: "keep", label_rationale: "" },
     given: {
@@ -39,7 +39,7 @@ const TEMPLATES: Record<string, FieldObject> = {
         "Decide MERGE (same underlying concept, a duplicate) or KEEP (genuinely distinct axes that only correlate) for these two dimension definitions.",
     },
   },
-  live_matching: {
+  matching: {
     key: "",
     metadata: { pass: "matching", note: "", expected: "matches", label_rationale: "" },
     given: {
@@ -47,7 +47,7 @@ const TEMPLATES: Record<string, FieldObject> = {
       new: [{ key: "", name: "", definition: "" }],
     },
   },
-  live_decomposition: {
+  decomposition: {
     key: "",
     metadata: { pass: "decomposition", note: "", expected: "merge", label_rationale: "" },
     given: {
@@ -57,7 +57,7 @@ const TEMPLATES: Record<string, FieldObject> = {
       ],
     },
   },
-  live_screening: {
+  screening: {
     key: "",
     metadata: { pass: "screening", note: "", expect: { fires: [], absent: [] } },
     given: {
@@ -77,7 +77,7 @@ const TEMPLATES: Record<string, FieldObject> = {
 };
 
 export function EvalCaseEditor(props: {
-  evalKey: "live_scoring" | "live_consolidation" | "live_matching" | "live_decomposition" | "live_screening" | "judge";
+  evalKey: "scoring" | "consolidation" | "matching" | "decomposition" | "screening" | "judge";
   existing: Record<string, unknown> | null;
   error: string | null; // server-side validation error, if any
   onCancel: () => void;

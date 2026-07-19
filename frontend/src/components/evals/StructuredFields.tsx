@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 
 // A field-level editor for an eval case — no raw JSON. A case is a nested object whose
-// shape varies by family (a judge case has evidence{key_a, definition_a, …}; a live-scoring
+// shape varies by family (a judge case has evidence{key_a, definition_a, …}; a scoring
 // case has applicant{facts, essays}, dimension{…}, expect{…}). Rather than a rigid per-family
 // form, this renders GENERICALLY and usefully:
 //   - a scalar (string/number/bool) → a labeled typed input (textarea for long text)

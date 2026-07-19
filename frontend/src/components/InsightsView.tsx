@@ -15,7 +15,7 @@ import { MetricsPanel } from "./MetricsPanel";
 // split into two top-level tabs by PURPOSE (App.tsx passes `family`):
 //   OBSERVABILITY — what the AI did + cost: the per-run pass traces (Pattern discovery,
 //     Decomposition, Matching, Consolidation) plus cross-run Cost + Trends.
-//   EVALS — is the AI any good: Invariants (whole-rank), the four live per-pass evals, Judge.
+//   EVALS — is the AI any good: Invariants (whole-rank), the four per-pass evals, Judge.
 // Subtabs run in PIPELINE ORDER, start→end (discovery → decompose → match → score →
 // consolidate), so both tabs read left-to-right along the process. Eval subtabs drop the
 // "Live" prefix — the tab is already "Evals", so the pass name alone reads clean.
@@ -24,7 +24,7 @@ export type InsightsFamily = "obs" | "eval";
 
 type Tab =
   | "discovery" | "decompose" | "match" | "consolidate" | "cost" | "metrics"
-  | "invariants" | "live_scoring" | "live_consolidation" | "live_matching" | "live_decomposition" | "live_screening" | "judge";
+  | "invariants" | "scoring" | "consolidation" | "matching" | "decomposition" | "screening" | "judge";
 
 export function InsightsView(props: { family: InsightsFamily; run: CurrentRunResponse | null }): ReactNode {
   const { family } = props;
@@ -55,11 +55,11 @@ export function InsightsView(props: { family: InsightsFamily; run: CurrentRunRes
   // cross-cutting evals that aren't a single pass — Invariants (whole-rank fixture) and Judge
   // (cross-pass label audit).
   const evalTabs: { id: Tab; label: string; group: string }[] = [
-    { id: "live_screening", label: "Screening", group: "pass" },
-    { id: "live_decomposition", label: "Decomposition", group: "pass" },
-    { id: "live_matching", label: "Matching", group: "pass" },
-    { id: "live_scoring", label: "Scoring", group: "pass" },
-    { id: "live_consolidation", label: "Consolidation", group: "pass" },
+    { id: "screening", label: "Screening", group: "pass" },
+    { id: "decomposition", label: "Decomposition", group: "pass" },
+    { id: "matching", label: "Matching", group: "pass" },
+    { id: "scoring", label: "Scoring", group: "pass" },
+    { id: "consolidation", label: "Consolidation", group: "pass" },
     { id: "invariants", label: "Invariants", group: "cross" },
     { id: "judge", label: "Judge", group: "cross" },
   ];
@@ -112,63 +112,63 @@ export function InsightsView(props: { family: InsightsFamily; run: CurrentRunRes
           <MetricsPanel />
         ) : activeTab === "invariants" ? (
           <InvariantsEval />
-        ) : activeTab === "live_scoring" ? (
+        ) : activeTab === "scoring" ? (
           <RunnableEval
-            caseEvalKey="live_scoring"
-            runKeys={["live_scoring", "live_scoring_stability"]}
+            caseEvalKey="scoring"
+            runKeys={["scoring", "scoring_stability"]}
             description="Run hand-authored synthetic applicants through the REAL scoring prompt + model, then grade each with deterministic assertions and the rubric judge. Stability runs each case K times to see if its pass/fail wanders (the score crossing the assertion boundary). Tests the actual prompt, not a recorded artifact."
             modes={
               [
-                { evalKey: "live_scoring", label: "Run live scoring", rowLabel: "Run", calls: calls("live_scoring") },
-                { evalKey: "live_scoring_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("live_scoring_stability") },
+                { evalKey: "scoring", label: "Run scoring", rowLabel: "Run", calls: calls("scoring") },
+                { evalKey: "scoring_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("scoring_stability") },
               ] as RunMode[]
             }
           />
-        ) : activeTab === "live_consolidation" ? (
+        ) : activeTab === "consolidation" ? (
           <RunnableEval
-            caseEvalKey="live_consolidation"
-            runKeys={["live_consolidation", "live_consolidation_stability"]}
+            caseEvalKey="consolidation"
+            runKeys={["consolidation", "consolidation_stability"]}
             description="Run golden dimension pairs through the REAL consolidation prompt + model, then grade merge/keep against the label by exact match. Stability runs each pair K times to see if the verdict flips. Tests the actual prompt, not a recorded artifact. Contested pairs are shown but not scored."
             modes={
               [
-                { evalKey: "live_consolidation", label: "Run live consolidation", rowLabel: "Run", calls: calls("live_consolidation") },
-                { evalKey: "live_consolidation_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("live_consolidation_stability") },
+                { evalKey: "consolidation", label: "Run consolidation", rowLabel: "Run", calls: calls("consolidation") },
+                { evalKey: "consolidation_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("consolidation_stability") },
               ] as RunMode[]
             }
           />
-        ) : activeTab === "live_matching" ? (
+        ) : activeTab === "matching" ? (
           <RunnableEval
-            caseEvalKey="live_matching"
-            runKeys={["live_matching", "live_matching_stability"]}
+            caseEvalKey="matching"
+            runKeys={["matching", "matching_stability"]}
             description="Run golden prior/new dimension pairs through the REAL identity-match prompt + model, then grade matches/mismatches against the label by exact match. Stability runs each pair K times to see if the verdict flips. Tests the actual prompt, not a recorded artifact. A wrong match corrupts a carried-forward score, so the constructed mismatch pair guards that direction."
             modes={
               [
-                { evalKey: "live_matching", label: "Run live matching", rowLabel: "Run", calls: calls("live_matching") },
-                { evalKey: "live_matching_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("live_matching_stability") },
+                { evalKey: "matching", label: "Run matching", rowLabel: "Run", calls: calls("matching") },
+                { evalKey: "matching_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("matching_stability") },
               ] as RunMode[]
             }
           />
-        ) : activeTab === "live_decomposition" ? (
+        ) : activeTab === "decomposition" ? (
           <RunnableEval
-            caseEvalKey="live_decomposition"
-            runKeys={["live_decomposition", "live_decomposition_stability"]}
+            caseEvalKey="decomposition"
+            runKeys={["decomposition", "decomposition_stability"]}
             description="Run golden discovery-report sets through the REAL decomposition prompt + model; the merge/keep verdict is derived from the settled set (all carvings folded into one axis = merge; kept across ≥2 = keep), graded against the label by exact match. Stability runs each set K times to see if the fold flips. Guards both over-fold (collapsing distinct axes) and under-fold (weighting one concept N times)."
             modes={
               [
-                { evalKey: "live_decomposition", label: "Run live decomposition", rowLabel: "Run", calls: calls("live_decomposition") },
-                { evalKey: "live_decomposition_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("live_decomposition_stability") },
+                { evalKey: "decomposition", label: "Run decomposition", rowLabel: "Run", calls: calls("decomposition") },
+                { evalKey: "decomposition_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("decomposition_stability") },
               ] as RunMode[]
             }
           />
-        ) : activeTab === "live_screening" ? (
+        ) : activeTab === "screening" ? (
           <RunnableEval
-            caseEvalKey="live_screening"
-            runKeys={["live_screening", "live_screening_stability"]}
+            caseEvalKey="screening"
+            runKeys={["screening", "screening_stability"]}
             description="Run golden synthetic applicants through the REAL screening prompt + model, then grade the produced flags per-category: expected flags must fire, over-reach guards must stay absent (flagging a benign thing is the costly error since flags gate eligibility), and a clean applicant must raise none. Stability runs each applicant K times to see if the flag set holds."
             modes={
               [
-                { evalKey: "live_screening", label: "Run live screening", rowLabel: "Run", calls: calls("live_screening") },
-                { evalKey: "live_screening_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("live_screening_stability") },
+                { evalKey: "screening", label: "Run screening", rowLabel: "Run", calls: calls("screening") },
+                { evalKey: "screening_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("screening_stability") },
               ] as RunMode[]
             }
           />

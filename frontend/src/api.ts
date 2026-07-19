@@ -244,31 +244,31 @@ export function saveEvalCase(evalKey: string, evalCase: unknown): Promise<Respon
   });
 }
 
-// Start a streaming eval run (live_scoring | judge | stability). Returns the raw
+// Start a streaming eval run (scoring | judge | stability). Returns the raw
 // Response so the caller reads its NDJSON body via streamNdjson. Spends model $.
 // `caseKey` runs just that one case (per-row run); `k` sets stability repeats.
 export function runEval(
   key:
-    | "live_scoring" | "live_scoring_stability"
-    | "live_consolidation" | "live_consolidation_stability"
-    | "live_matching" | "live_matching_stability"
-    | "live_decomposition" | "live_decomposition_stability"
-    | "live_screening" | "live_screening_stability"
+    | "scoring" | "scoring_stability"
+    | "consolidation" | "consolidation_stability"
+    | "matching" | "matching_stability"
+    | "decomposition" | "decomposition_stability"
+    | "screening" | "screening_stability"
     | "judge" | "stability",
   opts?: { k?: number; caseKey?: string },
 ): Promise<Response> {
   // Live evals use a hyphenated path; judge/stability use the bare key.
   const path =
-    key === "live_scoring" ? "/evals/live-scoring"
-    : key === "live_scoring_stability" ? "/evals/live-scoring-stability"
-    : key === "live_consolidation" ? "/evals/live-consolidation"
-    : key === "live_consolidation_stability" ? "/evals/live-consolidation-stability"
-    : key === "live_matching" ? "/evals/live-matching"
-    : key === "live_matching_stability" ? "/evals/live-matching-stability"
-    : key === "live_decomposition" ? "/evals/live-decomposition"
-    : key === "live_decomposition_stability" ? "/evals/live-decomposition-stability"
-    : key === "live_screening" ? "/evals/live-screening"
-    : key === "live_screening_stability" ? "/evals/live-screening-stability"
+    key === "scoring" ? "/evals/scoring"
+    : key === "scoring_stability" ? "/evals/scoring-stability"
+    : key === "consolidation" ? "/evals/consolidation"
+    : key === "consolidation_stability" ? "/evals/consolidation-stability"
+    : key === "matching" ? "/evals/matching"
+    : key === "matching_stability" ? "/evals/matching-stability"
+    : key === "decomposition" ? "/evals/decomposition"
+    : key === "decomposition_stability" ? "/evals/decomposition-stability"
+    : key === "screening" ? "/evals/screening"
+    : key === "screening_stability" ? "/evals/screening-stability"
     : `/evals/${key}`;
   const kMode = key.endsWith("_stability");
   const params = new URLSearchParams();
