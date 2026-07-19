@@ -6,18 +6,20 @@ not an eyeballed "5/5". A judge can ace easy cases and still miss the failures y
 about — so overall agreement alone is not enough; failure-detection recall is the number
 that matters (the field's "85% agreement can still be unusable" warning).
 
-This scores ONE judge pass (one call per case) against the committed human labels:
-  - overall agreement (share of decisive cases the judge matched)
+This scores ONE blind label-audit pass (one reproduce call per case — see ``judge.py``)
+against the committed human labels:
+  - overall agreement (share of decisive cases whose blind judge output satisfied the label)
   - Cohen's kappa (chance-corrected — raw agreement is inflated when one label dominates)
-  - per-category agreement (so a strong "supported" score can't hide weak "unsupported")
-  - failure-detection recall/precision (of the cases whose human label flags a PROBLEM —
-    unsupported / mismatches / flag_unsupported — how many did the judge catch, and how
-    many of its problem-calls were right?)
+  - per-pass agreement (so a strong pass can't hide a weak one)
+  - failure-detection recall/precision (over cases whose human label flags a PROBLEM — e.g.
+    matching ``mismatches``, a screening defect — how many did the judge catch, and how many
+    of its problem-calls were right?)
 
-CONTESTED cases are excluded from every metric: their label is a human *leaning*, not
-ground truth, so scoring the judge against it would penalise a defensible call (the field:
-don't force binary on genuinely indeterminate cases). They're counted and reported
-separately. This module does no model calls — it takes JudgeResults the caller produced.
+Each judged case yields a uniform outcome (agrees / human_is_problem / judge_is_problem +
+compact label tokens for κ), so the SAME metrics work across all five passes, including
+scoring's in-band/out-band. CONTESTED cases are excluded from every metric: their label is a
+human *leaning*, not ground truth. This module does no model calls — it takes JudgeResults the
+caller produced.
 """
 
 from __future__ import annotations
@@ -25,20 +27,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 
-from app.ai.schemas import JudgeVerdict
 from app.evals.judge import JudgeResult
-
-# The verdict in each two-way family that means "a problem was caught" — the failure the
-# eval exists to detect. Agreement on these is what "does the judge catch what matters"
-# measures; the other side (merge/supported/matches/flag_supported) is the clean case.
-_PROBLEM_VERDICTS: frozenset[JudgeVerdict] = frozenset({
-    JudgeVerdict.UNSUPPORTED,       # scoring: score not supported by evidence
-    JudgeVerdict.MISMATCHES,        # matching: a wrong match
-    JudgeVerdict.FLAG_UNSUPPORTED,  # screening: an over-reaching flag
-    # merge/keep has no single "problem" side (either can be the defect depending on the
-    # pair), so consolidation/decompose cases contribute to overall agreement + kappa but
-    # NOT to the failure-recall metric — noted in the report so it isn't a silent omission.
-})
 
 
 @dataclass(frozen=True)
@@ -48,9 +37,9 @@ class AgreementReport:
     n_contested: int       # excluded from scoring, reported separately
     n_agree: int
     per_category: dict[str, tuple[int, int]]  # pass_name -> (agree, scored)
-    # Failure detection over cases whose HUMAN label is a problem verdict:
+    # Failure detection over cases whose HUMAN label is a problem:
     failure_total: int     # human-labelled problems
-    failure_caught: int    # ...the judge also called a problem (true positives)
+    failure_caught: int    # ...the judge also flagged a problem (true positives)
     judge_problem_calls: int  # how many problems the judge called on scored cases (TP+FP)
 
     @property
@@ -59,8 +48,6 @@ class AgreementReport:
 
     @property
     def kappa(self) -> float | None:
-        """Cohen's kappa over the two-way agree/disagree isn't meaningful; instead compute
-        it over the verdict labels. Returns None when undefined (single class)."""
         return self._kappa
 
     _kappa: float | None = None
@@ -77,16 +64,17 @@ class AgreementReport:
         return self.failure_caught / self.judge_problem_calls if self.judge_problem_calls else None
 
 
-def _cohens_kappa(pairs: list[tuple[JudgeVerdict, JudgeVerdict]]) -> float | None:
-    """Chance-corrected agreement over (human, judge) verdict pairs. None if degenerate
-    (fewer than 2 pairs, or only one label present so expected agreement is 1.0)."""
+def _cohens_kappa(pairs: list[tuple[str, str]]) -> float | None:
+    """Chance-corrected agreement over (human_label, judge_label) token pairs. None if
+    degenerate (fewer than 2 pairs, or only one label present so expected agreement is 1.0).
+    Labels are the compact display tokens each pass emits (verdict / band / flag-set)."""
     n = len(pairs)
     if n < 2:
         return None
     observed = sum(1 for h, j in pairs if h == j) / n
     labels = {v for pair in pairs for v in pair}
     if len(labels) < 2:
-        return None  # only one verdict in play — kappa undefined/uninformative
+        return None  # only one label in play — kappa undefined/uninformative
     h_freq = Counter(h for h, _ in pairs)
     j_freq = Counter(j for _, j in pairs)
     expected = sum((h_freq[v] / n) * (j_freq[v] / n) for v in labels)
@@ -98,28 +86,31 @@ def _cohens_kappa(pairs: list[tuple[JudgeVerdict, JudgeVerdict]]) -> float | Non
 def score_agreement(results: list[JudgeResult]) -> AgreementReport:
     """Compute judge-vs-human agreement over a set of single-pass JudgeResults.
 
-    Excludes contested cases from all scored metrics (their label is a leaning). Uses each
-    case's ``expected`` as the human label and the judge's returned verdict as the call."""
+    Excludes contested cases from all scored metrics (their label is a leaning). Each result's
+    ``reproduced`` carries the uniform outcome: ``agrees`` (blind output satisfied the human
+    label), ``human_is_problem``/``judge_is_problem`` (for failure detection), and the compact
+    label tokens (for κ)."""
     scored = [r for r in results if not r.case.contested]
     contested = [r for r in results if r.case.contested]
 
-    pairs = [(r.case.expected, r.report.verdict) for r in scored]
-    n_agree = sum(1 for h, j in pairs if h == j)
+    n_agree = sum(1 for r in scored if r.reproduced.agrees)
 
     per_category: dict[str, list[int]] = {}
     for r in scored:
         cat = per_category.setdefault(r.case.pass_name, [0, 0])
         cat[1] += 1
-        if r.case.expected == r.report.verdict:
+        if r.reproduced.agrees:
             cat[0] += 1
 
     # Failure detection: human-labelled problems vs. what the judge flagged as a problem.
-    failure_total = sum(1 for r in scored if r.case.expected in _PROBLEM_VERDICTS)
+    failure_total = sum(1 for r in scored if r.reproduced.human_is_problem)
     failure_caught = sum(
-        1 for r in scored
-        if r.case.expected in _PROBLEM_VERDICTS and r.report.verdict in _PROBLEM_VERDICTS
+        1 for r in scored if r.reproduced.human_is_problem and r.reproduced.judge_is_problem
     )
-    judge_problem_calls = sum(1 for r in scored if r.report.verdict in _PROBLEM_VERDICTS)
+    judge_problem_calls = sum(1 for r in scored if r.reproduced.judge_is_problem)
+
+    # κ over the compact label tokens the judge and human carry (verdict / band / flag-set).
+    pairs = [(r.reproduced.human_label, r.reproduced.judge_label) for r in scored]
 
     report = AgreementReport(
         n_total=len(results),

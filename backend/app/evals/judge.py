@@ -1,9 +1,24 @@
-"""Manual, non-gating LLM judgements for semantic AI-eval cases.
+"""The Judge tab: a periodic, blind LABEL AUDIT over every pass's golden cases.
 
-The deterministic evals catch properties a program can prove. This module is
-the deliberately separate manual audit for questions that need judgement. It
-only reads PII-safe criterion/audit text and never runs as part of pytest or a
-Rank; it runs from the Evals tab (POST /evals/judge), the explicit spend boundary.
+The live evals are the routine regression net — each runs its pass's REAL production prompt on
+the golden inputs and grades the fresh output DETERMINISTICALLY against the human label. They
+answer "did production still behave?". They cannot answer "is the human label itself sound?" —
+for that you need an INDEPENDENT opinion.
+
+That is this module. For every golden case (across all five ``<pass>_golden.json`` files) it
+asks a second, independent model to REPRODUCE that pass's output — from a plain-language,
+editable brief (the file's ``judge_background``, "what this pass does") + the case's ``given``,
+BLIND to the human label — then grades the blind output with the SAME grader the live eval
+uses. Two reads come out of it:
+  - **Label audit.** A case where the independent judge consistently disagrees with the human
+    ``expected`` is a signal the LABEL may be wrong (not the judge). That is the reframed Judge
+    tab's value.
+  - **Calibration.** Aggregate judge-vs-human agreement (Cohen's κ, failure-recall — see
+    ``agreement.py``) says whether the judge is itself trustworthy before you lean on it.
+
+It owns NO case files: it reads every pass's golden file. Blindness (never showing the judge
+``metadata.expected``) is the load-bearing rule — a judge shown the answer rubber-stamps it.
+Costs real model calls, so it runs from the Evals tab (POST /evals/judge), never in CI.
 """
 
 from __future__ import annotations
@@ -11,236 +26,184 @@ from __future__ import annotations
 import json
 from collections import Counter
 from dataclasses import dataclass
-from pathlib import Path
 
-from app.ai.analysis import derive_prompt_version
-from app.ai.pricing import cost_usd
-from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
-from app.ai.provider import AIProvider
-from app.ai.schemas import JudgeReport, JudgeVerdict
 from app.evals import stability
-from app.evals.paths import JUDGE_CASES_PATH
+from app.evals.paths import (
+    CONSOLIDATION_GOLDEN_PATH,
+    DECOMPOSITION_GOLDEN_PATH,
+    GOLDEN_PATH,
+    MATCHING_GOLDEN_PATH,
+    SCREENING_GOLDEN_PATH,
+)
+from app.evals.reproduce import Reproduced
 
 DEFAULT_MODEL = "us.anthropic.claude-sonnet-4-6"
 
-# The committed set of human-labelled judge cases (the versioned dataset lives in
-# backend/eval-data/ — see app/evals/paths.py). Each is an EXACT slice of a real Rank
-# (PII-safe criterion/audit text) plus its label, the rationale for that label, and the
-# provenance (models + prompt versions) of the run it came from — so a verdict is always
-# attributable to the exact prompt+model that produced the output under review. Grow it by
-# hand when a run surfaces a judge-worthy decision: copy the exact criterion/audit text
-# and the run's provenance out of a recorded fixture into a new entry with a human label +
-# rationale. Never hand-fabricate an "exact" case — a lost run stays lost.
-CASES_PATH = JUDGE_CASES_PATH
+# The judge has no single static prompt to hash: it reproduces each pass's output from that
+# pass's editable ``judge_background`` (which lives per-golden-file and is intentionally
+# unversioned for now). So a judge run is stamped with this fixed identifier rather than a
+# derived prompt version — it attributes the run to the blind-audit method, not to a prompt.
+PROMPT_VERSION = "blind-audit"
 
-SYSTEM_PROMPT = """You are a careful evaluator of AI-generated housing co-op ranking criteria. You judge the supplied criterion text and audit record only; you do not rank applicants or infer missing facts."""
-
-_INSTRUCTIONS = f"""\
-## Task
-Assess the supplied eval case and return the one verdict requested by its task.
-
-## How to judge
-- Apply the stated test narrowly. Do not reward plausible prose when the record contradicts it.
-- For MERGE vs KEEP, the two dimensions were flagged BECAUSE their per-applicant scores already move together closely — that near-identical scoring is a given, not something you need re-shown. Judge the two DEFINITIONS: would they score the same applicant the same way, for the same reason? KEEP apart only when you can name a concrete, plausible applicant who lands genuinely HIGH on one and LOW on the other for a real reason; a faint or hypothetical difference, or an isolated edge case against an otherwise shared core, is not enough — when it is close, they are one axis.
-- For MATCHES vs MISMATCHES, compare the recorded routing against the decision text itself. A source routed to an axis the decision explicitly assigns elsewhere is a mismatch.
-- For SUPPORTED vs UNSUPPORTED, judge ONLY whether the applicant's cited evidence justifies the given score against the dimension's poles. SUPPORTED = the quoted evidence genuinely warrants a score at that level. UNSUPPORTED = it does not — the evidence is too thin for a high score (an overclaim), contradicts a low score (an underclaim), is about a different concept than the dimension, or is silence/absence scored as if it were presence. Judge the cited evidence as given; do not assume unstated facts, and do not penalise a low score that correctly reflects thin evidence.
-- For FLAG_SUPPORTED vs FLAG_UNSUPPORTED, judge whether a screening flag (an informational integrity concern) is warranted by its cited evidence and the stated policy, if any. FLAG_SUPPORTED = the evidence genuinely substantiates the concern the flag raises. FLAG_UNSUPPORTED = it does not — the evidence doesn't show what the flag claims, the concern is a misread (e.g. flagging a pet the policy does not actually restrict), or the flag over-reaches beyond what the quote states. Judge only the cited evidence and any policy given in the case; do not assume unstated facts.
-- State the evidence that decided the verdict in one concise sentence.
-
-## Output
-Return `verdict` and `reason`.
-
-## Guardrails
-- {INJECTION_GUARD_NOTE}"""
-
-PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
+# Each pass's golden file + the reproduce adapter that re-runs that pass blind (see
+# app/evals/reproduce.py). Kept as lazy imports inside the dispatcher so judge.py has no
+# import cycle with the live modules (they don't import judge). One entry per pass.
+_PASS_FILES = {
+    "scoring": GOLDEN_PATH,
+    "consolidation": CONSOLIDATION_GOLDEN_PATH,
+    "matching": MATCHING_GOLDEN_PATH,
+    "decomposition": DECOMPOSITION_GOLDEN_PATH,
+    "screening": SCREENING_GOLDEN_PATH,
+}
 
 
 @dataclass(frozen=True)
 class JudgeCase:
-    """A human-labelled semantic check with PII-safe criterion/audit evidence.
+    """One golden case seen as an audit target: which pass it exercises, the exact ``given`` the
+    pass receives, the human ``expected`` label, and the pass's editable ``background`` brief.
 
-    ``label_rationale`` records WHY the human assigned ``expected`` — so a future reader
-    (or a judge disagreement) can weigh the label instead of trusting a bare verdict.
-    ``provenance`` is the models + prompt versions of the run this evidence came from
-    (empty for a case whose source run wasn't retained). ``source`` names the origin run/
-    fixture for traceability.
-
-    ``contested`` marks a case where BOTH verdicts are defensible from the evidence the
-    model is given — the decision turns on information neither production nor the judge
-    can see (e.g. how MATERIAL a real-in-principle divergence is for THIS pool, which only
-    the withheld score distribution settles). For a contested case ``expected`` is the
-    human's *leaning*, not an answer key: agreement is neither pass nor fail, and a
-    disagreement is expected, healthy review material — never a signal to tune the judge.
-    A steady judge should be *consistent* on a contested case; instability across repeated
-    runs is the escalation-ladder signal, not the direction of any single verdict."""
+    ``contested`` marks a case where BOTH labels are defensible from the given alone — the call
+    turns on information neither production nor the judge can see. For a contested case the label
+    is a human *leaning*: agreement is neither pass nor fail, disagreement is expected review
+    material (never a signal to tune anything), and consistency across repeated runs is the real
+    signal. ``label_rationale`` records WHY the human chose ``expected`` — for a reader weighing
+    a judge disagreement — but is HARNESS-ONLY: it is never shown to the judge (it often states
+    the answer), preserving the blind-audit rule.
+    """
 
     key: str
-    title: str
-    task: str
-    evidence: dict[str, object]
-    expected: JudgeVerdict
-    label_rationale: str = ""
-    provenance: dict[str, object] = None  # type: ignore[assignment]
-    source: str = ""
+    pass_name: str
+    given: dict
+    expected: object  # str verdict (categorical) | dict band (scoring) | dict fires/absent (screening)
+    background: str
     contested: bool = False
-    # Which AI step produced the output under review ("consolidation", "decomposition",
-    # …). The harness is step-agnostic — the same MERGE/KEEP verdict serves consolidation's
-    # pairwise post-score merges and decomposition's N-way pre-score folds — but the label
-    # lets the report group by step and a reader see coverage across the pipeline.
-    pass_name: str = "consolidation"
-
-    def __post_init__(self) -> None:
-        if self.provenance is None:
-            object.__setattr__(self, "provenance", {})
+    label_rationale: str = ""
 
 
-def load_cases(path: Path = CASES_PATH) -> tuple[JudgeCase, ...]:
-    """The committed human-labelled cases. Exact slices of real Ranks; see ``CASES_PATH``.
+def load_cases() -> tuple[JudgeCase, ...]:
+    """Every golden case across all five passes, as audit targets. Each file carries a
+    top-level ``judge_background`` (what the pass does, editable in the UI) attached to each of
+    its cases; ``metadata``/``given`` are read straight from the uniform envelope
+    (docs/eval-case-schema.md). Order: the pipeline order of _PASS_FILES."""
+    cases: list[JudgeCase] = []
+    for pass_name, path in _PASS_FILES.items():
+        data = json.loads(path.read_text())
+        background = data.get("judge_background", "")
+        for c in data["cases"]:
+            meta = c["metadata"]
+            cases.append(
+                JudgeCase(
+                    key=c["key"],
+                    pass_name=pass_name,
+                    given=c["given"],
+                    expected=meta["expected"],
+                    background=background,
+                    contested=meta.get("contested", False),
+                    label_rationale=meta.get("label_rationale", ""),
+                )
+            )
+    return tuple(cases)
 
-    Fields are grouped on disk into by-consumer blocks (see the fixture's structure):
-    ``evidence`` and ``prompt`` are what the judge SEES; ``metadata`` (title, label, expected,
-    provenance, …) is harness-only and never enters the prompt. We flatten them into the flat
-    JudgeCase the runner uses — the grouping documents who sees what, the runner is agnostic."""
-    data = json.loads(path.read_text())
-    return tuple(
-        JudgeCase(
-            key=c["key"],
-            title=(m := c["metadata"])["title"],
-            task=c["prompt"]["question"],
-            evidence=c["evidence"],
-            expected=JudgeVerdict(m["expected"]),
-            label_rationale=m.get("label_rationale", ""),
-            provenance=m.get("provenance") or {},
-            # `source` (axis-level cases) and `evidence_source` (score-defensibility cases,
-            # which stamp the synthetic pool/run the evidence quote came from) are the same
-            # traceability slot under two names — a case carries whichever fits its family.
-            source=m.get("source") or m.get("evidence_source", ""),
-            contested=m.get("contested", False),
-            pass_name=m.get("pass", "consolidation"),
-        )
-        for c in data["cases"]
+
+def _reproduce(provider, case: JudgeCase, *, model_id: str) -> Reproduced:
+    """Dispatch to the pass's blind reproduce adapter. Lazy imports avoid an import cycle
+    (the live modules don't import judge; judge imports them here, at call time)."""
+    if case.pass_name == "scoring":
+        from app.evals.live_scoring import judge_reproduce
+    elif case.pass_name == "consolidation":
+        from app.evals.live_consolidate import judge_reproduce
+    elif case.pass_name == "matching":
+        from app.evals.live_matching import judge_reproduce
+    elif case.pass_name == "decomposition":
+        from app.evals.live_decompose import judge_reproduce
+    elif case.pass_name == "screening":
+        from app.evals.live_screening import judge_reproduce
+    else:  # pragma: no cover - _PASS_FILES is the closed set
+        raise ValueError(f"no reproduce adapter for pass {case.pass_name!r}")
+    return judge_reproduce(
+        provider, given=case.given, expected=case.expected, background=case.background, model=model_id
     )
 
 
 @dataclass(frozen=True)
 class JudgeResult:
     case: JudgeCase
-    report: JudgeReport
+    reproduced: Reproduced
     model_id: str
-    input_tokens: int
-    output_tokens: int
-    cost_usd: float
 
     @property
     def agrees_with_label(self) -> bool:
-        return self.report.verdict == self.case.expected
+        return self.reproduced.agrees
+
+    @property
+    def cost_usd(self) -> float:
+        return self.reproduced.cost_usd
 
     @property
     def marker(self) -> str:
-        """How to read this result. A contested case can't pass/fail on verdict direction
-        (both are defensible) — it's always review material, so it never shows ``[ok]``."""
+        """How to read this result. A contested case can't pass/fail on direction (both labels
+        defensible) — it's always review material, so it never shows ``[ok]``."""
         if self.case.contested:
             return "[contested]"
-        return "[ok]" if self.agrees_with_label else "[review]"
+        return "[ok]" if self.reproduced.agrees else "[review]"
 
 
-def build_prompt(case: JudgeCase) -> str:
-    payload = {"task": case.task, "evidence": case.evidence}
-    return f"{_INSTRUCTIONS}\n\n<eval_case>\n{json.dumps(payload, indent=2)}\n</eval_case>"
-
-
-def judge_case(provider: AIProvider, case: JudgeCase, *, model_id: str = DEFAULT_MODEL) -> JudgeResult:
-    """Run exactly one judge call for one manually selected case.
-
-    No ``on_delta``: a judge call is a tight structured_output (the model just fills the
-    verdict tool), so it emits ~no free-form reasoning to stream. The Evals tab instead
-    EMULATES the thinking box by narrating the returned verdict+reason (see the runners),
-    which is deterministic and works under the mock provider too."""
-    result = provider.structured_output(
-        model_id=model_id,
-        schema=JudgeReport,
-        prompt=build_prompt(case),
-        system_prompt=SYSTEM_PROMPT,
-    )
-    return JudgeResult(
-        case=case,
-        report=result.output,
-        model_id=result.model_id,
-        input_tokens=result.usage.input_tokens,
-        output_tokens=result.usage.output_tokens,
-        cost_usd=cost_usd(result.model_id, result.usage),
-    )
+def judge_case(provider, case: JudgeCase, *, model_id: str = DEFAULT_MODEL) -> JudgeResult:
+    """Reproduce one case's pass output blind and grade it against the human label."""
+    return JudgeResult(case=case, reproduced=_reproduce(provider, case, model_id=model_id), model_id=model_id)
 
 
 @dataclass(frozen=True)
 class StabilityReport:
-    """The outcome of judging one case K times on FIXED inputs — the escalation-ladder
-    measurement. The question is not "did the judge agree with the label?" (one call
-    answers that) but "does the SAME call, on the SAME evidence, return the SAME verdict
-    every time?" A single confirm call that flip-flops run-to-run on identical inputs is
-    the noise that justifies spending up on multi-judge voting; a steady one does not.
-
-    Keeps the judge's typed ``verdicts`` + cost; the modal/share/flip read-outs delegate to
-    the shared stability core (``app.evals.stability``) so the counting lives in one place."""
+    """The outcome of auditing one case K times on FIXED inputs. The question is not "did the
+    judge agree with the label?" (one call answers that) but "does the SAME blind audit, on the
+    SAME given, return the SAME verdict every time?" A judge that flip-flops run-to-run on
+    identical input is the noise that would make its label-audit unreliable; a steady one is
+    trustworthy. Counting/marker delegate to the shared stability core."""
 
     case: JudgeCase
-    verdicts: list[JudgeVerdict]
+    labels: list[str]  # the judge's reproduced label token per run
     total_cost_usd: float
 
     @property
-    def counts(self) -> dict[JudgeVerdict, int]:
-        return dict(Counter(self.verdicts))
+    def counts(self) -> dict[str, int]:
+        return dict(Counter(self.labels))
 
     @property
-    def majority(self) -> JudgeVerdict:
-        return stability.majority(self.verdicts)
+    def majority(self) -> str:
+        return stability.majority(self.labels)
 
     @property
     def agreement(self) -> float:
-        """Modal verdict's share of the runs (1.0 = every run agreed)."""
-        return stability.agreement(self.verdicts)
+        return stability.agreement(self.labels)
 
     @property
     def flipped(self) -> bool:
-        """True if the judge did not return the same verdict every time."""
-        return stability.flipped(self.verdicts)
+        return stability.flipped(self.labels)
 
 
-def stability_run(
-    provider: AIProvider, case: JudgeCase, *, k: int = 5, model_id: str = DEFAULT_MODEL
-) -> StabilityReport:
-    """Judge ``case`` ``k`` times on identical inputs and report verdict stability.
-
-    Every call sees the exact same prompt (the case's evidence is fixed), so any variation
-    in the returned verdict is the model's own run-to-run noise — the thing the escalation
-    ladder needs measured, not a difference in what the model was shown."""
+def stability_run(provider, case: JudgeCase, *, k: int = 5, model_id: str = DEFAULT_MODEL) -> StabilityReport:
+    """Audit ``case`` ``k`` times on identical input and report verdict stability. Every call
+    sees the exact same brief + given, so any variation is the judge model's own run-to-run
+    noise — the thing stability needs measured."""
     results = [judge_case(provider, case, model_id=model_id) for _ in range(k)]
     return StabilityReport(
         case=case,
-        verdicts=[r.report.verdict for r in results],
+        labels=[r.reproduced.judge_label for r in results],
         total_cost_usd=sum(r.cost_usd for r in results),
     )
 
 
 def format_stability(reports: list[StabilityReport]) -> str:
-    lines = ["LLM judge stability — K runs per case on fixed inputs", f"Prompt: {PROMPT_VERSION}", ""]
+    lines = ["Blind label-audit stability — K runs per case on fixed inputs", ""]
     for r in reports:
-        k = len(r.verdicts)
-        tally = ", ".join(f"{v.value} x{n}" for v, n in Counter(r.verdicts).most_common())
-        marker = stability.marker(r.verdicts, contested=r.case.contested)
-        # Always show the seed for comparison — "leaning" for a contested case (both
-        # verdicts defensible), "label" otherwise. Flag when the majority disagrees with
-        # it: for a non-contested case a mismatch is a real review signal; for a contested
-        # case it's expected (the seed is only a lean), but the reader should still SEE it.
-        seed_word = "leaning" if r.case.contested else "label"
-        disagrees = r.majority != r.case.expected
-        note = "  <- majority differs from seed" if disagrees else ""
+        k = len(r.labels)
+        tally = ", ".join(f"{v} x{n}" for v, n in Counter(r.labels).most_common())
+        marker = stability.marker(r.labels, contested=r.case.contested)
         lines.extend(
             (
-                f"{marker} [{r.case.pass_name}] {r.case.title}",
+                f"{marker} [{r.case.pass_name}] {r.case.key}",
                 f"  {r.agreement:.0%} agreement over {k} runs — {tally}",
-                f"  majority: {r.majority.value}; {seed_word}: {r.case.expected.value}{note}",
                 f"  total ${r.total_cost_usd:.4f}",
                 "  " + "-" * 60,
             )
@@ -249,21 +212,16 @@ def format_stability(reports: list[StabilityReport]) -> str:
 
 
 def format_report(results: list[JudgeResult]) -> str:
-    lines = ["LLM judge evals — manual, non-gating", f"Prompt: {PROMPT_VERSION}", ""]
-    for result in results:
-        expected_label = "leaning" if result.case.contested else "expected"
+    lines = ["Blind label audit — judge reproduces each pass, compared to the human label", ""]
+    for r in results:
+        rp = r.reproduced
         lines.extend(
             (
-                f"{result.marker} [{result.case.pass_name}] {result.case.title}",
-                f"  {expected_label} {result.case.expected.value}; judge returned {result.report.verdict.value}",
-                f"  {result.report.reason}",
-                f"  {result.model_id} / {result.input_tokens} in -> {result.output_tokens} out / ${result.cost_usd:.4f}",
-                "  " + "-" * 60,  # separator so each call is easy to tell apart
+                f"{r.marker} [{r.case.pass_name}] {r.case.key}",
+                f"  judge: {rp.judge_label}; label: {rp.human_label}",
+                f"  {rp.detail}",
+                f"  {r.model_id} / ${rp.cost_usd:.4f}",
+                "  " + "-" * 60,
             )
         )
     return "\n".join(lines)
-
-
-# NB: no CLI entry point. The judge runs from the Evals tab (POST /evals/judge, which
-# calls judge_case/stability_run/load_cases directly). format_report/format_stability are
-# retained as tested formatting helpers documenting the marker semantics.

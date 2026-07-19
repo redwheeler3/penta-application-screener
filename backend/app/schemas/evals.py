@@ -243,12 +243,11 @@ class LiveScreeningStabilityResponse(ResponseModel):
 class JudgeCaseOut(ResponseModel):
     key: str
     pass_name: str
-    title: str
     marker: str  # "[ok]" | "[review]" | "[contested]"
-    expected: str
-    verdict: str
+    human_label: str  # the human expected label (compact token)
+    judge_label: str  # what the blind judge independently produced
     contested: bool
-    reason: str
+    detail: str  # the judge's reproduced output + reasoning
 
 
 class AgreementOut(ResponseModel):
@@ -277,13 +276,12 @@ class JudgeRunResponse(ResponseModel):
 class StabilityCaseOut(ResponseModel):
     key: str
     pass_name: str
-    title: str
     marker: str  # "[stable]" | "[UNSTABLE]" | "[contested-split]"
-    majority: str
-    seed: str  # the case's label/leaning
-    agreement: float  # modal verdict's share of K
+    majority: str  # modal judge label over K
+    seed: str  # the case's human label/leaning
+    agreement: float  # modal label's share of K
     flipped: bool
-    tally: dict[str, int]  # verdict value -> count
+    tally: dict[str, int]  # judge label -> count
 
 
 class StabilityRunResponse(ResponseModel):

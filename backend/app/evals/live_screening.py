@@ -73,14 +73,14 @@ def load_cases(path: Path = SCREENING_GOLDEN_PATH) -> tuple[ScreeningCase, ...]:
     data = json.loads(path.read_text())
     cases = []
     for c in data["cases"]:
-        given, meta, expect = c["given"], c["metadata"], c["metadata"]["expect"]
+        given, meta, expected = c["given"], c["metadata"], c["metadata"]["expected"]
         cases.append(
             ScreeningCase(
                 key=c["key"],
                 fields=given["fields"],
                 essays=given["essays"],
-                fires=expect.get("fires", []),
-                absent=expect.get("absent", []),
+                fires=expected.get("fires", []),
+                absent=expected.get("absent", []),
                 note=meta.get("note", ""),
             )
         )
@@ -124,6 +124,46 @@ def _check(case: ScreeningCase, categories: list[str]) -> list[str]:
     if not case.fires and not case.absent and categories:
         failures.append(f"clean applicant raised flag(s): {', '.join(sorted(present))}")
     return failures
+
+
+def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, background: str, model: str):
+    """Blind-judge adapter (see app/evals/reproduce.py): an INDEPENDENT model re-screens the
+    applicant from the editable ``background`` (which carries the policy context the production
+    prompt gets from settings) + the given fields/essays — never the human label — then we grade
+    its flag categories with the SAME fires/absent check the live eval uses. A screening case
+    HAS a defect notion: a missed required flag or an over-reach is the failure, so it feeds
+    failure-recall (human_is_problem = the case guards something; judge_is_problem = it failed)."""
+    from app.ai.pricing import cost_usd
+    from app.evals.reproduce import Reproduced, build_judge_prompt
+
+    prompt = build_judge_prompt(
+        given,
+        "Review the applicant's fields and essays for integrity concerns. Return a list of "
+        "flags; each flag has a category, severity, one-sentence summary, and cited evidence. "
+        "Flag only genuine concerns — a benign detail must not be flagged.",
+    )
+    result = provider.structured_output(model_id=model, schema=ScreeningReport, prompt=prompt, system_prompt=background)
+    categories = [f.category.value for f in result.output.flags]
+    probe = ScreeningCase(
+        key="judge", fields={}, essays={},
+        fires=list(expected.get("fires", [])), absent=list(expected.get("absent", [])),
+    )
+    failures = _check(probe, categories)
+    cost = cost_usd(result.model_id, result.usage)
+    shown = ", ".join(categories) or "no flags"
+    detail = "; ".join(f"{f.category.value}: {f.summary}" for f in result.output.flags) or "no flags"
+    human_is_problem = bool(probe.fires or probe.absent)  # the case guards a real defect
+    return Reproduced(shown, _expected_str(expected), not failures, human_is_problem, bool(failures), detail, cost)
+
+
+def _expected_str(expected: dict) -> str:
+    """Compact human-label token for a screening expectation, e.g. 'fires: pet_policy'."""
+    parts = []
+    if expected.get("fires"):
+        parts.append("fires: " + ", ".join(expected["fires"]))
+    if expected.get("absent"):
+        parts.append("absent: " + ", ".join(expected["absent"]))
+    return " · ".join(parts) or "clean"
 
 
 def run_case(

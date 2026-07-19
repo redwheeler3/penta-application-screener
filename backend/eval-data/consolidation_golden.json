@@ -1,5 +1,6 @@
 {
   "_comment": "Golden cases for the LIVE consolidation eval (app/evals/live_consolidate.py). Each case is ONE candidate pair of dimension definitions, run through the REAL production consolidation confirm prompt+model, graded merge/keep against `metadata.expected` by exact match (categorical → no judge tier; see docs/ai-evals.md 'Grader architecture'). Fields grouped by consumer (docs/eval-case-schema.md): `metadata` is harness-only; `given.pair` is the two descriptors the confirm call compares; `judge` (optional) marks a case for the periodic label-audit. Definitions are exact slices of real runs (see each metadata.source). Spans easy (clear merge/keep) + hard-but-decided (contested, high-correlation confounds).",
+  "judge_background": "Consolidation compares TWO dimension definitions that scored applicants near-identically, and decides whether they are the SAME underlying concept (merge) or genuinely distinct axes that should stay apart (keep). Judge the definitions themselves: would they score the same applicant the same way, for the same reason? Merge only when they measure one thing; keep apart when a plausible applicant would land genuinely high on one and low on the other for a real reason (a faint or edge-case difference is not enough).",
   "cases": [
     {
       "key": "pet_ownership_situation_merge",

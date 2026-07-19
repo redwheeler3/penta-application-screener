@@ -846,6 +846,26 @@ def run_live_screening_stability(
     return _stream(db, "live_screening_stability", version, work)
 
 
+def _seed_str(expected: object) -> str:
+    """A compact display token for a case's human label, for the stability ``seed`` field.
+    Categorical labels are strings; scoring/screening labels are dicts (a band or fires/absent),
+    which we render as a short key summary."""
+    if isinstance(expected, str):
+        return expected
+    if isinstance(expected, dict):
+        if "fires" in expected or "absent" in expected:
+            parts = []
+            if expected.get("fires"):
+                parts.append("fires: " + ", ".join(expected["fires"]))
+            if expected.get("absent"):
+                parts.append("absent: " + ", ".join(expected["absent"]))
+            return " · ".join(parts) or "clean"
+        lo, hi = expected.get("score_min", "-1"), expected.get("score_max", "1")
+        conf = f" {expected['confidence']}" if "confidence" in expected else ""
+        return f"[{lo}, {hi}]{conf}"
+    return str(expected)
+
+
 @router.post("/judge")
 def run_judge(
     case: str | None = None,
@@ -853,24 +873,27 @@ def run_judge(
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Stream a judge run over all labelled cases, then compute judge-vs-human agreement.
-    ``case`` runs just that one (per-row run); agreement needs ≥2 scored cases so a
-    single-case run reports no agreement block, only the verdict."""
+    """Stream a blind label-audit run over every pass's golden cases, then compute
+    judge-vs-human agreement. Each case is reproduced by an INDEPENDENT model (blind to the
+    label) and graded against the human label — see judge.py. ``case`` runs just that one
+    (per-row run); agreement needs ≥2 scored cases, so a single-case run reports no agreement
+    block, only the verdict."""
     cases = _select(list(load_cases()), case, lambda c: c.key)
 
     def work(on_delta) -> JudgeRunResponse:
         results = []
         for c in cases:
-            on_delta(f"\n\n### [{c.pass_name}] {c.title}\n")
-            on_delta(f"Judging on `{JUDGE_MODEL}` — _{c.task}_\n\n")
+            on_delta(f"\n\n### [{c.pass_name}] {c.key}\n")
+            on_delta(f"Reproducing blind on `{JUDGE_MODEL}`…\n\n")
             results.append(judge_case(provider, c, model_id=JUDGE_MODEL))
-            r = results[-1]
-            on_delta(f"**{r.report.verdict.value}** — {r.report.reason}\n")
+            rp = results[-1].reproduced
+            agree = "agrees with" if rp.agrees else "DISAGREES with"
+            on_delta(f"**judge: {rp.judge_label}** — {agree} label ({rp.human_label}). {rp.detail}\n")
         case_out = [
             JudgeCaseOut(
-                key=r.case.key, pass_name=r.case.pass_name, title=r.case.title,
-                marker=r.marker, expected=r.case.expected.value, verdict=r.report.verdict.value,
-                contested=r.case.contested, reason=r.report.reason,
+                key=r.case.key, pass_name=r.case.pass_name, marker=r.marker,
+                human_label=r.reproduced.human_label, judge_label=r.reproduced.judge_label,
+                contested=r.case.contested, detail=r.reproduced.detail,
             )
             for r in results
         ]
@@ -901,8 +924,8 @@ def run_stability(
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Stream a stability run: judge each case K times on fixed inputs, report verdict
-    stability. ``k`` is clamped to a sane range so a stray value can't blow up spend.
+    """Stream a stability run: blind-audit each case K times on fixed inputs, report whether the
+    judge's verdict held. ``k`` is clamped to a sane range so a stray value can't blow up spend.
     ``case`` runs just that one (per-row stability check)."""
     k = max(2, min(k, 10))
     cases = _select(list(load_cases()), case, lambda c: c.key)
@@ -910,14 +933,14 @@ def run_stability(
     def work(on_delta) -> StabilityRunResponse:
         out = []
         for c in cases:
-            on_delta(f"\n\n### [{c.pass_name}] {c.title} (x{k})\n")
+            on_delta(f"\n\n### [{c.pass_name}] {c.key} (x{k})\n")
             rep = stability_run(provider, c, k=k, model_id=JUDGE_MODEL)
-            tally = {v.value: n for v, n in Counter(rep.verdicts).most_common()}
-            marker = stability.marker(rep.verdicts, contested=c.contested)
+            tally = dict(Counter(rep.labels).most_common())
+            marker = stability.marker(rep.labels, contested=c.contested)
             on_delta(f"→ {marker} {rep.agreement:.0%}: {tally}\n")
             out.append(StabilityCaseOut(
-                key=c.key, pass_name=c.pass_name, title=c.title, marker=marker,
-                majority=rep.majority.value, seed=c.expected.value,
+                key=c.key, pass_name=c.pass_name, marker=marker,
+                majority=rep.majority, seed=_seed_str(c.expected),
                 agreement=rep.agreement, flipped=rep.flipped, tally=tally,
             ))
         return StabilityRunResponse(

@@ -1,5 +1,6 @@
 {
   "_comment": "Golden cases for the LIVE matching eval (app/evals/live_matching.py). Each case is ONE prior + ONE new dimension descriptor, run through the REAL production identity-match prompt+model, graded matches/mismatches against `metadata.expected` by exact match (categorical → no judge tier; see docs/ai-evals.md 'Grader architecture'). `given.prior`/`given.new` are the descriptor lists the match pass compares (single-element here for a focused case); a MATCH = the model mapped new→prior. Fields grouped by consumer (docs/eval-case-schema.md). Definitions are exact slices of real runs. A wrong match corrupts a carried-forward score, so the MISMATCHES direction matters even when the live pass hasn't erred — hence a constructed mismatch pair.",
+  "judge_background": "Matching reconciles a freshly-discovered dimension against a prior run's, deciding whether a NEW dimension means the SAME underlying concept as a PRIOR one (matches) or a genuinely different thing (mismatches). Judge by the definitions, not the wording: a reworded or narrower/broader version of one concept still matches; reserve mismatches for a real change of subject. A wrong match carries a prior score onto the wrong concept, so match only when confident the concept is the same.",
   "cases": [
     {
       "key": "trade_skills_same_concept_matches",

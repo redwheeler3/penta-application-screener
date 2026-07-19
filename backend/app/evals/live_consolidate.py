@@ -118,6 +118,26 @@ def _confirm_verdict(
     return (MERGE if verdict_obj.same_concept else KEEP), verdict_obj.reason
 
 
+def judge_reproduce(provider: AIProvider, *, given: dict, expected: str, background: str, model: str):
+    """Blind-judge adapter (see app/evals/reproduce.py): an INDEPENDENT model decides merge/keep
+    for the pair from the editable ``background`` + the two definitions (never the human label),
+    then we exact-match its verdict against ``expected``. merge/keep has no single 'problem'
+    side, so it does not contribute to failure-recall."""
+    from app.ai.pricing import cost_usd
+    from app.ai.schemas import JudgeReport
+    from app.evals.reproduce import Reproduced, build_judge_prompt
+
+    prompt = build_judge_prompt(
+        given,
+        "Decide whether the two dimension definitions measure the SAME underlying concept: "
+        "return verdict 'merge' (same concept) or 'keep' (genuinely distinct), with a reason.",
+    )
+    result = provider.structured_output(model_id=model, schema=JudgeReport, prompt=prompt, system_prompt=background)
+    verdict = result.output.verdict.value
+    cost = cost_usd(result.model_id, result.usage)
+    return Reproduced(verdict, expected, verdict == expected, False, False, result.output.reason, cost)
+
+
 def run_case(
     provider: AIProvider,
     case: ConsolidationCase,

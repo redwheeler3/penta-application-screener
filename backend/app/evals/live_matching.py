@@ -124,6 +124,30 @@ def _match_verdict(provider: AIProvider, case: MatchingCase, *, match_model: str
     return verdict, detail
 
 
+def judge_reproduce(provider: AIProvider, *, given: dict, expected: str, background: str, model: str):
+    """Blind-judge adapter (see app/evals/reproduce.py): an INDEPENDENT model decides whether
+    the new dimension is the same concept as the prior one from the editable ``background`` +
+    the two definitions (never the human label), then we exact-match its matches/mismatches
+    verdict against ``expected``. A wrong MATCH corrupts a carried-forward score, so 'mismatches'
+    is the problem side (feeds failure-recall)."""
+    from app.ai.pricing import cost_usd
+    from app.ai.schemas import JudgeReport
+    from app.evals.reproduce import Reproduced, build_judge_prompt
+
+    prompt = build_judge_prompt(
+        given,
+        "Decide whether the NEW dimension means the same underlying concept as the PRIOR one: "
+        "return verdict 'matches' (same concept) or 'mismatches' (different), with a reason.",
+    )
+    result = provider.structured_output(model_id=model, schema=JudgeReport, prompt=prompt, system_prompt=background)
+    verdict = result.output.verdict.value
+    cost = cost_usd(result.model_id, result.usage)
+    return Reproduced(
+        verdict, expected, verdict == expected,
+        expected == MISMATCHES, verdict == MISMATCHES, result.output.reason, cost,
+    )
+
+
 def run_case(
     provider: AIProvider,
     case: MatchingCase,

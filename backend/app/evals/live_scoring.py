@@ -172,6 +172,40 @@ def run_case(
     )
 
 
+def _band_str(expected: dict[str, object]) -> str:
+    """A compact human-label token for an expected band, e.g. '[-0.15, 0.15] low'."""
+    lo = expected.get("score_min", "-1")
+    hi = expected.get("score_max", "1")
+    conf = f" {expected['confidence']}" if "confidence" in expected else ""
+    return f"[{lo}, {hi}]{conf}"
+
+
+def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, background: str, model: str):
+    """Blind-judge adapter (see app/evals/reproduce.py): an INDEPENDENT model re-scores the case
+    from the editable ``background`` + ``given`` (never the human label), then we grade its score
+    against the expected band with the SAME check the live eval uses. 'Agrees' = the blind score
+    landed in the band the human specified. Scoring has no single 'problem' side, so it does not
+    contribute to failure-recall (both is_problem False)."""
+    from app.evals.reproduce import Reproduced, build_judge_prompt
+
+    dim = given["dimension"]
+    prompt = build_judge_prompt(
+        given,
+        "Score the applicant against the dimension on a signed -1..+1 scale and cite your "
+        "evidence. Return score, confidence, rationale, evidence.",
+    )
+    result = provider.structured_output(model_id=model, schema=DimensionScoringReport, prompt=prompt, system_prompt=background)
+    produced = {s.dimension_key: s for s in result.output.scores}
+    score = produced.get(dim["key"]) or (result.output.scores[0] if result.output.scores else None)
+    from app.ai.pricing import cost_usd
+    cost = cost_usd(result.model_id, result.usage)
+    if score is None:
+        return Reproduced("no score", _band_str(expected), False, False, False, "judge returned no score", cost)
+    agrees = not _check_expectations(score, expected)
+    detail = f"judge scored {score.score:+.2f} ({score.confidence.value}): {score.rationale}"
+    return Reproduced(f"{score.score:+.2f}", _band_str(expected), agrees, False, False, detail, cost)
+
+
 @dataclass(frozen=True)
 class ScoringStabilityResult:
     """K runs of the REAL scoring prompt on one fixed golden case. Scoring is CONTINUOUS, so
