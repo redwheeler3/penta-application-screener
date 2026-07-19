@@ -13,6 +13,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.time import utc_isoformat
 from app.db.models import RankingRun, RunCostLedger
 from app.schemas.insights import MetricsReport, PassTrendPoint, TrendPoint
 from app.services.cost_report import CACHEABLE_PASSES
@@ -56,7 +57,7 @@ def metrics_report(db: Session) -> MetricsReport:
 
         runs.append(
             TrendPoint(
-                at=ledger.created_at.isoformat(),
+                at=utc_isoformat(ledger.created_at),
                 kind=ledger.kind,
                 cost_usd=round(sum(r.cost_usd for r in rows), 6),
                 input_tokens=sum(r.input_tokens for r in rows),
@@ -69,7 +70,7 @@ def metrics_report(db: Session) -> MetricsReport:
         )
         passes.extend(
             PassTrendPoint(
-                at=ledger.created_at.isoformat(),
+                at=utc_isoformat(ledger.created_at),
                 label=r.label,
                 cost_usd=round(r.cost_usd, 6),
                 input_tokens=r.input_tokens,

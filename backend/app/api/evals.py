@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session
 from app.ai.provider import AIProvider
 from app.api.dependencies import get_ai_provider, require_current_user
 from app.api.problems import Problem
+from app.core.time import utc_isoformat
 from app.db.models import EvalRun, User
 from app.db.session import get_db
 from app.evals import stability
@@ -348,7 +349,7 @@ def last_run(
         current = _current_prompt_version(row.eval_key, db)
         runs.append(LastRun(
             eval_key=row.eval_key,
-            ran_at=row.created_at.isoformat(),
+            ran_at=utc_isoformat(row.created_at),
             prompt_version=row.prompt_version or "",
             current_prompt_version=current,
             stale=bool(current and row.prompt_version and row.prompt_version != current),
