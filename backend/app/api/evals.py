@@ -45,7 +45,9 @@ from app.evals.capture_screening import propose_cases as _propose_screening
 from app.evals.case_store import (
     CaseValidationError,
     UnknownEvalError,
+    get_background,
     list_cases,
+    save_background,
     save_case,
 )
 from app.evals.fixture import FIXTURE_PATH, load, record
@@ -77,6 +79,8 @@ from app.schemas.evals import (
     HarvestResponse,
     InvariantOut,
     InvariantsResponse,
+    JudgeBackground,
+    JudgeBackgroundsResponse,
     JudgeCaseOut,
     JudgeRunResponse,
     LastRun,
@@ -101,6 +105,7 @@ from app.schemas.evals import (
     LiveScreeningResponse,
     LiveScreeningStabilityCaseOut,
     LiveScreeningStabilityResponse,
+    SaveBackgroundRequest,
     SaveCaseRequest,
     StabilityCaseOut,
     StabilityRun,
@@ -381,6 +386,39 @@ def put_case(
     except CaseValidationError as exc:
         raise Problem("invalid_case", detail=str(exc)) from exc
     return CasesResponse(eval_key=eval_key, cases=cases)
+
+
+# --- judge backgrounds (the editable per-pass brief the blind judge is given) ----
+
+# The passes the Judge tab audits, in pipeline order (matches JudgeCase.pass_name).
+_JUDGE_PASSES = ("screening", "decomposition", "matching", "scoring", "consolidation")
+
+
+@router.get("/judge-backgrounds", response_model=JudgeBackgroundsResponse)
+def judge_backgrounds(user: User = Depends(require_current_user)) -> JudgeBackgroundsResponse:
+    """The per-pass ``judge_background`` briefs the Judge tab lists + edits, with how many
+    golden cases each pass contributes to the blind audit. Free (reads the committed files)."""
+    counts = Counter(c.pass_name for c in load_cases())
+    return JudgeBackgroundsResponse(backgrounds=[
+        JudgeBackground(pass_name=p, background=get_background(p), case_count=counts.get(p, 0))
+        for p in _JUDGE_PASSES
+    ])
+
+
+@router.put("/judge-backgrounds/{pass_name}", response_model=JudgeBackground)
+def put_judge_background(
+    pass_name: str, body: SaveBackgroundRequest, user: User = Depends(require_current_user)
+) -> JudgeBackground:
+    """Write one pass's ``judge_background`` to its golden file (operator commits to git). The
+    edited brief is what the blind judge reads on the NEXT run — no version bump (see judge.py)."""
+    try:
+        saved = save_background(pass_name, body.background)
+    except UnknownEvalError as exc:
+        raise Problem("not_found", detail=f"No judge background for pass {pass_name!r}.") from exc
+    except CaseValidationError as exc:
+        raise Problem("invalid_case", detail=str(exc)) from exc
+    counts = Counter(c.pass_name for c in load_cases())
+    return JudgeBackground(pass_name=pass_name, background=saved, case_count=counts.get(pass_name, 0))
 
 
 # --- harvest: propose judge cases from the CURRENT run (fidelity-preserving) --

@@ -2930,6 +2930,19 @@ h1 {
   max-height: none;
   overflow-y: visible;
 }
+/* Judge tab: the collapsible per-pass "what this pass does" brief editors. */
+.eval-backgrounds { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: #fafafa; }
+.eval-backgrounds > summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+.eval-backgrounds-hint { color: var(--muted); font-weight: 400; }
+.eval-backgrounds-desc { color: var(--muted); font-size: 0.82rem; margin: 8px 0 12px; }
+.eval-backgrounds-saved { color: var(--penta-green-dark); font-size: 0.82rem; margin: 6px 0; }
+.eval-background { margin-top: 10px; }
+.eval-background-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.eval-background-head strong { text-transform: capitalize; font-size: 0.86rem; }
+.eval-background-count { color: var(--muted); font-size: 0.76rem; }
+.eval-background-text { width: 100%; font: inherit; font-size: 0.82rem; padding: 8px; border: 1px solid var(--line); border-radius: 6px; resize: vertical; }
+.eval-background-actions { margin-top: 4px; }
+
 /* The per-mode run markers grouped into ONE block, so the parent .eval-section's grid
    row-gap applies once above the block — not between each stacked marker (which made them
    spread far apart). Markers sit tight within the block. */

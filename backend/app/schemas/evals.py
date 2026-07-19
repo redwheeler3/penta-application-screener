@@ -326,6 +326,32 @@ class SaveCaseRequest(RequestModel):
     case: dict
 
 
+# --- judge backgrounds (the editable per-pass brief the blind judge is given) ----
+
+
+class JudgeBackground(ResponseModel):
+    """One pass's editable ``judge_background`` — the plain-language brief ("what this pass
+    does") the blind judge is shown, plus how many golden cases that pass contributes."""
+
+    pass_name: str
+    background: str
+    case_count: int
+
+
+class JudgeBackgroundsResponse(ResponseModel):
+    """The per-pass backgrounds the Judge tab lists + edits (one per pass), in pipeline order."""
+
+    backgrounds: list[JudgeBackground] = []
+
+
+class SaveBackgroundRequest(RequestModel):
+    """Write one pass's ``judge_background`` to its golden file."""
+
+    background: str
+
+    case: dict
+
+
 class HarvestResponse(ResponseModel):
     """Unlabelled candidate judge cases proposed from the CURRENT run's output (scoring or
     screening). Each is a full case dict with placeholder ``expected``/``label_rationale``
