@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.ai.dimension_scoring import kind_for_dimension
 from app.api.dependencies import require_current_user
 from app.api.problems import Problem
+from app.core.time import utc_isoformat
 from app.db.models import (
     Application,
     ApplicationAIResult,
@@ -283,7 +284,7 @@ def _serialize_summary(
         flag_count=None if flags is None else len(flags),
         # Distinct flag categories from the latest pass, for the list REASON cell.
         flag_categories=None if flags is None else _distinct_categories(flags),
-        created_at=app.created_at.isoformat() if app.created_at else None,
+        created_at=utc_isoformat(app.created_at),
     )
 
 

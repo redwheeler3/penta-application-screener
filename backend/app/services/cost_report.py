@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.pricing import PassCost
+from app.core.time import utc_isoformat
 from app.db.models import RunCostLedger, RunPassCost
 from app.schemas.insights import (
     CostGroup,
@@ -184,7 +185,7 @@ def _last_run(db: Session, kind: str) -> LastRunCost | None:
     ]
     return LastRunCost(
         kind=row.kind,
-        at=row.created_at.isoformat(),
+        at=utc_isoformat(row.created_at),
         fresh_usd=round(sum(p.fresh_usd for p in passes), 6),
         cached_saved_usd=round(sum(p.cached_saved_usd for p in passes), 6),
         estimated_usd=round(row.estimated_usd, 6),
