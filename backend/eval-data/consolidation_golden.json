@@ -11,8 +11,12 @@
         "label_rationale": "MERGE: both definitions score the same applicant the same way for the same reason — pet count/type and its effect on shared spaces. No concrete applicant lands high on one and low on the other. The clean non-contested MERGE.",
         "source": "Rank run 5 (2026-07-16), consolidate_audit pair pet_ownership <- pet_situation. pet_ownership def from run 3 (kept/older key); pet_situation def recovered from run 5's raw discovery report (worker 1).",
         "provenance": {
-          "pass_models": {"Dimension consolidation": "us.anthropic.claude-sonnet-4-6"},
-          "pass_prompt_versions": {"Dimension consolidation": "d73b755d3075"}
+          "pass_models": {
+            "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Dimension consolidation": "d73b755d3075"
+          }
         }
       },
       "given": {
@@ -66,8 +70,12 @@
         "label_rationale": "KEEP: the pair correlates at r=0.887 but is a confound — writing quality (A) and behavioural reliability (B) are different axes. A reliable but inarticulate applicant scores high on B and low on A (and inverse). Merging would conflate 'writes well' with 'does the work'.",
         "source": "Rank run 4 (2026-07-16), consolidate_audit pair essay_specificity_and_concreteness ~ follow_through_reliability (KEEP; essay_specificity def from run 4, follow_through_reliability def recovered from run 1).",
         "provenance": {
-          "pass_models": {"Dimension consolidation": "us.anthropic.claude-sonnet-4-6"},
-          "pass_prompt_versions": {"Dimension consolidation": "d73b755d3075"}
+          "pass_models": {
+            "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Dimension consolidation": "d73b755d3075"
+          }
         }
       },
       "given": {
@@ -95,8 +103,12 @@
         "label_rationale": "CONTESTED — both verdicts are defensible from the definitions alone, so this is review material, not an answer key. LEANING merge: at r=0.925 almost no applicant diverges, so treating them as one axis for this pool loses little, and the production prompt is stable on merge (confirmed by a live-stability run). The KEEP reading is also coherent on a definitions-first principle (formal certification for legally-regulated work vs. practical breadth are genuinely different things). Agreement is not pass/fail here; consistency across repeated runs is.",
         "source": "Rank run 6 (2026-07-16), consolidate_audit pair licensed_trade_skills <- hands_on_trade_skills. licensed_trade_skills def from runs 3/4 (stable); hands_on_trade_skills def from run 5.",
         "provenance": {
-          "pass_models": {"Dimension consolidation": "us.anthropic.claude-sonnet-4-6"},
-          "pass_prompt_versions": {"Dimension consolidation": "d73b755d3075"}
+          "pass_models": {
+            "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Dimension consolidation": "d73b755d3075"
+          }
         }
       },
       "given": {
@@ -110,6 +122,46 @@
             "key": "hands_on_trade_skills",
             "name": "Hands-on trade skills",
             "definition": "The depth and breadth of licensed or practised physical-trade skills (electrical, plumbing, masonry, mechanics, arboriculture, upholstery, carpentry, etc.) the household can contribute to building maintenance and repair, reducing reliance on outside contractors."
+          }
+        ]
+      }
+    },
+    {
+      "key": "disposition_vs_community_keep",
+      "metadata": {
+        "expected": "keep",
+        "note": "High-correlation confound (r=0.858): philosophical motivation (A) vs. active social behaviour (B) — distinct axes that co-occur.",
+        "pass": "consolidation",
+        "label_rationale": "KEEP: the pair correlates at r=0.858 but is a confound. A is philosophical motivation (why the applicant wants co-op living); B is active social behaviour (do they host, organise, cultivate neighbourly bonds). An ideologically committed but introverted applicant scores high on A and low on B. Philosophical motivation and active social investment are distinct axes; merging would hide whether fit rests on values or sociability. Tests judge resistance to over-merging correlated-but-distinct axes, reasoning from definitions alone.",
+        "source": "Rank run 4 (2026-07-16), consolidate_audit pair cooperative_disposition ~ community_building_orientation (KEEP); both definitions from run 4's dimension_report.",
+        "provenance": {
+          "pass_models": {
+            "Pattern discovery": "us.anthropic.claude-sonnet-4-6",
+            "Dimension decomposition": "us.anthropic.claude-sonnet-4-6",
+            "Dimension matching": "us.anthropic.claude-sonnet-4-6",
+            "Dimension scoring": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "Dimension consolidation": "us.anthropic.claude-sonnet-4-6"
+          },
+          "pass_prompt_versions": {
+            "Pattern discovery": "f393349e9733",
+            "Dimension decomposition": "733871632036",
+            "Dimension matching": "bcf254622976",
+            "Dimension scoring": "1c405eb75d53",
+            "Dimension consolidation": "d73b755d3075"
+          }
+        }
+      },
+      "given": {
+        "pair": [
+          {
+            "key": "cooperative_disposition",
+            "name": "Co-operative disposition",
+            "definition": "The degree to which the household articulates genuine philosophical commitment to mutual aid, democratic governance, and shared responsibility as motivating their application — as opposed to treating co-op membership primarily as an instrumental housing vehicle."
+          },
+          {
+            "key": "community_building_orientation",
+            "name": "Community-building orientation",
+            "definition": "The household's active investment in cultivating social bonds with neighbours — hosting, organising events, welcoming newcomers, building genuine interpersonal relationships — as evidenced by current social habits and articulated aspirations, beyond minimum co-op compliance."
           }
         ]
       }
