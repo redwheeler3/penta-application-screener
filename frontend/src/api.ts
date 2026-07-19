@@ -236,6 +236,7 @@ export function runEval(
     | "live_scoring" | "live_scoring_stability"
     | "live_consolidation" | "live_consolidation_stability"
     | "live_matching" | "live_matching_stability"
+    | "live_decomposition" | "live_decomposition_stability"
     | "judge" | "stability",
   opts?: { k?: number; caseKey?: string },
 ): Promise<Response> {
@@ -247,6 +248,8 @@ export function runEval(
     : key === "live_consolidation_stability" ? "/evals/live-consolidation-stability"
     : key === "live_matching" ? "/evals/live-matching"
     : key === "live_matching_stability" ? "/evals/live-matching-stability"
+    : key === "live_decomposition" ? "/evals/live-decomposition"
+    : key === "live_decomposition_stability" ? "/evals/live-decomposition-stability"
     : `/evals/${key}`;
   const kMode = key.endsWith("_stability");
   const params = new URLSearchParams();

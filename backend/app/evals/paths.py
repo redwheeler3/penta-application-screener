@@ -25,3 +25,4 @@ FIXTURE_PATH = EVAL_DATA_DIR / "rank_baseline.json"
 GOLDEN_PATH = EVAL_DATA_DIR / "scoring_golden.json"  # scoring (the first live eval)
 CONSOLIDATION_GOLDEN_PATH = EVAL_DATA_DIR / "consolidation_golden.json"
 MATCHING_GOLDEN_PATH = EVAL_DATA_DIR / "matching_golden.json"
+DECOMPOSITION_GOLDEN_PATH = EVAL_DATA_DIR / "decomposition_golden.json"

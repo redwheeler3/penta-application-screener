@@ -494,6 +494,7 @@ export type EvalKey =
   | "invariants" | "live_scoring" | "live_scoring_stability"
   | "live_consolidation" | "live_consolidation_stability"
   | "live_matching" | "live_matching_stability"
+  | "live_decomposition" | "live_decomposition_stability"
   | "judge" | "stability";
 
 export type EvalDescriptor = {

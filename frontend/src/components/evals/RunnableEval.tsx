@@ -14,14 +14,14 @@ import type { FieldObject } from "./StructuredFields";
 // spend-confirmed inline (the workflow card, not window.confirm). The model's reasoning
 // streams as rendered markdown; results merge back onto each case row + into the detail.
 
-export type RunMode = { evalKey: "live_scoring" | "live_scoring_stability" | "live_consolidation" | "live_consolidation_stability" | "live_matching" | "live_matching_stability" | "judge" | "stability"; label: string; rowLabel: string; calls: number };
+export type RunMode = { evalKey: "live_scoring" | "live_scoring_stability" | "live_consolidation" | "live_consolidation_stability" | "live_matching" | "live_matching_stability" | "live_decomposition" | "live_decomposition_stability" | "judge" | "stability"; label: string; rowLabel: string; calls: number };
 
 type RunState = { running: boolean; thinking: string; result: any | null; ranMode: RunMode["evalKey"]; error: string | null };
 type Confirm = { mode: RunMode; caseKey?: string; calls: number } | null;
 
 export function RunnableEval(props: {
   // The fixture whose cases we read/edit (a pass's stability mode shares its golden set).
-  caseEvalKey: "live_scoring" | "live_consolidation" | "live_matching" | "judge";
+  caseEvalKey: "live_scoring" | "live_consolidation" | "live_matching" | "live_decomposition" | "judge";
   // The eval keys whose last run restores this tab on remount (Live scoring: ["live_scoring"];
   // Judge: ["judge", "stability"] — the two share the tab, so the newer of the two shows).
   runKeys: RunMode["evalKey"][];
@@ -300,9 +300,13 @@ export function RunnableEval(props: {
 // fine, unremarkable outcome (green) — only a DIVERGENCE from the leaning is review-worthy
 // (amber). A stability run that actually wobbled ([contested-split]) stays amber — the
 // wobble IS the review event.
+// The categorical dimension-comparison live passes share one result shape (passed / verdict /
+// expected / contested / reason / judgeVerdict), so every renderer branch treats them alike.
+const CATEGORICAL_LIVE = new Set(["live_consolidation", "live_matching", "live_decomposition"]);
+
 function dotFor(mode: RunMode["evalKey"], result: any): "ok" | "fail" | "contested" {
   if (result.marker === "[contested-split]") return "contested";  // stability wobble
-  if ((mode === "live_consolidation" || mode === "live_matching") && result.contested) {
+  if (CATEGORICAL_LIVE.has(mode) && result.contested) {
     return result.verdict === result.expected ? "ok" : "contested";  // agree = green, diverge = amber
   }
   return resultOk(mode, result) ? "ok" : "fail";
@@ -387,7 +391,7 @@ function CaseList(props: {
 }
 
 function resultOk(ranMode: RunMode["evalKey"], r: any): boolean {
-  if (ranMode === "live_scoring" || ranMode === "live_consolidation" || ranMode === "live_matching") return r.passed;
+  if (ranMode === "live_scoring" || CATEGORICAL_LIVE.has(ranMode)) return r.passed;
   if (ranMode.endsWith("_stability") || ranMode === "stability") return r.marker === "[stable]";
   return r.marker === "[ok]";
 }
@@ -431,8 +435,8 @@ function RunHeadline(props: { evalKey: RunMode["evalKey"]; result: any }): React
       </div>
     );
   }
-  if (evalKey === "live_consolidation" || evalKey === "live_matching") {
-    const pass = evalKey === "live_matching" ? "matching" : "consolidation";
+  if (CATEGORICAL_LIVE.has(evalKey)) {
+    const pass = evalKey === "live_matching" ? "matching" : evalKey === "live_decomposition" ? "decomposition" : "consolidation";
     return (
       <div className="eval-headline">
         {result.passed}/{result.total} passed · {pass} {result.promptVersion} · {result.model}
@@ -442,8 +446,8 @@ function RunHeadline(props: { evalKey: RunMode["evalKey"]; result: any }): React
   if (evalKey === "stability") {
     return <div className="eval-headline">K={result.k} · {result.judgeModel}</div>;
   }
-  if (evalKey === "live_consolidation_stability" || evalKey === "live_matching_stability") {
-    const pass = evalKey === "live_matching_stability" ? "matching" : "consolidation";
+  if (evalKey === "live_consolidation_stability" || evalKey === "live_matching_stability" || evalKey === "live_decomposition_stability") {
+    const pass = evalKey === "live_matching_stability" ? "matching" : evalKey === "live_decomposition_stability" ? "decomposition" : "consolidation";
     return <div className="eval-headline">K={result.k} · {pass} {result.promptVersion} · {result.model}</div>;
   }
   if (evalKey === "live_scoring_stability") {
@@ -488,7 +492,7 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
             </div>
           ))}
         </div>
-      ) : evalKey === "live_consolidation" || evalKey === "live_matching" ? (
+      ) : CATEGORICAL_LIVE.has(evalKey) ? (
         <div className="eval-case-result-body">
           expected <span className="eval-mono">{r.expected}</span> → produced{" "}
           <span className="eval-mono">{r.verdict}</span>
@@ -508,7 +512,7 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
             {" · "}score {r.scoreMin?.toFixed(2)}..{r.scoreMax?.toFixed(2)}
           </span>
         </div>
-      ) : evalKey === "stability" || evalKey === "live_consolidation_stability" || evalKey === "live_matching_stability" ? (
+      ) : evalKey === "stability" || evalKey.endsWith("_stability") ? (
         <div className="eval-case-result-body">
           <span className="eval-mono">{r.marker}</span> {Math.round(r.agreement * 100)}% agreement over K —{" "}
           {Object.entries(r.tally).map(([v, n]) => `${v}×${n}`).join(", ")}
