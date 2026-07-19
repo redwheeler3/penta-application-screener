@@ -46,9 +46,12 @@ reuse rate), so they were retired. Only invariants remain in `invariants.py`.
 
 ### Manual LLM judge
 
-`backend/app/evals/judge.py` covers semantic questions a program cannot answer
-honestly, such as whether a proposed merge loses a meaningful distinction or
-whether a structured decomposition result follows its own written decision.
+`backend/app/evals/judge.py` is a generic **blind label-auditor**: for each case across
+every pass's `<pass>_golden.json` (aggregated by `load_cases()`), an independent model
+reproduces that pass's output from the case's `given` + the pass's editable
+`judge_background` brief — blind to the human label — and the harness grades that blind
+output against `metadata.expected` with the pass's own grader. A consistent judge-vs-label
+disagreement is a signal that the **label** may be wrong, not the judge.
 
 Run it from the in-app **AI Quality tab** → Judge subtab: a whole-set "Run judge +
 agreement" or a per-case "judge"/"stability" run. (There is no CLI wrapper any more;
@@ -81,46 +84,48 @@ confirmed 3-0 under adversarial check) gave a clear, shape-driven answer.
   it *"adds latency, cost, and a non-zero chance of being wrong about something that has a
   definitive answer."* The debated three-way design is over-engineered here; the two-signal
   (production-vs-expected) assertion is the routine regression net.
-- **Scoring** (continuous −1..+1): the one genuinely open-ended pass, where many values are
-  defensible and no single label is "right." Here the judge earns its keep — deterministic
-  assertions pin properties (`score_equals`/`min`/`max`, `confidence`) AND a defensibility
-  judge checks the produced score's *reasoning*. This is why scoring is the only live eval
-  with a judge tier.
+- **Scoring** (continuous −1..+1): no single label is "right," so we pin a **band** — the
+  produced score must land in `[score_min, score_max]` (+ optional `confidence`), a tight band
+  straddling 0 for a neutral case. This is still a deterministic check against the human label,
+  just a range rather than a point; scoring is graded live exactly like the categorical passes,
+  with no inline judge. (An earlier design gave scoring an inline defensibility judge; that is
+  gone — the judge's role moved wholesale to the Judge tab, below.)
 
 **What this means for the Judge tab (the reframing — answers the parked "how useful is
 judge-the-judge?" question).** The research does NOT say drop it; it says stop using it as a
-*routine grader* and use it for its two legitimate, validated roles:
+*routine grader* and use it for its two legitimate, validated roles. It runs the SAME grader as
+the live eval, but on output produced by an **independent model, blind to the label** (a second
+opinion, not a re-run of the production prompt):
 
 1. **Label auditing.** *"For subjective tasks, assuming reliable human ground truth [is a
-   mistake]"* — on a subjective call like merge/keep, a judge that disagrees with our
-   `expected` is a signal that the **label may be wrong**, not the judge. That is exactly the
-   Judge tab's value: *"are our expected values defensible?"*
-2. **Calibration.** Before trusting *any* judge (including scoring's defensibility judge) you
-   must measure its agreement against human labels — Cohen's κ, target ≈ human-human ~0.80;
-   reference-free judging collapses to κ≈0.14 on hard cases, so the judge must always see the
-   reference. The Judge tab *is* that agreement-measurement apparatus.
+   mistake]"* — on a subjective call like merge/keep, a blind judge that consistently disagrees
+   with our `expected` is a signal that the **label may be wrong**, not the judge. That is
+   exactly the Judge tab's value: *"are our expected values defensible?"*
+2. **Calibration.** Before trusting a judge you must measure its agreement against human labels
+   — Cohen's κ, target ≈ human-human ~0.80. Blindness is load-bearing: a judge shown the label
+   rubber-stamps it, so the judge sees only the pass's editable `judge_background` brief + the
+   case's `given`, never `metadata`. The Judge tab *is* that agreement-measurement apparatus.
 
-So the Judge tab is **demoted from grader to periodic audit/calibration instrument**: it is
-run occasionally to ask "are our labels sound, and is our judge sound?", not as a per-run
-regression gate. The routine regression net is the live per-pass evals with exact-match
-graders (cheap, deterministic). Consequence for its data: the Judge tab **owns no case files
-of its own** — it reads every pass's `<pass>_golden.json` and audits the `metadata.expected`
-of cases that carry a `judge` block. `judge_cases.json` is being retired *after* its content
-is mined into the per-pass golden files (its scoring/screening recordings live on as live
-golden cases; its categorical definition-pairs become consolidation/matching/decomposition
-golden cases). One shared case schema serves both consumers — see `docs/eval-case-schema.md`.
+So the Judge tab is **demoted from grader to periodic audit/calibration instrument**: run
+occasionally to ask "are our labels sound, and is our judge sound?", not as a per-run gate. The
+routine regression net is the live per-pass evals (cheap, deterministic). It **owns no case
+files** — it reads every pass's `<pass>_golden.json`, reproduces each case's output blind (via
+that pass's `judge_background`), and grades against `metadata.expected` with the pass's own
+grader. The standalone `judge_cases.json` was retired *after* its content was mined into the
+per-pass golden files. One shared case schema serves both consumers — see
+`docs/eval-case-schema.md`.
 
 ## Production vs. judge identity
 
-There are two independent prompts and models:
+There are two independent models, each fed the same `given` input:
 
 ```text
-Production Rank                     Evaluation
----------------                     ----------
-production prompt + model           judge prompt + model
+Production Rank                     Evaluation (blind judge)
+---------------                     ------------------------
+production prompt + model           judge_background brief + independent model
           |                                     |
           v                                     v
-criterion / score / decision  -->   verdict on that output
+criterion / score / decision        blind reproduction, graded vs. the label
 ```
 
 The production identity tells us what generated the output under review. The
@@ -128,31 +133,34 @@ judge identity tells us how it was evaluated. A mature eval record needs both;
 otherwise a change in the judge can be mistaken for a change in production
 quality.
 
-The `Prompt:` and model line printed by the judge command refers to the **judge**
-prompt and model. Each committed case additionally carries the **production**
-provenance (`pass_models` + `pass_prompt_versions`) of the run it came from, so a
-verdict is attributable to both identities.
+The judge has **no derived prompt version**: its brief is the per-file, editable,
+intentionally unversioned `judge_background`, so a judge run is stamped with the
+fixed identifier `"blind-audit"` and its model line. Each committed case additionally
+carries the **production** provenance (`pass_models` + `pass_prompt_versions`) of the
+run it came from, so a verdict is attributable to both identities.
 
 ### Same information, different prompt (the fidelity rule)
 
 The judge must see **exactly the information the production step saw — no more,
-no less** — even though its *prompt* differs. The prompt is allowed (encouraged)
-to differ: production asks the model to *perform* a task; the judge asks whether
-the resulting decision was *defensible*, and reusing the production wording would
-repeat its framing and risk repeating its error. But the *evidence* must match
-production's exactly. If the judge is handed a fact production never had, a
-disagreement can no longer be attributed to judgement — it may just be the
-information asymmetry, and the eval proves nothing.
+no less** — even though its *instructions* differ. The framing is allowed
+(encouraged) to differ: production asks the model to *perform* a task via its full
+prompt; the blind judge reproduces the same decision from the pass's plain-language
+`judge_background` brief alone (never the production instructions, never the label),
+so reusing the production wording would repeat its framing and risk repeating its
+error. But the *input* must match production's exactly. If the judge is handed a
+fact production never had, a disagreement can no longer be attributed to judgement —
+it may just be the information asymmetry, and the eval proves nothing.
 
 Worked example (consolidation): the production confirm call sees only the two
 dimension **definitions**, plus the qualitative constant that the pair "scores
-near-identically" (that framing lives in its system prompt). So each judge case's
-`evidence` carries only `definition_a`/`definition_b`, and the "scores alike"
-constant lives in the judge instructions. The correlation **`r` value and any
-description of *how* the pair diverges are withheld** — production never sees
-them, so the judge must not either. Those live only in the case's
+near-identically" (that framing lives in its system prompt). So each case's `given`
+carries only the two descriptors (`pair: [descriptor, descriptor]`), and the "scores
+alike" constant lives in consolidation's `judge_background`. The correlation **`r`
+value and any description of *how* the pair diverges are withheld** — production
+never sees them, so the judge must not either. Those live only in the case's
 `label_rationale`, which is the *labeler's* justification (ground truth may use
-more information than the model under test) and is never shown to the judge.
+more information than the model under test) and — like all of `metadata` — is never
+shown to the judge.
 
 ### Why `r` stays out of the confirm step (nomination vs. confirmation)
 
@@ -191,22 +199,23 @@ It excludes applicant names, contact data, raw rows, essays, and model narrative
 that can quote those sources. Evals consume this snapshot; they never feed a
 verdict back into the application.
 
-Judge cases are committed in `backend/eval-data/judge_cases.json` and
-loaded by `load_cases()` (no longer hardcoded). Each case's fields are grouped
-by CONSUMER, so it's explicit — on disk and in the UI — which reach the model:
+The judge owns no case files of its own. It reads every pass's `<pass>_golden.json`,
+aggregated by `load_cases()` in `app/evals/judge.py` (the standalone `judge_cases.json`
+was retired after its content was mined into the per-pass golden files). Every case, for
+every pass, uses the one uniform envelope (`docs/eval-case-schema.md`):
 
-- `evidence` and `prompt` (the `question`) are exactly what the judge SEES.
-- `metadata` is harness-only and NEVER enters the prompt: the human `expected`
-  verdict, the written `label_rationale` (the *why*, so a disagreement is weighed
-  against recorded reasoning rather than a bare verdict), the `provenance` of its
-  source run (models + prompt versions), a `source`/`evidence_source` pointer, the
-  `title`, and the `pass` it exercises.
+- `given` is exactly what the production prompt receives; the blind judge reproduces the
+  pass's output from `given` plus the pass's editable `judge_background` brief — and
+  nothing else.
+- `metadata` is harness-only and NEVER enters any prompt (live or judge): the human
+  `expected` label, the written `label_rationale` (the *why*, so a disagreement is weighed
+  against recorded reasoning rather than a bare verdict), the `provenance` of its source
+  run (models + prompt versions), a `source` pointer, a `note`, the `pass` it exercises,
+  and any `ungraded` model self-labels.
 
-Keeping the label rationale (and the whole metadata block) OUT of the judge prompt
-is the fidelity rule: revealing the expected verdict would defeat the evaluation.
-The AI Quality → Judge tab badges each block with who consumes it. The golden
-scoring fixture uses the same by-consumer grouping (`metadata` / `input` — sent to
-the scoring model / `judge` — the question), documented in its `_comment`.
+Keeping the label rationale (and the whole metadata block) OUT of every prompt is the
+fidelity rule: revealing the expected label would defeat the evaluation. The blind judge
+sees `given` + `judge_background` only.
 
 The seed cases are three exact KEEPs on high-correlation dimension pairs — the
 judge's most important discipline is resisting over-merge on correlation alone,
@@ -309,14 +318,15 @@ by construction rather than treated as a signal about either side.
 
 ## Design rules
 
-- The judge has a **separate prompt** from production. Production prompts ask the
-  model to perform a task; a judge asks whether the resulting decision was
-  defensible. Reusing the production prompt would repeat its framing and risk
-  repeating its error.
-- Give the judge the relevant production output, PII-safe evidence, and the
-  applicable product rule. Do not reveal the expected human verdict.
-- Keep the judge's prompt version derived and report its model, tokens, and cost.
-- Use a structured verdict and concise reason so results can be compared.
+- The judge runs a **separate model, blind to the label**, driven only by the pass's
+  plain-language `judge_background` brief — never the production instructions. Reusing
+  production's framing would repeat its error; a second opinion must be independent.
+- Give the judge exactly the pass's `given` (PII-safe input) and its `judge_background`.
+  Never reveal `metadata` — the expected label, rationale, or provenance.
+- The judge has no derived prompt version (its brief is per-file and editable): stamp a
+  run `"blind-audit"` and report its model, tokens, and cost.
+- Grade with the pass's own deterministic grader (categorical exact-match, scoring
+  band-check, screening fires/absent) so results are comparable.
 - Do not make stochastic judge output a normal CI gate or a production mutation.
 - Treat model disagreements as inputs to review, not proof that either side is
   correct.
@@ -327,8 +337,8 @@ Before treating judge agreement as a meaningful quality measure:
 
 1. ~~Move seed cases into a dedicated PII-safe fixture with exact relevant
    production artifacts, production model/prompt metadata, a human label, and a
-   written label rationale.~~ **Done (2026-07-16):** cases live in
-   `judge_cases.json` with exact evidence, label + rationale, and provenance;
+   written label rationale.~~ **Done (2026-07-16):** cases live in the per-pass
+   `<pass>_golden.json` files with exact input, label + rationale, and provenance;
    the fixture recorder now captures per-pass models + prompt versions. Growing
    the set to exact-by-construction from future runs is the retention discipline
    (see `.clinerules`: durability lives in committed fixtures).
@@ -342,15 +352,21 @@ Before treating judge agreement as a meaningful quality measure:
 4. Add persistence and a trend view only after the labelled set is useful.
 5. ~~Design a separate safe evidence fixture before adding score-defensibility
    cases, because that category is closest to applicant text.~~ **Done
-   (2026-07-16):** see "Score-defensibility evals" below — the safe substrate
-   turned out to be a synthetic-source guard, not a separate scrubbed fixture.
+   (2026-07-16):** see "Applicant-facing evals — the synthetic-source guard" below
+   — the safe substrate turned out to be a synthetic-source guard, not a separate
+   scrubbed fixture.
 
-## Score-defensibility evals (built 2026-07-16)
+## Applicant-facing evals — the synthetic-source guard (built 2026-07-16)
 
-The highest-value judge category: **does the applicant's cited `evidence` support the
-`score` the scoring pass gave?** (`SUPPORTED`/`UNSUPPORTED`.) It is the one category that
-must show the judge an applicant quote — the quote is the thing under test — so it can't
-follow the "strip all applicant text" rule the other categories use.
+Scoring and screening are the passes that must show the model an applicant quote — the
+quote is the thing scored/flagged — so they can't follow the "strip all applicant text"
+rule the comparison passes use. That makes the committable-substrate question the hard part,
+not the grader: scoring is graded by a deterministic **band-check** (`metadata.expected` =
+`{score_min, score_max, confidence?}`; the produced score must land in `[score_min,
+score_max]`) exactly like the categorical passes — there is no scoring defensibility judge.
+(An earlier design gave scoring a SUPPORTED/UNSUPPORTED defensibility judge; that whole tier
+was removed — a scoring label is now audited by the generic blind judge in the Judge tab, not
+a bespoke grader.)
 
 **Safe substrate = a synthetic-source guard, not a scrubbed fixture.** A quote is
 committable only when its pool is synthetic. The DB can't infer synthetic-vs-real (both
@@ -360,57 +376,55 @@ its source `SyncRun` → sheet id and **refuses** anything not allowlisted (fail
 real deployment's sheet is rejected by default). To make that link exist, `create_run`
 now stamps `RankingRun.source_sync_run_id` with the latest import (it was a latent unused
 FK). `python -m app.evals.capture_scores` proposes opaque-indexed candidate cases from a
-run, guard-gated, `evidence_source`-stamped; a human labels `expected` + rationale before
-they land in `judge_cases.json` (capture never labels).
+run, guard-gated, `source`-stamped; a human labels `metadata.expected` (a band) + rationale
+before they land in `scoring_golden.json` (capture never labels; screening capture mirrors
+it into `screening_golden.json`).
 
-Three "clear" seeded cases show the basic spectrum: empty evidence → 0.0 against an
-absence-defined low pole (**supported**), a 50/50 income split → 0.95 dual-earner
-resilience (**supported**), and a mid 0.5 on **empty** evidence (**unsupported** — an
-unanchored guess, the score-not-grounded failure the category exists to catch). Note the
-deliberate boundary: this asks "is the CITED evidence sufficient?", NOT "did the pass cite
-the BEST evidence?" (the latter needs full applicant text — a different, harder eval,
+Seeded scoring cases span the basic spectrum — an unaddressed dimension against an
+absence-defined pole (neutral band straddling 0), a strongly-evidenced high case, and the
+absence-floor bug signature (see the absence-policy arc below). Note the deliberate boundary
+the *evidence* honours: a case commits the CITED evidence the pass saw, NOT the BEST evidence
+it could have cited (the latter needs full applicant text — a different, harder eval,
 deferred).
 
-**Adversarial cases — because a clean sweep on clear cases proves too little.** A first
-judge pass went 10/10, which prompted a leak audit: confirmed the prompt serializes ONLY
-`task` + `evidence` (no `expected`, `label_rationale`, `title`, `key`, or `provenance`
-reaches the model — the only occurrence of the verdict words is the task's own "SUPPORTED
-or UNSUPPORTED" choice-list, which names both options equally, not a tell). So no leak —
-but the clear cases are *easy by construction* (surface cue = answer: empty→low,
-rich→high), so 10/10 shows the judge handles clear cases, NOT that it discriminates. A
-"empty=unsupported, full=supported" pattern-matcher would also pass them. Two adversarial
-cases were added where the **surface cue fights the correct answer**, to tell a real judge
-from a cue-matcher: (a) `coop_motivation` — rich, values-flavoured evidence at 0.7, but
-half of it is *environmental* ethics (off-axis for *co-operative* motivation), so the
-correct verdict is **unsupported** despite the "lots of nice text" cue (an exact 0.7 slice
-— a real overclaim the pass made); (b) `child_age_profile` — a terse "Children ages 14,
-11, 8" at 0.65, **supported** because for an age-profile dimension the bare ages ARE the
-complete evidence, testing that the judge doesn't equate brevity with insufficiency. These
-are the cases whose result actually means something.
+**Discrimination over a clean sweep — because clear cases prove too little.** Clear cases are
+*easy by construction* (surface cue = answer: empty→low, rich→high), so passing them shows the
+system handles clear cases, NOT that it discriminates; a "empty→low, full→high" pattern-matcher
+would also pass. So the set includes cases where the **surface cue fights the correct answer**:
+e.g. rich, values-flavoured evidence for `coop_motivation` where half is *environmental* ethics
+(off-axis for *co-operative* motivation), so a high score is an overclaim; and a terse "Children
+ages 14, 11, 8" for `child_age_profile` where the bare ages ARE the complete evidence for an
+age-profile dimension, so brevity is not insufficiency. These are the cases whose result — from
+the live band-check, and from the blind judge auditing the label — actually means something.
+The blind judge sees only `given` + `judge_background`: never `metadata.expected`,
+`label_rationale`, `source`, or `provenance`, so a judge/label disagreement is a real signal
+about the label, not a leak.
 
 ## Coverage across the AI steps (2026-07-16)
 
-The judge harness is step-agnostic — each AI step is just a verdict pair + a per-step
-evidence shape on the shared `JudgeCase`/`stability_run` machinery. As of tonight it
-covers **five of the six** model steps:
+The eval harness is step-agnostic — each AI step is just its `given` shape + a
+`metadata.expected` grader on the shared runner, and the blind judge audits all of them
+uniformly. As of tonight it covers **five of the six** model steps:
 
-| AI step | Judge question | Verdict pair | Cases |
+| AI step | Grader | `metadata.expected` | Cases |
 | --- | --- | --- | --- |
-| Screening | Is the flag warranted by its cited evidence + policy? | `flag_supported`/`flag_unsupported` | 9 (6 supported, 3 over-reach) |
+| Screening | per-category fires/absent check | `{fires, absent}` (over-reach guards) | 9 (6 fires, 3 over-reach) |
 | Discovery | *(covered via decomposition — discovery output is its input)* | — | — |
-| Decomposition | Same-concept fold? / narrative-vs-routing drift | `merge`/`keep`; drift via detector | 2 folds + drift aid |
-| Matching | Is this new dim the same concept as the prior it matched? | `matches`/`mismatches` | 3 (2 match, 1 constructed mismatch) |
-| Consolidation | Merge or keep this correlated pair? | `merge`/`keep` | 5 |
-| Scoring | Does the cited evidence support the score? | `supported`/`unsupported` | 5 |
+| Decomposition | exact-match; narrative-vs-routing drift via detector | `merge`/`keep` | 2 folds + drift aid |
+| Matching | exact-match | `matches`/`mismatches` | 3 (2 match, 1 constructed mismatch) |
+| Consolidation | exact-match | `merge`/`keep` | 5 |
+| Scoring | band-check (score in `[score_min, score_max]`) | `{score_min, score_max, confidence?}` | 5 |
 
-**Screening** reuses the score-defensibility pattern exactly (it also cites applicant
+**Screening** reuses the applicant-facing substrate exactly (it also cites applicant
 text), so its cases go through the same synthetic-source guard, and `capture_screening.py`
-mirrors `capture_scores.py`. One fidelity nuance: pet-policy flags are judged against the
-policy, so the capturer injects the *resolved* policy line the pass actually saw (from
-settings) — not just whatever the flag's quote happened to name — so the judge isn't ruling
-on a partial policy. The over-reach cases (child surname differs from parents; email name ≠
-applicant name) are the discriminating ones — real flags the pass produced that a screener
-shouldn't act on.
+mirrors `capture_scores.py`. Its grader is a per-category check: `expected.fires` lists the
+integrity-flag categories that MUST appear and `expected.absent` the over-reach guards that
+must NOT (a clean applicant has empty `fires` and any flag fails it). One fidelity nuance:
+pet-policy flags are judged against the policy, so the capturer injects the *resolved* policy
+line the pass actually saw (from settings) — not just whatever the flag's quote happened to
+name — so the eval isn't ruling on a partial policy. The over-reach cases (child surname
+differs from parents; email name ≠ applicant name) are the discriminating ones — real flags
+the pass produced that a screener shouldn't act on.
 
 **Matching** is definition-only (no PII), so cases need no guard. Run 2's 25 real matches
 all inspected correct (the pass is high-bar by design), so there was no natural
@@ -438,13 +452,14 @@ summary (`app/evals/agreement.py`):
 
 - **Overall agreement** — share of *decisive* cases the judge matched, plus **Cohen's
   kappa** (chance-corrected; raw agreement inflates when one label dominates the set).
-- **Per-AI-step agreement** — so a strong `supported`/`matches` score can't hide weak
-  `unsupported`/`mismatches` performance (the field's "85% overall can still be unusable"
+- **Per-AI-step agreement** — so a strong score on clean cases can't hide weak
+  `mismatches` / required-flag performance (the field's "85% overall can still be unusable"
   warning).
 - **Failure-detection recall + precision** — *the number that matters*: of the cases
-  whose human label flags a PROBLEM (`unsupported` / `mismatches` / `flag_unsupported`),
-  how many did the judge catch, and how many of its problem-calls were right? A judge
-  that aces clean cases but misses over-reaches is worse than an overall score implies.
+  whose human label flags a PROBLEM (matching `mismatches`; a screening case whose
+  `expected.fires` demands a flag), how many did the judge catch, and how many of its
+  problem-calls were right? A judge that aces clean cases but misses over-reaches is worse
+  than an overall score implies.
 
 **Contested cases are excluded from every scored metric** and reported separately: their
 label is a human *leaning*, not ground truth, so scoring the judge against it would
@@ -525,12 +540,13 @@ Accepted consequence (Jeff, explicit): a candidate who addresses almost nothing 
 neutral and thus ranks **above** one who is explicitly a poor fit — fair, because we have no
 evidence against the silent one. Kept the clean top-down fit formula (confidence
 surfaced-not-folded; confidence-weighting rejected as it would reward strong-but-narrow over
-broad-but-thorough). Two judge cases guard the signed-scale absence rule: an empty citation
-can't justify a negative score, and evidence saying "not addressed" can't justify a negative
-score (the exact pole-floor bug signature). A real new-behavior case (evidence="not
-addressed…", 0 → supported) is still to be harvested from a Rank under the new prompt, not
-fabricated (fidelity rule). Prompt-version bump re-scores every dimension next Rank; the
-next re-score is the *measurement* of whether the signed scale actually fixed the 66 leaks.
+broad-but-thorough). Two scoring golden cases guard the signed-scale absence rule: an empty
+citation must land in a neutral band (not a negative score), and evidence saying "not
+addressed" must too (the exact pole-floor bug signature — a case pins a band straddling 0, so
+a −1 fails it). A real new-behavior case (evidence="not addressed…", scoring neutral) is still
+to be harvested from a Rank under the new prompt, not fabricated (fidelity rule).
+Prompt-version bump re-scores every dimension next Rank; the next re-score is the
+*measurement* of whether the signed scale actually fixed the 66 leaks.
 
 ## Stability harness (built 2026-07-16)
 
@@ -559,26 +575,25 @@ This eval **tests the actual prompt** — freeze the INPUTS, run the REAL prompt
 the FRESH output. That distinction (frozen *output* = regression test; frozen *input* + live
 output = prompt eval) is the one that matters.
 
-Golden inputs live in `fixtures/scoring_golden.json`: hand-authored **synthetic** applicants
+Golden inputs live in `scoring_golden.json`: hand-authored **synthetic** applicants
 (fictional, so committable with no synthetic-pool guard) + one dimension each, run through
-the exact production `dimension_scoring` prompt on the configured scoring model. Two grader
-tiers, by what each can honestly decide:
-- **Deterministic assertions** (the bulk, cheap, unambiguous): score in `[-1, 1]`, an
-  unaddressed dimension scores 0 (neutral — the flagship regression check), a stated
-  confidence, non-empty evidence. These are what an `assert` can settle.
-- **Rubric judge** (the subjective residue): for a case asserting "this SHOULD score
-  high/low", it reuses the validated `judge.py` SUPPORTED/UNSUPPORTED rubric to ask whether
-  the produced score is defensible against its evidence — not a reference-match to an
-  "expected" number (open-ended scoring has no single right answer; a reference-match would
-  be brittle).
+the exact production `dimension_scoring` prompt on the configured scoring model. The grader
+is a single **deterministic band-check**: `metadata.expected` is `{score_min, score_max,
+confidence?}` and the produced score must land in `[score_min, score_max]`. Open-ended
+scoring has no single right answer, so we pin a range not a point — a tight band straddling
+0 for the flagship "unaddressed dimension scores neutral" regression check, a wider band for
+a "should score high/low" case. This is exactly the categorical passes' exact-match, widened
+to an interval; there is no rubric/defensibility judge tier (the old design had one; the
+judge's role moved wholesale to the blind Judge tab).
 
 Makes real model calls (costs money, non-deterministic), so it is a deliberate,
-spend-confirmed tab run, **never in pytest/CI**. The CI half is `tests/test_live_scoring.py`: a structural guard that
+spend-confirmed tab run, **never in pytest/CI**. The CI half is `tests/test_scoring_eval.py`: a structural guard that
 the golden fixture loads and is well-formed (both poles, a checkable expectation, bounds in
 range) with no model call — so a malformed fixture fails at commit time, not spend time.
-`score_equals` uses a tolerance (the model isn't fully deterministic even at temp 0); pin 0
-tightly (the value we most care about) and assert ranges/properties elsewhere rather than
-exact scores.
+The band is what absorbs the model's residual nondeterminism (it isn't fully deterministic
+even at temp 0): pin the neutral case with a tight band straddling 0 (the value we most care
+about) and give the "should score high/low" cases a wider band, rather than ever asserting an
+exact score.
 
 ## In-UI eval cockpit — the "AI Quality" tab (built 2026-07-17, rewritten to Insights quality)
 
@@ -617,9 +632,9 @@ Architecture / file hierarchy:
 - **Code** lives in `app/evals/` (modules) and `frontend/src/components/evals/`
   (InlineConfirm, StructuredFields, EvalCaseDetail, EvalCaseEditor, RunnableEval,
   InvariantsEval). `properties.py` was renamed `invariants.py` (it holds only invariants).
-- **Data** lives in `backend/eval-data/` — the versioned corpus (`judge_cases.json`,
-  `scoring_golden.json`, `rank_baseline.json`), OUT of the code package. Every module reads
-  its path from `app/evals/paths.py`.
+- **Data** lives in `backend/eval-data/` — the versioned corpus (the five per-pass
+  `<pass>_golden.json` files + `rank_baseline.json`), OUT of the code package. Every module
+  reads its path from `app/evals/paths.py`.
 
 Boundaries that keep this honest (dependency flows evals→app, never app→evals):
 - **The tab calls the eval runner functions directly** (`run_case`, `judge_case`,
