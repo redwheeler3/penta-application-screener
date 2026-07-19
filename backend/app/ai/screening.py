@@ -32,8 +32,8 @@ from app.services.application_import import extract_essays
 KIND = "screening"
 
 SYSTEM_PROMPT = """\
-You are a careful assistant helping a housing co-op screening committee review applications for data-integrity concerns.
-You surface things a human should be aware of; you never make eligibility or acceptance decisions.
+You are a careful assistant helping a housing co-op screening committee review applications, surfacing both data-integrity concerns and policy issues (such as pets) a screener should see.
+You only surface things for a human to review; you never make the eligibility or acceptance decision yourself. Surfacing a policy issue as a flag is NOT making that decision — raise it and leave the call to the committee.
 Be conservative: flag only on concrete evidence. When in doubt, do not flag.
 """
 
@@ -48,7 +48,7 @@ Be conservative: flag only on concrete evidence. When in doubt, do not flag.
 # .format() — that threshold stays out of the version, see PROMPT_VERSION below.
 _INSTRUCTIONS_TEMPLATE = f"""\
 ## Task
-Review this housing co-op application for data-integrity concerns and return any screening flags. Flag ONLY clear, concrete problems. If you are unsure, do not flag. It is correct and expected for most applications to have zero flags.
+Review this housing co-op application and return any screening flags — both data-integrity concerns and policy issues (such as pets) a screener should see. Flag ONLY clear, concrete problems. If you are unsure, do not flag. It is correct and expected for most applications to have zero flags.
 
 ## Inputs
 The applicant's normalized form fields in the `<fields>` block, and their four essay answers in the `<essays>` block, below.
@@ -65,7 +65,7 @@ Flag these when clearly present:
 Do NOT flag (these are normal and must be ignored):
 - A child or co-applicant having a different surname from the applicant. Blended families and differing surnames are common and are NOT suspicious.
 - Missing optional information, or an answer simply being short.
-- Ordinary household context by itself. Only flag a concrete data-integrity concern; family details are not suspicious on their own.
+- Ordinary household context by itself. Only flag a concrete concern; family details are not suspicious on their own.
 - An email that does not match the person's name.
 
 ## Guardrails
