@@ -95,8 +95,10 @@ def _emit(on_delta: object, text: str) -> None:
 def _screen(provider: AIProvider, case: ScreeningCase, *, screening_model: str, settings: AppSettings) -> tuple[list[str], str]:
     """Run the REAL screening prompt once and return ``(categories, detail)``. ``categories``
     are the produced flag categories (in order, duplicates kept — a pass may raise the same
-    twice); ``detail`` pairs each flag with its cited summary/evidence (the model's reasoning
-    for the flags), so a stability flip is explainable. Shared by the graded run and stability."""
+    twice); ``detail`` is the per-flag cited evidence PLUS the model's own free-form reasoning
+    (``result.narrative``) when the model emits any — the only place the rationale for a flag it
+    chose NOT to raise could appear, so a MISS is explainable, not just a flip. Shared by the
+    graded run and stability."""
     result = provider.structured_output(
         model_id=screening_model,
         schema=ScreeningReport,
@@ -105,7 +107,11 @@ def _screen(provider: AIProvider, case: ScreeningCase, *, screening_model: str, 
     )
     flags = result.output.flags
     categories = [f.category.value for f in flags]
-    detail = "; ".join(f"{f.category.value}: {f.summary}" for f in flags) or "no flags"
+    per_flag = "; ".join(f"{f.category.value}: {f.summary}" for f in flags) or "no flags"
+    narrative = (result.narrative or "").strip()
+    # Lead with the model's reasoning (if any), then the per-flag evidence. A miss has no
+    # per-flag line by nature, so the narrative is where "why I didn't flag X" would live.
+    detail = f"{narrative}\n\n{per_flag}" if narrative else per_flag
     return categories, detail
 
 
@@ -178,9 +184,12 @@ def run_case(
     flag categories against the case's fires/absent expectations."""
     name = case.fields.get("applicant_name", case.key)
     _emit(on_delta, f"Screening **{name}** on `{screening_model}`…\n\n")
-    categories, _detail = _screen(provider, case, screening_model=screening_model, settings=settings)
+    categories, detail = _screen(provider, case, screening_model=screening_model, settings=settings)
     shown = ", ".join(categories) if categories else "no flags"
     _emit(on_delta, f"Flags produced: **{shown}**\n\n")
+    # Surface the model's reasoning + per-flag evidence so a miss (an expected flag that didn't
+    # fire) is explainable, not just visible as a red ❌ with no "why".
+    _emit(on_delta, f"_{detail}_\n\n")
 
     failures = _check(case, categories)
     if failures:
