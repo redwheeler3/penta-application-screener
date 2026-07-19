@@ -23,6 +23,48 @@ The practical goals are to:
 - make known weak cases repeatable rather than relying on memory of a past run;
 - keep evaluation separate from production ranking decisions.
 
+## Design at a glance
+
+The shape of this eval system, and why it's shaped that way — the five ideas that carry it:
+
+1. **Match the grader to the output shape; don't LLM-judge everything.** A grader should be
+   the cheapest thing that can honestly decide the output. Categorical passes (merge/keep,
+   matches/mismatches, flag/no-flag) grade by **deterministic exact-match** against a human
+   label. The one continuous output (a −1..+1 score) grades by a **band check** (score in
+   `[min, max]`) — still deterministic, just a range. Wrapping an LLM judge around a task that
+   has a definitive answer only adds latency, cost, and a chance of being wrong about something
+   that isn't. (Grader architecture, decided from a multi-source review — see below.)
+
+2. **The LLM judge earns its keep on the fuzzy questions, not routine grading.** It has two
+   legitimate jobs: **label auditing** (on a genuinely subjective call, a judge that disagrees
+   with our label is a signal the *label* may be wrong) and **calibration** (before trusting any
+   judge, measure it against human labels with Cohen's κ — "who evaluates the evaluator"). It
+   runs **blind** — never shown the human label — because a judge shown the answer rubber-stamps
+   it. It re-derives each pass's output from the same input production saw, then the harness
+   compares.
+
+3. **Evals are bidirectional — they pressure-test the labels, not just the model.** More than
+   once the eval surfaced that *our ground truth* was wrong, not the model: an over-eager
+   "inconsistency" label the model rightly declined, later recast as a contested axis; a pet
+   flag the model missed because the *prompt's framing* (not the model) was self-contradictory.
+   A good eval set is a spec under test, not only a regression net.
+
+4. **Observability is what makes a failure actionable.** Every pass persists the model's
+   reasoning per run. A red ✗ with no "why" is a tripwire; a red ✗ with the model's own
+   reasoning is a root cause — one pet-flag miss became a three-line prompt fix *because* the
+   captured reasoning said "this is eligibility, not integrity."
+
+5. **Stability is a distinct axis from correctness.** Running a case K times on fixed input
+   catches non-determinism a single run hides. A flip that *shouldn't* happen is a real
+   weakness (the matching pass was unstable on same-concept-different-name pairs); a case that
+   is *genuinely* two-sided is expected to be stable but not expected to agree with the label
+   ("contested"). Correctness and stability are graded separately.
+
+The through-line: **a prompt is global state.** A one-line edit to one pass silently flipped a
+different pass's verdict this session — which is the whole argument for a broad, cheap,
+fast eval set that runs on the real prompts. The sections below are the detailed record of how
+each of these is built and why.
+
 ## Layers
 
 ### Software tests
