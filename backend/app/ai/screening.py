@@ -55,7 +55,7 @@ The applicant's normalized form fields in the `<fields>` block, and their four e
 
 ## How to judge
 Flag these when clearly present:
-- Names that are obviously placeholders or fake rather than real names — in ANY name field, applicant, co-applicant, or a child (e.g. a child listed as "TBD" is a placeholder worth surfacing, even if the name is simply not yet finalized). A real-looking name is NEVER a flag.
+- A placeholder or non-name in ANY name field (applicant, co-applicant, or child) — flag it for a human to confirm rather than excusing it as probably innocent. A real name is NEVER a flag.
 - Essays that are essentially non-responsive: empty, a single word, or a single short fragment. Brief-but-genuine answers are fine.
 - Essays that are clearly spam/advertising, or the SAME text copy-pasted across multiple essay answers.
 - Direct factual contradictions between fields, or within or across the essays (not mere absence of explanation).
