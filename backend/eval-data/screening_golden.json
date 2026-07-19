@@ -214,6 +214,226 @@
           "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "I think deeply about what it means to share a home with others, and I write and reflect on community as a way of life. I'd bring warmth, good conversation, and a genuine ethic of care."
         }
       }
+    },
+    {
+      "key": "fake_contact_placeholder_email_fires",
+      "metadata": {
+        "note": "A keyboard-mash placeholder email (asdf@asdf.asdf) is a clear fake-contact concern.",
+        "pass": "screening",
+        "source": "synthetic pool, application id 13 (Peyton Mehta) — an exact slice of a real synthetic record.",
+        "label_rationale": "FLAG_SUPPORTED: 'asdf@asdf.asdf' is an unmistakable placeholder/keyboard-mash, not a real address — the cited evidence is the concern itself.",
+        "expected": {
+          "fires": [
+            "fake_contact"
+          ],
+          "absent": []
+        }
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Peyton Mehta",
+          "co_applicant_name": "Jordan Garcia",
+          "child_details": [
+            {
+              "first_name": "Nora",
+              "last_name": "Nguyen",
+              "age": 7
+            }
+          ],
+          "pets_text": "One cat",
+          "applicant_email": "asdf@asdf.asdf",
+          "co_applicant_email": "test@test.test",
+          "co_applicant_phone": "111-111-1111"
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "We organize the annual block party and its cleanup crew. Community and accountability are values we take seriously.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "I manage bookkeeping for a small business, so I can help keep the co-op's budget, reconcile accounts, and prep for audits. We're both comfortable being on the on-call list for small emergencies.",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "I grew up in a housing co-op in Burnaby, so I understand the rhythm of meetings, work hours, and shared decisions. It gave me patience for consensus and an eye for what really needs fixing.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "I value mutual aid over going it alone, and I'd contribute by mentoring new members and keeping our systems documented. I'd help mediate the small frictions before they turn into big ones."
+        }
+      }
+    },
+    {
+      "key": "inconsistency_parent_of_two_vs_four_fires",
+      "metadata": {
+        "note": "Essay says \"devoted parent of two\" but the form lists four children — a real, evidenced inconsistency.",
+        "pass": "screening",
+        "source": "synthetic pool, application id 8 (Reese Anderson) — an exact slice of a real synthetic record.",
+        "label_rationale": "FLAG_SUPPORTED: a stated 'parent of two' directly contradicts a form listing four children — a real, evidenced internal inconsistency worth a screener's review.",
+        "expected": {
+          "fires": [
+            "internal_inconsistency"
+          ],
+          "absent": []
+        }
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Reese Anderson",
+          "co_applicant_name": "Taylor Chen",
+          "child_details": [
+            {
+              "first_name": "Leo",
+              "last_name": "Patel",
+              "age": 12
+            },
+            {
+              "first_name": "Nora",
+              "last_name": "Garcia",
+              "age": 13
+            },
+            {
+              "first_name": "Sam",
+              "last_name": "Chen",
+              "age": 14
+            },
+            {
+              "first_name": "Iris",
+              "last_name": "Wilson",
+              "age": 15
+            }
+          ],
+          "pets_text": "Two cats",
+          "applicant_email": "reese.anderson17@icloud.com",
+          "co_applicant_email": "taylorc@yahoo.com",
+          "co_applicant_phone": "778-555-2009"
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "Reese Anderson is a dedicated accountant and a devoted parent of two. The Anderson family values hard work, tidiness, and giving back to their community. They look forward to contributing.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "I'm a graphic designer and can produce the newsletter, signage, and the move-in welcome packet. We learn quickly and don't mind being shown how a building's systems work.",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "We lived in a co-housing community in the Kootenays for five years and took turns on the maintenance and finance teams. It showed me how shared budgets and fair work-shares actually get set.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "I want to age in a place where people check on each other, and I can offer steady hands for upkeep and finances. I'd pitch in on budgeting and make sure the numbers stay honest."
+        }
+      }
+    },
+    {
+      "key": "inconsistency_no_skills_then_electrician_fires",
+      "metadata": {
+        "note": "Skills essay self-contradicts: \"dont really have any handy skills\" immediately followed by \"Im a certified electrician\".",
+        "pass": "screening",
+        "source": "synthetic pool, application id 12 (Riley Singh) — an exact slice of a real synthetic record.",
+        "label_rationale": "FLAG_SUPPORTED: the essay self-contradicts within one passage — 'no handy skills' immediately followed by certified electrician + drywall/tiling. The quote directly shows the inconsistency.",
+        "expected": {
+          "fires": [
+            "internal_inconsistency"
+          ],
+          "absent": []
+        }
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Riley Singh",
+          "co_applicant_name": "Drew Anderson",
+          "child_details": [
+            {
+              "first_name": "Miles",
+              "last_name": "Kim",
+              "age": 4
+            },
+            {
+              "first_name": "Maya",
+              "last_name": "Lopez",
+              "age": 5
+            },
+            {
+              "first_name": "Leo",
+              "last_name": "Anderson",
+              "age": 6
+            },
+            {
+              "first_name": "Nora",
+              "last_name": "Nguyen",
+              "age": 7
+            }
+          ],
+          "pets_text": "Two cats",
+          "applicant_email": "riley.singh21@shaw.ca",
+          "co_applicant_email": "drewa@hotmail.com",
+          "co_applicant_phone": "778-555-2015"
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "We restore old bicycles and donate them to newcomers to the city. We try to live simply and share what we have.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "Honestly we don't really have any handy skills to offer. That said, I'm a certified electrician, my partner does drywall and tiling, and we both have first-aid training, so we'll figure it out.",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "We lived in a co-housing community in the Kootenays for five years and took turns on the maintenance and finance teams. It gave me patience for consensus and an eye for what really needs fixing.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "Honestly? We're just so done with crummy landlords and surprise rent hikes. A co-op sounds amazing — we'd totally pitch in, show up for work days, the whole deal. Fingers crossed!"
+        }
+      }
+    },
+    {
+      "key": "pet_rabbit_other_pets_fires",
+      "metadata": {
+        "note": "A rabbit against a dogs/cats-only policy (no other/exotic pets) — a pet_policy flag.",
+        "pass": "screening",
+        "source": "synthetic pool, application id 38 (Hiroshi Tanaka) — an exact slice of a real synthetic record.",
+        "label_rationale": "FLAG_SUPPORTED: the policy explicitly bars 'other/exotic pets', and a rabbit is neither a dog nor a cat, so it falls under 'other' — a genuine violation. Note the policy line is included in the case (fidelity): without it, the quote alone ('at most 1 dog and 1 cat') could look like it doesn't cover rabbits; with it, the flag is clearly warranted.",
+        "expected": {
+          "fires": [
+            "pet_policy"
+          ],
+          "absent": []
+        }
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Hiroshi Tanaka",
+          "co_applicant_name": "Emma Larsen",
+          "child_details": [
+            {
+              "first_name": "Kai",
+              "last_name": "Tanaka",
+              "age": 3
+            }
+          ],
+          "pets_text": "One rabbit",
+          "applicant_email": "hiroshitanaka@protonmail.com",
+          "co_applicant_email": "emma.larsen@gmail.com",
+          "co_applicant_phone": "778-555-2053"
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "We foster rescue animals and are active in the local pet-adoption network. We believe a good home is one you help take care of.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "I've done HR and conflict mediation for a decade and can help the co-op resolve disputes fairly. We're both comfortable being on the on-call list for small emergencies.",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "We lived in a co-housing community in the Kootenays for five years and took turns on the maintenance and finance teams. I learned to spot the work that goes unnoticed until it's not done.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "I want my kids to grow up knowing their neighbours and seeing adults solve problems together, and I'll pull my weight to make that real. I'd mentor newer members and document how things actually work here."
+        }
+      }
+    },
+    {
+      "key": "placeholder_child_name_tbd_fires",
+      "metadata": {
+        "note": "A child with first and last name both \"TBD\" (age 5) is a genuine placeholder worth surfacing.",
+        "pass": "screening",
+        "source": "synthetic pool, application id 75 (Jennifer Ross) — an exact slice of a real synthetic record.",
+        "label_rationale": "FLAG_SUPPORTED: 'TBD' for both names of a named age-5 child is a genuine placeholder worth surfacing — the evidence is the concern.",
+        "expected": {
+          "fires": [
+            "placeholder_name"
+          ],
+          "absent": []
+        }
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Jennifer Ross",
+          "co_applicant_name": "Mark Ross",
+          "child_details": [
+            {
+              "first_name": "TBD",
+              "last_name": "TBD",
+              "age": 5
+            }
+          ],
+          "pets_text": "One cat",
+          "applicant_email": "jenniferr@yahoo.com",
+          "co_applicant_email": "markross@protonmail.com",
+          "co_applicant_phone": "778-555-2090"
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "We're into board games and host a monthly potluck for friends. Fairness and follow-through are the things we care about most.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "I'm a transit mechanic and can service the shared tools, bikes, and any small engines on site. We learn quickly and don't mind being shown how a building's systems work.",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "I sat on the board of a childcare co-op and learned how to keep volunteers engaged without burning them out. It showed me how shared budgets and fair work-shares actually get set.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "We want to put down roots and give back, whether that's chairing a committee or just keeping the boiler room tidy. In return I'd take on a committee seat and keep our records straight."
+        }
+      }
     }
   ]
 }
