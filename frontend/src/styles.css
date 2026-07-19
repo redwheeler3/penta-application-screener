@@ -2968,10 +2968,8 @@ h1 {
    and any violations. */
 .eval-invariant { display: grid; gap: 3px; padding: 8px 0; border-top: 1px solid var(--line); }
 .eval-invariant:first-of-type { border-top: 0; }
-.eval-invariant-headrow { display: flex; align-items: baseline; gap: 8px; font-size: 0.9rem; }
-.eval-invariant-mark { font-weight: 700; }
-.eval-invariant.ok .eval-invariant-mark { color: #16a34a; }
-.eval-invariant.fail .eval-invariant-mark { color: #dc2626; }
+/* center (not baseline) so the status dot sits mid-line against the check name. */
+.eval-invariant-headrow { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
 .eval-invariant-name { font-weight: 600; }
 .eval-invariant-desc { margin: 0 0 0 18px; color: var(--muted); font-size: 0.82rem; line-height: 1.5; max-width: 90ch; }
 .eval-invariant-violations { margin-left: 18px; }
