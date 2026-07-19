@@ -203,6 +203,22 @@ export function fetchEvalCases(evalKey: string): Promise<Response> {
   return fetch(url(`/evals/cases/${evalKey}`), { credentials: "include" });
 }
 
+// The per-pass judge_background briefs (what each pass does) the Judge tab lists + edits,
+// with each pass's golden case count. Free (reads the committed golden files).
+export function fetchJudgeBackgrounds(): Promise<Response> {
+  return fetch(url("/evals/judge-backgrounds"), { credentials: "include" });
+}
+
+// Write one pass's judge_background to its golden file (operator commits deliberately).
+export function saveJudgeBackground(passName: string, background: string): Promise<Response> {
+  return fetch(url(`/evals/judge-backgrounds/${passName}`), {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ background }),
+  });
+}
+
 // The most recent persisted run among `keys` (comma-joined), to restore a tab on remount.
 // Result JSON only (no thinking narration); carries a `stale` flag when the prompt changed.
 export function fetchLastEvalRun(keys: string[]): Promise<Response> {

@@ -6,6 +6,7 @@ import { CostPanel } from "./CostPanel";
 import { DecomposeAuditPanel } from "./DecomposeAuditPanel";
 import { DiscoveryPanel } from "./DiscoveryPanel";
 import { InvariantsEval } from "./evals/InvariantsEval";
+import { JudgeBackgrounds } from "./evals/JudgeBackgrounds";
 import { RunnableEval, type RunMode } from "./evals/RunnableEval";
 import { MatchAuditPanel } from "./MatchAuditPanel";
 import { MetricsPanel } from "./MetricsPanel";
@@ -176,8 +177,9 @@ export function InsightsView(props: { family: InsightsFamily; run: CurrentRunRes
             caseEvalKey="judge"
             runKeys={["judge", "stability"]}
             groupBy="pass"
-            harvestable
-            description="The judge case set, run two ways over the SAME cases: a one-pass judge run reports judge-vs-human agreement; a stability run judges each case K times to see if a verdict flips. Cases are grouped by the production pass they exercise."
+            editable={false}
+            header={<JudgeBackgrounds />}
+            description="A blind label audit: for every pass's golden cases, an independent model reproduces that pass's output from the pass's brief + the case input (NOT the human label), then the harness compares to the label. A judge run reports judge-vs-human agreement (κ); a stability run repeats each case K times to see if the judge's verdict flips. Cases are grouped by the pass they exercise and are read-only here — edit them in each pass's own tab."
             modes={
               [
                 { evalKey: "judge", label: "Run judge + agreement", rowLabel: "Run judge", calls: calls("judge") },

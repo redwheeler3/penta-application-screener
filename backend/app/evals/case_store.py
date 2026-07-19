@@ -53,7 +53,19 @@ def _load(path: Path) -> dict:
 
 
 def list_cases(eval_key: str) -> list[dict]:
-    """Every case for an eval, straight from its committed fixture."""
+    """Every case for an eval, straight from its committed fixture. The special key ``judge``
+    is READ-ONLY and AGGREGATED: it returns every pass's golden cases (the judge owns no files,
+    it audits them all), each tagged with its ``pass`` so the Judge tab can group. It is not in
+    ``_FIXTURES``, so ``save_case('judge', …)`` correctly refuses (nothing to write to)."""
+    if eval_key == "judge":
+        out: list[dict] = []
+        for pass_name, live_key in _BACKGROUND_PASSES.items():
+            path, _ = _FIXTURES[live_key]
+            for c in _load(path).get("cases", []):
+                if isinstance(c, dict) and "key" in c:
+                    c.setdefault("metadata", {}).setdefault("pass", pass_name)
+                    out.append(c)
+        return out
     if eval_key not in _FIXTURES:
         raise UnknownEvalError(eval_key)
     path, _required = _FIXTURES[eval_key]
@@ -92,3 +104,38 @@ def save_case(eval_key: str, case: dict) -> list[dict]:
     # meaningful for readability in the diff.
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
     return [c for c in cases if isinstance(c, dict) and "key" in c]
+
+
+# The pass whose golden file each editable judge_background lives in. Keyed by the pass name
+# the Judge tab groups by (matches JudgeCase.pass_name), value is the writable eval key.
+_BACKGROUND_PASSES: dict[str, str] = {
+    "scoring": "live_scoring",
+    "consolidation": "live_consolidation",
+    "matching": "live_matching",
+    "decomposition": "live_decomposition",
+    "screening": "live_screening",
+}
+
+
+def get_background(pass_name: str) -> str:
+    """The editable ``judge_background`` (what the pass does, shown to the blind judge) for one
+    pass, read from its golden file. Empty string if unset. Unknown pass → UnknownEvalError."""
+    if pass_name not in _BACKGROUND_PASSES:
+        raise UnknownEvalError(pass_name)
+    path, _ = _FIXTURES[_BACKGROUND_PASSES[pass_name]]
+    return _load(path).get("judge_background", "")
+
+
+def save_background(pass_name: str, background: str) -> str:
+    """Write one pass's ``judge_background`` to its golden file (preserving cases + other
+    top-level keys). The operator commits the file to git deliberately. Returns the saved
+    text. Unknown pass → UnknownEvalError."""
+    if pass_name not in _BACKGROUND_PASSES:
+        raise UnknownEvalError(pass_name)
+    if not isinstance(background, str) or not background.strip():
+        raise CaseValidationError("judge_background must be a non-empty string")
+    path, _ = _FIXTURES[_BACKGROUND_PASSES[pass_name]]
+    data = _load(path)
+    data["judge_background"] = background
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    return background

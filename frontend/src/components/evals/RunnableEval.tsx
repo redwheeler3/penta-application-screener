@@ -32,8 +32,15 @@ export function RunnableEval(props: {
   // Judge only: offer "Harvest from current run" — propose fidelity-preserving candidate
   // cases from the current Rank's scoring/screening output, opened in the editor to label.
   harvestable?: boolean;
+  // Whether cases can be added/edited here. The Judge tab is READ-ONLY over cases (it owns no
+  // files — it audits every pass's golden set), so it passes false: no "+ Add case", no
+  // per-case edit. Editing happens in each pass's own tab. Defaults to true.
+  editable?: boolean;
+  // Extra content rendered above the run controls (the Judge tab's per-pass background editors).
+  header?: ReactNode;
 }): ReactNode {
   const { caseEvalKey, modes } = props;
+  const editable = props.editable ?? true;
   const [cases, setCases] = useState<Record<string, unknown>[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null); // selected case key
   const [editing, setEditing] = useState<{ existing: Record<string, unknown> | null } | null>(null);
@@ -182,6 +189,8 @@ export function RunnableEval(props: {
     <div className="eval-section">
       <p className="eval-card-desc">{props.description}</p>
 
+      {props.header}
+
       {confirm && !confirm.caseKey ? renderConfirm() : null}
 
       <div className="eval-section-actions">
@@ -196,18 +205,20 @@ export function RunnableEval(props: {
             {run.running ? "Running…" : `${m.label} (~${m.calls})`}
           </button>
         ))}
-        <button
-          type="button"
-          className="secondary-button"
-          disabled={run.running}
-          onClick={() => {
-            setSaveError(null);
-            setEditing({ existing: null });
-            setSelected(null);
-          }}
-        >
-          + Add case
-        </button>
+        {editable ? (
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={run.running}
+            onClick={() => {
+              setSaveError(null);
+              setEditing({ existing: null });
+              setSelected(null);
+            }}
+          >
+            + Add case
+          </button>
+        ) : null}
       </div>
 
       {props.harvestable ? (
@@ -276,17 +287,19 @@ export function RunnableEval(props: {
                     {run.running ? "Running…" : m.rowLabel}
                   </button>
                 ))}
-                <button
-                  type="button"
-                  className="secondary-button eval-detail-edit"
-                  disabled={run.running}
-                  onClick={() => {
-                    setSaveError(null);
-                    setEditing({ existing: selectedCase });
-                  }}
-                >
-                  Edit
-                </button>
+                {editable ? (
+                  <button
+                    type="button"
+                    className="secondary-button eval-detail-edit"
+                    disabled={run.running}
+                    onClick={() => {
+                      setSaveError(null);
+                      setEditing({ existing: selectedCase });
+                    }}
+                  >
+                    Edit
+                  </button>
+                ) : null}
               </div>
               {confirm?.caseKey === String(selectedCase.key) ? renderConfirm() : null}
               {selectedResult
@@ -299,7 +312,9 @@ export function RunnableEval(props: {
               <EvalCaseDetail evalCase={selectedCase} />
             </div>
           ) : (
-            <p className="eval-detail-placeholder">Select a case to see its full input, or add a new one.</p>
+            <p className="eval-detail-placeholder">
+              {editable ? "Select a case to see its full input, or add a new one." : "Select a case to see its full input."}
+            </p>
           )}
         </div>
       </div>
@@ -390,8 +405,8 @@ function CaseList(props: {
                   </span>
                 ) : null}
                 <span className="eval-case-item-key">{key}</span>
-                {meta(c).expected ? (
-                  <span className="eval-case-item-expected">{String(meta(c).expected)}</span>
+                {meta(c).expected !== undefined ? (
+                  <span className="eval-case-item-expected">{expectedLabel(meta(c).expected)}</span>
                 ) : null}
               </button>
             );
@@ -400,6 +415,31 @@ function CaseList(props: {
       ))}
     </div>
   );
+}
+
+// A compact label for a case's `metadata.expected` chip. Categorical labels are strings;
+// scoring is a band ({score_min, score_max, confidence?}); screening is {fires, absent}.
+// Mirrors the backend _seed_str so a case reads the same in the list and the run marker.
+function expectedLabel(expected: unknown): string {
+  if (typeof expected === "string") return expected;
+  if (expected && typeof expected === "object") {
+    const e = expected as Record<string, unknown>;
+    if ("fires" in e || "absent" in e) {
+      const parts: string[] = [];
+      const fires = e.fires as string[] | undefined;
+      const absent = e.absent as string[] | undefined;
+      if (fires?.length) parts.push(`fires: ${fires.join(", ")}`);
+      if (absent?.length) parts.push(`absent: ${absent.join(", ")}`);
+      return parts.join(" · ") || "clean";
+    }
+    if ("score_min" in e || "score_max" in e || "confidence" in e) {
+      const lo = e.score_min ?? "-1";
+      const hi = e.score_max ?? "1";
+      const conf = e.confidence ? ` ${e.confidence}` : "";
+      return `[${lo}, ${hi}]${conf}`;
+    }
+  }
+  return String(expected);
 }
 
 function resultOk(ranMode: RunMode["evalKey"], r: any): boolean {
