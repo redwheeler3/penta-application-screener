@@ -394,10 +394,11 @@ _HARVESTERS = {"scoring": _propose_scores, "screening": _propose_screening}
 
 @router.get("/harvest/{family}", response_model=HarvestResponse)
 def harvest(family: str, user: User = Depends(require_current_user), db: Session = Depends(get_db)) -> HarvestResponse:
-    """Propose unlabelled judge cases from the current run's scoring/screening output.
+    """Propose unlabelled golden cases from the current run's scoring/screening output.
     Guard-gated: refuses a non-synthetic pool (committing applicant evidence quotes is only
     safe on synthetic data). 404 unknown family; 409 no current run; 422 non-synthetic pool.
-    Candidates whose key already exists in the judge set are dropped (already harvested)."""
+    Candidates whose key already exists in that pass's golden set are dropped (already
+    harvested). The operator labels + saves each candidate into the pass's golden file."""
     if family not in _HARVESTERS:
         raise Problem("not_found", detail=f"No harvester for family {family!r} (scoring | screening).")
     run = get_current_run(db)
@@ -407,7 +408,8 @@ def harvest(family: str, user: User = Depends(require_current_user), db: Session
         proposed = _HARVESTERS[family](db, run)
     except NonSyntheticPoolError as exc:
         raise Problem("invalid_case", detail=str(exc)) from exc
-    existing = {c.get("key") for c in list_cases("judge")}
+    # Dedup against the pass's own golden set (scoring -> live_scoring, screening -> live_screening).
+    existing = {c.get("key") for c in list_cases(f"live_{family}")}
     fresh = [c for c in proposed if c.get("key") not in existing]
     return HarvestResponse(family=family, candidates=fresh)
 

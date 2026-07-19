@@ -3,9 +3,9 @@
 Screening flags cite applicant essay/field text (the flag's ``evidence``), so — like
 score-defensibility — a committable case must come from a synthetic pool. Same guard
 (``synthetic_guard.require_synthetic_pool``), same discipline: this proposes opaque-indexed
-candidates; a human labels ``expected`` (FLAG_SUPPORTED / FLAG_UNSUPPORTED) + rationale
-before they enter ``judge_cases.json``. See ``docs/score-defensibility-design.md`` — the
-screening category is the same applicant-text-facing pattern, one pass over.
+candidates; a human labels the ``expected`` fires/absent categories + rationale before they
+enter ``screening_golden.json``. See ``docs/score-defensibility-design.md`` — the screening
+category is the same applicant-text-facing pattern, one pass over.
 
 ``propose_cases`` is invoked from the AI Quality tab's "Harvest from current run" action
 (``GET /evals/harvest/screening``); there is no CLI entry point.

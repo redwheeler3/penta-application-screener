@@ -20,12 +20,12 @@ def golden_file(tmp_path, monkeypatch):
     path = tmp_path / "scoring_golden.json"
     path.write_text(json.dumps({
         "_comment": "keep me",
+        "judge_background": "keep me too",
         "cases": [
             {
                 "key": "a",
-                "metadata": {"expect": {"score_equals": 0.0}},
-                "input": {"applicant": {"facts": {}}, "dimension": {"key": "d"}},
-                "judge": {"question": "defensible?"},
+                "metadata": {"expected": {"score_min": -0.1, "score_max": 0.1}},
+                "given": {"applicant": {"facts": {}}, "dimension": {"key": "d"}},
             },
         ],
     }))
@@ -43,38 +43,37 @@ def test_list_cases_reads_only_real_cases(golden_file) -> None:
 def test_save_new_case_appends(golden_file) -> None:
     new = {
         "key": "b",
-        "metadata": {"expect": {"score_min": 0.5}},
-        "input": {"applicant": {"facts": {}}, "dimension": {"key": "d"}},
-        "judge": {"question": "defensible?"},
+        "metadata": {"expected": {"score_min": 0.5}},
+        "given": {"applicant": {"facts": {}}, "dimension": {"key": "d"}},
     }
     cases = case_store.save_case("live_scoring", new)
     assert [c["key"] for c in cases] == ["a", "b"]
-    # Persisted to disk, and the _comment top-level key survived.
+    # Persisted to disk, and both non-cases top-level keys survived.
     on_disk = json.loads(golden_file.read_text())
     assert on_disk["_comment"] == "keep me"
+    assert on_disk["judge_background"] == "keep me too"
     assert [c["key"] for c in on_disk["cases"]] == ["a", "b"]
 
 
 def test_save_existing_key_upserts_in_place(golden_file) -> None:
     edited = {
         "key": "a",
-        "metadata": {"expect": {"score_equals": 0.0}},
-        "input": {"applicant": {"facts": {"x": 1}}, "dimension": {"key": "d"}},
-        "judge": {"question": "defensible?"},
+        "metadata": {"expected": {"score_min": -0.1, "score_max": 0.1}},
+        "given": {"applicant": {"facts": {"x": 1}}, "dimension": {"key": "d"}},
     }
     cases = case_store.save_case("live_scoring", edited)
     assert len(cases) == 1  # replaced, not appended
-    assert cases[0]["input"]["applicant"]["facts"] == {"x": 1}
+    assert cases[0]["given"]["applicant"]["facts"] == {"x": 1}
 
 
 def test_save_rejects_missing_required_field(golden_file) -> None:
     with pytest.raises(case_store.CaseValidationError):
-        case_store.save_case("live_scoring", {"key": "c", "input": {}})  # no metadata/judge
+        case_store.save_case("live_scoring", {"key": "c", "given": {}})  # no metadata
 
 
 def test_save_rejects_blank_key(golden_file) -> None:
     with pytest.raises(case_store.CaseValidationError):
-        case_store.save_case("live_scoring", {"key": "", "metadata": {}, "input": {}, "judge": {}})
+        case_store.save_case("live_scoring", {"key": "", "metadata": {}, "given": {}})
 
 
 def test_unknown_eval_raises(golden_file) -> None:

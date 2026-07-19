@@ -7,8 +7,8 @@ synthetic allowlist (``synthetic_guard.require_synthetic_pool``). See
 ``docs/score-defensibility-design.md``.
 
 This *proposes* candidates only. A human picks the diagnostic ones (an overclaim, a
-defensible one, an absence-as-presence) and writes the ``expected`` verdict +
-``label_rationale`` before they enter ``judge_cases.json`` — capture never labels.
+defensible one, an absence-as-presence) and writes the ``expected`` band +
+``label_rationale`` before they enter ``scoring_golden.json`` — capture never labels.
 
 ``propose_cases`` is invoked from the AI Quality tab's "Harvest from current run" action
 (``GET /evals/harvest/scoring``); there is no CLI entry point.
