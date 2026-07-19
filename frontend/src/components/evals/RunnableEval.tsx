@@ -245,7 +245,7 @@ export function RunnableEval(props: {
         // is one self-contained line (label · result · when · prompt · model).
         <div className="eval-runinfo">
           {Object.values(restored).map((r) => (
-            <RestoredMarker key={r.evalKey} run={r} />
+            <RestoredMarker key={r.evalKey} run={r} totalCases={cases?.length ?? 0} />
           ))}
         </div>
       ) : null}
@@ -466,39 +466,39 @@ function runModel(result: any): string {
   return result?.model || result?.scoringModel || result?.judgeModel || "";
 }
 
-// The one-line RESULT summary for a run mode — the substantive outcome the old headline
-// carried, minus the pass-name/prompt/model that the marker already shows. Graded runs:
-// "X/Y passed"; stability: "X/Y stable" (count of [stable] cases); the judge: its agreement
-// block. Empty string ⇒ no summary segment.
-function runSummary(evalKey: string, result: any): string {
+// The one-line RESULT summary for a run mode. The NUMERATOR counts the run's per-case results
+// the SAME way the dots do (via dotFor), so it always matches the green dots — including a
+// per-case run and contested-agree cases (green, counted ok) which the backend's passed/total
+// excludes. The DENOMINATOR is the TOTAL case count (every dot slot in the list), not how many
+// have a result yet — so a partial run reads "4/5", not "4/4". Graded: "X/Y passed"; stability:
+// "X/Y stable"; the judge adds its agreement block. Empty ⇒ no summary segment.
+function runSummary(evalKey: RunMode["evalKey"], result: any, totalCases: number): string {
   if (!result) return "";
-  if (evalKey.endsWith("_stability") || evalKey === "stability") {
-    const cases = (result.cases ?? []) as { marker?: string }[];
-    if (!cases.length) return "";
-    const stable = cases.filter((c) => c.marker === "[stable]").length;
-    return `${stable}/${cases.length} stable`;
-  }
+  const cases = (result.cases ?? []) as any[];
+  const total = totalCases || cases.length;  // fall back to run-cases if the list isn't loaded
+  const stab = evalKey.endsWith("_stability") || evalKey === "stability";
+  const ok = cases.filter((c) => dotFor(evalKey, c) === "ok").length;
   if (evalKey === "judge") {
     const a = result.agreement;
-    if (!a) return "";
-    const parts = [`agreement ${a.nAgree}/${a.nScored} = ${Math.round(a.agreement * 100)}%`];
-    if (a.kappa !== null) parts.push(`κ ${a.kappa.toFixed(2)}`);
+    const head = total ? `${ok}/${total} agree` : "";
+    if (!a) return head;
+    const parts = head ? [head] : [];
+    parts.push(`κ ${a.kappa !== null ? a.kappa.toFixed(2) : "n/a"}`);
     if (a.failureRecall !== null)
       parts.push(`failure-recall ${a.failureCaught}/${a.failureTotal} = ${Math.round(a.failureRecall * 100)}%`);
     return parts.join(" · ");
   }
-  if (typeof result.passed === "number" && typeof result.total === "number")
-    return `${result.passed}/${result.total} passed`;
-  return "";
+  if (!total) return "";
+  return `${ok}/${total} ${stab ? "stable" : "passed"}`;
 }
 
 // One self-contained line per run mode: label, result summary, when it ran, the prompt
 // version, and the model. Turns amber when the run's prompt no longer matches the current one
 // (so a stale result is never read as live). Replaces the old separate "headline" — everything
 // it carried lives here now, without repeating the pass name/prompt/model on a second line.
-function RestoredMarker(props: { run: LastEvalRun }): ReactNode {
+function RestoredMarker(props: { run: LastEvalRun; totalCases: number }): ReactNode {
   const { run } = props;
-  const summary = runSummary(run.evalKey, run.result);
+  const summary = runSummary(run.evalKey as RunMode["evalKey"], run.result, props.totalCases);
   const model = runModel(run.result);
   return (
     <div className={`eval-restored${run.stale ? " stale" : ""}`}>

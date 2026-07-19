@@ -325,6 +325,19 @@ def _current_prompt_version(eval_key: str, db: Session) -> str:
     return ""
 
 
+def _live_case_keys(run_key: str) -> set[str] | None:
+    """The case keys that CURRENTLY exist for a run key's pass, for filtering a merged
+    historical last-run (so a renamed/removed case can't resurrect). ``run_key`` may be a live
+    eval or its ``_stability`` sibling (same golden set), or judge/stability (the aggregated
+    set). None ⇒ no editable case set for this key (don't filter)."""
+    base = run_key.removesuffix("_stability")
+    case_key = "judge" if base in ("judge", "stability") else base
+    try:
+        return {c["key"] for c in list_cases(case_key) if "key" in c}
+    except UnknownEvalError:
+        return None
+
+
 @router.get("/last-run", response_model=LastRunResponse)
 def last_run(
     keys: str, user: User = Depends(require_current_user), db: Session = Depends(get_db)
@@ -338,24 +351,45 @@ def last_run(
     wanted = [k.strip() for k in keys.split(",") if k.strip()]
     runs: list[LastRun] = []
     for key in wanted:
-        row = (
+        # Recent rows newest-first. A per-case run persists a row holding only THAT case, so the
+        # newest row alone would show just one case; we merge recent rows (newest-wins per case
+        # key) to reconstruct the accumulated per-case view the tab showed before a refresh —
+        # exactly matching the dots. Bounded to a small window; only rows sharing the newest
+        # row's prompt version are merged, so a prompt change starts a fresh accumulation.
+        rows = (
             db.query(EvalRun)
             .filter(EvalRun.eval_key == key)
-            # id.desc() breaks a created_at tie (two runs in the same tick) — autoincrement
-            # id is insertion order, so this is a stable "most recent".
             .order_by(EvalRun.created_at.desc(), EvalRun.id.desc())
-            .first()
+            .limit(30)
+            .all()
         )
-        if row is None:
+        if not rows:
             continue
-        current = _current_prompt_version(row.eval_key, db)
+        newest = rows[0]
+        result = dict(newest.result or {})
+        # Only merge cases whose key still exists in the pass's current golden set, so a merged
+        # historical run can't resurrect a since-renamed/removed case (which would inflate the
+        # count past the dots). None ⇒ this key has no editable case set; keep all.
+        live_keys = _live_case_keys(key)
+        merged: dict[str, dict] = {}
+        for row in rows:
+            if (row.prompt_version or "") != (newest.prompt_version or ""):
+                break  # older prompt version — don't mix it into the accumulation
+            for case in (row.result or {}).get("cases", []):
+                if not (isinstance(case, dict) and "key" in case) or case["key"] in merged:
+                    continue
+                if live_keys is None or case["key"] in live_keys:
+                    merged[case["key"]] = case  # newest-wins (rows iterate newest→oldest)
+        if "cases" in result:
+            result["cases"] = list(merged.values())
+        current = _current_prompt_version(newest.eval_key, db)
         runs.append(LastRun(
-            eval_key=row.eval_key,
-            ran_at=utc_isoformat(row.created_at),
-            prompt_version=row.prompt_version or "",
+            eval_key=newest.eval_key,
+            ran_at=utc_isoformat(newest.created_at),
+            prompt_version=newest.prompt_version or "",
             current_prompt_version=current,
-            stale=bool(current and row.prompt_version and row.prompt_version != current),
-            result=row.result,
+            stale=bool(current and newest.prompt_version and newest.prompt_version != current),
+            result=result,
         ))
     return LastRunResponse(runs=runs)
 
