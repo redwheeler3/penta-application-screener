@@ -228,10 +228,16 @@ export function RunnableEval(props: {
           </div>
         </div>
       ) : null}
-      {Object.values(restored).map((r) => (
-        <RestoredMarker key={r.evalKey} run={r} />
-      ))}
-      {run.result ? <RunHeadline evalKey={run.ranMode} result={run.result} /> : null}
+      {Object.keys(restored).length ? (
+        // One block so the section's grid row-gap applies ONCE above it, not between each
+        // stacked marker (which otherwise spread far apart — see .eval-runinfo). Each marker
+        // is one self-contained line (label · result · when · prompt · model).
+        <div className="eval-runinfo">
+          {Object.values(restored).map((r) => (
+            <RestoredMarker key={r.evalKey} run={r} />
+          ))}
+        </div>
+      ) : null}
 
       <div className="eval-master-detail">
         <div className="eval-master">
@@ -414,11 +420,51 @@ function restoredLabel(evalKey: string): string {
   return stability || evalKey === "stability" ? `${name} stability` : name;
 }
 
+// The model a run used, read from whichever field that mode's result shape carries (scoring
+// uses `scoringModel`; the judge uses `judgeModel`; the rest use `model`). Empty if absent.
+function runModel(result: any): string {
+  return result?.model || result?.scoringModel || result?.judgeModel || "";
+}
+
+// The one-line RESULT summary for a run mode — the substantive outcome the old headline
+// carried, minus the pass-name/prompt/model that the marker already shows. Graded runs:
+// "X/Y passed"; stability: "X/Y stable" (count of [stable] cases); the judge: its agreement
+// block. Empty string ⇒ no summary segment.
+function runSummary(evalKey: string, result: any): string {
+  if (!result) return "";
+  if (evalKey.endsWith("_stability") || evalKey === "stability") {
+    const cases = (result.cases ?? []) as { marker?: string }[];
+    if (!cases.length) return "";
+    const stable = cases.filter((c) => c.marker === "[stable]").length;
+    return `${stable}/${cases.length} stable`;
+  }
+  if (evalKey === "judge") {
+    const a = result.agreement;
+    if (!a) return "";
+    const parts = [`agreement ${a.nAgree}/${a.nScored} = ${Math.round(a.agreement * 100)}%`];
+    if (a.kappa !== null) parts.push(`κ ${a.kappa.toFixed(2)}`);
+    if (a.failureRecall !== null)
+      parts.push(`failure-recall ${a.failureCaught}/${a.failureTotal} = ${Math.round(a.failureRecall * 100)}%`);
+    return parts.join(" · ");
+  }
+  if (typeof result.passed === "number" && typeof result.total === "number")
+    return `${result.passed}/${result.total} passed`;
+  return "";
+}
+
+// One self-contained line per run mode: label, result summary, when it ran, the prompt
+// version, and the model. Turns amber when the run's prompt no longer matches the current one
+// (so a stale result is never read as live). Replaces the old separate "headline" — everything
+// it carried lives here now, without repeating the pass name/prompt/model on a second line.
 function RestoredMarker(props: { run: LastEvalRun }): ReactNode {
   const { run } = props;
+  const summary = runSummary(run.evalKey, run.result);
+  const model = runModel(run.result);
   return (
     <div className={`eval-restored${run.stale ? " stale" : ""}`}>
-      {restoredLabel(run.evalKey)} — last run {relativeTime(run.ranAt)} · prompt {run.promptVersion || "—"}
+      {restoredLabel(run.evalKey)}
+      {summary ? ` · ${summary}` : ""} · last run {relativeTime(run.ranAt)} · prompt {run.promptVersion || "—"}
+      {model ? ` · ${model}` : ""}
       {run.stale ? ` · prompt has since changed (now ${run.currentPromptVersion}) — re-run to refresh` : ""}
     </div>
   );
@@ -437,61 +483,6 @@ function relativeTime(iso: string): string {
   const days = Math.round(hrs / 24);
   if (days < 7) return `${days}d ago`;
   return new Date(iso).toLocaleDateString();
-}
-
-// A run's headline block: pass/total + agreement (judge) / K (stability) / prompt+model.
-function RunHeadline(props: { evalKey: RunMode["evalKey"]; result: any }): ReactNode {
-  const { evalKey, result } = props;
-  if (evalKey === "live_scoring") {
-    return (
-      <div className="eval-headline">
-        {result.passed}/{result.total} passed · scoring {result.scoringPromptVersion} · {result.scoringModel}
-      </div>
-    );
-  }
-  if (CATEGORICAL_LIVE.has(evalKey)) {
-    const pass = evalKey === "live_matching" ? "matching" : evalKey === "live_decomposition" ? "decomposition" : "consolidation";
-    return (
-      <div className="eval-headline">
-        {result.passed}/{result.total} passed · {pass} {result.promptVersion} · {result.model}
-      </div>
-    );
-  }
-  if (evalKey === "live_screening") {
-    return (
-      <div className="eval-headline">
-        {result.passed}/{result.total} passed · screening {result.promptVersion} · {result.model}
-      </div>
-    );
-  }
-  if (evalKey === "live_screening_stability") {
-    return <div className="eval-headline">K={result.k} · screening {result.promptVersion} · {result.model}</div>;
-  }
-  if (evalKey === "stability") {
-    return <div className="eval-headline">K={result.k} · {result.judgeModel}</div>;
-  }
-  if (evalKey === "live_consolidation_stability" || evalKey === "live_matching_stability" || evalKey === "live_decomposition_stability") {
-    const pass = evalKey === "live_matching_stability" ? "matching" : evalKey === "live_decomposition_stability" ? "decomposition" : "consolidation";
-    return <div className="eval-headline">K={result.k} · {pass} {result.promptVersion} · {result.model}</div>;
-  }
-  if (evalKey === "live_scoring_stability") {
-    return <div className="eval-headline">K={result.k} · scoring {result.scoringPromptVersion} · {result.scoringModel}</div>;
-  }
-  const a = result.agreement;
-  return (
-    <div className="eval-headline">
-      {a ? (
-        <>
-          agreement {a.nAgree}/{a.nScored} = {Math.round(a.agreement * 100)}%
-          {a.kappa !== null ? ` · κ ${a.kappa.toFixed(2)}` : ""}
-          {a.failureRecall !== null
-            ? ` · failure-recall ${a.failureCaught}/${a.failureTotal} = ${Math.round(a.failureRecall * 100)}%`
-            : ""}{" · "}
-        </>
-      ) : null}
-      {result.judgeModel}
-    </div>
-  );
 }
 
 // Model-produced prose (evidence, reasons, per-run detail) is markdown — the AI writes it
