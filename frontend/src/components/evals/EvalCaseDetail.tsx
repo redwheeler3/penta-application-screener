@@ -28,6 +28,13 @@ function Value(props: { value: unknown }): ReactNode {
     );
   }
   if (Array.isArray(v)) {
+    // An array of scalars renders inline as "a | b" (an "at least one of" group, e.g. a
+    // screening fires entry) — a vertical list would misread as separate requirements. Arrays
+    // holding objects/arrays (e.g. child_details) still stack for legibility.
+    const allScalar = v.every((item) => item === null || typeof item !== "object");
+    if (allScalar) {
+      return <span className="eval-detail-scalar">{v.map((item) => String(item)).join(" | ")}</span>;
+    }
     return (
       <ul className="eval-detail-list">
         {v.map((item, i) => (
