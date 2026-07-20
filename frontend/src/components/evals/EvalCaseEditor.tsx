@@ -10,8 +10,9 @@ import { type FieldObject, StructuredFields } from "./StructuredFields";
 // inventing structure. Save writes to the versioned fixture FILE (server-validated); the
 // operator commits to git.
 
-// Fields are grouped by CONSUMER (see each fixture's `_comment`): metadata is harness-only;
-// input goes to the scoring model; evidence + judge/prompt are what the judge sees.
+// A NEW case is seeded from its pass's template so you fill fields, not invent structure.
+// Fields are grouped by consumer: `metadata` is harness-only; `given` is what the real prompt
+// receives. (The judge tab adds no new cases — addable=false — so it needs no template here.)
 const TEMPLATES: Record<string, FieldObject> = {
   scoring: {
     key: "",
@@ -63,15 +64,6 @@ const TEMPLATES: Record<string, FieldObject> = {
     given: {
       fields: { applicant_name: "", pets_text: "", applicant_email: "" },
       essays: {},
-    },
-  },
-  judge: {
-    key: "",
-    metadata: { pass: "scoring", title: "", expected: "supported", label_rationale: "" },
-    evidence: { dimension: "", dimension_definition: "", cited_evidence: "", score: 0 },
-    prompt: {
-      question:
-        "Given the dimension and the applicant's cited evidence, decide whether the score is SUPPORTED or UNSUPPORTED by that evidence.",
     },
   },
 };

@@ -40,8 +40,6 @@ from app.db.models import EvalRun, User
 from app.db.session import get_db
 from app.evals import stability
 from app.evals.agreement import score_agreement
-from app.evals.capture_scores import propose_cases as _propose_scores
-from app.evals.capture_screening import propose_cases as _propose_screening
 from app.evals.case_store import (
     CaseValidationError,
     UnknownEvalError,
@@ -70,7 +68,6 @@ from app.evals.screening import fire_label as screening_fire_label
 from app.evals.screening import load_cases as load_screening_cases
 from app.evals.screening import run_case as run_screening_case
 from app.evals.screening import stability_run as screening_stability_run
-from app.evals.synthetic_guard import NonSyntheticPoolError
 from app.schemas.base import ResponseModel
 from app.schemas.evals import (
     AgreementOut,
@@ -85,7 +82,6 @@ from app.schemas.evals import (
     DecompositionStabilityResponse,
     EvalCatalogResponse,
     EvalDescriptor,
-    HarvestResponse,
     InvariantOut,
     InvariantsResponse,
     JudgeBackground,
@@ -113,7 +109,6 @@ from app.schemas.evals import (
     StabilityRunResponse,
 )
 from app.schemas.events import EvalSummaryEvent, ThinkingEvent, emit
-from app.services.ranking_run import get_current_run
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/evals", tags=["evals"])
@@ -456,37 +451,6 @@ def put_judge_background(
         raise Problem("invalid_case", detail=str(exc)) from exc
     counts = Counter(c.pass_name for c in load_cases())
     return JudgeBackground(pass_name=pass_name, background=saved, case_count=counts.get(pass_name, 0))
-
-
-# --- harvest: propose judge cases from the CURRENT run (fidelity-preserving) --
-
-# family -> the guard-gated proposer that turns the current run's cached output into
-# unlabelled candidate judge cases. This is the sanctioned "copy an exact slice from a real
-# run" path (opaque-indexed, synthetic-pool-gated) the hand-editor can't be: it pulls the
-# real evidence the model saw. The operator labels each candidate in the editor before save.
-_HARVESTERS = {"scoring": _propose_scores, "screening": _propose_screening}
-
-
-@router.get("/harvest/{family}", response_model=HarvestResponse)
-def harvest(family: str, user: User = Depends(require_current_user), db: Session = Depends(get_db)) -> HarvestResponse:
-    """Propose unlabelled golden cases from the current run's scoring/screening output.
-    Guard-gated: refuses a non-synthetic pool (committing applicant evidence quotes is only
-    safe on synthetic data). 404 unknown family; 409 no current run; 422 non-synthetic pool.
-    Candidates whose key already exists in that pass's golden set are dropped (already
-    harvested). The operator labels + saves each candidate into the pass's golden file."""
-    if family not in _HARVESTERS:
-        raise Problem("not_found", detail=f"No harvester for family {family!r} (scoring | screening).")
-    run = get_current_run(db)
-    if run is None:
-        raise Problem("run_required", detail="No current Rank to harvest from — run a Rank first.")
-    try:
-        proposed = _HARVESTERS[family](db, run)
-    except NonSyntheticPoolError as exc:
-        raise Problem("invalid_case", detail=str(exc)) from exc
-    # Dedup against the pass's own golden set (scoring -> scoring, screening -> screening).
-    existing = {c.get("key") for c in list_cases(f"live_{family}")}
-    fresh = [c for c in proposed if c.get("key") not in existing]
-    return HarvestResponse(family=family, candidates=fresh)
 
 
 # --- streaming runs ---------------------------------------------------------
