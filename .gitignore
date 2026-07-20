@@ -36,3 +36,6 @@ coverage/
 Thumbs.db
 .vscode/
 !.vscode/settings.example.json
+
+# M14 session toggle for the commit-confirm hook (machine-local)
+.claude/allow-commits
