@@ -38,9 +38,37 @@ def test_each_case_is_well_formed() -> None:
             if k in c.expected:
                 assert -1.0 <= float(c.expected[k]) <= 1.0, f"{c.key}: {k} out of [-1, 1]"
         if "confidence" in c.expected:
-            assert c.expected["confidence"] in {"low", "medium", "high"}, (
-                f"{c.key}: bad confidence expectation"
-            )
+            # May be a single value ("low") or an any-of set ("medium | high"); every token
+            # must be a real confidence level.
+            allowed = {t.strip() for t in str(c.expected["confidence"]).split("|")}
+            assert allowed <= {"low", "medium", "high"}, f"{c.key}: bad confidence expectation"
+
+
+def _score(value: float, confidence: ScoreConfidence) -> DimensionScore:
+    return DimensionScore(
+        dimension_key="d", score=value, confidence=confidence, rationale="r", evidence="e",
+    )
+
+
+def test_confidence_any_of_accepts_either_and_rejects_others() -> None:
+    """A `"medium | high"` expectation accepts EITHER produced level (any-of, like screening's
+    fire groups) but still rejects a value outside the set — the fix for a `|` band that used to
+    be compared as one literal string (so it could never match)."""
+    from app.evals.scoring import _check_expectations
+
+    expected = {"score_min": 0.2, "score_max": 0.7, "confidence": "medium | high"}
+    assert _check_expectations(_score(0.5, ScoreConfidence.MEDIUM), expected) == []
+    assert _check_expectations(_score(0.5, ScoreConfidence.HIGH), expected) == []
+    fails = _check_expectations(_score(0.5, ScoreConfidence.LOW), expected)
+    assert any("confidence" in f for f in fails)
+
+
+def test_confidence_single_value_still_exact() -> None:
+    from app.evals.scoring import _check_expectations
+
+    expected = {"confidence": "low"}
+    assert _check_expectations(_score(0.0, ScoreConfidence.LOW), expected) == []
+    assert _check_expectations(_score(0.0, ScoreConfidence.MEDIUM), expected)
 
 
 def test_run_case_narrates_score_to_the_sink() -> None:
