@@ -200,7 +200,7 @@ export function RankingView(props: {
               .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
               .slice(0, 3);
             return (
-              <li key={candidate.applicationId}>
+              <li key={candidate.applicationId} data-app-id={candidate.applicationId}>
                 <div className="ranking-row" onClick={() => props.onSelectApplication(candidate.applicationId)}>
                   <span className="ranking-rank">#{candidate.rank}</span>
                   <div className="ranking-main">

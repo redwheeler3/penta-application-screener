@@ -133,7 +133,12 @@ export function ApplicationsList(props: {
                       ? (app.flagCategories ?? []).map(flagCategoryLabel).join("; ")
                       : "—";
                 return (
-                  <tr key={app.id} onClick={() => props.onSelectApplication(app.id)} className="clickable-row">
+                  <tr
+                    key={app.id}
+                    data-app-id={app.id}
+                    onClick={() => props.onSelectApplication(app.id)}
+                    className="clickable-row"
+                  >
                     <td>{app.applicantName || app.primaryEmail}</td>
                     <td>{app.coApplicantName || "—"}</td>
                     <td>{app.childCount ?? "?"}</td>
