@@ -1,6 +1,7 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { fetchMatchAudit } from "../api";
+import { useFetchOnce } from "../hooks/useFetchOnce";
 import type { MatchAuditResponse } from "../types";
 
 // M13 per-run AI legibility: the reuse audit for the current run. Surfaces the
@@ -14,18 +15,7 @@ import type { MatchAuditResponse } from "../types";
 // (a first run, or a run from before capture) shows an explicit empty state rather
 // than vanishing — "nothing carried forward" is information, not a broken panel.
 export function MatchAuditPanel(): ReactNode {
-  const [audit, setAudit] = useState<MatchAuditResponse | null>(null);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-
-  useEffect(() => {
-    let live = true;
-    fetchMatchAudit()
-      .then((a) => live && (setAudit(a), setState("ready")))
-      .catch(() => live && setState("error"));
-    return () => {
-      live = false;
-    };
-  }, []);
+  const { data: audit, state } = useFetchOnce(fetchMatchAudit);
 
   if (state === "loading") return <p className="match-audit-hint">Loading…</p>;
   if (state === "error") return <p className="match-audit-hint">Couldn’t load the matching audit.</p>;

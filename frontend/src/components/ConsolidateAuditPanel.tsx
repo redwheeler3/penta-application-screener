@@ -1,6 +1,7 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { fetchConsolidateAudit } from "../api";
+import { useFetchOnce } from "../hooks/useFetchOnce";
 import type { ConsolidateAuditResponse } from "../types";
 
 // Post-score consolidation observability: how the run healed duplicate dimensions the
@@ -14,18 +15,7 @@ import type { ConsolidateAuditResponse } from "../types";
 // and the confirm call's reasoning. A null audit (a run from before the pass) shows an
 // explicit empty state; a run where correlation nominated nothing shows the no-op state.
 export function ConsolidateAuditPanel(): ReactNode {
-  const [audit, setAudit] = useState<ConsolidateAuditResponse | null>(null);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-
-  useEffect(() => {
-    let live = true;
-    fetchConsolidateAudit()
-      .then((a) => live && (setAudit(a), setState("ready")))
-      .catch(() => live && setState("error"));
-    return () => {
-      live = false;
-    };
-  }, []);
+  const { data: audit, state } = useFetchOnce(fetchConsolidateAudit);
 
   if (state === "loading") return <p className="match-audit-hint">Loading…</p>;
   if (state === "error") return <p className="match-audit-hint">Couldn’t load the consolidation audit.</p>;

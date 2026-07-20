@@ -1,5 +1,6 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode } from "react";
 import { fetchCostReport, fetchLastRuns } from "../api";
+import { useFetchOnce } from "../hooks/useFetchOnce";
 import type { CostReport, LastRunCost, LastRunsReport } from "../types";
 
 // M13 Pillar 1: AI cost, an Insights subtab. Two sections, same column layout so they
@@ -56,23 +57,14 @@ const PASS_LABELS: Record<InsightRunKind, Array<{ label: string; cacheable: bool
 };
 
 export function CostPanel(): ReactNode {
-  const [cost, setCost] = useState<CostReport | null>(null);
-  const [last, setLast] = useState<LastRunsReport | null>(null);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-
-  useEffect(() => {
-    let live = true;
-    Promise.all([fetchCostReport(), fetchLastRuns()])
-      .then(([c, l]) => live && (setCost(c), setLast(l), setState("ready")))
-      .catch(() => live && setState("error"));
-    return () => {
-      live = false;
-    };
-  }, []);
+  const { data, state } = useFetchOnce<[CostReport, LastRunsReport]>(
+    () => Promise.all([fetchCostReport(), fetchLastRuns()]),
+  );
 
   if (state === "loading") return <p className="match-audit-hint">Loading…</p>;
-  if (state === "error" || cost === null || last === null)
+  if (state === "error" || data === null)
     return <p className="match-audit-hint">Couldn’t load AI cost.</p>;
+  const [cost, last] = data;
 
   const runs = [last.screen, last.rank, last.rankScores].filter((r): r is LastRunCost => r !== null);
   const lastSpent = runs.reduce((s, r) => s + r.freshUsd, 0);

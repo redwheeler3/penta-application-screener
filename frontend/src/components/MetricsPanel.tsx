@@ -1,5 +1,6 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode } from "react";
 import { fetchMetrics } from "../api";
+import { useFetchOnce } from "../hooks/useFetchOnce";
 import type { MetricsReport, TrendPoint } from "../types";
 
 // M13 Pillar 3: operational trends across runs, an Insights subtab. Reads the same
@@ -25,18 +26,7 @@ function Bar(props: { value: number; max: number }): ReactNode {
 }
 
 export function MetricsPanel(): ReactNode {
-  const [report, setReport] = useState<MetricsReport | null>(null);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-
-  useEffect(() => {
-    let live = true;
-    fetchMetrics()
-      .then((m) => live && (setReport(m), setState("ready")))
-      .catch(() => live && setState("error"));
-    return () => {
-      live = false;
-    };
-  }, []);
+  const { data: report, state } = useFetchOnce(fetchMetrics);
 
   if (state === "loading") return <p className="match-audit-hint">Loading…</p>;
   if (state === "error" || report === null)
