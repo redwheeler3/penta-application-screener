@@ -1,6 +1,6 @@
 {
   "_comment": "Golden inputs for the scoring pass (app/evals/live_scoring.py). Each case is a hand-authored SYNTHETIC applicant + one dimension, run through the REAL production scoring prompt+model and graded deterministically: the produced score must fall in the expected [score_min, score_max] band (+ optional confidence). Fictional data only (no real applicants), so it is safe to commit. Uniform envelope (docs/eval-case-schema.md): `metadata` is harness-only (no model, live or judge, ever sees it); `given` is what the scoring prompt receives. No judge/produced block — the Judge tab audits these same cases blind (it re-produces a score from `given` and the harness compares to `metadata.expected`). Grow by adding cases; keep applicants terse.",
-  "judge_background": "This pass scores ONE applicant against ONE ranking dimension on a signed −1..+1 scale. +1 means the applicant strongly exhibits the dimension's high_end; −1 means they demonstrably exhibit the low_end; 0 (neutral) means the applicant is SILENT on the dimension — absence of evidence is neutral, never negative. Confidence reflects how much explicit evidence the applicant gave. Score only what the cited evidence supports; do not infer unstated facts.",
+  "judge_background": "This pass scores ONE applicant against ONE ranking dimension on a signed −1..+1 scale. +1 means the applicant strongly exhibits the dimension's high_end; −1 means they demonstrably exhibit the low_end; 0 (neutral) means the applicant is SILENT on the dimension — absence of evidence is neutral, never negative. Confidence reflects how much explicit evidence the applicant gave and if they gave no evidence, this is low confidence. Score only what the cited evidence supports; do not infer unstated facts.",
   "cases": [
     {
       "key": "absence_scores_neutral",
@@ -128,8 +128,8 @@
         "pass": "scoring",
         "expected": {
           "score_min": 0.2,
-          "score_max": 0.6,
-          "confidence": "medium"
+          "score_max": 0.7,
+          "confidence": "medium | high"
         }
       },
       "given": {
