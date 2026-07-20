@@ -575,6 +575,8 @@ export type JudgeResult = {
   agreement: AgreementResult | null;
 };
 
+// One of the K stability runs: its outcome token + the model's own reasoning (explains a flip).
+export type StabilityRun = { outcome: string; detail: string };
 export type StabilityCaseOut = {
   key: string;
   passName: string;
@@ -584,6 +586,7 @@ export type StabilityCaseOut = {
   agreement: number;
   flipped: boolean;
   tally: Record<string, number>;
+  runs: StabilityRun[];  // per-run label + the judge's reasoning, like the other passes' stability
 };
 export type StabilityResult = {
   judgePromptVersion: string;
