@@ -32,15 +32,21 @@ export function RunnableEval(props: {
   // Judge only: offer "Harvest from current run" — propose fidelity-preserving candidate
   // cases from the current Rank's scoring/screening output, opened in the editor to label.
   harvestable?: boolean;
-  // Whether cases can be added/edited here. The Judge tab is READ-ONLY over cases (it owns no
-  // files — it audits every pass's golden set), so it passes false: no "+ Add case", no
-  // per-case edit. Editing happens in each pass's own tab. Defaults to true.
+  // Whether a SELECTED case can be edited here. Defaults to true. The Judge tab sets this true
+  // too: a judge-tab edit is routed to the case's own pass file (by metadata.pass), so it lands
+  // in the same golden file the pass tab writes to.
   editable?: boolean;
+  // Whether NEW cases can be added here ("+ Add case"). Defaults to `editable`. The Judge tab
+  // passes false: it aggregates five families, so "add" has no single target file/shape —
+  // add a new case from its own pass tab. (Editing an existing case is unambiguous: it already
+  // carries metadata.pass.)
+  addable?: boolean;
   // Extra content rendered above the run controls (the Judge tab's per-pass background editors).
   header?: ReactNode;
 }): ReactNode {
   const { caseEvalKey, modes } = props;
   const editable = props.editable ?? true;
+  const addable = props.addable ?? editable;
   const [cases, setCases] = useState<Record<string, unknown>[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null); // selected case key
   const [editing, setEditing] = useState<{ existing: Record<string, unknown> | null } | null>(null);
@@ -205,7 +211,7 @@ export function RunnableEval(props: {
             {run.running ? "Running…" : `${m.label} (~${m.calls})`}
           </button>
         ))}
-        {editable ? (
+        {addable ? (
           <button
             type="button"
             className="secondary-button"
@@ -313,7 +319,7 @@ export function RunnableEval(props: {
             </div>
           ) : (
             <p className="eval-detail-placeholder">
-              {editable ? "Select a case to see its full input, or add a new one." : "Select a case to see its full input."}
+              {addable ? "Select a case to see its full input, or add a new one." : "Select a case to see its full input."}
             </p>
           )}
         </div>
