@@ -723,9 +723,9 @@ export function App() {
                 onSelectApplication={viewApplication}
               />
             ) : activeTab === "insights" ? (
-              <InsightsView family="obs" run={rankingRun} />
+              <InsightsView family="obs" run={rankingRun} onToast={showToast} onError={showError} />
             ) : activeTab === "evals" ? (
-              <InsightsView family="eval" run={rankingRun} />
+              <InsightsView family="eval" run={rankingRun} onToast={showToast} onError={showError} />
             ) : (
               <ApplicationsList
                 applications={applications}

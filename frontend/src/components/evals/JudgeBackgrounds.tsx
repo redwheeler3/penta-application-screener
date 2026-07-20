@@ -10,12 +10,14 @@ type Background = { passName: string; background: string; caseCount: number };
 // editable here, saved to that pass's golden file (the operator commits deliberately). Read-only
 // case viewing lives in the RunnableEval below this; adding/editing cases happens in each pass's
 // own tab (the judge owns no case files).
-export function JudgeBackgrounds(): ReactNode {
+export function JudgeBackgrounds(props: {
+  // Save outcomes surface as the app's standard toasts, same as Settings — not inline text.
+  onToast: (message: string) => void;
+  onError: (message: string) => void;
+}): ReactNode {
   const [items, setItems] = useState<Background[] | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [savedNote, setSavedNote] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -33,8 +35,6 @@ export function JudgeBackgrounds(): ReactNode {
     const text = drafts[passName];
     if (text === undefined) return;
     setSaving(passName);
-    setError(null);
-    setSavedNote(null);
     const resp = await saveJudgeBackground(passName, text);
     setSaving(null);
     if (resp.ok) {
@@ -44,10 +44,10 @@ export function JudgeBackgrounds(): ReactNode {
         const { [passName]: _drop, ...rest } = prev;
         return rest;
       });
-      setSavedNote(`${passName} background saved — commit the golden file to keep it.`);
+      props.onToast(`${passName} brief saved — commit the golden file to keep it.`);
     } else {
       const problem = await resp.json().catch(() => null);
-      setError(problem?.detail ?? `Save failed (${resp.status})`);
+      props.onError(`Could not save ${passName} brief: ${problem?.detail ?? `HTTP ${resp.status}`}`);
     }
   }
 
@@ -64,8 +64,6 @@ export function JudgeBackgrounds(): ReactNode {
         brief changes what the judge is told on the next run; save writes it to that pass's
         golden file (commit to keep).
       </p>
-      {error ? <p className="eval-error">{error}</p> : null}
-      {savedNote ? <p className="eval-backgrounds-saved">{savedNote}</p> : null}
       {items.map((b) => {
         const draft = drafts[b.passName];
         const dirty = draft !== undefined && draft !== b.background;

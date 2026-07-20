@@ -2935,7 +2935,6 @@ h1 {
 .eval-backgrounds > summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
 .eval-backgrounds-hint { color: var(--muted); font-weight: 400; }
 .eval-backgrounds-desc { color: var(--muted); font-size: 0.82rem; margin: 8px 0 12px; }
-.eval-backgrounds-saved { color: var(--penta-green-dark); font-size: 0.82rem; margin: 6px 0; }
 .eval-background { margin-top: 10px; }
 .eval-background-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
 .eval-background-head strong { text-transform: capitalize; font-size: 0.86rem; }
