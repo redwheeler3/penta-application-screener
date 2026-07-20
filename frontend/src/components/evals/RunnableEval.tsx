@@ -477,10 +477,12 @@ function runSummary(evalKey: RunMode["evalKey"], result: any, totalCases: number
   const cases = (result.cases ?? []) as any[];
   const total = totalCases || cases.length;  // fall back to run-cases if the list isn't loaded
   const stab = evalKey.endsWith("_stability") || evalKey === "stability";
-  const ok = cases.filter((c) => dotFor(evalKey, c) === "ok").length;
   if (evalKey === "judge") {
+    // The judge "agree" count is agreement with the label, where contested is genuinely
+    // excluded (its label is a leaning) — so only "ok" counts here, not contested.
+    const agree = cases.filter((c) => dotFor(evalKey, c) === "ok").length;
     const a = result.agreement;
-    const head = total ? `${ok}/${total} agree` : "";
+    const head = total ? `${agree}/${total} agree` : "";
     if (!a) return head;
     const parts = head ? [head] : [];
     parts.push(`κ ${a.kappa !== null ? a.kappa.toFixed(2) : "n/a"}`);
@@ -489,7 +491,10 @@ function runSummary(evalKey: RunMode["evalKey"], result: any, totalCases: number
     return parts.join(" · ");
   }
   if (!total) return "";
-  return `${ok}/${total} ${stab ? "stable" : "passed"}`;
+  // Contested is a PASS with special treatment (amber), not a fail — only a red "fail" dot
+  // (a non-contested divergence) is not passing. So count everything that isn't a fail.
+  const passing = cases.filter((c) => dotFor(evalKey, c) !== "fail").length;
+  return `${passing}/${total} ${stab ? "stable" : "passed"}`;
 }
 
 // One self-contained line per run mode: label, result summary, when it ran, the prompt
