@@ -203,6 +203,10 @@ def test_screening_stability_tokens_by_graded_outcome_not_raw_flag_set() -> None
     assert steady.agreement == 1.0
     assert steady.flipped is False
     assert "[stable]" in format_stability([steady])
+    # The per-run DISPLAY still shows the actual flags produced (not a bare "agrees"), so the
+    # detail pane stays informative even though the flip math tallies the graded token.
+    assert any("internal_inconsistency" in run.outcome for run in steady.runs)
+    assert all(run.outcome not in ("agrees", "disagrees") for run in steady.runs)
 
     # Dropping the required flag is a real graded flip (agrees -> disagrees).
     provider = MockProvider()

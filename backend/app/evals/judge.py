@@ -168,16 +168,24 @@ class StabilityReport:
     trustworthy. Counting/marker delegate to the shared stability core."""
 
     case: JudgeCase
-    labels: list[str]  # the judge's reproduced label token per run
+    # The GRADED stability token per run (e.g. "agrees" for scoring/screening, or the verdict for
+    # categorical) — what the flip math (majority/agreement/flipped/marker) tallies, so incidental
+    # noise inside one graded outcome doesn't read as a flip.
+    labels: list[str]
+    # The RAW reproduced label per run (a score, a verdict, or the actual flag set) — for DISPLAY,
+    # so each run still shows what the judge concretely produced, not just "agrees". Parallel to
+    # ``labels``/``details``.
+    displays: list[str]
     details: list[str]  # the judge's reasoning per run (parallel to ``labels``) — explains a flip
     total_cost_usd: float
 
     @property
     def runs(self) -> list[stability.RunDetail]:
-        """Per-run (label, reasoning) pairs — same shape the other passes carry, so a judge
-        stability flip is as self-explaining as a live-pass one (each of the K runs shows what
-        the judge said that time, not just the tally)."""
-        return [stability.RunDetail(label, detail) for label, detail in zip(self.labels, self.details)]
+        """Per-run (display label, reasoning) pairs — same shape the other passes carry, so a judge
+        stability flip is as self-explaining as a live-pass one. Uses the RAW display label (the
+        actual score/verdict/flag set), NOT the graded token, so a screening run still shows
+        'pet_policy, internal_inconsistency' rather than a bare 'agrees'."""
+        return [stability.RunDetail(disp, detail) for disp, detail in zip(self.displays, self.details)]
 
     @property
     def counts(self) -> dict[str, int]:
@@ -220,7 +228,8 @@ def stability_run(provider, case: JudgeCase, *, k: int = 5, model_id: str = DEFA
             on_delta(f"- run {n}: **{r.reproduced.judge_label}** — {r.reproduced.detail}\n")
     return StabilityReport(
         case=case,
-        labels=[_stability_token(case, r) for r in results],
+        labels=[_stability_token(case, r) for r in results],  # graded token → the flip math
+        displays=[r.reproduced.judge_label for r in results],  # raw label → per-run display
         details=[r.reproduced.detail for r in results],  # keep each run's reasoning (explains a flip)
         total_cost_usd=sum(r.cost_usd for r in results),
     )
