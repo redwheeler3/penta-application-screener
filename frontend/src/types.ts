@@ -517,79 +517,9 @@ export type LastEvalRun = {
   result: any;
 };
 
-// The newest run PER KEY for a tab, so a tab running >1 eval (live + stability) restores
-// both. One entry per requested key that has any persisted run.
-export type LastEvalRuns = { runs: LastEvalRun[] };
-
 export type InvariantOut = { check: string; description: string; passed: boolean; violations: string[] };
 export type InvariantsResult = {
   hasFixture: boolean;
   dimensions: number;
   invariants: InvariantOut[];
-};
-
-export type ScoringCase = {
-  key: string;
-  passed: boolean;
-  score: number;
-  confidence: string;
-  evidence: string;
-  failures: string[];
-  judgeVerdict: string | null;
-};
-export type ScoringResult = {
-  scoringPromptVersion: string;
-  scoringModel: string;
-  judgeModel: string;
-  passed: number;
-  total: number;
-  cases: ScoringCase[];
-};
-
-export type AgreementResult = {
-  nScored: number;
-  nAgree: number;
-  nContested: number;
-  agreement: number;
-  kappa: number | null;
-  perCategory: Record<string, [number, number]>;
-  failureTotal: number;
-  failureCaught: number;
-  failureRecall: number | null;
-  failurePrecision: number | null;
-};
-export type JudgeCaseOut = {
-  key: string;
-  passName: string;
-  marker: string;
-  humanLabel: string;  // the human expected label (compact token)
-  judgeLabel: string;  // what the blind judge independently produced
-  contested: boolean;
-  detail: string;  // the judge's reproduced output + reasoning
-};
-export type JudgeResult = {
-  judgePromptVersion: string;
-  judgeModel: string;
-  cases: JudgeCaseOut[];
-  agreement: AgreementResult | null;
-};
-
-// One of the K stability runs: its outcome token + the model's own reasoning (explains a flip).
-export type StabilityRun = { outcome: string; detail: string };
-export type StabilityCaseOut = {
-  key: string;
-  passName: string;
-  marker: string;
-  majority: string;
-  seed: string;
-  agreement: number;
-  flipped: boolean;
-  tally: Record<string, number>;
-  runs: StabilityRun[];  // per-run label + the judge's reasoning, like the other passes' stability
-};
-export type StabilityResult = {
-  judgePromptVersion: string;
-  judgeModel: string;
-  k: number;
-  cases: StabilityCaseOut[];
 };
