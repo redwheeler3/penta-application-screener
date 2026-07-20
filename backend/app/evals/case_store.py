@@ -77,7 +77,19 @@ def list_cases(eval_key: str) -> list[dict]:
 def save_case(eval_key: str, case: dict) -> list[dict]:
     """Upsert one case into its fixture by ``key`` (add if new, replace if the key exists),
     validate the family shape, and write the file back preserving other top-level keys.
-    Returns the full updated case list. Refuses an invalid payload without writing."""
+    Returns the full updated case list. Refuses an invalid payload without writing.
+
+    The aggregated ``judge`` key owns no file, so a judge-tab save is ROUTED to the case's own
+    pass file (by ``metadata.pass``) and the re-aggregated judge list is returned — so a case
+    edited from the Judge tab lands in the same golden file its pass tab writes to."""
+    if eval_key == "judge":
+        pass_name = (case.get("metadata") or {}).get("pass")
+        if pass_name not in _BACKGROUND_PASSES:
+            raise CaseValidationError(
+                f"judge case metadata.pass must name a known pass ({', '.join(_BACKGROUND_PASSES)}), got {pass_name!r}"
+            )
+        save_case(_BACKGROUND_PASSES[pass_name], case)
+        return list_cases("judge")
     if eval_key not in _FIXTURES:
         raise UnknownEvalError(eval_key)
     path, required = _FIXTURES[eval_key]

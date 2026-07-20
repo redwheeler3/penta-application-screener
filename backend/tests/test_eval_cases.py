@@ -79,3 +79,25 @@ def test_save_rejects_blank_key(golden_file) -> None:
 def test_unknown_eval_raises(golden_file) -> None:
     with pytest.raises(case_store.UnknownEvalError):
         case_store.list_cases("invariants")
+
+
+def test_save_judge_case_routes_to_its_pass_file(golden_file) -> None:
+    # A judge-tab edit owns no file; it must land in the case's own pass file (by
+    # metadata.pass) and come back in the re-aggregated judge list.
+    edited = {
+        "key": "a",
+        "metadata": {"pass": "scoring", "expected": {"score_min": 0.9}},
+        "given": {"applicant": {"facts": {"y": 2}}, "dimension": {"key": "d"}},
+    }
+    result = case_store.save_case("judge", edited)
+    # Written to the (temp) scoring file, upserted in place.
+    on_disk = json.loads(golden_file.read_text())
+    saved = next(c for c in on_disk["cases"] if c["key"] == "a")
+    assert saved["given"]["applicant"]["facts"] == {"y": 2}
+    # The returned list is the aggregated judge set (contains the routed case).
+    assert any(c["key"] == "a" and c["metadata"].get("pass") == "scoring" for c in result)
+
+
+def test_save_judge_case_rejects_unknown_pass(golden_file) -> None:
+    with pytest.raises(case_store.CaseValidationError):
+        case_store.save_case("judge", {"key": "x", "metadata": {"pass": "nope"}, "given": {}})

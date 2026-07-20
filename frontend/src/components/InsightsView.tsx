@@ -177,9 +177,9 @@ export function InsightsView(props: { family: InsightsFamily; run: CurrentRunRes
             caseEvalKey="judge"
             runKeys={["judge", "stability"]}
             groupBy="pass"
-            editable={false}
+            addable={false}
             header={<JudgeBackgrounds />}
-            description="A blind label audit: for every pass's golden cases, an independent model reproduces that pass's output from the pass's brief + the case input (NOT the human label), then the harness compares to the label. A judge run reports judge-vs-human agreement (κ); a stability run repeats each case K times to see if the judge's verdict flips. Cases are grouped by the pass they exercise and are read-only here — edit them in each pass's own tab."
+            description="A blind label audit: for every pass's golden cases, an independent model reproduces that pass's output from the pass's brief + the case input (NOT the human label), then the harness compares to the label. A judge run reports judge-vs-human agreement (κ); a stability run repeats each case K times to see if the judge's verdict flips. Cases are grouped by the pass they exercise; editing one here writes to that pass's own golden file. Add new cases from the pass's own tab."
             modes={
               [
                 { evalKey: "judge", label: "Run judge + agreement", rowLabel: "Run judge", calls: calls("judge") },
