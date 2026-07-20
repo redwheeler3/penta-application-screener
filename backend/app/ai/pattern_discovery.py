@@ -54,9 +54,6 @@ class DiscoverySeeds:
         return not self.proposed
 
 
-# Not a cached per-application "kind"; named for the admin debug view / logging.
-KIND = "pattern_discovery"
-
 SYSTEM_PROMPT = """\
 You are helping a housing co-op screening committee understand a pool of applicants as a whole.
 Discover the dimensions on which THIS pool meaningfully varies — the axes that separate stronger from weaker fit here, not a generic ideal member. Favour distinct, non-overlapping axes over a few broad ones, but only where the pool genuinely differentiates; each must capture a single concept — never fuse two to shorten the list.

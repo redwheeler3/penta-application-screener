@@ -31,8 +31,6 @@ from app.ai.schemas import ConsolidationReport, PoolDimensionReport
 from app.ai.score_vectors import CORRELATION_THRESHOLD, correlation
 from app.schemas.settings import AppSettings
 
-KIND = "dimension_consolidate"  # for logging / the debug view; not a cached per-app kind
-
 
 @dataclass(frozen=True)
 class NominatedPair:

@@ -188,10 +188,6 @@ class StabilityReport:
         return [stability.RunDetail(disp, detail) for disp, detail in zip(self.displays, self.details)]
 
     @property
-    def counts(self) -> dict[str, int]:
-        return dict(Counter(self.labels))
-
-    @property
     def majority(self) -> str:
         return stability.majority(self.labels)
 

@@ -124,27 +124,3 @@ def score_agreement(results: list[JudgeResult]) -> AgreementReport:
     )
     object.__setattr__(report, "_kappa", _cohens_kappa(pairs))
     return report
-
-
-def format_agreement(report: AgreementReport) -> str:
-    lines = [
-        "Judge vs. human agreement (single pass; contested excluded)",
-        f"  overall: {report.n_agree}/{report.n_scored} = {report.agreement:.0%}"
-        + (f"   kappa={report.kappa:.2f}" if report.kappa is not None else "   kappa=n/a"),
-        f"  contested (excluded, reported separately): {report.n_contested}",
-        "  per AI step (agree/scored):",
-    ]
-    for cat in sorted(report.per_category):
-        agree, scored = report.per_category[cat]
-        lines.append(f"    {cat:15s} {agree}/{scored} = {agree / scored:.0%}")
-    if report.failure_total:
-        rec = report.failure_recall
-        prec = report.failure_precision
-        lines.append(
-            f"  failure detection (the number that matters): "
-            f"recall {report.failure_caught}/{report.failure_total} = {rec:.0%}"
-            + (f", precision {prec:.0%}" if prec is not None else "")
-        )
-    else:
-        lines.append("  failure detection: no problem-labelled cases in this set")
-    return "\n".join(lines)

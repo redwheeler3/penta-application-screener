@@ -41,8 +41,6 @@ from app.ai.schemas import (
 )
 from app.schemas.settings import AppSettings
 
-KIND = "dimension_decompose"  # for logging / the debug view; not a cached per-app kind
-
 # Bedrock read timeout (s) for the decomposition call specifically. It streams a large
 # reasoned set (settle ~250 input dims → ~28 axes, each with merge reasoning) that blows
 # the provider's 120s default. Only this call raises it; the default stays put for every
