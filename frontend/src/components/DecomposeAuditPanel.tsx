@@ -1,6 +1,7 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { fetchDecomposeAudit } from "../api";
+import { useFetchOnce } from "../hooks/useFetchOnce";
 import type { DecomposeAuditResponse } from "../types";
 
 // Fan-Out Redesign observability: how the K parallel discovery reports were settled
@@ -17,18 +18,7 @@ import type { DecomposeAuditResponse } from "../types";
 // Self-fetches on mount. A null audit (a run from before the fan-out redesign) shows an
 // explicit empty state, not a broken panel.
 export function DecomposeAuditPanel(): ReactNode {
-  const [audit, setAudit] = useState<DecomposeAuditResponse | null>(null);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-
-  useEffect(() => {
-    let live = true;
-    fetchDecomposeAudit()
-      .then((a) => live && (setAudit(a), setState("ready")))
-      .catch(() => live && setState("error"));
-    return () => {
-      live = false;
-    };
-  }, []);
+  const { data: audit, state } = useFetchOnce(fetchDecomposeAudit);
 
   if (state === "loading") return <p className="match-audit-hint">Loading…</p>;
   if (state === "error") return <p className="match-audit-hint">Couldn’t load the decomposition audit.</p>;
