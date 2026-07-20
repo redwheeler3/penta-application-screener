@@ -547,19 +547,23 @@ def _select(items: list, case: str | None, key):
     return picked
 
 
-# Cross-case concurrency for stability runs is bounded low: each case already fans out its own
-# K runs (up to 10) via run_stability's pool, so N cases × K would multiply fast. A small
-# per-case worker count keeps total in-flight calls sane while still overlapping cases.
-_STABILITY_CASE_WORKERS = 3
+def _case_workers(settings, *, fan_out: int = 1) -> int:
+    """How many cases to run concurrently. Governed by the SAME ``settings.max_workers`` knob
+    Rank already runs at (default 50) — the system's proven ceiling — so there's one concurrency
+    dial, not a second. ``fan_out`` is the per-case inner concurrency: a STABILITY case fans out
+    K model calls of its own, so we divide by K to keep TOTAL in-flight calls (cases × K) under
+    the ceiling; a plain run (one call per case) passes fan_out=1 and gets the full width."""
+    return max(1, settings.ai.max_workers // max(1, fan_out))
 
 
-def _stability_over_cases(cases: list, run_case_fn, *, on_delta) -> list:
-    """Run ``run_case_fn(case, case_on_delta)`` for each case CONCURRENTLY, returning results in
-    the ORIGINAL case order. Each case gets its own buffered ``case_on_delta``; a finished
-    case's buffered narration is flushed to the real ``on_delta`` as ONE block, so cases never
-    interleave in the thinking box even though they run in parallel (and only this thread ever
-    writes the stream — the per-case fns write to their own buffers). Within-case K-parallelism
-    still applies inside ``run_case_fn`` (run_stability's own pool)."""
+def _over_cases(cases: list, run_case_fn, *, on_delta, max_workers: int) -> list:
+    """Run ``run_case_fn(case, case_on_delta)`` for each case CONCURRENTLY (bounded by
+    ``max_workers`` — see ``_case_workers``), returning results in the ORIGINAL case order. Each
+    case gets its own buffered ``case_on_delta``; a finished case's buffered narration is flushed
+    to the real ``on_delta`` as ONE block, so cases never interleave in the thinking box even
+    though they run in parallel (and only this thread ever writes the stream — the per-case fns
+    write to their own buffers). For a stability case, within-case K-parallelism still applies
+    inside ``run_case_fn`` (run_stability's own pool)."""
     from app.ai.analysis import run_in_pool
 
     def work(indexed):
@@ -570,7 +574,7 @@ def _stability_over_cases(cases: list, run_case_fn, *, on_delta) -> list:
 
     slots: dict[int, tuple] = {}
     for _item, packed, err in run_in_pool(
-        list(enumerate(cases)), call=work, max_workers=min(_STABILITY_CASE_WORKERS, len(cases) or 1)
+        list(enumerate(cases)), call=work, max_workers=min(max_workers, len(cases) or 1)
     ):
         if err is not None:
             raise err
@@ -603,11 +607,12 @@ def run_scoring(
     scoring_model = settings.ai.dimension_scoring_model
     golden = _select(list(load_golden()), case, lambda c: c.key)
 
+    def one(c, case_delta):
+        case_delta(f"\n\n### {c.key}\n")
+        return run_case(provider, c, scoring_model=scoring_model, on_delta=case_delta)
+
     def work(on_delta) -> ScoringResponse:
-        results = []
-        for c in golden:
-            on_delta(f"\n\n### {c.key}\n")
-            results.append(run_case(provider, c, scoring_model=scoring_model, on_delta=on_delta))
+        results = _over_cases(golden, one, on_delta=on_delta, max_workers=_case_workers(settings))
         return ScoringResponse(
             scoring_prompt_version=SCORING_PROMPT_VERSION,
             scoring_model=scoring_model,
@@ -655,7 +660,7 @@ def run_scoring_stability(
         )
 
     def work(on_delta) -> ScoringStabilityResponse:
-        out = _stability_over_cases(golden, one, on_delta=on_delta)
+        out = _over_cases(golden, one, on_delta=on_delta, max_workers=_case_workers(settings, fan_out=k))
         return ScoringStabilityResponse(
             scoring_prompt_version=SCORING_PROMPT_VERSION, scoring_model=scoring_model, k=k, cases=out,
         )
@@ -683,13 +688,12 @@ def run_consolidation(
     model = settings.ai.consolidate_model
     cases = _select(list(load_consolidation_cases()), case, lambda c: c.key)
 
+    def one(c, case_delta):
+        case_delta(f"\n\n### {c.key}\n")
+        return run_consolidation_case(provider, c, consolidate_model=model, on_delta=case_delta)
+
     def work(on_delta) -> ConsolidationResponse:
-        results = []
-        for c in cases:
-            on_delta(f"\n\n### {c.key}\n")
-            results.append(run_consolidation_case(
-                provider, c, consolidate_model=model, on_delta=on_delta,
-            ))
+        results = _over_cases(cases, one, on_delta=on_delta, max_workers=_case_workers(settings))
         scored = [r for r in results if not r.case.contested]
         return ConsolidationResponse(
             prompt_version=CONSOLIDATE_PROMPT_VERSION,
@@ -739,7 +743,7 @@ def run_consolidation_stability(
         )
 
     def work(on_delta) -> ConsolidationStabilityResponse:
-        out = _stability_over_cases(cases, one, on_delta=on_delta)
+        out = _over_cases(cases, one, on_delta=on_delta, max_workers=_case_workers(settings, fan_out=k))
         return ConsolidationStabilityResponse(
             prompt_version=CONSOLIDATE_PROMPT_VERSION, model=model, k=k, cases=out,
         )
@@ -763,13 +767,12 @@ def run_matching(
     model = settings.ai.match_model
     cases = _select(list(load_matching_cases()), case, lambda c: c.key)
 
+    def one(c, case_delta):
+        case_delta(f"\n\n### {c.key}\n")
+        return run_matching_case(provider, c, match_model=model, on_delta=case_delta)
+
     def work(on_delta) -> MatchingResponse:
-        results = []
-        for c in cases:
-            on_delta(f"\n\n### {c.key}\n")
-            results.append(run_matching_case(
-                provider, c, match_model=model, on_delta=on_delta,
-            ))
+        results = _over_cases(cases, one, on_delta=on_delta, max_workers=_case_workers(settings))
         scored = [r for r in results if not r.case.contested]
         return MatchingResponse(
             prompt_version=MATCH_PROMPT_VERSION, model=model,
@@ -814,7 +817,7 @@ def run_matching_stability(
         )
 
     def work(on_delta) -> MatchingStabilityResponse:
-        out = _stability_over_cases(cases, one, on_delta=on_delta)
+        out = _over_cases(cases, one, on_delta=on_delta, max_workers=_case_workers(settings, fan_out=k))
         return MatchingStabilityResponse(prompt_version=MATCH_PROMPT_VERSION, model=model, k=k, cases=out)
 
     return _stream(db, "matching_stability", MATCH_PROMPT_VERSION, work)
@@ -837,13 +840,12 @@ def run_decomposition(
     model = settings.ai.decompose_model
     cases = _select(list(load_decomposition_cases()), case, lambda c: c.key)
 
+    def one(c, case_delta):
+        case_delta(f"\n\n### {c.key}\n")
+        return run_decomposition_case(provider, c, decompose_model=model, on_delta=case_delta)
+
     def work(on_delta) -> DecompositionResponse:
-        results = []
-        for c in cases:
-            on_delta(f"\n\n### {c.key}\n")
-            results.append(run_decomposition_case(
-                provider, c, decompose_model=model, on_delta=on_delta,
-            ))
+        results = _over_cases(cases, one, on_delta=on_delta, max_workers=_case_workers(settings))
         scored = [r for r in results if not r.case.contested]
         return DecompositionResponse(
             prompt_version=DECOMPOSE_PROMPT_VERSION, model=model,
@@ -888,7 +890,7 @@ def run_decomposition_stability(
         )
 
     def work(on_delta) -> DecompositionStabilityResponse:
-        out = _stability_over_cases(cases, one, on_delta=on_delta)
+        out = _over_cases(cases, one, on_delta=on_delta, max_workers=_case_workers(settings, fan_out=k))
         return DecompositionStabilityResponse(prompt_version=DECOMPOSE_PROMPT_VERSION, model=model, k=k, cases=out)
 
     return _stream(db, "decomposition_stability", DECOMPOSE_PROMPT_VERSION, work)
@@ -911,11 +913,12 @@ def run_screening(
     version = screening_prompt_version(settings)
     cases = _select(list(load_screening_cases()), case, lambda c: c.key)
 
+    def one(c, case_delta):
+        case_delta(f"\n\n### {c.key}\n")
+        return run_screening_case(provider, c, screening_model=model, settings=settings, on_delta=case_delta)
+
     def work(on_delta) -> ScreeningResponse:
-        results = []
-        for c in cases:
-            on_delta(f"\n\n### {c.key}\n")
-            results.append(run_screening_case(provider, c, screening_model=model, settings=settings, on_delta=on_delta))
+        results = _over_cases(cases, one, on_delta=on_delta, max_workers=_case_workers(settings))
         return ScreeningResponse(
             prompt_version=version, model=model,
             passed=sum(1 for r in results if r.passed), total=len(results),
@@ -960,7 +963,7 @@ def run_screening_stability(
         )
 
     def work(on_delta) -> ScreeningStabilityResponse:
-        out = _stability_over_cases(cases, one, on_delta=on_delta)
+        out = _over_cases(cases, one, on_delta=on_delta, max_workers=_case_workers(settings, fan_out=k))
         return ScreeningStabilityResponse(prompt_version=version, model=model, k=k, cases=out)
 
     return _stream(db, "screening_stability", version, work)
@@ -998,17 +1001,20 @@ def run_judge(
     label) and graded against the human label — see judge.py. ``case`` runs just that one
     (per-row run); agreement needs ≥2 scored cases, so a single-case run reports no agreement
     block, only the verdict."""
+    settings = get_app_settings(db)
     cases = _select(list(load_cases()), case, lambda c: c.key)
 
+    def one(c, case_delta):
+        case_delta(f"\n\n### [{c.pass_name}] {c.key}\n")
+        case_delta(f"Reproducing blind on `{JUDGE_MODEL}`…\n\n")
+        r = judge_case(provider, c, model_id=JUDGE_MODEL)
+        rp = r.reproduced
+        agree = "agrees with" if rp.agrees else "DISAGREES with"
+        case_delta(f"**judge: {rp.judge_label}** — {agree} label ({rp.human_label}). {rp.detail}\n")
+        return r
+
     def work(on_delta) -> JudgeRunResponse:
-        results = []
-        for c in cases:
-            on_delta(f"\n\n### [{c.pass_name}] {c.key}\n")
-            on_delta(f"Reproducing blind on `{JUDGE_MODEL}`…\n\n")
-            results.append(judge_case(provider, c, model_id=JUDGE_MODEL))
-            rp = results[-1].reproduced
-            agree = "agrees with" if rp.agrees else "DISAGREES with"
-            on_delta(f"**judge: {rp.judge_label}** — {agree} label ({rp.human_label}). {rp.detail}\n")
+        results = _over_cases(cases, one, on_delta=on_delta, max_workers=_case_workers(settings))
         case_out = [
             JudgeCaseOut(
                 key=r.case.key, pass_name=r.case.pass_name, marker=r.marker,
@@ -1048,6 +1054,7 @@ def run_stability(
     judge's verdict held. ``k`` is clamped to a sane range so a stray value can't blow up spend.
     ``case`` runs just that one (per-row stability check)."""
     k = max(2, min(k, 10))
+    settings = get_app_settings(db)
     cases = _select(list(load_cases()), case, lambda c: c.key)
 
     def one(c, case_delta) -> StabilityCaseOut:
@@ -1063,7 +1070,7 @@ def run_stability(
         )
 
     def work(on_delta) -> StabilityRunResponse:
-        out = _stability_over_cases(cases, one, on_delta=on_delta)
+        out = _over_cases(cases, one, on_delta=on_delta, max_workers=_case_workers(settings, fan_out=k))
         return StabilityRunResponse(
             judge_prompt_version=JUDGE_PROMPT_VERSION, judge_model=JUDGE_MODEL, k=k, cases=out,
         )
