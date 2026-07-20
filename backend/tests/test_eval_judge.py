@@ -178,6 +178,42 @@ def test_scoring_stability_tokens_by_in_band_not_raw_score() -> None:
     assert "[UNSTABLE]" in format_stability([flipped])
 
 
+def test_screening_stability_tokens_by_graded_outcome_not_raw_flag_set() -> None:
+    """Screening grades a FLAG SET per-category. Runs that all satisfy the case but differ in an
+    UNGRADED incidental flag are the SAME graded outcome — they must read [stable], not [UNSTABLE]
+    from tallying the raw flag-set string. (The real bug: pet_rabbit_other_pets_fires flipped
+    because some runs added an ungraded internal_inconsistency flag alongside the required
+    pet_policy.) Dropping a REQUIRED flag is a real flip."""
+    from app.ai.schemas import FlagCategory, ScreeningFlag, ScreeningReport
+
+    case = next(c for c in load_cases() if c.pass_name == "screening" and c.expected.get("fires"))
+    required = FlagCategory(case.expected["fires"][0])  # the category the case guards
+
+    def _report(*cats: FlagCategory) -> ScreeningReport:
+        return ScreeningReport(flags=[
+            ScreeningFlag(category=c, summary="s", evidence="e") for c in cats
+        ])
+
+    # All three satisfy the case (required flag present) but vary in incidental extra flags.
+    provider = MockProvider()
+    provider.queue(_report(required))
+    provider.queue(_report(required, FlagCategory.INTERNAL_INCONSISTENCY))
+    provider.queue(_report(required, required, FlagCategory.INTERNAL_INCONSISTENCY))
+    steady = stability_run(provider, case, k=3)
+    assert steady.agreement == 1.0
+    assert steady.flipped is False
+    assert "[stable]" in format_stability([steady])
+
+    # Dropping the required flag is a real graded flip (agrees -> disagrees).
+    provider = MockProvider()
+    provider.queue(_report(required))
+    provider.queue(_report(FlagCategory.INTERNAL_INCONSISTENCY))  # required flag missing
+    provider.queue(_report(required))
+    flipped = stability_run(provider, case, k=3)
+    assert flipped.flipped is True
+    assert "[UNSTABLE]" in format_stability([flipped])
+
+
 def test_prompt_version_tracks_the_briefs() -> None:
     """The judge version is a hash of the five editable briefs, so editing any brief changes it
     (that is what marks a prior judge run stale). Same briefs -> same version; a changed brief ->
