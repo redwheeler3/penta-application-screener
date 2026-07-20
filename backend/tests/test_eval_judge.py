@@ -10,11 +10,11 @@ reproduce a JudgeReport verdict — the simplest to drive deterministically.
 from app.ai.mock_provider import MockProvider
 from app.ai.schemas import JudgeReport, JudgeVerdict
 from app.evals.judge import (
-    PROMPT_VERSION,
     format_report,
     format_stability,
     judge_case,
     load_cases,
+    prompt_version,
     stability_run,
 )
 
@@ -127,5 +127,27 @@ def test_stability_marks_a_contested_flip_as_split_not_unstable() -> None:
     assert "[UNSTABLE]" not in out
 
 
-def test_prompt_version_is_a_stable_identifier() -> None:
-    assert PROMPT_VERSION == "blind-audit"
+def test_prompt_version_tracks_the_briefs() -> None:
+    """The judge version is a hash of the five editable briefs, so editing any brief changes it
+    (that is what marks a prior judge run stale). Same briefs -> same version; a changed brief ->
+    a different version."""
+    import json
+
+    from app.evals import judge
+
+    v1 = prompt_version()
+    assert isinstance(v1, str)
+    assert v1
+    assert prompt_version() == v1  # deterministic for unchanged briefs
+
+    # Point one pass at a golden file whose brief differs; the hash must move.
+    path = judge._PASS_FILES["scoring"]
+    original = path.read_text()
+    try:
+        data = json.loads(original)
+        data["judge_background"] = (data.get("judge_background", "") + " EDITED FOR TEST")
+        path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+        assert prompt_version() != v1
+    finally:
+        path.write_text(original)
+    assert prompt_version() == v1  # restored

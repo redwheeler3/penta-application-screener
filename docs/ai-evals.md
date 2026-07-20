@@ -175,11 +175,16 @@ judge identity tells us how it was evaluated. A mature eval record needs both;
 otherwise a change in the judge can be mistaken for a change in production
 quality.
 
-The judge has **no derived prompt version**: its brief is the per-file, editable,
-intentionally unversioned `judge_background`, so a judge run is stamped with the
-fixed identifier `"blind-audit"` and its model line. Each committed case additionally
-carries the **production** provenance (`pass_models` + `pass_prompt_versions`) of the
-run it came from, so a verdict is attributable to both identities.
+The judge's prompt version is **derived from the five editable `judge_background`
+briefs** — the only knob that changes what the blind judge is told. `judge.prompt_version()`
+hashes the briefs (in a fixed pass order, via the same `derive_prompt_version` sha the
+production passes use) on each run, so editing and saving any brief moves the hash and a
+prior judge run rehydrates as **stale** until re-run — exactly as a production prompt edit
+stales its pass. The per-pass reproduce *instructions* are static code (they change only on
+deploy) and are deliberately out of the hash; the briefs are the runtime surface. Each
+committed case additionally carries the **production** provenance (`pass_models` +
+`pass_prompt_versions`) of the run it came from, so a verdict is attributable to both
+identities.
 
 ### Same information, different prompt (the fidelity rule)
 
@@ -401,8 +406,9 @@ apart — a flip count alone tells you none of it.**
   production's framing would repeat its error; a second opinion must be independent.
 - Give the judge exactly the pass's `given` (PII-safe input) and its `judge_background`.
   Never reveal `metadata` — the expected label, rationale, or provenance.
-- The judge has no derived prompt version (its brief is per-file and editable): stamp a
-  run `"blind-audit"` and report its model, tokens, and cost.
+- Stamp a run with the judge's version — a hash of the five editable `judge_background`
+  briefs (`judge.prompt_version()`), so editing a brief stales prior runs — and report its
+  model, tokens, and cost.
 - Grade with the pass's own deterministic grader (categorical exact-match, scoring
   band-check, screening fires/absent) so results are comparable.
 - Do not make stochastic judge output a normal CI gate or a production mutation.
