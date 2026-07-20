@@ -25,25 +25,22 @@ from the AI Quality tab, never as part of pytest/CI.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from app.ai.dimension_decompose import SYSTEM_PROMPT, build_prompt
 from app.ai.provider import AIProvider
-from app.ai.schemas import DecompositionReport, PoolDimension, PoolDimensionReport
+from app.ai.schemas import DecompositionReport, PoolDimensionReport
+from app.evals._categorical import CategoricalResult as CaseResult
+from app.evals._categorical import (
+    descriptor_to_dim,
+    emit_stability_summary,
+    grade_verdict,
+)
 from app.evals.paths import DECOMPOSITION_GOLDEN_PATH
 from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
 
 MERGE, KEEP = "merge", "keep"
-
-
-def _descriptor_to_dim(d: dict[str, object]) -> PoolDimension:
-    """A golden descriptor → a PoolDimension. Decomposition serializes key/name/definition +
-    poles + committee flag; poles are filled empty (unused by these fold/keep cases)."""
-    return PoolDimension(
-        key=str(d["key"]), name=str(d.get("name", "")), definition=str(d["definition"]),
-        high_end="", low_end="", why_it_differentiates="",
-    )
 
 
 @dataclass(frozen=True)
@@ -57,20 +54,6 @@ class DecompositionCase:
     @property
     def _source_keys(self) -> set[str]:
         return {str(d["key"]) for report in self.reports for d in report}
-
-
-@dataclass(frozen=True)
-class CaseResult:
-    case: DecompositionCase
-    verdict: str  # "merge" | "keep" — derived from the settled set
-    reason: str  # narration of how the source keys settled
-    failures: list[str] = field(default_factory=list)
-
-    @property
-    def passed(self) -> bool:
-        if self.failures:
-            return False
-        return self.verdict == self.case.expected
 
 
 def load_cases(path: Path = DECOMPOSITION_GOLDEN_PATH) -> tuple[DecompositionCase, ...]:
@@ -98,7 +81,7 @@ def _decompose_verdict(provider: AIProvider, case: DecompositionCase, *, decompo
     case's source keys landed in ONE settled axis; KEEP = they spread across ≥2. Shared by the
     single graded run and the K-run stability check."""
     reports = [
-        PoolDimensionReport(dimensions=[_descriptor_to_dim(d) for d in report])
+        PoolDimensionReport(dimensions=[descriptor_to_dim(d) for d in report])
         for report in case.reports
     ]
     result = provider.structured_output(
@@ -160,18 +143,7 @@ def run_case(
     if verdict == "?":
         emit(on_delta, f"⚠️ {reason}\n")
         return CaseResult(case=case, verdict="?", reason=reason, failures=["no verdict derivable from the settled set"])
-    emit(on_delta, f"**Verdict: {verdict}** (expected {case.expected})\n\n- _{reason}_\n\n")
-
-    failures: list[str] = []
-    if case.contested:
-        emit(on_delta, "◐ Contested case — both verdicts defensible; not counted pass/fail.\n")
-    elif verdict != case.expected:
-        failures.append(f"verdict {verdict!r} != expected {case.expected!r}")
-        emit(on_delta, f"❌ Verdict disagrees with the label ({verdict} vs {case.expected}).\n")
-    else:
-        emit(on_delta, "✓ Verdict matches the label.\n")
-
-    return CaseResult(case=case, verdict=verdict, reason=reason, failures=failures)
+    return grade_verdict(case, verdict, reason, on_delta)
 
 
 def stability_run(
@@ -191,6 +163,5 @@ def stability_run(
         return _decompose_verdict(provider, case, decompose_model=decompose_model)
 
     report = run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
-    tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())
-    emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
+    emit_stability_summary(report, on_delta)
     return report

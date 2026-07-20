@@ -25,12 +25,14 @@ non-deterministic, so it runs from the AI Quality tab, never as part of pytest/C
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from app.ai.dimension_consolidate import SYSTEM_PROMPT, NominatedPair, build_prompt
 from app.ai.provider import AIProvider
 from app.ai.schemas import ConsolidationReport
+from app.evals._categorical import CategoricalResult as CaseResult
+from app.evals._categorical import emit_stability_summary, grade_verdict
 from app.evals.paths import CONSOLIDATION_GOLDEN_PATH
 from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
 
@@ -46,24 +48,6 @@ class ConsolidationCase:
     expected: str  # "merge" | "keep" — the human label
     contested: bool = False
     note: str = ""
-
-
-@dataclass(frozen=True)
-class CaseResult:
-    case: ConsolidationCase
-    verdict: str  # "merge" | "keep" — what the real prompt produced
-    reason: str
-    failures: list[str] = field(default_factory=list)
-
-    @property
-    def passed(self) -> bool:
-        # Exact-match of the verdict against the label. NOTE: this is raw direction-agreement;
-        # a CONTESTED case that diverges returns False here, but the endpoint counts contested
-        # as passed regardless (both verdicts defensible — a contested case passes by running
-        # stably, not by matching the leaning). See the endpoint's `contested or r.passed`.
-        if self.failures:
-            return False
-        return self.verdict == self.case.expected
 
 
 def load_cases(path: Path = CONSOLIDATION_GOLDEN_PATH) -> tuple[ConsolidationCase, ...]:
@@ -156,26 +140,8 @@ def run_case(
     verdict, reason = _confirm_verdict(provider, case, consolidate_model=consolidate_model)
     if verdict is None:
         emit(on_delta, f"⚠️ Model returned no verdict for `{a['key']}` ~ `{b['key']}`.\n")
-        return CaseResult(
-            case=case, verdict="?", reason="",
-            failures=["model returned no verdict for the pair"],
-        )
-    emit(
-        on_delta,
-        f"**Verdict: {verdict}** (expected {case.expected})\n\n"
-        f"- _Reason:_ {reason}\n\n",
-    )
-
-    failures: list[str] = []
-    if case.contested:
-        emit(on_delta, "◐ Contested case — both verdicts defensible; not counted pass/fail.\n")
-    elif verdict != case.expected:
-        failures.append(f"verdict {verdict!r} != expected {case.expected!r}")
-        emit(on_delta, f"❌ Verdict disagrees with the label ({verdict} vs {case.expected}).\n")
-    else:
-        emit(on_delta, "✓ Verdict matches the label.\n")
-
-    return CaseResult(case=case, verdict=verdict, reason=reason, failures=failures)
+        return CaseResult(case=case, verdict="?", reason="", failures=["model returned no verdict for the pair"])
+    return grade_verdict(case, verdict, reason, on_delta)
 
 
 def stability_run(
@@ -199,6 +165,5 @@ def stability_run(
         return verdict or "?", reason
 
     report = run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
-    tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())
-    emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
+    emit_stability_summary(report, on_delta)
     return report

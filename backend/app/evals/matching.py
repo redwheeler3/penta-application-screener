@@ -23,26 +23,22 @@ non-deterministic, so it runs from the AI Quality tab, never as part of pytest/C
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from app.ai.dimension_matching import SYSTEM_PROMPT, build_prompt
 from app.ai.provider import AIProvider
-from app.ai.schemas import DimensionMatchReport, PoolDimension, PoolDimensionReport
+from app.ai.schemas import DimensionMatchReport, PoolDimensionReport
+from app.evals._categorical import CategoricalResult as CaseResult
+from app.evals._categorical import (
+    descriptor_to_dim,
+    emit_stability_summary,
+    grade_verdict,
+)
 from app.evals.paths import MATCHING_GOLDEN_PATH
 from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
 
 MATCHES, MISMATCHES = "matches", "mismatches"
-
-
-def _descriptor_to_dim(d: dict[str, object]) -> PoolDimension:
-    """A golden descriptor {key, name, definition} → a PoolDimension. Matching only serializes
-    key/name/definition (see dimension_matching._dimensions_block), so the poles are unused
-    here — filled empty, never sent to the model."""
-    return PoolDimension(
-        key=str(d["key"]), name=str(d.get("name", "")), definition=str(d["definition"]),
-        high_end="", low_end="", why_it_differentiates="",
-    )
 
 
 @dataclass(frozen=True)
@@ -53,20 +49,6 @@ class MatchingCase:
     expected: str  # "matches" | "mismatches" — the human label
     contested: bool = False
     note: str = ""
-
-
-@dataclass(frozen=True)
-class CaseResult:
-    case: MatchingCase
-    verdict: str  # "matches" | "mismatches" — what the real prompt produced
-    reason: str  # narration of the mapping the model returned
-    failures: list[str] = field(default_factory=list)
-
-    @property
-    def passed(self) -> bool:
-        if self.failures:
-            return False
-        return self.verdict == self.case.expected
 
 
 def load_cases(path: Path = MATCHING_GOLDEN_PATH) -> tuple[MatchingCase, ...]:
@@ -97,8 +79,8 @@ def _match_verdict(provider: AIProvider, case: MatchingCase, *, match_model: str
     — the ONLY place a mismatch's 'why' lives, since a non-match is just absence from the match
     list, so we surface the narrative rather than a canned string. Shared by the single graded
     run and the K-run stability check."""
-    old = PoolDimensionReport(dimensions=[_descriptor_to_dim(d) for d in case.prior])
-    new = PoolDimensionReport(dimensions=[_descriptor_to_dim(d) for d in case.new])
+    old = PoolDimensionReport(dimensions=[descriptor_to_dim(d) for d in case.prior])
+    new = PoolDimensionReport(dimensions=[descriptor_to_dim(d) for d in case.new])
     result = provider.structured_output(
         model_id=match_model,
         schema=DimensionMatchReport,
@@ -156,18 +138,7 @@ def run_case(
     p, n = case.prior[0], case.new[0]
     emit(on_delta, f"Matching new **{n['name']}** vs prior **{p['name']}** on `{match_model}`…\n\n")
     verdict, reason = _match_verdict(provider, case, match_model=match_model)
-    emit(on_delta, f"**Verdict: {verdict}** (expected {case.expected})\n\n- _{reason}_\n\n")
-
-    failures: list[str] = []
-    if case.contested:
-        emit(on_delta, "◐ Contested case — both verdicts defensible; not counted pass/fail.\n")
-    elif verdict != case.expected:
-        failures.append(f"verdict {verdict!r} != expected {case.expected!r}")
-        emit(on_delta, f"❌ Verdict disagrees with the label ({verdict} vs {case.expected}).\n")
-    else:
-        emit(on_delta, "✓ Verdict matches the label.\n")
-
-    return CaseResult(case=case, verdict=verdict, reason=reason, failures=failures)
+    return grade_verdict(case, verdict, reason, on_delta)
 
 
 def stability_run(
@@ -188,6 +159,5 @@ def stability_run(
         return _match_verdict(provider, case, match_model=match_model)
 
     report = run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
-    tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())
-    emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
+    emit_stability_summary(report, on_delta)
     return report
