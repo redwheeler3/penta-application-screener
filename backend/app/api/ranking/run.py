@@ -455,7 +455,7 @@ def _stream_criteria(
     prior_run = get_current_run(db)
     prior_report = current_dimension_report(prior_run) if prior_run else None
     match_history = all_known_dimensions(db)  # every dimension ever, one per key
-    scaffold_tiers, tier_by_key, _known_keys = tier_history(db)
+    scaffold_tiers, tier_by_key = tier_history(db)
     # The immediately-prior run's keys: a dimension present here is continuous in
     # the committee's view (never flagged); one absent-then-present is a presence
     # gap to flag (new or revived). See carry_forward_layout.
