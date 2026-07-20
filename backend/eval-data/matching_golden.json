@@ -91,6 +91,66 @@
           }
         ]
       }
+    },
+    {
+      "key": "digital_systems_renamed_matches",
+      "metadata": {
+        "expected": "matches",
+        "note": "Real cross-run rename — same digital-tooling concept discovered under a shorter key next run; should carry forward.",
+        "pass": "matching",
+        "label_rationale": "MATCHES: both measure whether the household can build or maintain digital tools that support co-op operations (booking systems, maintenance trackers, communications). The new run's shorter definition drops some examples but names the same concept; an applicant scores identically. A correct carry-forward — the score earned last run should follow the concept, not the key string.",
+        "source": "Rank run 6 (2026-07-16), match_audit new_to_old: digital_systems_skill (new, run 6) -> digital_tech_infrastructure_skills (prior, run 5). Definitions verbatim (new from run 6, prior from run 5 discovery reports).",
+        "provenance": {
+          "pass_models": {"Dimension matching": "us.anthropic.claude-sonnet-4-6"},
+          "pass_prompt_versions": {"Dimension matching": "bcf254622976"}
+        }
+      },
+      "given": {
+        "prior": [
+          {
+            "key": "digital_tech_infrastructure_skills",
+            "name": "Digital & Tech Infrastructure Skills",
+            "definition": "Whether the household can build or maintain digital tools that reduce administrative friction for the co-op — booking systems, maintenance-request platforms, newsletters, signage, financial spreadsheets, or communications design."
+          }
+        ],
+        "new": [
+          {
+            "key": "digital_systems_skill",
+            "name": "Digital / Systems Skill",
+            "definition": "Ability to build or maintain digital tools that support co-op operations — booking systems, maintenance trackers, communications, design, or data management."
+          }
+        ]
+      }
+    },
+    {
+      "key": "housing_coop_experience_renamed_matches",
+      "metadata": {
+        "expected": "matches",
+        "note": "Same 'lived/governed a housing co-op specifically' concept under a different name across runs — matches by concept.",
+        "pass": "matching",
+        "label_rationale": "MATCHES: both measure direct first-hand experience living in or governing a HOUSING co-op specifically (as opposed to a food co-op or strata) — familiarity with co-op work hours, shared decision-making, and consensus rhythms. Same concept, different name and key; a correct carry-forward. Distinct from generic governance experience — the 'housing co-op specifically' scope is the shared concept.",
+        "source": "Rank run 6 (2026-07-16), match_audit new_to_old: housing_coop_specific_experience (new, run 6) -> coop_governance_experience (prior, run 5). Definitions verbatim.",
+        "provenance": {
+          "pass_models": {"Dimension matching": "us.anthropic.claude-sonnet-4-6"},
+          "pass_prompt_versions": {"Dimension matching": "bcf254622976"}
+        }
+      },
+      "given": {
+        "prior": [
+          {
+            "key": "coop_governance_experience",
+            "name": "Housing Co-op Governance & Living Experience",
+            "definition": "The depth and directness of prior experience living in or holding a governance role within a housing co-op specifically — including first-hand knowledge of work hours, shared decision-making, consensus cycles, and co-op rhythms."
+          }
+        ],
+        "new": [
+          {
+            "key": "housing_coop_specific_experience",
+            "name": "Housing Co-op–Specific Experience",
+            "definition": "Whether the household has direct experience living in or governing a housing co-op (as opposed to a food co-op, strata council, or tenants' association), giving familiarity with the specific rhythms of housing co-op meetings, work hours, and shared residential decision-making."
+          }
+        ]
+      }
     }
   ]
 }

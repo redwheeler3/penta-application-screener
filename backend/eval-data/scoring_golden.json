@@ -120,6 +120,37 @@
           "low_end": "No board, council, or committee experience mentioned anywhere."
         }
       }
+    },
+    {
+      "key": "modest_evidence_scores_mid",
+      "metadata": {
+        "note": "Real but thin evidence -> a moderate positive mid-band, not rounded up to the high pole. Guards the middle of the scale (the existing cases only pin the poles and neutral).",
+        "pass": "scoring",
+        "expected": {
+          "score_min": 0.2,
+          "score_max": 0.6,
+          "confidence": "medium"
+        }
+      },
+      "given": {
+        "applicant": {
+          "facts": {
+            "household_adults": 2,
+            "employment": "café manager; landscaper"
+          },
+          "essays": {
+            "skills": "I helped organise the tool-share at our last building and can pitch in on small repairs — I'm handy but not licensed.",
+            "why_coop": "We like fixing things ourselves and sharing what we have."
+          }
+        },
+        "dimension": {
+          "key": "hands_on_maintenance_willingness",
+          "name": "Hands-on maintenance willingness",
+          "definition": "Whether the household is willing and able to pitch in on general upkeep and small repairs — no licence required, just demonstrated handiness and a stated willingness to help.",
+          "high_end": "Describes substantial hands-on maintenance experience and an explicit commitment to lead or carry repair work for the co-op.",
+          "low_end": "States no interest or ability in hands-on upkeep."
+        }
+      }
     }
   ]
 }
