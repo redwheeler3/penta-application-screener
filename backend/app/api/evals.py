@@ -677,9 +677,9 @@ def run_consolidation(
 ) -> StreamingResponse:
     """Stream a consolidation run: golden dimension pairs → the REAL consolidation
     confirm prompt+model → merge/keep graded against the label by exact match. ``case`` runs
-    just that one pair (per-row run); omitted runs all. Contested cases are reported but
-    excluded from passed/total. A case carrying a ``judge`` question ALSO runs the independent
-    judge as a label audit (informational — never gates the pass/fail)."""
+    just that one pair (per-row run); omitted runs all. A contested case counts as passed
+    whichever way it lands (both verdicts defensible) — it's a pass with special treatment, not
+    excluded from the tally."""
     from app.ai.dimension_consolidate import (
         PROMPT_VERSION as CONSOLIDATE_PROMPT_VERSION,
     )
@@ -694,12 +694,11 @@ def run_consolidation(
 
     def work(on_delta) -> ConsolidationResponse:
         results = _over_cases(cases, one, on_delta=on_delta, max_workers=_case_workers(settings))
-        scored = [r for r in results if not r.case.contested]
         return ConsolidationResponse(
             prompt_version=CONSOLIDATE_PROMPT_VERSION,
             model=model,
-            passed=sum(1 for r in scored if r.passed),
-            total=len(scored),
+            passed=sum(1 for r in results if r.case.contested or r.passed),
+            total=len(results),
             cases=[
                 ConsolidationCaseOut(
                     key=r.case.key, passed=r.passed, verdict=r.verdict,
@@ -773,10 +772,9 @@ def run_matching(
 
     def work(on_delta) -> MatchingResponse:
         results = _over_cases(cases, one, on_delta=on_delta, max_workers=_case_workers(settings))
-        scored = [r for r in results if not r.case.contested]
         return MatchingResponse(
             prompt_version=MATCH_PROMPT_VERSION, model=model,
-            passed=sum(1 for r in scored if r.passed), total=len(scored),
+            passed=sum(1 for r in results if r.case.contested or r.passed), total=len(results),
             cases=[
                 MatchingCaseOut(
                     key=r.case.key, passed=r.passed, verdict=r.verdict,
@@ -846,10 +844,9 @@ def run_decomposition(
 
     def work(on_delta) -> DecompositionResponse:
         results = _over_cases(cases, one, on_delta=on_delta, max_workers=_case_workers(settings))
-        scored = [r for r in results if not r.case.contested]
         return DecompositionResponse(
             prompt_version=DECOMPOSE_PROMPT_VERSION, model=model,
-            passed=sum(1 for r in scored if r.passed), total=len(scored),
+            passed=sum(1 for r in results if r.case.contested or r.passed), total=len(results),
             cases=[
                 DecompositionCaseOut(
                     key=r.case.key, passed=r.passed, verdict=r.verdict,
