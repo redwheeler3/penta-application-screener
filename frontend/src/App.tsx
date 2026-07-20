@@ -1,5 +1,5 @@
 import { LogIn, LogOut, Settings } from "lucide-react";
-import { type SyntheticEvent, useEffect, useRef, useState } from "react";
+import { type SyntheticEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { HouseIcon } from "./HouseIcon";
 import * as api from "./api";
 import { readProblem, resolveSheetId } from "./format";
@@ -110,6 +110,31 @@ export function App() {
   const [appSearch, setAppSearch] = useState("");
   const [appSort, setAppSort] = useState<SortState>(null);
   const [selectedApp, setSelectedApp] = useState<ApplicationDetail | null>(null);
+  // The row we drilled in from, so pressing Back in the detail can return the list
+  // to that person instead of the top. Only the detail's Back button arms the scroll
+  // (via `pendingScrollId`); other paths that clear the detail (tab switches, post-run
+  // resets, brand click) leave it null and land at the top as before.
+  const [pendingScrollId, setPendingScrollId] = useState<number | null>(null);
+
+  // After the list re-renders following Back, bring the previously-clicked row into
+  // view. useLayoutEffect so it runs before paint — no flash of the top of the list.
+  useLayoutEffect(() => {
+    if (pendingScrollId == null || selectedApp) return;
+    const row = document.querySelector<HTMLElement>(`[data-app-id="${pendingScrollId}"]`);
+    if (row) {
+      // Align the row near the top of the viewport (not centered). scrollMarginTop
+      // leaves a little breathing room so it sits just below the top edge.
+      row.style.scrollMarginTop = "80px";
+      row.scrollIntoView({ block: "start" });
+    }
+    setPendingScrollId(null);
+  }, [pendingScrollId, selectedApp]);
+
+  // Return from the detail to the list, remembering which row to scroll back to.
+  function backToList() {
+    if (selectedApp) setPendingScrollId(selectedApp.id);
+    setSelectedApp(null);
+  }
 
   // AI run flows share a shape: estimate (confirmation) -> running -> result.
   // Outcomes surface as toasts, so no per-step message state is kept here.
@@ -697,7 +722,7 @@ export function App() {
             {selectedApp ? (
               <CandidateDetail
                 app={selectedApp}
-                onBack={() => setSelectedApp(null)}
+                onBack={backToList}
                 onOverrideStatus={overrideStatus}
                 onClearOverride={clearStatusOverride}
                 onSavePrivateNote={savePrivateNote}
