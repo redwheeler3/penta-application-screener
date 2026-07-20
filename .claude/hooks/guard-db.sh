@@ -35,7 +35,13 @@ if printf '%s' "$cmd" | grep -Eq '(rm|unlink|shred|mv|truncate|:>|>[[:space:]]*)
 fi
 
 # --- ASK: commit confirmation (kept from the prior guard) -------------------------
-if printf '%s' "$cmd" | grep -Eq 'git[[:space:]]+commit'; then
+# Gated by a sentinel FILE (.claude/allow-commits), read fresh from disk each call so it takes
+# effect immediately — no session reload, unlike a settings env var. Present → Jeff has granted
+# standing commit authority for this session (e.g. the M14 cleanup) and commits flow without a
+# prompt; absent (the default, per .clinerules) → confirm every commit. Covers ONLY the commit
+# confirm — the DB-destruction guards above always ask, regardless of this file. `rm` the file
+# to restore per-commit prompting.
+if [ ! -f "${CLAUDE_PROJECT_DIR:-.}/.claude/allow-commits" ] && printf '%s' "$cmd" | grep -Eq 'git[[:space:]]+commit'; then
   ask "Confirm: commit? (.clinerules — only when your last message asked)."
 fi
 
