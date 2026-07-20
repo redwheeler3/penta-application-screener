@@ -4,7 +4,6 @@ import { fetchEvalCases, fetchLastEvalRun, runEval, saveEvalCase, streamNdjson }
 import type { LastEvalRun } from "../../types";
 import { EvalCaseDetail } from "./EvalCaseDetail";
 import { EvalCaseEditor } from "./EvalCaseEditor";
-import { HarvestPanel } from "./HarvestPanel";
 import { InlineConfirm } from "./InlineConfirm";
 import type { FieldObject } from "./StructuredFields";
 
@@ -29,9 +28,6 @@ export function RunnableEval(props: {
   modes: RunMode[];
   // Group cases under headings by this case field (e.g. "pass" for judge); undefined = flat.
   groupBy?: string;
-  // Judge only: offer "Harvest from current run" — propose fidelity-preserving candidate
-  // cases from the current Rank's scoring/screening output, opened in the editor to label.
-  harvestable?: boolean;
   // Whether a SELECTED case can be edited here. Defaults to true. The Judge tab sets this true
   // too: a judge-tab edit is routed to the case's own pass file (by metadata.pass), so it lands
   // in the same golden file the pass tab writes to.
@@ -235,16 +231,6 @@ export function RunnableEval(props: {
           </button>
         ) : null}
       </div>
-
-      {props.harvestable ? (
-        <HarvestPanel
-          onEditCandidate={(candidate) => {
-            setSaveError(null);
-            setSelected(null);
-            setEditing({ existing: candidate });
-          }}
-        />
-      ) : null}
 
       {run.error ? <p className="eval-error">{run.error}</p> : null}
       {run.running || run.thinking ? (
