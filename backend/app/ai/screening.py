@@ -66,7 +66,7 @@ Do NOT flag (these are normal and must be ignored):
 - A child or co-applicant having a different surname from the applicant. Blended families and differing surnames are common and are NOT suspicious.
 - Missing optional information, or an answer simply being short.
 - Ordinary household context by itself. Only flag a concrete concern; family details are not suspicious on their own.
-- An email that does not match the person's name.
+- An email whose address does not relate to the applicant's name — including one that contains a DIFFERENT person's name.
 
 ## Guardrails
 - {INJECTION_GUARD_NOTE}
