@@ -63,6 +63,21 @@ async def _stream_events(client: AsyncClient, url: str) -> list[dict]:
     return events
 
 
+def test_seed_str_renders_any_of_fires_group() -> None:
+    """_seed_str feeds the judge-stability `seed` field for every case. A screening `fires`
+    entry can be a nested 'at least one of' list (e.g. [["pet_policy", "other"]]) — joining it
+    as a bare str used to throw 'expected str instance, list found' when Run Stability hit the
+    velociraptor case. It must render the group as 'a | b'."""
+    from app.api.evals import _seed_str
+
+    assert _seed_str({"fires": [["pet_policy", "other"]], "absent": []}) == "fires: pet_policy | other"
+    assert _seed_str({"fires": ["pet_policy"], "absent": ["fake_contact"]}) == (
+        "fires: pet_policy · absent: fake_contact"
+    )
+    assert _seed_str({"fires": [], "absent": []}) == "clean"
+    assert _seed_str("merge") == "merge"  # categorical label passes through
+
+
 async def test_catalog_lists_evals_with_spend_flags() -> None:
     app, _db, _p = setup_app()
     transport = ASGITransport(app=app)
