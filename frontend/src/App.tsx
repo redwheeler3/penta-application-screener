@@ -2,7 +2,7 @@ import { LogIn, LogOut, Settings } from "lucide-react";
 import { type SyntheticEvent, useEffect, useLayoutEffect, useState } from "react";
 import { HouseIcon } from "./HouseIcon";
 import * as api from "./api";
-import { readProblem, resolveSheetId } from "./format";
+import { money, readProblem, resolveSheetId } from "./format";
 import type {
   ApplicationDetail,
   AppSettings,
@@ -291,7 +291,7 @@ export function App() {
             const failedNote = event.failed ? ` ${event.failed} failed and were skipped.` : "";
             showToast(
               `Flagging complete: ${event.flagged} flagged of ${event.analyzed + event.cached} analyzed ` +
-                `($${event.totalCostUsd.toFixed(4)}).` +
+                `(${money(event.totalCostUsd)}).` +
                 failedNote,
             );
           }
@@ -368,7 +368,7 @@ export function App() {
             showToast(
               `${mode === "discover" ? "Ranking complete" : "Current criteria updated"}: ` +
                 `${event.dimensions} criteria, ${event.scored} candidates scored ` +
-                `($${event.totalCostUsd.toFixed(4)}).` +
+                `(${money(event.totalCostUsd)}).` +
                 failedNote,
             );
           }

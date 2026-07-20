@@ -26,13 +26,13 @@ export function DiscoveryPanel(props: { run: CurrentRunResponse }): ReactNode {
     };
   }, [props.run.runId]);
 
-  if (state === "loading") return <p className="match-audit-hint">Loading…</p>;
-  if (state === "error") return <p className="match-audit-hint">Couldn’t load discovery.</p>;
+  if (state === "loading") return <p className="panel-hint">Loading…</p>;
+  if (state === "error") return <p className="panel-hint">Couldn’t load discovery.</p>;
 
   // Legacy runs (pre fan-out) have no per-pass audit — fall back to the single narrative.
   if (audit === null || audit.passes.length === 0) {
     if (!props.run.discoveryNarrative) {
-      return <p className="match-audit-hint">No discovery reasoning recorded for this run.</p>;
+      return <p className="panel-hint">No discovery reasoning recorded for this run.</p>;
     }
     return (
       <div className="discovery-audit">
@@ -48,7 +48,7 @@ export function DiscoveryPanel(props: { run: CurrentRunResponse }): ReactNode {
 
   return (
     <div className="discovery-audit">
-      <p className="match-audit-hint">
+      <p className="panel-hint">
         {audit.k} parallel discovery passes ran on this pool; their differing takes are
         settled into one set by decomposition (see the Decomposition tab). Each found the
         axes below independently — the overlaps and the gaps are the fan-out at work.
@@ -76,7 +76,7 @@ export function DiscoveryPanel(props: { run: CurrentRunResponse }): ReactNode {
                 </div>
               </div>
             ) : (
-              <p className="match-audit-hint discovery-pass-no-reasoning">
+              <p className="panel-hint discovery-pass-no-reasoning">
                 Reasoning wasn’t recorded for this run — re-rank to capture it.
               </p>
             )}

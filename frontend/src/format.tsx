@@ -6,6 +6,13 @@ export function fieldLabel(key: string): string {
   return FIELD_LABELS[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// A USD amount at 4-decimal precision — the app's standard for AI spend (per-run cost,
+// estimates, cache savings), where sub-cent figures are meaningful. Coarser 2-dp totals
+// (block subtotals, the spending cap) format inline at their call sites.
+export function money(usd: number): string {
+  return `$${usd.toFixed(4)}`;
+}
+
 export function flagCategoryLabel(category: string): string {
   return FLAG_CATEGORY_LABELS[category] ?? category;
 }

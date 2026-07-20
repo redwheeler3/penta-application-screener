@@ -1454,7 +1454,10 @@ h1 {
   line-height: 1.5;
 }
 
-.match-audit-hint {
+/* Muted explanatory line shared by every Observability/Evals panel (loading + error
+   states, empty-state notes, section intros) — not match-specific despite living next
+   to the match-audit rules. */
+.panel-hint {
   color: var(--muted);
   font-size: 0.85rem;
   line-height: 1.45;

@@ -20,11 +20,11 @@ import type { DecomposeAuditResponse } from "../types";
 export function DecomposeAuditPanel(): ReactNode {
   const { data: audit, state } = useFetchOnce(fetchDecomposeAudit);
 
-  if (state === "loading") return <p className="match-audit-hint">Loading…</p>;
-  if (state === "error") return <p className="match-audit-hint">Couldn’t load the decomposition audit.</p>;
+  if (state === "loading") return <p className="panel-hint">Loading…</p>;
+  if (state === "error") return <p className="panel-hint">Couldn’t load the decomposition audit.</p>;
   if (audit === null) {
     return (
-      <p className="match-audit-hint">
+      <p className="panel-hint">
         No decomposition audit for this run — it predates the fan-out redesign (a single
         discovery run, not K parallel reports settled into one set). Re-rank to populate it.
       </p>
@@ -51,7 +51,7 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
 
   return (
     <div className="match-audit">
-      <p className="match-audit-hint">
+      <p className="panel-hint">
         {audit.inputReportCount} parallel discovery reports ({audit.inputDimensionCount} axes in
         total) were settled into {audit.settledCount} non-overlapping dimensions. A “merge” folds
         several re-carvings of one concept into a single axis.
@@ -77,7 +77,7 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
       </dl>
 
       {audit.foldedRequests.length > 0 ? (
-        <p className="match-audit-hint decompose-folded-note">
+        <p className="panel-hint decompose-folded-note">
           <strong>Committee requests folded into another axis:</strong>{" "}
           {audit.foldedRequests.map((f) => `${f.requestKey} → ${f.intoKey}`).join(", ")}. These
           were not dropped — they are captured inside the settled axis shown below.
