@@ -42,6 +42,49 @@
           [{"key": "participation_commitment_explicitness", "name": "Participation commitment explicitness", "definition": "How concretely and specifically the household commits to co-op work obligations — work-day attendance, committee seats, maintenance rotations — in their own words."}]
         ]
       }
+    },
+    {
+      "key": "financial_admin_five_carvings_merge",
+      "metadata": {
+        "expected": "merge",
+        "note": "Five discovery workers each carved co-op financial administration under a slightly different name — decomposition should fold all five into one axis.",
+        "pass": "decomposition",
+        "label_rationale": "MERGE: all five definitions describe the same underlying competency — treasurer- or bookkeeping-level financial skill applicable to running a co-op (budgets, reconciliation, audit prep, record-keeping). They would score the same household identically, so they are one axis; the fold is correct. A second, larger clean MERGE for the pass (a distinct concept from the health/safety one), judged from definitions alone, pre-score.",
+        "source": "Rank run 6 (2026-07-16), decompose_audit settled axis financial_admin_skill (source_keys financial_admin_skill, financial_management_skill, financial_administrative_skill, financial_governance_skill, financial_management_skills). Definitions are exact slices of run 6's raw discovery reports (fan_out_audit).",
+        "provenance": {
+          "pass_models": {"Dimension decomposition": "us.anthropic.claude-sonnet-4-6"},
+          "pass_prompt_versions": {"Dimension decomposition": "733871632036"}
+        }
+      },
+      "given": {
+        "reports": [
+          [{"key": "financial_admin_skill", "name": "Financial & Administrative Skill", "definition": "Demonstrated ability to manage shared finances, budgets, audits, record-keeping, or governance administration relevant to running a co-op."}],
+          [{"key": "financial_management_skill", "name": "Financial / Bookkeeping Skill", "definition": "The depth of financial competence the household can contribute — from full treasurer/audit experience down to basic bookkeeping or no claimed financial skill."}],
+          [{"key": "financial_administrative_skill", "name": "Financial / Bookkeeping Skill", "definition": "Whether one or both adults can directly serve the co-op's financial administration — bookkeeping, budget reconciliation, audit preparation, or treasurer functions."}],
+          [{"key": "financial_governance_skill", "name": "Financial Governance & Treasurer-Level Skill", "definition": "Demonstrated ability to manage a collective's finances: reading and preparing budgets, reconciling accounts, passing audits, and transferring financial knowledge to successors."}],
+          [{"key": "financial_management_skills", "name": "Financial Management & Bookkeeping Skills", "definition": "Whether the household can take on the co-op's financial administration — maintaining budgets, reconciling accounts, preparing for audits, and ensuring fiscal transparency — based on professional skill or demonstrated experience."}]
+        ]
+      }
+    },
+    {
+      "key": "trade_vs_grounds_overlap_keep",
+      "metadata": {
+        "expected": "keep",
+        "note": "Overlap trap: both definitions name 'arboriculture', but interior trade skill and outdoor/grounds skill are genuinely distinct axes — decomposition should NOT over-fold on the shared example.",
+        "pass": "decomposition",
+        "label_rationale": "KEEP: the harder KEEP — two axes whose definitions literally share an example word (arboriculture) yet measure different things. A qualified arborist or horticulturalist scores high on grounds/outdoor skill but may have no interior building trade skill; a licensed electrician scores high on trade maintenance but may have no outdoor expertise. Folding them on the shared word would let one skill masquerade as the other. Tests that the pass reads the whole definition, not a keyword overlap.",
+        "source": "Rank run 6 (2026-07-16), decompose_audit — trade_maintenance_skill and grounds_outdoor_skill settled as separate axes; run 6's decision text explicitly reasons them apart (arborist vs. electrician). Definitions are exact slices of run 6's settled report.",
+        "provenance": {
+          "pass_models": {"Dimension decomposition": "us.anthropic.claude-sonnet-4-6"},
+          "pass_prompt_versions": {"Dimension decomposition": "733871632036"}
+        }
+      },
+      "given": {
+        "reports": [
+          [{"key": "trade_maintenance_skill", "name": "Trade / Hands-On Maintenance Skills", "definition": "Licensed or professionally practiced trade skills directly applicable to building upkeep — electrical, carpentry, masonry, mechanics, arboriculture, etc."}],
+          [{"key": "grounds_outdoor_skill", "name": "Grounds, Gardening & Outdoor Maintenance Skill", "definition": "Practical skill in maintaining shared outdoor spaces — gardening, composting, arboriculture, grounds safety — that reduce the co-op's need for outside contractors."}]
+        ]
+      }
     }
   ]
 }
