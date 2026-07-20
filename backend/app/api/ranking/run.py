@@ -1,18 +1,16 @@
-"""Ranking API: the Rank chain and the deterministic ranked shortlist.
+"""Rank: the combined criteria → scores chain, plus its cost estimates.
 
-Flow the UI drives:
-  1. GET  /ranking/estimate — combined cost projection for the chain.
-  2. POST /ranking/run — find criteria → score every eligible applicant, streaming
-     phase/progress/summary as NDJSON. The cap is enforced once over the COMBINED cost
-     before any model call.
-  3. GET  /ranking/current — the current run's criteria + summary.
-  4. GET  /ranking — the ranked shortlist (math over cached scores).
-  5. GET/PUT /ranking/tiers — the committee's importance-tier weighting.
-  6. PUT  /ranking/seeds — pending free-text proposals for the next run.
+The endpoints here spend real model calls (or project what they would spend):
 
-The committee never runs the three sub-passes individually, so they're exposed as
-one Rank step; the passes stay separate underneath (distinct schemas, cache kinds,
-status behavior).
+  - GET  /estimate — combined cost projection for a full Rank (before the cap check).
+  - GET  /score-current/estimate — exact cache-aware cost to fill missing scores only.
+  - POST /score-current — fill missing scores without changing dimensions or tiers.
+  - POST /run — the full chain (find criteria → score → consolidate), streaming NDJSON.
+
+``rank_run`` is the heart of the app: its inner ``stream()`` runs each pipeline phase,
+bridging the providers' streamed reasoning through a worker-thread/queue into NDJSON deltas.
+The combined cost is checked against the cap once before any model call, so an over-cap run
+fails fast and spends nothing.
 """
 
 import logging
@@ -20,7 +18,7 @@ import queue
 import threading
 import time
 from collections.abc import Iterator
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -66,8 +64,6 @@ from app.api.dependencies import get_ai_provider, require_current_user
 from app.api.problems import Problem
 from app.db.models import User
 from app.db.session import get_db
-from app.domain.ranking import rank_candidates
-from app.schemas.applications import DimensionContributionOut
 from app.schemas.events import ErrorEvent as StreamErrorEvent
 from app.schemas.events import (
     NoticeEvent,
@@ -79,62 +75,35 @@ from app.schemas.events import (
     WarningEvent,
     emit,
 )
-from app.schemas.insights import CostReport, LastRunsReport, MetricsReport
 from app.schemas.ranking import (
-    ConsolidateAuditResponse,
-    CurrentRunResponse,
-    DecomposeAuditResponse,
-    FanOutAuditResponse,
-    MatchAuditResponse,
-    PoolDimensionOut,
-    RankedCandidateOut,
     RankEstimateBreakdown,
     RankEstimateResponse,
-    RankingResponse,
     ScoreCurrentEstimateResponse,
-    SeedsResponse,
-    SeedsUpdate,
-    TierLayoutUpdate,
-    TierOut,
-    TiersResponse,
 )
 from app.schemas.settings import AppSettings
 from app.services.cost_report import (
     SCORE_CURRENT_KIND,
-    cost_report,
-    last_runs_report,
     recent_pass_fresh_usd,
     record_run_cost,
 )
-from app.services.metrics import metrics_report
 from app.services.ranking_run import (
     adopt_matched_keys,
     all_known_dimensions,
     apply_consolidation,
     carry_forward_layout,
-    consolidate_audit_view,
     create_run,
     current_dimension_report,
-    decompose_audit_view,
-    dimension_weights,
-    display_tiers,
-    fan_out_audit_view,
     get_current_run,
     kept_keys,
     key_history,
     mark_ranking_current,
-    match_audit_view,
     proposed_dimensions,
     ranking_is_current,
-    revived_flag_keys,
-    set_proposals,
-    set_tiers,
     tier_history,
 )
-from app.services.ranking_view import candidate_scores
 from app.services.settings import get_app_settings
 
-router = APIRouter(prefix="/ranking", tags=["ranking"])
+router = APIRouter(prefix="/ranking")
 
 # Phase names for the rank stream (every event carries one, so the client's
 # stream switch is uniform across this job and the screening job).
@@ -219,158 +188,6 @@ class RunTally:
             failed_calls=self.failed,
             model_id=model_id if self.analyzed else "",
         )
-
-
-def _run_payload(db: Session) -> CurrentRunResponse | None:
-    """The current run's discovered pattern report, shaped for the UI."""
-    run = get_current_run(db)
-    if run is None:
-        return None
-    report = current_dimension_report(run)
-    if report is None:
-        return None
-    return CurrentRunResponse(
-        run_id=run.id,
-        name=run.name,
-        status=run.status,
-        dimensions=[
-            PoolDimensionOut(
-                key=d.key,
-                name=d.name,
-                definition=d.definition,
-                high_end=d.high_end,
-                low_end=d.low_end,
-                why_it_differentiates=d.why_it_differentiates,
-                from_committee_request=d.from_committee_request,
-            )
-            for d in report.dimensions
-        ],
-        discovery_narrative=(run.criteria or {}).get("discovery_narrative"),
-        # Dimensions absent from the immediately-prior run — parked/placed but flagged
-        # for triage. Empty on a first run.
-        new_dimension_keys=(run.criteria or {}).get("new_dimension_keys", []),
-        # Of those flagged keys, the ones seen in an EARLIER run (revived), derived
-        # from history — the frontend colours these blue vs. amber for genuinely-new.
-        revived_dimension_keys=revived_flag_keys(db, run),
-        # Kept axes: every dimension in a working (non-Ignore) tier — guaranteed to
-        # survive the next Rank. Derived from tier placement (see kept_keys). Plus any
-        # pending free-text proposals (fed to the next Rank, then consumed).
-        kept_keys=kept_keys(run),
-        proposed_dimensions=proposed_dimensions(run),
-    )
-
-
-@router.get("/current", response_model=CurrentRunResponse | None)
-def current(
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> CurrentRunResponse | None:
-    """The current ranking run's dimensions, or null if none discovered yet."""
-    return _run_payload(db)
-
-
-@router.get("/current/match-audit", response_model=MatchAuditResponse | None)
-def current_match_audit(
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> MatchAuditResponse | None:
-    """The current run's carry-forward audit — what discovery emitted, how the match
-    pass mapped it onto prior dimensions, and the derived carry-forward rate (M13
-    per-run AI legibility). Null when no run exists or the run predates the capture.
-    """
-    run = get_current_run(db)
-    if run is None:
-        return None
-    view = match_audit_view(run)
-    if view is None:
-        return None
-    return MatchAuditResponse(run_id=run.id, **view)
-
-
-@router.get("/current/decompose-audit", response_model=DecomposeAuditResponse | None)
-def current_decompose_audit(
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> DecomposeAuditResponse | None:
-    """The current run's decomposition audit — how the K fan-out discovery reports were
-    settled into one non-overlapping set: each settled axis's source keys + merge/keep
-    reasoning, the settle-down counts, and the D9 folded-committee-request trail. Null on
-    runs that predate the fan-out redesign (single-discovery runs).
-    """
-    run = get_current_run(db)
-    if run is None:
-        return None
-    view = decompose_audit_view(run)
-    if view is None:
-        return None
-    return DecomposeAuditResponse(run_id=run.id, **view)
-
-
-@router.get("/current/consolidate-audit", response_model=ConsolidateAuditResponse | None)
-def current_consolidate_audit(
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> ConsolidateAuditResponse | None:
-    """The current run's consolidation audit — the post-score duplicate-merge pass:
-    which correlated pairs were nominated and, per pair, whether the confirm call merged
-    them (with its reasoning). Null on runs that predate the pass.
-    """
-    run = get_current_run(db)
-    if run is None:
-        return None
-    view = consolidate_audit_view(db, run)
-    if view is None:
-        return None
-    return ConsolidateAuditResponse(run_id=run.id, **view)
-
-
-@router.get("/current/fan-out-audit", response_model=FanOutAuditResponse | None)
-def current_fan_out_audit(
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> FanOutAuditResponse | None:
-    """The current run's fan-out audit — each of the K parallel discoverers' dimensions
-    + reasoning, so the discovery panel can show every discoverer, not just the one that
-    streamed live. Null on runs that predate the fan-out redesign.
-    """
-    run = get_current_run(db)
-    if run is None:
-        return None
-    view = fan_out_audit_view(run)
-    if view is None:
-        return None
-    return FanOutAuditResponse(run_id=run.id, **view)
-
-
-@router.get("/insights/cost", response_model=CostReport)
-def insights_cost(
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> CostReport:
-    """Cumulative AI spend for the Insights tab, grouped by run (M13 Pillar 1)."""
-    return cost_report(db)
-
-
-@router.get("/insights/last-runs", response_model=LastRunsReport)
-def insights_last_runs(
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> LastRunsReport:
-    """The most recent Screen and Rank runs, each with fresh spend + cache savings."""
-    return last_runs_report(db)
-
-
-@router.get("/insights/metrics", response_model=MetricsReport)
-def insights_metrics(
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> MetricsReport:
-    """Operational trends across all completed runs — cost/tokens/latency/cache-hit/
-    failures per run and per pass, plus dimension count over time (M13 Pillar 3)."""
-    return metrics_report(db)
-
-
-# --- Rank: the combined criteria → scores chain -----------------------------
 
 
 def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
@@ -1019,129 +836,3 @@ def rank_run(
         )
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")
-
-
-# --- Ranking ----------------------------------------------------------------
-#
-# The ranked shortlist is deterministic math over cached dimension scores — no
-# model call. Loads each candidate's scores for the current run, joins dimension
-# labels, and hands flat values to the pure ``rank_candidates`` domain function.
-
-
-def _ranking_payload(db: Session, run) -> RankingResponse:
-    """The ranked-shortlist response for a run. Shared by ``/ranking`` and the
-    tier-edit endpoint, so a tier change returns the re-sorted list in one
-    round-trip.
-    """
-    weights = dimension_weights(run)
-    ranked = rank_candidates(candidate_scores(db, run), weights)
-    return RankingResponse(
-        run_id=run.id,
-        weights=weights,
-        scored_count=len(ranked),
-        candidates=[
-            RankedCandidateOut(
-                application_id=c.application_id,
-                name=c.name,
-                rank=c.rank,
-                fit=c.fit,
-                band=c.band,
-                contributions=[
-                    DimensionContributionOut(**asdict(contribution))
-                    for contribution in c.contributions
-                ],
-            )
-            for c in ranked
-        ],
-        # Recomputed each save so the tier-list refreshes badges in the same
-        # round-trip (moving or acknowledging a flagged dimension clears it).
-        new_dimension_keys=(run.criteria or {}).get("new_dimension_keys", []),
-        revived_dimension_keys=revived_flag_keys(db, run),
-        # Kept axes (derived from tiers) + pending proposals, so the tier list and
-        # composer stay in sync after a tier/seed save.
-        kept_keys=kept_keys(run),
-        proposed_dimensions=proposed_dimensions(run),
-    )
-
-
-@router.get("", response_model=RankingResponse)
-def ranking(
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> RankingResponse:
-    """The deterministic ranked shortlist for the current run.
-
-    Ranks every scored eligible candidate by the weight-normalized average of its
-    dimension scores, labeled by relative pool position (no fixed cut line). Pure
-    math over cached scores.
-    """
-    run = get_current_run(db)
-    report = current_dimension_report(run) if run is not None else None
-    if report is None:
-        raise Problem("run_required", detail="Discover patterns before ranking.")
-    return _ranking_payload(db, run)
-
-
-# --- Tier-list weighting -----------------------------------------------------
-#
-# The committee drags dimensions into importance tiers; weights derive from the
-# layout (see ``weights_from_tiers``) and the ranking re-sorts. Pure persistence.
-
-
-@router.get("/tiers", response_model=TiersResponse)
-def get_tiers(
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> TiersResponse:
-    """The current run's tier layout (or the default single-tier layout if the
-    committee has not tiered yet). 409 before a run exists.
-    """
-    run = get_current_run(db)
-    if run is None or current_dimension_report(run) is None:
-        raise Problem("run_required", detail="Discover patterns before tiering.")
-    return TiersResponse(tiers=[TierOut(**t) for t in display_tiers(run)])
-
-
-@router.put("/tiers", response_model=RankingResponse)
-def update_tiers(
-    body: TierLayoutUpdate,
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> RankingResponse:
-    """Persist a new tier layout, derive weights from it, and return the freshly
-    re-sorted ranking. Unknown dimension keys are rejected (422).
-    """
-    run = get_current_run(db)
-    if run is None or current_dimension_report(run) is None:
-        raise Problem("run_required", detail="Discover patterns before tiering.")
-    layout = [t.model_dump() for t in body.tiers]
-    try:
-        set_tiers(db, run, layout, acknowledged_keys=body.acknowledged_keys)
-    except ValueError as exc:
-        raise Problem("unknown_dimension_key", detail=str(exc)) from exc
-    return _ranking_payload(db, run)
-
-
-# --- Discovery seeds ---------------------------------------------------------
-#
-# Between runs, the committee can propose free-text axes that steer the NEXT Rank's
-# discovery; a proposal is consumed once a run realizes it into a real dimension.
-# (An existing axis is kept across re-runs by placing it in a working tier; see kept_keys.)
-# No model call here — just persistence; the proposals take effect on the next /ranking/run.
-
-
-@router.put("/seeds", response_model=SeedsResponse)
-def update_seeds(
-    body: SeedsUpdate,
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> SeedsResponse:
-    """Persist the committee's pending free-text proposals for the current run.
-    Returns the current seed state. 409 before a run exists — there is nowhere to
-    store yet.
-    """
-    run = get_current_run(db)
-    if run is None or current_dimension_report(run) is None:
-        raise Problem("run_required", detail="Discover patterns before adding seeds.")
-    set_proposals(db, run, proposed_dimensions=body.proposed_dimensions)
-    return SeedsResponse(proposed_dimensions=proposed_dimensions(run))
