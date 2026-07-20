@@ -399,6 +399,40 @@ The transferable rule: **only the debatable-label case is a reason to touch the 
 taxonomy and threshold cases are prompt/schema fixes. Reading the reasoning is what tells them
 apart — a flip count alone tells you none of it.**
 
+### Field notes — a fourth cause: the eval instrument itself is wrong (2026-07-20)
+
+The three causes above assume the *measurement* is sound and only the model/label/threshold is
+in question. A batch of judge runs this session added a fourth, and it was the most common one:
+**the eval was lying — the model and the label were both fine.** These don't show up in the
+captured reasoning (the model reasoned correctly every time); they show up as a marker that
+contradicts what the per-run detail plainly says. Instances, all real this session:
+
+- **Stability tallied the wrong token.** Judge stability flipped `[UNSTABLE]` on cases where
+  every run *agreed*: it tallied the raw produced label, so two different in-band scores
+  (`+0.60` vs `+0.75` against one band) — or a screening run that added an *ungraded* incidental
+  flag alongside the required one — read as distinct outcomes. Fix: tokenise stability by the
+  **graded outcome** (agrees/disagrees), not the raw label, for any pass whose label isn't a
+  single graded verdict (scoring, screening). Keep the raw label for *display* only. The tell: a
+  wobble the reasoning says isn't there.
+- **The display re-derived a verdict it should have read.** The judge detail said "(disagrees)"
+  on a scoring case scored `+0.00` against band `[-0.15, 0.15]` — an agreement — because the UI
+  compared the band *string* to the score *string* instead of reading the grader's marker. Fix:
+  one source of truth (the marker), never re-compute a verdict a layer below already decided.
+- **The golden case was rigged.** A KEEP case put "arboriculture" (a grounds skill) in *both* a
+  trade-maintenance and a grounds definition — so the two axes genuinely overlapped and a MERGE
+  was defensible. The case wore a KEEP label while quietly being ambiguous; its `[UNSTABLE]`
+  flips were the model being *reasonably* torn, not wrong. Fix: repair the case (remove the
+  miscategorised example) so the label is honestly correct, then optionally add a *fair* lure (a
+  shared surface feature that is not a shared concept).
+
+The transferable rule (the senior half of "a flip is not one thing"): **before you trust a
+failing eval, rule out the eval. A marker that disagrees with its own per-run reasoning is an
+instrument bug, not a model finding.** This is why per-run reasoning capture earns its keep
+twice over — it diagnoses model/label/threshold flips *and* exposes the eval's own bugs, because
+a correct reasoning under a red marker can only mean the measurement is wrong. Separate the
+signal you tally (the graded outcome) from the signal you display (the raw output); collapsing
+them into one field is how several of these bugs happened.
+
 ## Design rules
 
 - The judge runs a **separate model, blind to the label**, driven only by the pass's
