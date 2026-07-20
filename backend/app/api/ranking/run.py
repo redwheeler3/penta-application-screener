@@ -114,12 +114,8 @@ CRITERIA, SCORES, CONSOLIDATE = "criteria", "scores", "consolidate"
 
 # Sub-stages within the criteria phase — the sequential model calls under its one
 # banner, surfaced so the UI can say which step is running (they're opaque calls with
-# no per-item progress). Emitted as StageEvents; see _run_criteria_passes + the drain loop.
-CRITERIA_STAGES = {
-    "discovering": "discovering",
-    "settling": "settling",
-    "matching": "matching",
-}
+# no per-item progress). Emitted as StageEvents (see _run_criteria_passes + the drain
+# loop) using the literal names below.
 
 # A markdown horizontal rule streamed into the reasoning box between sections (each
 # criteria sub-stage, and consolidation), so the model's reasoning for one step reads
@@ -245,7 +241,7 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
         measured_match = recent_pass_fresh_usd(db, "Dimension matching")
         match_usd = measured_match if measured_match is not None else estimate_match(settings)
     scoring = estimate_dimension_scoring(db, settings, include_coverage=False)
-    scoring_usd = float(scoring["estimated_usd"])
+    scoring_usd = scoring["estimated_usd"]
     # Post-score consolidation: a ceiling — the confirm call fires only when correlation
     # nominates a duplicate pair (often none). Measured from history when available, else
     # the flat seed; folded into criteria (it's criteria-cleanup) so the breakdown sums.
@@ -344,7 +340,7 @@ def score_current(
     """Fill missing scores without changing the current dimensions or tier layout."""
     settings = get_app_settings(db)
     report, estimate = _current_scoring_estimate(db, settings)
-    if int(estimate["to_analyze"]) == 0:
+    if estimate["to_analyze"] == 0:
         raise Problem(
             "unchanged_pool",
             detail="Every eligible applicant is already scored against the current criteria.",
@@ -356,7 +352,7 @@ def score_current(
             "cap_exceeded",
             detail=str(exc),
             cap_usd=settings.ai.spending_cap_usd,
-            estimated_usd=float(estimate["estimated_usd"]),
+            estimated_usd=estimate["estimated_usd"],
         ) from exc
 
     # Restrict the work list before streaming so the progress count means applicants
@@ -390,7 +386,7 @@ def score_current(
             kind=SCORE_CURRENT_KIND,
             passes={"Dimension scoring": tally.as_pass_cost(settings.ai.dimension_scoring_model)},
             durations_ms={"Dimension scoring": round((time.perf_counter() - started) * 1000)},
-            estimated_usd=float(estimate["estimated_usd"]),
+            estimated_usd=estimate["estimated_usd"],
         )
         yield emit(
             RankSummary(
@@ -511,7 +507,7 @@ def _stream_criteria(
             # cross-call variation is the diversity the decomposition step (pass 1b)
             # settles — measured to buy +36% real coverage vs. a single run (see the
             # coverage gate). All K are persisted as an audit trail.
-            delta_queue.put(_Stage(CRITERIA_STAGES["discovering"]))
+            delta_queue.put(_Stage("discovering"))
             _t0 = time.perf_counter()
             fan_out = discover_patterns_fanout(
                 provider, applications=pool, settings=settings,
@@ -539,7 +535,7 @@ def _stream_criteria(
             # is projected onto a PoolDimensionReport so the match → adopt → score tail
             # below consumes it unchanged; source_keys + the per-axis merge reasoning
             # are preserved separately in decompose_audit.
-            delta_queue.put(_Stage(CRITERIA_STAGES["settling"]))
+            delta_queue.put(_Stage("settling"))
             # Kept axes are injected HERE (not into discovery): the settling call sees
             # every carving at once, so it folds any re-discovered twin into the kept
             # axis (reusing its key → match adopts it → cached scores carry forward)
@@ -573,7 +569,7 @@ def _stream_criteria(
             match_narrative: str | None = None
             match_cost = PassCost()
             if match_history is not None:
-                delta_queue.put(_Stage(CRITERIA_STAGES["matching"]))
+                delta_queue.put(_Stage("matching"))
                 _t0 = time.perf_counter()
                 new_to_old, match_narrative, match_cost = match_dimensions(
                     provider, old=match_history, new=report, settings=settings,
@@ -716,7 +712,7 @@ def _stream_criteria(
 def _stream_scoring(
     db: Session, provider: AIProvider, settings: AppSettings, report: PoolDimensionReport
 ) -> Generator[str, None, tuple[ScoreTally, int]]:
-    """Phase 3 — score every eligible candidate against the new dimensions, emitting
+    """Phase 2 — score every eligible candidate against the new dimensions, emitting
     per-candidate progress. Returns the run's scoring tally + the pass's wall-clock (ms)."""
     to_score = applications_to_score(db)
     yield emit(PhaseEvent(phase=SCORES, total=len(to_score)))
@@ -738,7 +734,7 @@ def _stream_consolidate(
     db: Session, provider: AIProvider, settings: AppSettings,
     run: RankingRun, report: PoolDimensionReport,
 ) -> Generator[str, None, tuple[Consolidation, int]]:
-    """Phase 3b — consolidate duplicate dimensions (SPEC "Post-score consolidation").
+    """Phase 2b — consolidate duplicate dimensions (SPEC "Post-score consolidation").
     Now that every dimension is scored, score-vector correlation can nominate duplicates
     the definition-only match pass missed; one LLM call confirms by definition and merges
     genuine duplicates (loser aliased to the older key, which heals the fork on future
@@ -858,13 +854,13 @@ def rank_run(
             criteria.discovery_cost + criteria.decompose_cost + criteria.match_cost
         ).cost_usd
 
-        # Phase 3: score every eligible candidate against the new dimensions.
+        # Phase 2: score every eligible candidate against the new dimensions.
         score_tally, scoring_ms = yield from _stream_scoring(
             db, provider, settings, criteria.report
         )
         total_cost += score_tally.cost_usd
 
-        # Phase 3b: consolidate duplicate dimensions (post-score, usually a no-op).
+        # Phase 2b: consolidate duplicate dimensions (post-score, usually a no-op).
         consolidation, consolidate_ms = yield from _stream_consolidate(
             db, provider, settings, criteria.run, criteria.report
         )
