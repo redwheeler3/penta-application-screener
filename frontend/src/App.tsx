@@ -1,13 +1,10 @@
 import { LogIn, LogOut, Settings } from "lucide-react";
-import { type SyntheticEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type SyntheticEvent, useEffect, useLayoutEffect, useState } from "react";
 import { HouseIcon } from "./HouseIcon";
 import * as api from "./api";
 import { readProblem, resolveSheetId } from "./format";
 import type {
   ApplicationDetail,
-  ApplicationSummary,
-  AppFacets,
-  AppFilter,
   AppSettings,
   AppStatus,
   Coverage,
@@ -16,14 +13,8 @@ import type {
   ScreeningEstimateResponse,
   RankEstimateResponse,
   ScoreCurrentEstimateResponse,
-  RankingResponse,
   RankProgress,
-  CurrentRunResponse,
   SettingsResponse,
-  SortKey,
-  SortState,
-  Tier,
-  Toast,
   WorkflowState,
 } from "./types";
 import { ApplicationsList } from "./components/ApplicationsList";
@@ -33,8 +24,9 @@ import { RankingView } from "./components/RankingView";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Toasts } from "./components/Toasts";
 import { WorkflowBar } from "./components/WorkflowBar";
-
-const TOAST_DURATION_MS = 10000;
+import { useApplications } from "./hooks/useApplications";
+import { useRanking } from "./hooks/useRanking";
+import { useToasts } from "./hooks/useToasts";
 
 export function App() {
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -69,46 +61,26 @@ export function App() {
   // immediately re-import, matching the Screen/Rank cards.
   const [importConfirm, setImportConfirm] = useState(false);
 
-  // Workflow notifications surface as bottom-right toasts. Success toasts
-  // auto-dismiss; error toasts persist until dismissed. Unique ids let them stack.
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const toastSeq = useRef(0);
+  // Workflow notifications surface as bottom-right toasts (success auto-dismisses;
+  // errors/warnings persist until dismissed). See useToasts.
+  const { toasts, showToast, showError, showWarning, dismissToast } = useToasts();
 
-  function showToast(message: string) {
-    const id = (toastSeq.current += 1);
-    setToasts((current) => [...current, { id, message, variant: "success" }]);
-    setTimeout(() => {
-      setToasts((current) => current.filter((t) => t.id !== id));
-    }, TOAST_DURATION_MS);
-  }
-
-  function showError(message: string) {
-    const id = (toastSeq.current += 1);
-    setToasts((current) => [...current, { id, message, variant: "error" }]);
-    // No auto-dismiss: errors stay until the user reads and dismisses them.
-  }
-
-  function showWarning(message: string) {
-    const id = (toastSeq.current += 1);
-    setToasts((current) => [...current, { id, message, variant: "warning" }]);
-    // No auto-dismiss: a degraded-run warning should stay until the user reads it,
-    // like an error — it's non-fatal but worth a deliberate acknowledgement.
-  }
-
-  function dismissToast(id: number) {
-    setToasts((current) => current.filter((t) => t.id !== id));
-  }
-
-  const [applications, setApplications] = useState<ApplicationSummary[]>([]);
-  const [appTotal, setAppTotal] = useState(0);
-  const [appPage, setAppPage] = useState(1);
-  const [appPageSize, setAppPageSize] = useState(25);
-  // Filter mirrors the real columns. A tab sets one of these (or neither for All).
-  const [appFilter, setAppFilter] = useState<AppFilter>({});
-  // Faceted option counts from the latest list response (reflect the cross-group filter).
-  const [appFacets, setAppFacets] = useState<AppFacets | null>(null);
-  const [appSearch, setAppSearch] = useState("");
-  const [appSort, setAppSort] = useState<SortState>(null);
+  // The applications-list view state (fetched page + facets + filter/search/sort/paging).
+  // See useApplications; the selected candidate detail stays here (cross-cutting).
+  const {
+    applications,
+    appTotal,
+    appPage,
+    appPageSize,
+    appFilter,
+    appFacets,
+    appSearch,
+    appSort,
+    loadApplications,
+    toggleSort,
+    applyFilter,
+    search: searchApplications,
+  } = useApplications();
   const [selectedApp, setSelectedApp] = useState<ApplicationDetail | null>(null);
   // The row we drilled in from, so pressing Back in the detail can return the list
   // to that person instead of the top. Only the detail's Back button arms the scroll
@@ -142,8 +114,21 @@ export function App() {
   const [screeningRunning, setScreeningRunning] = useState(false);
   const [screeningProgress, setScreeningProgress] = useState<{ processed: number; total: number } | null>(null);
 
-  // The current run's discovered dimensions, shown above the list once Rank has run.
-  const [rankingRun, setRankingRun] = useState<CurrentRunResponse | null>(null);
+  // The ranking cluster: the current run's dimensions, the ranked shortlist, the
+  // committee's tiers, and the pure-persistence handlers that keep them in lockstep.
+  // See useRanking. The AI run flow (discover/score) stays here — it orchestrates
+  // dashboard/list/tab refreshes across clusters.
+  const {
+    rankingRun,
+    ranking,
+    tiers,
+    refreshRankingRun,
+    loadRanking,
+    saveTiers,
+    acknowledgeNewDimensions,
+    addProposal,
+    removeProposal,
+  } = useRanking(showError);
 
   // The full Rank discovers a new criteria set; the safe alternative fills missing
   // scores against the current set. Both begin with their own capped estimate.
@@ -157,16 +142,10 @@ export function App() {
   // Both phases append here, so the box carries through the whole run.
   const [criteriaThinking, setCriteriaThinking] = useState("");
 
-  // The deterministic ranked shortlist; null ranking means not yet fetched. The
-  // results area is split into two peer tabs — the applications list and the ranking
-  // — with `activeTab` choosing which is shown (a candidate detail drills in over
-  // either). The Ranking tab only appears once a run exists (see the tab strip).
-  const [ranking, setRanking] = useState<RankingResponse | null>(null);
+  // The results area is split into two peer tabs — the applications list and the
+  // ranking — with `activeTab` choosing which is shown (a candidate detail drills in
+  // over either). The Ranking tab only appears once a run exists (see the tab strip).
   const [activeTab, setActiveTab] = useState<"applications" | "ranking" | "insights" | "evals" | "settings">("applications");
-
-  // The committee's importance tiers for the current run. Each edit persists (PUT
-  // /tiers) and returns the re-sorted ranking, so tiers and order stay in lockstep.
-  const [tiers, setTiers] = useState<Tier[] | null>(null);
 
   useEffect(() => {
     api
@@ -183,17 +162,6 @@ export function App() {
     loadApplications({ filter: {}, page: 1, search: "" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
-
-  // The current run's dimensions, if discovery has run. Returns the promise so
-  // callers can await it before rendering anything that resolves dimension keys to
-  // names (the tier list's labelFor reads rankingRun.dimensions).
-  function refreshRankingRun() {
-    return api
-      .fetchRankingCurrent()
-      .then((response) => (response.ok ? response.json() : null))
-      .then((payload: CurrentRunResponse | null) => setRankingRun(payload))
-      .catch(() => setRankingRun(null));
-  }
 
   function applySettingsResponse(payload: SettingsResponse) {
     const sheetId = resolveSheetId(payload);
@@ -212,45 +180,12 @@ export function App() {
     });
   }
 
-  // Single entry point for loading the applications list; every list-affecting
-  // control routes through here so the in-flight request always reflects current
-  // filter/search/sort/paging (the args default to current state when omitted).
-  function loadApplications(args: {
-    filter?: AppFilter;
-    page?: number;
-    search?: string;
-    pageSize?: number;
-    sort?: SortState;
-  }) {
-    const filter = args.filter ?? appFilter;
-    const search = args.search ?? appSearch;
-    const pageSize = args.pageSize ?? appPageSize;
-    const sort = args.sort ?? appSort;
-    api.fetchApplications({ filter, page: args.page ?? 1, search, pageSize, sort }).then((payload) => {
-      setApplications(payload.applications);
-      setAppTotal(payload.total);
-      setAppPage(payload.page);
-      setAppPageSize(payload.pageSize);
-      setAppFacets(payload.facets);
-    });
-  }
-
   async function viewApplication(id: number) {
     const application = await api.fetchApplication(id);
     setSelectedApp(application);
     // The clicked row can be far below the detail heading (especially in Ranking),
     // so reveal the new view rather than preserving the old scroll position.
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
-  }
-
-  function toggleSort(key: SortKey) {
-    // First click sorts ascending; clicking the active column flips direction.
-    const next: SortState =
-      appSort?.key === key
-        ? { key, direction: appSort.direction === "asc" ? "desc" : "asc" }
-        : { key, direction: "asc" };
-    setAppSort(next);
-    loadApplications({ page: 1, sort: next });
   }
 
   function login() {
@@ -456,72 +391,12 @@ export function App() {
     setCriteriaThinking("");
   }
 
-  // Fetch the ranked shortlist and tier layout, and open the ranked view. No cost —
-  // pure math over the cached scores.
+  // Open the ranked view: clear any open candidate, load the shortlist + tiers (via
+  // useRanking), and switch to the tab only if the load succeeded. The detail clear +
+  // tab switch are App-level (view routing), so they stay here around the hook's load.
   async function openRanking() {
     setSelectedApp(null);
-    const [rankRes, tiersRes] = await Promise.all([api.fetchRanking(), api.fetchTiers()]);
-    if (rankRes.ok) {
-      setRanking(await rankRes.json());
-      if (tiersRes.ok) setTiers((await tiersRes.json()).tiers);
-      setActiveTab("ranking");
-    } else {
-      const problem = await readProblem(rankRes);
-      showError(problem ? `Could not load the ranking: ${problem}` : "Could not load the ranking.");
-    }
-  }
-
-  // Persist a new tier layout. The PUT returns the re-sorted ranking. Optimistically
-  // set the tiers so the drag feels instant; reconcile from the response.
-  async function saveTiers(next: Tier[], acknowledgedKeys: string[] = []) {
-    setTiers(next);
-    const response = await api.saveTiers(next, acknowledgedKeys);
-    if (response.ok) {
-      setRanking(await response.json());
-    } else {
-      showError("Could not update the tiers.");
-      openRanking(); // reconcile back to the server's truth on failure
-    }
-  }
-
-  // Acknowledge "new" dimensions in place (badge ✕ / "mark all reviewed") — drop
-  // them from new_dimension_keys without moving, via the same tiers PUT.
-  async function acknowledgeNewDimensions(keys: string[]) {
-    if (!tiers || keys.length === 0) return;
-    await saveTiers(tiers, keys);
-  }
-
-  // Persist pending free-text proposals for the current run — they feed the NEXT Rank's
-  // discovery. Optimistically update rankingRun (where the composer reads proposal
-  // state) for instant feedback; reconcile from the response.
-  async function saveSeeds(next: { proposedDimensions?: string[] }) {
-    if (!rankingRun) return;
-    const optimistic = {
-      ...rankingRun,
-      ...(next.proposedDimensions !== undefined ? { proposedDimensions: next.proposedDimensions } : {}),
-    };
-    setRankingRun(optimistic);
-    const response = await api.saveSeeds({ proposedDimensions: next.proposedDimensions });
-    if (response.ok) {
-      const echoed: { proposedDimensions: string[] } = await response.json();
-      setRankingRun((run) =>
-        run ? { ...run, proposedDimensions: echoed.proposedDimensions } : run,
-      );
-    } else {
-      showError("Could not save the suggested criteria.");
-      refreshRankingRun(); // reconcile back to server truth
-    }
-  }
-
-  function addProposal(text: string) {
-    if (!rankingRun) return;
-    if (rankingRun.proposedDimensions.includes(text)) return;
-    saveSeeds({ proposedDimensions: [...rankingRun.proposedDimensions, text] });
-  }
-
-  function removeProposal(text: string) {
-    if (!rankingRun) return;
-    saveSeeds({ proposedDimensions: rankingRun.proposedDimensions.filter((t) => t !== text) });
+    if (await loadRanking()) setActiveTab("ranking");
   }
 
   // Human override of an application's status. The backend marks it human-owned and
@@ -762,14 +637,8 @@ export function App() {
                 appPage={appPage}
                 appPageSize={appPageSize}
                 appTotal={appTotal}
-                onApplyFilter={(next) => {
-                  setAppFilter(next);
-                  loadApplications({ filter: next, page: 1 });
-                }}
-                onSearch={(value) => {
-                  setAppSearch(value);
-                  loadApplications({ page: 1, search: value });
-                }}
+                onApplyFilter={applyFilter}
+                onSearch={searchApplications}
                 onToggleSort={toggleSort}
                 onSelectApplication={viewApplication}
                 onChangePageSize={(size) => loadApplications({ page: 1, pageSize: size })}
