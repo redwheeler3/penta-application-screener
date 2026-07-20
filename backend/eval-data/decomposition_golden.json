@@ -67,13 +67,13 @@
       }
     },
     {
-      "key": "trade_vs_grounds_overlap_keep",
+      "key": "trade_vs_grounds_distinct_keep",
       "metadata": {
         "expected": "keep",
-        "note": "Overlap trap: both definitions name 'arboriculture', but interior trade skill and outdoor/grounds skill are genuinely distinct axes — decomposition should NOT over-fold on the shared example.",
+        "note": "Adjacent-domain KEEP: interior building trades vs. outdoor grounds skill both reduce contractor reliance, but the skills are non-substitutable — decomposition should NOT over-fold two distinct maintenance domains onto that shared abstraction.",
         "pass": "decomposition",
-        "label_rationale": "KEEP: the harder KEEP — two axes whose definitions literally share an example word (arboriculture) yet measure different things. A qualified arborist or horticulturalist scores high on grounds/outdoor skill but may have no interior building trade skill; a licensed electrician scores high on trade maintenance but may have no outdoor expertise. Folding them on the shared word would let one skill masquerade as the other. Tests that the pass reads the whole definition, not a keyword overlap.",
-        "source": "Rank run 6 (2026-07-16), decompose_audit — trade_maintenance_skill and grounds_outdoor_skill settled as separate axes; run 6's decision text explicitly reasons them apart (arborist vs. electrician). Definitions are exact slices of run 6's settled report.",
+        "label_rationale": "KEEP: two adjacent maintenance axes that share a purpose (reduce the co-op's need for outside contractors) but measure non-substitutable skill domains. A licensed electrician or carpenter scores high on interior building trades but may have no outdoor expertise; a gardener or horticulturalist scores high on grounds/outdoor skill but may have no structural trade skill. Folding them on the shared 'both reduce contractor need' abstraction would let one skill masquerade as the other — the over-merge trap. Tests that the pass keeps genuinely distinct domains apart, not that it collapses them because they rhyme.",
+        "source": "Rank run 6 (2026-07-16), decompose_audit — trade_maintenance_skill and grounds_outdoor_skill settled as separate axes; run 6's decision text reasons them apart (electrician vs. gardener). Definitions adapted from run 6's settled report: 'arboriculture' (a tree/outdoor skill) removed from the trade-maintenance definition so the two domains are genuinely non-overlapping — it belongs to grounds, and keeping it in both made a merge defensible rather than testing the intended distinction.",
         "provenance": {
           "pass_models": {"Dimension decomposition": "us.anthropic.claude-sonnet-4-6"},
           "pass_prompt_versions": {"Dimension decomposition": "733871632036"}
@@ -81,7 +81,7 @@
       },
       "given": {
         "reports": [
-          [{"key": "trade_maintenance_skill", "name": "Trade / Hands-On Maintenance Skills", "definition": "Licensed or professionally practiced trade skills directly applicable to building upkeep — electrical, carpentry, masonry, mechanics, arboriculture, etc."}],
+          [{"key": "trade_maintenance_skill", "name": "Trade / Hands-On Maintenance Skills", "definition": "Licensed or professionally practiced trade skills directly applicable to building upkeep — electrical, carpentry, masonry, plumbing, mechanics, etc."}],
           [{"key": "grounds_outdoor_skill", "name": "Grounds, Gardening & Outdoor Maintenance Skill", "definition": "Practical skill in maintaining shared outdoor spaces — gardening, composting, arboriculture, grounds safety — that reduce the co-op's need for outside contractors."}]
         ]
       }
