@@ -976,9 +976,12 @@ def _seed_str(expected: object) -> str:
         return expected
     if isinstance(expected, dict):
         if "fires" in expected or "absent" in expected:
+            # A fire entry may be a nested list — an "at least one of" group (e.g.
+            # ["pet_policy", "other"]) — which screening_fire_label renders as "a | b". Joining
+            # it as a bare str would throw (the judge-stability seed bug for the velociraptor case).
             parts = []
             if expected.get("fires"):
-                parts.append("fires: " + ", ".join(expected["fires"]))
+                parts.append("fires: " + ", ".join(screening_fire_label(f) for f in expected["fires"]))
             if expected.get("absent"):
                 parts.append("absent: " + ", ".join(expected["absent"]))
             return " · ".join(parts) or "clean"
