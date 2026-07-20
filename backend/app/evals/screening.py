@@ -227,18 +227,23 @@ def stability_run(
     on_delta: object = None,
 ) -> StabilityReport:
     """Run the REAL screening prompt ``k`` times on the case's fixed applicant and report
-    whether the FLAG SET held. The outcome token is the sorted set of produced categories, so
-    a flip means the flags fired differently run-to-run (the production instability signal).
+    whether the case's GRADE held run-to-run. The outcome token is pass/fail against the case's
+    own fires/absent check (NOT the raw flag set): a run that satisfies the case — including via
+    an "at least one of" group, e.g. a fictional pet flagged as either pet_policy or other — is a
+    pass, so a flip only registers when the graded verdict actually wobbled, not when two
+    equally-acceptable categories differ. (Same pass/fail tokening scoring stability uses.) The
+    produced flag set + reasoning ride in the per-run detail so a real flip is still explainable.
     Delegates tallying/marker to the shared stability core."""
     name = case.fields.get("applicant_name", case.key)
     _emit(on_delta, f"Screening **{name}** x{k} on `{screening_model}`…\n\n")
 
     def run_once() -> tuple[str, str]:
-        cats, detail = _screen(provider, case, screening_model=screening_model, settings=settings)
-        token = ", ".join(sorted(set(cats))) or "none"
-        return token, detail
+        cats, reasoning = _screen(provider, case, screening_model=screening_model, settings=settings)
+        outcome = "fail" if _check(case, cats) else "pass"
+        shown = ", ".join(cats) or "none"
+        return outcome, f"flags: {shown} — {reasoning}"
 
-    # A screening golden case has no "contested" notion; a flag-set flip is always a real signal.
+    # A screening golden case has no "contested" notion; a graded pass/fail flip is a real signal.
     report = run_stability(run_once, k=k, contested=False, on_delta=on_delta)
     tally = ", ".join(f"[{v}] x{n}" for v, n in report.tally.items())
     _emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
