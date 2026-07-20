@@ -4,7 +4,7 @@ from app.schemas.base import ResponseModel
 
 
 class ScreeningEstimateResponse(ResponseModel):
-    """GET /screening/estimate — the pre-run cost projection + cap check."""
+    """GET /screening/run/estimate — the pre-run cost projection + cap check."""
 
     total: int
     to_analyze: int

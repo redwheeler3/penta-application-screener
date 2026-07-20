@@ -90,7 +90,7 @@ def load_cases() -> tuple[JudgeCase, ...]:
     """Every golden case across all five passes, as audit targets. Each file carries a
     top-level ``judge_background`` (what the pass does, editable in the UI) attached to each of
     its cases; ``metadata``/``given`` are read straight from the uniform envelope
-    (docs/eval-case-schema.md). Order: the pipeline order of _PASS_FILES."""
+    (docs/eval-case-schema.md). Order: the definition order of _PASS_FILES."""
     cases: list[JudgeCase] = []
     for pass_name, path in _PASS_FILES.items():
         data = json.loads(path.read_text())
