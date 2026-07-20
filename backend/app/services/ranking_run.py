@@ -10,10 +10,10 @@ forward together (see SPEC "Pattern Discovery And Dimension Scoring"). "The curr
 run" is the most recent one.
 
 Weights are derived from the tier layout, never proposed by the AI: the run stores
-``criteria.tiers`` (working tiers only) and recomputes ``criteria.weights`` from
-it. A fresh run opens with empty tiers → uniform equal-weight baseline until the
-committee tiers. Discovering the axes is the AI's job; deciding what matters is the
-committee's.
+the working tiers in ``run_state["tiers"]`` and derives per-dimension weights from
+them on read (never stored). A fresh run opens with empty tiers → uniform equal-weight
+baseline until the committee tiers. Discovering the axes is the AI's job; deciding what
+matters is the committee's.
 """
 
 from __future__ import annotations
@@ -527,7 +527,8 @@ def ranking_is_current(db: Session, run: RankingRun | None, settings: AppSetting
 
 
 def mark_ranking_current(db: Session, run: RankingRun, settings: AppSettings) -> None:
-    """Record the committee's choice to keep this run's criteria for current inputs."""
+    """Record the committee's choice to keep this run's dimensions for current inputs
+    (stamps ``rank_inputs_fingerprint`` so a score-only run reads as up to date)."""
     run.rank_inputs_fingerprint = rank_inputs_fingerprint(db, settings)
     db.add(run)
     db.commit()
@@ -641,7 +642,7 @@ def match_audit_view(run: RankingRun) -> dict | None:
 def decompose_audit_view(run: RankingRun) -> dict | None:
     """The run's decompose audit — how the K fan-out reports were settled into one set —
     shaped for the trace viewer, or None on runs that predate decomposition (single-
-    discovery runs have no ``criteria.decompose_audit``).
+    discovery runs have no ``run.audit.decompose``).
 
     The stored audit (built by ``dimension_decompose.decompose_audit_payload``) is already
     view-shaped: settled axes with source_keys + decision reasoning, the input/settled
@@ -690,7 +691,7 @@ def decompose_audit_view(run: RankingRun) -> dict | None:
 def consolidate_audit_view(db: Session, run: RankingRun) -> dict | None:
     """The run's consolidation audit — the correlation-nominated duplicate pairs and the
     confirm verdict on each — shaped for the trace viewer, or None on runs that predate
-    the pass (no ``criteria.consolidate_audit``).
+    the pass (no ``run.audit.consolidate``).
 
     ``pairs`` are every nominated pair with its keep/drop keys + user-facing names, the
     correlation ``r``, whether it ``merged``, and the model's ``reason``. ``merges`` (the
@@ -741,7 +742,7 @@ def consolidate_audit_view(db: Session, run: RankingRun) -> dict | None:
 def fan_out_audit_view(run: RankingRun) -> dict | None:
     """The run's fan-out audit — each of the K parallel discoverers' report + reasoning —
     shaped for the Insights discovery panel, or None on runs that predate the fan-out
-    (single-discovery runs have no ``criteria.fan_out_audit``, or an older shape).
+    (single-discovery runs have no ``run.audit.fan_out``, or an older shape).
 
     Returns ``{k, passes: [{dimensions: [{key,name,definition,why...}], narrative}]}``.
     Older audits stored ``reports`` without per-pass narratives; those are tolerated
@@ -940,7 +941,7 @@ def carry_forward_layout(
     earlier run, dropped, and now back (revived). A key that was in the immediately-
     prior run is continuous in the committee's view → never flagged, however it
     re-surfaced. The new-vs-revived *label* (amber vs. blue) is derived at read time
-    from history (see ``flag_labels``); this function only decides *whether* to flag.
+    from history (see ``revived_flag_keys``); this function only decides *whether* to flag.
     A revived key is BOTH placed (its prior tier restored) AND flagged.
 
     Returns ``(working_tiers, flagged_keys)``. Falls back to the empty default tiers

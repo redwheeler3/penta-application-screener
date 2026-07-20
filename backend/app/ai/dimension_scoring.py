@@ -336,11 +336,11 @@ def _score_all_dimensions(
         if not remaining:
             break
         if attempt < MAX_SCORING_RETRIES:
+            # No applicant id in scope here (we hold only the rendered block); the caller
+            # score_dimensions logs the id around this call.
             log.warning(
-                "Dimension scoring for application %s omitted %d dimension(s); "
-                "re-asking (attempt %d): %s",
-                "the current applicant", len(remaining), attempt + 1,
-                [d.key for d in remaining],
+                "Dimension scoring omitted %d dimension(s); re-asking (attempt %d): %s",
+                len(remaining), attempt + 1, [d.key for d in remaining],
             )
     if remaining:
         raise IncompleteScoringError(

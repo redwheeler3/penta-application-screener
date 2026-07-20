@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.analysis import derive_prompt_version
+from app.ai.analysis import derive_prompt_version, run_in_pool
 from app.ai.pool_digest import INPUT_TOKENS_PER_CANDIDATE, pool_digest_block
 from app.ai.pricing import PassCost, cost_usd
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
@@ -261,8 +261,6 @@ def discover_patterns_fanout(
     blind worker still produces a usable report — the D9 committee-request guard
     downstream is the hard backstop that a proposal isn't lost.
     """
-    from app.ai.analysis import run_in_pool
-
     # Render the pool digest ONCE here on the calling thread, then compose two prompt
     # variants from it: seeded (worker 0, carries the proposals) and blind (workers
     # 1..K-1). The worker calls touch no DB — satisfying run_in_pool's session-free

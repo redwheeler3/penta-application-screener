@@ -187,7 +187,7 @@ class RankEstimateBreakdown(ResponseModel):
 
 
 class RankEstimateResponse(ResponseModel):
-    """GET /ranking/estimate — combined cost projection for the rank chain."""
+    """GET /ranking/run/estimate — combined cost projection for the rank chain."""
 
     eligible: int
     # K parallel discovery calls per Rank (the fan-out width), so the confirm card can
