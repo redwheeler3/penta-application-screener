@@ -1,13 +1,7 @@
-import { type ReactNode, type SyntheticEvent, type WheelEvent } from "react";
+import { type ReactNode, type SyntheticEvent } from "react";
 import { ALL_RULES } from "../constants";
+import { NumberInput } from "./NumberInput";
 import type { AppSettings, SettingsResponse } from "../types";
-
-// A focused <input type="number"> changes value on mouse-wheel, so scrolling the
-// page over one silently edits it (and you save weird values without noticing).
-// Blurring on wheel drops focus, so the value stays put and the page scrolls
-// normally. (preventDefault is unreliable here — React binds wheel listeners as
-// passive.)
-const blurOnWheel = (event: WheelEvent<HTMLInputElement>) => event.currentTarget.blur();
 
 export function SettingsPanel(props: {
   draft: AppSettings;
@@ -41,88 +35,72 @@ export function SettingsPanel(props: {
             </label>
             <label>
               <span>Income minimum</span>
-              <input
-                type="number"
-                onWheel={blurOnWheel}
+              <NumberInput
                 min="0"
                 value={draft.incomeMin}
-                onChange={(event) => setDraft({ ...draft, incomeMin: Number(event.target.value) })}
+                onChange={(v) => setDraft({ ...draft, incomeMin: v ?? 0 })}
               />
             </label>
             <label>
               <span>Income maximum</span>
-              <input
-                type="number"
-                onWheel={blurOnWheel}
+              <NumberInput
                 min="0"
                 value={draft.incomeMax}
-                onChange={(event) => setDraft({ ...draft, incomeMax: Number(event.target.value) })}
+                onChange={(v) => setDraft({ ...draft, incomeMax: v ?? 0 })}
               />
             </label>
             <label>
               <span>Min adult age</span>
-              <input
-                type="number"
-                onWheel={blurOnWheel}
+              <NumberInput
                 min="1"
                 max="100"
                 value={draft.minAdultAge}
-                onChange={(event) => setDraft({ ...draft, minAdultAge: Number(event.target.value) })}
+                onChange={(v) => setDraft({ ...draft, minAdultAge: v ?? 0 })}
               />
             </label>
             <label>
               <span>Max child age</span>
-              <input
-                type="number"
-                onWheel={blurOnWheel}
+              <NumberInput
                 min="0"
                 max="100"
                 value={draft.maxChildAge}
-                onChange={(event) => setDraft({ ...draft, maxChildAge: Number(event.target.value) })}
+                onChange={(v) => setDraft({ ...draft, maxChildAge: v ?? 0 })}
               />
             </label>
             <label>
               <span>Min children per unit</span>
-              <input
-                type="number"
-                onWheel={blurOnWheel}
+              <NumberInput
                 min="0"
                 max="20"
                 value={draft.minChildren}
-                onChange={(event) => setDraft({ ...draft, minChildren: Number(event.target.value) })}
+                onChange={(v) => setDraft({ ...draft, minChildren: v ?? 0 })}
               />
             </label>
             <label>
               <span>Max children per unit</span>
-              <input
-                type="number"
-                onWheel={blurOnWheel}
+              <NumberInput
                 min="0"
                 max="20"
                 value={draft.maxChildren}
-                onChange={(event) => setDraft({ ...draft, maxChildren: Number(event.target.value) })}
+                onChange={(v) => setDraft({ ...draft, maxChildren: v ?? 0 })}
               />
             </label>
             <label>
               <span>Max dogs</span>
-              <input
-                type="number"
-                onWheel={blurOnWheel}
+              <NumberInput
                 min="0"
                 max="10"
                 value={draft.maxDogs}
-                onChange={(event) => setDraft({ ...draft, maxDogs: Number(event.target.value) })}
+                onChange={(v) => setDraft({ ...draft, maxDogs: v ?? 0 })}
               />
             </label>
             <label>
               <span>Max cats</span>
-              <input
-                type="number"
-                onWheel={blurOnWheel}
+              <NumberInput
                 min="0"
                 max="10"
                 value={draft.maxCats}
-                onChange={(event) => setDraft({ ...draft, maxCats: Number(event.target.value) })}
+                onChange={(v) => setDraft({ ...draft, maxCats: v ?? 0 })}
               />
             </label>
             <label className="checkbox-label">
@@ -159,15 +137,11 @@ export function SettingsPanel(props: {
               <div className="settings-grid">
                 <label>
                   <span>Spending cap (USD per run)</span>
-                  <input
-                    type="number"
-                    onWheel={blurOnWheel}
+                  <NumberInput
                     min="0"
                     step="0.01"
                     value={draft.ai.spendingCapUsd}
-                    onChange={(event) =>
-                      setDraft({ ...draft, ai: { ...draft.ai, spendingCapUsd: Number(event.target.value) } })
-                    }
+                    onChange={(v) => setDraft({ ...draft, ai: { ...draft.ai, spendingCapUsd: v ?? 0 } })}
                   />
                   <span className="field-hint">
                     A Rank is blocked before it starts if its estimated cost exceeds this.
@@ -175,16 +149,12 @@ export function SettingsPanel(props: {
                 </label>
                 <label>
                   <span>Discovery fan-out (parallel passes)</span>
-                  <input
-                    type="number"
-                    onWheel={blurOnWheel}
+                  <NumberInput
                     min="1"
                     max="10"
                     step="1"
                     value={draft.ai.discoveryFanOut}
-                    onChange={(event) =>
-                      setDraft({ ...draft, ai: { ...draft.ai, discoveryFanOut: Number(event.target.value) } })
-                    }
+                    onChange={(v) => setDraft({ ...draft, ai: { ...draft.ai, discoveryFanOut: v ?? 0 } })}
                   />
                   <span className="field-hint">
                     Discovery passes run in parallel per Rank, then settled into one criteria set.
@@ -193,16 +163,11 @@ export function SettingsPanel(props: {
                 </label>
                 <label>
                   <span>Consolidation correlation threshold</span>
-                  <input
-                    type="number"
-                    onWheel={blurOnWheel}
+                  <NumberInput
                     step="0.01"
                     value={draft.ai.consolidateCorrelationThreshold}
-                    onChange={(event) =>
-                      setDraft({
-                        ...draft,
-                        ai: { ...draft.ai, consolidateCorrelationThreshold: Number(event.target.value) },
-                      })
+                    onChange={(v) =>
+                      setDraft({ ...draft, ai: { ...draft.ai, consolidateCorrelationThreshold: v ?? 0 } })
                     }
                   />
                   <span className="field-hint">
