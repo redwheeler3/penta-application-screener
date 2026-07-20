@@ -81,6 +81,8 @@ router = APIRouter()
 
 @router.post("/scoring")
 def run_scoring(
+    mode: str = "run",
+    k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
     user: User = Depends(require_current_user),
     provider: AIProvider = Depends(get_ai_provider),
@@ -89,12 +91,37 @@ def run_scoring(
     """Stream a scoring run: golden inputs → real scoring prompt+model → deterministic
     band check (the produced score must fall in the expected [min, max], + confidence). The
     scoring model's reasoning streams as ``thinking``. ``case`` runs just that one golden case
-    (per-row run); omitted runs all."""
+    (per-row run); omitted runs all.
+
+    ``?mode=stability`` instead runs the REAL scoring prompt K times per golden case on fixed
+    input, reporting whether each case's assertion pass/fail held (a flip = the score wandered
+    across the assertion boundary). No judge — measures the production prompt's own stability."""
     from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_PROMPT_VERSION
 
     settings = get_app_settings(db)
     scoring_model = settings.ai.dimension_scoring_model
     golden = select(list(load_golden()), case, lambda c: c.key)
+
+    if mode == "stability":
+        k = max(2, min(k, 10))
+
+        def one_stability(c, case_delta) -> ScoringStabilityCaseOut:
+            case_delta(f"\n\n### {c.key} (x{k})\n")
+            res = scoring_stability_run(provider, c, scoring_model=scoring_model, k=k, on_delta=case_delta)
+            lo, hi = res.score_spread
+            return ScoringStabilityCaseOut(
+                key=c.key, marker=res.stability.marker, agreement=res.stability.agreement,
+                flipped=res.stability.flipped, tally=res.stability.tally,
+                score_min=lo, score_max=hi, runs=runs_out(res.stability),
+            )
+
+        def work_stability(on_delta) -> ScoringStabilityResponse:
+            out = over_cases(golden, one_stability, on_delta=on_delta, max_workers=case_workers(settings, fan_out=k))
+            return ScoringStabilityResponse(
+                scoring_prompt_version=SCORING_PROMPT_VERSION, scoring_model=scoring_model, k=k, cases=out,
+            )
+
+        return stream(db, "scoring_stability", SCORING_PROMPT_VERSION, work_stability)
 
     def one(c, case_delta):
         case_delta(f"\n\n### {c.key}\n")
@@ -117,44 +144,6 @@ def run_scoring(
         )
 
     return stream(db, "scoring", SCORING_PROMPT_VERSION, work)
-
-
-@router.post("/scoring-stability")
-def run_scoring_stability(
-    k: int = DEFAULT_STABILITY_K,
-    case: str | None = None,
-    user: User = Depends(require_current_user),
-    provider: AIProvider = Depends(get_ai_provider),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """Stream a scoring STABILITY run: the REAL scoring prompt K times per golden case on
-    fixed input, reporting whether each case's assertion pass/fail held (a flip = the score
-    wandered across the assertion boundary). No judge — measures the production scoring prompt's
-    own stability. ``k`` clamped; ``case`` runs just that one."""
-    from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_PROMPT_VERSION
-
-    k = max(2, min(k, 10))
-    settings = get_app_settings(db)
-    scoring_model = settings.ai.dimension_scoring_model
-    golden = select(list(load_golden()), case, lambda c: c.key)
-
-    def one(c, case_delta) -> ScoringStabilityCaseOut:
-        case_delta(f"\n\n### {c.key} (x{k})\n")
-        res = scoring_stability_run(provider, c, scoring_model=scoring_model, k=k, on_delta=case_delta)
-        lo, hi = res.score_spread
-        return ScoringStabilityCaseOut(
-            key=c.key, marker=res.stability.marker, agreement=res.stability.agreement,
-            flipped=res.stability.flipped, tally=res.stability.tally,
-            score_min=lo, score_max=hi, runs=runs_out(res.stability),
-        )
-
-    def work(on_delta) -> ScoringStabilityResponse:
-        out = over_cases(golden, one, on_delta=on_delta, max_workers=case_workers(settings, fan_out=k))
-        return ScoringStabilityResponse(
-            scoring_prompt_version=SCORING_PROMPT_VERSION, scoring_model=scoring_model, k=k, cases=out,
-        )
-
-    return stream(db, "scoring_stability", SCORING_PROMPT_VERSION, work)
 
 
 # The three categorical passes (merge/keep, matches/mismatches) share one endpoint shape —
@@ -193,6 +182,8 @@ for _spec in (
 
 @router.post("/screening")
 def run_screening(
+    mode: str = "run",
+    k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
     user: User = Depends(require_current_user),
     provider: AIProvider = Depends(get_ai_provider),
@@ -200,13 +191,34 @@ def run_screening(
 ) -> StreamingResponse:
     """Stream a screening run: golden synthetic applicants → the REAL screening
     prompt+model → the produced flag list graded per-category (expected fires present, guarded
-    categories absent, clean applicants flag-free). ``case`` runs just that one applicant."""
+    categories absent, clean applicants flag-free). ``case`` runs just that one applicant.
+
+    ``?mode=stability`` instead runs the REAL screening prompt K times per applicant on fixed
+    input, reporting whether the FLAG SET held. ``k`` clamped."""
     from app.ai.screening import screening_prompt_version
 
     settings = get_app_settings(db)
     model = settings.ai.screening_model
     version = screening_prompt_version(settings)
     cases = select(list(load_screening_cases()), case, lambda c: c.key)
+
+    if mode == "stability":
+        k = max(2, min(k, 10))
+
+        def one_stability(c, case_delta) -> ScreeningStabilityCaseOut:
+            case_delta(f"\n\n### {c.key} (x{k})\n")
+            rep = screening_stability_run(provider, c, screening_model=model, settings=settings, k=k, on_delta=case_delta)
+            return ScreeningStabilityCaseOut(
+                key=c.key, marker=rep.marker, majority=rep.majority,
+                agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
+                runs=runs_out(rep),
+            )
+
+        def work_stability(on_delta) -> ScreeningStabilityResponse:
+            out = over_cases(cases, one_stability, on_delta=on_delta, max_workers=case_workers(settings, fan_out=k))
+            return ScreeningStabilityResponse(prompt_version=version, model=model, k=k, cases=out)
+
+        return stream(db, "screening_stability", version, work_stability)
 
     def one(c, case_delta):
         case_delta(f"\n\n### {c.key}\n")
@@ -230,42 +242,10 @@ def run_screening(
     return stream(db, "screening", version, work)
 
 
-@router.post("/screening-stability")
-def run_screening_stability(
-    k: int = DEFAULT_STABILITY_K,
-    case: str | None = None,
-    user: User = Depends(require_current_user),
-    provider: AIProvider = Depends(get_ai_provider),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """Stream a screening STABILITY run: the REAL screening prompt K times per applicant
-    on fixed input, reporting whether the FLAG SET held. ``k`` clamped; ``case`` runs one."""
-    from app.ai.screening import screening_prompt_version
-
-    k = max(2, min(k, 10))
-    settings = get_app_settings(db)
-    model = settings.ai.screening_model
-    version = screening_prompt_version(settings)
-    cases = select(list(load_screening_cases()), case, lambda c: c.key)
-
-    def one(c, case_delta) -> ScreeningStabilityCaseOut:
-        case_delta(f"\n\n### {c.key} (x{k})\n")
-        rep = screening_stability_run(provider, c, screening_model=model, settings=settings, k=k, on_delta=case_delta)
-        return ScreeningStabilityCaseOut(
-            key=c.key, marker=rep.marker, majority=rep.majority,
-            agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
-            runs=runs_out(rep),
-        )
-
-    def work(on_delta) -> ScreeningStabilityResponse:
-        out = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings, fan_out=k))
-        return ScreeningStabilityResponse(prompt_version=version, model=model, k=k, cases=out)
-
-    return stream(db, "screening_stability", version, work)
-
-
 @router.post("/judge")
 def run_judge(
+    mode: str = "run",
+    k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
     user: User = Depends(require_current_user),
     provider: AIProvider = Depends(get_ai_provider),
@@ -275,10 +255,38 @@ def run_judge(
     judge-vs-human agreement. Each case is reproduced by an INDEPENDENT model (blind to the
     label) and graded against the human label — see judge.py. ``case`` runs just that one
     (per-row run); agreement needs ≥2 scored cases, so a single-case run reports no agreement
-    block, only the verdict."""
+    block, only the verdict.
+
+    ``?mode=stability`` instead blind-audits each case K times on fixed inputs and reports
+    whether the judge's verdict held (persisted under eval_key ``stability``). ``k`` is clamped
+    so a stray value can't blow up spend."""
     settings = get_app_settings(db)
     cases = select(list(load_cases()), case, lambda c: c.key)
     pv = judge_prompt_version()  # snapshot the briefs' hash for this run
+
+    if mode == "stability":
+        k = max(2, min(k, 10))
+
+        def one_stability(c, case_delta) -> StabilityCaseOut:
+            case_delta(f"\n\n### [{c.pass_name}] {c.key} (x{k})\n")
+            rep = stability_run(provider, c, k=k, model_id=JUDGE_MODEL, on_delta=case_delta)
+            tally = dict(Counter(rep.labels).most_common())
+            marker = stability.marker(rep.labels, contested=c.contested)
+            case_delta(f"→ {marker} {rep.agreement:.0%}: {tally}\n")
+            return StabilityCaseOut(
+                key=c.key, pass_name=c.pass_name, marker=marker,
+                majority=rep.majority, seed=seed_str(c.expected),
+                agreement=rep.agreement, flipped=rep.flipped, tally=tally,
+                runs=runs_out(rep),  # per-run reasoning, like the other passes' stability
+            )
+
+        def work_stability(on_delta) -> StabilityRunResponse:
+            out = over_cases(cases, one_stability, on_delta=on_delta, max_workers=case_workers(settings, fan_out=k))
+            return StabilityRunResponse(
+                judge_prompt_version=pv, judge_model=JUDGE_MODEL, k=k, cases=out,
+            )
+
+        return stream(db, "stability", pv, work_stability)
 
     def one(c, case_delta):
         case_delta(f"\n\n### [{c.pass_name}] {c.key}\n")
@@ -316,41 +324,3 @@ def run_judge(
         )
 
     return stream(db, "judge", pv, work)
-
-
-@router.post("/stability")
-def run_stability(
-    k: int = DEFAULT_STABILITY_K,
-    case: str | None = None,
-    user: User = Depends(require_current_user),
-    provider: AIProvider = Depends(get_ai_provider),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """Stream a stability run: blind-audit each case K times on fixed inputs, report whether the
-    judge's verdict held. ``k`` is clamped to a sane range so a stray value can't blow up spend.
-    ``case`` runs just that one (per-row stability check)."""
-    k = max(2, min(k, 10))
-    settings = get_app_settings(db)
-    cases = select(list(load_cases()), case, lambda c: c.key)
-    pv = judge_prompt_version()  # snapshot the briefs' hash for this run
-
-    def one(c, case_delta) -> StabilityCaseOut:
-        case_delta(f"\n\n### [{c.pass_name}] {c.key} (x{k})\n")
-        rep = stability_run(provider, c, k=k, model_id=JUDGE_MODEL, on_delta=case_delta)
-        tally = dict(Counter(rep.labels).most_common())
-        marker = stability.marker(rep.labels, contested=c.contested)
-        case_delta(f"→ {marker} {rep.agreement:.0%}: {tally}\n")
-        return StabilityCaseOut(
-            key=c.key, pass_name=c.pass_name, marker=marker,
-            majority=rep.majority, seed=seed_str(c.expected),
-            agreement=rep.agreement, flipped=rep.flipped, tally=tally,
-            runs=runs_out(rep),  # per-run reasoning, like the other passes' stability
-        )
-
-    def work(on_delta) -> StabilityRunResponse:
-        out = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings, fan_out=k))
-        return StabilityRunResponse(
-            judge_prompt_version=pv, judge_model=JUDGE_MODEL, k=k, cases=out,
-        )
-
-    return stream(db, "stability", pv, work)

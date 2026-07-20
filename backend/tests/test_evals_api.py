@@ -229,6 +229,36 @@ async def test_categorical_registry_route_runs_end_to_end() -> None:
     assert len(rows) == 1
 
 
+async def test_stability_mode_param_routes_to_the_k_repeat_run() -> None:
+    """One route per pass now; ``?mode=stability`` selects the K-repeat run (collapsed from the
+    old ``/{pass}-stability`` route). Exercise the consolidation pass in stability mode and prove
+    it ran K times and persisted under the ``<pass>_stability`` eval key (not the run key)."""
+    from app.ai.schemas import ConsolidationReport, ConsolidationVerdict
+    from app.evals.consolidate import load_cases
+
+    case = load_cases()[0]
+    a, b = case.pair
+    app, db, provider = setup_app()
+    # Stability repeats the call k times on fixed input — queue enough identical verdicts.
+    for _ in range(3):
+        provider.queue(ConsolidationReport(verdicts=[
+            ConsolidationVerdict(key_a=str(a["key"]), key_b=str(b["key"]),
+                                 same_concept=(case.expected == "merge"), reason="test"),
+        ]))
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        events = await _stream_events(
+            client, f"/evals/consolidation?mode=stability&k=3&case={case.key}"
+        )
+    summary = next(e for e in events if e["type"] == "summary")
+    assert summary["eval"] == "consolidation_stability"
+    assert summary["result"]["k"] == 3
+    # Persisted under the stability key, distinct from the plain run key.
+    rows = list(db.scalars(select(EvalRun).where(EvalRun.eval_key == "consolidation_stability")))
+    assert len(rows) == 1
+    assert not list(db.scalars(select(EvalRun).where(EvalRun.eval_key == "consolidation")))
+
+
 async def test_rebaseline_requires_a_current_run() -> None:
     # Re-baseline records the CURRENT Rank's fixture; with no run in the DB it's a 409
     # (run_required), never a silent empty write.

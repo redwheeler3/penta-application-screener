@@ -238,9 +238,13 @@ export function saveEvalCase(evalKey: string, evalCase: unknown): Promise<Respon
   });
 }
 
-// Start a streaming eval run (scoring | judge | stability). Returns the raw
-// Response so the caller reads its NDJSON body via streamNdjson. Spends model $.
-// `caseKey` runs just that one case (per-row run); `k` sets stability repeats.
+// Start a streaming eval run. Returns the raw Response so the caller reads its NDJSON
+// body via streamNdjson. Spends model $. `caseKey` runs just that one case (per-row run);
+// `k` sets stability repeats.
+//
+// Each pass is ONE route (POST /evals/{pass}); the internal `<pass>_stability` key selects
+// the K-repeat mode via `?mode=stability`. The judge's stability variant is `stability`
+// (its base pass is `judge`), matching the persisted eval keys.
 export function runEval(
   key:
     | "scoring" | "scoring_stability"
@@ -251,25 +255,15 @@ export function runEval(
     | "judge" | "stability",
   opts?: { k?: number; caseKey?: string },
 ): Promise<Response> {
-  // Live evals use a hyphenated path; judge/stability use the bare key.
-  const path =
-    key === "scoring" ? "/evals/scoring"
-    : key === "scoring_stability" ? "/evals/scoring-stability"
-    : key === "consolidation" ? "/evals/consolidation"
-    : key === "consolidation_stability" ? "/evals/consolidation-stability"
-    : key === "matching" ? "/evals/matching"
-    : key === "matching_stability" ? "/evals/matching-stability"
-    : key === "decomposition" ? "/evals/decomposition"
-    : key === "decomposition_stability" ? "/evals/decomposition-stability"
-    : key === "screening" ? "/evals/screening"
-    : key === "screening_stability" ? "/evals/screening-stability"
-    : `/evals/${key}`;
-  const kMode = key.endsWith("_stability");
+  const stabilityMode = key === "stability" || key.endsWith("_stability");
+  // The base pass owns the route; the judge's stability variant ("stability") maps to /judge.
+  const basePass = key === "stability" ? "judge" : key.replace(/_stability$/, "");
   const params = new URLSearchParams();
-  if (kMode && opts?.k) params.set("k", String(opts.k));
+  if (stabilityMode) params.set("mode", "stability");
+  if (stabilityMode && opts?.k) params.set("k", String(opts.k));
   if (opts?.caseKey) params.set("case", opts.caseKey);
   const q = params.toString() ? `?${params}` : "";
-  return fetch(url(path + q), { method: "POST", credentials: "include" });
+  return fetch(url(`/evals/${basePass}${q}`), { method: "POST", credentials: "include" });
 }
 
 // Read an NDJSON stream, invoking `onEvent` for each parsed line. Used by the

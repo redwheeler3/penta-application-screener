@@ -53,10 +53,13 @@ class CategoricalPass:
 
 
 def register(router, spec: CategoricalPass) -> None:
-    """Add ``POST /{key}`` and ``POST /{key}-stability`` to ``router`` for one categorical pass."""
+    """Add ``POST /{key}`` to ``router`` for one categorical pass. ``?mode=stability``
+    selects the K-repeat stability run; the default (``mode=run``) is the single pass."""
 
     @router.post(f"/{spec.key}", name=f"run_{spec.key}")
     def run(
+        mode: str = "run",
+        k: int = DEFAULT_STABILITY_K,
         case: str | None = None,
         user: User = Depends(require_current_user),
         provider: AIProvider = Depends(get_ai_provider),
@@ -66,6 +69,24 @@ def register(router, spec: CategoricalPass) -> None:
         model = getattr(settings.ai, spec.model_attr)
         version = spec.prompt_version()
         cases = select(list(spec.load_cases()), case, lambda c: c.key)
+
+        if mode == "stability":
+            k = max(2, min(k, 10))
+
+            def one(c, case_delta):
+                case_delta(f"\n\n### {c.key} (x{k})\n")
+                rep = spec.stability_run(provider, c, model, k=k, on_delta=case_delta)
+                return spec.stability_out(
+                    key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
+                    contested=c.contested, agreement=rep.agreement, flipped=rep.flipped,
+                    tally=rep.tally, runs=runs_out(rep),
+                )
+
+            def work(on_delta):
+                out = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings, fan_out=k))
+                return spec.stability_response(prompt_version=version, model=model, k=k, cases=out)
+
+            return stream(db, f"{spec.key}_stability", version, work)
 
         def one(c, case_delta):
             case_delta(f"\n\n### {c.key}\n")
@@ -88,32 +109,3 @@ def register(router, spec: CategoricalPass) -> None:
             )
 
         return stream(db, spec.key, version, work)
-
-    @router.post(f"/{spec.key}-stability", name=f"run_{spec.key}_stability")
-    def run_stability(
-        k: int = DEFAULT_STABILITY_K,
-        case: str | None = None,
-        user: User = Depends(require_current_user),
-        provider: AIProvider = Depends(get_ai_provider),
-        db: Session = Depends(get_db),
-    ) -> StreamingResponse:
-        k = max(2, min(k, 10))
-        settings = get_app_settings(db)
-        model = getattr(settings.ai, spec.model_attr)
-        version = spec.prompt_version()
-        cases = select(list(spec.load_cases()), case, lambda c: c.key)
-
-        def one(c, case_delta):
-            case_delta(f"\n\n### {c.key} (x{k})\n")
-            rep = spec.stability_run(provider, c, model, k=k, on_delta=case_delta)
-            return spec.stability_out(
-                key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
-                contested=c.contested, agreement=rep.agreement, flipped=rep.flipped,
-                tally=rep.tally, runs=runs_out(rep),
-            )
-
-        def work(on_delta):
-            out = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings, fan_out=k))
-            return spec.stability_response(prompt_version=version, model=model, k=k, cases=out)
-
-        return stream(db, f"{spec.key}_stability", version, work)
