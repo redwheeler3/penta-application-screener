@@ -501,9 +501,11 @@ function runSummary(evalKey: RunMode["evalKey"], result: any, totalCases: number
   const total = totalCases || cases.length;  // fall back to run-cases if the list isn't loaded
   const stab = evalKey.endsWith("_stability") || evalKey === "stability";
   if (evalKey === "judge") {
-    // The judge "agree" count is agreement with the label, where contested is genuinely
-    // excluded (its label is a leaning) — so only "ok" counts here, not contested.
-    const agree = cases.filter((c) => dotFor(evalKey, c) === "ok").length;
+    // Contested is an automatic PASS (amber — both labels defensible), so it counts toward
+    // "agree" alongside green; only a red [review] (a real divergence) doesn't. Mirrors the
+    // dots: count everything that isn't a fail. (κ, from the backend, still excludes contested
+    // from its scored set — that's a separate, stricter statistic.)
+    const agree = cases.filter((c) => dotFor(evalKey, c) !== "fail").length;
     const a = result.agreement;
     const head = total ? `${agree}/${total} agree` : "";
     if (!a) return head;
