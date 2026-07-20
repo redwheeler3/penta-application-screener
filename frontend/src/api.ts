@@ -120,10 +120,10 @@ export const fetchLastRuns = () => getJson<LastRunsReport>("/ranking/insights/la
 // Operational trends across all runs (M13 Pillar 3): cost/tokens/latency/cache/failures.
 export const fetchMetrics = () => getJson<MetricsReport>("/ranking/insights/metrics");
 
-export const fetchScreeningEstimate = () => fetch(url("/screening/estimate"), { credentials: "include" });
+export const fetchScreeningEstimate = () => fetch(url("/screening/run/estimate"), { credentials: "include" });
 export const runScreening = () => fetch(url("/screening/run"), { method: "POST", credentials: "include" });
 
-export const fetchRankEstimate = () => fetch(url("/ranking/estimate"), { credentials: "include" });
+export const fetchRankEstimate = () => fetch(url("/ranking/run/estimate"), { credentials: "include" });
 export const runRank = () => fetch(url("/ranking/run"), { method: "POST", credentials: "include" });
 export const fetchScoreCurrentEstimate = () =>
   fetch(url("/ranking/score-current/estimate"), { credentials: "include" });

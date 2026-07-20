@@ -269,7 +269,7 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     }
 
 
-@router.get("/estimate", response_model=RankEstimateResponse)
+@router.get("/run/estimate", response_model=RankEstimateResponse)
 def rank_estimate(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),

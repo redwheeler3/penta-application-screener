@@ -484,7 +484,7 @@ async def test_estimate_reports_cap_and_within_cap() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await client.get("/screening/estimate")
+        response = await client.get("/screening/run/estimate")
 
     assert response.status_code == 200
     body = response.json()
