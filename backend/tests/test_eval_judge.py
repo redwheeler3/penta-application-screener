@@ -136,6 +136,48 @@ def test_stability_marks_a_contested_flip_as_split_not_unstable() -> None:
     assert "[UNSTABLE]" not in out
 
 
+def test_scoring_stability_tokens_by_in_band_not_raw_score() -> None:
+    """A CONTINUOUS pass: different in-band scores are the SAME stability outcome. Three distinct
+    scores that all land in the band must read [stable] (100% agree), not [UNSTABLE] from tallying
+    the raw score strings — the bug that showed 60% on modest_evidence_scores_mid even though every
+    run agreed. A score that leaves the band is a real flip."""
+    from app.ai.schemas import DimensionScore, DimensionScoringReport, ScoreConfidence
+
+    case = next(c for c in load_cases() if c.pass_name == "scoring")
+    band = case.expected  # e.g. {"score_min": ..., "score_max": ..., ...}
+    lo, hi = float(band["score_min"]), float(band["score_max"])
+    mid = (lo + hi) / 2
+    in_band = [lo + (hi - lo) * f for f in (0.2, 0.5, 0.8)]  # three DIFFERENT in-band scores
+    # Use a confidence the case accepts (it may pin one), so only the SCORE decides agreement.
+    conf = ScoreConfidence(str(band.get("confidence", "medium")).split("|")[0].strip())
+
+    def _report(score_val: float) -> DimensionScoringReport:
+        dim_key = case.given["dimension"]["key"]
+        return DimensionScoringReport(scores=[DimensionScore(
+            dimension_key=dim_key, score=score_val, confidence=conf,
+            rationale="r", evidence="e",
+        )])
+
+    provider = MockProvider()
+    for s in in_band:
+        provider.queue(_report(s))
+    steady = stability_run(provider, case, k=3)
+    assert steady.agreement == 1.0
+    assert steady.flipped is False
+    assert "[stable]" in format_stability([steady])
+
+    # A score that leaves the band IS a real flip (agrees -> disagrees). Pick a valid (-1..1)
+    # out-of-band value: just below lo, or just above hi if lo is at the floor.
+    out_of_band = round(lo - 0.1, 2) if lo - 0.1 >= -1.0 else round(hi + 0.1, 2)
+    provider = MockProvider()
+    provider.queue(_report(mid))          # in band  -> agrees
+    provider.queue(_report(out_of_band))  # out band -> disagrees
+    provider.queue(_report(mid))          # in band  -> agrees
+    flipped = stability_run(provider, case, k=3)
+    assert flipped.flipped is True
+    assert "[UNSTABLE]" in format_stability([flipped])
+
+
 def test_prompt_version_tracks_the_briefs() -> None:
     """The judge version is a hash of the five editable briefs, so editing any brief changes it
     (that is what marks a prior judge run stale). Same briefs -> same version; a changed brief ->

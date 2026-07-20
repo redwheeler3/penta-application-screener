@@ -220,10 +220,23 @@ def stability_run(provider, case: JudgeCase, *, k: int = 5, model_id: str = DEFA
             on_delta(f"- run {n}: **{r.reproduced.judge_label}** — {r.reproduced.detail}\n")
     return StabilityReport(
         case=case,
-        labels=[r.reproduced.judge_label for r in results],
+        labels=[_stability_token(case, r) for r in results],
         details=[r.reproduced.detail for r in results],  # keep each run's reasoning (explains a flip)
         total_cost_usd=sum(r.cost_usd for r in results),
     )
+
+
+def _stability_token(case: JudgeCase, result: JudgeResult) -> str:
+    """The token stability tallies for one run. Scoring is CONTINUOUS: two different in-band
+    scores (e.g. +0.60 and +0.75 against [0.2, 0.75]) are the SAME stability outcome, so token by
+    the graded agree/disagree — else run-to-run score noise inside the band reads as a flip
+    ([UNSTABLE] when nothing actually wandered across the boundary; the exact bug the live scoring
+    stability avoids by tokening pass/fail, not the raw score). Discrete passes keep the verdict
+    label (merge/keep, matches/mismatches), where flipping BETWEEN labels is the real instability
+    and the tally is more informative as verdicts."""
+    if case.pass_name == "scoring":
+        return "agrees" if result.reproduced.agrees else "disagrees"
+    return result.reproduced.judge_label
 
 
 def format_stability(reports: list[StabilityReport]) -> str:
