@@ -85,7 +85,7 @@ The frontend is a single React screen (`App.tsx`) that has grown to cover the fu
 6. Let the user sync applications from the configured Google Sheet.
 7. Show a searchable, sortable, paginated applications table.
 8. Open a candidate detail view: normalized fields, essays, filter reasons, AI quality flags, a private reviewer note, the raw row, and the AI narrative.
-9. Run the AI quality-flag pass with a cost-estimate confirmation and live streamed progress.
+9. Run the AI screening pass with a cost-estimate confirmation and live streamed progress.
 10. Let a committee member override an application's status (the human decision is sticky) or clear the override to hand the decision back to the machine.
 
 ### Vite Files
@@ -160,7 +160,7 @@ Read this as:
 
 `frontend/src/App.tsx` is currently the main UI component. It is doing a lot because the frontend is still young. This is acceptable for now because reading one file top-to-bottom makes the current flow easier to understand.
 
-The top of the file defines TypeScript types that mirror the backend's JSON shapes — `CurrentUser`, `AppSettings`, `SettingsResponse`, `DashboardCounts`, `AppFacets`, `ApplicationSummary`, `ApplicationDetail`, `Essay`, `QualityFlag`, `QualityFlagEstimate`, plus the `AppStatus` / `StatusSource` / `SortKey` unions:
+The top of the file defines TypeScript types that mirror the backend's JSON shapes — `CurrentUser`, `AppSettings`, `SettingsResponse`, `DashboardCounts`, `AppFacets`, `ApplicationSummary`, `ApplicationDetail`, `Essay`, `ScreeningFlag`, `ScreeningEstimateResponse`, plus the `AppStatus` / `StatusSource` / `SortKey` unions:
 
 ```ts
 type CurrentUser = { ... };
@@ -185,8 +185,8 @@ Inside `App()`, the `useState` calls hold browser-side state. There are more tha
 - Auth: `user`, `isLoadingUser`.
 - Settings: `draft` (the editable form values), `saved` (the persisted `SettingsResponse`, which carries the canonical Google Sheets URL and title), `isSettingsExpanded`, `isSavingSettings`, `settingsMessage`.
 - Dashboard/sync: `dashboardCounts`, `syncMessage`, `syncError`, `isSyncing`.
-- Applications list: `applications`, `appTotal`, `appPage`, `appPageSize`, `appFilter`, `appFacets`, `appSearch`, `appSort`, `selectedApp`.
-- Quality flags: `qfEstimate`, `qfRunning`, `qfMessage`, `qfProgress`.
+- Applications list: `applications`, `appTotal`, `appPage`, `appPageSize`, `appFilter`, `appFacets`, `appSearch`, `appSort`, `selectedApp`. (Since M14 the list state is grouped in a `useApplications` hook, and toasts/ranking state in `useToasts`/`useRanking`; see `src/hooks/`.)
+- Screening: `screeningEstimate`, `screeningRunning`, `screeningProgress`.
 
 The first `useEffect` runs when the component first loads:
 
@@ -209,7 +209,7 @@ The functions in `App.tsx` line up with user actions:
 - `fetchApplications()`: calls `GET /applications` with the current filter, search, sort, and page.
 - `viewApplication()`: loads one application's detail via `GET /applications/{id}`.
 - `toggleSort()`: changes the table sort column/direction.
-- `requestQualityFlagsEstimate()` / `runQualityFlags()`: fetch the cost estimate, then stream the AI run.
+- `requestScreeningEstimate()` / `runScreening()`: fetch the cost estimate, then stream the AI screening run.
 - `overrideStatus()`: sets an application's status as a human decision via the applications API.
 - `clearStatusOverride()`: removes a human override (DELETE), handing the decision back to the machine, which recomputes from current findings.
 
@@ -314,8 +314,8 @@ The file defines the current layout pieces. Some of the main families:
 - `.settings-panel`, `.settings-form`, `.settings-summary`, `.rules-section` / `.rules-grid`: admin settings layout and the per-rule toggle grid.
 - `.app-controls`, `.filter-group`, `.app-tabs` / `.tab-button`, `.app-search`: dashboard tabs and table controls.
 - `.app-table`, `.sort-header`, `.status-badge` / `.source-badge` / `.stale-badge`, `.pagination`: the applications table.
-- `.app-detail`, `.app-detail-essays` / `.essay-block`, `.filter-reasons`, `.quality-flags` / `.quality-flag`, `.ai-narrative`, `.raw-row-section`, `.field-flagged`: the candidate detail view.
-- `.qf-confirm` / `.qf-progress` / `.qf-message`: the AI quality-flag run flow.
+- `.app-detail`, `.app-detail-essays` / `.essay-block`, `.filter-reasons`, `.flags-panel` / `.flag` (+ `.flag-category`/`.flag-summary`/`.flag-evidence`), `.ai-narrative`, `.raw-row-section`, `.field-flagged`: the candidate detail view.
+- The AI-run flow (estimate → confirm → progress) uses the shared workflow-strip classes in `WorkflowBar.tsx`, not a screening-specific family.
 - `.toast` / `.toast-error` / `.toast-success`: transient messages.
 - media query at the bottom: mobile layout adjustments.
 
@@ -392,7 +392,7 @@ Important dependencies:
 
 `backend/app/main.py` creates the FastAPI app. This is the backend equivalent of the frontend entry point.
 
-`backend/app/api/*.py` files define routes. A route is an HTTP endpoint such as `GET /dashboard` or `POST /sync/applications`. The modules are `applications.py` (list/detail/status-override), `auth.py`, `dashboard.py`, `health.py`, `quality_flags.py` (the AI estimate/run endpoints), `settings.py`, and `sync.py`, plus `dependencies.py` for shared FastAPI dependencies (e.g. `require_current_user`).
+`backend/app/api/*.py` files (and packages) define routes. A route is an HTTP endpoint such as `GET /dashboard` or `POST /sync/applications`. The modules are `applications.py` (list/detail/status-override), `auth.py`, `dashboard.py`, `health.py`, `screening.py` (the AI screening estimate/run endpoints), `ranking/` (the Rank-chain package: `run`/`current`/`shortlist`), `insights.py` (cost/metrics/last-runs), `evals/` (the eval cockpit package), `settings.py`, and `sync.py`, plus `dependencies.py` for shared FastAPI dependencies (e.g. `require_current_user`) and `problems.py` for the RFC 9457 error contract.
 
 `backend/app/services/*.py` files contain reusable operations that routes call. For example, sync route code does not directly know every detail of importing application rows; it calls service functions.
 
@@ -434,7 +434,7 @@ It currently installs:
 
 - `SessionMiddleware`, which signs the browser session cookie.
 - `CORSMiddleware`, which allows the local React frontend to call the backend with credentials.
-- Route modules from `app.api.applications`, `app.api.auth`, `app.api.dashboard`, `app.api.health`, `app.api.quality_flags`, `app.api.settings`, and `app.api.sync`.
+- Route modules from `app.api.applications`, `app.api.auth`, `app.api.dashboard`, `app.api.evals`, `app.api.health`, `app.api.insights`, `app.api.screening`, `app.api.ranking`, `app.api.settings`, and `app.api.sync`.
 
 The app uses an app factory:
 
@@ -451,8 +451,11 @@ In older web frameworks, you might remember one large app object with routes reg
 app.include_router(applications_router)
 app.include_router(auth_router)
 app.include_router(dashboard_router)
+app.include_router(evals_router)
 app.include_router(health_router)
-app.include_router(quality_flags_router)
+app.include_router(insights_router)
+app.include_router(screening_router)
+app.include_router(ranking_router)
 app.include_router(settings_router)
 app.include_router(sync_router)
 ```
@@ -555,15 +558,20 @@ sqlite:///./data/penta_screener.db
 
 The SQLite database file is generated locally and ignored by Git.
 
-Alembic owns schema migrations. The schema is built by a chain of migrations (in `backend/alembic/versions/`), starting with the initial-tables migration and adding the status-model rework, the AI results table, and related columns. The tables are:
+Alembic owns schema migrations (in `backend/alembic/versions/`; M12 squashed the original chain into one baseline, and later migrations add the eval-runs table and the M14 `ranking_runs` split). The tables are:
 
 - `users`
 - `google_credentials`
 - `admin_settings`
 - `applications`
+- `application_notes` (a member's private per-application note)
 - `application_ai_results` (cached AI analysis — see [ai-screening.md](ai-screening.md))
 - `sync_runs`
-- `screening_runs`
+- `ranking_runs` (a Rank's discovered dimensions + committee state; see the criteria-split note below)
+- `ranking_run_audit` (1:1 with `ranking_runs`: the AI-legibility trail — discovery narrative + match/fan-out/decompose/consolidate audits)
+- `dimension_aliases` (the sole merge-truth: a consolidated duplicate key → its canonical key)
+- `run_cost_ledger` + `run_pass_cost` (per-run and per-pass cost/tokens/latency — M13 observability)
+- `eval_runs` (persisted eval-cockpit runs)
 
 During MVP iteration, we are not preserving backward compatibility for local schema changes. If the local database shape changes, it is acceptable to delete the generated SQLite file and recreate it from migrations.
 
@@ -691,7 +699,7 @@ Current settings:
 - Household limits: max adults, minimum adult age
 - Pet limits: max dogs, max cats, whether other/exotic pets are allowed
 - `disabled_rules`: which deterministic hard-filter rules are turned off
-- A nested `ai` block (`AISettings`): region, one model per AI pass (`screening_model`, `dimension_scoring_model`, `discovery_model`, `match_model`), spending cap, and screening concurrency (`max_workers`) — see [ai-screening.md](ai-screening.md). Of these, only the spending cap is editable in the settings form; the rest are config-only but still round-tripped on save.
+- A nested `ai` block (`AISettings`): region, one model per AI pass (`screening_model`, `dimension_scoring_model`, `discovery_model`, `decompose_model`, `match_model`, `consolidate_model`), the consolidation correlation threshold, spending cap (default `$2.00`), and screening concurrency (`max_workers`) — see [ai-screening.md](ai-screening.md). Of these, only the spending cap is editable in the settings form; the rest are config-only but still round-tripped on save.
 
 The defaults match the current planned 2-bedroom opening:
 
@@ -820,13 +828,13 @@ Application routes live in `backend/app/api/applications.py`.
 Current routes:
 
 - `GET /applications` — a searchable, filterable, sortable, paginated list. Filters by `status` and `status_source`, and returns faceted counts so the UI can show how many applications fall in each tab.
-- `GET /applications/{id}` — one application's detail: normalized fields, essays, filter reasons, AI quality flags, the raw source row, and the AI narrative.
+- `GET /applications/{id}` — one application's detail: normalized fields, essays, filter reasons, AI screening flags, the raw source row, and the AI narrative.
 - `PATCH /applications/{id}/status` — a human status override. This sets `status_source = human`, which machine re-runs then leave untouched.
 - `DELETE /applications/{id}/status` — removes a human override, handing the decision back to the machine. Recomputes status from the current findings and clears human ownership; idempotent if no override is set.
 
 All application routes are open to any logged-in committee member. Roles (`admin` / `member`) exist in the data model but do not currently gate any route — members are trusted screeners.
 
-The AI quality-flag endpoints (`GET /quality-flags/estimate` and `POST /quality-flags/run`) live in `app/api/quality_flags.py` and are documented in [ai-screening.md](ai-screening.md).
+The AI screening endpoints (`GET /screening/run/estimate` and `POST /screening/run`) live in `app/api/screening.py` and are documented in [ai-screening.md](ai-screening.md).
 
 ### User Creation
 
@@ -852,9 +860,9 @@ Current tests cover all deterministic screening rules including child age limits
 
 This file is a good place to read if you want to understand the business rules without web-framework noise.
 
-### AI Quality Flags
+### AI Screening
 
-On top of the deterministic hard filters, the app runs an **AI quality-flag pass**. It reviews each application for data-integrity concerns — placeholder-looking names, non-responsive essays, pet descriptions that conflict with the co-op policy, obviously fake contact details — and surfaces them as informational notices for a human screener.
+On top of the deterministic hard filters, the app runs an **AI screening pass**. It reviews each application for data-integrity concerns — placeholder-looking names, non-responsive essays, pet descriptions that conflict with the co-op policy, obviously fake contact details — and surfaces them as informational notices (flags) for a human screener.
 
 Two things keep this bounded:
 
@@ -916,7 +924,7 @@ class SettingsResponse(BaseModel):
 
 FastAPI uses these models to validate and serialize data. They also make route behavior easier to read because the expected JSON shape is explicit.
 
-`backend/app/schemas/settings.py` also defines `AppSettings` (the full admin settings model) and its nested `AISettings` sub-model. The AI structured-output schemas (`QualityFlagReport` and friends) live separately in `app/ai/schemas.py` — see [ai-screening.md](ai-screening.md).
+`backend/app/schemas/settings.py` also defines `AppSettings` (the full admin settings model) and its nested `AISettings` sub-model. The AI structured-output schemas (`ScreeningReport` and friends) live separately in `app/ai/schemas.py` — see [ai-screening.md](ai-screening.md).
 
 ### Services
 
@@ -931,6 +939,10 @@ Current service files:
 - `google_credentials.py`: store/retrieve Google OAuth tokens.
 - `google_sheets.py`: read spreadsheet metadata and rows.
 - `application_import.py`: turn sheet rows into `Application` and `SyncRun` records.
+- `ranking_run.py`: the Rank run's persistence + carry-forward — `create_run`, `dimension_weights` (derived from tiers), `adopt_matched_keys`, `carry_forward_layout`, `apply_consolidation`, the `*_audit_view` accessors, `rank_inputs_fingerprint`.
+- `ranking_view.py`: assemble a candidate's per-dimension score contributions for the detail page.
+- `cost_report.py` / `metrics.py`: the M13 observability surfaces (per-run/per-pass cost + operational trends) over the `run_cost_ledger` / `run_pass_cost` tables.
+- `backup.py`: local `.db` snapshot/restore (a post-Rank snapshot is taken automatically).
 
 This keeps route files short. A route says "what HTTP endpoint is this?" and "what service work should happen?" The service does the details.
 
@@ -950,7 +962,9 @@ The tests are deliberately focused:
 - `test_status_model.py`: the status / status_source transition rules (machine vs. human, staleness).
 - `test_sync_errors.py`: sync failure handling.
 - `test_ai_analysis.py`: AI caching, cost estimate, and spending-cap behavior.
-- `test_quality_flags.py` / `test_quality_flags_api.py`: the AI quality-flag pass, including its concurrency and failure-isolation contracts.
+- `test_screening.py` / `test_screening_api.py`: the AI screening pass, including its concurrency and failure-isolation contracts.
+- `test_ranking.py` / `test_ranking_api.py`: the ranking math and the Rank-chain streaming endpoints (criteria → score → consolidate).
+- `test_dimension_scoring.py`, and the eval suite (`test_evals*.py`, `test_*_eval.py`): per-pass scoring, invariants, and the eval-cockpit endpoints.
 
 The most important tests right now are the hard-filter and application-import tests, because those protect the screening behavior.
 
@@ -1037,6 +1051,6 @@ All backend tests should pass (`uv run pytest` reports the current count).
 
 ## Next Architecture Step
 
-The current feature set includes Google Sheets sync, deterministic hard filters, application tables, searchable/filterable views, candidate detail pages, filtered-out reason display, raw row inspection, the AI quality-flag pass, and the Rank chain that discovers criteria across the pool and scores candidates against them, feeding a deterministic stack-ranked shortlist (see [ai-screening.md](ai-screening.md)).
+The current feature set includes Google Sheets sync, deterministic hard filters, application tables, searchable/filterable views, candidate detail pages, filtered-out reason display, raw row inspection, the AI screening pass, and the Rank chain that discovers criteria across the pool and scores candidates against them, feeding a deterministic stack-ranked shortlist (see [ai-screening.md](ai-screening.md)).
 
 The next planned product areas build on the AI foundation, reusing the provider boundary, caching, and cost-cap machinery already in `app/ai/`.

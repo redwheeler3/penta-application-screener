@@ -13,7 +13,7 @@ Cases live in per-pass files under `backend/eval-data/`, named `<pass>_golden.js
 
 The per-pass `given`/`expected` shapes here were derived from what each pass's real
 `build_prompt` + output schema actually sends and returns — see
-`docs/pass-io-investigation.md`. (The retired `judge_cases.json` — a standalone judge case set —
+`docs/archive/pass-io-investigation.md`. (The retired `judge_cases.json` — a standalone judge case set —
 was mined into these golden files; the judge now owns no files and reads them all.)
 
 ## The envelope
@@ -70,7 +70,7 @@ flattened into the harness dataclass but never serialized into a prompt.
 ## The shared `descriptor` sub-object (three passes)
 
 Three passes reason over the same atomic unit — a **dimension descriptor** — so their `given`
-blocks share it (`docs/pass-io-investigation.md`, Finding 1):
+blocks share it (`docs/archive/pass-io-investigation.md`, Finding 1):
 
 ```jsonc
 "descriptor": { "key": "...", "name": "...", "definition": "...", "high_end": "?", "low_end": "?" }
