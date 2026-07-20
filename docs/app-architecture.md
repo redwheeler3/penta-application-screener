@@ -1,8 +1,8 @@
 # Application Architecture
 
-This document explains how the current local MVP is organized, how the frontend works, how the backend works, and how the two communicate.
+This document explains how the current local MVP is organized: the frontend, the backend, and how the two communicate.
 
-The application is intentionally simple right now. The goal is to keep the code readable while the product shape is still changing quickly.
+The application is intentionally simple right now, to keep the code readable while the product shape is still changing quickly.
 
 ## Big Picture
 
@@ -13,13 +13,11 @@ The app has two local development processes:
 
 The frontend is what the user sees in the browser. The backend owns authentication, database access, Google API integration, deterministic screening rules, and AI-assisted screening.
 
-The frontend and backend communicate over HTTP. When authentication is involved, they also share a signed session cookie issued by the backend.
+The two communicate over HTTP. When authentication is involved, they also share a signed session cookie issued by the backend.
 
 ## Frontend
 
-The frontend lives in `frontend/`.
-
-The useful mental model is:
+The frontend lives in `frontend/`. The mental model:
 
 ```text
 index.html
@@ -31,9 +29,7 @@ index.html
       uses styles.css for layout and visual design
 ```
 
-React is the UI library. It turns state into screen output. Instead of manually finding DOM elements and changing them, React code changes state and React redraws the matching UI.
-
-For example, `App.tsx` has state like:
+React is the UI library: code changes state, and React redraws the matching UI. For example, `App.tsx` has state like:
 
 ```ts
 const [user, setUser] = useState<CurrentUser | null>(null);
@@ -41,13 +37,9 @@ const [draft, setDraft] = useState<AppSettings>(defaultSettings);
 const [dashboardCounts, setDashboardCounts] = useState<DashboardCounts>(...);
 ```
 
-That pattern means:
+`user` is the current value, `setUser` changes it, and calling `setUser(...)` triggers a re-render of the relevant parts.
 
-- `user` is the current value.
-- `setUser` is the function that changes it.
-- When `setUser(...)` runs, React re-renders the relevant parts of the app.
-
-Vite is the frontend build tool and development server. It serves the React app locally, updates the browser quickly when files change, and builds optimized static files for production.
+Vite is the frontend build tool and dev server: it serves the app locally, hot-reloads on file changes, and builds optimized static files for production.
 
 Current important files:
 
@@ -69,11 +61,7 @@ cd frontend
 npm run dev
 ```
 
-Then open:
-
-```text
-http://localhost:5173
-```
+Then open `http://localhost:5173`.
 
 The frontend is a single React screen (`App.tsx`) that has grown to cover the full review workflow. Its main responsibilities:
 
@@ -84,15 +72,13 @@ The frontend is a single React screen (`App.tsx`) that has grown to cover the fu
 5. Let the user expand the admin settings panel (an "Edit settings" toggle, not a gear icon) and save changes.
 6. Let the user sync applications from the configured Google Sheet.
 7. Show a searchable, sortable, paginated applications table.
-8. Open a candidate detail view: normalized fields, essays, filter reasons, AI quality flags, a private reviewer note, the raw row, and the AI narrative.
+8. Open a candidate detail view: normalized fields, essays, filter reasons, AI screening flags, a private reviewer note, the raw row, and the AI narrative.
 9. Run the AI screening pass with a cost-estimate confirmation and live streamed progress.
 10. Let a committee member override an application's status (the human decision is sticky) or clear the override to hand the decision back to the machine.
 
 ### Vite Files
 
-`frontend/package.json` defines the frontend project and its commands.
-
-Important scripts:
+`frontend/package.json` defines the frontend project and its commands. Important scripts:
 
 ```json
 "dev": "vite",
@@ -101,7 +87,7 @@ Important scripts:
 ```
 
 - `npm run dev` starts Vite's local development server.
-- `npm run build` first runs the TypeScript compiler, then asks Vite to create production assets.
+- `npm run build` runs the TypeScript compiler, then has Vite create production assets.
 - `npm run preview` serves the production build locally after `npm run build`.
 
 Important dependencies:
@@ -113,28 +99,17 @@ Important dependencies:
 - `vite` (devDependency): dev server and bundler.
 - `typescript` (devDependency): typed JavaScript tooling.
 
-`frontend/vite.config.ts` is small. It tells Vite to use the React plugin and pins the dev server to `host: "localhost"` and `port: 5173`. The rest comes from Vite defaults.
+`frontend/vite.config.ts` is small: it uses the React plugin and pins the dev server to `host: "localhost"` and `port: 5173`. The rest comes from Vite defaults.
 
-`frontend/index.html` is the one real HTML document. It has:
+`frontend/index.html` is the one real HTML document. Its key contents:
 
 ```html
 <div id="root"></div>
 <script type="module" src="/src/main.tsx"></script>
-```
-
-The `root` div is an empty mounting point. React fills it in after `src/main.tsx` loads.
-
-The favicon is linked here too:
-
-```html
 <link rel="icon" href="/favicon.ico" />
 ```
 
-Files in `frontend/public/` are served directly by Vite. That is why `frontend/public/favicon.ico` is available at:
-
-```text
-http://localhost:5173/favicon.ico
-```
+The `root` div is an empty mounting point that React fills in after `src/main.tsx` loads. Files in `frontend/public/` are served directly by Vite, which is why `frontend/public/favicon.ico` is available at `http://localhost:5173/favicon.ico`.
 
 ### React Entry Point
 
@@ -148,31 +123,15 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 );
 ```
 
-Read this as:
-
-1. Find the `root` element from `index.html`.
-2. Create a React root inside it.
-3. Render the `App` component.
-
-`React.StrictMode` is a development helper. It makes React a little more aggressive about surfacing unsafe patterns. It may cause some development-only double calls in certain situations, but it does not change the production app behavior.
+It finds the `root` element from `index.html`, creates a React root inside it, and renders the `App` component. `React.StrictMode` is a development helper that surfaces unsafe patterns; it may cause development-only double calls but does not change production behavior.
 
 ### App.tsx
 
-`frontend/src/App.tsx` is currently the main UI component. It is doing a lot because the frontend is still young. This is acceptable for now because reading one file top-to-bottom makes the current flow easier to understand.
+`frontend/src/App.tsx` is currently the main UI component. It does a lot because the frontend is still young; keeping the current flow in one readable file is acceptable for now.
 
-The top of the file defines TypeScript types that mirror the backend's JSON shapes — `CurrentUser`, `AppSettings`, `SettingsResponse`, `DashboardCounts`, `AppFacets`, `ApplicationSummary`, `ApplicationDetail`, `Essay`, `ScreeningFlag`, `ScreeningEstimateResponse`, plus the `AppStatus` / `StatusSource` / `SortKey` unions:
+The top of the file defines TypeScript types that mirror the backend's JSON shapes — `CurrentUser`, `AppSettings`, `SettingsResponse`, `DashboardCounts`, `AppFacets`, `ApplicationSummary`, `ApplicationDetail`, `Essay`, `ScreeningFlag`, `ScreeningEstimateResponse`, plus the `AppStatus` / `StatusSource` / `SortKey` unions. These are compile-time help for the frontend; they do not create runtime database tables or backend models.
 
-```ts
-type CurrentUser = { ... };
-type AppSettings = { ... };
-type ApplicationSummary = { ... };
-type ApplicationDetail = { ... };
-// ...and more
-```
-
-These types describe the data shape the frontend expects from the backend. They do not create runtime database tables or backend models; they are compile-time help for the frontend.
-
-The next important line is:
+Next:
 
 ```ts
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -180,7 +139,7 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 `import.meta.env` is Vite's way of exposing frontend environment variables. If `VITE_API_BASE_URL` is not set, the app defaults to the local backend at port `8000`.
 
-Inside `App()`, the `useState` calls hold browser-side state. There are more than twenty now; the main groups are:
+Inside `App()`, the `useState` calls hold browser-side state (more than twenty now). The main groups:
 
 - Auth: `user`, `isLoadingUser`.
 - Settings: `draft` (the editable form values), `saved` (the persisted `SettingsResponse`, which carries the canonical Google Sheets URL and title), `isSettingsExpanded`, `isSavingSettings`, `settingsMessage`.
@@ -188,15 +147,13 @@ Inside `App()`, the `useState` calls hold browser-side state. There are more tha
 - Applications list: `applications`, `appTotal`, `appPage`, `appPageSize`, `appFilter`, `appFacets`, `appSearch`, `appSort`, `selectedApp`. (Since M14 the list state is grouped in a `useApplications` hook, and toasts/ranking state in `useToasts`/`useRanking`; see `src/hooks/`.)
 - Screening: `screeningEstimate`, `screeningRunning`, `screeningProgress`.
 
-The first `useEffect` runs when the component first loads:
+The first `useEffect` runs on mount and asks the backend whether the browser already has a valid login session:
 
 ```ts
 fetch(`${apiBaseUrl}/auth/me`, { credentials: "include" })
 ```
 
-It asks the backend whether the browser already has a valid login session.
-
-The second `useEffect` runs when `user` changes. Once a user is logged in, it fetches saved settings and dashboard counts.
+The second `useEffect` runs when `user` changes: once a user is logged in, it fetches saved settings and dashboard counts.
 
 The functions in `App.tsx` line up with user actions:
 
@@ -213,7 +170,7 @@ The functions in `App.tsx` line up with user actions:
 - `overrideStatus()`: sets an application's status as a human decision via the applications API.
 - `clearStatusOverride()`: removes a human override (DELETE), handing the decision back to the machine, which recomputes from current findings.
 
-The bottom half of `App.tsx` returns JSX. JSX looks like HTML, but it is really TypeScript syntax that React compiles into UI instructions. The JSX uses normal JavaScript conditions to decide what to show:
+The bottom half of `App.tsx` returns JSX, using normal JavaScript conditions to decide what to show:
 
 ```tsx
 {!user ? (
@@ -223,39 +180,27 @@ The bottom half of `App.tsx` returns JSX. JSX looks like HTML, but it is really 
 )}
 ```
 
-That says: if there is no user, show the login panel; otherwise show the authenticated dashboard.
+If there is no user, show the login panel; otherwise show the authenticated dashboard.
 
 ### Frontend Authentication Flow
 
-In `App.tsx`, the app checks the current user with:
+`App.tsx` checks the current user with:
 
 ```ts
 fetch(`${apiBaseUrl}/auth/me`, { credentials: "include" })
 ```
 
-The important option is `credentials: "include"`. Without it, the browser would not send the backend session cookie on cross-origin requests from `5173` to `8000`.
+`credentials: "include"` is essential — without it the browser would not send the backend session cookie on cross-origin requests from `5173` to `8000`.
 
-When the user clicks "Sign in with Google", the browser is redirected to:
+When the user clicks "Sign in with Google", the browser is redirected to `http://localhost:8000/auth/google/login`. The backend then redirects to Google's OAuth consent flow. After Google finishes, it redirects back to the backend callback route; on success the backend redirects the browser back to the frontend.
 
-```text
-http://localhost:8000/auth/google/login
-```
-
-The backend then redirects the browser to Google's OAuth consent flow. After Google finishes, it redirects back to the backend callback route. If login succeeds, the backend redirects the browser back to the frontend.
-
-When the user clicks logout, the frontend calls:
-
-```text
-POST http://localhost:8000/auth/logout
-```
-
-and then clears the local `user` state.
+Logout calls `POST http://localhost:8000/auth/logout` and then clears the local `user` state.
 
 ### Frontend Data Flow
 
 The frontend does not directly read Google Sheets or SQLite. It only talks to the backend.
 
-The normal dashboard load is:
+The normal dashboard load:
 
 ```text
 Browser loads React
@@ -268,7 +213,7 @@ Browser loads React
   React renders the dashboard, tabs, and applications table from that state
 ```
 
-The sync flow is:
+The sync flow:
 
 ```text
 User clicks Sync applications
@@ -279,7 +224,7 @@ User clicks Sync applications
   React redraws the counts and table
 ```
 
-This separation matters. The frontend is responsible for presentation and browser interactions. The backend is responsible for trusted work: authentication, Google API calls, database writes, and screening logic.
+This separation matters: the frontend handles presentation and browser interactions; the backend handles trusted work — authentication, Google API calls, database writes, and screening logic.
 
 ### Frontend Styling
 
@@ -291,9 +236,9 @@ The current look borrows from `pentacoop.com`:
 - Orange for caution and the staleness/needs-review accents
 - Red for ineligible status, flagged fields, and error toasts
 
-The app should remain dashboard-like and operational. It should not become a marketing landing page.
+The app should remain dashboard-like and operational, not a marketing landing page.
 
-`frontend/src/styles.css` is plain CSS. It defines color variables at the top:
+`frontend/src/styles.css` is plain CSS. It defines color variables at the top, used later via `var(...)`:
 
 ```css
 :root {
@@ -303,9 +248,7 @@ The app should remain dashboard-like and operational. It should not become a mar
 }
 ```
 
-Those variables keep the palette consistent. Later CSS rules use them with `var(...)`.
-
-The file defines the current layout pieces. Some of the main families:
+Main class families:
 
 - `.app-shell`: centered page width and outer spacing.
 - `.topnav` / `.topnav-inner`: app header row (note: not `.topbar`).
@@ -325,9 +268,7 @@ When reading CSS in this project, start from the JSX class name in `App.tsx`, th
 
 ## Backend
 
-The backend lives in `backend/`.
-
-The useful mental model is:
+The backend lives in `backend/`. The mental model:
 
 ```text
 FastAPI app
@@ -339,7 +280,7 @@ FastAPI app
   returns JSON back to the frontend
 ```
 
-The backend is more complex than the frontend because it owns the trusted parts of the app:
+The backend is more complex than the frontend because it owns the trusted parts:
 
 - login/session handling
 - Google OAuth token handling
@@ -347,10 +288,10 @@ The backend is more complex than the frontend because it owns the trusted parts 
 - Google Sheets reads
 - application import and normalization
 - deterministic screening rules
-- AI-assisted screening (quality flags)
+- AI-assisted screening (screening flags + the Rank chain)
 - API responses consumed by the React frontend
 
-The backend is deliberately split into layers. The layers are not fancy; they are mostly there so each file has a clear job.
+The backend is split into layers so each file has a clear job:
 
 ```text
 app/api/       HTTP routes
@@ -359,7 +300,7 @@ app/db/        database models and sessions
 app/domain/    pure business rules
 app/schemas/   request/response data shapes
 app/services/  reusable application operations
-app/ai/        AI-assisted screening (provider, caching, quality flags)
+app/ai/        AI-assisted screening (provider, caching, screening + Rank passes)
 ```
 
 Current important files:
@@ -377,9 +318,7 @@ Current important files:
 
 ### Backend File Map
 
-`backend/pyproject.toml` defines the backend package, dependencies, and pytest configuration.
-
-Important dependencies:
+`backend/pyproject.toml` defines the backend package, dependencies, and pytest configuration. Important dependencies:
 
 - `fastapi[standard]`: web framework and local dev server support.
 - `sqlalchemy`: ORM used to work with SQLite as Python objects.
@@ -390,21 +329,15 @@ Important dependencies:
 - `pydantic-settings`: environment-based settings.
 - `pytest`: tests.
 
-`backend/app/main.py` creates the FastAPI app. This is the backend equivalent of the frontend entry point.
+`backend/app/main.py` creates the FastAPI app (the backend equivalent of the frontend entry point).
 
-`backend/app/api/*.py` files (and packages) define routes. A route is an HTTP endpoint such as `GET /dashboard` or `POST /sync/applications`. The modules are `applications.py` (list/detail/status-override), `auth.py`, `dashboard.py`, `health.py`, `screening.py` (the AI screening estimate/run endpoints), `ranking/` (the Rank-chain package: `run`/`current`/`shortlist`), `insights.py` (cost/metrics/last-runs), `evals/` (the eval cockpit package), `settings.py`, and `sync.py`, plus `dependencies.py` for shared FastAPI dependencies (e.g. `require_current_user`) and `problems.py` for the RFC 9457 error contract.
+`backend/app/api/*.py` files (and packages) define routes — HTTP endpoints such as `GET /dashboard` or `POST /sync/applications`. The modules are `applications.py` (list/detail/status-override), `auth.py`, `dashboard.py`, `health.py`, `screening.py` (the AI screening estimate/run endpoints), `ranking/` (the Rank-chain package: `run`/`current`/`shortlist`), `insights.py` (cost/metrics/last-runs), `evals/` (the eval cockpit package), `settings.py`, and `sync.py`, plus `dependencies.py` for shared FastAPI dependencies (e.g. `require_current_user`) and `problems.py` for the RFC 9457 error contract.
 
-`backend/app/services/*.py` files contain reusable operations that routes call. For example, sync route code does not directly know every detail of importing application rows; it calls service functions.
+`backend/app/services/*.py` files contain reusable operations that routes call. For example, sync route code does not know every detail of importing application rows; it calls service functions.
 
-`backend/app/domain/hard_filters.py` contains pure screening logic. This is intentionally separate from HTTP, SQLAlchemy, and Google APIs. `backend/app/domain/status.py` is the companion module that resolves an application's eligibility status from its findings (see the status model under "Database").
+`backend/app/domain/hard_filters.py` contains pure screening logic, intentionally separate from HTTP, SQLAlchemy, and Google APIs. `backend/app/domain/status.py` is the companion module that resolves an application's eligibility status from its findings (see the status model under "Database").
 
-`backend/app/db/models.py` defines the database tables as Python classes.
-
-`backend/app/db/session.py` defines how code opens database sessions.
-
-`backend/alembic/versions/*.py` defines database migrations. Migrations are how the database file gets the tables from `models.py`.
-
-`backend/tests/*.py` verifies important behavior.
+`backend/app/db/models.py` defines the database tables as Python classes. `backend/app/db/session.py` defines how code opens database sessions. `backend/alembic/versions/*.py` defines the migrations that give the database file the tables from `models.py`. `backend/tests/*.py` verifies important behavior.
 
 ### Backend Runtime
 
@@ -416,36 +349,28 @@ uv run alembic upgrade head
 uv run fastapi dev app/main.py --port 8000
 ```
 
-The health check is:
+The health check is `http://localhost:8000/health`.
 
-```text
-http://localhost:8000/health
-```
-
-`uv run ...` means "run this command inside the backend project's managed Python environment." That keeps dependencies local to this project instead of relying on globally installed Python packages.
+`uv run ...` runs the command inside the backend project's managed Python environment, keeping dependencies local to this project instead of relying on globally installed packages.
 
 ### FastAPI App Setup
 
 > For a one-line index of every HTTP endpoint, see [api.md](api.md). Because this is a FastAPI app, the live, always-current reference is also auto-generated at `http://localhost:8000/docs` (Swagger UI) and `http://localhost:8000/openapi.json`.
 
-`backend/app/main.py` creates the FastAPI app.
+`backend/app/main.py` creates the FastAPI app. It currently installs:
 
-It currently installs:
-
-- `SessionMiddleware`, which signs the browser session cookie.
-- `CORSMiddleware`, which allows the local React frontend to call the backend with credentials.
+- `SessionMiddleware`, which signs the browser session cookie and reads/writes it on each request.
+- `CORSMiddleware`, which allows the local React frontend at port `5173` to call the backend at port `8000` with credentials.
 - Route modules from `app.api.applications`, `app.api.auth`, `app.api.dashboard`, `app.api.evals`, `app.api.health`, `app.api.insights`, `app.api.screening`, `app.api.ranking`, `app.api.settings`, and `app.api.sync`.
 
-The app uses an app factory:
+The app uses an app factory, which makes testing easier because tests can create a fresh app instance:
 
 ```py
 def create_app() -> FastAPI:
     ...
 ```
 
-This makes testing easier because tests can create a fresh app instance.
-
-In older web frameworks, you might remember one large app object with routes registered directly in a central file. FastAPI can work that way too, but this project keeps routes in separate router modules:
+Routes are kept in separate router modules rather than registered in one central object; each router owns one slice of the API (for example, `app.api.sync` owns `/sync/applications`):
 
 ```py
 app.include_router(applications_router)
@@ -460,9 +385,7 @@ app.include_router(settings_router)
 app.include_router(sync_router)
 ```
 
-Each router owns one slice of the API. For example, `app.api.sync` owns `/sync/applications`.
-
-FastAPI route functions look like normal Python functions:
+FastAPI route functions are normal Python functions with a route decorator and dependency injection:
 
 ```py
 @router.post("/applications")
@@ -473,19 +396,7 @@ def sync_applications(
     ...
 ```
 
-The decorator says which HTTP route calls the function. The `Depends(...)` pieces are FastAPI dependency injection. They tell FastAPI:
-
-- Before calling this route, run `require_current_user` and give me the result as `user`.
-- Before calling this route, run `get_db` and give me the result as `db`.
-
-That is why route bodies can focus on app behavior instead of manually opening database connections or checking cookies every time.
-
-Middleware is request/response plumbing that wraps routes:
-
-- `SessionMiddleware` reads and writes the signed session cookie.
-- `CORSMiddleware` allows the frontend dev server at port `5173` to call the backend at port `8000`.
-
-The app has both:
+The `Depends(...)` pieces tell FastAPI to run `require_current_user` and `get_db` before the route and pass the results as `user` and `db`. That is why route bodies focus on app behavior instead of manually opening database connections or checking cookies. Middleware wraps every request/response:
 
 ```text
 Browser request
@@ -497,34 +408,23 @@ Browser receives response
 
 ### Configuration
 
-Configuration lives in `backend/app/core/config.py`.
-
-Settings are loaded from environment variables and local env files:
+Configuration lives in `backend/app/core/config.py`. Settings are loaded from environment variables and local env files:
 
 - `../.env`
 - `../.env.local`
 - `.env`
 - `.env.local`
 
-For this repo, the most important local file is:
-
-```text
-backend/.env.local
-```
-
-That file is ignored by Git.
+For this repo, the most important local file is `backend/.env.local` (ignored by Git).
 
 The backend supports two ways to configure Google OAuth:
 
-1. Direct environment variables:
-   - `GOOGLE_CLIENT_ID`
-   - `GOOGLE_CLIENT_SECRET`
-2. A downloaded Google OAuth JSON file:
-   - `GOOGLE_OAUTH_CLIENT_SECRETS_FILE`
+1. Direct environment variables: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+2. A downloaded Google OAuth JSON file: `GOOGLE_OAUTH_CLIENT_SECRETS_FILE`
 
-For local MVP development, the JSON file approach is simpler because Google already gives us that file.
+For local MVP development, the JSON file approach is simpler because Google already provides that file.
 
-The `Settings` class is a Pydantic settings model. It defines config values and defaults:
+The `Settings` class is a Pydantic settings model defining config values and defaults:
 
 ```py
 class Settings(BaseSettings):
@@ -534,7 +434,7 @@ class Settings(BaseSettings):
     ...
 ```
 
-The `get_settings()` function is cached:
+`get_settings()` is cached so the backend reads config once and reuses it:
 
 ```py
 @lru_cache
@@ -542,15 +442,11 @@ def get_settings() -> Settings:
     return Settings()
 ```
 
-That means the backend reads environment/config once and reuses it. This is a common pattern in FastAPI apps.
-
-`backend/app/core/google_oauth.py` turns those settings into an Authlib OAuth client. It can read either direct env vars or the downloaded Google client-secret JSON. We use the JSON route locally because it is less fiddly and keeps Google-provided values together.
+`backend/app/core/google_oauth.py` turns those settings into an Authlib OAuth client. It can read either direct env vars or the downloaded Google client-secret JSON; we use the JSON route locally because it keeps Google-provided values together.
 
 ### Database
 
-The backend uses SQLite locally through SQLAlchemy.
-
-The default database URL is:
+The backend uses SQLite locally through SQLAlchemy. The default database URL is:
 
 ```text
 sqlite:///./data/penta_screener.db
@@ -558,7 +454,7 @@ sqlite:///./data/penta_screener.db
 
 The SQLite database file is generated locally and ignored by Git.
 
-Alembic owns schema migrations (in `backend/alembic/versions/`; M12 squashed the original chain into one baseline, and later migrations add the eval-runs table and the M14 `ranking_runs` split). The tables are:
+Alembic owns schema migrations (in `backend/alembic/versions/`; M12 squashed the original chain into one baseline, and later migrations add the eval-runs table and the M14 `ranking_runs` split). The tables:
 
 - `users`
 - `google_credentials`
@@ -573,13 +469,9 @@ Alembic owns schema migrations (in `backend/alembic/versions/`; M12 squashed the
 - `run_cost_ledger` + `run_pass_cost` (per-run and per-pass cost/tokens/latency — M13 observability)
 - `eval_runs` (persisted eval-cockpit runs)
 
-During MVP iteration, we are not preserving backward compatibility for local schema changes. If the local database shape changes, it is acceptable to delete the generated SQLite file and recreate it from migrations.
+During MVP iteration we do not preserve backward compatibility for local schema changes. If the local database shape changes, it is acceptable to delete the generated SQLite file and recreate it from migrations. Once real users or applicant data depend on the app, that tradeoff changes.
 
-There are three related database concepts here:
-
-- SQLAlchemy models: Python classes that describe tables.
-- SQLAlchemy sessions: short-lived objects used to query and save data.
-- Alembic migrations: scripts that create/change actual database tables.
+Three related concepts: SQLAlchemy models (Python classes describing tables), SQLAlchemy sessions (short-lived objects to query and save data), and Alembic migrations (scripts that create/change actual tables).
 
 `backend/app/db/models.py` defines classes like:
 
@@ -595,26 +487,11 @@ class Application(TimestampMixin, Base):
     status_source: Mapped[StatusSource] = mapped_column(...)
 ```
 
-Read that as "there is an `applications` table with these columns."
-
-Some columns are regular relational columns, such as:
-
-- `id`
-- `primary_email`
-- `status` and `status_source`
-- `created_at`
-
-Some columns are JSON columns, such as:
-
-- `raw_row`
-- `normalized`
-- `hard_filter_reasons`
-
-This hybrid is intentional. We use relational columns for things we need to query/filter/sort, and JSON columns for flexible source payloads or debug/audit details.
+This declares an `applications` table with those columns. Some are regular relational columns (`id`, `primary_email`, `status`, `status_source`, `created_at`); some are JSON columns (`raw_row`, `normalized`, `hard_filter_reasons`). The hybrid is intentional: relational columns for things we query/filter/sort, JSON columns for flexible source payloads or debug/audit details.
 
 **The status model.** Eligibility is not a single boolean. An application has a `status` (`ApplicationStatus`: `eligible` / `ineligible`) and a `status_source` (`StatusSource`: `untouched` / `rules` / `ai` / `human`) recording *who* last set it. The precedence is rules > AI > untouched, and a `human` source is sticky — machine re-runs never overwrite it. This is the model that lets the AI pass and the hard filters coexist; the logic lives in `app/domain/status.py`. (The older single `hard_filter_status` column was replaced by this two-column model.)
 
-`backend/app/db/session.py` creates the database engine and session factory. A database session is the unit of work for a request:
+`backend/app/db/session.py` creates the database engine and session factory. A session is the unit of work for a request:
 
 ```text
 Route starts
@@ -624,51 +501,20 @@ Route starts
 Route ends
 ```
 
-`backend/alembic/versions/265a2a6c616c_create_initial_tables.py` is the first migration; later migrations in the same directory evolve the schema (status-model rework, AI results table, and added columns). Running:
-
-```powershell
-uv run alembic upgrade head
-```
-
-applies migrations to the local SQLite database.
-
-For this MVP, when we make schema changes, we are allowed to keep the schema clean rather than preserving compatibility with old local DB files. Once real users or real applicant data are depending on the app, that tradeoff changes.
+`backend/alembic/versions/265a2a6c616c_create_initial_tables.py` is the first migration; later migrations in the same directory evolve the schema (status-model rework, AI results table, added columns). Running `uv run alembic upgrade head` applies migrations to the local SQLite database.
 
 ### Auth Routes
 
-Auth routes live in `backend/app/api/auth.py`.
+Auth routes live in `backend/app/api/auth.py`:
 
-Current routes:
+- `GET /auth/google/login` — starts the OAuth flow by redirecting the browser to Google.
+- `GET /auth/google/callback` — handles Google's redirect back: exchanges the OAuth code for tokens, extracts user identity, creates or updates a local user record, stores `user_id` in the signed session cookie, and redirects back to the frontend.
+- `GET /auth/me` — reads the signed session cookie. If it contains a valid active user ID, returns a serialized user; otherwise returns `{ "user": null }`.
+- `POST /auth/logout` — clears the session cookie.
 
-- `GET /auth/google/login`
-- `GET /auth/google/callback`
-- `GET /auth/me`
-- `POST /auth/logout`
+The login flow uses two separate pieces of identity: the Google identity (who Google says the user is) and the local user record (who the app knows the user as). On successful login the backend stores or updates a local `User` row; the first created user becomes `admin`, later users become `member`.
 
-`/auth/google/login` starts the OAuth flow by redirecting the browser to Google.
-
-`/auth/google/callback` handles Google's redirect back to the app. It exchanges the OAuth code for tokens, extracts user identity, creates or updates a local user record, stores `user_id` in the signed session cookie, and redirects back to the frontend.
-
-`/auth/me` reads the signed session cookie. If it contains a valid active user ID, it returns a serialized user. If not, it returns:
-
-```json
-{ "user": null }
-```
-
-`/auth/logout` clears the session cookie.
-
-The login flow uses two separate pieces of identity:
-
-- Google identity: who Google says the user is.
-- Local user record: who the app knows the user as.
-
-On successful login, the backend stores or updates a local `User` row. The first created user becomes `admin`; later users become `member`.
-
-The backend also stores the Google OAuth token in `google_credentials`. That token is what allows later Google Sheets reads without asking the user to log in again immediately.
-
-The browser does not receive the raw Google token. Instead, the browser gets a signed session cookie containing local session state. In practice, the important value is the local `user_id`.
-
-That means later authenticated requests work like this:
+The backend also stores the Google OAuth token in `google_credentials`, which allows later Google Sheets reads without re-login. The browser never receives the raw Google token — only a signed session cookie carrying local session state (in practice, the local `user_id`). Later authenticated requests work like this:
 
 ```text
 Browser calls GET /settings with session cookie
@@ -680,16 +526,12 @@ Browser calls GET /settings with session cookie
 
 ### Settings Routes
 
-Settings routes live in `backend/app/api/settings.py`.
-
-Current routes:
+Settings routes live in `backend/app/api/settings.py`:
 
 - `GET /settings`
 - `PUT /settings`
 
-Settings are stored in the `admin_settings` table as one JSON value under the key `app_settings`.
-
-Current settings:
+Settings are stored in the `admin_settings` table as one JSON value under the key `app_settings`. Current settings:
 
 - Google Sheet link or ID
 - Unit size
@@ -711,13 +553,13 @@ The settings API currently requires login. Role-specific authorization can be ad
 
 When a user saves a Google Sheets link, the backend normalizes and stores the spreadsheet ID. Settings responses also include a canonical Google Sheets URL for display, plus the spreadsheet title when the logged-in user's Google token can resolve it.
 
-There are three files involved:
+Three files are involved:
 
 - `backend/app/api/settings.py`: HTTP routes.
 - `backend/app/schemas/settings.py`: request/response shape and validation.
 - `backend/app/services/settings.py`: database read/write helpers.
 
-`AppSettings` is a Pydantic model. It validates settings coming from the frontend:
+`AppSettings` is a Pydantic model that validates settings coming from the frontend:
 
 ```py
 class AppSettings(BaseModel):
@@ -731,21 +573,15 @@ class AppSettings(BaseModel):
     # ...plus pet limits, disabled_rules, and a nested ai: AISettings
 ```
 
-The full model (see `app/schemas/settings.py`) includes the nested `AISettings` sub-model. It also normalizes a pasted Google Sheets URL into a sheet ID before saving. The frontend can show a friendly URL, while the backend stores a stable ID. Note there is no `unit_size` or `move_in_date`: those were display-only and were removed, and there is no income-mismatch tolerance — the arithmetic check requires exact equality.
-
-Settings are stored as one JSON blob in the `admin_settings` table. That is simple for MVP because we have only one settings object, not many rows of settings.
+The full model (see `app/schemas/settings.py`) includes the nested `AISettings` sub-model and normalizes a pasted Google Sheets URL into a sheet ID before saving, so the frontend can show a friendly URL while the backend stores a stable ID. Note there is no `unit_size` or `move_in_date` (those were display-only and removed), and no income-mismatch tolerance — the arithmetic check requires exact equality. Settings are stored as one JSON blob in `admin_settings`, which is simple for MVP because there is only one settings object.
 
 ### Sync And Dashboard Routes
 
-Sync routes live in `backend/app/api/sync.py`.
-
-Current routes:
+Sync routes live in `backend/app/api/sync.py`:
 
 - `POST /sync/applications`
 
-Dashboard routes live in `backend/app/api/dashboard.py`.
-
-Current routes:
+Dashboard routes live in `backend/app/api/dashboard.py`:
 
 - `GET /dashboard`
 
@@ -761,7 +597,7 @@ The sync route:
 8. Applies deterministic hard filters.
 9. Creates a `SyncRun` record.
 
-Google OAuth tokens are stored in the local SQLite database in `google_credentials`. This is acceptable for the local MVP because the database is ignored by Git. A future hosted deployment should move this secret material to a more deliberate encrypted store or cloud secret/token storage design.
+Google OAuth tokens are stored in the local SQLite database in `google_credentials`. This is acceptable for the local MVP because the database is ignored by Git. A future hosted deployment should move this secret material to an encrypted store or cloud secret/token storage design.
 
 The dashboard route returns `settingsComplete` (whether a Google Sheet is configured), a `submitted` total, and counts grouped by `status` (eligible / ineligible) and `status_source` (untouched / rules / ai / human). "Needs review" is the client's label for the `source = ai` group; "filtered out" is `source = rules`.
 
@@ -791,17 +627,7 @@ POST /sync/applications
   returns sync counts as JSON
 ```
 
-`backend/app/services/google_sheets.py` is concerned only with Google Sheets access and turning sheet values into row dictionaries.
-
-One important detail: Google Forms response sheets may repeat column labels. A plain dictionary cannot have duplicate keys, so repeated headers are made unique:
-
-```text
-First name
-First name [2]
-First name [3]
-```
-
-This prevents later columns from overwriting earlier columns.
+`backend/app/services/google_sheets.py` is concerned only with Google Sheets access and turning sheet values into row dictionaries. One important detail: Google Forms response sheets may repeat column labels, and a dictionary cannot have duplicate keys, so repeated headers are made unique (`First name`, `First name [2]`, `First name [3]`) to prevent later columns from overwriting earlier ones.
 
 `backend/app/services/application_import.py` is where source rows become app data. It handles:
 
@@ -815,21 +641,19 @@ This prevents later columns from overwriting earlier columns.
 - pet parsing
 - storing raw and normalized values
 
-The importer preserves the raw Google Sheets row as JSON. That is useful for debugging, auditability, schema drift, and future candidate detail screens.
+The importer preserves the raw Google Sheets row as JSON — useful for debugging, auditability, schema drift, and future candidate detail screens.
 
-`SyncRun` is the record of what happened during sync. It stores `row_count`, `duplicate_count`, `imported_count`, `updated_count`, `unchanged_count`, `eligible_count`, `filtered_out_count`, and a `settings_fingerprint` (hash of the import-relevant settings at sync time). The dashboard compares the latest sync's fingerprint to the live settings to flag the Import step amber when settings changed since the last import (`workflow.importCurrent`).
+`SyncRun` records what happened during sync: `row_count`, `duplicate_count`, `imported_count`, `updated_count`, `unchanged_count`, `eligible_count`, `filtered_out_count`, and a `settings_fingerprint` (hash of the import-relevant settings at sync time). The dashboard compares the latest sync's fingerprint to the live settings to flag the Import step amber when settings changed since the last import (`workflow.importCurrent`).
 
-`backend/app/api/dashboard.py` queries application counts from SQLite and returns them to the frontend (see the response shape above). Richer per-application data is served by the separate `app/api/applications.py` list/detail endpoints.
+`backend/app/api/dashboard.py` queries application counts from SQLite and returns them (see the response shape above). Richer per-application data is served by the separate `app/api/applications.py` list/detail endpoints.
 
 ### Application Routes
 
-Application routes live in `backend/app/api/applications.py`.
-
-Current routes:
+Application routes live in `backend/app/api/applications.py`:
 
 - `GET /applications` — a searchable, filterable, sortable, paginated list. Filters by `status` and `status_source`, and returns faceted counts so the UI can show how many applications fall in each tab.
 - `GET /applications/{id}` — one application's detail: normalized fields, essays, filter reasons, AI screening flags, the raw source row, and the AI narrative.
-- `PATCH /applications/{id}/status` — a human status override. This sets `status_source = human`, which machine re-runs then leave untouched.
+- `PATCH /applications/{id}/status` — a human status override. Sets `status_source = human`, which machine re-runs then leave untouched.
 - `DELETE /applications/{id}/status` — removes a human override, handing the decision back to the machine. Recomputes status from the current findings and clears human ownership; idempotent if no override is set.
 
 All application routes are open to any logged-in committee member. Roles (`admin` / `member`) exist in the data model but do not currently gate any route — members are trusted screeners.
@@ -838,27 +662,13 @@ The AI screening endpoints (`GET /screening/run/estimate` and `POST /screening/r
 
 ### User Creation
 
-User creation/update logic lives in `backend/app/services/users.py`.
-
-Users are matched by normalized email address. The first user created becomes `admin`. Later users become `member`.
-
-This is intentionally simple for MVP. Later, we can add invitations and stricter access control.
+User creation/update logic lives in `backend/app/services/users.py`. Users are matched by normalized email address; the first user created becomes `admin`, later users become `member`. This is intentionally simple for MVP — invitations and stricter access control can come later.
 
 ### Deterministic Hard Filters
 
-Hard-filter logic lives in:
-
-```text
-backend/app/domain/hard_filters.py
-```
-
-This module is intentionally pure domain logic. It takes normalized application-like data and returns a result. It does not know about FastAPI, SQLAlchemy, Google Sheets, or the UI.
-
-Keeping this logic isolated makes it easy to test, read, and change.
+Hard-filter logic lives in `backend/app/domain/hard_filters.py`. This module is intentionally pure domain logic: it takes normalized application-like data and returns a result, without knowing about FastAPI, SQLAlchemy, Google Sheets, or the UI. Keeping it isolated makes it easy to test, read, and change, and it is a good place to read the business rules without web-framework noise.
 
 Current tests cover all deterministic screening rules including child age limits, child age exceeding a parent, applicant and co-applicant age, income range, the household-income arithmetic mismatch, real estate ownership, child count mismatch, negative values, future employment dates, and co-applicant completeness.
-
-This file is a good place to read if you want to understand the business rules without web-framework noise.
 
 ### AI Screening
 
@@ -871,20 +681,18 @@ Two things keep this bounded:
 
 The AI code lives in `backend/app/ai/` and is built around a provider boundary: the app depends on an `AIProvider` interface, with the real implementation backed by the Strands SDK on Amazon Bedrock (Claude Haiku 4.5) and a `MockProvider` used in tests so they run with no AWS access. Results are cached by a content + model + prompt-version hash, and every run is cost-estimated and capped before it starts.
 
-The pass runs applications **concurrently** through a thread pool (the model call is a slow, blocking network round-trip), streaming progress back to the browser as NDJSON. The design rule is that only the model call runs in worker threads; all database access stays on the request thread, so the SQLAlchemy session is never shared.
+The pass runs applications **concurrently** through a thread pool (the model call is a slow, blocking network round-trip), streaming progress back to the browser as NDJSON. The design rule: only the model call runs in worker threads; all database access stays on the request thread, so the SQLAlchemy session is never shared.
 
 This section is a summary. The full pipeline — provider boundary, structured output, caching, cost cap, the flags-to-status model, and the concurrency design — is documented in **[ai-screening.md](ai-screening.md)**.
 
-The main function is:
+The main hard-filter function is:
 
 ```py
 def evaluate_hard_filters(application: dict[str, Any], rules: RulesConfig = RulesConfig()) -> FilterResult:
     ...
 ```
 
-It takes already-normalized application data, not raw Google Sheets rows.
-
-That separation matters:
+It takes already-normalized application data, not raw Google Sheets rows. That separation matters:
 
 ```text
 Raw Google row
@@ -895,7 +703,7 @@ FilterResult
   application_import.py stores status/reasons
 ```
 
-The hard-filter module returns structured reasons:
+The hard-filter module returns structured reasons, so the UI can show a readable message while keeping machine-readable `code` and `details`:
 
 ```py
 FilterReason(
@@ -905,15 +713,9 @@ FilterReason(
 )
 ```
 
-That shape is useful because the UI can show a readable message while still keeping machine-readable `code` and `details`.
-
 ### Schemas
 
-Schemas live in `backend/app/schemas/`.
-
-In this codebase, "schema" means Pydantic request/response models, not database tables. Database tables live in `backend/app/db/models.py`.
-
-For example, `SettingsResponse` describes JSON returned to the frontend:
+Schemas live in `backend/app/schemas/`. Here, "schema" means Pydantic request/response models, not database tables (those live in `backend/app/db/models.py`). FastAPI uses these models to validate and serialize data, and they make route behavior easier to read because the expected JSON shape is explicit. For example, `SettingsResponse` describes JSON returned to the frontend:
 
 ```py
 class SettingsResponse(BaseModel):
@@ -922,17 +724,11 @@ class SettingsResponse(BaseModel):
     google_sheet_title: str | None = None
 ```
 
-FastAPI uses these models to validate and serialize data. They also make route behavior easier to read because the expected JSON shape is explicit.
-
 `backend/app/schemas/settings.py` also defines `AppSettings` (the full admin settings model) and its nested `AISettings` sub-model. The AI structured-output schemas (`ScreeningReport` and friends) live separately in `app/ai/schemas.py` — see [ai-screening.md](ai-screening.md).
 
 ### Services
 
-Services live in `backend/app/services/`.
-
-Think of service functions as reusable app operations that do not themselves define HTTP routes.
-
-Current service files:
+Services live in `backend/app/services/`. Service functions are reusable app operations that do not themselves define HTTP routes. Current service files:
 
 - `users.py`: create/update users from Google identity.
 - `settings.py`: load/save the app settings JSON record.
@@ -944,13 +740,11 @@ Current service files:
 - `cost_report.py` / `metrics.py`: the M13 observability surfaces (per-run/per-pass cost + operational trends) over the `run_cost_ledger` / `run_pass_cost` tables.
 - `backup.py`: local `.db` snapshot/restore (a post-Rank snapshot is taken automatically).
 
-This keeps route files short. A route says "what HTTP endpoint is this?" and "what service work should happen?" The service does the details.
+This keeps route files short: a route says "what HTTP endpoint is this?" and "what service work should happen?"; the service does the details.
 
 ### Tests
 
-Backend tests live in `backend/tests/`.
-
-The tests are deliberately focused:
+Backend tests live in `backend/tests/`. They are deliberately focused:
 
 - `test_hard_filters.py`: business-rule behavior.
 - `test_application_import.py`: row normalization, duplicate handling, importer behavior.
@@ -966,9 +760,7 @@ The tests are deliberately focused:
 - `test_ranking.py` / `test_ranking_api.py`: the ranking math and the Rank-chain streaming endpoints (criteria → score → consolidate).
 - `test_dimension_scoring.py`, and the eval suite (`test_evals*.py`, `test_*_eval.py`): per-pass scoring, invariants, and the eval-cockpit endpoints.
 
-The most important tests right now are the hard-filter and application-import tests, because those protect the screening behavior.
-
-Some tests use an in-memory SQLite database:
+The most important tests right now are the hard-filter and application-import tests, because those protect the screening behavior. Some tests use an in-memory SQLite database so they run quickly without touching the local development database file:
 
 ```py
 engine = create_engine("sqlite:///:memory:")
@@ -976,33 +768,17 @@ Base.metadata.create_all(engine)
 return Session(engine)
 ```
 
-That lets tests run quickly without touching the local development database file.
-
 ## How Frontend And Backend Communicate
 
-The frontend calls backend routes using `fetch`.
-
-Example:
+The frontend calls backend routes using `fetch`:
 
 ```ts
 fetch(`${apiBaseUrl}/auth/me`, { credentials: "include" })
 ```
 
-`apiBaseUrl` comes from:
+`apiBaseUrl` comes from `import.meta.env.VITE_API_BASE_URL` and falls back to `http://localhost:8000`.
 
-```ts
-import.meta.env.VITE_API_BASE_URL
-```
-
-and falls back to:
-
-```text
-http://localhost:8000
-```
-
-For local development, the frontend runs on port `5173` and the backend runs on port `8000`. Because these are different origins, the backend must explicitly allow the frontend origin through CORS.
-
-The backend currently allows:
+For local development, the frontend runs on port `5173` and the backend on port `8000`. Because these are different origins, the backend must explicitly allow the frontend origin through CORS. It currently allows:
 
 - `http://localhost:5173`
 - `http://127.0.0.1:5173`
@@ -1011,7 +787,7 @@ It also allows credentials so browser cookies work across the local frontend/bac
 
 ## OAuth Login Sequence
 
-The current login flow looks like this:
+The current login flow:
 
 1. Browser opens `http://localhost:5173`.
 2. React calls `GET /auth/me`.
@@ -1028,7 +804,7 @@ The current login flow looks like this:
 13. Backend returns the current user.
 14. React shows the dashboard shell.
 
-It is important that the local flow consistently uses `localhost` rather than mixing `localhost` and `127.0.0.1`. Browser cookies are host-specific, so mixing them can break OAuth state.
+The local flow must consistently use `localhost` rather than mixing `localhost` and `127.0.0.1`. Browser cookies are host-specific, so mixing them can break OAuth state.
 
 ## Current Verification Commands
 
