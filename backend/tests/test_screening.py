@@ -7,7 +7,6 @@ from app.ai.mock_provider import MockProvider
 from app.ai.provider import AIResult, Usage
 from app.ai.schemas import FlagCategory, ScreeningFlag, ScreeningReport
 from app.ai.screening import (
-    analyze_one,
     applications_for_screening,
     build_prompt,
     estimate_screening,
@@ -137,20 +136,20 @@ def test_screening_version_changes_with_pet_policy() -> None:
     assert screening_prompt_version(one_cat) == screening_prompt_version(AppSettings())
 
 
-def test_analyze_one_runs_and_caches() -> None:
+def test_screening_runs_and_caches() -> None:
     db = make_session()
     app = add_application(db, email="a@x.com", status=ApplicationStatus.ELIGIBLE, raw_hash="h1")
     provider = MockProvider()
     provider.queue(flagged(), model_id=AppSettings().ai.screening_model)
     settings = AppSettings()
 
-    first = analyze_one(db, provider, application=app, settings=settings)
-    assert first.cached is False
-    assert first.output.flags[0].category == FlagCategory.PLACEHOLDER_NAME
+    first = list(run_screening(db, provider, applications=[app], settings=settings, max_workers=1))
+    assert first[0].outcome.cached is False
+    assert first[0].outcome.output.flags[0].category == FlagCategory.PLACEHOLDER_NAME
 
     # No second queued result: a real call would raise, so a hit proves caching.
-    second = analyze_one(db, provider, application=app, settings=settings)
-    assert second.cached is True
+    second = list(run_screening(db, provider, applications=[app], settings=settings, max_workers=1))
+    assert second[0].outcome.cached is True
     assert len(provider.calls) == 1
 
 

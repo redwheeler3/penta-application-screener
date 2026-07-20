@@ -283,42 +283,6 @@ def store_result(
     )
 
 
-def analyze_application(
-    db: Session,
-    provider: AIProvider,
-    *,
-    application: Application,
-    kind: str,
-    schema: type[BaseModel],
-    model_id: str,
-    prompt_version: str,
-    prompt: str,
-    system_prompt: str | None = None,
-) -> AnalysisOutcome:
-    """Return cached analysis if present, else call the provider and store it.
-
-    The sequential single-application path. Caching is checked before any cap, so
-    reusing stored results is always free.
-    """
-    cached = cached_outcome(
-        db, application, kind=kind, schema=schema, model_id=model_id,
-        prompt_version=prompt_version,
-    )
-    if cached is not None:
-        return cached
-
-    result = provider.structured_output(
-        model_id=model_id,
-        schema=schema,
-        prompt=prompt,
-        system_prompt=system_prompt,
-    )
-    return store_result(
-        db, application, kind=kind, model_id=model_id,
-        prompt_version=prompt_version, result=result,
-    )
-
-
 @dataclass(frozen=True)
 class PassResult:
     """One application's result from a screening pass, streamed as it completes."""

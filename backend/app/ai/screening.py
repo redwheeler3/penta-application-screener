@@ -17,7 +17,6 @@ from app.ai.analysis import (
     AnalysisOutcome,
     CostEstimate,
     PassResult,
-    analyze_application,
     derive_prompt_version,
     estimate_cost,
     screen_applications,
@@ -183,28 +182,6 @@ def _apply_outcome_status(
         has_ai_flags=bool(report.flags),
     )
     db.commit()
-
-
-def analyze_one(
-    db: Session,
-    provider: AIProvider,
-    *,
-    application: Application,
-    settings: AppSettings,
-) -> AnalysisOutcome:
-    outcome = analyze_application(
-        db,
-        provider,
-        application=application,
-        kind=KIND,
-        schema=ScreeningReport,
-        model_id=settings.ai.screening_model,
-        prompt_version=screening_prompt_version(settings),
-        prompt=build_prompt(application, settings),
-        system_prompt=SYSTEM_PROMPT,
-    )
-    _apply_outcome_status(db, application, outcome)
-    return outcome
 
 
 def run_screening(
