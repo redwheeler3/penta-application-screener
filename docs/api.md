@@ -90,3 +90,19 @@ The **Rank chain** and the deterministic ranked shortlist. Rank is one button th
 | GET | `/ranking/tiers` | The current run's importance-tier layout (or the default single-tier = equal-weight layout). 409 before a run exists. | Login |
 | PUT | `/ranking/tiers` | Persist a new tier layout, derive weights from it, and return the freshly re-sorted ranking. Unknown dimension keys → 422; no run → 409. No model call. | Login |
 | PUT | `/ranking/seeds` | Persist pending free-text dimension proposals for the next Rank's discovery. 409 before a run exists. | Login |
+
+### Evals — `app/api/evals/` (package)
+
+The in-UI eval cockpit. Catalog + invariants + case reads are free (no model calls); the run endpoints stream NDJSON (`thinking` then a terminal `summary`) and persist an `EvalRun` row. Each pass is **one** run route — `?mode=stability` selects the K-repeat stability run (`k` clamped 2–10), `?case=<key>` runs a single case. See [ai-evals.md](ai-evals.md).
+
+| Method | Path | Purpose | Auth |
+| --- | --- | --- | --- |
+| GET | `/evals/catalog` | The runnable evals + spend flags/estimates (free). | Login |
+| GET | `/evals/invariants` | Deterministic invariants over the baseline fixture (free). | Login |
+| POST | `/evals/baseline` | Re-record the invariant baseline from the current Rank (409 if no run). | Login |
+| GET / PUT | `/evals/cases/{eval_key}` | Read / upsert a pass's golden cases (validated; committed to git by hand). | Login |
+| GET | `/evals/judge-backgrounds` | The per-pass judge briefs + golden case counts. | Login |
+| PUT | `/evals/judge-backgrounds/{pass_name}` | Write one pass's judge brief to its golden file. | Login |
+| GET | `/evals/last-run?keys=…` | The newest persisted run per key (to restore a tab); carries a `stale` flag. | Login |
+| POST | `/evals/{scoring,screening,consolidation,matching,decomposition}` | Run one live pass. `?mode=stability` for the K-repeat run. Streams; spends $. | Login |
+| POST | `/evals/judge` | Blind label-audit over every pass's golden cases + agreement/κ. `?mode=stability` blind-audits each case K times (persisted under `stability`). Streams; spends $. | Login |
