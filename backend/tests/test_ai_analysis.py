@@ -1,19 +1,19 @@
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import (
     SpendingCapExceeded,
-    analyze_application,
     cache_key,
     derive_prompt_version,
     enforce_cap,
     estimate_cost,
+    store_result,
 )
 from app.ai.mock_provider import MockProvider
 from app.ai.pricing import cost_usd, price_for_model
 from app.ai.provider import Usage
-from app.ai.schemas import FlagCategory, ScreeningFlag, ScreeningReport
+from app.ai.schemas import ScreeningReport
 from app.db.models import Application, ApplicationAIResult, ApplicationStatus, Base
 
 MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
@@ -44,20 +44,15 @@ def make_application(db: Session, *, email: str = "a@example.com", raw_hash: str
     return app
 
 
+def seed_cached(db: Session, provider: MockProvider, app: Application) -> None:
+    """Persist one cached result for ``app`` (via the real store_result primitive), so an
+    estimate can then treat it as already-analyzed. Pulls the next queued provider result."""
+    result = provider.structured_output(model_id=MODEL, schema=ScreeningReport, prompt="analyze")
+    store_result(db, app, kind=KIND, model_id=MODEL, prompt_version=VERSION, result=result)
+
+
 def clean_report() -> ScreeningReport:
     return ScreeningReport(flags=[])
-
-
-def flagged_report() -> ScreeningReport:
-    return ScreeningReport(
-        flags=[
-            ScreeningFlag(
-                category=FlagCategory.PLACEHOLDER_NAME,
-                summary="Child name looks like a placeholder.",
-                evidence='Child name: "Baby TBD"',
-            )
-        ]
-    )
 
 
 # --- pricing ---
@@ -102,32 +97,9 @@ def test_cache_key_changes_with_model_and_content() -> None:
     assert cache_key(application=app, kind=KIND, model_id=MODEL, prompt_version=VERSION) != base
 
 
-# --- analyze: cache miss then hit ---
-
-def test_analyze_calls_provider_then_caches() -> None:
-    db = make_session()
-    app = make_application(db)
-    provider = MockProvider()
-    provider.queue(flagged_report(), model_id=MODEL, input_tokens=600, output_tokens=120)
-
-    first = analyze_application(
-        db, provider, application=app, kind=KIND, schema=ScreeningReport,
-        model_id=MODEL, prompt_version=VERSION, prompt="analyze",
-    )
-    assert first.cached is False
-    assert first.cost_usd > 0
-    assert len(provider.calls) == 1
-    assert db.scalar(select(ApplicationAIResult)) is not None
-
-    # Second call: no queued result, so a provider call would raise — proving cache hit.
-    second = analyze_application(
-        db, provider, application=app, kind=KIND, schema=ScreeningReport,
-        model_id=MODEL, prompt_version=VERSION, prompt="analyze",
-    )
-    assert second.cached is True
-    assert len(provider.calls) == 1
-    assert second.output.flags[0].category == FlagCategory.PLACEHOLDER_NAME
-
+# Cache miss-then-hit is covered end-to-end through the production paths
+# (test_screening.test_screening_runs_and_caches, test_dimension_scoring) which exercise
+# the same cached_outcome/store_result core; no separate sequential-wrapper test remains.
 
 # --- estimate + cap ---
 
@@ -137,10 +109,7 @@ def test_estimate_excludes_cached_applications() -> None:
     app2 = make_application(db, email="b@x.com", raw_hash="h2")
     provider = MockProvider()
     provider.queue(clean_report(), model_id=MODEL)
-    analyze_application(
-        db, provider, application=app1, kind=KIND, schema=ScreeningReport,
-        model_id=MODEL, prompt_version=VERSION, prompt="analyze",
-    )
+    seed_cached(db, provider, app1)
 
     est = estimate_cost(
         db, applications=[app1, app2], kind=KIND, model_id=MODEL, prompt_version=VERSION,
@@ -171,10 +140,7 @@ def test_estimate_prefers_observed_usage_over_fallback() -> None:
     provider = MockProvider()
     # One prior call recorded 1M input / 0 output tokens of real usage.
     provider.queue(clean_report(), model_id=MODEL, input_tokens=1_000_000, output_tokens=0)
-    analyze_application(
-        db, provider, application=analyzed, kind=KIND, schema=ScreeningReport,
-        model_id=MODEL, prompt_version=VERSION, prompt="analyze",
-    )
+    seed_cached(db, provider, analyzed)
 
     # Fallback is absurdly large; if it were used the estimate would explode.
     est = estimate_cost(
