@@ -28,7 +28,6 @@ class Essay(ResponseModel):
 
 class ScreeningFlagOut(ResponseModel):
     category: str
-    severity: str
     summary: str
     evidence: str
 

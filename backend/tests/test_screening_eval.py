@@ -7,7 +7,7 @@ MockProvider stands in for Bedrock; settings come from a minimal AppSettings.
 """
 
 from app.ai.mock_provider import MockProvider
-from app.ai.schemas import FlagCategory, FlagSeverity, ScreeningFlag, ScreeningReport
+from app.ai.schemas import FlagCategory, ScreeningFlag, ScreeningReport
 from app.evals.screening import load_cases, run_case, stability_run
 from app.schemas.settings import AppSettings
 
@@ -28,7 +28,7 @@ def _mock_flags(*categories: FlagCategory) -> MockProvider:
     """A provider returning a ScreeningReport with the given flag categories."""
     provider = MockProvider()
     provider.route("<fields>", ScreeningReport(flags=[
-        ScreeningFlag(category=c, severity=FlagSeverity.NOTABLE, summary="s", evidence="e")
+        ScreeningFlag(category=c, summary="s", evidence="e")
         for c in categories
     ]))
     return provider
@@ -72,7 +72,7 @@ def test_stability_flags_a_changing_flag_set() -> None:
     provider = MockProvider()
     for cats in ([], [FlagCategory.PET_POLICY], [], [FlagCategory.PET_POLICY]):
         provider.queue(ScreeningReport(flags=[
-            ScreeningFlag(category=c, severity=FlagSeverity.NOTABLE, summary="s", evidence="e")
+            ScreeningFlag(category=c, summary="s", evidence="e")
             for c in cats
         ]))
     rep = stability_run(provider, case, screening_model="m", settings=_settings(), k=4)

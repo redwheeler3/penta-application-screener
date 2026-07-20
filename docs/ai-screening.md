@@ -81,7 +81,6 @@ The model does not return free text we then parse. It returns data validated aga
 ```py
 class QualityFlag(BaseModel):
     category: FlagCategory      # placeholder_name, minimal_essay, pet_policy, ...
-    severity: FlagSeverity      # info | notable
     summary: str                # one neutral sentence
     evidence: str               # short quote or field reference, no full essays
 

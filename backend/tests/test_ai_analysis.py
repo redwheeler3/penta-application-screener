@@ -13,7 +13,7 @@ from app.ai.analysis import (
 from app.ai.mock_provider import MockProvider
 from app.ai.pricing import cost_usd, price_for_model
 from app.ai.provider import Usage
-from app.ai.schemas import FlagCategory, FlagSeverity, ScreeningFlag, ScreeningReport
+from app.ai.schemas import FlagCategory, ScreeningFlag, ScreeningReport
 from app.db.models import Application, ApplicationAIResult, ApplicationStatus, Base
 
 MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
@@ -53,7 +53,6 @@ def flagged_report() -> ScreeningReport:
         flags=[
             ScreeningFlag(
                 category=FlagCategory.PLACEHOLDER_NAME,
-                severity=FlagSeverity.NOTABLE,
                 summary="Child name looks like a placeholder.",
                 evidence='Child name: "Baby TBD"',
             )

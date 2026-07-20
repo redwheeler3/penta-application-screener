@@ -14,7 +14,7 @@ decision.
 | **consolidation** (`dimension_consolidate.py`) | `<candidate_pairs>`: list of `{key_a, definition_a, key_b, definition_b}` | `ConsolidationReport` = list of `ConsolidationVerdict {key_a, key_b, same_concept: bool, reason}` | categorical (merge/keep) |
 | **matching** (`dimension_matching.py`) | `<prior_dimensions>` + `<new_dimensions>`: two lists of `{key, name, definition}` | `DimensionMatchReport` = list of `DimensionMatch {new_key, old_key}` | categorical (matches/omitted) |
 | **decomposition** (`dimension_decompose.py`) | `<discovery_reports>`: K reports each `{report_index, dimensions:[{key, name, definition, high_end, low_end, from_committee_request}]}` (+ optional `<kept>`) | `DecompositionReport` = list of `DecomposedDimension {key, name, definition, high_end, low_end, source_keys[], from_committee_request, decision}` | grouping (source_keys folds) |
-| **screening** (`screening.py`) | `<fields>`: 7 named applicant fields + `<essays>`: 4 essays in full | `ScreeningReport` = list of `ScreeningFlag {category, severity, summary, evidence}` | categorical per flag (warranted?) |
+| **screening** (`screening.py`) | `<fields>`: 7 named applicant fields + `<essays>`: 4 essays in full | `ScreeningReport` = list of `ScreeningFlag {category, summary, evidence}` | categorical per flag (warranted?) |
 
 ## The atomic unit: a **dimension descriptor**
 

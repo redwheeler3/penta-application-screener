@@ -113,7 +113,6 @@ export type Essay = {
 
 export type ScreeningFlag = {
   category: string;
-  severity: "info" | "notable";
   summary: string;
   evidence: string;
 };

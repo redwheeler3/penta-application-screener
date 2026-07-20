@@ -28,7 +28,7 @@ def propose_cases(db: Session, run: RankingRun, *, limit: int | None = None) -> 
     """Build unlabelled candidate screening-flag defensibility cases from cached flags.
 
     Guard-gated (raises on a non-synthetic pool). One candidate PER FLAG (a screening row
-    holds a list), carrying the flag's category/severity/summary and its cited evidence —
+    holds a list), carrying the flag's category/summary and its cited evidence —
     exactly what the judge needs to rule FLAG_SUPPORTED/FLAG_UNSUPPORTED — plus the opaque
     applicant index and ``evidence_source`` for re-verification. No applicant id or name.
     """
@@ -52,7 +52,6 @@ def propose_cases(db: Session, run: RankingRun, *, limit: int | None = None) -> 
         for i, flag in enumerate((r.output or {}).get("flags", [])):
             evidence = {
                 "flag_category": flag.get("category"),
-                "flag_severity": flag.get("severity"),
                 "flag_summary": flag.get("summary"),
                 "cited_evidence": flag.get("evidence", ""),
             }

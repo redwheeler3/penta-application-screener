@@ -23,16 +23,8 @@ class FlagCategory(StrEnum):
     OTHER = "other"
 
 
-class FlagSeverity(StrEnum):
-    INFO = "info"
-    NOTABLE = "notable"
-
-
 class ScreeningFlag(BaseModel):
     category: FlagCategory
-    severity: FlagSeverity = Field(
-        description="info for minor notes; notable for things the screener should review",
-    )
     summary: str = Field(description="One-sentence, neutral description of the concern.")
     evidence: str = Field(
         description="Short quote or specific field reference supporting the flag. No full essays.",

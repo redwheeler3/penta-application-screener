@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.ai.mock_provider import MockProvider
-from app.ai.schemas import FlagCategory, FlagSeverity, ScreeningFlag, ScreeningReport
+from app.ai.schemas import FlagCategory, ScreeningFlag, ScreeningReport
 from app.api.dependencies import require_current_user
 from app.api.screening import get_ai_provider
 from app.db.models import (
@@ -152,7 +152,6 @@ async def test_admin_run_analyzes_eligible_and_reports() -> None:
             flags=[
                 ScreeningFlag(
                     category=FlagCategory.MINIMAL_ESSAY,
-                    severity=FlagSeverity.INFO,
                     summary="Essay is a single word.",
                     evidence="Why a co-op: 'housing'",
                 )
@@ -231,7 +230,6 @@ async def test_ai_flag_sets_needs_review_status_and_filter() -> None:
             flags=[
                 ScreeningFlag(
                     category=FlagCategory.PET_POLICY,
-                    severity=FlagSeverity.NOTABLE,
                     summary="Too many pets.",
                     evidence="pets",
                 )
@@ -280,7 +278,6 @@ async def test_raw_row_and_narrative_visible_to_members() -> None:
             flags=[
                 ScreeningFlag(
                     category=FlagCategory.PET_POLICY,
-                    severity=FlagSeverity.NOTABLE,
                     summary="Too many pets.",
                     evidence="pets",
                 )
@@ -318,7 +315,6 @@ async def test_facet_counts_reflect_cross_group_filter() -> None:
             flags=[
                 ScreeningFlag(
                     category=FlagCategory.PET_POLICY,
-                    severity=FlagSeverity.NOTABLE,
                     summary="Too many pets.",
                     evidence="pets",
                 )
@@ -355,7 +351,6 @@ async def test_human_override_is_sticky_and_snapshots_fingerprint() -> None:
             flags=[
                 ScreeningFlag(
                     category=FlagCategory.PET_POLICY,
-                    severity=FlagSeverity.NOTABLE,
                     summary="Too many pets.",
                     evidence="pets",
                 )
@@ -407,7 +402,6 @@ async def test_clear_override_restores_machine_status() -> None:
             flags=[
                 ScreeningFlag(
                     category=FlagCategory.PET_POLICY,
-                    severity=FlagSeverity.NOTABLE,
                     summary="Too many pets.",
                     evidence="pets",
                 )

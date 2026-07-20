@@ -157,7 +157,7 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, backgr
     prompt = build_judge_prompt(
         given,
         "Review the applicant's fields and essays for integrity concerns. Return a list of "
-        "flags; each flag has a category, severity, one-sentence summary, and cited evidence. "
+        "flags; each flag has a category, one-sentence summary, and cited evidence. "
         "Flag only genuine concerns — a benign detail must not be flagged.",
     )
     result = provider.structured_output(model_id=model, schema=ScreeningReport, prompt=prompt, system_prompt=background)
