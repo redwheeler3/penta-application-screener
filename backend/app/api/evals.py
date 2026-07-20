@@ -59,8 +59,8 @@ from app.evals.decompose import stability_run as decomposition_stability_run
 from app.evals.fixture import FIXTURE_PATH, load, record
 from app.evals.invariants import INVARIANT_DESCRIPTIONS, INVARIANTS, run_invariants
 from app.evals.judge import DEFAULT_MODEL as JUDGE_MODEL
-from app.evals.judge import PROMPT_VERSION as JUDGE_PROMPT_VERSION
 from app.evals.judge import judge_case, load_cases, stability_run
+from app.evals.judge import prompt_version as judge_prompt_version
 from app.evals.matching import load_cases as load_matching_cases
 from app.evals.matching import run_case as run_matching_case
 from app.evals.matching import stability_run as matching_stability_run
@@ -322,7 +322,7 @@ def _current_prompt_version(eval_key: str, db: Session) -> str:
 
         return screening_prompt_version(get_app_settings(db))
     if eval_key in ("judge", "stability"):
-        return JUDGE_PROMPT_VERSION
+        return judge_prompt_version()
     return ""
 
 
@@ -445,7 +445,9 @@ def put_judge_background(
     pass_name: str, body: SaveBackgroundRequest, user: User = Depends(require_current_user)
 ) -> JudgeBackground:
     """Write one pass's ``judge_background`` to its golden file (operator commits to git). The
-    edited brief is what the blind judge reads on the NEXT run — no version bump (see judge.py)."""
+    edited brief is what the blind judge reads on the NEXT run, and it changes the judge's
+    version hash (``judge.prompt_version`` folds in all five briefs), so a prior judge run
+    rehydrates as stale until re-run — see judge.py."""
     try:
         saved = save_background(pass_name, body.background)
     except UnknownEvalError as exc:
@@ -1000,6 +1002,7 @@ def run_judge(
     block, only the verdict."""
     settings = get_app_settings(db)
     cases = _select(list(load_cases()), case, lambda c: c.key)
+    pv = judge_prompt_version()  # snapshot the briefs' hash for this run
 
     def one(c, case_delta):
         case_delta(f"\n\n### [{c.pass_name}] {c.key}\n")
@@ -1032,11 +1035,11 @@ def run_judge(
                 failure_recall=rep.failure_recall, failure_precision=rep.failure_precision,
             )
         return JudgeRunResponse(
-            judge_prompt_version=JUDGE_PROMPT_VERSION, judge_model=JUDGE_MODEL,
+            judge_prompt_version=pv, judge_model=JUDGE_MODEL,
             cases=case_out, agreement=agreement,
         )
 
-    return _stream(db, "judge", JUDGE_PROMPT_VERSION, work)
+    return _stream(db, "judge", pv, work)
 
 
 @router.post("/stability")
@@ -1053,6 +1056,7 @@ def run_stability(
     k = max(2, min(k, 10))
     settings = get_app_settings(db)
     cases = _select(list(load_cases()), case, lambda c: c.key)
+    pv = judge_prompt_version()  # snapshot the briefs' hash for this run
 
     def one(c, case_delta) -> StabilityCaseOut:
         case_delta(f"\n\n### [{c.pass_name}] {c.key} (x{k})\n")
@@ -1069,7 +1073,7 @@ def run_stability(
     def work(on_delta) -> StabilityRunResponse:
         out = _over_cases(cases, one, on_delta=on_delta, max_workers=_case_workers(settings, fan_out=k))
         return StabilityRunResponse(
-            judge_prompt_version=JUDGE_PROMPT_VERSION, judge_model=JUDGE_MODEL, k=k, cases=out,
+            judge_prompt_version=pv, judge_model=JUDGE_MODEL, k=k, cases=out,
         )
 
-    return _stream(db, "stability", JUDGE_PROMPT_VERSION, work)
+    return _stream(db, "stability", pv, work)

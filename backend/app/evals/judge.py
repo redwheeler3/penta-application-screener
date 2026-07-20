@@ -27,6 +27,7 @@ import json
 from collections import Counter
 from dataclasses import dataclass
 
+from app.ai.analysis import derive_prompt_version
 from app.evals import stability
 from app.evals.paths import (
     CONSOLIDATION_GOLDEN_PATH,
@@ -39,12 +40,6 @@ from app.evals.reproduce import Reproduced
 
 DEFAULT_MODEL = "us.anthropic.claude-sonnet-4-6"
 
-# The judge has no single static prompt to hash: it reproduces each pass's output from that
-# pass's editable ``judge_background`` (which lives per-golden-file and is intentionally
-# unversioned for now). So a judge run is stamped with this fixed identifier rather than a
-# derived prompt version — it attributes the run to the blind-audit method, not to a prompt.
-PROMPT_VERSION = "blind-audit"
-
 # Each pass's golden file + the reproduce adapter that re-runs that pass blind (see
 # app/evals/reproduce.py). Kept as lazy imports inside the dispatcher so judge.py has no
 # import cycle with the live modules (they don't import judge). One entry per pass.
@@ -55,6 +50,17 @@ _PASS_FILES = {
     "decomposition": DECOMPOSITION_GOLDEN_PATH,
     "screening": SCREENING_GOLDEN_PATH,
 }
+
+
+def prompt_version() -> str:
+    """The judge's version, derived from the five editable ``judge_background`` briefs (in a
+    fixed pass order) — the ONLY thing that changes what the blind judge is told. Computed per
+    call, not at import: the briefs are UI-editable and live on disk, so a run must be stamped
+    with the briefs it actually used. Editing and saving any brief changes this hash, which is
+    what marks a prior judge run stale (the ``blind-audit`` constant never did). Uses the same
+    ``derive_prompt_version`` sha the production passes use, so the two read alike."""
+    briefs = [json.loads(path.read_text()).get("judge_background", "") for path in _PASS_FILES.values()]
+    return derive_prompt_version(*briefs)
 
 
 @dataclass(frozen=True)
