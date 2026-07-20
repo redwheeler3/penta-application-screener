@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { fetchEvalInvariants, rebaselineEval } from "../../api";
+import { readProblem } from "../../format";
 import type { InvariantsResult } from "../../types";
 import { InlineConfirm } from "./InlineConfirm";
 
@@ -27,10 +28,7 @@ export function InvariantsEval(): ReactNode {
     const resp = await rebaselineEval();
     setRebasing(false);
     if (resp.ok) setResult(await resp.json());
-    else {
-      const problem = await resp.json().catch(() => null);
-      setError(problem?.detail ?? `Re-baseline failed (${resp.status})`);
-    }
+    else setError((await readProblem(resp)) ?? `Re-baseline failed (${resp.status})`);
   }
 
   return (

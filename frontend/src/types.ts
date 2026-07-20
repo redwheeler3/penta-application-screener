@@ -205,8 +205,12 @@ export type LastRunPass = {
   cacheable: boolean;
 };
 
+// The kind of a recorded run in the cost ledger (backend cost_report.py: screen / the full
+// discovery+rank chain / a score-only re-run against the current dimensions).
+export type InsightRunKind = "screen" | "rank" | "rank_scores";
+
 export type LastRunCost = {
-  kind: string; // "screen" | "rank" | "rank_scores"
+  kind: InsightRunKind;
   at: string; // ISO timestamp
   freshUsd: number;
   cachedSavedUsd: number;
@@ -218,7 +222,7 @@ export type LastRunCost = {
 // One point per completed run, oldest→newest.
 export type TrendPoint = {
   at: string;
-  kind: string; // "screen" | "rank" | "rank_scores"
+  kind: InsightRunKind;
   costUsd: number;
   inputTokens: number;
   outputTokens: number;

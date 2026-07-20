@@ -1,9 +1,10 @@
 import { type ReactNode, useState } from "react";
+import type { EvalFixtureKey } from "../../types";
 import { type FieldObject, StructuredFields } from "./StructuredFields";
 
 // Field-level editor for one eval case — typed inputs, not raw JSON. Known scalar fields
-// render as inputs; nested objects (evidence / applicant / dimension / expect) render as
-// labeled sub-sections with add/remove (see StructuredFields). The `key` field is fixed
+// render as inputs; nested objects (metadata / given: applicant / dimension / pair) render
+// as labeled sub-sections with add/remove (see StructuredFields). The `key` field is fixed
 // while editing (it's the identity the upsert keys on); a NEW case lets you set it.
 //
 // Templates seed a new case with the family's expected shape so you're filling fields, not
@@ -13,17 +14,13 @@ import { type FieldObject, StructuredFields } from "./StructuredFields";
 // A NEW case is seeded from its pass's template so you fill fields, not invent structure.
 // Fields are grouped by consumer: `metadata` is harness-only; `given` is what the real prompt
 // receives. (The judge tab adds no new cases — addable=false — so it needs no template here.)
-const TEMPLATES: Record<string, FieldObject> = {
+const TEMPLATES: Partial<Record<EvalFixtureKey, FieldObject>> = {
   scoring: {
     key: "",
-    metadata: { note: "", expect: { score_equals: 0 } },
-    input: {
+    metadata: { pass: "scoring", note: "", expected: { score_min: -0.15, score_max: 0.15, confidence: "low" } },
+    given: {
       applicant: { facts: {}, essays: { essay: "" } },
       dimension: { key: "", name: "", definition: "", high_end: "", low_end: "" },
-    },
-    judge: {
-      question:
-        "Given the dimension and the applicant's cited evidence, decide whether the returned score and confidence are SUPPORTED or UNSUPPORTED by that evidence — judge the score as produced, whatever its value.",
     },
   },
   consolidation: {
@@ -34,10 +31,6 @@ const TEMPLATES: Record<string, FieldObject> = {
         { key: "", name: "", definition: "" },
         { key: "", name: "", definition: "" },
       ],
-    },
-    judge: {
-      question:
-        "Decide MERGE (same underlying concept, a duplicate) or KEEP (genuinely distinct axes that only correlate) for these two dimension definitions.",
     },
   },
   matching: {
@@ -60,7 +53,7 @@ const TEMPLATES: Record<string, FieldObject> = {
   },
   screening: {
     key: "",
-    metadata: { pass: "screening", note: "", expect: { fires: [], absent: [] } },
+    metadata: { pass: "screening", note: "", expected: { fires: [], absent: [] } },
     given: {
       fields: { applicant_name: "", pets_text: "", applicant_email: "" },
       essays: {},
@@ -69,14 +62,15 @@ const TEMPLATES: Record<string, FieldObject> = {
 };
 
 export function EvalCaseEditor(props: {
-  evalKey: "scoring" | "consolidation" | "matching" | "decomposition" | "screening" | "judge";
+  evalKey: EvalFixtureKey;
   existing: Record<string, unknown> | null;
   error: string | null; // server-side validation error, if any
   onCancel: () => void;
   onSave: (c: FieldObject) => void;
 }): ReactNode {
   const [value, setValue] = useState<FieldObject>(
-    () => (props.existing as FieldObject | null) ?? TEMPLATES[props.evalKey],
+    // judge owns no template (addable=false, so no new judge case is created here) → {} fallback.
+    () => (props.existing as FieldObject | null) ?? TEMPLATES[props.evalKey] ?? { key: "" },
   );
 
   const isNew = props.existing === null;
