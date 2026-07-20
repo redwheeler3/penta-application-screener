@@ -601,10 +601,10 @@ def rank_run(
     if not eligible_applications(db):
         raise Problem("no_eligible_applications", detail="No eligible applications to rank.")
 
-    # An unchanged pool needs no re-rank, but we no longer block one: discovery is
-    # nondeterministic, so re-running deliberately gives the committee a fresh set of
-    # criteria. The confirmation card is the gate (it flags that nothing requires a
-    # re-run); a member who confirms here has opted in on purpose.
+    # An unchanged pool needs no re-rank, but one is allowed: discovery is nondeterministic,
+    # so re-running deliberately gives the committee a fresh set of criteria. The
+    # confirmation card is the gate (it flags that nothing requires a re-run); a member who
+    # confirms here has opted in on purpose.
     estimate = _rank_estimate(db, settings)
     try:
         enforce_cap(estimate, settings.ai.spending_cap_usd)
@@ -1126,9 +1126,8 @@ def update_tiers(
 #
 # Between runs, the committee can propose free-text axes that steer the NEXT Rank's
 # discovery; a proposal is consumed once a run realizes it into a real dimension.
-# (Keeping an existing axis across re-runs is no longer a separate action — placing
-# it in a working tier keeps it; see kept_keys.) No model call here — just
-# persistence; the proposals take effect on the next /ranking/run.
+# (An existing axis is kept across re-runs by placing it in a working tier; see kept_keys.)
+# No model call here — just persistence; the proposals take effect on the next /ranking/run.
 
 
 @router.put("/seeds", response_model=SeedsResponse)

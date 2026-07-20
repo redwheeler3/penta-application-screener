@@ -528,8 +528,7 @@ function runSummary(evalKey: RunMode["evalKey"], result: any, totalCases: number
 
 // One self-contained line per run mode: label, result summary, when it ran, the prompt
 // version, and the model. Turns amber when the run's prompt no longer matches the current one
-// (so a stale result is never read as live). Replaces the old separate "headline" — everything
-// it carried lives here now, without repeating the pass name/prompt/model on a second line.
+// (so a stale result is never read as live). One line carries pass name + prompt + model.
 function RestoredMarker(props: { run: LastEvalRun; totalCases: number }): ReactNode {
   const { run } = props;
   const summary = runSummary(run.evalKey as RunMode["evalKey"], run.result, props.totalCases);

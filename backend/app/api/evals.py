@@ -276,8 +276,7 @@ def invariants(user: User = Depends(require_current_user)) -> InvariantsResponse
 def rebaseline(
     user: User = Depends(require_current_user), db: Session = Depends(get_db)
 ) -> InvariantsResponse:
-    """Re-record the invariant baseline fixture from the CURRENT Rank (the tab action that
-    replaces the old `python -m app.evals.fixture` CLI). Writes the committed
+    """Re-record the invariant baseline fixture from the CURRENT Rank. Writes the committed
     rank_baseline.json — a deliberate re-bless, committed to git afterward — then returns
     the invariants of the fresh fixture. Free (no model calls; reads the stored run).
     409 if there is no current Rank to record."""

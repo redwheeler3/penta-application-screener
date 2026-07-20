@@ -1,4 +1,4 @@
-"""Response/request shapes for the ranking router (formerly /screening).
+"""Response/request shapes for the ranking router.
 
 Reuses the applications boundary out-models (`DimensionContributionOut`) for the
 ranked candidates, so the ranked-list row and the candidate-detail contributions

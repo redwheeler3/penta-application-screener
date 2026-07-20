@@ -341,7 +341,7 @@ def apply_consolidation(
         # otherwise a member's "Critical" placement on the dropped key would silently
         # vanish. The survivor inherits the HIGHEST-priority working tier among the keys
         # collapsing into it (tier order = priority, top = heaviest); a twin left in
-        # Ignore contributes no placement. This subsumes the old favourite-transfer.
+        # Ignore contributes no placement.
         old_tiers = criteria.get("tiers") or []
         placement = {k: i for i, t in enumerate(old_tiers) for k in t.get("dimension_keys", [])}
         target_index: dict[str, int] = {}
@@ -444,8 +444,8 @@ def key_history(db: Session) -> tuple[dict[str, int], dict[str, str], dict[str, 
     reason as ``all_known_dimensions``: a key's cached scores were computed against the
     text it was minted with, so the confirm call must judge that text — not a later
     re-worded version that would divorce the definition from the scores it reasons about.
-    Rank and definition therefore come from the SAME (earliest) run; they used to disagree
-    (rank oldest, definition newest), which let a key's judged wording drift off its scores.
+    Rank and definition therefore both come from the SAME (earliest) run, so a key's judged
+    wording never drifts off the scores it reasons about.
     """
     runs = db.scalars(select(RankingRun).order_by(RankingRun.id.asc())).all()
     rank: dict[str, int] = {}
