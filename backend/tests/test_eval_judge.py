@@ -96,6 +96,11 @@ def test_stability_reports_perfect_agreement_when_verdict_is_steady() -> None:
     assert report.majority == case.expected
     assert report.total_cost_usd > 0
     assert "[stable]" in format_stability([report])
+    # Every run keeps its reasoning (parallel to labels), so a stable run shows its K reasonings
+    # too — the judge stability was dropping this while the other passes retained it.
+    assert len(report.runs) == 5
+    assert all(r.outcome == case.expected for r in report.runs)
+    assert all(isinstance(r.detail, str) for r in report.runs)
 
 
 def test_stability_flags_a_flip_on_a_non_contested_case() -> None:

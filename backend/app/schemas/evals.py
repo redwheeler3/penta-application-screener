@@ -283,6 +283,7 @@ class StabilityCaseOut(ResponseModel):
     agreement: float  # modal label's share of K
     flipped: bool
     tally: dict[str, int]  # judge label -> count
+    runs: list[StabilityRun] = []  # per-run label + the judge's reasoning (explains a flip)
 
 
 class StabilityRunResponse(ResponseModel):

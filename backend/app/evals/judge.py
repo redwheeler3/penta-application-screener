@@ -169,7 +169,15 @@ class StabilityReport:
 
     case: JudgeCase
     labels: list[str]  # the judge's reproduced label token per run
+    details: list[str]  # the judge's reasoning per run (parallel to ``labels``) — explains a flip
     total_cost_usd: float
+
+    @property
+    def runs(self) -> list[stability.RunDetail]:
+        """Per-run (label, reasoning) pairs — same shape the other passes carry, so a judge
+        stability flip is as self-explaining as a live-pass one (each of the K runs shows what
+        the judge said that time, not just the tally)."""
+        return [stability.RunDetail(label, detail) for label, detail in zip(self.labels, self.details)]
 
     @property
     def counts(self) -> dict[str, int]:
@@ -202,6 +210,7 @@ def stability_run(provider, case: JudgeCase, *, k: int = 5, model_id: str = DEFA
     return StabilityReport(
         case=case,
         labels=[r.reproduced.judge_label for r in results],
+        details=[r.reproduced.detail for r in results],  # keep each run's reasoning (explains a flip)
         total_cost_usd=sum(r.cost_usd for r in results),
     )
 

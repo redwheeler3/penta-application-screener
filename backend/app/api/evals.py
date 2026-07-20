@@ -1074,6 +1074,7 @@ def run_stability(
             key=c.key, pass_name=c.pass_name, marker=marker,
             majority=rep.majority, seed=_seed_str(c.expected),
             agreement=rep.agreement, flipped=rep.flipped, tally=tally,
+            runs=_runs_out(rep),  # per-run reasoning, like the other passes' stability
         )
 
     def work(on_delta) -> StabilityRunResponse:
