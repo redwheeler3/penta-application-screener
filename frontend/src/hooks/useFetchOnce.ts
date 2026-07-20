@@ -14,7 +14,12 @@ export function useFetchOnce<T>(fetcher: () => Promise<T>): { data: T | null; st
   useEffect(() => {
     let live = true;
     fetcher()
-      .then((d) => live && (setData(d), setState("ready")))
+      .then((d) => {
+        if (live) {
+          setData(d);
+          setState("ready");
+        }
+      })
       .catch(() => live && setState("error"));
     return () => {
       live = false;

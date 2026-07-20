@@ -8,7 +8,7 @@ import type {
   SortState,
 } from "../types";
 
-export interface ApplicationsList {
+export interface ApplicationsState {
   applications: ApplicationSummary[];
   appTotal: number;
   appPage: number;
@@ -36,7 +36,7 @@ export interface ApplicationsList {
  * filter/search/sort/paging that produced it. Self-contained — talks only to the api
  * layer. The selected candidate detail is NOT here: it's cross-cutting (tab switches,
  * status overrides, and settings-save all clear it), so it stays in App. */
-export function useApplications(): ApplicationsList {
+export function useApplications(): ApplicationsState {
   const [applications, setApplications] = useState<ApplicationSummary[]>([]);
   const [appTotal, setAppTotal] = useState(0);
   const [appPage, setAppPage] = useState(1);
