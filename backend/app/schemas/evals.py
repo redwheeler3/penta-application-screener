@@ -249,6 +249,7 @@ class JudgeCaseOut(ResponseModel):
     judge_label: str  # what the blind judge independently produced
     contested: bool
     detail: str  # the judge's reproduced output + reasoning
+    label_rationale: str = ""  # why the human chose this label — context for a disagreement
 
 
 class AgreementOut(ResponseModel):

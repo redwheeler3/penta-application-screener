@@ -659,6 +659,11 @@ function CaseResult(props: { evalKey: EvalRunMode; result: EvalCaseResult }): Re
           <span className="eval-mono">{r.judgeLabel}</span>
           {r.marker === "[ok]" ? "" : r.contested ? " (contested — both defensible)" : " (disagrees)"}
           {r.detail ? <Md text={r.detail} className="eval-case-result-ev" /> : null}
+          {/* Why the human chose this label — shown on a divergence, where it's the context
+              for deciding whether the label or the judge is the one to trust. */}
+          {r.marker !== "[ok]" && r.labelRationale ? (
+            <Md text={`_Label rationale:_ ${r.labelRationale}`} className="eval-case-result-ev" />
+          ) : null}
         </div>
       )}
     </div>

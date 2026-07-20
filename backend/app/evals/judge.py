@@ -72,9 +72,10 @@ class JudgeCase:
     turns on information neither production nor the judge can see. For a contested case the label
     is a human *leaning*: agreement is neither pass nor fail, disagreement is expected review
     material (never a signal to tune anything), and consistency across repeated runs is the real
-    signal. ``label_rationale`` records WHY the human chose ``expected`` — for a reader weighing
-    a judge disagreement — but is HARNESS-ONLY: it is never shown to the judge (it often states
-    the answer), preserving the blind-audit rule.
+    signal. ``label_rationale`` records WHY the human chose ``expected`` — surfaced in the Judge
+    tab on a disagreement, as the context for deciding whether the label or the judge is wrong —
+    but is HARNESS-ONLY: it is never shown to the judge (it often states the answer), preserving
+    the blind-audit rule.
     """
 
     key: str

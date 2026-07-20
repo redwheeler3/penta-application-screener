@@ -304,6 +304,7 @@ def run_judge(
                 key=r.case.key, pass_name=r.case.pass_name, marker=r.marker,
                 human_label=r.reproduced.human_label, judge_label=r.reproduced.judge_label,
                 contested=r.case.contested, detail=r.reproduced.detail,
+                label_rationale=r.case.label_rationale,
             )
             for r in results
         ]

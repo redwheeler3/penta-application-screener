@@ -536,6 +536,7 @@ export type EvalCaseResult = {
   humanLabel?: string;
   judgeLabel?: string;
   detail?: string;
+  labelRationale?: string;
 };
 
 // A whole run's summary (the NDJSON `summary` payload, also what LastEvalRun.result carries):
