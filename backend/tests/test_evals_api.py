@@ -68,14 +68,14 @@ def test_seed_str_renders_any_of_fires_group() -> None:
     entry can be a nested 'at least one of' list (e.g. [["pet_policy", "other"]]) — joining it
     as a bare str used to throw 'expected str instance, list found' when Run Stability hit the
     velociraptor case. It must render the group as 'a | b'."""
-    from app.api.evals import _seed_str
+    from app.api.evals._shared import seed_str
 
-    assert _seed_str({"fires": [["pet_policy", "other"]], "absent": []}) == "fires: pet_policy | other"
-    assert _seed_str({"fires": ["pet_policy"], "absent": ["fake_contact"]}) == (
+    assert seed_str({"fires": [["pet_policy", "other"]], "absent": []}) == "fires: pet_policy | other"
+    assert seed_str({"fires": ["pet_policy"], "absent": ["fake_contact"]}) == (
         "fires: pet_policy · absent: fake_contact"
     )
-    assert _seed_str({"fires": [], "absent": []}) == "clean"
-    assert _seed_str("merge") == "merge"  # categorical label passes through
+    assert seed_str({"fires": [], "absent": []}) == "clean"
+    assert seed_str("merge") == "merge"  # categorical label passes through
 
 
 def test_over_cases_flushes_as_completed_no_interleave() -> None:
@@ -86,7 +86,7 @@ def test_over_cases_flushes_as_completed_no_interleave() -> None:
     order (the one ordering guarantee callers keep)."""
     import threading
 
-    from app.api.evals import _over_cases
+    from app.api.evals._shared import over_cases
 
     one_done = threading.Event()
 
@@ -100,7 +100,7 @@ def test_over_cases_flushes_as_completed_no_interleave() -> None:
         return c * 10
 
     emitted: list[str] = []
-    results = _over_cases([0, 1], run_case_fn, on_delta=emitted.append, max_workers=2)
+    results = over_cases([0, 1], run_case_fn, on_delta=emitted.append, max_workers=2)
 
     assert results == [0, 10]  # results re-sorted to case order regardless of completion order
     # Case 1 finished first, so its block flushes first; each block is contiguous (no interleave).
