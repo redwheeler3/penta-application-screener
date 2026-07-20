@@ -227,14 +227,22 @@ def stability_run(provider, case: JudgeCase, *, k: int = 5, model_id: str = DEFA
 
 
 def _stability_token(case: JudgeCase, result: JudgeResult) -> str:
-    """The token stability tallies for one run. Scoring is CONTINUOUS: two different in-band
-    scores (e.g. +0.60 and +0.75 against [0.2, 0.75]) are the SAME stability outcome, so token by
-    the graded agree/disagree — else run-to-run score noise inside the band reads as a flip
-    ([UNSTABLE] when nothing actually wandered across the boundary; the exact bug the live scoring
-    stability avoids by tokening pass/fail, not the raw score). Discrete passes keep the verdict
-    label (merge/keep, matches/mismatches), where flipping BETWEEN labels is the real instability
-    and the tally is more informative as verdicts."""
-    if case.pass_name == "scoring":
+    """The token stability tallies for one run. Stability asks "did the GRADED outcome hold?",
+    so the token must be what the case grades — not the raw produced label — for passes whose
+    label isn't a single graded verdict:
+
+    - SCORING is continuous: two different in-band scores (+0.60 vs +0.75 against [0.2, 0.75]) are
+      the same outcome; token the graded agree/disagree, else in-band noise reads as a flip.
+    - SCREENING grades a FLAG SET per-category (some categories fire-required, some guarded, the
+      rest ungraded). Two runs that both satisfy the case but differ in an UNGRADED incidental
+      flag (e.g. one adds internal_inconsistency the case neither requires nor forbids) are the
+      same graded outcome; tokening the raw "pet_policy, internal_inconsistency" string would
+      flip on that incidental flag. Token the graded agree/disagree.
+
+    The three CATEGORICAL passes (consolidation/matching/decomposition) DO have a single graded
+    verdict (merge/keep, matches/mismatches); keep the verdict label so a flip BETWEEN verdicts is
+    the signal and the tally stays informative."""
+    if case.pass_name in ("scoring", "screening"):
         return "agrees" if result.reproduced.agrees else "disagrees"
     return result.reproduced.judge_label
 
