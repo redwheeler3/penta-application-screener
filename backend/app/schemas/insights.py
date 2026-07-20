@@ -35,7 +35,7 @@ class CostGroup(ResponseModel):
 
 
 class CostReport(ResponseModel):
-    """GET /ranking/insights/cost — cumulative AI spend across all runs, grouped by the
+    """GET /insights/cost — cumulative AI spend across all runs, grouped by the
     run that triggers each pass (Screen vs. Rank).
 
     ``total_cost_usd`` is every dollar ever spent (exact). ``total_saved_usd`` is what
@@ -82,7 +82,7 @@ class LastRunCost(ResponseModel):
 
 
 class LastRunsReport(ResponseModel):
-    """GET /ranking/insights/last-runs — the most recent Screen, full Rank, and
+    """GET /insights/last-runs — the most recent Screen, full Rank, and
     score-current update, each with fresh spend and cache savings."""
 
     screen: LastRunCost | None = None
@@ -125,7 +125,7 @@ class PassTrendPoint(ResponseModel):
 
 
 class MetricsReport(ResponseModel):
-    """GET /ranking/insights/metrics — operational trends across all completed runs
+    """GET /insights/metrics — operational trends across all completed runs
     (M13 Pillar 3). ``runs`` is the per-run rollup (both kinds, oldest→newest);
     ``passes`` is the flattened per-(run, pass) series for the per-pass breakdown.
     Empty lists when no run has completed since ledgering began."""

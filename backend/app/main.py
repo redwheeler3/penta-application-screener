@@ -10,6 +10,7 @@ from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
 from app.api.evals import router as evals_router
 from app.api.health import router as health_router
+from app.api.insights import router as insights_router
 from app.api.problems import Problem
 from app.api.ranking import router as ranking_router
 from app.api.screening import router as screening_router
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard_router)
     app.include_router(evals_router)
     app.include_router(health_router)
+    app.include_router(insights_router)
     app.include_router(screening_router)
     app.include_router(ranking_router)
     app.include_router(settings_router)
