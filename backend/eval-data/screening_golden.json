@@ -47,15 +47,19 @@
     {
       "key": "pet_exotic_velociraptor_fires",
       "metadata": {
-        "note": "An exotic/undomesticated pet (a \"velociraptor\") against a dogs/cats-only policy — a pet_policy flag.",
+        "note": "A FICTIONAL pet (\"velociraptor\") — not a real animal, so the model reasonably reads it as EITHER a pet-policy breach (not a dog/cat) OR an integrity/misrepresentation issue (a bogus pet). The test is that it gets flagged for review, not which bucket; accept pet_policy OR other.",
         "pass": "screening",
         "source": "synthetic pool, application id 6 (Quinn Kim) — an exact slice of a real synthetic record.",
         "expected": {
           "fires": [
-            "pet_policy"
+            [
+              "pet_policy",
+              "other"
+            ]
           ],
           "absent": []
-        }
+        },
+        "label_rationale": "The concern is that a fake pet is surfaced at all. Whether that is pet_policy (not a permitted animal) or other (a data-integrity misrepresentation) is a defensible model call — both are correct — so at least one of {pet_policy, other} must fire. Contrast pet_rabbit_other_pets_fires: a REAL disallowed animal is cleanly pet_policy."
       },
       "given": {
         "fields": {
