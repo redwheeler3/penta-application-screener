@@ -38,6 +38,7 @@ from app.services.ranking_run import (
     current_dimension_report,
     dimension_weights,
     get_current_run,
+    stored_tiers,
 )
 from app.services.ranking_view import candidate_scores
 
@@ -438,7 +439,7 @@ def _dimension_scores(
     # An all-Ignore board intentionally falls back to uniform weights so the ranked
     # list has a stable opening order. It is not a committee weighting decision,
     # though, so applicant details should not present every raw score as relevant.
-    tiers = (run.criteria or {}).get("tiers") or []
+    tiers = stored_tiers(run)
     if not any(tier.get("dimension_keys") for tier in tiers):
         return []
 

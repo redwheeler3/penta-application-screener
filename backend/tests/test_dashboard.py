@@ -87,7 +87,10 @@ async def test_workflow_flags_track_progress() -> None:
         assert workflow["candidatesScored"] is False
 
         # A screening run exists -> patterns discovered (it's a run, not a result).
-        db.add(RankingRun(name="Run", criteria={}))
+        db.add(RankingRun(dimension_report={"dimensions": [
+            {"key": "community", "name": "Community", "definition": "d",
+             "high_end": "hi", "low_end": "lo", "why_it_differentiates": "w"},
+        ]}, run_state={}))
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow["patternsDiscovered"] is True
@@ -126,8 +129,8 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
 
         # A run whose fingerprint matches the current pool + prompts + models -> current.
         run = RankingRun(
-            name="Run",
-            criteria={"rank_inputs_fingerprint": rank_inputs_fingerprint(db, settings)},
+            dimension_report={}, run_state={},
+            rank_inputs_fingerprint=rank_inputs_fingerprint(db, settings),
         )
         db.add(run)
         db.commit()
@@ -149,11 +152,11 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
         # prompt had changed. The dashboard recomputes from live prompts -> mismatch.
         db.delete(db.get(Application, 2))
         db.commit()
-        run.criteria = {"rank_inputs_fingerprint": rank_inputs_fingerprint(db, settings)}
+        run.rank_inputs_fingerprint = rank_inputs_fingerprint(db, settings)
         db.add(run)
         db.commit()
         assert (await client.get("/dashboard")).json()["workflow"]["rankingCurrent"] is True
-        run.criteria = {"rank_inputs_fingerprint": "stale-prompt-version"}
+        run.rank_inputs_fingerprint = "stale-prompt-version"
         db.add(run)
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
@@ -295,16 +298,14 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     )
     db.add(a)
     # A run with two dimensions.
-    db.add(RankingRun(name="Run", criteria={
-        "dimension_report": {
-            "summary": "s",
-            "dimensions": [
-                {"key": "community", "name": "Community", "definition": "d",
-                 "high_end": "hi", "low_end": "lo", "why_it_differentiates": "w"},
-                {"key": "skills", "name": "Skills", "definition": "d",
-                 "high_end": "hi", "low_end": "lo", "why_it_differentiates": "w"},
-            ],
-        },
+    db.add(RankingRun(run_state={}, dimension_report={
+        "summary": "s",
+        "dimensions": [
+            {"key": "community", "name": "Community", "definition": "d",
+             "high_end": "hi", "low_end": "lo", "why_it_differentiates": "w"},
+            {"key": "skills", "name": "Skills", "definition": "d",
+             "high_end": "hi", "low_end": "lo", "why_it_differentiates": "w"},
+        ],
     }))
     db.commit()
 

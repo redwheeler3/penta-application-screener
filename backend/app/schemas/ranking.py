@@ -26,8 +26,6 @@ class CurrentRunResponse(ResponseModel):
     """GET /ranking/current — the current run's discovered criteria, or null."""
 
     run_id: int
-    name: str
-    status: str
     dimensions: list[PoolDimensionOut]
     # The model's streamed reasoning from the discovery pass (markdown), for the
     # Insights trace. Null for runs from before it was captured / if the provider

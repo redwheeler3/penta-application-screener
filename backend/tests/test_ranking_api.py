@@ -565,7 +565,7 @@ async def test_rank_runs_k_parallel_discoveries_and_persists_reports() -> None:
         await stream_events(client, "/ranking/run")
 
     run = get_current_run(db)
-    audit = (run.criteria or {}).get("fan_out_audit")
+    audit = (run.audit.fan_out if run.audit else None)
     assert audit is not None, "fan_out_audit must be persisted"
     assert audit["k"] == k
     assert len(audit["passes"]) == k
@@ -648,7 +648,7 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
         assert set(merged_out["sourceKeys"]) == {"commitment_a", "commitment_b"}
 
     run = get_current_run(db)
-    stored_dims = run.criteria["dimension_report"]["dimensions"]
+    stored_dims = run.dimension_report["dimensions"]
     settled_keys = {d["key"] for d in stored_dims}
     assert settled_keys == {"commitment", "skills_offered"}
 
@@ -662,7 +662,7 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
     assert commitment["why_it_differentiates"] == commitment_a_why
 
     # The merge is recorded for audit: the settled 'commitment' lists both source keys.
-    audit = run.criteria.get("decompose_audit")
+    audit = (run.audit.decompose if run.audit else None)
     assert audit is not None
     assert audit["merge_count"] == 1
     merged = next(d for d in audit["settled"] if d["key"] == "commitment")
@@ -720,12 +720,14 @@ async def test_post_score_consolidation_merges_correlated_duplicate() -> None:
         await stream_events(client, "/ranking/run")
 
     run = get_current_run(db)
-    keys = {d["key"] for d in run.criteria["dimension_report"]["dimensions"]}
+    keys = {d["key"] for d in run.dimension_report["dimensions"]}
     # Collapsed 2 → 1: the newer key (financial_stewardship) is aliased into the older.
     assert keys == {"financial_literacy"}
 
-    audit = run.criteria["consolidate_audit"]
-    assert audit["merges"] == {"financial_stewardship": "financial_literacy"}
+    # merges isn't stored on the audit; the view derives it from the merged pairs.
+    from app.services.ranking_run import consolidate_audit_view
+    view = consolidate_audit_view(db, run)
+    assert view["merges"] == {"financial_stewardship": "financial_literacy"}
 
     alias = db.scalar(select(DimensionAlias).where(DimensionAlias.alias_key == "financial_stewardship"))
     assert alias is not None
@@ -817,7 +819,7 @@ def test_apply_consolidation_transfers_tier_placement_off_a_merged_key() -> None
         PoolDimension(key="financial_stewardship", name="Financial stewardship",
                       definition="bookkeeping", high_end="high", low_end="low", why_it_differentiates="v"),
     ])
-    run = create_run(db, report=report, settings=AppSettings(), model_id="m", narrative=None)
+    run = create_run(db, report=report, settings=AppSettings(), narrative=None)
     # The committee places ONLY the key that will be merged away into a working tier —
     # the survivor sits in Ignore (unplaced).
     set_tiers(db, run, [{"id": "tier-s", "label": "Critical",
@@ -833,9 +835,9 @@ def test_apply_consolidation_transfers_tier_placement_off_a_merged_key() -> None
     )
     # The survivor inherited the dropped twin's Critical placement, so it stays kept.
     assert kept_keys(run) == ["financial_literacy"]
-    keys = {d["key"] for d in run.criteria["dimension_report"]["dimensions"]}
+    keys = {d["key"] for d in run.dimension_report["dimensions"]}
     assert keys == {"financial_literacy"}
-    assert run.criteria["tiers"][0]["dimension_keys"] == ["financial_literacy"]
+    assert run.run_state["tiers"][0]["dimension_keys"] == ["financial_literacy"]
 
 
 def test_apply_consolidation_reconfirming_an_existing_alias_is_idempotent() -> None:
@@ -855,7 +857,7 @@ def test_apply_consolidation_reconfirming_an_existing_alias_is_idempotent() -> N
             PoolDimension(key="financial_literacy", name="FL", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
             PoolDimension(key="financial_stewardship", name="FS", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
         ])
-        run = create_run(db, report=report, settings=AppSettings(), model_id="m",
+        run = create_run(db, report=report, settings=AppSettings(),
                          narrative=None)
         apply_consolidation(
             db, run,
@@ -897,7 +899,7 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
         PoolDimension(key="b_mid", name="B", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
         PoolDimension(key="c_newest", name="C", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
     ])
-    run = create_run(db, report=report, settings=AppSettings(), model_id="m", narrative=None)
+    run = create_run(db, report=report, settings=AppSettings(), narrative=None)
     # Place ONLY the innermost link C in a working tier; A and B sit in Ignore.
     set_tiers(db, run, [{"id": "tier-s", "label": "Critical", "dimension_keys": ["c_newest"]}])
 
@@ -912,10 +914,10 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
     )
 
     # Only the terminal survivor remains, and C's placement followed the full chain to it.
-    keys = {d["key"] for d in run.criteria["dimension_report"]["dimensions"]}
+    keys = {d["key"] for d in run.dimension_report["dimensions"]}
     assert keys == {"a_oldest"}
     assert kept_keys(run) == ["a_oldest"]
-    assert run.criteria["tiers"][0]["dimension_keys"] == ["a_oldest"]
+    assert run.run_state["tiers"][0]["dimension_keys"] == ["a_oldest"]
     # Both aliases point straight at the survivor — no mid-chain key persisted.
     aliases = {a.alias_key: a.canonical_key for a in db.scalars(select(DimensionAlias))}
     assert aliases == {"c_newest": "a_oldest", "b_mid": "a_oldest"}
@@ -933,7 +935,11 @@ def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
 
     from app.db.models import DimensionAlias
     from app.schemas.settings import AppSettings
-    from app.services.ranking_run import apply_consolidation, create_run
+    from app.services.ranking_run import (
+        apply_consolidation,
+        create_run,
+        dimension_weights,
+    )
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
     canonical_def = "Ages of children, reflecting shared-space interaction and supervision load."
@@ -946,7 +952,7 @@ def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
                           definition=canonical_def, high_end="school-age+", low_end="all under 3",
                           why_it_differentiates="ages span the pool"),
         ]),
-        settings=AppSettings(), model_id="m", narrative=None,
+        settings=AppSettings(), narrative=None,
         tier_layout=[
             {"id": "tier-s", "label": "Critical", "dimension_keys": []},
             {"id": "tier-a", "label": "Important", "dimension_keys": ["child_age_profile_community_fit"]},
@@ -963,7 +969,7 @@ def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
                           definition="A re-worded, differently-scoped take on child ages.",
                           high_end="teens", low_end="infants", why_it_differentiates="v"),
         ]),
-        settings=AppSettings(), model_id="m", narrative=None,
+        settings=AppSettings(), narrative=None,
     )
 
     apply_consolidation(
@@ -974,17 +980,18 @@ def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
         narrative=None,
     )
 
-    dims = {d["key"]: d for d in run2.criteria["dimension_report"]["dimensions"]}
+    dims = {d["key"]: d for d in run2.dimension_report["dimensions"]}
     # The newer twin is gone; the canonical prior key is surfaced in its place.
     assert set(dims) == {"child_age_profile_community_fit"}
     # Surfaced with its FROZEN MINT record — never the twin's re-worded text.
     assert dims["child_age_profile_community_fit"]["definition"] == canonical_def
     # Restored to the working tier the committee last placed it in (Important).
-    tiers = {t["id"]: t["dimension_keys"] for t in run2.criteria["tiers"]}
+    tiers = {t["id"]: t["dimension_keys"] for t in run2.run_state["tiers"]}
     assert tiers["tier-a"] == ["child_age_profile_community_fit"]
     # Weight is derived for the surfaced key, not the dropped twin.
-    assert "child_age_profile_community_fit" in run2.criteria["weights"]
-    assert "child_age_profile" not in run2.criteria["weights"]
+    weights = dimension_weights(run2)
+    assert "child_age_profile_community_fit" in weights
+    assert "child_age_profile" not in weights
     # The alias still points the newer twin at the canonical key for future matches.
     aliases = {a.alias_key: a.canonical_key for a in db.scalars(select(DimensionAlias))}
     assert aliases == {"child_age_profile": "child_age_profile_community_fit"}
@@ -1011,14 +1018,12 @@ def test_consolidate_audit_view_resolves_pair_names() -> None:
     run = create_run(
         db,
         report=PoolDimensionReport(dimensions=[_dim("survivor", "Survivor Axis")]),
-        settings=AppSettings(), model_id="m", narrative=None,
+        settings=AppSettings(), narrative=None,
     )
-    criteria = dict(run.criteria)
-    criteria["decompose_audit"] = {
+    run.audit.decompose = {
         "settled": [{"key": "retired_within_run", "name": "Retired Within Run", "source_keys": []}],
     }
-    criteria["consolidate_audit"] = {
-        "merges": {"retired_within_run": "survivor"},
+    run.audit.consolidate = {
         "pairs": [
             # No name_keep/name_drop — the old audit shape.
             {"keep": "survivor", "drop": "retired_within_run", "r": 0.9, "merged": True, "reason": "same"},
@@ -1026,7 +1031,6 @@ def test_consolidate_audit_view_resolves_pair_names() -> None:
         ],
         "narrative": None,
     }
-    run.criteria = criteria
     db.commit()
 
     view = consolidate_audit_view(db, run)
@@ -1036,6 +1040,8 @@ def test_consolidate_audit_view_resolves_pair_names() -> None:
     assert by_drop["retired_within_run"]["keep_name"] == "Survivor Axis"
     assert by_drop["retired_within_run"]["drop_name"] == "Retired Within Run"
     assert by_drop["traceless"]["drop_name"] == ""
+    # merges is derived from the merged pairs (dimension_aliases is the truth).
+    assert view["merges"] == {"retired_within_run": "survivor"}
 
 
 def test_consolidate_audit_view_prefers_the_snapshotted_name() -> None:
@@ -1050,18 +1056,15 @@ def test_consolidate_audit_view_prefers_the_snapshotted_name() -> None:
         report=PoolDimensionReport(dimensions=[PoolDimension(
             key="survivor", name="Later Renamed", definition="d",
             high_end="hi", low_end="lo", why_it_differentiates="v")]),
-        settings=AppSettings(), model_id="m", narrative=None,
+        settings=AppSettings(), narrative=None,
     )
-    criteria = dict(run.criteria)
-    criteria["consolidate_audit"] = {
-        "merges": {},
+    run.audit.consolidate = {
         "pairs": [{
             "keep": "survivor", "drop": "gone", "r": 0.9, "merged": False, "reason": "r",
             "name_keep": "Snapshot Keep Name", "name_drop": "Snapshot Drop Name",
         }],
         "narrative": None,
     }
-    run.criteria = criteria
     db.commit()
 
     view = consolidate_audit_view(db, run)
@@ -1097,12 +1100,12 @@ def test_merged_alias_does_not_donate_its_definition_to_the_canonical_key() -> N
 
     # Run 1: mint the narrow key. Its cached scores (not modelled here) belong to THIS text.
     create_run(db, report=PoolDimensionReport(dimensions=[_dim("licensed_trade", narrow)]),
-               settings=AppSettings(), model_id="m", narrative=None)
+               settings=AppSettings(), narrative=None)
     # Run 2: a broader duplicate appears alongside, and is merged INTO the narrow key
     # (older key wins the merge). This writes the alias hands_on_trade -> licensed_trade.
     run2 = create_run(db, report=PoolDimensionReport(dimensions=[
         _dim("licensed_trade", narrow), _dim("hands_on_trade", broad),
-    ]), settings=AppSettings(), model_id="m", narrative=None)
+    ]), settings=AppSettings(), narrative=None)
     apply_consolidation(
         db, run2,
         merges={"hands_on_trade": "licensed_trade"},
@@ -1115,7 +1118,7 @@ def test_merged_alias_does_not_donate_its_definition_to_the_canonical_key() -> N
     # reach the broad re-discovery (resolved via alias to licensed_trade) BEFORE the narrow
     # canonical's own mint, and donate the broad text to the narrow key.
     create_run(db, report=PoolDimensionReport(dimensions=[_dim("hands_on_trade", broad)]),
-               settings=AppSettings(), model_id="m", narrative=None)
+               settings=AppSettings(), narrative=None)
 
     # all_known_dimensions (match target set) must report the NARROW mint.
     known = all_known_dimensions(db)
@@ -1175,9 +1178,10 @@ async def test_post_score_consolidation_keeps_confound_apart() -> None:
         await stream_events(client, "/ranking/run")
 
     run = get_current_run(db)
-    keys = {d["key"] for d in run.criteria["dimension_report"]["dimensions"]}
+    keys = {d["key"] for d in run.dimension_report["dimensions"]}
     assert keys == {"motivation", "followthrough"}  # both kept
-    assert run.criteria["consolidate_audit"]["merges"] == {}
+    # No pair merged (merges is derived from merged pairs — dimension_aliases is the truth).
+    assert not any(p.get("merged") for p in run.audit.consolidate["pairs"])
     assert db.scalar(select(DimensionAlias)) is None
 
 
@@ -1235,7 +1239,7 @@ async def test_d9_committee_request_folded_into_merge_is_surfaced_not_lost() -> 
         await stream_events(client, "/ranking/run")
 
     run = get_current_run(db)
-    audit = run.criteria["decompose_audit"]
+    audit = run.audit.decompose
     # The fold is surfaced: playground_use -> child_wellbeing.
     assert {"request_key": "playground_use", "into_key": "child_wellbeing"} in audit["folded_requests"]
     # The flag was repaired on the settled axis (drives the D9 trail + the badge).
@@ -1280,11 +1284,11 @@ async def test_d9_silently_dropped_committee_request_is_re_added() -> None:
         await stream_events(client, "/ranking/run")
 
     run = get_current_run(db)
-    keys = {d["key"] for d in run.criteria["dimension_report"]["dimensions"]}
+    keys = {d["key"] for d in run.dimension_report["dimensions"]}
     # The dropped request was re-added, so both axes survive.
     assert keys == {"child_wellbeing", "playground_use"}
     readded = next(
-        d for d in run.criteria["decompose_audit"]["settled"] if d["key"] == "playground_use"
+        d for d in run.audit.decompose["settled"] if d["key"] == "playground_use"
     )
     assert readded["from_committee_request"] is True
 

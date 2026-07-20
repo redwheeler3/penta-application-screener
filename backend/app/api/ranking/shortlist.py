@@ -70,7 +70,7 @@ def _ranking_payload(db: Session, run) -> RankingResponse:
         ],
         # Recomputed each save so the tier-list refreshes badges in the same
         # round-trip (moving or acknowledging a flagged dimension clears it).
-        new_dimension_keys=(run.criteria or {}).get("new_dimension_keys", []),
+        new_dimension_keys=(run.run_state or {}).get("new_dimension_keys", []),
         revived_dimension_keys=revived_flag_keys(db, run),
         # Kept axes (derived from tiers) + pending proposals, so the tier list and
         # composer stay in sync after a tier/seed save.
