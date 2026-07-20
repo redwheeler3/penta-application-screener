@@ -27,6 +27,17 @@ CONTESTED_SPLIT = "[contested-split]"
 
 T = TypeVar("T", bound=Hashable)
 
+# The narration callback every eval pass streams its "thinking" through (the AI Quality tab
+# reads it). Optional: a pass called without a sink just runs silently.
+DeltaSink = Callable[[str], None] | None
+
+
+def emit(sink: DeltaSink, text: str) -> None:
+    """Write a narration chunk to the thinking sink, if one was given. Shared by every eval
+    pass so the ``on_delta`` plumbing (and its None-guard) lives in one place."""
+    if sink is not None:
+        sink(text)
+
 # --- the math, over any hashable outcome token (string verdict, typed enum, bool) -----------
 # Free functions so a pass with its own richer report (the judge: typed verdicts + cost) can
 # delegate the counting without adopting the string-native dataclass below.
@@ -111,7 +122,7 @@ def run_stability(
     *,
     k: int,
     contested: bool = False,
-    on_delta: object = None,
+    on_delta: DeltaSink = None,
 ) -> StabilityReport:
     """Call ``run_once`` ``k`` times (each a fresh model call on the SAME fixed input) and
     collect the results into a StabilityReport. The caller's ``run_once`` is the only
@@ -134,7 +145,6 @@ def run_stability(
     # inputs), but sort by the submitted index for stable, deterministic run numbering.
     ordered = [r for _i, r, _err in sorted(results, key=lambda t: t[0]) if r is not None]
     runs = [RunDetail(*pair) for pair in ordered]
-    if on_delta is not None:
-        for n, rd in enumerate(runs, 1):
-            on_delta(f"- run {n}: **{rd.outcome}** — {rd.detail}\n")  # type: ignore[operator]
+    for n, rd in enumerate(runs, 1):
+        emit(on_delta, f"- run {n}: **{rd.outcome}** — {rd.detail}\n")
     return StabilityReport(runs=runs, contested=contested)

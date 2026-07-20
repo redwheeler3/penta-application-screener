@@ -35,7 +35,7 @@ from app.ai.schemas import (
 from app.evals.paths import (
     GOLDEN_PATH,
 )
-from app.evals.stability import StabilityReport, run_stability
+from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
 
 
 @dataclass(frozen=True)
@@ -108,11 +108,6 @@ def _check_expectations(score: DimensionScore, expected: dict[str, object]) -> l
     return failures
 
 
-def _emit(on_delta: object, text: str) -> None:
-    """Write a narration chunk to the thinking sink, if one was given."""
-    if on_delta is not None:
-        on_delta(text)  # type: ignore[operator]
-
 
 def _score_once(provider: AIProvider, case: GoldenCase, *, scoring_model: str) -> DimensionScore | None:
     """Run the REAL scoring prompt once on the case's applicant+dimension and return the
@@ -135,7 +130,7 @@ def run_case(
     case: GoldenCase,
     *,
     scoring_model: str,
-    on_delta: object = None,
+    on_delta: DeltaSink = None,
 ) -> CaseResult:
     """Score one golden case through the REAL prompt, then grade it against the expected band.
 
@@ -146,16 +141,16 @@ def run_case(
     and the band-check outcome are exactly what a reader wants to watch. Deterministic;
     identical result whether or not a sink is given.
     """
-    _emit(on_delta, f"Scoring **{case.dimension.name}** on `{scoring_model}`…\n\n")
+    emit(on_delta, f"Scoring **{case.dimension.name}** on `{scoring_model}`…\n\n")
     score = _score_once(provider, case, scoring_model=scoring_model)
     if score is None:
-        _emit(on_delta, f"⚠️ Model returned no score for `{case.dimension.key}`.\n")
+        emit(on_delta, f"⚠️ Model returned no score for `{case.dimension.key}`.\n")
         return CaseResult(
             case=case, score=float("nan"), confidence="?", evidence="",
             failures=[f"model returned no score for {case.dimension.key}"],
         )
 
-    _emit(
+    emit(
         on_delta,
         f"**Score {score.score:+.2f}** ({score.confidence.value} confidence)\n\n"
         f"- _Rationale:_ {score.rationale}\n"
@@ -163,7 +158,7 @@ def run_case(
     )
 
     failures = _check_expectations(score, case.expected)
-    _emit(
+    emit(
         on_delta,
         f"❌ {'; '.join(failures)}\n\n"
         if failures
@@ -235,14 +230,14 @@ def stability_run(
     *,
     scoring_model: str,
     k: int = 5,
-    on_delta: object = None,
+    on_delta: DeltaSink = None,
 ) -> ScoringStabilityResult:
     """Score one golden case K times on fixed input and report whether its PASS/FAIL held.
     Scoring is continuous, so the question isn't 'did the exact number repeat' (it never will)
     but 'did the score stay on the same side of the expected band across runs'. The outcome
     token per run is 'pass'/'fail' on the band check; the shared core tallies the flip, and the
     score spread is surfaced as informational."""
-    _emit(on_delta, f"Scoring **{case.dimension.name}** x{k} on `{scoring_model}`…\n\n")
+    emit(on_delta, f"Scoring **{case.dimension.name}** x{k} on `{scoring_model}`…\n\n")
     scores: list[float] = []  # appended from concurrent runs; order-free (only min/max is read)
 
     def run_once() -> tuple[str, str]:
@@ -261,7 +256,7 @@ def stability_run(
     out = ScoringStabilityResult(case=case, stability=report, scores=scores)
     lo, hi = out.score_spread
     tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())
-    _emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally} · score {lo:+.2f}..{hi:+.2f}\n")
+    emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally} · score {lo:+.2f}..{hi:+.2f}\n")
     return out
 
 

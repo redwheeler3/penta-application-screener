@@ -32,7 +32,7 @@ from app.ai.dimension_decompose import SYSTEM_PROMPT, build_prompt
 from app.ai.provider import AIProvider
 from app.ai.schemas import DecompositionReport, PoolDimension, PoolDimensionReport
 from app.evals.paths import DECOMPOSITION_GOLDEN_PATH
-from app.evals.stability import StabilityReport, run_stability
+from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
 
 MERGE, KEEP = "merge", "keep"
 
@@ -91,10 +91,6 @@ def load_cases(path: Path = DECOMPOSITION_GOLDEN_PATH) -> tuple[DecompositionCas
         )
     return tuple(cases)
 
-
-def _emit(on_delta: object, text: str) -> None:
-    if on_delta is not None:
-        on_delta(text)  # type: ignore[operator]
 
 
 def _decompose_verdict(provider: AIProvider, case: DecompositionCase, *, decompose_model: str) -> tuple[str, str]:
@@ -155,25 +151,25 @@ def run_case(
     case: DecompositionCase,
     *,
     decompose_model: str,
-    on_delta: object = None,
+    on_delta: DeltaSink = None,
 ) -> CaseResult:
     """Run one golden set through the REAL decompose prompt and grade merge/keep (derived from
     the settled set) against the label by exact match."""
-    _emit(on_delta, f"Decomposing {len(case._source_keys)} carvings on `{decompose_model}`…\n\n")
+    emit(on_delta, f"Decomposing {len(case._source_keys)} carvings on `{decompose_model}`…\n\n")
     verdict, reason = _decompose_verdict(provider, case, decompose_model=decompose_model)
     if verdict == "?":
-        _emit(on_delta, f"⚠️ {reason}\n")
+        emit(on_delta, f"⚠️ {reason}\n")
         return CaseResult(case=case, verdict="?", reason=reason, failures=["no verdict derivable from the settled set"])
-    _emit(on_delta, f"**Verdict: {verdict}** (expected {case.expected})\n\n- _{reason}_\n\n")
+    emit(on_delta, f"**Verdict: {verdict}** (expected {case.expected})\n\n- _{reason}_\n\n")
 
     failures: list[str] = []
     if case.contested:
-        _emit(on_delta, "◐ Contested case — both verdicts defensible; not counted pass/fail.\n")
+        emit(on_delta, "◐ Contested case — both verdicts defensible; not counted pass/fail.\n")
     elif verdict != case.expected:
         failures.append(f"verdict {verdict!r} != expected {case.expected!r}")
-        _emit(on_delta, f"❌ Verdict disagrees with the label ({verdict} vs {case.expected}).\n")
+        emit(on_delta, f"❌ Verdict disagrees with the label ({verdict} vs {case.expected}).\n")
     else:
-        _emit(on_delta, "✓ Verdict matches the label.\n")
+        emit(on_delta, "✓ Verdict matches the label.\n")
 
     return CaseResult(case=case, verdict=verdict, reason=reason, failures=failures)
 
@@ -184,17 +180,17 @@ def stability_run(
     *,
     decompose_model: str,
     k: int = 5,
-    on_delta: object = None,
+    on_delta: DeltaSink = None,
 ) -> StabilityReport:
     """Run the REAL decompose prompt ``k`` times on the case's fixed carvings and report
     fold/keep stability. Delegates tallying/marker to the shared stability core; the only
     pass-specific part is one decompose call producing one merge/keep token."""
-    _emit(on_delta, f"Decomposing {len(case._source_keys)} carvings x{k} on `{decompose_model}`…\n\n")
+    emit(on_delta, f"Decomposing {len(case._source_keys)} carvings x{k} on `{decompose_model}`…\n\n")
 
     def run_once() -> tuple[str, str]:
         return _decompose_verdict(provider, case, decompose_model=decompose_model)
 
     report = run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
     tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())
-    _emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
+    emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
     return report
