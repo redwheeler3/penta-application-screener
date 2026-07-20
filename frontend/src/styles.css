@@ -3023,7 +3023,10 @@ h1 {
 .eval-case-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
 .eval-case-dot.ok { background: #16a34a; }
 .eval-case-dot.fail { background: #dc2626; }
-.eval-case-dot.contested { background: #d97706; }  /* amber: informational, not pass/fail */
+/* Contested: a two-tone dot (green | amber) — a diverging verdict here is defensible (green
+   side), just review-worthy (amber side). The hard-stop gradient makes it unmistakably NOT a
+   solid red fail at a glance. */
+.eval-case-dot.contested { background: linear-gradient(90deg, #16a34a 0 50%, #d97706 50% 100%); }
 .eval-case-dot.empty { background: none; border: 1px solid var(--line); }  /* mode not run yet */
 
 /* Detail pane: full case, no truncation. */
@@ -3084,7 +3087,7 @@ h1 {
 .eval-case-result.ok { background: #f0fdf4; border-color: #bbf7d0; }
 .eval-case-result.fail { background: #fef2f2; border-color: #fecaca; }
 .eval-case-result.contested { background: #fffbeb; border-color: #fde68a; }
-.eval-case-result-head { font-weight: 700; font-size: 0.82rem; }
+.eval-case-result-head { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-size: 0.82rem; }
 .eval-case-result.ok .eval-case-result-head { color: #166534; }
 .eval-case-result.fail .eval-case-result-head { color: #b91c1c; }
 .eval-case-result.contested .eval-case-result-head { color: #b45309; }
