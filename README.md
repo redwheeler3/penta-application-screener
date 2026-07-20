@@ -53,9 +53,9 @@ Then the ranking itself is **pure deterministic math** over the cached scores an
 
 The **Insights** tab surfaces this per run: what each discoverer found, how decomposition settled them, which duplicates consolidation merged and why, how dimensions carried forward, and a full cost breakdown per pass.
 
-The next planned milestone (M13) is deeper AI observability and evals: the per-pass trace viewer and cost attribution are largely in place (discovery/decomposition/consolidation/match audits + per-pass cost, above); still to come are operational metrics and property-based quality checks. The failure-capture prerequisite (Stage 0) is done.
+AI observability and evals (M13) are complete: the per-pass trace viewer, cost attribution, operational-metrics trends, and property-based quality checks all ship in the Observability + Evals tabs, with the eval cockpit run in-app (see [docs/ai-evals.md](docs/ai-evals.md)). The current milestone (M14) is a behavior-preserving code/schema/docs cleanup before multi-member (M15) and hosting (M16); resolved history lives in [CHANGELOG.md](CHANGELOG.md) and significant decisions in [docs/adr/](docs/adr/).
 
-Current planning lives in [SPEC.md](SPEC.md). Developer architecture notes live in [docs/app-architecture.md](docs/app-architecture.md), with deeper references in [docs/ai-screening.md](docs/ai-screening.md), [docs/api.md](docs/api.md), and [docs/form-field-reference.md](docs/form-field-reference.md). Shared agent guidance lives in [.clinerules](.clinerules), with [AGENTS.md](AGENTS.md) pointing agents there.
+Current-state planning lives in [SPEC.md](SPEC.md). Developer architecture notes live in [docs/app-architecture.md](docs/app-architecture.md), with deeper references in [docs/ai-screening.md](docs/ai-screening.md), [docs/api.md](docs/api.md), and [docs/form-field-reference.md](docs/form-field-reference.md). Shared agent guidance lives in [.clinerules](.clinerules), with [AGENTS.md](AGENTS.md) pointing agents there.
 
 Evaluation design and the manual LLM judge are documented in [docs/ai-evals.md](docs/ai-evals.md).
 
@@ -186,13 +186,14 @@ npm run build
 
 ## Manual AI Quality Audit
 
-Run the evals — the non-gating LLM judge, live scoring, stability, and the
-deterministic invariants — from the in-app **Evals** tab. The spending evals make
-paid Bedrock calls only when you confirm a run; nothing here runs during Rank or the
-test suite. Each subtab shows its cases, runs whole-set or per-case, streams the
-model's reasoning, and persists every run. (Re-baselining the invariant fixture and
-harvesting cases from a real Rank remain CLI tools — see `app/evals/fixture.py` and
-`app/evals/capture_scores.py`.)
+Run the evals — the blind label-auditing judge, the per-pass live evals (single run +
+stability, `?mode=stability`), and the deterministic invariants — from the in-app
+**Evals** tab. The spending evals make paid Bedrock calls only when you confirm a run;
+nothing here runs during Rank or the test suite. Each subtab shows its cases, runs
+whole-set or per-case, streams the model's reasoning, and persists every run;
+re-baselining the invariant fixture is the tab's "Re-baseline from current Rank" action.
+Growing the golden case sets from a real Rank is done with the harvest scripts under
+`backend/scripts/` (co-authored, then labelled by hand).
 
 ## Status
 

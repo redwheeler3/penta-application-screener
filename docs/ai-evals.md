@@ -451,28 +451,17 @@ them into one field is how several of these bugs happened.
 
 ## Next checkpoint
 
-Before treating judge agreement as a meaningful quality measure:
+Before treating judge agreement as a meaningful quality measure (cases now live in the
+per-pass `<pass>_golden.json` files with exact input + label + rationale + provenance; the
+safe substrate for applicant-facing cases is the synthetic-source guard, below):
 
-1. ~~Move seed cases into a dedicated PII-safe fixture with exact relevant
-   production artifacts, production model/prompt metadata, a human label, and a
-   written label rationale.~~ **Done (2026-07-16):** cases live in the per-pass
-   `<pass>_golden.json` files with exact input, label + rationale, and provenance;
-   the fixture recorder now captures per-pass models + prompt versions. Growing
-   the set to exact-by-construction from future runs is the retention discipline
-   (see `.clinerules`: durability lives in committed fixtures).
-2. Build a small balanced labelled set: clear merges, clear keeps,
-   narrative/output contradictions, and intentionally ambiguous cases.
-   **In progress (2026-07-16):** three clear KEEPs, one clear MERGE, and one
-   contested case seeded. Still owed: a narrative/output-contradiction case (the
-   decompose routing-drift signature — SPEC golden case #2).
-3. Calibrate the judge on the clear cases first. Ambiguous cases remain review
-   material, not pass/fail scoring.
-4. Add persistence and a trend view only after the labelled set is useful.
-5. ~~Design a separate safe evidence fixture before adding score-defensibility
-   cases, because that category is closest to applicant text.~~ **Done
-   (2026-07-16):** see "Applicant-facing evals — the synthetic-source guard" below
-   — the safe substrate turned out to be a synthetic-source guard, not a separate
-   scrubbed fixture.
+1. Build a small balanced labelled set: clear merges, clear keeps, narrative/output
+   contradictions, and intentionally ambiguous cases. Seeded so far: clear KEEPs, one clear
+   MERGE, one contested case. Still owed: a narrative/output-contradiction case (the
+   decompose routing-drift signature — golden case #2).
+2. Calibrate the judge on the clear cases first. Ambiguous cases remain review material,
+   not pass/fail scoring.
+3. Add persistence and a trend view only after the labelled set is useful.
 
 ## Applicant-facing evals — the synthetic-source guard (built 2026-07-16)
 
