@@ -593,7 +593,7 @@ def score_dimensions(
         for dim in to_score:
             # _score_all_dimensions guarantees every to_score dim is present, so index
             # directly — a KeyError here would mean that contract broke, and failing
-            # loud beats silently skipping (the old bug).
+            # loud beats silently skipping.
             score = fresh[dim.key]
             outcome = store_result(
                 db, application, kind=kind_for_dimension(dim.key), model_id=model_id,

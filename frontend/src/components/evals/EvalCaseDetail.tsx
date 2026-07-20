@@ -48,16 +48,11 @@ function Value(props: { value: unknown }): ReactNode {
   return <span className="eval-detail-scalar">{String(v)}</span>;
 }
 
-// Per-block "who consumes this" badge. Keyed by the block's field name; a block with no
-// entry (e.g. a legacy or unknown block) renders without a badge rather than a wrong one.
+// Per-block "who consumes this" badge. Keyed by the block's field name; an unknown block
+// renders without a badge rather than a wrong one. The uniform envelope has two blocks.
 const BLOCK_CONSUMER: Record<string, { badge: string; tone: string }> = {
   metadata: { badge: "harness only — no model sees this", tone: "neutral" },
   given: { badge: "sent to the model under test", tone: "model" },
-  produced: { badge: "the recorded output being judged", tone: "model" },
-  input: { badge: "sent to the scoring model", tone: "model" },  // legacy scoring/live shape
-  evidence: { badge: "sent to the judge", tone: "judge" },
-  judge: { badge: "the question put to the judge", tone: "judge" },
-  prompt: { badge: "the question put to the judge", tone: "judge" },
 };
 
 // Model-facing blocks lead (they're the POINT of the case — what actually reaches a model);

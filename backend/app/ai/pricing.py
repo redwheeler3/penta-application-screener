@@ -64,8 +64,9 @@ def cost_usd(model_id: str, usage: Usage) -> float:
 class PassCost:
     """What one AI pass spent, in one shape every pass speaks (pool-level and
     per-application alike). Built once from a model call's ``Usage`` so tokens are never
-    discarded — the reason token counts used to vanish for the pool passes was that each
-    hand-wrote ``cost_usd(...)`` and returned a bare float. Carries the fresh spend
+    discarded (every pass funnels through this one shape rather than hand-writing
+    ``cost_usd(...)`` and returning a bare float, which would drop the token counts).
+    Carries the fresh spend
     (``calls`` model calls, ``input_tokens``/``output_tokens``, ``cost_usd``) plus the
     cache side (``cached_count`` reused units and ``cached_saved_usd``, their original
     cost — an estimate of what caching saved). A pass that never caches leaves those 0.
