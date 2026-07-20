@@ -203,6 +203,32 @@ async def test_run_unknown_case_is_404() -> None:
     assert resp.status_code == 404
 
 
+async def test_categorical_registry_route_runs_end_to_end() -> None:
+    """The three categorical passes (consolidation/matching/decomposition) are registered from a
+    shared factory (evals/_categorical.py), not hand-written handlers. Exercise one end-to-end
+    through the app to prove the registry wiring streams + grades like a first-class handler."""
+    from app.ai.schemas import ConsolidationReport, ConsolidationVerdict
+    from app.evals.consolidate import load_cases
+
+    case = load_cases()[0]
+    a, b = case.pair
+    app, db, provider = setup_app()
+    provider.queue(ConsolidationReport(verdicts=[
+        ConsolidationVerdict(key_a=str(a["key"]), key_b=str(b["key"]),
+                             same_concept=(case.expected == "merge"), reason="test"),
+    ]))
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        events = await _stream_events(client, f"/evals/consolidation?case={case.key}")
+    summary = next(e for e in events if e["type"] == "summary")
+    assert summary["eval"] == "consolidation"
+    assert summary["result"]["total"] == 1
+    assert summary["result"]["cases"][0]["key"] == case.key
+    # Persisted under the categorical key, like any run.
+    rows = list(db.scalars(select(EvalRun).where(EvalRun.eval_key == "consolidation")))
+    assert len(rows) == 1
+
+
 async def test_rebaseline_requires_a_current_run() -> None:
     # Re-baseline records the CURRENT Rank's fixture; with no run in the DB it's a 409
     # (run_required), never a silent empty write.

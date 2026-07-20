@@ -10,8 +10,12 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.ai.dimension_consolidate import PROMPT_VERSION as CONSOLIDATE_PROMPT_VERSION
+from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSE_PROMPT_VERSION
+from app.ai.dimension_matching import PROMPT_VERSION as MATCH_PROMPT_VERSION
 from app.ai.provider import AIProvider
 from app.api.dependencies import get_ai_provider, require_current_user
+from app.api.evals._categorical import CategoricalPass, register
 from app.api.evals._shared import (
     DEFAULT_STABILITY_K,
     case_workers,
@@ -153,229 +157,38 @@ def run_scoring_stability(
     return stream(db, "scoring_stability", SCORING_PROMPT_VERSION, work)
 
 
-@router.post("/consolidation")
-def run_consolidation(
-    case: str | None = None,
-    user: User = Depends(require_current_user),
-    provider: AIProvider = Depends(get_ai_provider),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """Stream a consolidation run: golden dimension pairs → the REAL consolidation
-    confirm prompt+model → merge/keep graded against the label by exact match. ``case`` runs
-    just that one pair (per-row run); omitted runs all. A contested case counts as passed
-    whichever way it lands (both verdicts defensible) — it's a pass with special treatment, not
-    excluded from the tally."""
-    from app.ai.dimension_consolidate import (
-        PROMPT_VERSION as CONSOLIDATE_PROMPT_VERSION,
-    )
-
-    settings = get_app_settings(db)
-    model = settings.ai.consolidate_model
-    cases = select(list(load_consolidation_cases()), case, lambda c: c.key)
-
-    def one(c, case_delta):
-        case_delta(f"\n\n### {c.key}\n")
-        return run_consolidation_case(provider, c, consolidate_model=model, on_delta=case_delta)
-
-    def work(on_delta) -> ConsolidationResponse:
-        results = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings))
-        return ConsolidationResponse(
-            prompt_version=CONSOLIDATE_PROMPT_VERSION,
-            model=model,
-            passed=sum(1 for r in results if r.case.contested or r.passed),
-            total=len(results),
-            cases=[
-                ConsolidationCaseOut(
-                    key=r.case.key, passed=r.passed, verdict=r.verdict,
-                    expected=r.case.expected, contested=r.case.contested,
-                    reason=r.reason, failures=r.failures,
-                )
-                for r in results
-            ],
-        )
-
-    return stream(db, "consolidation", CONSOLIDATE_PROMPT_VERSION, work)
-
-
-@router.post("/consolidation-stability")
-def run_consolidation_stability(
-    k: int = DEFAULT_STABILITY_K,
-    case: str | None = None,
-    user: User = Depends(require_current_user),
-    provider: AIProvider = Depends(get_ai_provider),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """Stream a consolidation STABILITY run: the REAL confirm prompt K times per pair on
-    fixed input, reporting verdict stability (flip = the production prompt is unstable). ``k``
-    is clamped so a stray value can't blow up spend. ``case`` runs just that one pair."""
-    from app.ai.dimension_consolidate import (
-        PROMPT_VERSION as CONSOLIDATE_PROMPT_VERSION,
-    )
-
-    k = max(2, min(k, 10))
-    settings = get_app_settings(db)
-    model = settings.ai.consolidate_model
-    cases = select(list(load_consolidation_cases()), case, lambda c: c.key)
-
-    def one(c, case_delta) -> ConsolidationStabilityCaseOut:
-        case_delta(f"\n\n### {c.key} (x{k})\n")
-        rep = consolidation_stability_run(provider, c, consolidate_model=model, k=k, on_delta=case_delta)
-        return ConsolidationStabilityCaseOut(
-            key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
-            contested=c.contested, agreement=rep.agreement, flipped=rep.flipped,
-            tally=rep.tally, runs=runs_out(rep),
-        )
-
-    def work(on_delta) -> ConsolidationStabilityResponse:
-        out = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings, fan_out=k))
-        return ConsolidationStabilityResponse(
-            prompt_version=CONSOLIDATE_PROMPT_VERSION, model=model, k=k, cases=out,
-        )
-
-    return stream(db, "consolidation_stability", CONSOLIDATE_PROMPT_VERSION, work)
-
-
-@router.post("/matching")
-def run_matching(
-    case: str | None = None,
-    user: User = Depends(require_current_user),
-    provider: AIProvider = Depends(get_ai_provider),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """Stream a matching run: golden prior/new dimension pairs → the REAL identity-match
-    prompt+model → matches/mismatches graded against the label by exact match. ``case`` runs
-    just that one pair."""
-    from app.ai.dimension_matching import PROMPT_VERSION as MATCH_PROMPT_VERSION
-
-    settings = get_app_settings(db)
-    model = settings.ai.match_model
-    cases = select(list(load_matching_cases()), case, lambda c: c.key)
-
-    def one(c, case_delta):
-        case_delta(f"\n\n### {c.key}\n")
-        return run_matching_case(provider, c, match_model=model, on_delta=case_delta)
-
-    def work(on_delta) -> MatchingResponse:
-        results = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings))
-        return MatchingResponse(
-            prompt_version=MATCH_PROMPT_VERSION, model=model,
-            passed=sum(1 for r in results if r.case.contested or r.passed), total=len(results),
-            cases=[
-                MatchingCaseOut(
-                    key=r.case.key, passed=r.passed, verdict=r.verdict,
-                    expected=r.case.expected, contested=r.case.contested,
-                    reason=r.reason, failures=r.failures,
-                )
-                for r in results
-            ],
-        )
-
-    return stream(db, "matching", MATCH_PROMPT_VERSION, work)
-
-
-@router.post("/matching-stability")
-def run_matching_stability(
-    k: int = DEFAULT_STABILITY_K,
-    case: str | None = None,
-    user: User = Depends(require_current_user),
-    provider: AIProvider = Depends(get_ai_provider),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """Stream a matching STABILITY run: the REAL match prompt K times per pair on fixed
-    input, reporting verdict stability. ``k`` clamped; ``case`` runs just that one."""
-    from app.ai.dimension_matching import PROMPT_VERSION as MATCH_PROMPT_VERSION
-
-    k = max(2, min(k, 10))
-    settings = get_app_settings(db)
-    model = settings.ai.match_model
-    cases = select(list(load_matching_cases()), case, lambda c: c.key)
-
-    def one(c, case_delta) -> MatchingStabilityCaseOut:
-        case_delta(f"\n\n### {c.key} (x{k})\n")
-        rep = matching_stability_run(provider, c, match_model=model, k=k, on_delta=case_delta)
-        return MatchingStabilityCaseOut(
-            key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
-            contested=c.contested, agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
-            runs=runs_out(rep),
-        )
-
-    def work(on_delta) -> MatchingStabilityResponse:
-        out = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings, fan_out=k))
-        return MatchingStabilityResponse(prompt_version=MATCH_PROMPT_VERSION, model=model, k=k, cases=out)
-
-    return stream(db, "matching_stability", MATCH_PROMPT_VERSION, work)
-
-
-@router.post("/decomposition")
-def run_decomposition(
-    case: str | None = None,
-    user: User = Depends(require_current_user),
-    provider: AIProvider = Depends(get_ai_provider),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """Stream a decomposition run: golden discovery-report sets → the REAL decomposition
-    prompt+model → merge/keep DERIVED from the settled set (all carvings in one axis = merge;
-    spread across ≥2 = keep), graded against the label by exact match. ``case`` runs just that
-    one set."""
-    from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSE_PROMPT_VERSION
-
-    settings = get_app_settings(db)
-    model = settings.ai.decompose_model
-    cases = select(list(load_decomposition_cases()), case, lambda c: c.key)
-
-    def one(c, case_delta):
-        case_delta(f"\n\n### {c.key}\n")
-        return run_decomposition_case(provider, c, decompose_model=model, on_delta=case_delta)
-
-    def work(on_delta) -> DecompositionResponse:
-        results = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings))
-        return DecompositionResponse(
-            prompt_version=DECOMPOSE_PROMPT_VERSION, model=model,
-            passed=sum(1 for r in results if r.case.contested or r.passed), total=len(results),
-            cases=[
-                DecompositionCaseOut(
-                    key=r.case.key, passed=r.passed, verdict=r.verdict,
-                    expected=r.case.expected, contested=r.case.contested,
-                    reason=r.reason, failures=r.failures,
-                )
-                for r in results
-            ],
-        )
-
-    return stream(db, "decomposition", DECOMPOSE_PROMPT_VERSION, work)
-
-
-@router.post("/decomposition-stability")
-def run_decomposition_stability(
-    k: int = DEFAULT_STABILITY_K,
-    case: str | None = None,
-    user: User = Depends(require_current_user),
-    provider: AIProvider = Depends(get_ai_provider),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """Stream a decomposition STABILITY run: the REAL decompose prompt K times per set on
-    fixed input, reporting fold/keep stability. ``k`` clamped; ``case`` runs just that one."""
-    from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSE_PROMPT_VERSION
-
-    k = max(2, min(k, 10))
-    settings = get_app_settings(db)
-    model = settings.ai.decompose_model
-    cases = select(list(load_decomposition_cases()), case, lambda c: c.key)
-
-    def one(c, case_delta) -> DecompositionStabilityCaseOut:
-        case_delta(f"\n\n### {c.key} (x{k})\n")
-        rep = decomposition_stability_run(provider, c, decompose_model=model, k=k, on_delta=case_delta)
-        return DecompositionStabilityCaseOut(
-            key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
-            contested=c.contested, agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
-            runs=runs_out(rep),
-        )
-
-    def work(on_delta) -> DecompositionStabilityResponse:
-        out = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings, fan_out=k))
-        return DecompositionStabilityResponse(prompt_version=DECOMPOSE_PROMPT_VERSION, model=model, k=k, cases=out)
-
-    return stream(db, "decomposition_stability", DECOMPOSE_PROMPT_VERSION, work)
+# The three categorical passes (merge/keep, matches/mismatches) share one endpoint shape —
+# registered from a spec each; see _categorical.py. Scoring, screening, and the judge below
+# grade different output shapes, so they stay first-class handlers. Each spec's run_case/
+# stability_run is a thin adapter onto the pass's runner (whose model kwarg keeps its expressive
+# name — consolidate_model etc. — so the runners and their tests stay untouched).
+for _spec in (
+    CategoricalPass(
+        key="consolidation", load_cases=load_consolidation_cases, model_attr="consolidate_model",
+        prompt_version=lambda: CONSOLIDATE_PROMPT_VERSION,
+        run_case=lambda p, c, m, on_delta: run_consolidation_case(p, c, consolidate_model=m, on_delta=on_delta),
+        stability_run=lambda p, c, m, *, k, on_delta: consolidation_stability_run(p, c, consolidate_model=m, k=k, on_delta=on_delta),
+        case_out=ConsolidationCaseOut, run_response=ConsolidationResponse,
+        stability_out=ConsolidationStabilityCaseOut, stability_response=ConsolidationStabilityResponse,
+    ),
+    CategoricalPass(
+        key="matching", load_cases=load_matching_cases, model_attr="match_model",
+        prompt_version=lambda: MATCH_PROMPT_VERSION,
+        run_case=lambda p, c, m, on_delta: run_matching_case(p, c, match_model=m, on_delta=on_delta),
+        stability_run=lambda p, c, m, *, k, on_delta: matching_stability_run(p, c, match_model=m, k=k, on_delta=on_delta),
+        case_out=MatchingCaseOut, run_response=MatchingResponse,
+        stability_out=MatchingStabilityCaseOut, stability_response=MatchingStabilityResponse,
+    ),
+    CategoricalPass(
+        key="decomposition", load_cases=load_decomposition_cases, model_attr="decompose_model",
+        prompt_version=lambda: DECOMPOSE_PROMPT_VERSION,
+        run_case=lambda p, c, m, on_delta: run_decomposition_case(p, c, decompose_model=m, on_delta=on_delta),
+        stability_run=lambda p, c, m, *, k, on_delta: decomposition_stability_run(p, c, decompose_model=m, k=k, on_delta=on_delta),
+        case_out=DecompositionCaseOut, run_response=DecompositionResponse,
+        stability_out=DecompositionStabilityCaseOut, stability_response=DecompositionStabilityResponse,
+    ),
+):
+    register(router, _spec)
 
 
 @router.post("/screening")
