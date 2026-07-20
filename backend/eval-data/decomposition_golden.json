@@ -70,10 +70,10 @@
       "key": "trade_vs_grounds_distinct_keep",
       "metadata": {
         "expected": "keep",
-        "note": "Adjacent-domain KEEP: interior building trades vs. outdoor grounds skill both reduce contractor reliance, but the skills are non-substitutable — decomposition should NOT over-fold two distinct maintenance domains onto that shared abstraction.",
+        "note": "Adjacent-domain KEEP with a surface-similarity trap: the trade def names 'plumbing' (interior) and the grounds def names 'irrigation' (outdoor) — both water/pipe work, so they RHYME, but they're non-substitutable skills in distinct domains. Decomposition should NOT over-fold on the shared purpose ('both reduce contractor reliance') or the water-work resemblance.",
         "pass": "decomposition",
-        "label_rationale": "KEEP: two adjacent maintenance axes that share a purpose (reduce the co-op's need for outside contractors) but measure non-substitutable skill domains. A licensed electrician or carpenter scores high on interior building trades but may have no outdoor expertise; a gardener or horticulturalist scores high on grounds/outdoor skill but may have no structural trade skill. Folding them on the shared 'both reduce contractor need' abstraction would let one skill masquerade as the other — the over-merge trap. Tests that the pass keeps genuinely distinct domains apart, not that it collapses them because they rhyme.",
-        "source": "Rank run 6 (2026-07-16), decompose_audit — trade_maintenance_skill and grounds_outdoor_skill settled as separate axes; run 6's decision text reasons them apart (electrician vs. gardener). Definitions adapted from run 6's settled report: 'arboriculture' (a tree/outdoor skill) removed from the trade-maintenance definition so the two domains are genuinely non-overlapping — it belongs to grounds, and keeping it in both made a merge defensible rather than testing the intended distinction.",
+        "label_rationale": "KEEP: two adjacent maintenance axes that share a purpose (reduce the co-op's need for outside contractors) but measure non-substitutable skill domains. The bait is a real surface similarity — the trade def lists plumbing, the grounds def lists irrigation, both water/pipe work — yet a licensed plumber is not an irrigation/landscape hand and vice versa, just as an electrician is no gardener. Folding on the 'both are water work' or 'both reduce contractor need' resemblance would let one skill masquerade as the other — the over-merge trap. Fair KEEP: neither example is miscategorized (plumbing IS an interior trade, irrigation IS grounds work), so the resemblance is a lure, not a genuine overlap.",
+        "source": "Rank run 6 (2026-07-16), decompose_audit — trade_maintenance_skill and grounds_outdoor_skill settled as separate axes; run 6's decision text reasons them apart (electrician vs. gardener). Definitions adapted from run 6's settled report: 'arboriculture' (a tree/outdoor skill) removed from the trade-maintenance definition (it belongs to grounds; keeping it in both made a merge genuinely defensible), and a deliberate surface-similarity lure added — 'plumbing' in the trade def, 'irrigation' in the grounds def (both water work, but non-substitutable, so a fair rather than rigged trap).",
         "provenance": {
           "pass_models": {"Dimension decomposition": "us.anthropic.claude-sonnet-4-6"},
           "pass_prompt_versions": {"Dimension decomposition": "733871632036"}
@@ -82,7 +82,7 @@
       "given": {
         "reports": [
           [{"key": "trade_maintenance_skill", "name": "Trade / Hands-On Maintenance Skills", "definition": "Licensed or professionally practiced trade skills directly applicable to building upkeep — electrical, carpentry, masonry, plumbing, mechanics, etc."}],
-          [{"key": "grounds_outdoor_skill", "name": "Grounds, Gardening & Outdoor Maintenance Skill", "definition": "Practical skill in maintaining shared outdoor spaces — gardening, composting, arboriculture, grounds safety — that reduce the co-op's need for outside contractors."}]
+          [{"key": "grounds_outdoor_skill", "name": "Grounds, Gardening & Outdoor Maintenance Skill", "definition": "Practical skill in maintaining shared outdoor spaces — gardening, composting, irrigation, arboriculture, grounds safety — that reduce the co-op's need for outside contractors."}]
         ]
       }
     }
