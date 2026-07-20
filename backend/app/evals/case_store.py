@@ -28,8 +28,8 @@ from app.evals.paths import (
 
 # eval_key -> (fixture path, required per-case fields). Fields are grouped into by-consumer
 # blocks (see each fixture's `_comment` and docs/eval-case-schema.md): a top-level `key`
-# plus block objects (`given` = prompt input; `metadata` = harness-only; `produced`/`judge`
-# optional). Only these files are writable.
+# plus block objects (`given` = prompt input; `metadata` = harness-only). Only these files
+# are writable.
 _FIXTURES: dict[str, tuple[Path, tuple[str, ...]]] = {
     "scoring": (GOLDEN_PATH, ("key", "metadata", "given")),
     "consolidation": (CONSOLIDATION_GOLDEN_PATH, ("key", "metadata", "given")),
