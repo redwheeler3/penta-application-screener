@@ -30,7 +30,7 @@ from app.ai.dimension_matching import SYSTEM_PROMPT, build_prompt
 from app.ai.provider import AIProvider
 from app.ai.schemas import DimensionMatchReport, PoolDimension, PoolDimensionReport
 from app.evals.paths import MATCHING_GOLDEN_PATH
-from app.evals.stability import StabilityReport, run_stability
+from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
 
 MATCHES, MISMATCHES = "matches", "mismatches"
 
@@ -88,10 +88,6 @@ def load_cases(path: Path = MATCHING_GOLDEN_PATH) -> tuple[MatchingCase, ...]:
         )
     return tuple(cases)
 
-
-def _emit(on_delta: object, text: str) -> None:
-    if on_delta is not None:
-        on_delta(text)  # type: ignore[operator]
 
 
 def _match_verdict(provider: AIProvider, case: MatchingCase, *, match_model: str) -> tuple[str, str]:
@@ -153,23 +149,23 @@ def run_case(
     case: MatchingCase,
     *,
     match_model: str,
-    on_delta: object = None,
+    on_delta: DeltaSink = None,
 ) -> CaseResult:
     """Run one golden pair through the REAL match prompt and grade matches/mismatches against
     the label by exact match."""
     p, n = case.prior[0], case.new[0]
-    _emit(on_delta, f"Matching new **{n['name']}** vs prior **{p['name']}** on `{match_model}`…\n\n")
+    emit(on_delta, f"Matching new **{n['name']}** vs prior **{p['name']}** on `{match_model}`…\n\n")
     verdict, reason = _match_verdict(provider, case, match_model=match_model)
-    _emit(on_delta, f"**Verdict: {verdict}** (expected {case.expected})\n\n- _{reason}_\n\n")
+    emit(on_delta, f"**Verdict: {verdict}** (expected {case.expected})\n\n- _{reason}_\n\n")
 
     failures: list[str] = []
     if case.contested:
-        _emit(on_delta, "◐ Contested case — both verdicts defensible; not counted pass/fail.\n")
+        emit(on_delta, "◐ Contested case — both verdicts defensible; not counted pass/fail.\n")
     elif verdict != case.expected:
         failures.append(f"verdict {verdict!r} != expected {case.expected!r}")
-        _emit(on_delta, f"❌ Verdict disagrees with the label ({verdict} vs {case.expected}).\n")
+        emit(on_delta, f"❌ Verdict disagrees with the label ({verdict} vs {case.expected}).\n")
     else:
-        _emit(on_delta, "✓ Verdict matches the label.\n")
+        emit(on_delta, "✓ Verdict matches the label.\n")
 
     return CaseResult(case=case, verdict=verdict, reason=reason, failures=failures)
 
@@ -180,18 +176,18 @@ def stability_run(
     *,
     match_model: str,
     k: int = 5,
-    on_delta: object = None,
+    on_delta: DeltaSink = None,
 ) -> StabilityReport:
     """Run the REAL match prompt ``k`` times on the case's fixed pair and report verdict
     stability. Delegates tallying/marker to the shared stability core; the only pass-specific
     part is one match call producing one matches/mismatches token."""
     p, n = case.prior[0], case.new[0]
-    _emit(on_delta, f"Matching new **{n['name']}** vs prior **{p['name']}** x{k} on `{match_model}`…\n\n")
+    emit(on_delta, f"Matching new **{n['name']}** vs prior **{p['name']}** x{k} on `{match_model}`…\n\n")
 
     def run_once() -> tuple[str, str]:
         return _match_verdict(provider, case, match_model=match_model)
 
     report = run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
     tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())
-    _emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
+    emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
     return report

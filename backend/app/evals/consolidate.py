@@ -32,7 +32,7 @@ from app.ai.dimension_consolidate import SYSTEM_PROMPT, NominatedPair, build_pro
 from app.ai.provider import AIProvider
 from app.ai.schemas import ConsolidationReport
 from app.evals.paths import CONSOLIDATION_GOLDEN_PATH
-from app.evals.stability import StabilityReport, run_stability
+from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
 
 # The two verdict strings a consolidation case can expect (the categorical label).
 MERGE, KEEP = "merge", "keep"
@@ -85,10 +85,6 @@ def load_cases(path: Path = CONSOLIDATION_GOLDEN_PATH) -> tuple[ConsolidationCas
         )
     return tuple(cases)
 
-
-def _emit(on_delta: object, text: str) -> None:
-    if on_delta is not None:
-        on_delta(text)  # type: ignore[operator]
 
 
 def _confirm_verdict(
@@ -144,7 +140,7 @@ def run_case(
     case: ConsolidationCase,
     *,
     consolidate_model: str,
-    on_delta: object = None,
+    on_delta: DeltaSink = None,
 ) -> CaseResult:
     """Run one golden pair through the REAL consolidation confirm prompt and grade the verdict
     against the label by exact match.
@@ -156,15 +152,15 @@ def run_case(
     """
     a, b = case.pair
 
-    _emit(on_delta, f"Consolidating **{a['name']}** ~ **{b['name']}** on `{consolidate_model}`…\n\n")
+    emit(on_delta, f"Consolidating **{a['name']}** ~ **{b['name']}** on `{consolidate_model}`…\n\n")
     verdict, reason = _confirm_verdict(provider, case, consolidate_model=consolidate_model)
     if verdict is None:
-        _emit(on_delta, f"⚠️ Model returned no verdict for `{a['key']}` ~ `{b['key']}`.\n")
+        emit(on_delta, f"⚠️ Model returned no verdict for `{a['key']}` ~ `{b['key']}`.\n")
         return CaseResult(
             case=case, verdict="?", reason="",
             failures=["model returned no verdict for the pair"],
         )
-    _emit(
+    emit(
         on_delta,
         f"**Verdict: {verdict}** (expected {case.expected})\n\n"
         f"- _Reason:_ {reason}\n\n",
@@ -172,12 +168,12 @@ def run_case(
 
     failures: list[str] = []
     if case.contested:
-        _emit(on_delta, "◐ Contested case — both verdicts defensible; not counted pass/fail.\n")
+        emit(on_delta, "◐ Contested case — both verdicts defensible; not counted pass/fail.\n")
     elif verdict != case.expected:
         failures.append(f"verdict {verdict!r} != expected {case.expected!r}")
-        _emit(on_delta, f"❌ Verdict disagrees with the label ({verdict} vs {case.expected}).\n")
+        emit(on_delta, f"❌ Verdict disagrees with the label ({verdict} vs {case.expected}).\n")
     else:
-        _emit(on_delta, "✓ Verdict matches the label.\n")
+        emit(on_delta, "✓ Verdict matches the label.\n")
 
     return CaseResult(case=case, verdict=verdict, reason=reason, failures=failures)
 
@@ -188,7 +184,7 @@ def stability_run(
     *,
     consolidate_model: str,
     k: int = 5,
-    on_delta: object = None,
+    on_delta: DeltaSink = None,
 ) -> StabilityReport:
     """Run the REAL confirm prompt ``k`` times on the case's fixed pair and report verdict
     stability (does the production prompt return the same merge/keep every time?). Delegates
@@ -196,7 +192,7 @@ def stability_run(
     confirm call producing one verdict token. Evidence this matters: the run-5/6/7
     keep→merge→merge wobble on the trade-skills pair."""
     a, b = case.pair
-    _emit(on_delta, f"Consolidating **{a['name']}** ~ **{b['name']}** x{k} on `{consolidate_model}`…\n\n")
+    emit(on_delta, f"Consolidating **{a['name']}** ~ **{b['name']}** x{k} on `{consolidate_model}`…\n\n")
 
     def run_once() -> tuple[str, str]:
         verdict, reason = _confirm_verdict(provider, case, consolidate_model=consolidate_model)
@@ -204,5 +200,5 @@ def stability_run(
 
     report = run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
     tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())
-    _emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
+    emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
     return report

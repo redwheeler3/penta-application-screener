@@ -28,7 +28,7 @@ from app.ai.provider import AIProvider
 from app.ai.schemas import ScreeningReport
 from app.ai.screening import SYSTEM_PROMPT, build_prompt
 from app.evals.paths import SCREENING_GOLDEN_PATH
-from app.evals.stability import StabilityReport, run_stability
+from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
 from app.schemas.settings import AppSettings
 
 
@@ -89,10 +89,6 @@ def load_cases(path: Path = SCREENING_GOLDEN_PATH) -> tuple[ScreeningCase, ...]:
         )
     return tuple(cases)
 
-
-def _emit(on_delta: object, text: str) -> None:
-    if on_delta is not None:
-        on_delta(text)  # type: ignore[operator]
 
 
 def _screen(provider: AIProvider, case: ScreeningCase, *, screening_model: str, settings: AppSettings) -> tuple[list[str], str]:
@@ -195,25 +191,25 @@ def run_case(
     *,
     screening_model: str,
     settings: AppSettings,
-    on_delta: object = None,
+    on_delta: DeltaSink = None,
 ) -> CaseResult:
     """Run one golden applicant through the REAL screening prompt, then grade the produced
     flag categories against the case's fires/absent expectations."""
     name = case.fields.get("applicant_name", case.key)
-    _emit(on_delta, f"Screening **{name}** on `{screening_model}`…\n\n")
+    emit(on_delta, f"Screening **{name}** on `{screening_model}`…\n\n")
     categories, detail = _screen(provider, case, screening_model=screening_model, settings=settings)
     shown = ", ".join(categories) if categories else "no flags"
-    _emit(on_delta, f"Flags produced: **{shown}**\n\n")
+    emit(on_delta, f"Flags produced: **{shown}**\n\n")
     # Surface the model's reasoning + per-flag evidence so a miss (an expected flag that didn't
     # fire) is explainable, not just visible as a red ❌ with no "why".
-    _emit(on_delta, f"_{detail}_\n\n")
+    emit(on_delta, f"_{detail}_\n\n")
 
     failures = _check(case, categories)
     if failures:
         for f in failures:
-            _emit(on_delta, f"❌ {f}\n")
+            emit(on_delta, f"❌ {f}\n")
     else:
-        _emit(on_delta, "✓ Flags match expectations.\n")
+        emit(on_delta, "✓ Flags match expectations.\n")
     return CaseResult(case=case, categories=categories, reason=detail, failures=failures)
 
 
@@ -224,7 +220,7 @@ def stability_run(
     screening_model: str,
     settings: AppSettings,
     k: int = 5,
-    on_delta: object = None,
+    on_delta: DeltaSink = None,
 ) -> StabilityReport:
     """Run the REAL screening prompt ``k`` times on the case's fixed applicant and report
     whether the case's GRADE held run-to-run. The outcome token is pass/fail against the case's
@@ -235,7 +231,7 @@ def stability_run(
     produced flag set + reasoning ride in the per-run detail so a real flip is still explainable.
     Delegates tallying/marker to the shared stability core."""
     name = case.fields.get("applicant_name", case.key)
-    _emit(on_delta, f"Screening **{name}** x{k} on `{screening_model}`…\n\n")
+    emit(on_delta, f"Screening **{name}** x{k} on `{screening_model}`…\n\n")
 
     def run_once() -> tuple[str, str]:
         cats, reasoning = _screen(provider, case, screening_model=screening_model, settings=settings)
@@ -246,5 +242,5 @@ def stability_run(
     # A screening golden case has no "contested" notion; a graded pass/fail flip is a real signal.
     report = run_stability(run_once, k=k, contested=False, on_delta=on_delta)
     tally = ", ".join(f"[{v}] x{n}" for v, n in report.tally.items())
-    _emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
+    emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
     return report

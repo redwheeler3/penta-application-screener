@@ -204,7 +204,7 @@ class StabilityReport:
         return stability.flipped(self.labels)
 
 
-def stability_run(provider, case: JudgeCase, *, k: int = 5, model_id: str = DEFAULT_MODEL, on_delta=None) -> StabilityReport:
+def stability_run(provider, case: JudgeCase, *, k: int = 5, model_id: str = DEFAULT_MODEL, on_delta: stability.DeltaSink = None) -> StabilityReport:
     """Audit ``case`` ``k`` times on identical input and report verdict stability. Every call
     sees the exact same brief + given, so any variation is the judge model's own run-to-run
     noise — the thing stability needs measured. The K calls run concurrently (independent
@@ -223,9 +223,8 @@ def stability_run(provider, case: JudgeCase, *, k: int = 5, model_id: str = DEFA
         key=lambda t: t[0],
     )
     results = [r for _i, r, err in packed if not err and r is not None]
-    if on_delta is not None:
-        for n, r in enumerate(results, 1):
-            on_delta(f"- run {n}: **{r.reproduced.judge_label}** — {r.reproduced.detail}\n")
+    for n, r in enumerate(results, 1):
+        stability.emit(on_delta, f"- run {n}: **{r.reproduced.judge_label}** — {r.reproduced.detail}\n")
     return StabilityReport(
         case=case,
         labels=[_stability_token(case, r) for r in results],  # graded token → the flip math
