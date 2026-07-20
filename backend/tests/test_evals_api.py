@@ -78,6 +78,34 @@ def test_seed_str_renders_any_of_fires_group() -> None:
     assert _seed_str("merge") == "merge"  # categorical label passes through
 
 
+def test_over_cases_flushes_in_order_as_cases_complete() -> None:
+    """Narration must reach the stream as cases finish (in case order), not batched to the very
+    end — the 'thinking box stays empty until everything's done' bug. Case 0 is slow and case 1
+    is fast; the fast one must still wait behind 0 (no interleave), but neither should require the
+    WHOLE pool to drain first. We assert order is preserved and every case's block is emitted."""
+    import threading
+
+    from app.api.evals import _over_cases
+
+    started = threading.Event()
+
+    def run_case_fn(c, delta):
+        if c == 0:
+            started.wait(0.2)  # case 0 lingers; case 1 finishes first
+        else:
+            started.set()
+        delta(f"case {c} line a\n")
+        delta(f"case {c} line b\n")
+        return c * 10
+
+    emitted: list[str] = []
+    results = _over_cases([0, 1], run_case_fn, on_delta=emitted.append, max_workers=2)
+
+    assert results == [0, 10]  # original order regardless of completion order
+    # Each case's two lines are contiguous (no interleave) and case 0 precedes case 1.
+    assert emitted == ["case 0 line a\n", "case 0 line b\n", "case 1 line a\n", "case 1 line b\n"]
+
+
 async def test_catalog_lists_evals_with_spend_flags() -> None:
     app, _db, _p = setup_app()
     transport = ASGITransport(app=app)
