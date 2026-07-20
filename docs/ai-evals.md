@@ -358,6 +358,42 @@ the label is legitimately debatable because the evidence under-determines it —
 case graduates to the `contested` category above, where disagreement is expected
 by construction rather than treated as a signal about either side.
 
+### Field notes — a flip is not one thing (2026-07-19)
+
+A batch of screening runs drove this home: **most of the eval's value was catching bad
+LABELS and prompt framing, not bad model behaviour.** When a case fails or a stability run
+flips, read the captured reasoning and classify the flip before "fixing" anything — the
+right response differs completely:
+
+- **A debatable label (the model is arguably right).** The screener's honest-but-over-policy
+  "one rabbit" was *detected* but not flagged, because the model reasoned "policy/eligibility,
+  not data-integrity" — a fair read of a self-contradictory prompt. Fix was the *prompt
+  framing*, not the model. Likewise a "modesty-then-correction" essay we first labelled an
+  inconsistency: the model's "tone, not a contradiction" read was better than our label. →
+  relabel, or make it `contested`.
+- **A taxonomy artifact (right finding, wrong bucket).** A fictional "velociraptor" pet was
+  reliably flagged but filed under `pet_policy` vs. `other` run-to-run — the concern was
+  caught every time; only the *category* wavered (and the policy text literally said "no
+  **other**/exotic pets", colliding with the `other` category). → fix the naming collision;
+  accept an "at least one of {pet_policy, other}" fire — the test is that it's flagged, not
+  which bucket.
+- **A threshold disagreement (genuinely two-sided).** A "TBD" child name: every run *saw* the
+  placeholder but split on whether it crossed the flag bar, each side reasoned coherently. →
+  decide the policy and state it in the prompt (we chose "flag it for a human to confirm
+  rather than excuse it as probably innocent"), or leave the axis ungraded if truly contested.
+
+A recurring model tell worth its own watch-item: **the model conflates *surfacing a flag*
+with *making an accusation/decision* and self-censors** — it withholds a flag by imagining an
+innocent explanation (the rabbit's "it's honest", the TBD name's "probably a pending name").
+This showed up independently on two passes, so the fix belongs in the framing, stated once and
+prominently: *surfacing a concern for a human to confirm is not making the eligibility
+decision.* Watch for new instances; if it recurs a third time, hoist that principle even
+higher in the prompt rather than patching per-bullet.
+
+The transferable rule: **only the debatable-label case is a reason to touch the label; the
+taxonomy and threshold cases are prompt/schema fixes. Reading the reasoning is what tells them
+apart — a flip count alone tells you none of it.**
+
 ## Design rules
 
 - The judge runs a **separate model, blind to the label**, driven only by the pass's
