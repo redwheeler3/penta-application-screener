@@ -495,6 +495,61 @@ export type EvalKey =
   | "screening" | "screening_stability"
   | "judge" | "stability";
 
+// A run mode is any eval key except "invariants" (which isn't a spend-confirmed model run).
+export type EvalRunMode = Exclude<EvalKey, "invariants">;
+
+// The fixtures a RunnableEval tab can read/edit cases for (the writable golden sets + the
+// judge tab, which aggregates them). A subset of EvalKey; the stability modes reuse their
+// pass's fixture rather than owning one.
+export type EvalFixtureKey =
+  | "scoring" | "consolidation" | "matching" | "decomposition" | "screening" | "judge";
+
+// One case's result within a run. Which fields are present depends on the run mode (scoring
+// carries score/confidence; categorical carries verdict/expected; stability carries
+// tally/agreement/runs; judge carries humanLabel/judgeLabel) — the mode is the discriminant
+// and lives OUTSIDE the payload, so every field is optional. `agreement` here is a fraction
+// (0..1) over the K stability runs — distinct from the run-level agreement object below.
+export type EvalCaseResult = {
+  key: string;
+  marker?: string;
+  contested?: boolean;
+  verdict?: string;
+  expected?: string;
+  passed?: boolean;
+  score?: number;
+  confidence?: string;
+  evidence?: string;
+  failures?: string[];
+  reason?: string;
+  categories?: string[];
+  fires?: string[];
+  absent?: string[];
+  agreement?: number;
+  tally?: Record<string, number>;
+  scoreMin?: number;
+  scoreMax?: number;
+  runs?: { outcome: string; detail: string }[];
+  humanLabel?: string;
+  judgeLabel?: string;
+  detail?: string;
+};
+
+// A whole run's summary (the NDJSON `summary` payload, also what LastEvalRun.result carries):
+// the per-case results plus run-level aggregates. `agreement` is the judge's calibration block
+// (Cohen's κ + failure-recall); `model`/`scoringModel`/`judgeModel` name the model that mode used.
+export type EvalRunResult = {
+  cases?: EvalCaseResult[];
+  agreement?: {
+    kappa: number | null;
+    failureRecall: number | null;
+    failureCaught: number;
+    failureTotal: number;
+  } | null;
+  model?: string;
+  scoringModel?: string;
+  judgeModel?: string;
+};
+
 export type EvalDescriptor = {
   key: EvalKey;
   label: string;
@@ -512,7 +567,7 @@ export type LastEvalRun = {
   promptVersion: string;
   currentPromptVersion: string;
   stale: boolean;
-  result: any;
+  result: EvalRunResult;
 };
 
 export type InvariantOut = { check: string; description: string; passed: boolean; violations: string[] };
