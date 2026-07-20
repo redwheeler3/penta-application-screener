@@ -229,21 +229,26 @@ def create_run(
     return run
 
 
-def _flatten_merges(merges: dict[str, str]) -> dict[str, str]:
-    """Resolve every drop→keep to its terminal survivor, collapsing in-run chains.
+def _resolve_chains(links: dict[str, str]) -> dict[str, str]:
+    """Resolve every start→target link to its TERMINAL target, collapsing chains.
 
-    ``{C: B, B: A}`` becomes ``{C: A, B: A}``. Orientation is always newer→older
-    (canonical rank), so the links strictly decrease and can't cycle; the ``seen`` cap
-    is defensive only.
+    ``{C: B, B: A}`` becomes ``{C: A, B: A}``. Both callers (in-run merges and persisted
+    aliases) orient newer→older (canonical rank), so links strictly decrease and can't
+    cycle; the ``seen`` cap is defensive only.
     """
     resolved: dict[str, str] = {}
-    for drop, keep in merges.items():
-        seen = {drop}
-        while keep in merges and keep not in seen:
-            seen.add(keep)
-            keep = merges[keep]
-        resolved[drop] = keep
+    for start, target in links.items():
+        seen = {start}
+        while target in links and target not in seen:
+            seen.add(target)
+            target = links[target]
+        resolved[start] = target
     return resolved
+
+
+def _flatten_merges(merges: dict[str, str]) -> dict[str, str]:
+    """Resolve every drop→keep merge to its terminal survivor (see ``_resolve_chains``)."""
+    return _resolve_chains(merges)
 
 
 def apply_consolidation(
@@ -417,15 +422,7 @@ def alias_map(db: Session) -> dict[str, str]:
     defensively by capping the walk.
     """
     direct = {a.alias_key: a.canonical_key for a in db.scalars(select(DimensionAlias))}
-    resolved: dict[str, str] = {}
-    for start in direct:
-        cur = direct[start]
-        seen = {start}
-        while cur in direct and cur not in seen:
-            seen.add(cur)
-            cur = direct[cur]
-        resolved[start] = cur
-    return resolved
+    return _resolve_chains(direct)
 
 
 def key_history(db: Session) -> tuple[dict[str, int], dict[str, str], dict[str, str]]:
@@ -552,6 +549,19 @@ def dimension_weights(run: RankingRun) -> dict[str, float]:
     return weights_from_tiers([d.key for d in report.dimensions], stored_tiers(run))
 
 
+def current_dimension_kinds(db: Session) -> set[str]:
+    """The cache ``kind`` of every dimension in the current run (empty if no current run).
+    The per-(applicant, dimension) scoring cache keys on these, so both the coverage count
+    and the per-candidate scoring trace resolve which cached rows belong to the live set."""
+    from app.ai.dimension_scoring import kind_for_dimension
+
+    run = get_current_run(db)
+    report = current_dimension_report(run) if run is not None else None
+    if report is None:
+        return set()
+    return {kind_for_dimension(d.key) for d in report.dimensions}
+
+
 def kept_keys(run: RankingRun) -> list[str]:
     """Dimension keys the committee has KEPT — every key placed in a working
     (non-Ignore) tier. A kept axis is guaranteed to survive the next Rank (injected
@@ -578,6 +588,14 @@ def proposed_dimensions(run: RankingRun) -> list[str]:
     return list((run.run_state or {}).get("proposed_dimensions", []))
 
 
+def _audit_field(run: RankingRun, name: str) -> dict | None:
+    """One field off the run's 1:1 audit row (``match``/``decompose``/``consolidate``/
+    ``fan_out``), or None when the run has no audit row (predates the split) — so the
+    audit-view accessors don't each repeat the ``run.audit.<field> if run.audit`` guard.
+    """
+    return getattr(run.audit, name) if run.audit else None
+
+
 def match_audit_view(run: RankingRun) -> dict | None:
     """The run's carry-forward audit, shaped for the trace viewer, or None when the
     run predates match-audit capture (older runs stored no audit).
@@ -589,7 +607,7 @@ def match_audit_view(run: RankingRun) -> dict | None:
     over-matching. ``carry_forward_rate`` is None on a first run, where there were no
     prior dimensions to match against and the rate is undefined (not zero).
     """
-    audit = run.audit.match if run.audit else None
+    audit = _audit_field(run, "match")
     if not audit:
         return None
     discovered = audit.get("raw_discovery_dimensions", [])
@@ -630,7 +648,7 @@ def decompose_audit_view(run: RankingRun) -> dict | None:
     counts, and the D9 ``folded_requests`` trail. This is a thin pass-through with
     defaults, mirroring the other ``*_audit_view`` accessors so the router stays uniform.
     """
-    audit = run.audit.decompose if run.audit else None
+    audit = _audit_field(run, "decompose")
     if not audit:
         return None
     # Which discovery report(s) coined each source key, derived from the fan-out audit
@@ -641,7 +659,7 @@ def decompose_audit_view(run: RankingRun) -> dict | None:
     # uncaptured) simply has no name entry; the UI falls back to the bare key.
     key_to_reports: dict[str, list[int]] = {}
     key_to_name: dict[str, str] = {}
-    fan_out = (run.audit.fan_out if run.audit else None) or {}
+    fan_out = _audit_field(run, "fan_out") or {}
     for i, p in enumerate(fan_out.get("passes", [])):
         for dim in (p.get("report") or {}).get("dimensions", []):
             key_to_reports.setdefault(dim.get("key"), []).append(i)
@@ -688,7 +706,7 @@ def consolidate_audit_view(db: Session, run: RankingRun) -> dict | None:
     any report) resolves via this run's own decompose/fan-out names. Only a key with no
     trace anywhere stays nameless, and the UI then shows the bare key.
     """
-    audit = run.audit.consolidate if run.audit else None
+    audit = _audit_field(run, "consolidate")
     if not audit:
         return None
     # Resolution map: cross-run mint names, then overlaid with this run's own settled +
@@ -696,9 +714,9 @@ def consolidate_audit_view(db: Session, run: RankingRun) -> dict | None:
     _rank, _defs, names = key_history(db)
     resolve = dict(names)
     # `or {}` on each audit: they're stored as null on runs that predate that pass.
-    for s in ((run.audit.decompose if run.audit else None) or {}).get("settled", []):
+    for s in (_audit_field(run, "decompose") or {}).get("settled", []):
         resolve.setdefault(s.get("key"), s.get("name", ""))
-    for p in ((run.audit.fan_out if run.audit else None) or {}).get("passes", []):
+    for p in (_audit_field(run, "fan_out") or {}).get("passes", []):
         for dim in (p.get("report") or {}).get("dimensions", []):
             resolve.setdefault(dim.get("key"), dim.get("name", ""))
     pairs = [

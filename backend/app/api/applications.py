@@ -6,7 +6,6 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.ai.dimension_scoring import kind_for_dimension
 from app.api.dependencies import require_current_user
 from app.api.problems import Problem
 from app.core.time import utc_isoformat
@@ -35,6 +34,7 @@ from app.schemas.applications import (
 )
 from app.services.application_import import extract_essays
 from app.services.ranking_run import (
+    current_dimension_kinds,
     current_dimension_report,
     dimension_weights,
     get_current_run,
@@ -390,11 +390,9 @@ def _result_trace(result: ApplicationAIResult | None) -> AIResultTraceOut | None
 def _dimension_scoring_trace(
     db: Session, application_id: int
 ) -> DimensionScoringTraceOut | None:
-    run = get_current_run(db)
-    report = current_dimension_report(run) if run is not None else None
-    if report is None:
+    kinds = current_dimension_kinds(db)
+    if not kinds:
         return None
-    kinds = {kind_for_dimension(dimension.key) for dimension in report.dimensions}
     latest: dict[str, ApplicationAIResult] = {}
     for result in db.scalars(
         select(ApplicationAIResult)

@@ -204,24 +204,16 @@ def live_case_keys(run_key: str) -> set[str] | None:
 
 def seed_str(expected: object) -> str:
     """A compact display token for a case's human label, for the stability ``seed`` field.
-    Categorical labels are strings; scoring/screening labels are dicts (a band or fires/absent),
-    which we render as a short key summary."""
-    from app.evals.screening import fire_label as screening_fire_label
+    Categorical labels are strings; scoring/screening labels are dicts (a band or fires/absent).
+    Delegates to each pass's own label formatter so the seed reads identically to that pass's
+    other surfaces (and the fires any-of group renders as 'a | b', not a bare-str join)."""
+    from app.evals.scoring import band_str
+    from app.evals.screening import expected_str
 
     if isinstance(expected, str):
         return expected
     if isinstance(expected, dict):
         if "fires" in expected or "absent" in expected:
-            # A fire entry may be a nested list — an "at least one of" group (e.g.
-            # ["pet_policy", "other"]) — which screening_fire_label renders as "a | b". Joining
-            # it as a bare str would throw (the judge-stability seed bug for the velociraptor case).
-            parts = []
-            if expected.get("fires"):
-                parts.append("fires: " + ", ".join(screening_fire_label(f) for f in expected["fires"]))
-            if expected.get("absent"):
-                parts.append("absent: " + ", ".join(expected["absent"]))
-            return " · ".join(parts) or "clean"
-        lo, hi = expected.get("score_min", "-1"), expected.get("score_max", "1")
-        conf = f" {expected['confidence']}" if "confidence" in expected else ""
-        return f"[{lo}, {hi}]{conf}"
+            return expected_str(expected)
+        return band_str(expected)
     return str(expected)

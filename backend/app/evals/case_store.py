@@ -59,8 +59,8 @@ def list_cases(eval_key: str) -> list[dict]:
     ``_FIXTURES``, so ``save_case('judge', …)`` correctly refuses (nothing to write to)."""
     if eval_key == "judge":
         out: list[dict] = []
-        for pass_name, live_key in _BACKGROUND_PASSES.items():
-            path, _ = _FIXTURES[live_key]
+        for pass_name in _BACKGROUND_PASSES:
+            path, _ = _FIXTURES[pass_name]
             for c in _load(path).get("cases", []):
                 if isinstance(c, dict) and "key" in c:
                     c.setdefault("metadata", {}).setdefault("pass", pass_name)
@@ -88,7 +88,7 @@ def save_case(eval_key: str, case: dict) -> list[dict]:
             raise CaseValidationError(
                 f"judge case metadata.pass must name a known pass ({', '.join(_BACKGROUND_PASSES)}), got {pass_name!r}"
             )
-        save_case(_BACKGROUND_PASSES[pass_name], case)
+        save_case(pass_name, case)
         return list_cases("judge")
     if eval_key not in _FIXTURES:
         raise UnknownEvalError(eval_key)
@@ -118,15 +118,12 @@ def save_case(eval_key: str, case: dict) -> list[dict]:
     return [c for c in cases if isinstance(c, dict) and "key" in c]
 
 
-# The pass whose golden file each editable judge_background lives in. Keyed by the pass name
-# the Judge tab groups by (matches JudgeCase.pass_name), value is the writable eval key.
-_BACKGROUND_PASSES: dict[str, str] = {
-    "scoring": "scoring",
-    "consolidation": "consolidation",
-    "matching": "matching",
-    "decomposition": "decomposition",
-    "screening": "screening",
-}
+# The passes the judge audits — each has its own golden file (a subset of _FIXTURES: every
+# writable pass except the aggregate ``judge`` key). The pass name the Judge tab groups by
+# (matches JudgeCase.pass_name) IS the writable eval key, so these index _FIXTURES directly.
+_BACKGROUND_PASSES: tuple[str, ...] = (
+    "scoring", "consolidation", "matching", "decomposition", "screening",
+)
 
 
 def get_background(pass_name: str) -> str:
@@ -134,7 +131,7 @@ def get_background(pass_name: str) -> str:
     pass, read from its golden file. Empty string if unset. Unknown pass → UnknownEvalError."""
     if pass_name not in _BACKGROUND_PASSES:
         raise UnknownEvalError(pass_name)
-    path, _ = _FIXTURES[_BACKGROUND_PASSES[pass_name]]
+    path, _ = _FIXTURES[pass_name]
     return _load(path).get("judge_background", "")
 
 
@@ -146,7 +143,7 @@ def save_background(pass_name: str, background: str) -> str:
         raise UnknownEvalError(pass_name)
     if not isinstance(background, str) or not background.strip():
         raise CaseValidationError("judge_background must be a non-empty string")
-    path, _ = _FIXTURES[_BACKGROUND_PASSES[pass_name]]
+    path, _ = _FIXTURES[pass_name]
     data = _load(path)
     data["judge_background"] = background
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
