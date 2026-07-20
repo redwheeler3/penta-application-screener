@@ -1,7 +1,8 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { fetchFanOutAudit } from "../api";
-import type { CurrentRunResponse, FanOutAuditResponse } from "../types";
+import { useFetchOnce } from "../hooks/useFetchOnce";
+import type { CurrentRunResponse } from "../types";
 
 // The discovery half of the run-level axis (M13 + Fan-Out Redesign): what the K
 // parallel discoverers each found and why. Each pass is one fresh-context discovery;
@@ -10,21 +11,11 @@ import type { CurrentRunResponse, FanOutAuditResponse } from "../types";
 // fan-out — and the merges it feeds — legible.
 //
 // One collapsible per discoverer: its dimensions (the comparison signal — who found
-// what) plus its reasoning. Self-fetches the fan-out audit; falls back to the single
-// run-level narrative for runs that predate the fan-out (no per-pass audit).
+// what) plus its reasoning. Self-fetches the fan-out audit (mount-once via useFetchOnce;
+// the caller keys this by runId so a run change remounts and re-fetches). Falls back to the
+// single run-level narrative for runs that predate the fan-out (no per-pass audit).
 export function DiscoveryPanel(props: { run: CurrentRunResponse }): ReactNode {
-  const [audit, setAudit] = useState<FanOutAuditResponse | null>(null);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-
-  useEffect(() => {
-    let live = true;
-    fetchFanOutAudit()
-      .then((a) => live && (setAudit(a), setState("ready")))
-      .catch(() => live && setState("error"));
-    return () => {
-      live = false;
-    };
-  }, [props.run.runId]);
+  const { data: audit, state } = useFetchOnce(fetchFanOutAudit);
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;
   if (state === "error") return <p className="panel-hint">Couldn’t load discovery.</p>;
