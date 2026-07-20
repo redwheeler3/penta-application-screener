@@ -1066,7 +1066,7 @@ def run_stability(
 
     def one(c, case_delta) -> StabilityCaseOut:
         case_delta(f"\n\n### [{c.pass_name}] {c.key} (x{k})\n")
-        rep = stability_run(provider, c, k=k, model_id=JUDGE_MODEL)
+        rep = stability_run(provider, c, k=k, model_id=JUDGE_MODEL, on_delta=case_delta)
         tally = dict(Counter(rep.labels).most_common())
         marker = stability.marker(rep.labels, contested=c.contested)
         case_delta(f"→ {marker} {rep.agreement:.0%}: {tally}\n")

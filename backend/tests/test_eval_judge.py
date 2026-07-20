@@ -88,7 +88,8 @@ def test_stability_reports_perfect_agreement_when_verdict_is_steady() -> None:
     provider = MockProvider()
     _queue_verdicts(provider, [JudgeVerdict(case.expected)] * 5)
 
-    report = stability_run(provider, case, k=5)
+    narration: list[str] = []
+    report = stability_run(provider, case, k=5, on_delta=narration.append)
 
     assert len(report.labels) == 5
     assert report.agreement == 1.0
@@ -101,6 +102,9 @@ def test_stability_reports_perfect_agreement_when_verdict_is_steady() -> None:
     assert len(report.runs) == 5
     assert all(r.outcome == case.expected for r in report.runs)
     assert all(isinstance(r.detail, str) for r in report.runs)
+    # …and those K reasonings are narrated to the thinking box (one numbered line per run),
+    # like the other passes' stability — not just the detail pane.
+    assert sum(line.startswith("- run ") for line in narration) == 5
 
 
 def test_stability_flags_a_flip_on_a_non_contested_case() -> None:
