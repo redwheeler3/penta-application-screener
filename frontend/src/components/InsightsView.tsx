@@ -26,8 +26,16 @@ type Tab =
   | "discovery" | "decompose" | "match" | "consolidate" | "cost" | "metrics"
   | "invariants" | "scoring" | "consolidation" | "matching" | "decomposition" | "screening" | "judge";
 
-export function InsightsView(props: { family: InsightsFamily; run: CurrentRunResponse | null }): ReactNode {
-  const { family } = props;
+export function InsightsView(props: {
+  family: InsightsFamily;
+  run: CurrentRunResponse | null;
+  // Save outcomes (golden case, judge brief) surface as the app's standard toasts, same as
+  // Settings and the Rank flows — not inline text.
+  onToast: (message: string) => void;
+  onError: (message: string) => void;
+}): ReactNode {
+  const { family, onToast, onError } = props;
+  const toast = { onToast, onError };
   const [catalog, setCatalog] = useState<EvalDescriptor[] | null>(null);
   useEffect(() => {
     fetchEvalCatalog()
@@ -114,6 +122,7 @@ export function InsightsView(props: { family: InsightsFamily; run: CurrentRunRes
           <InvariantsEval />
         ) : activeTab === "scoring" ? (
           <RunnableEval
+            {...toast}
             caseEvalKey="scoring"
             runKeys={["scoring", "scoring_stability"]}
             description="Run hand-authored synthetic applicants through the REAL scoring prompt + model, then grade each with deterministic assertions and the rubric judge. Stability runs each case K times to see if its pass/fail wanders (the score crossing the assertion boundary). Tests the actual prompt, not a recorded artifact."
@@ -126,6 +135,7 @@ export function InsightsView(props: { family: InsightsFamily; run: CurrentRunRes
           />
         ) : activeTab === "consolidation" ? (
           <RunnableEval
+            {...toast}
             caseEvalKey="consolidation"
             runKeys={["consolidation", "consolidation_stability"]}
             description="Run golden dimension pairs through the REAL consolidation prompt + model, then grade merge/keep against the label by exact match. Stability runs each pair K times to see if the verdict flips. Tests the actual prompt, not a recorded artifact. Contested pairs are shown but not scored."
@@ -138,6 +148,7 @@ export function InsightsView(props: { family: InsightsFamily; run: CurrentRunRes
           />
         ) : activeTab === "matching" ? (
           <RunnableEval
+            {...toast}
             caseEvalKey="matching"
             runKeys={["matching", "matching_stability"]}
             description="Run golden prior/new dimension pairs through the REAL identity-match prompt + model, then grade matches/mismatches against the label by exact match. Stability runs each pair K times to see if the verdict flips. Tests the actual prompt, not a recorded artifact. A wrong match corrupts a carried-forward score, so the constructed mismatch pair guards that direction."
@@ -150,6 +161,7 @@ export function InsightsView(props: { family: InsightsFamily; run: CurrentRunRes
           />
         ) : activeTab === "decomposition" ? (
           <RunnableEval
+            {...toast}
             caseEvalKey="decomposition"
             runKeys={["decomposition", "decomposition_stability"]}
             description="Run golden discovery-report sets through the REAL decomposition prompt + model; the merge/keep verdict is derived from the settled set (all carvings folded into one axis = merge; kept across ≥2 = keep), graded against the label by exact match. Stability runs each set K times to see if the fold flips. Guards both over-fold (collapsing distinct axes) and under-fold (weighting one concept N times)."
@@ -162,6 +174,7 @@ export function InsightsView(props: { family: InsightsFamily; run: CurrentRunRes
           />
         ) : activeTab === "screening" ? (
           <RunnableEval
+            {...toast}
             caseEvalKey="screening"
             runKeys={["screening", "screening_stability"]}
             description="Run golden synthetic applicants through the REAL screening prompt + model, then grade the produced flags per-category: expected flags must fire, over-reach guards must stay absent (flagging a benign thing is the costly error since flags gate eligibility), and a clean applicant must raise none. Stability runs each applicant K times to see if the flag set holds."
@@ -174,11 +187,12 @@ export function InsightsView(props: { family: InsightsFamily; run: CurrentRunRes
           />
         ) : activeTab === "judge" ? (
           <RunnableEval
+            {...toast}
             caseEvalKey="judge"
             runKeys={["judge", "stability"]}
             groupBy="pass"
             addable={false}
-            header={<JudgeBackgrounds />}
+            header={<JudgeBackgrounds {...toast} />}
             description="A blind label audit: for every pass's golden cases, an independent model reproduces that pass's output from the pass's brief + the case input (NOT the human label), then the harness compares to the label. A judge run reports judge-vs-human agreement (κ); a stability run repeats each case K times to see if the judge's verdict flips. Cases are grouped by the pass they exercise; editing one here writes to that pass's own golden file. Add new cases from the pass's own tab."
             modes={
               [

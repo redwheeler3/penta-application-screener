@@ -43,6 +43,10 @@ export function RunnableEval(props: {
   addable?: boolean;
   // Extra content rendered above the run controls (the Judge tab's per-pass background editors).
   header?: ReactNode;
+  // Save outcomes surface as the app's standard toasts (success auto-dismisses, error persists),
+  // matching Settings/Rank — not inline text.
+  onToast: (message: string) => void;
+  onError: (message: string) => void;
 }): ReactNode {
   const { caseEvalKey, modes } = props;
   const editable = props.editable ?? true;
@@ -165,9 +169,14 @@ export function RunnableEval(props: {
       setCases((await resp.json()).cases);
       setSelected(String(evalCase.key));
       setEditing(null);
+      props.onToast(`Case “${String(evalCase.key)}” saved — commit the golden file to keep it.`);
     } else {
       const problem = await resp.json().catch(() => null);
-      setSaveError(problem?.detail ?? `Save failed (${resp.status})`);
+      const detail = problem?.detail ?? `Save failed (${resp.status})`;
+      // Keep the inline error too: it holds the editor open with the form intact so the fix is
+      // one edit away, while the toast is the at-a-glance outcome.
+      setSaveError(detail);
+      props.onError(`Could not save case: ${detail}`);
     }
   }
 
@@ -339,6 +348,14 @@ const CATEGORICAL = new Set(["consolidation", "matching", "decomposition"]);
 
 function dotFor(mode: RunMode["evalKey"], result: any): "ok" | "fail" | "contested" {
   if (result.marker === "[contested-split]") return "contested";  // stability wobble
+  // Judge run: a contested case is a PASS with review treatment (amber, both labels
+  // defensible), never red — even when the blind judge diverges from the human leaning.
+  // [ok] = agreed with the label (green); [review] = a real disagreement on a non-contested
+  // case (red, worth investigating).
+  if (mode === "judge") {
+    if (result.marker === "[contested]" || result.contested) return "contested";
+    return result.marker === "[ok]" ? "ok" : "fail";
+  }
   if (CATEGORICAL.has(mode) && result.contested) {
     return result.verdict === result.expected ? "ok" : "contested";  // agree = green, diverge = amber
   }
@@ -625,11 +642,13 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
           <StabilityRuns runs={r.runs} />
         </div>
       ) : (
-        // Judge (blind label audit): the human label vs. what the blind judge reproduced.
+        // Judge (blind label audit): the human label vs. what the blind judge reproduced. On a
+        // contested case both labels are defensible, so a divergence is expected review material
+        // (amber pass), NOT a disagreement to fix — word it that way.
         <div className="eval-case-result-body">
-          label <span className="eval-mono">{r.humanLabel}</span> → judge said{" "}
+          {r.contested ? "leaning" : "label"} <span className="eval-mono">{r.humanLabel}</span> → judge said{" "}
           <span className="eval-mono">{r.judgeLabel}</span>
-          {r.humanLabel !== r.judgeLabel ? " (disagrees)" : ""}
+          {r.humanLabel !== r.judgeLabel ? (r.contested ? " (contested — both defensible)" : " (disagrees)") : ""}
           {r.detail ? <Md text={r.detail} className="eval-case-result-ev" /> : null}
         </div>
       )}
