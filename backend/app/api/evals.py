@@ -561,17 +561,18 @@ def _case_workers(settings, *, fan_out: int = 1) -> int:
 def _over_cases(cases: list, run_case_fn, *, on_delta, max_workers: int) -> list:
     """Run ``run_case_fn(case, case_on_delta)`` for each case CONCURRENTLY (bounded by
     ``max_workers`` — see ``_case_workers``), returning results in the ORIGINAL case order. Each
-    case gets its own buffered ``case_on_delta``; a finished case's buffered narration is flushed
-    to the real ``on_delta`` as ONE block, so cases never interleave in the thinking box even
-    though they run in parallel (and only this thread ever writes the stream — the per-case fns
-    write to their own buffers). For a stability case, within-case K-parallelism still applies
+    case gets its own buffered ``case_on_delta``; when a case finishes, its whole buffer is
+    flushed to the real ``on_delta`` as ONE block, so cases never interleave in the thinking box
+    even though they run in parallel (and only this thread ever writes the stream — the per-case
+    fns write to their own buffers). For a stability case, within-case K-parallelism still applies
     inside ``run_case_fn`` (run_stability's own pool).
 
-    Flushing is INCREMENTAL and in order: as each case completes, we emit the longest contiguous
-    prefix of finished cases that hasn't been flushed yet. So case 0's block appears the moment
-    it's done (not after the whole pool drains), while ordering + no-interleave still hold — a
-    later case that finishes first waits in its buffer until its predecessors have flushed. The
-    thinking box therefore fills as cases land, instead of staying empty until the end."""
+    Flushing is AS-COMPLETED: each case's block streams the instant that case finishes, so the
+    thinking box fills as fast as work lands — a fast case never waits behind a slow predecessor.
+    Block order is therefore completion order, not case order; that's fine because nothing
+    downstream depends on narration order (each block is self-labelled with its case key) and the
+    returned RESULTS are still re-sorted to case order below (the frontend keys per-case output by
+    ``key``, and agreement is an order-independent aggregate — so results order is only tidiness)."""
     from app.ai.analysis import run_in_pool
 
     def work(indexed):
@@ -580,22 +581,18 @@ def _over_cases(cases: list, run_case_fn, *, on_delta, max_workers: int) -> list
         result = run_case_fn(c, buf.append)
         return i, result, buf
 
-    slots: dict[int, tuple] = {}
-    flushed = 0  # next case index awaiting its turn to flush
+    slots: dict[int, object] = {}
     for _item, packed, err in run_in_pool(
         list(enumerate(cases)), call=work, max_workers=min(max_workers, len(cases) or 1)
     ):
         if err is not None:
             raise err
         i, result, buf = packed
-        slots[i] = (result, buf)
-        # Emit every now-contiguous completed case from `flushed` onward, in order.
-        while flushed in slots:
-            for line in slots[flushed][1]:
-                on_delta(line)
-            flushed += 1
+        slots[i] = result
+        for line in buf:  # flush this case's block immediately, the moment it completes
+            on_delta(line)
 
-    return [slots[i][0] for i in range(len(cases))]
+    return [slots[i] for i in range(len(cases))]
 
 
 @router.post("/scoring")
