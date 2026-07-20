@@ -56,7 +56,7 @@ class DiscoverySeeds:
 
 SYSTEM_PROMPT = """\
 You are helping a housing co-op screening committee understand a pool of applicants as a whole.
-Discover the dimensions on which THIS pool meaningfully varies — the axes that separate stronger from weaker fit here, not a generic ideal member. Favour distinct, non-overlapping axes over a few broad ones, but only where the pool genuinely differentiates; each must capture a single concept — never fuse two to shorten the list.
+Discover the dimensions on which THIS pool meaningfully varies — the axes on which these applicants actually differ from one another, not a generic ideal member. Favour distinct, non-overlapping axes over a few broad ones, but only where the pool genuinely differentiates; each must capture a single concept — never fuse two to shorten the list.
 Ground every dimension in the applicants' own words. Never make writing polish or fluency a dimension.
 You describe axes, not individuals; a later step scores and ranks them."""
 
@@ -64,7 +64,7 @@ You describe axes, not individuals; a later step scores and ranks them."""
 # Static instruction text. Shared note fragments are interpolated at import.
 _INSTRUCTIONS = f"""\
 ## Task
-Discover the dimensions (20-30) on which this pool genuinely varies and that matter for "fit for Penta". Draw on BOTH facts and essays — quantitative axes count as much as qualitative ones. Prefer splitting a broad axis into separately-weighable sub-dimensions over merging. Every dimension must be independently meaningful and non-overlapping.
+Discover the dimensions (15-30) on which this pool genuinely varies. Draw on BOTH facts and essays — quantitative axes count as much as qualitative ones. Prefer splitting a broad axis into separately-weighable sub-dimensions over merging. Every dimension must be independently meaningful and non-overlapping.
 
 ## Inputs
 The eligible applicants are in the `<applicant_pool>` block below — each with structured "facts" (household make-up, income and its split, employment tenure, real-estate ownership, pets) and their essay answers.
