@@ -190,15 +190,11 @@ def stability_run(
     fold/keep stability. Delegates tallying/marker to the shared stability core; the only
     pass-specific part is one decompose call producing one merge/keep token."""
     _emit(on_delta, f"Decomposing {len(case._source_keys)} carvings x{k} on `{decompose_model}`…\n\n")
-    runs = {"i": 0}
 
     def run_once() -> tuple[str, str]:
-        verdict, reason = _decompose_verdict(provider, case, decompose_model=decompose_model)
-        runs["i"] += 1
-        _emit(on_delta, f"- run {runs['i']}: **{verdict}** — {reason}\n")
-        return verdict, reason
+        return _decompose_verdict(provider, case, decompose_model=decompose_model)
 
-    report = run_stability(run_once, k=k, contested=case.contested)
+    report = run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
     tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())
     _emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
     return report

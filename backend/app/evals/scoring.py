@@ -239,25 +239,21 @@ def stability_run(
     token per run is 'pass'/'fail' on the band check; the shared core tallies the flip, and the
     score spread is surfaced as informational."""
     _emit(on_delta, f"Scoring **{case.dimension.name}** x{k} on `{scoring_model}`…\n\n")
-    scores: list[float] = []
-    runs = {"i": 0}
+    scores: list[float] = []  # appended from concurrent runs; order-free (only min/max is read)
 
     def run_once() -> tuple[str, str]:
-        runs["i"] += 1
         score = _score_once(provider, case, scoring_model=scoring_model)
         if score is None:
             scores.append(float("nan"))
-            _emit(on_delta, f"- run {runs['i']}: **no score** → fail\n")
             return "fail", "model returned no score"
         scores.append(score.score)
         outcome = "fail" if _check_expectations(score, case.expected) else "pass"
         # Detail = the score + the model's rationale for it (the "why" behind a flip).
         detail = f"score {score.score:+.2f} ({score.confidence.value}): {score.rationale}"
-        _emit(on_delta, f"- run {runs['i']}: score {score.score:+.2f} → **{outcome}**\n")
         return outcome, detail
 
     # A scoring golden case has no "contested" notion; a pass/fail flip is always a real signal.
-    report = run_stability(run_once, k=k, contested=False)
+    report = run_stability(run_once, k=k, contested=False, on_delta=on_delta)
     out = ScoringStabilityResult(case=case, stability=report, scores=scores)
     lo, hi = out.score_spread
     tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())

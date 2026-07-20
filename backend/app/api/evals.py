@@ -547,6 +547,45 @@ def _select(items: list, case: str | None, key):
     return picked
 
 
+# Cross-case concurrency for stability runs is bounded low: each case already fans out its own
+# K runs (up to 10) via run_stability's pool, so N cases × K would multiply fast. A small
+# per-case worker count keeps total in-flight calls sane while still overlapping cases.
+_STABILITY_CASE_WORKERS = 3
+
+
+def _stability_over_cases(cases: list, run_case_fn, *, on_delta) -> list:
+    """Run ``run_case_fn(case, case_on_delta)`` for each case CONCURRENTLY, returning results in
+    the ORIGINAL case order. Each case gets its own buffered ``case_on_delta``; a finished
+    case's buffered narration is flushed to the real ``on_delta`` as ONE block, so cases never
+    interleave in the thinking box even though they run in parallel (and only this thread ever
+    writes the stream — the per-case fns write to their own buffers). Within-case K-parallelism
+    still applies inside ``run_case_fn`` (run_stability's own pool)."""
+    from app.ai.analysis import run_in_pool
+
+    def work(indexed):
+        i, c = indexed
+        buf: list[str] = []
+        result = run_case_fn(c, buf.append)
+        return i, result, buf
+
+    slots: dict[int, tuple] = {}
+    for _item, packed, err in run_in_pool(
+        list(enumerate(cases)), call=work, max_workers=min(_STABILITY_CASE_WORKERS, len(cases) or 1)
+    ):
+        if err is not None:
+            raise err
+        i, result, buf = packed
+        slots[i] = (result, buf)
+
+    ordered = []
+    for i in range(len(cases)):
+        result, buf = slots[i]
+        for line in buf:
+            on_delta(line)  # flush this case's narration as one contiguous block, in case order
+        ordered.append(result)
+    return ordered
+
+
 @router.post("/scoring")
 def run_scoring(
     case: str | None = None,
@@ -605,17 +644,18 @@ def run_scoring_stability(
     scoring_model = settings.ai.dimension_scoring_model
     golden = _select(list(load_golden()), case, lambda c: c.key)
 
+    def one(c, case_delta) -> ScoringStabilityCaseOut:
+        case_delta(f"\n\n### {c.key} (x{k})\n")
+        res = scoring_stability_run(provider, c, scoring_model=scoring_model, k=k, on_delta=case_delta)
+        lo, hi = res.score_spread
+        return ScoringStabilityCaseOut(
+            key=c.key, marker=res.stability.marker, agreement=res.stability.agreement,
+            flipped=res.stability.flipped, tally=res.stability.tally,
+            score_min=lo, score_max=hi, runs=_runs_out(res.stability),
+        )
+
     def work(on_delta) -> ScoringStabilityResponse:
-        out = []
-        for c in golden:
-            on_delta(f"\n\n### {c.key} (x{k})\n")
-            res = scoring_stability_run(provider, c, scoring_model=scoring_model, k=k, on_delta=on_delta)
-            lo, hi = res.score_spread
-            out.append(ScoringStabilityCaseOut(
-                key=c.key, marker=res.stability.marker, agreement=res.stability.agreement,
-                flipped=res.stability.flipped, tally=res.stability.tally,
-                score_min=lo, score_max=hi, runs=_runs_out(res.stability),
-            ))
+        out = _stability_over_cases(golden, one, on_delta=on_delta)
         return ScoringStabilityResponse(
             scoring_prompt_version=SCORING_PROMPT_VERSION, scoring_model=scoring_model, k=k, cases=out,
         )
@@ -689,16 +729,17 @@ def run_consolidation_stability(
     model = settings.ai.consolidate_model
     cases = _select(list(load_consolidation_cases()), case, lambda c: c.key)
 
+    def one(c, case_delta) -> ConsolidationStabilityCaseOut:
+        case_delta(f"\n\n### {c.key} (x{k})\n")
+        rep = consolidation_stability_run(provider, c, consolidate_model=model, k=k, on_delta=case_delta)
+        return ConsolidationStabilityCaseOut(
+            key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
+            contested=c.contested, agreement=rep.agreement, flipped=rep.flipped,
+            tally=rep.tally, runs=_runs_out(rep),
+        )
+
     def work(on_delta) -> ConsolidationStabilityResponse:
-        out = []
-        for c in cases:
-            on_delta(f"\n\n### {c.key} (x{k})\n")
-            rep = consolidation_stability_run(provider, c, consolidate_model=model, k=k, on_delta=on_delta)
-            out.append(ConsolidationStabilityCaseOut(
-                key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
-                contested=c.contested, agreement=rep.agreement, flipped=rep.flipped,
-                tally=rep.tally, runs=_runs_out(rep),
-            ))
+        out = _stability_over_cases(cases, one, on_delta=on_delta)
         return ConsolidationStabilityResponse(
             prompt_version=CONSOLIDATE_PROMPT_VERSION, model=model, k=k, cases=out,
         )
@@ -763,16 +804,17 @@ def run_matching_stability(
     model = settings.ai.match_model
     cases = _select(list(load_matching_cases()), case, lambda c: c.key)
 
+    def one(c, case_delta) -> MatchingStabilityCaseOut:
+        case_delta(f"\n\n### {c.key} (x{k})\n")
+        rep = matching_stability_run(provider, c, match_model=model, k=k, on_delta=case_delta)
+        return MatchingStabilityCaseOut(
+            key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
+            contested=c.contested, agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
+            runs=_runs_out(rep),
+        )
+
     def work(on_delta) -> MatchingStabilityResponse:
-        out = []
-        for c in cases:
-            on_delta(f"\n\n### {c.key} (x{k})\n")
-            rep = matching_stability_run(provider, c, match_model=model, k=k, on_delta=on_delta)
-            out.append(MatchingStabilityCaseOut(
-                key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
-                contested=c.contested, agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
-                runs=_runs_out(rep),
-            ))
+        out = _stability_over_cases(cases, one, on_delta=on_delta)
         return MatchingStabilityResponse(prompt_version=MATCH_PROMPT_VERSION, model=model, k=k, cases=out)
 
     return _stream(db, "matching_stability", MATCH_PROMPT_VERSION, work)
@@ -836,16 +878,17 @@ def run_decomposition_stability(
     model = settings.ai.decompose_model
     cases = _select(list(load_decomposition_cases()), case, lambda c: c.key)
 
+    def one(c, case_delta) -> DecompositionStabilityCaseOut:
+        case_delta(f"\n\n### {c.key} (x{k})\n")
+        rep = decomposition_stability_run(provider, c, decompose_model=model, k=k, on_delta=case_delta)
+        return DecompositionStabilityCaseOut(
+            key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
+            contested=c.contested, agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
+            runs=_runs_out(rep),
+        )
+
     def work(on_delta) -> DecompositionStabilityResponse:
-        out = []
-        for c in cases:
-            on_delta(f"\n\n### {c.key} (x{k})\n")
-            rep = decomposition_stability_run(provider, c, decompose_model=model, k=k, on_delta=on_delta)
-            out.append(DecompositionStabilityCaseOut(
-                key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
-                contested=c.contested, agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
-                runs=_runs_out(rep),
-            ))
+        out = _stability_over_cases(cases, one, on_delta=on_delta)
         return DecompositionStabilityResponse(prompt_version=DECOMPOSE_PROMPT_VERSION, model=model, k=k, cases=out)
 
     return _stream(db, "decomposition_stability", DECOMPOSE_PROMPT_VERSION, work)
@@ -907,16 +950,17 @@ def run_screening_stability(
     version = screening_prompt_version(settings)
     cases = _select(list(load_screening_cases()), case, lambda c: c.key)
 
+    def one(c, case_delta) -> ScreeningStabilityCaseOut:
+        case_delta(f"\n\n### {c.key} (x{k})\n")
+        rep = screening_stability_run(provider, c, screening_model=model, settings=settings, k=k, on_delta=case_delta)
+        return ScreeningStabilityCaseOut(
+            key=c.key, marker=rep.marker, majority=rep.majority,
+            agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
+            runs=_runs_out(rep),
+        )
+
     def work(on_delta) -> ScreeningStabilityResponse:
-        out = []
-        for c in cases:
-            on_delta(f"\n\n### {c.key} (x{k})\n")
-            rep = screening_stability_run(provider, c, screening_model=model, settings=settings, k=k, on_delta=on_delta)
-            out.append(ScreeningStabilityCaseOut(
-                key=c.key, marker=rep.marker, majority=rep.majority,
-                agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
-                runs=_runs_out(rep),
-            ))
+        out = _stability_over_cases(cases, one, on_delta=on_delta)
         return ScreeningStabilityResponse(prompt_version=version, model=model, k=k, cases=out)
 
     return _stream(db, "screening_stability", version, work)
@@ -1006,19 +1050,20 @@ def run_stability(
     k = max(2, min(k, 10))
     cases = _select(list(load_cases()), case, lambda c: c.key)
 
+    def one(c, case_delta) -> StabilityCaseOut:
+        case_delta(f"\n\n### [{c.pass_name}] {c.key} (x{k})\n")
+        rep = stability_run(provider, c, k=k, model_id=JUDGE_MODEL)
+        tally = dict(Counter(rep.labels).most_common())
+        marker = stability.marker(rep.labels, contested=c.contested)
+        case_delta(f"→ {marker} {rep.agreement:.0%}: {tally}\n")
+        return StabilityCaseOut(
+            key=c.key, pass_name=c.pass_name, marker=marker,
+            majority=rep.majority, seed=_seed_str(c.expected),
+            agreement=rep.agreement, flipped=rep.flipped, tally=tally,
+        )
+
     def work(on_delta) -> StabilityRunResponse:
-        out = []
-        for c in cases:
-            on_delta(f"\n\n### [{c.pass_name}] {c.key} (x{k})\n")
-            rep = stability_run(provider, c, k=k, model_id=JUDGE_MODEL)
-            tally = dict(Counter(rep.labels).most_common())
-            marker = stability.marker(rep.labels, contested=c.contested)
-            on_delta(f"→ {marker} {rep.agreement:.0%}: {tally}\n")
-            out.append(StabilityCaseOut(
-                key=c.key, pass_name=c.pass_name, marker=marker,
-                majority=rep.majority, seed=_seed_str(c.expected),
-                agreement=rep.agreement, flipped=rep.flipped, tally=tally,
-            ))
+        out = _stability_over_cases(cases, one, on_delta=on_delta)
         return StabilityRunResponse(
             judge_prompt_version=JUDGE_PROMPT_VERSION, judge_model=JUDGE_MODEL, k=k, cases=out,
         )

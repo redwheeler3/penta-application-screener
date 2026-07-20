@@ -185,8 +185,14 @@ class StabilityReport:
 def stability_run(provider, case: JudgeCase, *, k: int = 5, model_id: str = DEFAULT_MODEL) -> StabilityReport:
     """Audit ``case`` ``k`` times on identical input and report verdict stability. Every call
     sees the exact same brief + given, so any variation is the judge model's own run-to-run
-    noise — the thing stability needs measured."""
-    results = [judge_case(provider, case, model_id=model_id) for _ in range(k)]
+    noise — the thing stability needs measured. The K calls run concurrently (independent
+    fixed-input requests); the tally is order-free."""
+    from app.ai.analysis import run_in_pool
+
+    results = [
+        r for _i, r, err in run_in_pool(list(range(k)), call=lambda _i: judge_case(provider, case, model_id=model_id), max_workers=k)
+        if not err and r is not None
+    ]
     return StabilityReport(
         case=case,
         labels=[r.reproduced.judge_label for r in results],
