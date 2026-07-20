@@ -175,8 +175,8 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, backgr
 
 
 def fire_label(req: object) -> str:
-    """Display token for one ``fires`` requirement: a category, or 'a|b' for an any-of group."""
-    return "|".join(req) if isinstance(req, list) else str(req)
+    """Display token for one ``fires`` requirement: a category, or 'a | b' for an any-of group."""
+    return " | ".join(req) if isinstance(req, list) else str(req)
 
 
 def _expected_str(expected: dict) -> str:
