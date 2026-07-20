@@ -521,6 +521,30 @@ async def test_rank_chain_runs_criteria_scores() -> None:
 
 
 @pytest.mark.anyio
+async def test_rank_criteria_failure_aborts_before_scoring() -> None:
+    # A fatal criteria failure (here: no discovery result routed → every fan-out worker
+    # raises → discover_patterns_fanout re-raises) must emit an `error` on the criteria
+    # phase and stop the stream — no scores/consolidate phase, no summary. Guards the
+    # criteria-phase abort path (a fatal criteria error returns None to rank_run, which
+    # returns immediately rather than scoring against nonexistent criteria).
+    app, db, _provider = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    # Deliberately route nothing: the discovery call has no queued result and raises.
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        events = await stream_events(client, "/ranking/run")
+
+    kinds = [e["type"] for e in events]
+    assert "error" in kinds
+    error = next(e for e in events if e["type"] == "error")
+    assert error["phase"] == "criteria"
+    # The chain aborted at criteria: scoring never started, no summary was emitted.
+    assert "summary" not in kinds
+    assert "scores" not in [e.get("phase") for e in events if e["type"] == "phase"]
+
+
+@pytest.mark.anyio
 async def test_rank_runs_k_parallel_discoveries_and_persists_reports() -> None:
     # Fan-Out Redesign Phase 2: a Rank runs K (default 4) parallel discovery calls and
     # persists all K raw reports under criteria.fan_out_audit — the input Phase 3's
