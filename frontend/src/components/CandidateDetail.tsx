@@ -1,8 +1,8 @@
 import { ChevronLeft, Printer } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { FLAG_CATEGORY_LABELS, FLAG_FIELDS, REASON_FIELDS, SOURCE_DESCRIPTIONS, SOURCE_LABELS, STATUS_LABELS } from "../constants";
-import { fieldLabel, formatFieldValue, scoreBand } from "../format";
+import { FLAG_FIELDS, REASON_FIELDS, SOURCE_DESCRIPTIONS, SOURCE_LABELS, STATUS_LABELS } from "../constants";
+import { fieldLabel, flagCategoryLabel, formatFieldValue, money, scoreBand } from "../format";
 import type { AIResultTrace, ApplicationDetail, AppStatus, DimensionScoringTrace } from "../types";
 
 type DetailField = {
@@ -344,7 +344,7 @@ export function CandidateDetail(props: {
           <ul>
             {app.flags.map((flag, i) => (
               <li key={i} className="flag">
-                <span className="flag-category">{FLAG_CATEGORY_LABELS[flag.category] ?? flag.category}</span>
+                <span className="flag-category">{flagCategoryLabel(flag.category)}</span>
                 <span className="flag-summary">{flag.summary}</span>
                 {flag.evidence ? <span className="flag-evidence">{flag.evidence}</span> : null}
               </li>
@@ -444,7 +444,7 @@ function AITrace(props: { trace: AIResultTrace }): ReactNode {
       <div><dt>Model</dt><dd>{trace.modelId}</dd></div>
       <div><dt>Prompt</dt><dd><code>{trace.promptVersion}</code></dd></div>
       <div><dt>Tokens</dt><dd>{trace.inputTokens.toLocaleString()} in → {trace.outputTokens.toLocaleString()} out</dd></div>
-      <div><dt>Attributed cost</dt><dd>${trace.costUsd.toFixed(4)}</dd></div>
+      <div><dt>Attributed cost</dt><dd>{money(trace.costUsd)}</dd></div>
     </dl>
   );
 }
@@ -457,7 +457,7 @@ function DimensionScoringTraceDetails(props: { trace: DimensionScoringTrace }): 
       <div><dt>Model</dt><dd>{trace.modelIds.join(", ")}</dd></div>
       <div><dt>Prompt</dt><dd>{trace.promptVersions.map((version) => <code key={version}>{version}</code>)}</dd></div>
       <div><dt>Tokens</dt><dd>{trace.inputTokens.toLocaleString()} in → {trace.outputTokens.toLocaleString()} out</dd></div>
-      <div><dt>Attributed cost</dt><dd>${trace.costUsd.toFixed(4)}</dd></div>
+      <div><dt>Attributed cost</dt><dd>{money(trace.costUsd)}</dd></div>
     </dl>
   );
 }

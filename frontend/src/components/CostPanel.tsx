@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 import { fetchCostReport, fetchLastRuns } from "../api";
+import { money } from "../format";
 import { useFetchOnce } from "../hooks/useFetchOnce";
 import type { CostReport, LastRunCost, LastRunsReport } from "../types";
 
@@ -12,7 +13,6 @@ import type { CostReport, LastRunCost, LastRunsReport } from "../types";
 // Passes that can't cache (pattern discovery, dimension matching) show "—" for the
 // cached count and savings, never 0, so structural absence of caching doesn't read as
 // "caching failed".
-const money = (n: number) => `$${n.toFixed(4)}`;
 const savedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : money(n));
 const cachedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : String(n));
 // Compact token count: 1_234 → "1.2k", 26_203 → "26.2k". Output ~5× the input rate on
@@ -61,9 +61,9 @@ export function CostPanel(): ReactNode {
     () => Promise.all([fetchCostReport(), fetchLastRuns()]),
   );
 
-  if (state === "loading") return <p className="match-audit-hint">Loading…</p>;
+  if (state === "loading") return <p className="panel-hint">Loading…</p>;
   if (state === "error" || data === null)
-    return <p className="match-audit-hint">Couldn’t load AI cost.</p>;
+    return <p className="panel-hint">Couldn’t load AI cost.</p>;
   const [cost, last] = data;
 
   const runs = [last.screen, last.rank, last.rankScores].filter((r): r is LastRunCost => r !== null);
@@ -76,12 +76,12 @@ export function CostPanel(): ReactNode {
           <span className="insights-label">Last runs</span>
           <span className="cost-block-total">{`$${lastSpent.toFixed(2)}`} spent</span>
         </div>
-        <p className="match-audit-hint">
+        <p className="panel-hint">
           What your most recent Screen, full Rank, and score-current update each spent on Bedrock, and an estimate
           of what caching saved by reusing unchanged results.
         </p>
         {runs.length === 0 ? (
-          <p className="match-audit-hint">No runs recorded yet — run Screen or Rank to see per-run cost.</p>
+          <p className="panel-hint">No runs recorded yet — run Screen or Rank to see per-run cost.</p>
         ) : (
           <table className="cost-table">
             <CostHead />
@@ -122,7 +122,7 @@ export function CostPanel(): ReactNode {
           <span className="insights-label">Cumulative spend</span>
           <span className="cost-block-total">{`$${cost.totalCostUsd.toFixed(2)}`} spent</span>
         </div>
-        <p className="match-audit-hint">
+        <p className="panel-hint">
           What all Screen, full Rank, and score-current update runs have spent on Bedrock, and an estimate of what
           caching saved by reusing unchanged results.
         </p>

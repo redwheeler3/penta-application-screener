@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 import { fetchMetrics } from "../api";
+import { money } from "../format";
 import { useFetchOnce } from "../hooks/useFetchOnce";
 import type { MetricsReport, TrendPoint } from "../types";
 
@@ -9,7 +10,6 @@ import type { MetricsReport, TrendPoint } from "../types";
 // one row per run, newest first, with a tiny inline bar for at-a-glance shape rather
 // than a charting dependency (a single-dev MVP doesn't need one). Full Rank and
 // score-current updates are split because their work and cadence differ.
-const money = (n: number) => `$${n.toFixed(4)}`;
 const secs = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`);
 const pct = (r: number | null) => (r === null ? "—" : `${Math.round(r * 100)}%`);
 const shortAt = (iso: string) => iso.slice(0, 16).replace("T", " ");
@@ -28,11 +28,11 @@ function Bar(props: { value: number; max: number }): ReactNode {
 export function MetricsPanel(): ReactNode {
   const { data: report, state } = useFetchOnce(fetchMetrics);
 
-  if (state === "loading") return <p className="match-audit-hint">Loading…</p>;
+  if (state === "loading") return <p className="panel-hint">Loading…</p>;
   if (state === "error" || report === null)
-    return <p className="match-audit-hint">Couldn’t load operational metrics.</p>;
+    return <p className="panel-hint">Couldn’t load operational metrics.</p>;
   if (report.runs.length === 0)
-    return <p className="match-audit-hint">No runs recorded yet — run Screen or Rank to see trends.</p>;
+    return <p className="panel-hint">No runs recorded yet — run Screen or Rank to see trends.</p>;
 
   // Newest first for reading; each workflow action has its own section.
   const rank = report.runs.filter((r) => r.kind === "rank").reverse();
@@ -41,7 +41,7 @@ export function MetricsPanel(): ReactNode {
 
   return (
     <div className="metrics-report">
-      <p className="match-audit-hint">
+      <p className="panel-hint">
         How each run behaved over time — spend, wall-clock, cache reuse, failures, and (for full Ranks) the live
         dimension count. Reads the same per-pass ledger as Cost; here it’s trend, not total.
       </p>

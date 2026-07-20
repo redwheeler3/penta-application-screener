@@ -17,11 +17,11 @@ import type { MatchAuditResponse } from "../types";
 export function MatchAuditPanel(): ReactNode {
   const { data: audit, state } = useFetchOnce(fetchMatchAudit);
 
-  if (state === "loading") return <p className="match-audit-hint">Loading…</p>;
-  if (state === "error") return <p className="match-audit-hint">Couldn’t load the matching audit.</p>;
+  if (state === "loading") return <p className="panel-hint">Loading…</p>;
+  if (state === "error") return <p className="panel-hint">Couldn’t load the matching audit.</p>;
   if (audit === null) {
     return (
-      <p className="match-audit-hint">
+      <p className="panel-hint">
         No matching audit for this run — it’s the first run (nothing to match against) or predates audit
         capture. Re-rank to populate it.
       </p>
@@ -51,7 +51,7 @@ function MatchAuditBody(props: { audit: MatchAuditResponse }): ReactNode {
 
   return (
     <div className="match-audit">
-      <p className="match-audit-hint">
+      <p className="panel-hint">
         Reused dimensions keep their prior tier placement and cached scores, so a high reuse rate is
         expected once the pool’s dimension set has settled. Watch the individual matches below for a wrong mapping —
         that, not a high rate, is what would corrupt a prior tier or score.
@@ -80,7 +80,7 @@ function MatchAuditBody(props: { audit: MatchAuditResponse }): ReactNode {
         </div>
       </dl>
       {firstRun ? (
-        <p className="match-audit-hint">First run — no prior dimensions to match against, so reuse is N/A.</p>
+        <p className="panel-hint">First run — no prior dimensions to match against, so reuse is N/A.</p>
       ) : null}
 
       <table className="match-audit-table">

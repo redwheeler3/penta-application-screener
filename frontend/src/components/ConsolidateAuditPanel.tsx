@@ -17,11 +17,11 @@ import type { ConsolidateAuditResponse } from "../types";
 export function ConsolidateAuditPanel(): ReactNode {
   const { data: audit, state } = useFetchOnce(fetchConsolidateAudit);
 
-  if (state === "loading") return <p className="match-audit-hint">Loading…</p>;
-  if (state === "error") return <p className="match-audit-hint">Couldn’t load the consolidation audit.</p>;
+  if (state === "loading") return <p className="panel-hint">Loading…</p>;
+  if (state === "error") return <p className="panel-hint">Couldn’t load the consolidation audit.</p>;
   if (audit === null) {
     return (
-      <p className="match-audit-hint">
+      <p className="panel-hint">
         No consolidation audit for this run — it predates the post-score duplicate-merge
         pass. Re-rank to populate it.
       </p>
@@ -29,7 +29,7 @@ export function ConsolidateAuditPanel(): ReactNode {
   }
   if (audit.nominatedCount === 0) {
     return (
-      <p className="match-audit-hint">
+      <p className="panel-hint">
         No duplicate dimensions to consolidate this run — no pair of dimensions scored
         applicants similarly enough to be flagged. (This is the common, healthy case.)
       </p>
@@ -42,7 +42,7 @@ function ConsolidateAuditBody(props: { audit: ConsolidateAuditResponse }): React
   const { audit } = props;
   return (
     <div className="match-audit">
-      <p className="match-audit-hint">
+      <p className="panel-hint">
         {audit.nominatedCount} dimension pair{audit.nominatedCount === 1 ? "" : "s"} scored
         applicants similarly enough to be flagged as possible duplicates; {audit.mergedCount}{" "}
         {audit.mergedCount === 1 ? "was" : "were"} confirmed the same concept and merged (the
