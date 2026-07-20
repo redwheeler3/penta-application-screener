@@ -187,15 +187,11 @@ def stability_run(
     part is one match call producing one matches/mismatches token."""
     p, n = case.prior[0], case.new[0]
     _emit(on_delta, f"Matching new **{n['name']}** vs prior **{p['name']}** x{k} on `{match_model}`…\n\n")
-    runs = {"i": 0}
 
     def run_once() -> tuple[str, str]:
-        verdict, detail = _match_verdict(provider, case, match_model=match_model)
-        runs["i"] += 1
-        _emit(on_delta, f"- run {runs['i']}: **{verdict}** — {detail}\n")
-        return verdict, detail
+        return _match_verdict(provider, case, match_model=match_model)
 
-    report = run_stability(run_once, k=k, contested=case.contested)
+    report = run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
     tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())
     _emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
     return report

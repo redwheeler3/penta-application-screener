@@ -107,11 +107,34 @@ class StabilityReport:
 
 
 def run_stability(
-    run_once: Callable[[], tuple[str, str]], *, k: int, contested: bool = False
+    run_once: Callable[[], tuple[str, str]],
+    *,
+    k: int,
+    contested: bool = False,
+    on_delta: object = None,
 ) -> StabilityReport:
     """Call ``run_once`` ``k`` times (each a fresh model call on the SAME fixed input) and
     collect the results into a StabilityReport. The caller's ``run_once`` is the only
-    pass-specific part — it makes one production call and returns ``(outcome_token, detail)``,
-    where ``detail`` is the model's reasoning for that run (so a flip is explainable)."""
-    runs = [RunDetail(*run_once()) for _ in range(k)]
+    pass-specific part — a PURE function that makes one production call and returns
+    ``(outcome_token, detail)`` (detail = the model's reasoning, so a flip is explainable). It
+    must NOT emit narration or hold run state; the K runs execute CONCURRENTLY (they're
+    identical independent calls), so ordering/emission is owned here.
+
+    The K calls run in a bounded thread pool — stability was the slow part (K serial model
+    calls per case), and the calls are independent fixed-input requests, so this is a pure
+    latency win with no behaviour change (the tally is order-independent). ``on_delta``, if
+    given, receives one ordered ``- run N: outcome — detail`` line per run AFTER the pool
+    completes, so the live narration stays numbered and coherent despite out-of-order finishes.
+    """
+    from app.ai.analysis import run_in_pool
+
+    # k is small (≤10) and each item is one blocking model call; one worker per run.
+    results = list(run_in_pool(list(range(k)), call=lambda _i: run_once(), max_workers=k))
+    # run_in_pool yields as-completed; reassemble input order isn't meaningful (identical
+    # inputs), but sort by the submitted index for stable, deterministic run numbering.
+    ordered = [r for _i, r, _err in sorted(results, key=lambda t: t[0]) if r is not None]
+    runs = [RunDetail(*pair) for pair in ordered]
+    if on_delta is not None:
+        for n, rd in enumerate(runs, 1):
+            on_delta(f"- run {n}: **{rd.outcome}** — {rd.detail}\n")  # type: ignore[operator]
     return StabilityReport(runs=runs, contested=contested)

@@ -232,17 +232,14 @@ def stability_run(
     Delegates tallying/marker to the shared stability core."""
     name = case.fields.get("applicant_name", case.key)
     _emit(on_delta, f"Screening **{name}** x{k} on `{screening_model}`…\n\n")
-    runs = {"i": 0}
 
     def run_once() -> tuple[str, str]:
         cats, detail = _screen(provider, case, screening_model=screening_model, settings=settings)
-        runs["i"] += 1
         token = ", ".join(sorted(set(cats))) or "none"
-        _emit(on_delta, f"- run {runs['i']}: **{token}** — {detail}\n")
         return token, detail
 
     # A screening golden case has no "contested" notion; a flag-set flip is always a real signal.
-    report = run_stability(run_once, k=k, contested=False)
+    report = run_stability(run_once, k=k, contested=False, on_delta=on_delta)
     tally = ", ".join(f"[{v}] x{n}" for v, n in report.tally.items())
     _emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
     return report
