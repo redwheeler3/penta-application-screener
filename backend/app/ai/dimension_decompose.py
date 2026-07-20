@@ -79,7 +79,8 @@ For each settled axis: `key` (reuse an input key when it's essentially that axis
 ## Guardrails
 - {INJECTION_GUARD_NOTE}
 - Do NOT assign importance or weight — discovering the settled axes is your job; weighting is the committee's, done later. Treat every axis as equally important here.
-- Do not score or name individual applicants. Describe the axes."""
+- Do not score or name individual applicants. Describe the axes.
+- Put your reasoning in each axis's `decision` field, not in prose around the output — do not narrate your process before or after; go straight to the settled set."""
 
 # Prompt identity, derived from the static prompt text (folded into the rank-inputs
 # fingerprint once wired in Phase 4, like the other rank-chain passes).
