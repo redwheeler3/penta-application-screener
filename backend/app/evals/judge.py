@@ -196,17 +196,28 @@ class StabilityReport:
         return stability.flipped(self.labels)
 
 
-def stability_run(provider, case: JudgeCase, *, k: int = 5, model_id: str = DEFAULT_MODEL) -> StabilityReport:
+def stability_run(provider, case: JudgeCase, *, k: int = 5, model_id: str = DEFAULT_MODEL, on_delta=None) -> StabilityReport:
     """Audit ``case`` ``k`` times on identical input and report verdict stability. Every call
     sees the exact same brief + given, so any variation is the judge model's own run-to-run
     noise — the thing stability needs measured. The K calls run concurrently (independent
-    fixed-input requests); the tally is order-free."""
+    fixed-input requests); the tally is order-free.
+
+    ``on_delta``, if given, receives one ordered ``- run N: label — reasoning`` line per run
+    AFTER the pool completes — the same live narration the other passes' stability emits (via
+    the shared ``run_stability``), so the Judge tab's thinking box shows all K reasonings, not
+    just the summary line."""
     from app.ai.analysis import run_in_pool
 
-    results = [
-        r for _i, r, err in run_in_pool(list(range(k)), call=lambda _i: judge_case(provider, case, model_id=model_id), max_workers=k)
-        if not err and r is not None
-    ]
+    # run_in_pool yields as-completed; sort by submitted index for stable, deterministic run
+    # numbering (inputs are identical, so the order is only for legible narration).
+    packed = sorted(
+        (t for t in run_in_pool(list(range(k)), call=lambda _i: judge_case(provider, case, model_id=model_id), max_workers=k)),
+        key=lambda t: t[0],
+    )
+    results = [r for _i, r, err in packed if not err and r is not None]
+    if on_delta is not None:
+        for n, r in enumerate(results, 1):
+            on_delta(f"- run {n}: **{r.reproduced.judge_label}** — {r.reproduced.detail}\n")
     return StabilityReport(
         case=case,
         labels=[r.reproduced.judge_label for r in results],
