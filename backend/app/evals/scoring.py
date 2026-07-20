@@ -97,8 +97,12 @@ def _check_expectations(score: DimensionScore, expected: dict[str, object]) -> l
         failures.append(f"score {score.score} below expected min {expected['score_min']}")
     if "score_max" in expected and score.score > float(expected["score_max"]):  # type: ignore[arg-type]
         failures.append(f"score {score.score} above expected max {expected['score_max']}")
-    if "confidence" in expected and score.confidence.value != expected["confidence"]:
-        failures.append(f"confidence {score.confidence.value!r} != expected {expected['confidence']!r}")
+    if "confidence" in expected:
+        # Any-of: "medium | high" accepts either (mirrors screening's fire-group convention). A
+        # single value like "low" splits to a one-element set, so exact-match still holds.
+        allowed = {c.strip() for c in str(expected["confidence"]).split("|")}
+        if score.confidence.value not in allowed:
+            failures.append(f"confidence {score.confidence.value!r} not in expected {sorted(allowed)}")
     if not score.evidence.strip():
         failures.append("evidence is empty (should state the basis, even for an unaddressed dimension)")
     return failures
