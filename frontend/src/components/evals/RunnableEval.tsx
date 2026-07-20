@@ -385,6 +385,11 @@ function CaseList(props: {
   // The grouping/label fields (pass, expected) live in the harness-only `metadata` block.
   const meta = (c: Record<string, unknown>) => (c.metadata ?? {}) as Record<string, unknown>;
 
+  // Cases within a group (or the whole flat list) read alphabetically by key, so a case is easy
+  // to find regardless of file order.
+  const byKey = (items: Record<string, unknown>[]) =>
+    [...items].sort((a, b) => String(a.key).localeCompare(String(b.key)));
+
   const groups: { heading: string | null; items: Record<string, unknown>[] }[] = [];
   if (props.groupBy) {
     const byGroup = new Map<string, Record<string, unknown>[]>();
@@ -400,9 +405,9 @@ function CaseList(props: {
       return i === -1 ? PASS_PIPELINE_ORDER.length : i;
     };
     const sorted = [...byGroup.entries()].sort(([a], [b]) => order(a) - order(b) || a.localeCompare(b));
-    for (const [heading, items] of sorted) groups.push({ heading, items });
+    for (const [heading, items] of sorted) groups.push({ heading, items: byKey(items) });
   } else {
-    groups.push({ heading: null, items: cases });
+    groups.push({ heading: null, items: byKey(cases) });
   }
 
   return (
