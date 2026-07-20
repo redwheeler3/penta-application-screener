@@ -245,7 +245,7 @@ def test_ceiling_estimate_prices_per_candidate_call() -> None:
     # input (shared facts+essays, the fallback constant before a prompt exists) plus
     # per-dimension output × the assumed dimension count. NOT a per-(candidate,
     # dimension) input cost — that was the carry-forward-skew bug.
-    from app.ai.dimension_scoring import (
+    from app.ai.dimension_scoring_cost import (
         ASSUMED_DIMENSIONS_FIRST_RUN,
         SCORING_FALLBACK_INPUT_TOKENS_PER_CANDIDATE,
         SCORING_FALLBACK_OUTPUT_TOKENS,
@@ -279,7 +279,7 @@ def test_rerun_estimate_cache_aware_fallback_when_no_history() -> None:
     # cached but NO cost-ledger history yet, the estimate falls back to the cache-aware
     # count: fully-cached candidates cost 0, so it's far below the old whole-pool
     # ceiling (which priced every candidate × every dim as if nothing were cached).
-    from app.ai.dimension_scoring import (
+    from app.ai.dimension_scoring_cost import (
         ASSUMED_DIMENSIONS_FIRST_RUN,
         _avg_output_tokens_per_dimension,
         _per_candidate_input_tokens,
@@ -327,7 +327,7 @@ def test_rerun_estimate_prefers_measured_history() -> None:
     # When prior Rank runs recorded actual fresh scoring spend, the estimate uses a
     # recency-weighted average of that measured cost — the honest predictor — rather
     # than a reconstructed count.
-    from app.ai.dimension_scoring import estimate_dimension_scoring
+    from app.ai.dimension_scoring_cost import estimate_dimension_scoring
     from app.ai.pricing import PassCost
     from app.services.cost_report import record_run_cost
     from app.services.ranking_run import create_run

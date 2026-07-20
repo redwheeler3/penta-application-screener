@@ -51,9 +51,9 @@ from app.ai.dimension_matching import estimate_match, match_dimensions
 from app.ai.dimension_scoring import (
     applications_needing_scores,
     applications_to_score,
-    estimate_dimension_scoring,
     score_dimensions,
 )
+from app.ai.dimension_scoring_cost import estimate_dimension_scoring
 from app.ai.pattern_discovery import (
     DiscoverySeeds,
     discover_patterns_fanout,
