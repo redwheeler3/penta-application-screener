@@ -84,7 +84,7 @@ class RunTally:
         )
 
 
-@router.get("/estimate", response_model=ScreeningEstimateResponse)
+@router.get("/run/estimate", response_model=ScreeningEstimateResponse)
 def estimate(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),

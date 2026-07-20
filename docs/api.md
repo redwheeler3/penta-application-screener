@@ -67,13 +67,26 @@ See [ai-screening.md](ai-screening.md) for the full pipeline behind these.
 
 ### Screening — `app/api/screening.py`
 
-The **Rank chain** (milestones 6–8) and the deterministic ranked shortlist (milestone 8). Rank is one button that runs pattern discovery → decomposition → identity-match → score, back-to-back; the cap is enforced once over the combined cost. The individual sub-passes are not exposed as endpoints (the committee never runs them alone); `discover_patterns_fanout` / `decompose_dimensions` / `match_dimensions` / `score_dimensions` are the underlying passes. Ranking itself is pure math over the cached scores — no model call. See [ai-screening.md](ai-screening.md).
+The Screen step: one AI pass that flags quality issues on eligible applicants. Every runnable job follows `POST <job>` + `GET <job>/estimate` (the estimate is a sub-path of the run it prices).
 
 | Method | Path | Purpose | Auth |
 | --- | --- | --- | --- |
-| GET | `/screening/rank/estimate` | Combined projected cost of the Rank chain (discovery + decomposition + scoring), with a per-pass breakdown. Approximate — scoring scales with the dimensions discovery settles on. 409 if no eligible applicants. | Login |
-| POST | `/screening/rank/run` | Run the full chain. Streams NDJSON: a `phase` line per pass, `progress` lines for the per-candidate passes, then a `summary`. Cap enforced once over the combined cost (402 if over). 409 if no eligible applicants. | Login |
-| GET | `/screening/current` | The current run's criteria + summary, or null if the chain has never run. | Login |
-| GET | `/screening/ranking` | The deterministic ranked shortlist: candidates ordered by weight-normalized fit, each with a relative band. Stack-ranked — the committee reads top-down, no fixed cut line. 409 before criteria exist. | Login |
-| GET | `/screening/tiers` | The current run's M9 importance-tier layout (or the default single-tier = equal-weight layout). 409 before a run exists. | Login |
-| PUT | `/screening/tiers` | Persist a new tier layout (`{"tiers": [{id,label,dimension_keys,ignore}]}`), derive weights from it, and return the freshly re-sorted ranking. Unknown dimension keys → 400; no run → 409. No model call. | Login |
+| GET | `/screening/run/estimate` | Projected cost + how many applicants would be analyzed vs. cached. | Login |
+| POST | `/screening/run` | Run the screening pass; streams NDJSON `progress` then a `summary`. Cap enforced (402 if over). | Login |
+
+### Ranking — `app/api/ranking/` (package)
+
+The **Rank chain** and the deterministic ranked shortlist. Rank is one button that runs pattern discovery → decomposition → identity-match → score → consolidate, back-to-back; the cap is enforced once over the combined cost. The sub-passes are not exposed individually (the committee never runs them alone). Ranking itself is pure math over the cached scores — no model call. See [ai-screening.md](ai-screening.md).
+
+| Method | Path | Purpose | Auth |
+| --- | --- | --- | --- |
+| GET | `/ranking/run/estimate` | Combined projected cost of the Rank chain, with a per-pass breakdown. Approximate — scoring scales with the dimensions discovery settles on. 409 if no eligible applicants. | Login |
+| POST | `/ranking/run` | Run the full chain. Streams NDJSON: a `phase` line per pass, `progress` lines for the per-candidate passes, then a `summary`. Cap enforced once over the combined cost (402 if over). 409 if no eligible applicants. | Login |
+| GET | `/ranking/score-current/estimate` | Cost to fill missing scores against the current criteria (no re-discovery). | Login |
+| POST | `/ranking/score-current` | Score only applicants missing scores for the current criteria; streams like `/ranking/run`. | Login |
+| GET | `/ranking/current` | The current run's criteria + summary, or null if the chain has never run. | Login |
+| GET | `/ranking/current/{match,decompose,consolidate,fan-out}-audit` | Per-run AI-legibility audits (null on runs predating each capture). | Login |
+| GET | `/ranking` | The deterministic ranked shortlist: candidates ordered by weight-normalized fit, each with a relative band. Stack-ranked — no fixed cut line. 409 before criteria exist. | Login |
+| GET | `/ranking/tiers` | The current run's importance-tier layout (or the default single-tier = equal-weight layout). 409 before a run exists. | Login |
+| PUT | `/ranking/tiers` | Persist a new tier layout, derive weights from it, and return the freshly re-sorted ranking. Unknown dimension keys → 422; no run → 409. No model call. | Login |
+| PUT | `/ranking/seeds` | Persist pending free-text dimension proposals for the next Rank's discovery. 409 before a run exists. | Login |

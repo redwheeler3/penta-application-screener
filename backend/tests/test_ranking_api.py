@@ -2040,7 +2040,7 @@ async def test_rank_flags_unchanged_pool_but_allows_rerun() -> None:
         await stream_events(client, "/ranking/run")
 
         # Pool unchanged → estimate flags it current, but the re-run still succeeds.
-        estimate = (await client.get("/ranking/estimate")).json()
+        estimate = (await client.get("/ranking/run/estimate")).json()
         assert estimate["rankingCurrent"] is True
         assert (await client.post("/ranking/run")).status_code == 200
 
@@ -2052,7 +2052,7 @@ async def test_rank_estimate_combines_three_passes() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        estimate = (await client.get("/ranking/estimate")).json()
+        estimate = (await client.get("/ranking/run/estimate")).json()
         b = estimate["breakdown"]
         # Total is the sum of the pass projections, and flagged approximate.
         assert estimate["estimatedUsd"] == pytest.approx(
@@ -2067,7 +2067,7 @@ async def test_rank_with_no_eligible_is_409() -> None:
     app, _, _ = setup_app(role=UserRole.MEMBER)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        assert (await client.get("/ranking/estimate")).status_code == 409
+        assert (await client.get("/ranking/run/estimate")).status_code == 409
         assert (await client.post("/ranking/run")).status_code == 409
 
 
