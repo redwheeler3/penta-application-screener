@@ -91,6 +91,16 @@ The **Rank chain** and the deterministic ranked shortlist. Rank is one button th
 | PUT | `/ranking/tiers` | Persist a new tier layout, derive weights from it, and return the freshly re-sorted ranking. Unknown dimension keys → 422; no run → 409. No model call. | Login |
 | PUT | `/ranking/seeds` | Persist pending free-text dimension proposals for the next Rank's discovery. 409 before a run exists. | Login |
 
+### Insights — `app/api/insights.py`
+
+Cross-run observability (M13 Pillars 1 + 3): spend and operational trends over every run kind (Screen, Rank, score-current). Top-level, not under `/ranking`, because they span all runs. No model calls.
+
+| Method | Path | Purpose | Auth |
+| --- | --- | --- | --- |
+| GET | `/insights/cost` | Cumulative AI spend, grouped by run. | Login |
+| GET | `/insights/last-runs` | The most recent Screen and Rank runs, each with fresh spend + cache savings. | Login |
+| GET | `/insights/metrics` | Operational trends across all runs: cost/tokens/latency/cache-hit/failures per run and pass. | Login |
+
 ### Evals — `app/api/evals/` (package)
 
 The in-UI eval cockpit. Catalog + invariants + case reads are free (no model calls); the run endpoints stream NDJSON (`thinking` then a terminal `summary`) and persist an `EvalRun` row. Each pass is **one** run route — `?mode=stability` selects the K-repeat stability run (`k` clamped 2–10), `?case=<key>` runs a single case. See [ai-evals.md](ai-evals.md).

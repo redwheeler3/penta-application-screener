@@ -282,10 +282,10 @@ async def test_score_current_fills_only_missing_scores_without_replacing_run() -
         assert tiers[0]["dimensionKeys"] == ["skills_offered"]
         assert (await client.get("/dashboard")).json()["workflow"]["rankingCurrent"] is True
 
-        last_runs = (await client.get("/ranking/insights/last-runs")).json()
+        last_runs = (await client.get("/insights/last-runs")).json()
         assert last_runs["rankScores"]["kind"] == "rank_scores"
         assert [p["label"] for p in last_runs["rankScores"]["passes"]] == ["Dimension scoring"]
-        metrics = (await client.get("/ranking/insights/metrics")).json()
+        metrics = (await client.get("/insights/metrics")).json()
         assert metrics["runs"][-1]["kind"] == "rank_scores"
         assert metrics["runs"][-1]["dimensions"] is None
 
@@ -311,7 +311,7 @@ async def test_insights_cost_aggregates_by_pass() -> None:
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
-        report = (await client.get("/ranking/insights/cost")).json()
+        report = (await client.get("/insights/cost")).json()
         groups = {g["runLabel"]: g for g in report["groups"]}
         # Grouped by triggering run: Screen, full discovery-and-rank, and score-current.
         assert set(groups) == {"Screen", "Discover criteria & rank", "Score current criteria"}
@@ -355,7 +355,7 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
-        first = (await client.get("/ranking/insights/last-runs")).json()
+        first = (await client.get("/insights/last-runs")).json()
         assert first["screen"] is None  # no Screen run happened
         rank = first["rank"]
         by_pass = {p["label"]: p for p in rank["passes"]}
@@ -378,7 +378,7 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
-        second = (await client.get("/ranking/insights/last-runs")).json()["rank"]
+        second = (await client.get("/insights/last-runs")).json()["rank"]
         by_pass2 = {p["label"]: p for p in second["passes"]}
         # Scoring reused from cache → cached counts and a nonzero saving.
         # Dimension scoring persists one cache row per dimension, matching the
@@ -402,11 +402,11 @@ async def test_cost_surfaces_agree_on_rank_passes() -> None:
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
-        cumulative = (await client.get("/ranking/insights/cost")).json()
+        cumulative = (await client.get("/insights/cost")).json()
         rank_group = next(g for g in cumulative["groups"] if g["runLabel"] == "Discover criteria & rank")
         cumulative_labels = {p["passLabel"] for p in rank_group["passes"]}
 
-        last = (await client.get("/ranking/insights/last-runs")).json()["rank"]
+        last = (await client.get("/insights/last-runs")).json()["rank"]
         ledger_labels = {p["label"] for p in last["passes"]}
 
     assert cumulative_labels == set(RANK_PASS_LABELS)
@@ -425,7 +425,7 @@ async def test_insights_metrics_trends_after_a_rank() -> None:
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
-        metrics = (await client.get("/ranking/insights/metrics")).json()
+        metrics = (await client.get("/insights/metrics")).json()
         assert len(metrics["runs"]) == 1
         run = metrics["runs"][0]
         assert run["kind"] == "rank"
