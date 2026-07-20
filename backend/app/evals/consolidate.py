@@ -57,9 +57,10 @@ class CaseResult:
 
     @property
     def passed(self) -> bool:
-        # Exact-match against the label. A contested case has no honest pass/fail on
-        # direction (both verdicts defensible) — the endpoint excludes it from the tally;
-        # `passed` here still reports raw agreement for display.
+        # Exact-match of the verdict against the label. NOTE: this is raw direction-agreement;
+        # a CONTESTED case that diverges returns False here, but the endpoint counts contested
+        # as passed regardless (both verdicts defensible — a contested case passes by running
+        # stably, not by matching the leaning). See the endpoint's `contested or r.passed`.
         if self.failures:
             return False
         return self.verdict == self.case.expected

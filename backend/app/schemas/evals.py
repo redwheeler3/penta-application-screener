@@ -88,7 +88,7 @@ class ConsolidationCaseOut(ResponseModel):
     passed: bool
     verdict: str  # "merge" | "keep" — what the real confirm prompt produced
     expected: str  # the human label
-    contested: bool  # true ⇒ excluded from passed/total (no honest verdict pass/fail)
+    contested: bool  # true ⇒ counts as passed regardless of direction (both verdicts defensible)
     reason: str
     failures: list[str] = []
 
@@ -96,8 +96,8 @@ class ConsolidationCaseOut(ResponseModel):
 class ConsolidationResponse(ResponseModel):
     prompt_version: str
     model: str
-    passed: int  # non-contested cases whose verdict matched the label
-    total: int  # non-contested cases (contested are reported but not scored)
+    passed: int  # verdict matched the label, OR contested (a contested case passes either way)
+    total: int  # all cases (contested included — they pass by running, not by matching)
     cases: list[ConsolidationCaseOut] = []
 
 
