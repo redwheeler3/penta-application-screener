@@ -275,7 +275,6 @@ class RankingRun(TimestampMixin, Base):
     __tablename__ = "ranking_runs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    owner_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     source_sync_run_id: Mapped[int | None] = mapped_column(ForeignKey("sync_runs.id"))
     # The run's discovered dimensions (a serialized PoolDimensionReport).
     dimension_report: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
@@ -286,7 +285,6 @@ class RankingRun(TimestampMixin, Base):
     # together as one blob — all written together, and tiers is a nested list-of-dicts.
     run_state: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
 
-    owner: Mapped[User | None] = relationship()
     source_sync_run: Mapped[SyncRun | None] = relationship()
     audit: Mapped[RankingRunAudit | None] = relationship(
         back_populates="run", cascade="all, delete-orphan", uselist=False
