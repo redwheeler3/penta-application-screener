@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { fetchCostReport, fetchLastRuns } from "../api";
 import { money } from "../format";
 import { useFetchOnce } from "../hooks/useFetchOnce";
-import type { CostReport, LastRunCost, LastRunsReport } from "../types";
+import type { CostReport, InsightRunKind, LastRunCost, LastRunsReport } from "../types";
 
 // M13 Pillar 1: AI cost, an Insights subtab. Two sections, same column layout so they
 // line up: [ label | tokens (in→out) | uncached | cached | saved by cache | spent ].
@@ -20,7 +20,6 @@ const cachedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : Stri
 const tok = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 const tokensCell = (input: number, output: number) =>
   input || output ? `${tok(input)} → ${tok(output)}` : "—";
-type InsightRunKind = "screen" | "rank" | "rank_scores";
 
 // Estimate-vs-actual reconciliation: the pre-run projection next to what the run actually
 // spent, with drift %. Only shown when an estimate was captured (0 on pre-capture runs).
@@ -93,7 +92,7 @@ export function CostPanel(): ReactNode {
               ) : (
                 <tbody key={i}>
                   <tr className="cost-group-head">
-                    <td>{RUN_LABELS[run.kind as InsightRunKind]}{reconciliation(run)}</td>
+                    <td>{RUN_LABELS[run.kind]}{reconciliation(run)}</td>
                     <td className="cost-num" />
                     <td className="cost-num" />
                     <td className="cost-num" />

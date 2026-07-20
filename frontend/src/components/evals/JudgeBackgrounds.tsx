@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 
 import { fetchJudgeBackgrounds, saveJudgeBackground } from "../../api";
+import { readProblem } from "../../format";
 
 // One pass's editable "what this pass does" brief + how many golden cases it contributes.
 type Background = { passName: string; background: string; caseCount: number };
@@ -46,8 +47,8 @@ export function JudgeBackgrounds(props: {
       });
       props.onToast(`${passName} brief saved — commit the golden file to keep it.`);
     } else {
-      const problem = await resp.json().catch(() => null);
-      props.onError(`Could not save ${passName} brief: ${problem?.detail ?? `HTTP ${resp.status}`}`);
+      const detail = (await readProblem(resp)) ?? `HTTP ${resp.status}`;
+      props.onError(`Could not save ${passName} brief: ${detail}`);
     }
   }
 

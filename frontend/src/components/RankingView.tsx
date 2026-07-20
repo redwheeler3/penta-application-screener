@@ -113,9 +113,8 @@ export function RankingView(props: {
   onRemoveProposal: (text: string) => void;
   onSelectApplication: (id: number) => void;
 }): ReactNode {
-  const { ranking, rankingRun, tiers } = props;
+  const { ranking, rankingRun, tiers, proposedDimensions } = props;
   const labelFor = (key: string) => rankingRun?.dimensions.find((d) => d.key === key)?.name ?? key;
-  const proposedDimensions = props.proposedDimensions ?? [];
   // Which criterion's description is open (one at a time, shown below the tiers), and
   // whether the "add your own" composer is revealed. The criteria live as the tier
   // chips, which drive this on-demand reading/adding.

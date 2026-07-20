@@ -13,6 +13,7 @@ import type {
   CurrentUser,
   DashboardCounts,
   DecomposeAuditResponse,
+  EvalRunMode,
   FanOutAuditResponse,
   LastRunsReport,
   MatchAuditResponse,
@@ -246,13 +247,7 @@ export function saveEvalCase(evalKey: string, evalCase: unknown): Promise<Respon
 // the K-repeat mode via `?mode=stability`. The judge's stability variant is `stability`
 // (its base pass is `judge`), matching the persisted eval keys.
 export function runEval(
-  key:
-    | "scoring" | "scoring_stability"
-    | "consolidation" | "consolidation_stability"
-    | "matching" | "matching_stability"
-    | "decomposition" | "decomposition_stability"
-    | "screening" | "screening_stability"
-    | "judge" | "stability",
+  key: EvalRunMode,
   opts?: { k?: number; caseKey?: string },
 ): Promise<Response> {
   const stabilityMode = key === "stability" || key.endsWith("_stability");

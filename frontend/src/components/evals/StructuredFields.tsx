@@ -2,12 +2,12 @@ import { type ReactNode } from "react";
 import { NumberInput } from "../NumberInput";
 
 // A field-level editor for an eval case — no raw JSON. A case is a nested object whose
-// shape varies by family (a judge case has evidence{key_a, definition_a, …}; a scoring
-// case has applicant{facts, essays}, dimension{…}, expect{…}). Rather than a rigid per-family
-// form, this renders GENERICALLY and usefully:
+// shape varies by family (a scoring case has given{applicant{facts, essays}, dimension{…}}
+// + metadata{expected{…}}; a consolidation case has given{pair:[…]}). Rather than a rigid
+// per-family form, this renders GENERICALLY and usefully:
 //   - a scalar (string/number/bool) → a labeled typed input (textarea for long text)
 //   - a nested object → a titled section of labeled rows, each removable, with "+ add field"
-// so any family is editable at the field level, and a new evidence shape needs no new code.
+// so any family is editable at the field level, and a new case shape needs no new code.
 //
 // Values are edited immutably against a single `value` object the parent owns; every change
 // calls onChange with the next object. Keys the caller marks readOnly (e.g. `key`, `pass`)
@@ -138,12 +138,14 @@ function ObjectSection(props: {
           </div>
         );
       })}
-      <AddField onAdd={(key, kind) => props.onChange(kind === "object" ? {} : "", [...path, key])} existing={obj} />
+      <AddField onAdd={(key) => props.onChange("", [...path, key])} existing={obj} />
     </div>
   );
 }
 
-function AddField(props: { onAdd: (key: string, kind: "text" | "object") => void; existing: FieldObject }): ReactNode {
+// Adds a new scalar (text) field. Nested objects come from the family templates, not this
+// control — the operator fills a shape, they don't build one field-by-field.
+function AddField(props: { onAdd: (key: string) => void; existing: FieldObject }): ReactNode {
   return (
     <div className="eval-field-add">
       <button
@@ -156,7 +158,7 @@ function AddField(props: { onAdd: (key: string, kind: "text" | "object") => void
             window.alert(`A field named "${key}" already exists.`);
             return;
           }
-          props.onAdd(key, "text");
+          props.onAdd(key);
         }}
       >
         + add field
