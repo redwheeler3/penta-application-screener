@@ -18,7 +18,7 @@ A few decisions I'm particularly happy with — the ideas that make this more th
 
 - **Cost estimated up front, capped, and attributed.** Every run projects its cost before starting, is checked against a server-side spending cap, and refuses no-op re-runs — AI spend is a first-class product surface, not a surprise on a bill.
 
-## What It Does Now
+## What It Does
 
 The workflow is three single-verb steps — **Import → Screen → Rank** — each gated behind a confirmation card with an up-front cost estimate, plus a "View ranking" action.
 
@@ -32,7 +32,7 @@ The workflow is three single-verb steps — **Import → Screen → Rank** — e
 - **Interactive tier-list weighting:** drag discovered criteria into Critical/Important/Minor/Ignore tiers to instantly re-sort. Re-ranking carries tier placements forward and reuses cached scores (see *Prompt identity as a cache key* above).
 - **Reports:** browser print-to-PDF of the ranked view and candidate detail pages, with an `@media print` stylesheet and a text importance-tiers summary.
 - Provider-agnostic AI interface with Amazon Bedrock/Strands as the concrete provider and a deterministic mock provider for tests.
-- Admin-only raw source row and raw AI output debug panels.
+- Raw source row and raw AI output debug panels, on the candidate detail page (open to any logged-in member — every committee member is a trusted screener).
 - Human status overrides with stale-finding indicators when machine findings change later.
 
 ## The AI Pipeline
@@ -46,18 +46,14 @@ Every AI call is a **named, single-purpose pass** — never a general "agent" de
 1. **Pattern discovery** *(Sonnet, ×K in parallel)* — reads the whole pool and discovers the dimensions it actually varies on. Runs K times on fresh contexts; their cross-call disagreement is the diversity the next step needs. Each call is blind except for committee proposals seeded into one worker.
 2. **Decomposition** *(Sonnet)* — settles the K overlapping discovery reports into one finest, non-overlapping set: collapses re-carvings of one concept, keeps genuinely distinct axes apart, protects committee-requested axes.
 3. **Identity matching** *(Sonnet)* — maps this run's dimensions onto prior runs' by *meaning*, so a re-discovered concept re-adopts its old key and carries its tier placement + cached scores forward. A high bar (a wrong match corrupts a reused score), so it errs toward "new."
-4. **Dimension scoring** *(Haiku, per candidate)* — scores each applicant 0–1 on each dimension, with a rationale and grounding evidence. The only per-applicant pass; everything above is pool-level.
+4. **Dimension scoring** *(Haiku, per candidate)* — scores each applicant on each dimension from −1 (low end) to +1 (high end), 0 neutral, with a rationale and grounding evidence. Silence scores 0, never negative — absence of evidence isn't a weakness. The only per-applicant pass; everything above is pool-level.
 5. **Consolidation** *(Sonnet)* — post-score cleanup: since every dimension now has a per-applicant score vector, near-identical vectors *nominate* suspected duplicates the definition-only match pass missed, and one confirm call merges genuine ones (aliasing the newer key to the older, so the key space converges instead of growing). Distinct axes that merely correlate are kept apart.
 
 Then the ranking itself is **pure deterministic math** over the cached scores and committee tier weights — no model call. Two invariants hold across all of it: **AI output is inert until a human activates it** (a discovered dimension has weight 0 until tiered), and **every pass persists its reasoning + cost** so any number traces back to its evidence.
 
-The **Insights** tab surfaces this per run: what each discoverer found, how decomposition settled them, which duplicates consolidation merged and why, how dimensions carried forward, and a full cost breakdown per pass.
+Two tabs make the AI legible. **Observability** surfaces each run: what each discoverer found, how decomposition settled them, which duplicates consolidation merged and why, how dimensions carried forward, per-pass cost attribution, and operational-metrics trends. **Evals** is an in-app cockpit — property-based invariants, per-pass live evals, and a blind label-auditing LLM judge (evaluation design is documented in [docs/ai-evals.md](docs/ai-evals.md)).
 
-AI observability and evals (M13) are complete: the per-pass trace viewer, cost attribution, operational-metrics trends, and property-based quality checks all ship in the Observability + Evals tabs, with the eval cockpit run in-app (see [docs/ai-evals.md](docs/ai-evals.md)). The current milestone (M14) is a behavior-preserving code/schema/docs cleanup before multi-member (M15) and hosting (M16); resolved history lives in [CHANGELOG.md](CHANGELOG.md) and significant decisions in [docs/adr/](docs/adr/).
-
-Current-state planning lives in [SPEC.md](SPEC.md). Developer architecture notes live in [docs/app-architecture.md](docs/app-architecture.md), with deeper references in [docs/ai-screening.md](docs/ai-screening.md), [docs/api.md](docs/api.md), and [docs/form-field-reference.md](docs/form-field-reference.md). Shared agent guidance lives in [.clinerules](.clinerules), with [AGENTS.md](AGENTS.md) pointing agents there.
-
-Evaluation design and the manual LLM judge are documented in [docs/ai-evals.md](docs/ai-evals.md).
+The spec lives in [SPEC.md](SPEC.md); developer architecture notes in [docs/app-architecture.md](docs/app-architecture.md), with deeper references in [docs/ai-screening.md](docs/ai-screening.md), [docs/api.md](docs/api.md), and [docs/form-field-reference.md](docs/form-field-reference.md). Significant design decisions live in [docs/adr/](docs/adr/). Shared agent guidance lives in [.clinerules](.clinerules), with [AGENTS.md](AGENTS.md) pointing agents there.
 
 ## Privacy And Test Data
 
