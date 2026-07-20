@@ -350,8 +350,6 @@ class SaveBackgroundRequest(RequestModel):
 
     background: str
 
-    case: dict
-
 
 class HarvestResponse(ResponseModel):
     """Unlabelled candidate judge cases proposed from the CURRENT run's output (scoring or
