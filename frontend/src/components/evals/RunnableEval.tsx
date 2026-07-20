@@ -346,6 +346,11 @@ export function RunnableEval(props: {
 // expected / contested / reason / judgeVerdict), so every renderer branch treats them alike.
 const CATEGORICAL = new Set(["consolidation", "matching", "decomposition"]);
 
+// The AI passes in PIPELINE order (screening runs first, then the Rank chain). The judge's
+// per-pass case groups render in this order so they read the way the app runs + the eval subtabs
+// list — not alphabetically. Keep in sync with InsightsView's evalTabs.
+const PASS_PIPELINE_ORDER = ["screening", "decomposition", "matching", "scoring", "consolidation"];
+
 function dotFor(mode: RunMode["evalKey"], result: any): "ok" | "fail" | "contested" {
   if (result.marker === "[contested-split]") return "contested";  // stability wobble
   // Judge run: a contested case is a PASS with review treatment (amber, both labels
@@ -387,7 +392,15 @@ function CaseList(props: {
       const g = String(meta(c)[props.groupBy] ?? "consolidation"); // judge default pass
       (byGroup.get(g) ?? byGroup.set(g, []).get(g)!).push(c);
     }
-    for (const [heading, items] of [...byGroup.entries()].sort()) groups.push({ heading, items });
+    // Order groups by PIPELINE order (matches the eval subtabs + how the app runs), not
+    // alphabetically — so the judge's per-pass groups read screening → decomposition → matching
+    // → scoring → consolidation. Any group not in the list sorts after, alphabetically.
+    const order = (h: string) => {
+      const i = PASS_PIPELINE_ORDER.indexOf(h);
+      return i === -1 ? PASS_PIPELINE_ORDER.length : i;
+    };
+    const sorted = [...byGroup.entries()].sort(([a], [b]) => order(a) - order(b) || a.localeCompare(b));
+    for (const [heading, items] of sorted) groups.push({ heading, items });
   } else {
     groups.push({ heading: null, items: cases });
   }
