@@ -330,7 +330,7 @@ def apply_consolidation(
         if resurfaced:
             history = all_known_dimensions(db)
             mint_by_key = {d.key: d for d in history.dimensions} if history else {}
-            _scaffold, most_recent_tier_by_key, _known = tier_history(db)
+            _scaffold, most_recent_tier_by_key = tier_history(db)
             # Only keys we can actually rebuild from a mint record get surfaced+placed.
             resurfaced = [k for k in resurfaced if k in mint_by_key]
             report_dims.extend(mint_by_key[k].model_dump(mode="json") for k in resurfaced)
@@ -374,9 +374,9 @@ def apply_consolidation(
             placed = {k for t in tiers for k in t["dimension_keys"]}
             for keep_key in resurfaced:
                 target = most_recent_tier_by_key.get(keep_key)
-                # Restore its last working-tier placement; an unknown/absent tier or a
-                # last-left-in-Ignore key stays unplaced (lands in the derived Ignore
-                # zone) — mirrors carry_forward_layout, never forces a tier.
+                # Restore its most-recent tier. tier_by_id holds only working tiers, so a
+                # key whose most-recent tier was Ignore (or unknown) stays unplaced and
+                # lands in the derived Ignore zone — mirrors carry_forward_layout.
                 if keep_key not in placed and target is not None and target in tier_by_id:
                     tier_by_id[target]["dimension_keys"].append(keep_key)
         state["tiers"] = tiers
@@ -846,42 +846,51 @@ def display_tiers(run: RankingRun) -> list[dict]:
     return [*working, {"id": IGNORE_TIER_ID, "label": IGNORE_TIER_LABEL, "dimension_keys": ignored, "ignore": True}]
 
 
-def tier_history(db: Session) -> tuple[list[dict], dict[str, str], set[str]]:
+def tier_history(db: Session) -> tuple[list[dict], dict[str, str]]:
     """Committee tier intent across ALL runs, for carrying placements forward.
 
-    Returns ``(scaffold_tiers, most_recent_tier_by_key, known_keys)``:
+    Returns ``(scaffold_tiers, most_recent_tier_by_key)``:
       - ``scaffold_tiers`` — the most recent run's working-tier *structure* (ids +
         labels, no dimensions), used as the board to place onto. Empty if no runs.
-      - ``most_recent_tier_by_key`` — key → the working-tier id it was MOST RECENTLY
-        placed in, across all runs. A key the committee last left in Ignore is absent
-        (Ignore is the absence of a placement), so it restores to unplaced.
-      - ``known_keys`` — every key that has appeared in any run. Absence ⇒ genuinely
-        new (gets the "New" badge); presence ⇒ the committee has seen it, so never
-        badged new even if it fell out for a few runs.
+      - ``most_recent_tier_by_key`` — key → the tier id it was MOST RECENTLY in, across
+        all runs. **Ignore is a first-class tier here** (id ``IGNORE_TIER_ID``): a key
+        that was present in a run's report but in no working tier was Ignored in that
+        run, so it maps to ``"ignore"``. Because we scan newest-first, a recent Ignore
+        correctly overrides an older working placement — dragging a key to Ignore is a
+        durable decision, not the absence of one. A key genuinely absent from a run's
+        report (gone from the pool) records nothing for that run, so its last real
+        appearance still wins — that is the revival path.
 
-    This is the all-history basis for ``carry_forward_layout``: a placement is durable
-    committee intent that doesn't expire when a dimension drops out and re-surfaces, so
-    we honor the LAST tier they put each key in, from whichever run that was.
+    This is the all-history basis for ``carry_forward_layout``: each key restores to
+    the tier it was most-recently in (Ignore included), so an untouched Ignored key
+    stays in Ignore across re-ranks. ``"ignore"`` is not a working scaffold id, so a
+    key mapping to it simply stays unplaced (lands in the derived Ignore zone) — never
+    injected into a working tier or the ``kept_keys`` set.
     """
     runs = db.scalars(select(RankingRun).order_by(RankingRun.id.desc())).all()
     scaffold: list[dict] = []
     most_recent_tier_by_key: dict[str, str] = {}
-    known_keys: set[str] = set()
-    # Newest run first: the first placement we see for a key is its most-recent one.
+    # Newest run first: the first tier we see for a key is its most-recent one.
     # Scaffold from the newest run that has working tiers.
     for run in runs:
-        report = current_dimension_report(run)
-        if report is not None:
-            known_keys.update(d.key for d in report.dimensions)
         tiers = stored_tiers(run)
         if not scaffold and tiers:
             scaffold = [
                 {"id": t["id"], "label": t["label"], "dimension_keys": []} for t in tiers
             ]
+        placed: set[str] = set()
         for tier in tiers:
             for key in tier.get("dimension_keys", []):
                 most_recent_tier_by_key.setdefault(key, tier["id"])
-    return scaffold, most_recent_tier_by_key, known_keys
+                placed.add(key)
+        # A key present in this run's report but in no working tier was Ignored here.
+        # Record it as such so a recent Ignore beats an older working placement.
+        report = current_dimension_report(run)
+        if report is not None:
+            for dim in report.dimensions:
+                if dim.key not in placed:
+                    most_recent_tier_by_key.setdefault(dim.key, IGNORE_TIER_ID)
+    return scaffold, most_recent_tier_by_key
 
 
 def revived_flag_keys(db: Session, run: RankingRun) -> list[str]:
@@ -927,10 +936,12 @@ def carry_forward_layout(
     across ALL runs (see ``tier_history`` for the inputs).
 
     Runs *after* ``adopt_matched_keys``, so a matched dimension already shares its
-    prior key — carry-forward is pure key equality. Per new dimension:
-      - key most-recently placed in a working tier (any prior run) → placed there;
-      - key seen before but last left in Ignore → unplaced (the committee already
-        weighed it — a durable "ignore");
+    prior key — carry-forward is pure key equality. Per new dimension, restore its
+    most-recent tier (see ``tier_history`` — Ignore is a first-class tier there):
+      - most-recent tier was a working tier → placed there;
+      - most-recent tier was Ignore (present-but-unplaced in that run) → unplaced. This
+        is a *durable* ignore: dragging a key to Ignore beats an older working placement,
+        so an untouched Ignored key stays in Ignore across re-ranks;
       - key never seen in any run → unplaced.
 
     Two flag states ride on the returned ``flagged_keys`` (the single mutable triage
@@ -957,8 +968,9 @@ def carry_forward_layout(
 
     flagged_keys: list[str] = []
     for dim in new_report.dimensions:
-        # Restore the most-recent working-tier placement for any seen-before key
-        # (a never-seen key has none, so it stays unplaced).
+        # Restore the key's most-recent tier. Only working-tier ids are in `by_id`, so a
+        # key whose most-recent tier was Ignore (id "ignore") — or one never seen — finds
+        # no match and stays unplaced, landing in the derived Ignore zone.
         target = most_recent_tier_by_key.get(dim.key)
         if target is not None and target in by_id:
             by_id[target]["dimension_keys"].append(dim.key)
