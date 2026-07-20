@@ -56,18 +56,10 @@ Unless noted, endpoints require a logged-in user (the signed session cookie). Th
 | PATCH | `/applications/{id}/status` | Human status override (sets `status_source = human`, which is sticky). | Login |
 | DELETE | `/applications/{id}/status` | Remove a human override; recomputes status from the current findings (rules then AI) and clears human ownership. Idempotent if no override is set. | Login |
 
-### Quality Flags (AI) — `app/api/quality_flags.py`
-
-See [ai-screening.md](ai-screening.md) for the full pipeline behind these.
-
-| Method | Path | Purpose | Auth |
-| --- | --- | --- | --- |
-| GET | `/quality-flags/estimate` | Projected cost + how many applications would be analyzed vs. cached. | Login |
-| POST | `/quality-flags/run` | Run the AI quality-flag pass; streams NDJSON progress, then a summary. | Login |
-
 ### Screening — `app/api/screening.py`
 
-The Screen step: one AI pass that flags quality issues on eligible applicants. Every runnable job follows `POST <job>` + `GET <job>/estimate` (the estimate is a sub-path of the run it prices).
+The Screen step: one AI pass that flags quality issues on eligible applicants. See
+[ai-screening.md](ai-screening.md) for the full pipeline. Every runnable job follows `POST <job>` + `GET <job>/estimate` (the estimate is a sub-path of the run it prices).
 
 | Method | Path | Purpose | Auth |
 | --- | --- | --- | --- |

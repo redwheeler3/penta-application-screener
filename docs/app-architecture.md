@@ -501,7 +501,7 @@ Route starts
 Route ends
 ```
 
-`backend/alembic/versions/265a2a6c616c_create_initial_tables.py` is the first migration; later migrations in the same directory evolve the schema (status-model rework, AI results table, added columns). Running `uv run alembic upgrade head` applies migrations to the local SQLite database.
+`backend/alembic/versions/9c0ee540ce8f_squashed_baseline_schema.py` is the baseline migration (M12 squashed the original chain into one); later migrations in the same directory evolve the schema (eval-runs table, estimated-usd column, the ranking-run criteria-blob split). Running `uv run alembic upgrade head` applies migrations to the local SQLite database.
 
 ### Auth Routes
 

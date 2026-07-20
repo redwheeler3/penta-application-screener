@@ -95,7 +95,7 @@ case's `given` + the pass's editable `judge_background` brief — blind to the h
 the harness grades that blind output against `metadata.expected` with the pass's own grader. A
 consistent judge-vs-label disagreement signals the **label** may be wrong, not the judge.
 
-Run it from the in-app **AI Quality tab** → Judge subtab: a whole-set "Run judge + agreement"
+Run it from the in-app **Evals tab** → Judge subtab: a whole-set "Run judge + agreement"
 or a per-case "judge"/"stability" run. (No CLI wrapper; the tab calls the same
 `judge_case`/`stability_run` functions directly.)
 
@@ -450,9 +450,9 @@ allowlist of known-synthetic sheet ids; `require_synthetic_pool(run)` traces a r
 its source `SyncRun` → sheet id and **refuses** anything not allowlisted (fail-safe: a
 real deployment's sheet is rejected by default). To make that link exist, `create_run`
 stamps `RankingRun.source_sync_run_id` with the latest import (it was a latent unused
-FK). `python -m app.evals.capture_scores` proposes opaque-indexed candidate cases from a
+FK). `python -m scripts.harvest_scoring_cases` proposes opaque-indexed candidate cases from a
 run, guard-gated, `source`-stamped; a human labels `metadata.expected` (a band) + rationale
-before they land in `scoring_golden.json` (capture never labels; screening capture mirrors
+before they land in `scoring_golden.json` (harvest never labels; the screening harvester mirrors
 it into `screening_golden.json`).
 
 Seeded scoring cases span the basic spectrum — an unaddressed dimension against an
@@ -487,8 +487,8 @@ The eval harness is step-agnostic — each AI step is just its `given` shape + a
 | Scoring | band-check (score in `[score_min, score_max]`) | `{score_min, score_max, confidence?}` | 5 |
 
 **Screening** reuses the applicant-facing substrate exactly (it also cites applicant
-text), so its cases go through the same synthetic-source guard, and `capture_screening.py`
-mirrors `capture_scores.py`. Its grader is a per-category check: `expected.fires` lists the
+text), so its cases go through the same synthetic-source guard, and
+`scripts/harvest_screening_cases.py` mirrors `scripts/harvest_scoring_cases.py`. Its grader is a per-category check: `expected.fires` lists the
 integrity-flag categories that MUST appear and `expected.absent` the over-reach guards that
 must NOT (a clean applicant has empty `fires` and any flag fails it). One fidelity nuance:
 pet-policy flags are judged against the policy, so the capturer injects the *resolved* policy
@@ -504,7 +504,7 @@ different concepts (trade skills vs. financial governance), clearly flagged as c
 A wrong match is the pass's high-stakes error (it corrupts a carried-forward score), so
 having the mismatch direction covered matters even absent a live failure.
 
-**Decomposition drift** (`app/evals/decompose_drift.py`) is a *manual hunting aid*, not a
+**Decomposition drift** (`scripts/decompose_drift.py`) is a *manual hunting aid*, not a
 seeded case or a gate: run it by hand to surface candidate narrative-vs-routing
 contradictions (prose claims a key folds in here, but it routed elsewhere — SPEC golden
 case #2). It's a tightened heuristic (suppresses the benign "distinct from X" and
@@ -517,7 +517,7 @@ the LLM judge's job (that's the `matches`/`mismatches` task applied to a decisio
 
 Best practice (Arize, Evidently, Pragmatic Engineer) is unanimous: before you
 trust an LLM-as-judge, **validate it against human labels with real metrics** — an
-eyeballed "5/5" isn't validation. So a whole-set judge run (the AI Quality tab → Judge →
+eyeballed "5/5" isn't validation. So a whole-set judge run (the Evals tab → Judge →
 "Run judge + agreement") returns, after the per-case verdicts, a `score_agreement`
 summary (`app/evals/agreement.py`):
 
@@ -607,7 +607,7 @@ harvested from a Rank under the new prompt, not fabricated (fidelity rule).
 
 ## Stability harness
 
-The AI Quality tab → Judge → "Run stability (K=5)" (or a per-case "stability" link) judges each
+The Evals tab → Judge → "Run stability (K=5)" (or a per-case "stability" link) judges each
 selected case **K times on fixed inputs** and reports verdict stability, rather than a single
 agree/disagree. This is the escalation-ladder measurement: the open question is not "did the
 judge agree with the label?" (one call answers that) but "does the same call, on the same
@@ -622,7 +622,7 @@ the judge; the decision to build (or not build) multi-agent escalation reads the
 
 ## Live scoring eval
 
-The live scoring eval (AI Quality tab → Live scoring) closes the gap the other
+The live scoring eval (Evals tab → Live scoring) closes the gap the other
 evals leave: the judge cases and the `invariants.py` checks both grade a *recorded*
 artifact, so they catch a bad re-baseline and code rot but are **blind to a prompt/model
 regression** — the model never runs. The signed-scale absence bug proved it: the invariant
@@ -646,26 +646,21 @@ expectation, bounds in range) with no model call — so a malformed fixture fail
 not spend time. The band is what absorbs the model's residual nondeterminism (it isn't fully
 deterministic even at temp 0).
 
-## In-UI eval cockpit — the "AI Quality" tab
+## In-UI eval cockpit
 
-The evals run from the app under the **AI Quality** tab (renamed from Insights; it now
-holds both *observability* — Discovery/Decomposition/Matching/Consolidation/Cost/Trends,
-"what the AI did + cost" — and *evals* — "is the AI any good", separated by a divider in
-the subtab strip). This is the only run surface; the `judge.sh` / `python -m app.evals.*`
-CLI wrappers were retired, and case *harvesting* is now a UI action too. Developer/operator
-surface only (not committee-facing). The eval subtabs:
+The evals run from the app under two developer/operator tabs (not committee-facing):
+**Observability** — Discovery/Decomposition/Matching/Consolidation/Cost/Trends, "what the AI
+did + cost" — and **Evals** — "is the AI any good". This is the only run surface; the
+`judge.sh` / `python -m app.evals.*` CLI wrappers were retired. Case *harvesting* is a
+command-line step (`scripts/harvest_*.py`), co-authored then labelled by hand. The eval
+subtabs:
 - **Invariants** — free deterministic checks; a styled "Re-baseline from current Rank"
   action re-records the committed fixture (replaced the `python -m app.evals.fixture` CLI).
 - **Live scoring** — the golden dataset through the real scoring prompt+model.
-- **Judge** — the judge case set, run two ways over the *same* cases (one-pass agreement,
-  K-repeat stability); cases **grouped by the production pass** each exercises
-  (consolidation/decomposition/matching/scoring/screening), so you read the judge's
-  accuracy per prompt. A "Harvest cases from current run" panel proposes fidelity-preserving
-  candidate cases from the current Rank's scoring/screening output (`GET /evals/harvest/…`,
-  synthetic-pool-gated, opaque-indexed); picking one opens it in the editor pre-filled with
-  `SET_ME` placeholders to label + save. This is the sanctioned "copy an exact slice from a
-  real run" path — the hand-editor can't be, since it can't pull the real evidence the model
-  saw — and it supersedes the `capture_scores`/`capture_screening` CLIs.
+- **Judge** — the golden cases across all five passes, run two ways over the *same* cases
+  (one-pass agreement, K-repeat stability); cases **grouped by the production pass** each
+  exercises (consolidation/decomposition/matching/scoring/screening), so you read the judge's
+  accuracy per prompt.
 
 Each runnable subtab is **master-detail**: a grouped case list on the left, a case's FULL
 input on the right (every field, no truncation), with the run's result above it. Whole-set run
