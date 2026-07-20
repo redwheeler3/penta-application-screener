@@ -343,7 +343,7 @@ export function CandidateDetail(props: {
           </p>
           <ul>
             {app.flags.map((flag, i) => (
-              <li key={i} className={`flag flag-${flag.severity}`}>
+              <li key={i} className="flag">
                 <span className="flag-category">{FLAG_CATEGORY_LABELS[flag.category] ?? flag.category}</span>
                 <span className="flag-summary">{flag.summary}</span>
                 {flag.evidence ? <span className="flag-evidence">{flag.evidence}</span> : null}

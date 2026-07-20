@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.mock_provider import MockProvider
 from app.ai.provider import AIResult, Usage
-from app.ai.schemas import FlagCategory, FlagSeverity, ScreeningFlag, ScreeningReport
+from app.ai.schemas import FlagCategory, ScreeningFlag, ScreeningReport
 from app.ai.screening import (
     analyze_one,
     applications_for_screening,
@@ -57,7 +57,6 @@ def flagged() -> ScreeningReport:
         flags=[
             ScreeningFlag(
                 category=FlagCategory.PLACEHOLDER_NAME,
-                severity=FlagSeverity.NOTABLE,
                 summary="Child name looks like a placeholder.",
                 evidence='Child: "Baby TBD"',
             )

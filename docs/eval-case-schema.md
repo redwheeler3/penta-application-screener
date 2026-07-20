@@ -116,8 +116,8 @@ sees it, it can leak the answer. The rule is not blanket — it turns on whether
 throwaway self-label or load-bearing signal:
 
 A field the model produces but the case doesn't grade is hidden in `metadata.ungraded` so the
-blind judge never sees it and can't be biased by it. *Example:* screening's `flag_severity`
-(`info`/`notable`) — if a case's evidence were shown with a "notable" tag it would nudge the
+blind judge never sees it and can't be biased by it. *Example:* a recorded model's own
+`confidence` or `rationale` on a case that grades only the verdict — showing it would nudge the
 judgment. `metadata` (including `ungraded`) is harness-only and never serialized into any
 prompt, so the rule is simply: *a model self-label the case doesn't grade goes in `ungraded`.*
 (A field that IS graded lives in `metadata.expected` — e.g. scoring's `confidence` band.)
