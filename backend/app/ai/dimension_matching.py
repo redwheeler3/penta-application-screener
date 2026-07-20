@@ -21,8 +21,6 @@ from app.ai.provider import AIProvider, DeltaSink
 from app.ai.schemas import DimensionMatchReport, PoolDimensionReport
 from app.schemas.settings import AppSettings
 
-KIND = "dimension_matching"  # for logging / the debug view; not a cached per-app kind
-
 SYSTEM_PROMPT = """\
 You are reconciling two lists of "dimensions" — axes along which a pool of housing co-op applicants varies. One is from a PRIOR analysis, one freshly discovered from the same (slightly changed) pool; they overlap heavily but wording may differ and some axes may be new or gone.
 Your only job: identify which NEW dimension means the SAME THING as which PRIOR one — a pure identity match. Do not invent, rank, or judge importance.
