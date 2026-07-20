@@ -1,4 +1,5 @@
 import { type ReactNode } from "react";
+import { NumberInput } from "../NumberInput";
 
 // A field-level editor for an eval case — no raw JSON. A case is a nested object whose
 // shape varies by family (a judge case has evidence{key_a, definition_a, …}; a scoring
@@ -59,12 +60,10 @@ function ScalarInput(props: {
   }
   if (typeof value === "number") {
     return (
-      <input
-        type="number"
-        step="any"
+      <NumberInput
         className="eval-field-input"
         value={value}
-        onChange={(e) => props.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+        onChange={(v) => props.onChange(v ?? 0)}
       />
     );
   }
