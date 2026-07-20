@@ -8,10 +8,7 @@ from app.ai.analysis import cache_key
 from app.ai.dimension_scoring import (
     PROMPT_VERSION as SCORING_PROMPT_VERSION,
 )
-from app.ai.dimension_scoring import (
-    applications_to_score,
-    kind_for_dimension,
-)
+from app.ai.dimension_scoring import applications_to_score
 from app.ai.screening import applications_for_screening as screening_scope
 from app.ai.screening import screening_prompt_version
 from app.api.dependencies import require_current_user
@@ -33,7 +30,7 @@ from app.schemas.dashboard import (
 )
 from app.services.application_import import settings_fingerprint
 from app.services.ranking_run import (
-    current_dimension_report,
+    current_dimension_kinds,
     get_current_run,
     ranking_is_current,
 )
@@ -146,10 +143,8 @@ def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
     # Scoring coverage is only meaningful against the current run. A candidate
     # counts as scored once it has a cached row for EVERY dimension key, so partial
     # coverage reads as not-yet-complete.
-    run = get_current_run(db)
-    report = current_dimension_report(run) if run is not None else None
-    if report is not None:
-        kinds = [kind_for_dimension(d.key) for d in report.dimensions]
+    kinds = current_dimension_kinds(db)
+    if kinds:
         applications = applications_to_score(db)
         fully_scored = sum(
             1

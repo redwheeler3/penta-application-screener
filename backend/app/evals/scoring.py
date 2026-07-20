@@ -171,7 +171,7 @@ def run_case(
     )
 
 
-def _band_str(expected: dict[str, object]) -> str:
+def band_str(expected: dict[str, object]) -> str:
     """A compact human-label token for an expected band, e.g. '[-0.15, 0.15] low'."""
     lo = expected.get("score_min", "-1")
     hi = expected.get("score_max", "1")
@@ -199,10 +199,10 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, backgr
     from app.ai.pricing import cost_usd
     cost = cost_usd(result.model_id, result.usage)
     if score is None:
-        return Reproduced("no score", _band_str(expected), False, False, False, "judge returned no score", cost)
+        return Reproduced("no score", band_str(expected), False, False, False, "judge returned no score", cost)
     agrees = not _check_expectations(score, expected)
     detail = f"judge scored {score.score:+.2f} ({score.confidence.value}): {score.rationale}"
-    return Reproduced(f"{score.score:+.2f}", _band_str(expected), agrees, False, False, detail, cost)
+    return Reproduced(f"{score.score:+.2f}", band_str(expected), agrees, False, False, detail, cost)
 
 
 @dataclass(frozen=True)

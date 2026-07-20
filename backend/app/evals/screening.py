@@ -167,7 +167,7 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, backgr
     shown = ", ".join(categories) or "no flags"
     detail = "; ".join(f"{f.category.value}: {f.summary}" for f in result.output.flags) or "no flags"
     human_is_problem = bool(probe.fires or probe.absent)  # the case guards a real defect
-    return Reproduced(shown, _expected_str(expected), not failures, human_is_problem, bool(failures), detail, cost)
+    return Reproduced(shown, expected_str(expected), not failures, human_is_problem, bool(failures), detail, cost)
 
 
 def fire_label(req: object) -> str:
@@ -175,7 +175,7 @@ def fire_label(req: object) -> str:
     return " | ".join(req) if isinstance(req, list) else str(req)
 
 
-def _expected_str(expected: dict) -> str:
+def expected_str(expected: dict) -> str:
     """Compact human-label token for a screening expectation, e.g. 'fires: pet_policy'."""
     parts = []
     if expected.get("fires"):
