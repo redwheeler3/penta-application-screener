@@ -66,6 +66,7 @@ from app.evals.matching import run_case as run_matching_case
 from app.evals.matching import stability_run as matching_stability_run
 from app.evals.scoring import load_golden, run_case
 from app.evals.scoring import stability_run as scoring_stability_run
+from app.evals.screening import fire_label as screening_fire_label
 from app.evals.screening import load_cases as load_screening_cases
 from app.evals.screening import run_case as run_screening_case
 from app.evals.screening import stability_run as screening_stability_run
@@ -878,7 +879,8 @@ def run_screening(
             cases=[
                 ScreeningCaseOut(
                     key=r.case.key, passed=r.passed, categories=r.categories,
-                    fires=r.case.fires, absent=r.case.absent, reason=r.reason, failures=r.failures,
+                    fires=[screening_fire_label(f) for f in r.case.fires],
+                    absent=r.case.absent, reason=r.reason, failures=r.failures,
                 )
                 for r in results
             ],

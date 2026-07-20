@@ -47,7 +47,9 @@ class ScreeningCase:
     key: str
     fields: dict[str, object]  # normalized form fields
     essays: dict[str, object]  # essay text keyed by form-question column
-    fires: list[str]  # flag categories that MUST appear
+    # Each entry: a category string (must fire) OR a list of categories (at least one must
+    # fire — for a concern with more than one defensible bucket).
+    fires: list[str | list[str]]
     absent: list[str]  # flag categories that must NOT appear (over-reach guards)
     note: str = ""
 
@@ -117,13 +119,22 @@ def _screen(provider: AIProvider, case: ScreeningCase, *, screening_model: str, 
 
 
 def _check(case: ScreeningCase, categories: list[str]) -> list[str]:
-    """Per-category grade: every ``fires`` present, every ``absent`` gone, and for a clean
-    case (no fires) NO flag at all. Returns human-readable failures."""
+    """Per-category grade: every ``fires`` requirement met, every ``absent`` gone, and for a
+    clean case (no fires) NO flag at all. Returns human-readable failures.
+
+    A ``fires`` entry is either a category string (that exact category must fire) OR a list of
+    categories meaning "at least ONE of these must fire" — for a concern the model may
+    reasonably file under more than one bucket (e.g. a fictional 'pet' reads as either a
+    pet_policy breach or an `other`/integrity issue; the test is that it's flagged, not which
+    bucket)."""
     present = set(categories)
     failures: list[str] = []
-    for cat in case.fires:
-        if cat not in present:
-            failures.append(f"expected flag {cat!r} did not fire")
+    for req in case.fires:
+        if isinstance(req, list):
+            if not present.intersection(req):
+                failures.append(f"expected one of {req!r} to fire; none did")
+        elif req not in present:
+            failures.append(f"expected flag {req!r} did not fire")
     for cat in case.absent:
         if cat in present:
             failures.append(f"over-reach: flag {cat!r} fired but should not")
@@ -163,11 +174,16 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, backgr
     return Reproduced(shown, _expected_str(expected), not failures, human_is_problem, bool(failures), detail, cost)
 
 
+def fire_label(req: object) -> str:
+    """Display token for one ``fires`` requirement: a category, or 'a|b' for an any-of group."""
+    return "|".join(req) if isinstance(req, list) else str(req)
+
+
 def _expected_str(expected: dict) -> str:
     """Compact human-label token for a screening expectation, e.g. 'fires: pet_policy'."""
     parts = []
     if expected.get("fires"):
-        parts.append("fires: " + ", ".join(expected["fires"]))
+        parts.append("fires: " + ", ".join(fire_label(r) for r in expected["fires"]))
     if expected.get("absent"):
         parts.append("absent: " + ", ".join(expected["absent"]))
     return " · ".join(parts) or "clean"
