@@ -136,7 +136,7 @@ def run(
             "cap_exceeded",
             detail=str(exc),
             cap_usd=settings.ai.spending_cap_usd,
-            estimated_usd=float(estimate_result["estimated_usd"]),
+            estimated_usd=estimate_result["estimated_usd"],
         ) from exc
 
     applications = applications_for_screening(db)

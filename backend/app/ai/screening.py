@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.analysis import (
     AnalysisOutcome,
+    CostEstimate,
     PassResult,
     analyze_application,
     derive_prompt_version,
@@ -153,7 +154,7 @@ def applications_for_screening(db: Session) -> list[Application]:
     )
 
 
-def estimate_screening(db: Session, settings: AppSettings) -> dict[str, object]:
+def estimate_screening(db: Session, settings: AppSettings) -> CostEstimate:
     return estimate_cost(
         db,
         applications=applications_for_screening(db),

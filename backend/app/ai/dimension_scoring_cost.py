@@ -9,11 +9,9 @@ cache-grid query) to price the work. The dependency is one-way — the pass neve
 
 from __future__ import annotations
 
-from typing import TypedDict
-
 from sqlalchemy.orm import Session
 
-from app.ai.analysis import observed_avg_tokens
+from app.ai.analysis import CostEstimate, observed_avg_tokens
 from app.ai.dimension_scoring import (
     KIND_PREFIX,
     PROMPT_VERSION,
@@ -48,15 +46,9 @@ ASSUMED_DIMENSIONS_FIRST_RUN = 15
 _CHARS_PER_TOKEN = 4
 
 
-class ScoringEstimate(TypedDict):
-    """The pre-run scoring estimate. ``total`` eligible applicants, of which ``to_analyze``
-    still need a model call and ``cached`` are fully cached; ``estimated_usd`` is the
-    projected fresh spend the spending cap (``enforce_cap``) checks."""
-
-    total: int
-    to_analyze: int
-    cached: int
-    estimated_usd: float
+# The scoring estimate is the shared cost-estimate shape (see analysis.CostEstimate);
+# scoring builds it via its own cache-aware fallback ladder rather than the shared engine.
+ScoringEstimate = CostEstimate
 
 
 def _avg_output_tokens_per_dimension(db: Session, model_id: str) -> int:

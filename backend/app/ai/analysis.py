@@ -13,7 +13,7 @@ import logging
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import TypedDict, TypeVar
 
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -26,6 +26,18 @@ from app.db.models import Application, ApplicationAIResult
 # Work item / result types for run_in_pool.
 T = TypeVar("T")
 R = TypeVar("R")
+
+
+class CostEstimate(TypedDict):
+    """The pre-run cost estimate every AI pass produces and the spending cap checks.
+    ``total`` applications in scope, of which ``to_analyze`` need a fresh model call and
+    ``cached`` are reused; ``estimated_usd`` is the projected fresh spend ``enforce_cap``
+    compares against the cap."""
+
+    total: int
+    to_analyze: int
+    cached: int
+    estimated_usd: float
 
 log = logging.getLogger("app.ai")
 
@@ -124,7 +136,7 @@ def estimate_cost(
     fallback_input_tokens: int,
     fallback_output_tokens: int,
     usage_kind_prefix: str | None = None,
-) -> dict[str, object]:
+) -> CostEstimate:
     """Estimate the cost of analyzing the applications, excluding cached ones.
     Feeds the pre-run confirmation UI.
 
@@ -432,11 +444,11 @@ def screen_applications(
         yield finish(application, outcome)
 
 
-def enforce_cap(estimate: dict[str, object], cap_usd: float) -> None:
+def enforce_cap(estimate: CostEstimate, cap_usd: float) -> None:
     """Raise SpendingCapExceeded if the estimate exceeds the cap. Call before a
     batch so an over-cap run is blocked at the estimate stage, not mid-run.
     """
-    projected = float(estimate["estimated_usd"])  # type: ignore[arg-type]
+    projected = estimate["estimated_usd"]
     if projected > cap_usd:
         raise SpendingCapExceeded(projected, cap_usd)
 

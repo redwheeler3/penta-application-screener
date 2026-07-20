@@ -2,7 +2,6 @@ from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -32,6 +31,7 @@ from app.schemas.applications import (
     PrivateNoteUpdate,
     ScreeningFlagOut,
 )
+from app.schemas.base import RequestModel
 from app.services.application_import import extract_essays
 from app.services.ranking_run import (
     current_dimension_kinds,
@@ -174,7 +174,7 @@ def get_application(
     return ApplicationEnvelope(application=_serialize_detail(application, db, user))
 
 
-class StatusOverride(BaseModel):
+class StatusOverride(RequestModel):
     status: ApplicationStatus
 
 
