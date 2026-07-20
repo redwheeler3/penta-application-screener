@@ -644,13 +644,15 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
           <StabilityRuns runs={r.runs} />
         </div>
       ) : (
-        // Judge (blind label audit): the human label vs. what the blind judge reproduced. On a
-        // contested case both labels are defensible, so a divergence is expected review material
-        // (amber pass), NOT a disagreement to fix — word it that way.
+        // Judge (blind label audit): the human label vs. what the blind judge reproduced. The
+        // agree/disagree verdict is the backend MARKER (its real grader — for scoring the
+        // judgeLabel is a score that must land in the label's band, so a raw string compare would
+        // wrongly read "+0.00" ≠ "[-0.15, 0.15]" as a disagreement). [ok] = agreed; [contested] =
+        // both defensible (amber pass); anything else = a real divergence to look at.
         <div className="eval-case-result-body">
           {r.contested ? "leaning" : "label"} <span className="eval-mono">{r.humanLabel}</span> → judge said{" "}
           <span className="eval-mono">{r.judgeLabel}</span>
-          {r.humanLabel !== r.judgeLabel ? (r.contested ? " (contested — both defensible)" : " (disagrees)") : ""}
+          {r.marker === "[ok]" ? "" : r.contested ? " (contested — both defensible)" : " (disagrees)"}
           {r.detail ? <Md text={r.detail} className="eval-case-result-ev" /> : null}
         </div>
       )}
