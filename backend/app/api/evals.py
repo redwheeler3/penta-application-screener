@@ -565,7 +565,13 @@ def _over_cases(cases: list, run_case_fn, *, on_delta, max_workers: int) -> list
     to the real ``on_delta`` as ONE block, so cases never interleave in the thinking box even
     though they run in parallel (and only this thread ever writes the stream — the per-case fns
     write to their own buffers). For a stability case, within-case K-parallelism still applies
-    inside ``run_case_fn`` (run_stability's own pool)."""
+    inside ``run_case_fn`` (run_stability's own pool).
+
+    Flushing is INCREMENTAL and in order: as each case completes, we emit the longest contiguous
+    prefix of finished cases that hasn't been flushed yet. So case 0's block appears the moment
+    it's done (not after the whole pool drains), while ordering + no-interleave still hold — a
+    later case that finishes first waits in its buffer until its predecessors have flushed. The
+    thinking box therefore fills as cases land, instead of staying empty until the end."""
     from app.ai.analysis import run_in_pool
 
     def work(indexed):
@@ -575,6 +581,7 @@ def _over_cases(cases: list, run_case_fn, *, on_delta, max_workers: int) -> list
         return i, result, buf
 
     slots: dict[int, tuple] = {}
+    flushed = 0  # next case index awaiting its turn to flush
     for _item, packed, err in run_in_pool(
         list(enumerate(cases)), call=work, max_workers=min(max_workers, len(cases) or 1)
     ):
@@ -582,14 +589,13 @@ def _over_cases(cases: list, run_case_fn, *, on_delta, max_workers: int) -> list
             raise err
         i, result, buf = packed
         slots[i] = (result, buf)
+        # Emit every now-contiguous completed case from `flushed` onward, in order.
+        while flushed in slots:
+            for line in slots[flushed][1]:
+                on_delta(line)
+            flushed += 1
 
-    ordered = []
-    for i in range(len(cases)):
-        result, buf = slots[i]
-        for line in buf:
-            on_delta(line)  # flush this case's narration as one contiguous block, in case order
-        ordered.append(result)
-    return ordered
+    return [slots[i][0] for i in range(len(cases))]
 
 
 @router.post("/scoring")
