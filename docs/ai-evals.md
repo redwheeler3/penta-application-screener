@@ -38,7 +38,8 @@ The shape of this eval system, and why it's shaped that way — the five ideas t
 2. **The LLM judge earns its keep on the fuzzy questions, not routine grading.** It has two
    legitimate jobs: **label auditing** (on a genuinely subjective call, a judge that disagrees
    with our label is a signal the *label* may be wrong) and **calibration** (before trusting any
-   judge, measure it against human labels with Cohen's κ — "who evaluates the evaluator"). It
+   judge, measure it against human labels with Cohen's κ — chance-corrected agreement, defined
+   under "Judge-vs-human agreement metrics"; "who evaluates the evaluator"). It
    runs **blind** — never shown the human label — because a judge shown the answer rubber-stamps
    it. It re-derives each pass's output from the same input production saw, then the harness
    compares.
@@ -520,16 +521,24 @@ eyeballed "5/5" isn't validation. So a whole-set judge run (the AI Quality tab �
 "Run judge + agreement") returns, after the per-case verdicts, a `score_agreement`
 summary (`app/evals/agreement.py`):
 
-- **Overall agreement** — share of *decisive* cases the judge matched, plus **Cohen's
-  kappa** (chance-corrected; raw agreement inflates when one label dominates the set).
-- **Per-AI-step agreement** — so a strong score on clean cases can't hide weak
-  `mismatches` / required-flag performance (the field's "85% overall can still be unusable"
-  warning).
-- **Failure-detection recall + precision** — *the number that matters*: of the cases
-  whose human label flags a PROBLEM (matching `mismatches`; a screening case whose
-  `expected.fires` demands a flag), how many did the judge catch, and how many of its
-  problem-calls were right? A judge that aces clean cases but misses over-reaches is worse
-  than an overall score implies.
+- **Overall agreement** — the share of *decisive* (non-contested) cases where the judge's
+  blind verdict matched the human label, plus **Cohen's κ**. *Cohen's kappa* measures how much
+  two raters (here: the judge vs. the human labels) agree **beyond what chance alone would
+  produce**: `κ = (observed agreement − chance agreement) / (1 − chance agreement)`. It runs
+  from 1 (perfect) through 0 (only chance-level) to negative (worse than chance); we target
+  **≈ 0.80**, the rate at which two *humans* typically agree, so the judge is as reliable as a
+  second person. Kappa matters because raw agreement inflates when one label dominates — if 90%
+  of cases are `keep`, a judge that blindly says `keep` scores 90% agreement while being
+  useless; kappa corrects for that.
+- **Per-AI-step agreement** — agreement + kappa computed separately per pass, so a strong score
+  on clean cases can't hide weak `mismatches` / required-flag performance (the field's "85%
+  overall can still be unusable" warning).
+- **Failure-detection recall + precision** — *the number that matters*. Over the cases whose
+  human label flags a PROBLEM (matching `mismatches`; a screening case whose `expected.fires`
+  demands a flag): **recall** = of the real problems, how many the judge caught (missing these
+  is the dangerous error); **precision** = of the judge's problem-calls, how many were real (the
+  rest are false alarms). A judge that aces clean cases but misses over-reaches is worse than an
+  overall score implies — which recall exposes and overall agreement hides.
 
 **Contested cases are excluded from every scored metric** and reported separately: their
 label is a human *leaning*, not ground truth, so scoring the judge against it would
