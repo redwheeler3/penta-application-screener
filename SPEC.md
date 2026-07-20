@@ -435,6 +435,14 @@ Multi-member *logic*, to resolve when scoping M15:
 2. How disagreement flags are calculated.
 3. The criteria-comparison report layout.
 
+**Single-tenant assumptions (the M15 boundary).** The codebase is deliberately single-tenant today — correct for one committee on a local DB, but three global-singleton assumptions are load-bearing and will become correctness bugs the moment there is more than one concurrent member/session. They're called out here so they read as an explicit contract, not landmines. None should be "fixed" pre-M15 — the right shape depends on the multi-user model chosen (per-committee vs. per-user vs. shared workspace) — but each is a decision M15 must make deliberately:
+
+1. **"Current run" is global-latest-wins** — `get_current_run` is `SELECT … ORDER BY id DESC LIMIT 1` (`app/services/ranking_run.py`), and nearly every read path (dashboard, applicant scoring trace, insights, shortlist) funnels through it. With two members, one person's Rank silently becomes everyone's current run. This is the **deepest** assumption and the costliest to unwind late — decide early whether "current run" is per-workspace, per-member, or explicitly selected.
+2. **Settings is one global row** — `AdminSetting` keyed `"app_settings"` (`app/services/settings.py`), last-write-wins with no optimistic concurrency. Two members editing config (e.g. pet limits) silently clobber each other. Needs either per-scope settings or a concurrency guard.
+3. **The spending cap is per-request, read-then-act** — `enforce_cap` checks each run's *own* projection against the cap (`app/ai/analysis.py`); it is not a shared budget ceiling. Two concurrent Ranks each pass the check and both spend. Under real concurrency the cap needs to reserve against a shared, atomic budget.
+
+(These overlap with M16's hosted-concurrency item #2 below; the distinction is that M15 introduces the *logical* multi-member model on SQLite, so it is the milestone that first exposes them even before the hosted DB move.)
+
 ### Hosting / Go-Live (M16)
 
 The committee saw a demo and wants it, so hosting is real scheduled work, sequenced **after M15** as pure deployment. M15 stays on SQLite; M16 owns the move to a hosted, multi-user, concurrent-write footing. Accepted tradeoff (Jeff, 2026-07-16): because M15 builds per-member state on SQLite, M16 may re-touch part of that data layer when it moves to a hosted DB — chosen over a pre-M15 DB spike so M15 stays unblocked and its real shape informs the DB choice. Open decisions:
