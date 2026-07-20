@@ -9,15 +9,17 @@ cache-grid query) to price the work. The dependency is one-way — the pass neve
 
 from __future__ import annotations
 
+from typing import TypedDict
+
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import observed_avg_tokens
 from app.ai.dimension_scoring import (
     KIND_PREFIX,
     PROMPT_VERSION,
-    _missing_dimensions_by_application,
     applications_to_score,
     build_prompt,
+    missing_dimensions_by_application,
 )
 from app.ai.pricing import cost_usd
 from app.ai.provider import Usage
@@ -44,6 +46,17 @@ ASSUMED_DIMENSIONS_FIRST_RUN = 15
 # Token approximation for a built prompt when we have one but no tokenizer: ~4 chars
 # per token (matches observed ~2,980 chars/4 vs. ~2,880 real input on this pool).
 _CHARS_PER_TOKEN = 4
+
+
+class ScoringEstimate(TypedDict):
+    """The pre-run scoring estimate. ``total`` eligible applicants, of which ``to_analyze``
+    still need a model call and ``cached`` are fully cached; ``estimated_usd`` is the
+    projected fresh spend the spending cap (``enforce_cap``) checks."""
+
+    total: int
+    to_analyze: int
+    cached: int
+    estimated_usd: float
 
 
 def _avg_output_tokens_per_dimension(db: Session, model_id: str) -> int:
@@ -86,7 +99,7 @@ def estimate_dimension_scoring(
     *,
     prefer_history: bool = True,
     include_coverage: bool = True,
-) -> dict[str, object]:
+) -> ScoringEstimate:
     """Pre-run scoring estimate that respects the per-dimension cache.
 
     Models the real cost shape of a scoring call: a per-candidate INPUT cost (the
@@ -160,7 +173,7 @@ def estimate_dimension_scoring(
     # Count the real uncached work per candidate against the current dims (also drives
     # the honest cached/to_analyze counts the UI shows). A fully-cached candidate makes
     # no call, matching run-time behavior.
-    missing_by_application = _missing_dimensions_by_application(
+    missing_by_application = missing_dimensions_by_application(
         db, candidates, report, model_id
     )
     count_based = 0.0

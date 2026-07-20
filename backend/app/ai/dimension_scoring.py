@@ -191,7 +191,7 @@ def _to_score_dimensions(
     return to_score, cached, cached_saved_usd
 
 
-def _missing_dimensions_by_application(
+def missing_dimensions_by_application(
     db: Session,
     applications: list[Application],
     report: PoolDimensionReport,
@@ -246,7 +246,7 @@ def applications_needing_scores(
 ) -> list[Application]:
     """Eligible applicants with at least one missing score for ``report``."""
     applications = applications_to_score(db)
-    missing_by_application = _missing_dimensions_by_application(
+    missing_by_application = missing_dimensions_by_application(
         db, applications, report, model_id
     )
     return [app for app in applications if missing_by_application[app.id]]
