@@ -563,10 +563,13 @@ function CaseResult(props: { evalKey: RunMode["evalKey"]; result: any }): ReactN
   // case agreed with its leaning; amber for a contested divergence / stability wobble; red
   // only for a non-contested fail. One source of truth so dot and header can't disagree.
   const cls = dotFor(evalKey, r);
-  const head = cls === "contested" ? "◐ contested" : cls === "ok" ? "✓ passed" : "✗ failed";
+  const head = cls === "contested" ? "contested" : cls === "ok" ? "passed" : "failed";
   return (
     <div className={`eval-case-result ${cls}`}>
-      <span className="eval-case-result-head">{head}</span>
+      <span className="eval-case-result-head">
+        <span className={`eval-case-dot ${cls}`} />
+        {head}
+      </span>
       {evalKey === "scoring" ? (
         <div className="eval-case-result-body">
           <span className="eval-mono">score {r.score}</span> · {r.confidence} confidence
