@@ -31,17 +31,13 @@ def _run_with(db: Session, *, dim_keys: list[str], flagged: list[str] | None = N
     """A minimal RankingRun carrying just a dimension report + flagged set — enough
     for the read-time label derivation, no full rank chain."""
     run = RankingRun(
-        name="r",
-        status="patterns_discovered",
-        criteria={
-            "dimension_report": PoolDimensionReport(
-                dimensions=[
-                    PoolDimension(key=k, name=k, definition="d", high_end="high", low_end="low", why_it_differentiates="w")
-                    for k in dim_keys
-                ],
-            ).model_dump(mode="json"),
-            "new_dimension_keys": flagged or [],
-        },
+        dimension_report=PoolDimensionReport(
+            dimensions=[
+                PoolDimension(key=k, name=k, definition="d", high_end="high", low_end="low", why_it_differentiates="w")
+                for k in dim_keys
+            ],
+        ).model_dump(mode="json"),
+        run_state={"new_dimension_keys": flagged or []},
     )
     db.add(run)
     db.commit()

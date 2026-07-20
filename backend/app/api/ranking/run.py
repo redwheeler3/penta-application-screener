@@ -686,7 +686,7 @@ def _stream_criteria(
         immediately_prior_keys=immediately_prior_keys,
     )
     run = create_run(
-        db, report=report, settings=settings, model_id=settings.ai.discovery_model,
+        db, report=report, settings=settings,
         narrative=work.narrative,
         # Tier placements (carried forward above) ARE the kept set — no separate
         # field to thread through; create_run clears the consumed proposals.

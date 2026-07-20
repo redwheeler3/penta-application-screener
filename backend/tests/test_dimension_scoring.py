@@ -298,7 +298,7 @@ def test_rerun_estimate_cache_aware_fallback_when_no_history() -> None:
 
     create_run(
         db, report=report, settings=settings,
-        model_id=settings.ai.dimension_scoring_model, narrative=None,
+        narrative=None,
     )
     provider = MockProvider()
     provider.queue(a_scoring_report(keys))
@@ -338,7 +338,7 @@ def test_rerun_estimate_prefers_measured_history() -> None:
     report = report_with(["community", "skills"])
     create_run(
         db, report=report, settings=settings,
-        model_id=settings.ai.dimension_scoring_model, narrative=None,
+        narrative=None,
     )
 
     def rank_row(scoring_fresh: float) -> None:

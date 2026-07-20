@@ -46,8 +46,6 @@ def _run_payload(db: Session) -> CurrentRunResponse | None:
         return None
     return CurrentRunResponse(
         run_id=run.id,
-        name=run.name,
-        status=run.status,
         dimensions=[
             PoolDimensionOut(
                 key=d.key,
@@ -60,10 +58,10 @@ def _run_payload(db: Session) -> CurrentRunResponse | None:
             )
             for d in report.dimensions
         ],
-        discovery_narrative=(run.criteria or {}).get("discovery_narrative"),
+        discovery_narrative=run.audit.discovery_narrative if run.audit else None,
         # Dimensions absent from the immediately-prior run — parked/placed but flagged
         # for triage. Empty on a first run.
-        new_dimension_keys=(run.criteria or {}).get("new_dimension_keys", []),
+        new_dimension_keys=(run.run_state or {}).get("new_dimension_keys", []),
         # Of those flagged keys, the ones seen in an EARLIER run (revived), derived
         # from history — the frontend colours these blue vs. amber for genuinely-new.
         revived_dimension_keys=revived_flag_keys(db, run),

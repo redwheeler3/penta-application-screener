@@ -191,7 +191,6 @@ class SyncRun(TimestampMixin, Base):
     # disabled rules) at import time, so the dashboard can flag Import out of date
     # when settings change.
     settings_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
-    notes: Mapped[str | None] = mapped_column(Text)
 
 
 class RunCostLedger(TimestampMixin, Base):
@@ -265,17 +264,57 @@ class RunPassCost(TimestampMixin, Base):
 
 
 class RankingRun(TimestampMixin, Base):
+    """One Rank: the discovered dimensions (``dimension_report``), the committee's mutable
+    view of them (``run_state`` = tiers + new/proposed-dimension flags), and the pool+prompt
+    fingerprint that flags the run out-of-date. Tier weights are always DERIVED from
+    ``run_state.tiers`` (see ``dimension_weights``), never stored. The AI-legibility audits
+    (discovery narrative + the four pass audits) are large and read one-at-a-time, so they
+    live in a 1:1 ``RankingRunAudit`` child rather than bloating this row.
+    """
+
     __tablename__ = "ranking_runs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
     owner_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     source_sync_run_id: Mapped[int | None] = mapped_column(ForeignKey("sync_runs.id"))
-    criteria: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    status: Mapped[str] = mapped_column(String(80), default="draft", nullable=False)
+    # The run's discovered dimensions (a serialized PoolDimensionReport).
+    dimension_report: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    # Everything the run's ranking depends on — pool + each rank-chain prompt/model — hashed.
+    # The next Rank compares it to flag the run "out of date". Indexed: read on every estimate.
+    rank_inputs_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
+    # The committee's mutable view: {tiers, new_dimension_keys, proposed_dimensions}. Kept
+    # together as one blob — all written together, and tiers is a nested list-of-dicts.
+    run_state: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
 
     owner: Mapped[User | None] = relationship()
     source_sync_run: Mapped[SyncRun | None] = relationship()
+    audit: Mapped[RankingRunAudit | None] = relationship(
+        back_populates="run", cascade="all, delete-orphan", uselist=False
+    )
+
+
+class RankingRunAudit(TimestampMixin, Base):
+    """The AI-legibility trail for one Rank (M13), split from ``RankingRun`` so the hot read
+    path (dimensions + tiers) never pulls these large blobs. One row per run, populated as the
+    chain runs; each field is null on runs that predate its capture. The ``/ranking/current/
+    *-audit`` endpoints are the only readers. ``consolidate`` carries the pass's per-pair
+    reasoning (definitions + narrative) — the *merge map* is NOT duplicated here, it lives once
+    in ``dimension_aliases`` (the sole merge-truth).
+    """
+
+    __tablename__ = "ranking_run_audit"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("ranking_runs.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
+    )
+    discovery_narrative: Mapped[str | None] = mapped_column(Text)
+    match: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    fan_out: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    decompose: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    consolidate: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+    run: Mapped[RankingRun] = relationship(back_populates="audit")
 
 
 class DimensionAlias(TimestampMixin, Base):

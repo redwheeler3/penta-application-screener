@@ -315,8 +315,6 @@ export type Tier = {
 
 export type CurrentRunResponse = {
   runId: number;
-  name: string;
-  status: string;
   dimensions: PoolDimension[];
   // The model's streamed reasoning from the discovery pass (markdown), shown on the
   // Insights tab. Null for runs from before it was captured.
