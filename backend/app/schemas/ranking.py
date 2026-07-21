@@ -36,6 +36,10 @@ class CurrentRunResponse(ResponseModel):
     # now back) rather than genuinely new — derived from history at read time. The
     # frontend colours these blue ("Revived") vs. amber ("New"); new = flagged − revived.
     revived_dimension_keys: list[str] = []
+    # Keys a member proposed on THIS run (from_committee_request) not yet dismissed —
+    # drives the chip's "Requested" provenance pill. Cleared on the next Rank when the
+    # underlying flag clears; see requested_flag_keys.
+    requested_dimension_keys: list[str] = []
     kept_keys: list[str] = []
     proposed_dimensions: list[str] = []
 
@@ -233,6 +237,9 @@ class RankingResponse(ResponseModel):
     candidates: list[RankedCandidateOut]
     new_dimension_keys: list[str] = []
     revived_dimension_keys: list[str] = []
+    # Keys a member proposed on THIS run not yet dismissed — the "Requested" pill; kept
+    # in sync after a tier/ack save so the badge clears in the same round-trip.
+    requested_dimension_keys: list[str] = []
     kept_keys: list[str] = []
     proposed_dimensions: list[str] = []
 
@@ -271,6 +278,10 @@ class TierLayoutUpdate(RequestModel):
     # Keys the committee acknowledged as "reviewed" this save (badge ✕ / "mark all
     # reviewed") — they drop out of new_dimension_keys even if left in Ignore.
     acknowledged_keys: list[str] = []
+    # Keys whose "Requested" provenance pill the committee dismissed (its ✕). Separate
+    # from acknowledged_keys because requested is provenance, not triage — it never
+    # clears on a move, only on this explicit dismissal.
+    acknowledged_requested_keys: list[str] = []
 
 
 class SeedsUpdate(RequestModel):

@@ -2258,6 +2258,20 @@ async def test_proposed_dimension_seeds_discovery_then_clears() -> None:
         assert current["proposedDimensions"] == []
         assert "playground_age_children" not in current["keptKeys"]
         assert current["keptKeys"] == []
+        # The realized axis carries the "Requested" provenance flag this run — it drives
+        # the chip pill.
+        assert current["requestedDimensionKeys"] == ["playground_age_children"]
+
+        # Dismissing the pill (its ✕) via the tiers PUT clears it in the same round-trip,
+        # without moving the chip (provenance, not triage). The keep set is unchanged.
+        ranking = (await client.put(
+            "/ranking/tiers",
+            json={"tiers": [], "acknowledgedRequestedKeys": ["playground_age_children"]},
+        )).json()
+        assert ranking["requestedDimensionKeys"] == []
+        # And it stays cleared on a fresh read (persisted, not just echoed).
+        current = (await client.get("/ranking/current")).json()
+        assert current["requestedDimensionKeys"] == []
 
 
 @pytest.mark.anyio

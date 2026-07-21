@@ -34,6 +34,7 @@ from app.services.ranking_run import (
     get_current_run,
     kept_keys,
     proposed_dimensions,
+    requested_flag_keys,
     revived_flag_keys,
     set_proposals,
     set_tiers,
@@ -72,6 +73,7 @@ def _ranking_payload(db: Session, run) -> RankingResponse:
         # round-trip (moving or acknowledging a flagged dimension clears it).
         new_dimension_keys=(run.run_state or {}).get("new_dimension_keys", []),
         revived_dimension_keys=revived_flag_keys(db, run),
+        requested_dimension_keys=requested_flag_keys(run),
         # Kept axes (derived from tiers) + pending proposals, so the tier list and
         # composer stay in sync after a tier/seed save.
         kept_keys=kept_keys(run),
@@ -131,7 +133,11 @@ def update_tiers(
         raise Problem("run_required", detail="Discover patterns before tiering.")
     layout = [t.model_dump() for t in body.tiers]
     try:
-        set_tiers(db, run, layout, acknowledged_keys=body.acknowledged_keys)
+        set_tiers(
+            db, run, layout,
+            acknowledged_keys=body.acknowledged_keys,
+            acknowledged_requested_keys=body.acknowledged_requested_keys,
+        )
     except ValueError as exc:
         raise Problem("unknown_dimension_key", detail=str(exc)) from exc
     return _ranking_payload(db, run)

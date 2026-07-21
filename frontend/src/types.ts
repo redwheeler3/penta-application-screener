@@ -304,6 +304,9 @@ export type RankingResponse = {
   // Subset of newDimensionKeys that are "revived" (seen in an earlier run, dropped,
   // now back) — the UI badges these blue vs. amber "new". new = flagged − revived.
   revivedDimensionKeys: string[];
+  // Keys a member proposed on THIS run, not yet dismissed — the "Requested" pill.
+  // Cleared on the next Rank when the underlying flag clears.
+  requestedDimensionKeys: string[];
   // Kept axes: every dimension in a working (non-Ignore) tier — guaranteed to survive
   // the next Rank. Derived from tier placement. Echoed so the tier list stays in sync.
   keptKeys: string[];
@@ -332,6 +335,9 @@ export type CurrentRunResponse = {
   // Subset of newDimensionKeys that are "revived" (seen in an earlier run, dropped,
   // now back) — badged blue vs. amber "new". new = flagged − revived.
   revivedDimensionKeys: string[];
+  // Keys a member proposed on THIS run, not yet dismissed — the "Requested" pill.
+  // Cleared on the next Rank when the underlying flag clears.
+  requestedDimensionKeys: string[];
   // Kept axes: every dimension in a working (non-Ignore) tier — guaranteed to survive
   // the next Rank (derived from tier placement). Plus pending free-text proposals fed
   // to the next Rank then consumed.

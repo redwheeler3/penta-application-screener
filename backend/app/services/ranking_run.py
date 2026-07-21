@@ -925,6 +925,26 @@ def revived_flag_keys(db: Session, run: RankingRun) -> list[str]:
     return sorted(flagged & seen_before)
 
 
+def requested_flag_keys(run: RankingRun) -> list[str]:
+    """This run's committee-requested dimensions still awaiting acknowledgement — the
+    keys with ``from_committee_request`` set (a member proposed this axis THIS run;
+    see ``enforce_committee_requests``) minus any the committee has dismissed.
+
+    Provenance, not triage: unlike ``new_dimension_keys`` this flag is authoritative on
+    the run's report (recomputed per run, cleared on the next Rank), so the "still
+    flagged" set is derived — the report flag minus a stored ``acknowledged_requested_keys``
+    dismissal set, the same shape the badge ✕ uses for new/revived. Empty on runs with
+    no proposal.
+    """
+    report = current_dimension_report(run)
+    if report is None:
+        return []
+    acknowledged = set((run.run_state or {}).get("acknowledged_requested_keys", []))
+    return sorted(
+        d.key for d in report.dimensions if d.from_committee_request and d.key not in acknowledged
+    )
+
+
 def carry_forward_layout(
     *,
     new_report: PoolDimensionReport,
@@ -1023,12 +1043,19 @@ def set_tiers(
     run: RankingRun,
     tier_layout: list[dict],
     acknowledged_keys: list[str] | None = None,
+    acknowledged_requested_keys: list[str] | None = None,
 ) -> RankingRun:
     """Persist a new tier layout and the weights derived from it.
 
     Validates that every placed key is a real dimension of this run. Only working
     tiers are stored — the UI's Ignore zone is dropped before persisting (an empty
     layout just means everything is ignored → uniform fallback).
+
+    ``acknowledged_requested_keys`` dismiss the "requested" provenance pill (badge ✕).
+    Unlike new/revived, the requested flag is authoritative on the report and is NOT
+    cleared by moving the chip — it is provenance, so only an explicit dismissal (or the
+    next Rank clearing the underlying flag) removes it. The dismissals accumulate in
+    ``acknowledged_requested_keys`` on run_state; ``requested_flag_keys`` subtracts them.
 
     ``new_dimension_keys`` (the one unacknowledged-flag set — "new" OR "revived") is
     recomputed by ONE uniform rule: **a flag clears on a member action — an explicit
@@ -1074,12 +1101,22 @@ def set_tiers(
         and incoming_placement.get(k) == stored_placement.get(k)  # not moved
     ]
 
+    # Accumulate requested-pill dismissals (explicit ✕ only). Union with what's already
+    # stored so a later save doesn't resurrect an earlier dismissal; keep only keys still
+    # requested on this run's report (a dismissal for a non-requested key is meaningless).
+    prior_ack_requested = set((run.run_state or {}).get("acknowledged_requested_keys", []))
+    requested_keys = {d.key for d in report.dimensions if d.from_committee_request} if report else set()
+    ack_requested = sorted(
+        (prior_ack_requested | set(acknowledged_requested_keys or ())) & requested_keys
+    )
+
     # run_state is a JSON column; reassign a new dict so SQLAlchemy sees the change.
     # proposed_dimensions is preserved; weights are derived from tiers, never stored.
     run.run_state = {
         **(run.run_state or {}),
         "tiers": working,
         "new_dimension_keys": surviving,
+        "acknowledged_requested_keys": ack_requested,
     }
     db.commit()
     db.refresh(run)

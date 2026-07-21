@@ -138,12 +138,16 @@ export function fetchTiers(): Promise<Response> {
   return fetch(url("/ranking/tiers"), { credentials: "include" });
 }
 
-export function saveTiers(next: Tier[], acknowledgedKeys: string[]): Promise<Response> {
+export function saveTiers(
+  next: Tier[],
+  acknowledgedKeys: string[],
+  acknowledgedRequestedKeys: string[] = [],
+): Promise<Response> {
   return fetch(url("/ranking/tiers"), {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tiers: next, acknowledgedKeys }),
+    body: JSON.stringify({ tiers: next, acknowledgedKeys, acknowledgedRequestedKeys }),
   });
 }
 

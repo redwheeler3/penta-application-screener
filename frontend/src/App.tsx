@@ -126,6 +126,7 @@ export function App() {
     loadRanking,
     saveTiers,
     acknowledgeNewDimensions,
+    dismissRequested,
     addProposal,
     removeProposal,
   } = useRanking(showError);
@@ -618,6 +619,7 @@ export function App() {
                 proposedDimensions={rankingRun?.proposedDimensions ?? []}
                 onSaveTiers={(next) => saveTiers(next)}
                 onAcknowledgeNew={acknowledgeNewDimensions}
+                onDismissRequested={dismissRequested}
                 onAddProposal={addProposal}
                 onRemoveProposal={removeProposal}
                 onSelectApplication={viewApplication}
