@@ -130,6 +130,15 @@ function chipTintClass(badge: ChipBadge, requested?: boolean): string {
   return "";
 }
 
+// A dimension's badge kind from the flag sets. Revived (seen before, back after a gap)
+// takes the label over plain new; both now show in any tier. Shared by the in-place chip
+// and the drag overlay so the floating copy keeps its badge while dragging.
+function badgeFor(key: string, newKeys: Set<string>, revivedKeys: Set<string>): ChipBadge {
+  if (revivedKeys.has(key)) return "revived";
+  if (newKeys.has(key)) return "new";
+  return null;
+}
+
 function ChipBody(props: {
   label: string;
   dragging?: boolean;
@@ -269,14 +278,11 @@ function TierRow(props: {
             <span className="tier-empty">Drag criteria here</span>
           ) : (
             sortedKeys.map((key) => {
-              // Badge kind, both from the ONE flagged set (props.newKeys) with the
-              // revived subset split out for its label/colour. Both show in ANY tier
-              // (not gated to Ignore): a flag now rides until the member dismisses it
-              // with the ✕ or the next Rank recomputes it — moving a chip no longer
-              // clears it, so all three badges (new/revived/requested) behave alike.
-              const flagged = props.newKeys.has(key);
-              const revived = props.revivedKeys.has(key);
-              const badge: ChipBadge = revived ? "revived" : flagged ? "new" : null;
+              // Badge from the flag sets. Both show in ANY tier (not gated to Ignore): a
+              // flag now rides until the member dismisses it with the ✕ or the next Rank
+              // recomputes it — moving a chip no longer clears it, so all three badges
+              // (new/revived/requested) behave alike.
+              const badge = badgeFor(key, props.newKeys, props.revivedKeys);
               const requested = props.requestedKeys.has(key);
               return (
                 <DimensionChip
@@ -510,7 +516,14 @@ export function TierList(props: {
         {/* The floating copy that follows the cursor freely across tiers — this
             is what makes cross-tier drag smooth instead of clipped to a row. */}
         <DragOverlay>
-          {activeLabel ? <ChipBody label={activeLabel} dragging /> : null}
+          {activeKey && activeLabel ? (
+            <ChipBody
+              label={activeLabel}
+              dragging
+              badge={badgeFor(activeKey, props.newKeys, props.revivedKeys)}
+              requested={props.requestedKeys.has(activeKey)}
+            />
+          ) : null}
         </DragOverlay>
       </DndContext>
     </div>
