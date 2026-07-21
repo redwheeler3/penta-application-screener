@@ -64,10 +64,13 @@ def emit_stability_summary(report: StabilityReport, on_delta: DeltaSink) -> None
 
 
 def descriptor_to_dim(d: dict[str, object]) -> PoolDimension:
-    """A golden descriptor ``{key, name, definition}`` → a PoolDimension. The categorical passes
-    serialize only key/name/definition, so the poles are unused here — filled empty, never sent
-    to the model."""
+    """A golden descriptor → a PoolDimension. ``high_end``/``low_end`` are carried through when
+    the descriptor supplies them, empty otherwise: the decomposition pass serializes the poles
+    into its prompt (they are what tells an inverse pair from a duplicate), so its cases must
+    provide them to run the model on the same input production sends; the matching pass drops
+    poles from its prompt, so its cases omit them and get the empty fallback."""
     return PoolDimension(
         key=str(d["key"]), name=str(d.get("name", "")), definition=str(d["definition"]),
-        high_end="", low_end="", why_it_differentiates="",
+        high_end=str(d.get("high_end", "")), low_end=str(d.get("low_end", "")),
+        why_it_differentiates="",
     )
