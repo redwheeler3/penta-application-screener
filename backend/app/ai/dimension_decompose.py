@@ -18,9 +18,12 @@ The failure is two-sided and the prompt must guard both:
 
 The two forces are given falsifiable tests, mirroring the discovery one-concept rule
 and the match pass's identity bar: to MERGE two axes you must assert they'd score the
-same applicant the same way; to KEEP two apart you must be able to name an applicant
-high on one and low on the other. Committee-requested axes get extra protection (D9):
-never merged away silently — the flag rides through and the decision must say so.
+same applicant the same way AND same direction; to KEEP two apart you must be able to name
+an applicant high on one and low on the other. Inverses (opposite poles of one spectrum)
+fail the merge test and pass the keep test for every applicant, so they are KEEP — the
+direction clause stops the model folding them as "the same axis, just reversed" and burying
+one orientation. Committee-requested axes get extra protection (D9): never merged away
+silently — the flag rides through and the decision must say so.
 
 This single structured call is the decomposition step, wired into ``rank_run``.
 """
@@ -50,16 +53,17 @@ DECOMPOSE_READ_TIMEOUT = 600
 SYSTEM_PROMPT = """\
 You are helping a housing co-op screening committee settle the final set of dimensions its applicant pool varies on.
 You are given SEVERAL independent analyses of the SAME pool. They overlap heavily: the same underlying concept is often carved at different granularities, named differently, or split in different places. Your job is to distil them into ONE set of axes that is as FINE as the evidence supports while being mutually NON-OVERLAPPING — collapse re-carvings of a single concept, keep genuinely distinct concepts apart.
-Two ways to fail, and the second is worse: keeping redundant near-duplicates (the committee then weights one concept several times over), and merging genuinely different axes into one (the committee loses a distinction it needed, and a lost axis is invisible afterwards). So the bar to MERGE is high; when unsure whether two axes are the same, keep them separate."""
+Two ways to fail, and the second is worse: keeping redundant near-duplicates (the committee then weights one concept several times over), and merging genuinely different axes into one (the committee loses a distinction it needed, and a lost axis is invisible afterwards). So the bar to MERGE is high; when unsure whether two axes are the same, keep them separate. Two axes that are inverses — opposite poles of one spectrum, so high on one means low on the other — are NOT the same axis; opposite poles mean KEEP, not merge."""
 
 _INSTRUCTIONS = f"""\
 ## Task
 You are given K independent discovery reports for the same applicant pool, in the `<discovery_reports>` block. Produce ONE settled dimension set: the finest collection of axes that each genuinely differentiate this pool and do not overlap each other.
 
 ## How to decide, with FALSIFIABLE tests (show the evidence, both ways)
-- **To MERGE several input axes into one settled axis:** you must be able to assert they would score the SAME applicant essentially the SAME way — they are the same concept re-carved (reworded, or split by domain but measuring one underlying thing). State that in `decision`. If you cannot make that assertion, they are NOT the same axis — keep them separate.
+- **To MERGE several input axes into one settled axis:** you must be able to assert they would score the SAME applicant the SAME way AND in the SAME direction — high on one means high on the other. They are the same concept re-carved (reworded, or split by domain but measuring one underlying thing). State that in `decision`. If you cannot make that assertion, they are NOT the same axis — keep them separate.
 - **To KEEP two similar-sounding axes apart:** you should be able to point to a plausible applicant who would land HIGH on one and LOW on the other. That is the proof they measure different things. (Illustration, do not borrow the subject: "will you sit on committees" vs. "will you show up for physical work-days" share the word participation, but a person can be eager for one and refuse the other — different axes.)
-- Same word ≠ same axis, and different words ≠ different axis. Judge by what is measured, not by labels.
+- **Inverses are NOT duplicates.** If high on one axis always means low on the other (opposite poles of one spectrum), every applicant lands high on one and low on the other — that is the KEEP test met, not the merge test. Keep both as separate axes (the direction-contested case; the committee picks which to score); never fold them as "the same axis, poles reversed" — that buries one orientation and any committee ask on it.
+- Same word ≠ same axis, and different words ≠ different axis. Judge by what is measured and its direction, not by labels.
 - **Split only where the evidence supports it:** do not manufacture fine distinctions the pool does not actually vary on. Fine is good; fabricated granularity is padding.
 
 ## Orientation and direction (carry the discovery rules forward)
@@ -131,7 +135,7 @@ def _kept_block(kept: list[PoolDimension]) -> str:
     return f"""\
 
 ## Committee-kept axes (MUST survive)
-The `<kept_axes>` block lists axes the committee explicitly kept from a prior run (by tiering them). EACH one MUST appear in your settled set — reuse its exact `key`, and set `from_committee_request: true` on it. If a discovery report re-surfaced the same concept under a different key, FOLD that discovered axis into the kept axis (list both in `source_keys`, keep the kept axis's key) rather than emitting two. A kept axis is never dropped, even if no discovery report named it — carry it through on its own.
+The `<kept_axes>` block lists axes the committee explicitly kept from a prior run (by tiering them). EACH one MUST appear in your settled set — reuse its exact `key`. Leave `from_committee_request` FALSE on it: that flag marks only a fresh proposal a member asked for THIS run, and a kept axis is an ordinary carried dimension. If a discovery report re-surfaced the same concept under a different key, FOLD that discovered axis into the kept axis (list both in `source_keys`, keep the kept axis's key) rather than emitting two. A kept axis is never dropped, even if no discovery report named it — carry it through on its own.
 
 <kept_axes>
 {json.dumps(payload, indent=2, default=str)}
@@ -228,72 +232,88 @@ def enforce_committee_requests(
     merged away. Deterministic backstop for the prompt instruction — prompts guide, they
     don't guarantee.
 
-    Two sources of "committee ask" are guarded, identically:
+    Two sources of "committee ask" are guarded — both get the same never-vanish
+    guarantee, but they mean DIFFERENT things for the ``from_committee_request`` flag:
       - **Proposals**, which entered via a discovery report and are marked
-        ``from_committee_request`` on their input dimension.
+        ``from_committee_request`` on their input dimension. This flag is THIS run's
+        provenance — "a member asked for this axis on this run" — and it drives the
+        audit badge + D9 trail. It must be authoritative: true iff a fresh proposal was
+        absorbed, so it clears on the next run (when the proposal is gone).
       - **Kept axes** (``kept``), prior dimensions injected at decomposition (NOT into
         discovery) because the committee tiered them. They are never in ``input_reports``,
-        so they are folded into the ask set here by their own key — a kept axis is an even
-        harder guarantee than a proposal (the committee already weighted it), so the same
-        "never vanish" repair applies.
+        so they are folded into the survive set here by their own key. A kept axis is an
+        ordinary carried dimension: it must never vanish, but it carries NO request flag
+        (the committee tiered it on some prior run; that isn't a fresh ask this run).
 
-    Three failure modes repaired here, computed from the ask set vs. what decomposition
+    Failure modes repaired here, computed from the survive set vs. what decomposition
     returned:
-      - **Flag loss on merge:** an asked-for key was absorbed into a settled axis, but
-        that axis came back ``from_committee_request: false`` — the provenance that drives
-        the UI badge and the D9 trail. We force the flag back true.
-      - **Silent drop:** an asked-for key appears in NO settled axis's ``source_keys`` —
-        decomposition dropped it. We re-add it as its own settled axis (restoring the
-        input/kept text) so it cannot vanish.
+      - **Flag drift:** the flag on each settled axis is recomputed from scratch — true
+        iff it absorbed a proposal source key, false otherwise — so neither a model that
+        dropped it on a merge nor one that stamped it on a kept/plain axis can make it lie.
+      - **Silent drop:** an asked-for key (proposal OR kept) appears in NO settled axis's
+        ``source_keys`` — decomposition dropped it. We re-add it as its own settled axis
+        (restoring the input/kept text), flagged only if it was a proposal.
 
     Returns the corrected report and a ``folded`` list — the asked-for axes merged INTO
     another axis (not kept standalone), each ``{request_key, into_key}`` — so the caller
     can surface "your proposal/kept axis X was folded into Y" (never a silent
     disappearance). An axis kept under its own key is not "folded" and isn't listed.
     """
-    # Both proposals (flagged in the reports) and kept axes (injected separately) are
-    # committee asks with the same never-vanish guarantee, keyed by their dimension key.
-    requested = {
+    # Proposals (flagged in the reports) carry the request flag; kept axes (injected
+    # separately) get the survival guarantee only. Both share the never-vanish repair.
+    proposed = {
         d.key: d
         for r in input_reports
         for d in r.dimensions
         if d.from_committee_request
     }
+    survive = dict(proposed)  # everything that must not vanish, keyed by dimension key
     for kept_dim in kept or []:
-        requested.setdefault(kept_dim.key, kept_dim)
-    if not requested:
-        return decomposition, []
+        survive.setdefault(kept_dim.key, kept_dim)
+    if not survive:
+        # No asks at all — but still make the flag authoritative: strip any the model
+        # stamped on its own (nothing was proposed this run, so nothing may claim it).
+        dims = [
+            d.model_copy(update={"from_committee_request": False})
+            if d.from_committee_request
+            else d
+            for d in decomposition.dimensions
+        ]
+        return decomposition.model_copy(update={"dimensions": dims}), []
 
     dims = [d.model_copy() for d in decomposition.dimensions]
-    covered: dict[str, str] = {}  # requested input key -> settled axis key that absorbed it
+    covered: dict[str, str] = {}  # asked-for input key -> settled axis key that absorbed it
     for settled in dims:
+        absorbed_proposal = any(sk in proposed for sk in settled.source_keys)
         for sk in settled.source_keys:
-            if sk in requested:
+            if sk in survive:
                 covered[sk] = settled.key
-                # Flag-loss repair: a settled axis absorbing a request carries the flag.
-                if not settled.from_committee_request:
-                    settled.from_committee_request = True
+        # Flag is authoritative: true iff this axis absorbed a fresh proposal, false
+        # otherwise — so a kept axis reads as an ordinary dimension and the flag clears
+        # next run when the proposal is gone.
+        settled.from_committee_request = absorbed_proposal
 
     folded: list[dict] = []
-    for req_key, req_dim in requested.items():
-        settled_key = covered.get(req_key)
+    for ask_key, ask_dim in survive.items():
+        settled_key = covered.get(ask_key)
         if settled_key is None:
-            # Silent drop: re-add the requested axis as its own settled dimension.
+            # Silent drop: re-add the asked-for axis as its own settled dimension. Flag it
+            # only if it was a fresh proposal (kept axes re-add as plain dimensions).
             dims.append(
                 DecomposedDimension(
-                    key=req_dim.key,
-                    name=req_dim.name,
-                    definition=req_dim.definition,
-                    high_end=req_dim.high_end,
-                    low_end=req_dim.low_end,
-                    source_keys=[req_dim.key],
-                    from_committee_request=True,
-                    decision="Re-added by the D9 guard — decomposition dropped this committee-requested axis.",
+                    key=ask_dim.key,
+                    name=ask_dim.name,
+                    definition=ask_dim.definition,
+                    high_end=ask_dim.high_end,
+                    low_end=ask_dim.low_end,
+                    source_keys=[ask_dim.key],
+                    from_committee_request=ask_key in proposed,
+                    decision="Re-added by the D9 guard — decomposition dropped this committee-asked axis.",
                 )
             )
-        elif settled_key != req_key:
+        elif settled_key != ask_key:
             # Merged INTO another axis (not kept standalone) — surface it, don't undo it.
-            folded.append({"request_key": req_key, "into_key": settled_key})
+            folded.append({"request_key": ask_key, "into_key": settled_key})
 
     return decomposition.model_copy(update={"dimensions": dims}), folded
 
