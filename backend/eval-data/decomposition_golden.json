@@ -17,9 +17,9 @@
       },
       "given": {
         "reports": [
-          [{"key": "health_safety_skill", "name": "Health & safety skill", "definition": "The household's professional health or safety expertise that could benefit co-op members directly (e.g. first aid, CPR, occupational health)."}],
-          [{"key": "health_and_safety_skill", "name": "Health and safety skill", "definition": "Whether the household brings health, medical, or first-aid skills that could enhance the safety and wellbeing infrastructure of the co-op community."}],
-          [{"key": "health_and_safety_skills", "name": "Health and safety skills", "definition": "Professional health or safety competencies — nursing, first-aid training, CPR instruction — that the household could deploy to improve building safety and member wellbeing."}]
+          [{"key": "health_safety_skill", "name": "Health & safety skill", "definition": "The household's professional health or safety expertise that could benefit co-op members directly (e.g. first aid, CPR, occupational health).", "high_end": "Trained health/safety professional (nurse, paramedic, occupational-health specialist) able to help members directly.", "low_end": "No health or safety training to contribute."}],
+          [{"key": "health_and_safety_skill", "name": "Health and safety skill", "definition": "Whether the household brings health, medical, or first-aid skills that could enhance the safety and wellbeing infrastructure of the co-op community.", "high_end": "Brings substantial medical or first-aid skill that strengthens community wellbeing.", "low_end": "Brings no health or medical skill."}],
+          [{"key": "health_and_safety_skills", "name": "Health and safety skills", "definition": "Professional health or safety competencies — nursing, first-aid training, CPR instruction — that the household could deploy to improve building safety and member wellbeing.", "high_end": "Holds professional health/safety competencies (nursing, CPR instruction) deployable for member wellbeing.", "low_end": "Holds no such competencies."}]
         ]
       }
     },
@@ -38,8 +38,8 @@
       },
       "given": {
         "reports": [
-          [{"key": "discretionary_time_availability", "name": "Discretionary time availability", "definition": "The household's self-reported availability of spare time for co-op commitments, net of outside obligations such as touring schedules, intensive hobbies, or other regular commitments."}],
-          [{"key": "participation_commitment_explicitness", "name": "Participation commitment explicitness", "definition": "How concretely and specifically the household commits to co-op work obligations — work-day attendance, committee seats, maintenance rotations — in their own words."}]
+          [{"key": "discretionary_time_availability", "name": "Discretionary time availability", "definition": "The household's self-reported availability of spare time for co-op commitments, net of outside obligations such as touring schedules, intensive hobbies, or other regular commitments.", "high_end": "Ample spare time free of competing obligations for co-op work.", "low_end": "Little spare time; heavily committed elsewhere."}],
+          [{"key": "participation_commitment_explicitness", "name": "Participation commitment explicitness", "definition": "How concretely and specifically the household commits to co-op work obligations — work-day attendance, committee seats, maintenance rotations — in their own words.", "high_end": "Names concrete, specific co-op commitments they will take on.", "low_end": "Vague or silent about what they will actually do."}]
         ]
       }
     },
@@ -58,11 +58,11 @@
       },
       "given": {
         "reports": [
-          [{"key": "financial_admin_skill", "name": "Financial & Administrative Skill", "definition": "Demonstrated ability to manage shared finances, budgets, audits, record-keeping, or governance administration relevant to running a co-op."}],
-          [{"key": "financial_management_skill", "name": "Financial / Bookkeeping Skill", "definition": "The depth of financial competence the household can contribute — from full treasurer/audit experience down to basic bookkeeping or no claimed financial skill."}],
-          [{"key": "financial_administrative_skill", "name": "Financial / Bookkeeping Skill", "definition": "Whether one or both adults can directly serve the co-op's financial administration — bookkeeping, budget reconciliation, audit preparation, or treasurer functions."}],
-          [{"key": "financial_governance_skill", "name": "Financial Governance & Treasurer-Level Skill", "definition": "Demonstrated ability to manage a collective's finances: reading and preparing budgets, reconciling accounts, passing audits, and transferring financial knowledge to successors."}],
-          [{"key": "financial_management_skills", "name": "Financial Management & Bookkeeping Skills", "definition": "Whether the household can take on the co-op's financial administration — maintaining budgets, reconciling accounts, preparing for audits, and ensuring fiscal transparency — based on professional skill or demonstrated experience."}]
+          [{"key": "financial_admin_skill", "name": "Financial & Administrative Skill", "definition": "Demonstrated ability to manage shared finances, budgets, audits, record-keeping, or governance administration relevant to running a co-op.", "high_end": "Proven ability to run a collective's budgets, audits, and record-keeping.", "low_end": "No financial or administrative skill to contribute."}],
+          [{"key": "financial_management_skill", "name": "Financial / Bookkeeping Skill", "definition": "The depth of financial competence the household can contribute — from full treasurer/audit experience down to basic bookkeeping or no claimed financial skill.", "high_end": "Full treasurer / audit-level financial experience.", "low_end": "No claimed financial skill."}],
+          [{"key": "financial_administrative_skill", "name": "Financial / Bookkeeping Skill", "definition": "Whether one or both adults can directly serve the co-op's financial administration — bookkeeping, budget reconciliation, audit preparation, or treasurer functions.", "high_end": "An adult can directly serve as bookkeeper/treasurer for the co-op.", "low_end": "Neither adult can take on financial administration."}],
+          [{"key": "financial_governance_skill", "name": "Financial Governance & Treasurer-Level Skill", "definition": "Demonstrated ability to manage a collective's finances: reading and preparing budgets, reconciling accounts, passing audits, and transferring financial knowledge to successors.", "high_end": "Treasurer-level command of budgets, reconciliation, and audits, able to mentor successors.", "low_end": "No financial governance ability."}],
+          [{"key": "financial_management_skills", "name": "Financial Management & Bookkeeping Skills", "definition": "Whether the household can take on the co-op's financial administration — maintaining budgets, reconciling accounts, preparing for audits, and ensuring fiscal transparency — based on professional skill or demonstrated experience.", "high_end": "Can own the co-op's books — budgets, reconciliation, audit prep, fiscal transparency.", "low_end": "Cannot contribute to financial administration."}]
         ]
       }
     },
@@ -81,8 +81,8 @@
       },
       "given": {
         "reports": [
-          [{"key": "trade_maintenance_skill", "name": "Trade / Hands-On Maintenance Skills", "definition": "Licensed or professionally practiced trade skills directly applicable to building upkeep — electrical, carpentry, masonry, plumbing, mechanics, etc."}],
-          [{"key": "grounds_outdoor_skill", "name": "Grounds, Gardening & Outdoor Maintenance Skill", "definition": "Practical skill in maintaining shared outdoor spaces — gardening, composting, irrigation, arboriculture, grounds safety — that reduce the co-op's need for outside contractors."}]
+          [{"key": "trade_maintenance_skill", "name": "Trade / Hands-On Maintenance Skills", "definition": "Licensed or professionally practiced trade skills directly applicable to building upkeep — electrical, carpentry, masonry, plumbing, mechanics, etc.", "high_end": "Licensed tradesperson able to handle building repairs in-house.", "low_end": "No building-trade skill."}],
+          [{"key": "grounds_outdoor_skill", "name": "Grounds, Gardening & Outdoor Maintenance Skill", "definition": "Practical skill in maintaining shared outdoor spaces — gardening, composting, irrigation, arboriculture, grounds safety — that reduce the co-op's need for outside contractors.", "high_end": "Skilled at gardening, grounds, and outdoor upkeep of shared spaces.", "low_end": "No grounds or outdoor-maintenance skill."}]
         ]
       }
     },
@@ -90,10 +90,11 @@
       "key": "inverse_poles_children_vs_independence_keep",
       "metadata": {
         "expected": "keep",
-        "note": "INVERSE-PAIR trap: a committee-requested 'children under 6 present' axis vs. a discovered 'proximity to independence' axis. They are opposite poles of one age spectrum — a toddler-heavy household scores high on the first and low on the second, and vice versa. The decomposer is tempted to fold them as 'the same axis with the poles reversed', but perfect ANTI-correlation is a KEEP signal, not a merge: every applicant lands high on one and low on the other, and folding silently discards one orientation (and the committee ask riding on it). Regression guard for the inverse-merge bug.",
+        "note": "OPPOSING-DESIRABLE-ENDS trap: a committee-requested 'children under 6 present' axis vs. a discovered 'proximity to independence' axis. A toddler-heavy household is high-fit on the first and low-fit on the second — the desirable ends oppose. The decomposer is tempted to fold them (they cannot diverge, and independence is a finer scale that subsumes the binary), but opposing desirable ends is a KEEP signal: folding flips the sign of one axis's fit and buries the committee ask riding on it. Regression guard for the inverse-merge bug.",
         "pass": "decomposition",
-        "label_rationale": "KEEP: these are inverses, not duplicates. The MERGE test requires scoring the same applicant in the SAME direction (high⇒high); here high on 'young children present' always means low on 'proximity to independence', so they fail the merge test for EVERY applicant and satisfy the KEEP test for every applicant. This is the direction-contested case — both orientations carry a legitimate fit story, so both axes must survive for the committee to choose which to score. Folding them would bury the committee-requested 'children under 6' concern as the low end of the other axis. The exact failure a human reported: 'It merged it into a different dimension stating that it's the same just with opposite poles. It's not the same BECAUSE of the opposite poles.'",
+        "label_rationale": "KEEP: the desirable ends oppose. A high-fit household on 'young children present' (has children under 6 — the committee wants to flag it) is a low-fit household on 'proximity to independence' (children need full-time care), so the more-fit applicant on one is the less-fit applicant on the other — the merge test fails. That the two cannot diverge, and that independence is a finer scale subsuming the binary, are NOT merge licenses: folding flips the sign of the committee's ask, scoring 'has young children' as low fit. Both must survive for the committee to choose which direction to score. The exact failure a human reported: 'It merged it into a different dimension stating that it's the same just with opposite poles. It's not the same BECAUSE of the opposite poles.'",
         "source": "Synthetic regression case for the inverse-pole merge bug (reported 2026-07-20). Definitions written to model a committee proposal ('children under 6') colliding with a discovered independence axis; not sliced from one run, but faithful to the dimension shapes discovery/decompose produce.",
+        "observed_failure": "First fix (prompt version 669b11de0c1b, 'inverses are opposite poles of one spectrum → keep') still merged. The model's own decision: 'Both axes measure the same underlying concept: the care-dependency level of children in the household. young_children_presence is a coarse binary operationalization of the low end of the household_proximity_to_independence spectrum — a household scoring high on young_children_presence necessarily scores low on proximity to independence, and the two axes cannot diverge. household_proximity_to_independence is strictly finer and fully subsumes the binary, so the binary is merged into it.' Two loopholes: (1) it read 'cannot diverge' as redundancy rather than as a fit-direction conflict, and (2) 'one spectrum / strictly finer / subsumes' as a merge license. The prompt now anchors the merge test on AGREEING desirable ends and names both 'can't diverge' and 'subsumes' as non-reasons. Captured here because the EvalRun row lives in the disposable DB, not git.",
         "provenance": {
           "pass_models": {"Dimension decomposition": "us.anthropic.claude-sonnet-4-6"},
           "pass_prompt_versions": {"Dimension decomposition": "733871632036"}
@@ -101,8 +102,8 @@
       },
       "given": {
         "reports": [
-          [{"key": "young_children_presence", "name": "Young children present", "definition": "Whether the household includes children under 6 — infants, toddlers, or pre-schoolers currently in the home."}],
-          [{"key": "household_proximity_to_independence", "name": "Proximity to independence", "definition": "How close the household's members are to living independently — from young children needing full-time care, through school-age and teenagers, up to adult or near-adult children."}]
+          [{"key": "young_children_presence", "name": "Young children present", "definition": "Whether the household includes children under 6 — infants, toddlers, or pre-schoolers currently in the home.", "high_end": "Household includes children under 6 (infants, toddlers, pre-schoolers).", "low_end": "No children under 6 in the household."}],
+          [{"key": "household_proximity_to_independence", "name": "Proximity to independence", "definition": "How close the household's members are to living independently — from young children needing full-time care, through school-age and teenagers, up to adult or near-adult children.", "high_end": "Children are near-independent — adult or near-adult, needing little care.", "low_end": "Young children needing full-time care."}]
         ]
       }
     }

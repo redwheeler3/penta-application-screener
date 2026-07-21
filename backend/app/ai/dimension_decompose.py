@@ -18,12 +18,12 @@ The failure is two-sided and the prompt must guard both:
 
 The two forces are given falsifiable tests, mirroring the discovery one-concept rule
 and the match pass's identity bar: to MERGE two axes you must assert they'd score the
-same applicant the same way AND same direction; to KEEP two apart you must be able to name
-an applicant high on one and low on the other. Inverses (opposite poles of one spectrum)
-fail the merge test and pass the keep test for every applicant, so they are KEEP — the
-direction clause stops the model folding them as "the same axis, just reversed" and burying
-one orientation. Committee-requested axes get extra protection (D9): never merged away
-silently — the flag rides through and the decision must say so.
+same applicant the same way AND with agreeing desirable ends; to KEEP two apart you must be
+able to name an applicant high on one and low on the other. Axes with OPPOSING desirable ends
+(high-fit on one = low-fit on the other) are KEEP even when they cannot diverge or one
+subsumes the other — folding flips one axis's fit direction and buries any committee ask on
+it. Committee-requested axes get extra protection (D9): never merged away silently — the flag
+rides through and the decision must say so.
 
 This single structured call is the decomposition step, wired into ``rank_run``.
 """
@@ -53,16 +53,16 @@ DECOMPOSE_READ_TIMEOUT = 600
 SYSTEM_PROMPT = """\
 You are helping a housing co-op screening committee settle the final set of dimensions its applicant pool varies on.
 You are given SEVERAL independent analyses of the SAME pool. They overlap heavily: the same underlying concept is often carved at different granularities, named differently, or split in different places. Your job is to distil them into ONE set of axes that is as FINE as the evidence supports while being mutually NON-OVERLAPPING — collapse re-carvings of a single concept, keep genuinely distinct concepts apart.
-Two ways to fail, and the second is worse: keeping redundant near-duplicates (the committee then weights one concept several times over), and merging genuinely different axes into one (the committee loses a distinction it needed, and a lost axis is invisible afterwards). So the bar to MERGE is high; when unsure whether two axes are the same, keep them separate. Two axes that are inverses — opposite poles of one spectrum, so high on one means low on the other — are NOT the same axis; opposite poles mean KEEP, not merge."""
+Two ways to fail, and the second is worse: keeping redundant near-duplicates (the committee then weights one concept several times over), and merging genuinely different axes into one (the committee loses a distinction it needed, and a lost axis is invisible afterwards). So the bar to MERGE is high; when unsure whether two axes are the same, keep them separate. When high-fit on one axis means low-fit on the other, KEEP them — even if they cannot diverge or one subsumes the other; folding flips one axis's fit direction."""
 
 _INSTRUCTIONS = f"""\
 ## Task
 You are given K independent discovery reports for the same applicant pool, in the `<discovery_reports>` block. Produce ONE settled dimension set: the finest collection of axes that each genuinely differentiate this pool and do not overlap each other.
 
 ## How to decide, with FALSIFIABLE tests (show the evidence, both ways)
-- **To MERGE several input axes into one settled axis:** you must be able to assert they would score the SAME applicant the SAME way AND in the SAME direction — high on one means high on the other. They are the same concept re-carved (reworded, or split by domain but measuring one underlying thing). State that in `decision`. If you cannot make that assertion, they are NOT the same axis — keep them separate.
+- **To MERGE several input axes into one settled axis:** you must be able to assert the same applicant scores the SAME on both AND their DESIRABLE ends agree — the more-fit applicant on one is the more-fit applicant on the other. They are the same concept re-carved (reworded, or split by domain but measuring one underlying thing). State that in `decision`. If you cannot make that assertion, they are NOT the same axis — keep them separate.
 - **To KEEP two similar-sounding axes apart:** you should be able to point to a plausible applicant who would land HIGH on one and LOW on the other. That is the proof they measure different things. (Illustration, do not borrow the subject: "will you sit on committees" vs. "will you show up for physical work-days" share the word participation, but a person can be eager for one and refuse the other — different axes.)
-- **Inverses are NOT duplicates.** If high on one axis always means low on the other (opposite poles of one spectrum), every applicant lands high on one and low on the other — that is the KEEP test met, not the merge test. Keep both as separate axes (the direction-contested case; the committee picks which to score); never fold them as "the same axis, poles reversed" — that buries one orientation and any committee ask on it.
+- **Opposing desirable ends ⇒ KEEP — even if the axes cannot diverge, and even if one is finer or subsumes the other.** When high-fit on one means low-fit on the other, keep both (the committee picks which to score). "They can't diverge" and "one subsumes the other" are NOT merge reasons — folding flips the sign of one axis's fit and buries any committee ask riding on it.
 - Same word ≠ same axis, and different words ≠ different axis. Judge by what is measured and its direction, not by labels.
 - **Split only where the evidence supports it:** do not manufacture fine distinctions the pool does not actually vary on. Fine is good; fabricated granularity is padding.
 
