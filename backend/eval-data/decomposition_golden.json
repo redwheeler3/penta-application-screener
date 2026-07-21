@@ -85,6 +85,26 @@
           [{"key": "grounds_outdoor_skill", "name": "Grounds, Gardening & Outdoor Maintenance Skill", "definition": "Practical skill in maintaining shared outdoor spaces — gardening, composting, irrigation, arboriculture, grounds safety — that reduce the co-op's need for outside contractors."}]
         ]
       }
+    },
+    {
+      "key": "inverse_poles_children_vs_independence_keep",
+      "metadata": {
+        "expected": "keep",
+        "note": "INVERSE-PAIR trap: a committee-requested 'children under 6 present' axis vs. a discovered 'proximity to independence' axis. They are opposite poles of one age spectrum — a toddler-heavy household scores high on the first and low on the second, and vice versa. The decomposer is tempted to fold them as 'the same axis with the poles reversed', but perfect ANTI-correlation is a KEEP signal, not a merge: every applicant lands high on one and low on the other, and folding silently discards one orientation (and the committee ask riding on it). Regression guard for the inverse-merge bug.",
+        "pass": "decomposition",
+        "label_rationale": "KEEP: these are inverses, not duplicates. The MERGE test requires scoring the same applicant in the SAME direction (high⇒high); here high on 'young children present' always means low on 'proximity to independence', so they fail the merge test for EVERY applicant and satisfy the KEEP test for every applicant. This is the direction-contested case — both orientations carry a legitimate fit story, so both axes must survive for the committee to choose which to score. Folding them would bury the committee-requested 'children under 6' concern as the low end of the other axis. The exact failure a human reported: 'It merged it into a different dimension stating that it's the same just with opposite poles. It's not the same BECAUSE of the opposite poles.'",
+        "source": "Synthetic regression case for the inverse-pole merge bug (reported 2026-07-20). Definitions written to model a committee proposal ('children under 6') colliding with a discovered independence axis; not sliced from one run, but faithful to the dimension shapes discovery/decompose produce.",
+        "provenance": {
+          "pass_models": {"Dimension decomposition": "us.anthropic.claude-sonnet-4-6"},
+          "pass_prompt_versions": {"Dimension decomposition": "733871632036"}
+        }
+      },
+      "given": {
+        "reports": [
+          [{"key": "young_children_presence", "name": "Young children present", "definition": "Whether the household includes children under 6 — infants, toddlers, or pre-schoolers currently in the home."}],
+          [{"key": "household_proximity_to_independence", "name": "Proximity to independence", "definition": "How close the household's members are to living independently — from young children needing full-time care, through school-age and teenagers, up to adult or near-adult children."}]
+        ]
+      }
     }
   ]
 }
