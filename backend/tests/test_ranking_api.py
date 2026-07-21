@@ -1841,21 +1841,37 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
         by_key = {d["key"]: d for d in current["dimensions"]}
         assert by_key["participation_commitment"]["name"] == "Participation commitment"
 
-        # Acknowledge the new dimension in place (badge ✕ / "mark all reviewed"):
-        # keep the layout unchanged, send the key in acknowledgedKeys. It drops
-        # out of new_dimension_keys without being placed in a working tier.
+        # MOVING the new dimension into a working tier does NOT clear its flag — the
+        # badge rides until an explicit dismissal or the next Rank (consistent with the
+        # requested pill; a member weights it and still sees it flagged as newly-arrived).
+        moved = await client.put(
+            "/ranking/tiers",
+            json={
+                "tiers": [
+                    {"id": "tier-s", "label": "Critical", "dimensionKeys": ["participation_commitment"], "ignore": False},
+                    {"id": "tier-a", "label": "Important", "dimensionKeys": ["financial_stability"], "ignore": False},
+                ]
+            },
+        )
+        assert moved.status_code == 200
+        assert moved.json()["newDimensionKeys"] == ["financial_stability"]  # still flagged after the move
+
+        # Acknowledge the new dimension in place (badge ✕ / "mark all reviewed"): send the
+        # key in acknowledgedKeys, keeping its (now working-tier) placement. Only this
+        # explicit action drops it out of new_dimension_keys.
+        placed_layout = (await client.get("/ranking/tiers")).json()["tiers"]
         ack = await client.put(
             "/ranking/tiers",
-            json={"tiers": layout, "acknowledgedKeys": ["financial_stability"]},
+            json={"tiers": placed_layout, "acknowledgedKeys": ["financial_stability"]},
         )
         assert ack.status_code == 200
         assert ack.json()["newDimensionKeys"] == []
-        # And it stuck: still unplaced (in Ignore), just no longer flagged.
+        # And it stuck: still placed in Important (the ✕ keeps placement), just no longer flagged.
         current = (await client.get("/ranking/current")).json()
         assert current["newDimensionKeys"] == []
         layout2 = (await client.get("/ranking/tiers")).json()["tiers"]
-        ignore2 = next(t for t in layout2 if t.get("ignore"))
-        assert "financial_stability" in ignore2["dimensionKeys"]
+        by_label2 = {t["label"]: t for t in layout2}
+        assert "financial_stability" in by_label2["Important"]["dimensionKeys"]
 
 
 def _scoring_report_v2() -> DimensionScoringReport:

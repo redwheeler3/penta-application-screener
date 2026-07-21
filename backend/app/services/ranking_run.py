@@ -1057,19 +1057,13 @@ def set_tiers(
     next Rank clearing the underlying flag) removes it. The dismissals accumulate in
     ``acknowledged_requested_keys`` on run_state; ``requested_flag_keys`` subtracts them.
 
-    ``new_dimension_keys`` (the one unacknowledged-flag set — "new" OR "revived") is
-    recomputed by ONE uniform rule: **a flag clears on a member action — an explicit
-    acknowledgement (badge ✕ / "mark all reviewed"), or the member MOVING the chip
-    (its placement differs from what was stored) — but never by carry-forward's own
-    auto-placement.** That single rule yields both behaviors for free:
-      - a *new* key starts unplaced, so the only way it becomes placed is a member
-        drag → cleared (identical to the prior "placement clears" behavior);
-      - a *revived* key starts auto-placed (its prior tier restored), so leaving it
-        put is not a move → it stays flagged until the member explicitly reviews or
-        re-places it (the SPEC RQ4 safeguard: a revived dim silently at weight keeps
-        its badge). Only re-discovery re-flags.
-    Comparing against the *stored* placement (not "is it placed?") is what makes
-    auto-placement not self-clear, with no new-vs-revived branch here.
+    ``new_dimension_keys`` (the one unacknowledged-flag set — "new" OR "revived") clears
+    on the SAME rule as the requested pill, for consistency across all three badges: a
+    flag clears ONLY on an explicit acknowledgement (badge ✕ / "mark all reviewed") — NOT
+    on moving the chip to a tier — and otherwise rides until the next Rank recomputes the
+    flagged set. Dragging a flagged chip into a working tier keeps its badge (it is now
+    weighted AND still flagged as newly-arrived); the member dismisses it with the ✕ when
+    they have taken it in. Only re-discovery / carry-forward re-flags.
     """
     report = current_dimension_report(run)
     valid_keys = {d.key for d in report.dimensions} if report is not None else set()
@@ -1084,21 +1078,14 @@ def set_tiers(
         if not t.get("ignore")
     ]
 
-    # Recompute the still-flagged set: drop any acknowledged, or moved from where it
-    # was stored (None = unplaced). Auto-placement leaves stored==incoming, so it
-    # doesn't clear; a genuine member move does.
-    def _placement(tiers: list[dict]) -> dict[str, str]:
-        return {key: t["id"] for t in tiers for key in t.get("dimension_keys", [])}
-
-    stored_placement = _placement(stored_tiers(run))
-    incoming_placement = _placement(working)
+    # Recompute the still-flagged set: drop only the explicitly-acknowledged keys. Moving
+    # a chip no longer clears its flag (consistent with the requested pill) — the badge
+    # rides until the ✕ or the next Rank. Keys still valid on this run only.
     acknowledged = set(acknowledged_keys or ())
     prior_flagged = (run.run_state or {}).get("new_dimension_keys", [])
     surviving = [
         k for k in prior_flagged
-        if k in valid_keys
-        and k not in acknowledged
-        and incoming_placement.get(k) == stored_placement.get(k)  # not moved
+        if k in valid_keys and k not in acknowledged
     ]
 
     # Accumulate requested-pill dismissals (explicit ✕ only). Union with what's already
