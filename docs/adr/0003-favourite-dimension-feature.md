@@ -44,6 +44,12 @@ is the only "fair game to drop or re-carve" bucket.**
 - **Committee proposals** (`from_committee_request`) survive their introducing run via the
   within-run D9 guard, land in Ignore for triage, and are *not* auto-kept across runs — an
   Ignored axis is "seen, not weighted," fair game on the next Rank.
+- **`from_committee_request` is per-run provenance, not a durable mark.** It means "a member
+  proposed this axis on *this* Rank," so `enforce_committee_requests` recomputes it
+  authoritatively — true iff the settled axis absorbed a fresh proposal — and it clears on the
+  next Rank regardless of tier. A kept (tiered) axis carries the flag false: on subsequent runs
+  it survives as an ordinary carried dimension (injected at decomposition, never dropped), not
+  as a standing "requested" axis. Kept-axis survival is decoupled from the flag.
 - **Merge carries tier placement, not a favourite:** consolidation transfers the dropped
   twin's highest-priority tier placement to the survivor, subsuming favourite-transfer-on-merge.
 - Illustrates a recurring principle: prefer deriving a signal from existing state

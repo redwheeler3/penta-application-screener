@@ -58,14 +58,15 @@ function CriteriaComposer(props: {
   return (
     <div className="criteria-composer no-print">
       <p className="criteria-composer-hint">
-        Describe a dimension you want considered. Re-ranking offers it to the AI, which may refine, split, or skip
-        it to fit the pool.
+        Describe a dimension you want considered, and say what a high score and a low score look like so the AI
+        can measure it. It's applied on the next <strong>Discover new criteria</strong> run, where the AI may
+        refine, split, or skip it to fit the pool.
       </p>
       <div className="criteria-composer-row">
         <input
           type="text"
           value={draft}
-          placeholder="e.g. school-age kids who'd use the playground"
+          placeholder="e.g. families with young kids (under 6) — high: several under 6; low: none"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -160,6 +161,16 @@ export function RankingView(props: {
                 // immediately when a dimension is placed or acknowledged.
                 newKeys={new Set(ranking.newDimensionKeys)}
                 revivedKeys={new Set(ranking.revivedDimensionKeys)}
+                // Axes a member proposed on THIS run — a quiet "Requested" provenance
+                // pill on the chip, additive to the New/Revived triage badge. Read from
+                // the run's dimensions (per-run flag; clears on the next Rank).
+                requestedKeys={
+                  new Set(
+                    (rankingRun?.dimensions ?? [])
+                      .filter((d) => d.fromCommitteeRequest)
+                      .map((d) => d.key),
+                  )
+                }
                 openKey={openKey}
                 addOpen={addOpen}
                 onToggleAdd={() => setAddOpen((v) => !v)}

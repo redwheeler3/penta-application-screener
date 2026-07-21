@@ -263,6 +263,9 @@ export type PoolDimension = {
   highEnd: string;
   lowEnd: string;
   whyItDifferentiates: string;
+  // True when a member proposed this axis on THIS run (per-run provenance, cleared on
+  // the next Rank). Drives the chip's "Requested" pill; see enforce_committee_requests.
+  fromCommitteeRequest: boolean;
 };
 
 // --- Ranking: the deterministic ranked shortlist from GET /ranking,

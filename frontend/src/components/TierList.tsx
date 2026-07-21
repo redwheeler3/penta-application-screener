@@ -79,10 +79,23 @@ function makeTierCollisionDetection(tierIds: Set<string>): CollisionDetection {
 // underneath (see revived_flag_keys); this is only the display label + colour.
 type ChipBadge = "new" | "revived" | null;
 
+// A quiet provenance pill, orthogonal to the New/Revived triage badge: marks an axis a
+// member proposed on THIS run (per-run flag, clears on the next Rank). Non-dismissable
+// (it's provenance, not a to-do) and shown in any tier. Green to match the audit-panel
+// "Requested" tag, distinct from the amber "New" alarm and blue "Revived" heads-up.
+function RequestedPill(): ReactNode {
+  return (
+    <span className="tier-chip-requested-badge" title="A committee member proposed this criterion on this run">
+      Requested
+    </span>
+  );
+}
+
 function ChipBody(props: {
   label: string;
   dragging?: boolean;
   badge?: ChipBadge;
+  requested?: boolean;
 }): ReactNode {
   const badgeClass =
     props.badge === "new" ? " tier-chip-new" : props.badge === "revived" ? " tier-chip-revived" : "";
@@ -90,6 +103,7 @@ function ChipBody(props: {
     <span className={`tier-chip${props.dragging ? " tier-chip-overlay" : ""}${badgeClass}`}>
       <GripVertical size={12} className="tier-chip-grip" />
       <span className="tier-chip-label">{props.label}</span>
+      {props.requested ? <RequestedPill /> : null}
       {props.badge === "new" ? <span className="tier-chip-new-badge">New</span> : null}
       {props.badge === "revived" ? <span className="tier-chip-revived-badge">Revived</span> : null}
     </span>
@@ -107,6 +121,7 @@ function DimensionChip(props: {
   dimKey: string;
   label: string;
   badge?: ChipBadge;
+  requested?: boolean;
   isOpen: boolean;
   onDismiss?: () => void;
   onOpen: () => void;
@@ -135,6 +150,7 @@ function DimensionChip(props: {
     >
       <GripVertical size={12} className="tier-chip-grip" />
       <span className="tier-chip-label">{props.label}</span>
+      {props.requested ? <RequestedPill /> : null}
       {props.badge ? (
         <span className={props.badge === "new" ? "tier-chip-new-badge" : "tier-chip-revived-badge"}>
           {props.badge === "new" ? "New" : "Revived"}
@@ -170,6 +186,7 @@ function TierRow(props: {
   labelFor: (key: string) => string;
   newKeys: Set<string>;
   revivedKeys: Set<string>;
+  requestedKeys: Set<string>;
   openKey: string | null;
   isOver: boolean;
   canMoveUp: boolean;
@@ -256,6 +273,7 @@ function TierRow(props: {
                   dimKey={key}
                   label={props.labelFor(key)}
                   badge={badge}
+                  requested={props.requestedKeys.has(key)}
                   isOpen={props.openKey === key}
                   onDismiss={badge ? () => props.onAcknowledge([key]) : undefined}
                   onOpen={() => props.onOpen(key)}
@@ -307,6 +325,7 @@ export function TierList(props: {
   labelFor: (key: string) => string;
   newKeys: Set<string>;
   revivedKeys: Set<string>;
+  requestedKeys: Set<string>;
   openKey: string | null;
   // "Add criterion" toggle + its composer, owned by the parent. Rendered here so the
   // two "+ Add" actions (criterion / tier) sit together above the chips they act on.
@@ -441,6 +460,7 @@ export function TierList(props: {
             labelFor={props.labelFor}
             newKeys={props.newKeys}
             revivedKeys={props.revivedKeys}
+            requestedKeys={props.requestedKeys}
             openKey={props.openKey}
             isOver={overTierId === tier.id}
             canMoveUp={idx > 0}
@@ -459,6 +479,7 @@ export function TierList(props: {
             labelFor={props.labelFor}
             newKeys={props.newKeys}
             revivedKeys={props.revivedKeys}
+            requestedKeys={props.requestedKeys}
             openKey={props.openKey}
             isOver={overTierId === ignore.id}
             canMoveUp={false}
