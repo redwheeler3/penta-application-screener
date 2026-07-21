@@ -270,20 +270,13 @@ function TierRow(props: {
           ) : (
             sortedKeys.map((key) => {
               // Badge kind, both from the ONE flagged set (props.newKeys) with the
-              // revived subset split out for its label/colour:
-              //  - "revived" (seen before, back after a gap): shows in ANY tier,
-              //    because carry-forward auto-places it into its restored tier and we
-              //    still want it flagged there (RQ4 — a revived dim silently at weight
-              //    is the most important to surface).
-              //  - "new" (never seen): only while still parked in Ignore, as before —
-              //    a member dragging it to a working tier triages it, clearing the flag.
+              // revived subset split out for its label/colour. Both show in ANY tier
+              // (not gated to Ignore): a flag now rides until the member dismisses it
+              // with the ✕ or the next Rank recomputes it — moving a chip no longer
+              // clears it, so all three badges (new/revived/requested) behave alike.
               const flagged = props.newKeys.has(key);
               const revived = props.revivedKeys.has(key);
-              const badge: ChipBadge = revived
-                ? "revived"
-                : flagged && tier.ignore
-                  ? "new"
-                  : null;
+              const badge: ChipBadge = revived ? "revived" : flagged ? "new" : null;
               const requested = props.requestedKeys.has(key);
               return (
                 <DimensionChip
