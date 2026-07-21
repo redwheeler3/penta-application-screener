@@ -2715,6 +2715,29 @@ h1 {
   text-transform: uppercase;
 }
 
+/* "Requested" pill: per-run provenance — a member proposed this axis on THIS Rank.
+   Orthogonal to the New/Revived triage badges (a chip can show both) and non-dismissable
+   (provenance, not a to-do). Green to match the audit-panel "Requested" tag, and quieter
+   than the New/Revived badges (soft fill + green text, not a solid alarm colour) since it
+   informs rather than demands action. Clears on the next Rank when the flag clears. */
+.tier-chip-requested-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.1rem;
+  padding: 0 0.4rem;
+  height: 16px;
+  align-self: flex-start;
+  margin-top: 1px;
+  border-radius: 999px;
+  background: var(--penta-green-soft);
+  color: var(--penta-green-dark);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 /* The ✕ inside a badge (New or Revived): acknowledge this dimension in place (clear
    the flag, keep its placement). Kept on its own button so a click doesn't start a
    drag (pointerdown is stopped in the handler). */

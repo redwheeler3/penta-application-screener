@@ -1321,7 +1321,9 @@ def test_fan_out_seeds_only_worker_0_the_rest_stay_blind() -> None:
 
 def test_enforce_committee_requests_guarantees_an_unsurfaced_kept_axis() -> None:
     # A kept axis that NO discovery report re-surfaced (so it's absent from the settled
-    # set) must be re-added by the guard — a kept axis is never dropped.
+    # set) must be re-added by the guard — a kept axis is never dropped. But it re-adds
+    # as an ORDINARY dimension: from_committee_request stays false (it's a carried axis
+    # the committee tiered on a prior run, not a fresh ask this run).
     from app.ai.dimension_decompose import enforce_committee_requests
 
     kept_axis = PoolDimension(
@@ -1343,8 +1345,66 @@ def test_enforce_committee_requests_guarantees_an_unsurfaced_kept_axis() -> None
     keys = {d.key for d in corrected.dimensions}
     assert "participation_commitment" in keys  # re-added, not lost
     readded = next(d for d in corrected.dimensions if d.key == "participation_commitment")
-    assert readded.from_committee_request is True
+    assert readded.from_committee_request is False  # kept axis carries no request flag
     assert folded == []  # kept standalone, not folded into another axis
+
+
+def test_enforce_committee_requests_flag_is_authoritative_for_kept_and_plain_axes() -> None:
+    # The flag is recomputed from scratch: true iff the settled axis absorbed a fresh
+    # PROPOSAL this run, false otherwise. So a model that stamps from_committee_request
+    # on a kept axis (surfaced by decomposition) or a plain discovered axis is overruled —
+    # only a real proposal keeps the flag, guaranteeing it clears on the next run.
+    from app.ai.dimension_decompose import enforce_committee_requests
+
+    kept_axis = PoolDimension(
+        key="participation_commitment", name="Participation commitment",
+        definition="Willingness to do shared work.", high_end="high", low_end="low", why_it_differentiates="varies",
+    )
+    # The model surfaced the kept axis AND (wrongly) stamped the flag on it and on a
+    # plain discovered axis. Neither should keep the flag — no proposal this run.
+    settled = DecompositionReport(
+        dimensions=[
+            DecomposedDimension(
+                key="participation_commitment", name="Participation commitment",
+                definition="Willingness to do shared work.", high_end="high", low_end="low",
+                source_keys=["participation_commitment"],
+                from_committee_request=True,  # stray stamp — guard must strip it
+                decision="kept",
+            ),
+            DecomposedDimension(
+                key="skills_offered", name="Skills offered", definition="trades",
+                high_end="high", low_end="low",
+                source_keys=["skills_offered"],
+                from_committee_request=True,  # stray stamp — guard must strip it
+                decision="kept",
+            ),
+        ],
+    )
+    corrected, folded = enforce_committee_requests(settled, [], kept=[kept_axis])
+    by_key = {d.key: d for d in corrected.dimensions}
+    assert by_key["participation_commitment"].from_committee_request is False
+    assert by_key["skills_offered"].from_committee_request is False
+    assert folded == []
+
+
+def test_enforce_committee_requests_strips_stray_flag_when_nothing_asked() -> None:
+    # No proposals and no kept axes: the flag is still made authoritative, so a model
+    # that stamps from_committee_request on its own is overruled (nothing was asked).
+    from app.ai.dimension_decompose import enforce_committee_requests
+
+    settled = DecompositionReport(
+        dimensions=[
+            DecomposedDimension(
+                key="skills_offered", name="Skills offered", definition="trades",
+                high_end="high", low_end="low", source_keys=["skills_offered"],
+                from_committee_request=True,  # stray — no ask this run
+                decision="kept",
+            ),
+        ],
+    )
+    corrected, folded = enforce_committee_requests(settled, [], kept=[])
+    assert corrected.dimensions[0].from_committee_request is False
+    assert folded == []
 
 
 def test_adopt_matched_keys_dedupes_a_d9_readd_colliding_with_a_matched_key() -> None:
