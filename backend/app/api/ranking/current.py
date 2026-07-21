@@ -30,6 +30,7 @@ from app.services.ranking_run import (
     kept_keys,
     match_audit_view,
     proposed_dimensions,
+    requested_flag_keys,
     revived_flag_keys,
 )
 
@@ -65,6 +66,8 @@ def _run_payload(db: Session) -> CurrentRunResponse | None:
         # Of those flagged keys, the ones seen in an EARLIER run (revived), derived
         # from history — the frontend colours these blue vs. amber for genuinely-new.
         revived_dimension_keys=revived_flag_keys(db, run),
+        # Keys a member proposed on THIS run, not yet dismissed — the "Requested" pill.
+        requested_dimension_keys=requested_flag_keys(run),
         # Kept axes: every dimension in a working (non-Ignore) tier — guaranteed to
         # survive the next Rank. Derived from tier placement (see kept_keys). Plus any
         # pending free-text proposals (fed to the next Rank, then consumed).

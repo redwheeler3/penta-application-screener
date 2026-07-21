@@ -79,16 +79,55 @@ function makeTierCollisionDetection(tierIds: Set<string>): CollisionDetection {
 // underneath (see revived_flag_keys); this is only the display label + colour.
 type ChipBadge = "new" | "revived" | null;
 
-// A quiet provenance pill, orthogonal to the New/Revived triage badge: marks an axis a
-// member proposed on THIS run (per-run flag, clears on the next Rank). Non-dismissable
-// (it's provenance, not a to-do) and shown in any tier. Green to match the audit-panel
-// "Requested" tag, distinct from the amber "New" alarm and blue "Revived" heads-up.
-function RequestedPill(): ReactNode {
+// The three badge kinds a chip can carry share ONE visual system: a solid coloured pill
+// with an uppercase label + a dismiss ✕. "new"/"revived" are mutually-exclusive triage
+// (see ChipBadge); "requested" is orthogonal provenance (a member proposed this axis
+// THIS run) that can sit alongside either. Each maps to a chip tint + badge colour here.
+type BadgeKind = "new" | "revived" | "requested";
+
+const BADGE_LABEL: Record<BadgeKind, string> = { new: "New", revived: "Revived", requested: "Requested" };
+const BADGE_DISMISS_TITLE: Record<BadgeKind, string> = {
+  new: "Mark reviewed — keep in Ignore",
+  revived: "Mark reviewed — keep this placement",
+  requested: "Dismiss — hide the Requested marker",
+};
+
+// One badge: a solid pill (`tier-chip-<kind>-badge`) with the label and, when a dismiss
+// handler is given, the ✕ that clears it. Shared by all three kinds so they look and
+// behave identically (only colour + copy differ). The ✕ stops propagation so a click on
+// it never starts a drag.
+function ChipBadgePill(props: { kind: BadgeKind; onDismiss?: () => void }): ReactNode {
   return (
-    <span className="tier-chip-requested-badge" title="A committee member proposed this criterion on this run">
-      Requested
+    <span className={`tier-chip-${props.kind}-badge`}>
+      {BADGE_LABEL[props.kind]}
+      {props.onDismiss ? (
+        <button
+          type="button"
+          className="tier-chip-badge-dismiss"
+          aria-label={props.kind === "requested" ? "Dismiss requested marker" : "Mark reviewed"}
+          title={BADGE_DISMISS_TITLE[props.kind]}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onDismiss!();
+          }}
+        >
+          <X size={10} strokeWidth={3} />
+        </button>
+      ) : null}
     </span>
   );
+}
+
+// The chip's tint: "requested" (violet) wins when present — a chip can be both requested
+// AND new/revived, and the committee's own ask is the more meaningful cue to lead with.
+// Otherwise fall back to the amber "new" / blue "revived" triage tint. null → no tint.
+// (Both pills still render; this only decides which one colours the chip body.)
+function chipTintClass(badge: ChipBadge, requested?: boolean): string {
+  if (requested) return " tier-chip-requested";
+  if (badge === "new") return " tier-chip-new";
+  if (badge === "revived") return " tier-chip-revived";
+  return "";
 }
 
 function ChipBody(props: {
@@ -97,15 +136,14 @@ function ChipBody(props: {
   badge?: ChipBadge;
   requested?: boolean;
 }): ReactNode {
-  const badgeClass =
-    props.badge === "new" ? " tier-chip-new" : props.badge === "revived" ? " tier-chip-revived" : "";
   return (
-    <span className={`tier-chip${props.dragging ? " tier-chip-overlay" : ""}${badgeClass}`}>
+    <span
+      className={`tier-chip${props.dragging ? " tier-chip-overlay" : ""}${chipTintClass(props.badge ?? null, props.requested)}`}
+    >
       <GripVertical size={12} className="tier-chip-grip" />
       <span className="tier-chip-label">{props.label}</span>
-      {props.requested ? <RequestedPill /> : null}
-      {props.badge === "new" ? <span className="tier-chip-new-badge">New</span> : null}
-      {props.badge === "revived" ? <span className="tier-chip-revived-badge">Revived</span> : null}
+      {props.requested ? <ChipBadgePill kind="requested" /> : null}
+      {props.badge ? <ChipBadgePill kind={props.badge} /> : null}
     </span>
   );
 }
@@ -124,6 +162,7 @@ function DimensionChip(props: {
   requested?: boolean;
   isOpen: boolean;
   onDismiss?: () => void;
+  onDismissRequested?: () => void;
   onOpen: () => void;
 }): ReactNode {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -135,13 +174,11 @@ function DimensionChip(props: {
     // copy is what the user sees moving.
     opacity: isDragging ? 0 : 1,
   };
-  const badgeClass =
-    props.badge === "new" ? " tier-chip-new" : props.badge === "revived" ? " tier-chip-revived" : "";
   return (
     <span
       ref={setNodeRef}
       style={style}
-      className={`tier-chip tier-chip-draggable${badgeClass}${props.isOpen ? " tier-chip-open" : ""}`}
+      className={`tier-chip tier-chip-draggable${chipTintClass(props.badge ?? null, props.requested)}${props.isOpen ? " tier-chip-open" : ""}`}
       // The whole chip carries the drag listeners; a click that doesn't move opens
       // the description (the 4px activation distance distinguishes click from drag).
       {...attributes}
@@ -150,31 +187,9 @@ function DimensionChip(props: {
     >
       <GripVertical size={12} className="tier-chip-grip" />
       <span className="tier-chip-label">{props.label}</span>
-      {props.requested ? <RequestedPill /> : null}
-      {props.badge ? (
-        <span className={props.badge === "new" ? "tier-chip-new-badge" : "tier-chip-revived-badge"}>
-          {props.badge === "new" ? "New" : "Revived"}
-          {props.onDismiss ? (
-            <button
-              type="button"
-              className="tier-chip-new-dismiss"
-              aria-label="Mark reviewed"
-              title={
-                props.badge === "new"
-                  ? "Mark reviewed — keep in Ignore"
-                  : "Mark reviewed — keep this placement"
-              }
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                props.onDismiss!();
-              }}
-            >
-              <X size={10} strokeWidth={3} />
-            </button>
-          ) : null}
-        </span>
-      ) : null}
+      {/* Requested (provenance) can coexist with a triage badge — render both. */}
+      {props.requested ? <ChipBadgePill kind="requested" onDismiss={props.onDismissRequested} /> : null}
+      {props.badge ? <ChipBadgePill kind={props.badge} onDismiss={props.onDismiss} /> : null}
     </span>
   );
 }
@@ -197,6 +212,8 @@ function TierRow(props: {
   onRename: (label: string) => void;
   // Acknowledge "new" dimensions in place (badge ✕ / "mark all reviewed").
   onAcknowledge: (keys: string[]) => void;
+  // Dismiss the "Requested" provenance badge in place (its ✕).
+  onDismissRequested: (keys: string[]) => void;
   onOpen: (key: string) => void;
 }): ReactNode {
   const { tier, isOver } = props;
@@ -267,15 +284,17 @@ function TierRow(props: {
                 : flagged && tier.ignore
                   ? "new"
                   : null;
+              const requested = props.requestedKeys.has(key);
               return (
                 <DimensionChip
                   key={key}
                   dimKey={key}
                   label={props.labelFor(key)}
                   badge={badge}
-                  requested={props.requestedKeys.has(key)}
+                  requested={requested}
                   isOpen={props.openKey === key}
                   onDismiss={badge ? () => props.onAcknowledge([key]) : undefined}
+                  onDismissRequested={requested ? () => props.onDismissRequested([key]) : undefined}
                   onOpen={() => props.onOpen(key)}
                 />
               );
@@ -333,6 +352,7 @@ export function TierList(props: {
   onToggleAdd: () => void;
   composer: ReactNode;
   onAcknowledge: (keys: string[]) => void;
+  onDismissRequested: (keys: string[]) => void;
   onChange: (next: Tier[]) => void;
   onOpen: (key: string) => void;
 }): ReactNode {
@@ -470,6 +490,7 @@ export function TierList(props: {
             onRemove={() => removeTier(tier.id)}
             onRename={(label) => renameTier(tier.id, label)}
             onAcknowledge={props.onAcknowledge}
+            onDismissRequested={props.onDismissRequested}
             onOpen={props.onOpen}
           />
         ))}
@@ -489,6 +510,7 @@ export function TierList(props: {
             onRemove={() => {}}
             onRename={() => {}}
             onAcknowledge={props.onAcknowledge}
+            onDismissRequested={props.onDismissRequested}
             onOpen={props.onOpen}
           />
         ) : null}

@@ -2656,47 +2656,37 @@ h1 {
   flex-shrink: 0;
 }
 
-/* A newly-discovered dimension awaiting triage (sits in Ignore until the
-   committee places it). Amber, matching the "needs attention" accent used for
-   stale workflow steps — silent to the math (weight 0) but loud to the human. */
+/* Chip tints. A chip picks up the tint of its most-urgent badge (see chipTintClass):
+   the amber "new" / blue "revived" triage alarm wins over the green "requested"
+   provenance tint. Each pairs a soft fill with a matching border. */
 .tier-chip-new {
+  /* Newly-discovered, awaiting triage — amber "needs attention", loud to the human
+     though silent to the math (weight 0). */
   border-color: #fcd34d;
   background: #fffbeb;
 }
 
-.tier-chip-new-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  margin-left: 0.1rem;
-  padding: 0 0.2rem 0 0.4rem;
-  /* Fixed height + line-height:1 so the badge box is identical regardless of
-     whether the chip's label wraps to two lines; align to the chip's first line. */
-  height: 16px;
-  align-self: flex-start;
-  margin-top: 1px;
-  border-radius: 999px;
-  background: #f59e0b;
-  color: #fff;
-  font-size: 0.62rem;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-}
-
-/* "Revived" chip + badge: a dimension seen in an earlier run, dropped for a run, now
-   back (a fresh discovery re-surfaced it). A softer heads-up than "New"
-   (the committee saw it before), so it uses the calm blue of the impact score-band
-   palette's "moderate" rather than the amber "New" alarm. Unlike New, a Revived chip
-   may sit in a working tier (carry-forward auto-restored its placement), so the badge
-   is not gated to the Ignore zone. */
 .tier-chip-revived {
+  /* Seen in an earlier run, dropped, now back — a softer heads-up than New (the
+     committee saw it before), so the calm blue of the score-band "moderate". */
   border-color: #93c5fd;
   background: #eff6ff;
 }
 
-.tier-chip-revived-badge {
+.tier-chip-requested {
+  /* A member proposed this axis THIS run — violet provenance, matching the "Add
+     criterion" composer where proposals are entered (#ddd6fe / #f5f3ff / #7c3aed). Only
+     tints when no triage alarm outranks it. */
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+}
+
+/* The three badges share ONE pill shape (base) and differ only by colour. Fixed height
+   + line-height:1 so the box is identical whether or not the chip label wraps; aligned
+   to the chip's first line. */
+.tier-chip-new-badge,
+.tier-chip-revived-badge,
+.tier-chip-requested-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
@@ -2706,7 +2696,6 @@ h1 {
   align-self: flex-start;
   margin-top: 1px;
   border-radius: 999px;
-  background: #3b82f6;
   color: #fff;
   font-size: 0.62rem;
   font-weight: 700;
@@ -2715,33 +2704,24 @@ h1 {
   text-transform: uppercase;
 }
 
-/* "Requested" pill: per-run provenance — a member proposed this axis on THIS Rank.
-   Orthogonal to the New/Revived triage badges (a chip can show both) and non-dismissable
-   (provenance, not a to-do). Green to match the audit-panel "Requested" tag, and quieter
-   than the New/Revived badges (soft fill + green text, not a solid alarm colour) since it
-   informs rather than demands action. Clears on the next Rank when the flag clears. */
-.tier-chip-requested-badge {
-  display: inline-flex;
-  align-items: center;
-  margin-left: 0.1rem;
-  padding: 0 0.4rem;
-  height: 16px;
-  align-self: flex-start;
-  margin-top: 1px;
-  border-radius: 999px;
-  background: var(--penta-green-soft);
-  color: var(--penta-green-dark);
-  font-size: 0.62rem;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+.tier-chip-new-badge {
+  background: #f59e0b;
 }
 
-/* The ✕ inside a badge (New or Revived): acknowledge this dimension in place (clear
-   the flag, keep its placement). Kept on its own button so a click doesn't start a
-   drag (pointerdown is stopped in the handler). */
-.tier-chip-new-dismiss {
+.tier-chip-revived-badge {
+  background: #3b82f6;
+}
+
+.tier-chip-requested-badge {
+  /* Violet solid pill — matches the composer accent (#7c3aed) where proposals originate. */
+  background: #7c3aed;
+}
+
+/* The ✕ inside any badge: acknowledge/dismiss this chip's flag in place (keep its
+   placement). One class for all three kinds — a solid white circle so the ✕ stays
+   legible at small size against any badge colour. Its own button so a click doesn't
+   start a drag (pointerdown is stopped in the handler). */
+.tier-chip-badge-dismiss {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2750,16 +2730,14 @@ h1 {
   padding: 0;
   border: 0;
   border-radius: 999px;
-  /* Solid white circle with an amber ✕ — high contrast against the amber badge,
-     so it stays legible at small size (a thin white ✕ on translucent white got lost). */
   background: #fff;
-  color: #b45309;
+  /* Neutral-dark ✕ reads on white against every badge colour (amber/blue/green). */
+  color: #374151;
   cursor: pointer;
 }
 
-.tier-chip-new-dismiss:hover {
-  background: #fffbeb;
-  color: #92400e;
+.tier-chip-badge-dismiss:hover {
+  color: #111827;
 }
 
 /* Tier-agnostic "clear flags" control: lives inline in the tier-list head, before the

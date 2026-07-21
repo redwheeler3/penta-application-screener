@@ -66,7 +66,7 @@ function CriteriaComposer(props: {
         <input
           type="text"
           value={draft}
-          placeholder="e.g. families with young kids (under 6) — high: several under 6; low: none"
+          placeholder="e.g. Families with kids under 10. High: Many kids under 10. Low: No kids under 10."
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -110,6 +110,7 @@ export function RankingView(props: {
   proposedDimensions: string[];
   onSaveTiers: (next: Tier[]) => void;
   onAcknowledgeNew: (keys: string[]) => void;
+  onDismissRequested: (keys: string[]) => void;
   onAddProposal: (text: string) => void;
   onRemoveProposal: (text: string) => void;
   onSelectApplication: (id: number) => void;
@@ -161,16 +162,11 @@ export function RankingView(props: {
                 // immediately when a dimension is placed or acknowledged.
                 newKeys={new Set(ranking.newDimensionKeys)}
                 revivedKeys={new Set(ranking.revivedDimensionKeys)}
-                // Axes a member proposed on THIS run — a quiet "Requested" provenance
-                // pill on the chip, additive to the New/Revived triage badge. Read from
-                // the run's dimensions (per-run flag; clears on the next Rank).
-                requestedKeys={
-                  new Set(
-                    (rankingRun?.dimensions ?? [])
-                      .filter((d) => d.fromCommitteeRequest)
-                      .map((d) => d.key),
-                  )
-                }
+                // Axes a member proposed on THIS run — a "Requested" provenance badge on
+                // the chip, additive to the New/Revived triage badge. Read from ranking
+                // (refreshed on every save) so the badge clears immediately when dismissed.
+                requestedKeys={new Set(ranking.requestedDimensionKeys)}
+                onDismissRequested={props.onDismissRequested}
                 openKey={openKey}
                 addOpen={addOpen}
                 onToggleAdd={() => setAddOpen((v) => !v)}

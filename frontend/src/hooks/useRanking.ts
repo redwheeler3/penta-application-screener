@@ -22,6 +22,9 @@ export interface RankingState {
   /** Acknowledge "new" dimensions in place (drop them from new_dimension_keys without
    * moving), via the same tiers PUT. */
   acknowledgeNewDimensions: (keys: string[]) => Promise<void>;
+  /** Dismiss the "Requested" provenance pill on the given keys (its ✕), via the same
+   * tiers PUT — provenance, so it clears only on this explicit action, not on a move. */
+  dismissRequested: (keys: string[]) => Promise<void>;
   addProposal: (text: string) => void;
   removeProposal: (text: string) => void;
 }
@@ -57,11 +60,24 @@ export function useRanking(onError: (message: string) => void): RankingState {
     return false;
   }
 
-  async function saveTiers(next: Tier[], acknowledgedKeys: string[] = []) {
+  async function saveTiers(
+    next: Tier[],
+    acknowledgedKeys: string[] = [],
+    acknowledgedRequestedKeys: string[] = [],
+  ) {
     setTiers(next);
-    const response = await api.saveTiers(next, acknowledgedKeys);
+    const response = await api.saveTiers(next, acknowledgedKeys, acknowledgedRequestedKeys);
     if (response.ok) {
-      setRanking(await response.json());
+      const updated: RankingResponse = await response.json();
+      setRanking(updated);
+      // The requested pill reads from rankingRun.dimensions' flag set, which the tiers
+      // PUT doesn't return — mirror the server's dismissal onto rankingRun so the pill
+      // clears in the same round-trip (it's echoed on RankingResponse.requestedDimensionKeys).
+      if (acknowledgedRequestedKeys.length > 0) {
+        setRankingRun((run) =>
+          run ? { ...run, requestedDimensionKeys: updated.requestedDimensionKeys } : run,
+        );
+      }
     } else {
       onError("Could not update the tiers.");
       loadRanking(); // reconcile back to the server's truth on failure
@@ -71,6 +87,11 @@ export function useRanking(onError: (message: string) => void): RankingState {
   async function acknowledgeNewDimensions(keys: string[]) {
     if (!tiers || keys.length === 0) return;
     await saveTiers(tiers, keys);
+  }
+
+  async function dismissRequested(keys: string[]) {
+    if (!tiers || keys.length === 0) return;
+    await saveTiers(tiers, [], keys);
   }
 
   // Persist pending free-text proposals for the current run — they feed the NEXT Rank's
@@ -114,6 +135,7 @@ export function useRanking(onError: (message: string) => void): RankingState {
     loadRanking,
     saveTiers,
     acknowledgeNewDimensions,
+    dismissRequested,
     addProposal,
     removeProposal,
   };
