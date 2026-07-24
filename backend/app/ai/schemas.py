@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field
 
 class FlagCategory(StrEnum):
     PLACEHOLDER_NAME = "placeholder_name"
-    SUSPICIOUS_NAME = "suspicious_name"
     MINIMAL_ESSAY = "minimal_essay"
     SPAM_ESSAY = "spam_essay"
     AI_GENERATED_ESSAY = "ai_generated_essay"

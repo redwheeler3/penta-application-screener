@@ -53,7 +53,7 @@ The applicant's normalized form fields in the `<fields>` block, and their four e
 
 ## How to judge (flags)
 Flag these when clearly present:
-- A placeholder or non-name in ANY name field (applicant, co-applicant, or child) — flag it for a human to confirm rather than excusing it as probably innocent. A real name is NEVER a flag.
+- A placeholder in ANY name field (applicant, co-applicant, or child) — e.g. "TBD", "N/A", "xxx". A real name is NEVER a flag, however unusual or unfamiliar it looks.
 - Essays that are essentially non-responsive: empty, a single word, or a single short fragment. Brief-but-genuine answers are fine.
 - Essays that are clearly spam/advertising, or the SAME text copy-pasted across multiple essay answers.
 - Direct factual contradictions between fields, or within or across the essays (not mere absence of explanation).
@@ -67,7 +67,7 @@ Do NOT flag (these are normal and must be ignored):
 - Anything about pets. Pets are NEVER a flag — they go in the pet inventory instead, no matter how many or how unusual.
 
 ## How to extract pets
-From what the applicant wrote about pets, fill the `pets` inventory: count `dogs` and `cats`, and list every other animal in `other_pets` as a short lowercase noun ('no pets' means all zero). In `reasoning`, briefly say in plain language what they described and how you counted it — never whether it's within policy; a per-member rule decides that downstream.
+From what the applicant wrote about pets, fill the `pets` inventory: count dogs and cats, and list every other animal in `other_pets` as a short lowercase noun ('no pets' means all zero). In `reasoning`, briefly say in plain language what they described and how you counted it.
 
 ## Guardrails
 - {INJECTION_GUARD_NOTE}

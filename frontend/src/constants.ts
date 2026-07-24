@@ -31,7 +31,6 @@ export const MONEY_FIELDS = new Set(["household_income", "applicant_income", "co
 // Human-readable labels for AI screening flag categories.
 export const FLAG_CATEGORY_LABELS: Record<string, string> = {
   placeholder_name: "Placeholder name",
-  suspicious_name: "Suspicious name",
   minimal_essay: "Minimal essay",
   spam_essay: "Spam essay",
   ai_generated_essay: "AI-generated essay",
@@ -122,7 +121,6 @@ export const DETERMINISTIC_CHECKS = [
 export const AI_CHECKS = [
   { id: "pets_over_limit", label: "Pet policy" },
   { id: "placeholder_name", label: FLAG_CATEGORY_LABELS.placeholder_name },
-  { id: "suspicious_name", label: FLAG_CATEGORY_LABELS.suspicious_name },
   { id: "minimal_essay", label: FLAG_CATEGORY_LABELS.minimal_essay },
   { id: "spam_essay", label: FLAG_CATEGORY_LABELS.spam_essay },
   { id: "ai_generated_essay", label: FLAG_CATEGORY_LABELS.ai_generated_essay },
