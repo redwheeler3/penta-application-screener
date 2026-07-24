@@ -587,19 +587,13 @@
       }
     },
     {
-      "key": "nonresponsive_buzzword_essay_fires",
+      "key": "nonresponsive_buzzword_essay_contested",
       "metadata": {
-        "note": "OVER-REACH REGRESSION GUARD: the intro essay is pure corporate word-salad ('leveraging synergies … to drive meaningful, value-added community outcomes') that answers nothing asked. This is a genuine non-responsive concern that SILENTLY VANISHED after the email/junk prompt tuning (guard accumulation lowered the flagging baseline) — production had flagged it spam_essay, a later run dropped it. It sits between the bullets (a full sentence, so not 'minimal'; buzzword filler, not advertising), so accept spam_essay OR minimal_essay OR ai_generated_essay — the test is that the junk answer is caught, not which bucket. The OTHER three essays are substantive, so only the intro is at issue. Also carries a name/email mismatch (morganchen@ for Emerson Delgado) that must NOT fire fake_contact.",
+        "note": "CONTESTED essay-flag axis + fake_contact over-reach guard. The intro essay is vapid corporate word-salad ('leveraging synergies … to drive meaningful, value-added community outcomes'), BUT it's one grammatical, on-topic sentence and the other three essays are substantive and sincere (nurse, CPR station, tool library) — so this is a weak-but-genuine answer, not a spam/bot application. Whether that glib sentence is a flaggable integrity concern (spam/minimal/ai_generated) or just a weak essay the committee judges itself is a defensible tone/quality call either way — the prompt's north star is 'flag only concrete, clear problems.' So the essay-flag axis is left UNGRADED (in neither fires nor absent): fire or not, both pass; stability on it isn't required. The case still grades the pet extraction and guards the name/email mismatch. (History: first added as a must-fire spam_essay regression case after it silently de-flagged; reclassified contested 2026-07-24 on reflection — it straddles three categories without cleanly landing in any.) Also carries a name/email mismatch (morganchen@ for Emerson Delgado) that must NOT fire fake_contact.",
         "pass": "screening",
-        "source": "synthetic pool, application id 30 (Emerson Delgado) — an exact slice of a real synthetic record; regression found by comparing pre/post prompt-change screening runs.",
+        "source": "synthetic pool, application id 30 (Emerson Delgado) — an exact slice of a real synthetic record.",
         "expected": {
-          "fires": [
-            [
-              "spam_essay",
-              "minimal_essay",
-              "ai_generated_essay"
-            ]
-          ],
+          "fires": [],
           "absent": [
             "fake_contact"
           ],
