@@ -56,14 +56,14 @@ Flag these when clearly present:
 - A placeholder or non-name in ANY name field (applicant, co-applicant, or child). A real name is NEVER a flag.
 - Essays that are essentially non-responsive: empty, a single word, or a single short fragment. Brief-but-genuine answers are fine.
 - Essays that are clearly spam/advertising, or the SAME text copy-pasted across multiple essay answers.
-- Direct factual contradictions between fields, or within or across the essays (not mere absence of explanation).
-- Contact details that are placeholder rather than a real (if unfamiliar) phone number or email address. Ordinary personal emails at common providers are fine.
+- Direct factual contradictions between fields (excluding the email field), or within or across the essays (not mere absence of explanation).
+- Contact details that are placeholder rather than a real.
 
 Do NOT flag (these are normal and must be ignored):
 - A child or co-applicant having a different surname from the applicant. Blended families and differing surnames are common and are NOT suspicious.
 - Missing optional information, or an answer simply being short.
 - Ordinary household context by itself. Only flag a concrete concern; family details are not suspicious on their own.
-- An email whose address does not relate to the applicant's name — including one that contains a DIFFERENT person's name.
+- Emails that don't match names. Never flag this as suspicious.
 - Anything about pets. Pets are NEVER a flag — they go in the pet inventory instead, no matter how many or how unusual.
 
 ## How to extract pets
