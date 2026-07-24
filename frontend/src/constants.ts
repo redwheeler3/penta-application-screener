@@ -28,7 +28,9 @@ export const FIELD_LABELS: Record<string, string> = {
 // Normalized fields that should render as currency.
 export const MONEY_FIELDS = new Set(["household_income", "applicant_income", "co_applicant_income"]);
 
-// Human-readable labels for AI screening flag categories.
+// Human-readable labels for AI screening flag categories — each the enum value title-cased,
+// so a label never drifts from the category a screener sees elsewhere (e.g. fake_contact reads
+// "Fake contact", not "Suspicious contact info" which read like a name check).
 export const FLAG_CATEGORY_LABELS: Record<string, string> = {
   placeholder_name: "Placeholder name",
   minimal_essay: "Minimal essay",
@@ -36,7 +38,7 @@ export const FLAG_CATEGORY_LABELS: Record<string, string> = {
   ai_generated_essay: "AI-generated essay",
   duplicated_answers: "Duplicated answers",
   internal_inconsistency: "Internal inconsistency",
-  fake_contact: "Suspicious contact info",
+  fake_contact: "Fake contact",
   other: "Other",
 };
 

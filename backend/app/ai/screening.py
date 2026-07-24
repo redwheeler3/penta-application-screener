@@ -53,7 +53,7 @@ The applicant's normalized form fields in the `<fields>` block, and their four e
 
 ## How to judge (flags)
 Flag these when clearly present:
-- A placeholder in ANY name field (applicant, co-applicant, or child) — e.g. "TBD", "N/A", "xxx". A real name is NEVER a flag, however unusual or unfamiliar it looks.
+- A placeholder or non-name in ANY name field (applicant, co-applicant, or child). A real name is NEVER a flag.
 - Essays that are essentially non-responsive: empty, a single word, or a single short fragment. Brief-but-genuine answers are fine.
 - Essays that are clearly spam/advertising, or the SAME text copy-pasted across multiple essay answers.
 - Direct factual contradictions between fields, or within or across the essays (not mere absence of explanation).
