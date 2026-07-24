@@ -352,16 +352,11 @@ function dotFor(mode: EvalRunMode, result: EvalCaseResult): "ok" | "fail" | "con
   if (CATEGORICAL.has(mode) && result.contested) {
     return result.verdict === result.expected ? "ok" : "contested";  // agree = green, diverge = amber
   }
-  // Screening: for a case that names a contested category, the EXPECTATION is that one of
-  // those categories fires (the concern we want caught). Green when the model met it (fired a
-  // contested flag); amber half-and-half when it caught NONE (defensible, but the debated
-  // concern went unflagged this run). Never reds on the contested axis — a real failure
-  // elsewhere (over-reach or missed required flag) still wins as red via resultOk.
-  if (mode === "screening" && result.contestedCategories?.length && resultOk(mode, result)) {
-    const firedContested = (result.categories ?? []).some((c) =>
-      result.contestedCategories?.includes(c),
-    );
-    return firedContested ? "ok" : "contested";
+  // Screening: a contested case grades its expectation normally (fires/absent/pets), but a
+  // MISS is expected/defensible here — so green when it passed, amber (not red) when it
+  // failed. `contested` is a plain bool, same as the categorical passes.
+  if (mode === "screening" && result.contested) {
+    return resultOk(mode, result) ? "ok" : "contested";
   }
   return resultOk(mode, result) ? "ok" : "fail";
 }
@@ -637,9 +632,7 @@ function CaseResult(props: { evalKey: EvalRunMode; result: EvalCaseResult }): Re
           flags: <span className="eval-mono">{r.categories?.length ? r.categories.join(", ") : "none"}</span>
           {r.fires?.length ? <span className="eval-verdict">{" · "}expect: {r.fires.join(", ")}</span> : null}
           {r.absent?.length ? <span className="eval-verdict">{" · "}guard: no {r.absent.join(", ")}</span> : null}
-          {r.contestedCategories?.length ? (
-            <span className="eval-verdict">{" · "}contested: {r.contestedCategories.join(", ")}</span>
-          ) : null}
+          {r.contested ? <span className="eval-verdict">{" · "}contested (a miss is expected)</span> : null}
           {r.failures?.map((f: string) => (
             <div key={f} className="eval-check-detail">
               {f}

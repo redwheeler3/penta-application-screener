@@ -52,13 +52,13 @@ class ScreeningCase:
     # fire — for a concern with more than one defensible bucket).
     fires: list[str | list[str]]
     absent: list[str]  # flag categories that must NOT appear (over-reach guards)
-    # Categories that could DEFENSIBLY fire or not — a genuine tone/quality judgment reasonable
-    # screeners split on (e.g. a vapid-but-grammatical essay: spam_essay/minimal_essay/
-    # ai_generated_essay). NAMED here (not silently omitted) so the eval displays them as
-    # "contested: …" and a run-to-run flip on one reads [contested-split] (informational), not
-    # [UNSTABLE] (a regression). The grader neither requires nor forbids a contested category —
-    # mirrors the `contested` flag the consolidation/decomposition evals carry.
-    contested: list[str] = field(default_factory=list)
+    # Whether a MISS on this case is expected/defensible rather than a regression. `fires`/
+    # `absent` still define the expectation and are graded normally; `contested` only changes
+    # how a FAILURE reads — amber instead of red, and a stability flip is [contested-split] not
+    # [UNSTABLE]. Mirrors the `contested` bool the consolidation/decomposition evals carry. Use
+    # for a genuine judgment call reasonable screeners split on (e.g. is a vapid-but-grammatical
+    # essay a spam/minimal/ai_generated flag — expected here — or a weak-but-sincere answer?).
+    contested: bool = False
     # Expected EXTRACTED pet facts (M15 1e), or None to skip pet grading. When set, e.g.
     # {"dogs": 2, "cats": 1, "other_pets": ["rabbit"]}, the case grades the model's neutral
     # pet extraction — dogs/cats counted exactly, each expected other-pet noun present — NOT
@@ -117,7 +117,7 @@ def load_cases(path: Path = SCREENING_GOLDEN_PATH) -> tuple[ScreeningCase, ...]:
                 essays=given["essays"],
                 fires=_normalize_fires(expected.get("fires", [])),
                 absent=expected.get("absent", []),
-                contested=expected.get("contested", []),
+                contested=expected.get("contested", False),
                 expected_pets=expected.get("pets"),
                 note=meta.get("note", ""),
             )
@@ -168,7 +168,11 @@ def _check(case: ScreeningCase, categories: list[str], pets: PetFacts | None = N
     categories meaning "at least ONE of these must fire" — for a concern the model may
     reasonably file under more than one bucket. Pet grading is separate from flags: a pet case
     checks the EXTRACTED counts (dogs/cats exact, each expected other-pet noun present), never
-    a flag, since pets are no longer flagged (the per-member limit is judged downstream)."""
+    a flag, since pets are no longer flagged (the per-member limit is judged downstream).
+
+    ``contested`` does NOT affect grading here — expectations (``fires``/``absent``/``pets``)
+    are graded the same whether or not a case is contested. Contested only changes how a
+    resulting FAILURE is *presented* (amber not red; see the display layer + stability)."""
     present = set(categories)
     failures: list[str] = []
     for req in case.fires:
@@ -178,21 +182,12 @@ def _check(case: ScreeningCase, categories: list[str], pets: PetFacts | None = N
         elif req not in present:
             failures.append(f"expected flag {req!r} did not fire")
     for cat in case.absent:
-        # A contested category is explicitly debatable — never an over-reach, even if a case
-        # both contests and (elsewhere) guards. So it's exempt from the absent check.
-        if cat in present and cat not in case.contested:
+        if cat in present:
             failures.append(f"over-reach: flag {cat!r} fired but should not")
-    # A clean case (nothing expected to fire, nothing guarded/contested, no pet expectation)
-    # tolerates no flags. A case with a pet expectation OR a contested axis is NOT "clean" —
-    # it carries a positive assertion, and an incidental/contested flag is fine — so it's
-    # exempt from this rule (a contested category is expected to sometimes fire).
-    if (
-        not case.fires
-        and not case.absent
-        and not case.contested
-        and case.expected_pets is None
-        and categories
-    ):
+    # A clean case (nothing expected to fire, nothing guarded, no pet expectation) tolerates no
+    # flags. A case with a pet expectation is NOT "clean" — it carries a positive assertion, so
+    # an incidental flag is ungraded unless listed in ``absent`` — hence it's exempt.
+    if not case.fires and not case.absent and case.expected_pets is None and categories:
         failures.append(f"clean applicant raised flag(s): {', '.join(sorted(present))}")
     failures.extend(_check_pets(case, pets))
     return failures
@@ -319,23 +314,20 @@ def stability_run(
 
     def run_once() -> tuple[str, str]:
         cats, pets, detail = _screen(provider, case, screening_model=screening_model)
-        if _check(case, cats, pets):
-            outcome = "fail"  # a real graded failure (over-reach / missed required flag)
-        else:
-            # For a contested case, the EXPECTATION is that one of the contested categories
-            # fires (it's the concern we want caught) — so a rep that FIRED one reads 'pass'
-            # (met the expectation) and a rep that fired NONE reads 'fail (contested: caught
-            # nothing)' (missed it). Both are defensible, so the run-to-run flip is still just
-            # [contested-split] (informational), never [UNSTABLE] — but the per-rep tokens now
-            # read the right way round.
-            fired = sorted(set(cats) & set(case.contested))
-            outcome = f"pass ({', '.join(fired)})" if fired else "fail (contested: none caught)"
+        # Grade normally against the case's expectation (fires/absent/pets): met → pass, else
+        # fail. A contested case's failure is the expected/defensible kind, so token it
+        # 'fail (contested)' to distinguish it from a real regression in the per-rep list.
         # `detail` already leads with the flags + pets headline (see _screen).
+        if _check(case, cats, pets):
+            outcome = "fail (contested)" if case.contested else "fail"
+        else:
+            outcome = "pass"
         return outcome, detail
 
-    # A case that names a contested category expects run-to-run wobble on it (both firing and
-    # not are defensible), so a flip reads [contested-split] (informational), not [UNSTABLE].
-    report = run_stability(run_once, k=k, contested=bool(case.contested), on_delta=on_delta)
+    # A contested case's failure is expected/defensible, so a run-to-run flip reads
+    # [contested-split] (informational), not [UNSTABLE] (a regression) — same as the
+    # categorical passes' contested bool.
+    report = run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
     tally = ", ".join(f"[{v}] x{n}" for v, n in report.tally.items())
     emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
     return report

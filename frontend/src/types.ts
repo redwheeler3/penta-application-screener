@@ -574,9 +574,6 @@ export type EvalCaseResult = {
   categories?: string[];
   fires?: string[];
   absent?: string[];
-  // Screening: categories that could defensibly fire or not (both pass). Non-empty ⇒ the
-  // case is contested (the screening analogue of the categorical passes' `contested` bool).
-  contestedCategories?: string[];
   agreement?: number;
   tally?: Record<string, number>;
   scoreMin?: number;

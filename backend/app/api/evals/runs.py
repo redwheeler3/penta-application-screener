@@ -233,7 +233,7 @@ def run_screening(
                 ScreeningCaseOut(
                     key=r.case.key, passed=r.passed, categories=r.categories,
                     fires=[screening_fire_label(f) for f in r.case.fires],
-                    absent=r.case.absent, contested_categories=r.case.contested,
+                    absent=r.case.absent, contested=r.case.contested,
                     reason=r.reason, failures=r.failures,
                 )
                 for r in results

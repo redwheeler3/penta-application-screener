@@ -327,16 +327,16 @@
     {
       "key": "modesty_essay_contested_axis",
       "metadata": {
-        "note": "internal_inconsistency on the skills essay is a CONTESTED axis, named in expected.contested so the eval displays it and a run-to-run flip reads [contested-split], not [UNSTABLE]: the same essay ('we don't really have any handy skills… that said, I'm a certified electrician') was read by one production run as self-deprecating modesty (don't flag) and by another — after the prompt broadened contradictions to cover within-essay — as a direct self-contradiction (flag). Both are defensible tone-vs-fact calls; stability on that flag is the signal, not its direction. Because the case sets a pets expectation, an incidental flag doesn't fail it (it isn't a 'clean' case), so only the pet extraction is graded and the contested axis stays ungraded. (Pre-1e the anchor was a pet_policy flag; the two cats are now an extraction fact.)",
+        "note": "CONTESTED. The EXPECTATION is NO internal_inconsistency flag — the skills essay ('we don't really have any handy skills… that said, I'm a certified electrician') reads as self-deprecating modesty, not a contradiction, and the prompt work now produces that reliably — so it's in `absent`. But firing it (reading the same line as a within-essay self-contradiction) is a DEFENSIBLE alternative, so `contested: true` softens that over-reach from red to AMBER ('fail (contested)'), and a stability flip reads [contested-split] not [UNSTABLE]. Not firing → green. Also anchors pet extraction (two cats → dogs=0, cats=2). (Pre-1e the anchor was a pet_policy flag; the two cats are now an extraction fact.)",
         "pass": "screening",
         "source": "synthetic pool, application id 12 (Riley Singh) — an exact slice of a real synthetic record.",
         "label_rationale": "The two cats are extracted as facts (dogs=0, cats=2); the per-member cat limit is judged downstream, not here. internal_inconsistency is genuinely contested (modesty-self-corrected vs. factual self-contradiction), so it is neither required nor forbidden; the case grades only the pet extraction.",
         "expected": {
           "fires": [],
-          "absent": [],
-          "contested": [
+          "absent": [
             "internal_inconsistency"
           ],
+          "contested": true,
           "pets": {
             "dogs": 0,
             "cats": 2,
@@ -592,19 +592,21 @@
     {
       "key": "nonresponsive_buzzword_essay_contested",
       "metadata": {
-        "note": "CONTESTED essay-flag axis + fake_contact over-reach guard. The intro essay is vapid corporate word-salad ('leveraging synergies … to drive meaningful, value-added community outcomes'), BUT it's one grammatical, on-topic sentence and the other three essays are substantive and sincere (nurse, CPR station, tool library) — so this is a weak-but-genuine answer, not a spam/bot application. Whether that glib sentence is a flaggable integrity concern (spam/minimal/ai_generated) or just a weak essay the committee judges itself is a defensible tone/quality call either way — the prompt's north star is 'flag only concrete, clear problems.' So the essay-flag axis is left UNGRADED (in neither fires nor absent): fire or not, both pass; stability on it isn't required. The case still grades the pet extraction and guards the name/email mismatch. (History: first added as a must-fire spam_essay regression case after it silently de-flagged; reclassified contested 2026-07-24 on reflection — it straddles three categories without cleanly landing in any.) Also carries a name/email mismatch (morganchen@ for Emerson Delgado) that must NOT fire fake_contact.",
+        "note": "CONTESTED essay-flag case + fake_contact over-reach guard. The EXPECTATION is that the vapid corporate word-salad intro ('leveraging synergies … to drive meaningful, value-added community outcomes') gets caught as one of spam_essay/minimal_essay/ai_generated_essay — so it's an any-of `fires` group (which bucket doesn't matter). But firing NONE is a DEFENSIBLE miss (it's one grammatical, on-topic sentence and the other three essays are substantive and sincere — arguably a weak-but-genuine answer, not junk), so `contested: true` makes that miss read AMBER not red, and a stability flip [contested-split] not [UNSTABLE]. Also carries a name/email mismatch (morganchen@ for Emerson Delgado) that must NOT fire fake_contact. (History: added as must-fire after it silently de-flagged; then briefly modeled as an ungraded contested-category list; settled 2026-07-24 as fires-any-of + contested-bool — the expectation is real, only the failure is forgivable.)",
         "pass": "screening",
         "source": "synthetic pool, application id 30 (Emerson Delgado) — an exact slice of a real synthetic record.",
         "expected": {
-          "fires": [],
+          "fires": [
+            [
+              "spam_essay",
+              "minimal_essay",
+              "ai_generated_essay"
+            ]
+          ],
           "absent": [
             "fake_contact"
           ],
-          "contested": [
-            "spam_essay",
-            "minimal_essay",
-            "ai_generated_essay"
-          ],
+          "contested": true,
           "pets": {
             "dogs": 1,
             "cats": 0,

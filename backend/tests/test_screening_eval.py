@@ -103,42 +103,58 @@ def test_pet_extraction_case_grades_facts_not_flags() -> None:
     assert any("dogs" in f for f in wrong.failures)
 
 
-def test_contested_category_passes_whether_it_fires_or_not() -> None:
-    """A contested category (named in expected.contested) is neither required nor forbidden:
-    the case passes whether the model fires it or not — both are defensible."""
-    from app.ai.schemas import FlagCategory
+def _first_fire_category(case) -> FlagCategory:
+    """A category from the case's first `fires` requirement (unwraps an any-of group)."""
+    req = case.fires[0]
+    return FlagCategory(req[0] if isinstance(req, list) else req)
 
-    case = next(c for c in load_cases() if c.contested)
-    contested_cat = FlagCategory(case.contested[0])
+
+def test_contested_case_grades_its_expectation_normally() -> None:
+    """`contested` does NOT change grading — the case's `fires` expectation is graded the same:
+    meeting it passes, missing it fails. (Contested only changes how a failure is presented.)"""
+    case = next(c for c in load_cases() if c.contested and c.fires)
+    fire_cat = _first_fire_category(case)
     pets = PetFacts(**case.expected_pets) if case.expected_pets else None
 
-    fired = run_case(_mock(flags=(contested_cat,), pets=pets), case, screening_model="m")
-    not_fired = run_case(_mock(pets=pets), case, screening_model="m")
-    assert fired.passed is True, "contested category firing must not fail the case"
-    assert not_fired.passed is True, "contested category not firing must not fail the case"
+    met = run_case(_mock(flags=(fire_cat,), pets=pets), case, screening_model="m")
+    missed = run_case(_mock(pets=pets), case, screening_model="m")
+    assert met.passed is True, "meeting the contested case's fires expectation should pass"
+    assert missed.passed is False, "missing it should FAIL (contested only softens the display)"
+
+
+def test_contested_absent_case_fails_when_guarded_flag_fires() -> None:
+    """A contested case that GUARDS a flag (in `absent`) still fails when that flag fires — the
+    expectation (don't fire) is graded normally. contested only softens the display, not the
+    grade: firing → fail (shown amber), not firing → pass."""
+    case = next(c for c in load_cases() if c.contested and c.absent)
+    guarded = FlagCategory(case.absent[0])
+    pets = PetFacts(**case.expected_pets) if case.expected_pets else None
+
+    fired = run_case(_mock(flags=(guarded,), pets=pets), case, screening_model="m")
+    clean = run_case(_mock(pets=pets), case, screening_model="m")
+    assert fired.passed is False, "firing the guarded flag is a failure (contested softens display, not grade)"
+    assert clean.passed is True, "not firing the guarded flag meets the expectation"
 
 
 def test_contested_stability_flip_reads_contested_split_not_unstable() -> None:
-    """A run-to-run flip on a contested category is expected (both defensible), so it reads
-    [contested-split], not [UNSTABLE] — the screening analogue of the categorical contested."""
-    from app.ai.schemas import FlagCategory
-
-    case = next(c for c in load_cases() if c.contested)
-    contested_cat = FlagCategory(case.contested[0])
+    """A flip between meeting and missing a contested case's expectation reads [contested-split]
+    (the miss is defensible), not [UNSTABLE] — the screening analogue of the categorical bool."""
+    case = next(c for c in load_cases() if c.contested and c.fires)
+    fire_cat = _first_fire_category(case)
     pets = PetFacts(**case.expected_pets) if case.expected_pets else None
     provider = MockProvider()
     for fire in (True, False, True, False):
         provider.queue(ScreeningReport(
-            flags=[ScreeningFlag(category=contested_cat, summary="s", evidence="e")] if fire else [],
+            flags=[ScreeningFlag(category=fire_cat, summary="s", evidence="e")] if fire else [],
             pets=pets or PetFacts(),
         ))
     rep = stability_run(provider, case, screening_model="m", k=4)
     assert rep.marker == "[contested-split]"
-    # The EXPECTATION is that a contested category fires, so a rep that fired one reads 'pass'
-    # and a rep that caught nothing reads 'fail' — the split is visible and the right way round.
+    # Met reps read 'pass', missed reps 'fail (contested)' — a visible split, but informational
+    # (marker [contested-split]), not UNSTABLE.
     outcomes = [r.outcome for r in rep.runs]
-    assert any(o.startswith("pass") for o in outcomes), "a fired-contested rep should token pass"
-    assert any(o.startswith("fail") for o in outcomes), "a rep that caught nothing should token fail"
+    assert "pass" in outcomes
+    assert any(o.startswith("fail") for o in outcomes)
 
 
 def test_stability_flags_a_changing_flag_set() -> None:
