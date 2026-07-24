@@ -8,7 +8,22 @@ the extracted pet facts (M15 1e). A MockProvider stands in for Bedrock.
 
 from app.ai.mock_provider import MockProvider
 from app.ai.schemas import FlagCategory, PetFacts, ScreeningFlag, ScreeningReport
-from app.evals.screening import load_cases, run_case, stability_run
+from app.evals.screening import _normalize_fires, load_cases, run_case, stability_run
+
+
+def test_normalize_fires_accepts_pipe_input_sugar() -> None:
+    """A fires entry can be typed the way the eval DISPLAYS an any-of group ('a | b') — a
+    pipe-delimited string becomes a list. Plain strings and lists pass through unchanged."""
+    # Pipe string -> any-of list.
+    assert _normalize_fires(["spam_essay|minimal_essay"]) == [["spam_essay", "minimal_essay"]]
+    # Whitespace around pipes is trimmed (matches the 'a | b' display form).
+    assert _normalize_fires(["a | b | c"]) == [["a", "b", "c"]]
+    # Plain must-fire string (no pipe) is unchanged.
+    assert _normalize_fires(["fake_contact"]) == ["fake_contact"]
+    # An existing nested list is unchanged.
+    assert _normalize_fires([["spam_essay", "minimal_essay"]]) == [["spam_essay", "minimal_essay"]]
+    # The footgun: the whole value typed as a bare string is wrapped, not char-iterated.
+    assert _normalize_fires("spam_essay|minimal_essay") == [["spam_essay", "minimal_essay"]]
 
 
 def test_golden_cases_load_well_formed() -> None:

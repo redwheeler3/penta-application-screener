@@ -83,6 +83,26 @@ class CaseResult:
         return not self.failures
 
 
+def _normalize_fires(fires: list[str | list[str]] | str) -> list[str | list[str]]:
+    """Accept pipe-input sugar for an any-of group: a ``fires`` entry that is a string
+    containing ``|`` (the same delimiter the eval DISPLAYS an any-of group with — see
+    ``fire_label``) becomes a list, so what you see is what you can type. A plain string
+    (no pipe) stays a must-fire string; a list stays a list. Prevents the footgun of typing
+    the displayed "a | b" form back into the data as a bare string the grader can't iterate.
+
+    Also tolerates the whole ``fires`` value being a bare string (``"a|b|c"`` typed instead of
+    ``["a|b|c"]``) — the exact mistake that broke the Evals render once — by wrapping it."""
+    if isinstance(fires, str):
+        fires = [fires]
+    normalized: list[str | list[str]] = []
+    for entry in fires:
+        if isinstance(entry, str) and "|" in entry:
+            normalized.append([part.strip() for part in entry.split("|") if part.strip()])
+        else:
+            normalized.append(entry)
+    return normalized
+
+
 def load_cases(path: Path = SCREENING_GOLDEN_PATH) -> tuple[ScreeningCase, ...]:
     """Load the golden screening cases, flattening the by-consumer blocks (metadata / given —
     see docs/eval-case-schema.md) into the flat runner case."""
@@ -95,7 +115,7 @@ def load_cases(path: Path = SCREENING_GOLDEN_PATH) -> tuple[ScreeningCase, ...]:
                 key=c["key"],
                 fields=given["fields"],
                 essays=given["essays"],
-                fires=expected.get("fires", []),
+                fires=_normalize_fires(expected.get("fires", [])),
                 absent=expected.get("absent", []),
                 contested=expected.get("contested", []),
                 expected_pets=expected.get("pets"),
