@@ -15,7 +15,6 @@ class FlagCategory(StrEnum):
     MINIMAL_ESSAY = "minimal_essay"
     SPAM_ESSAY = "spam_essay"
     AI_GENERATED_ESSAY = "ai_generated_essay"
-    DUPLICATED_ANSWERS = "duplicated_answers"
     INTERNAL_INCONSISTENCY = "internal_inconsistency"
     FAKE_CONTACT = "fake_contact"
     OTHER = "other"

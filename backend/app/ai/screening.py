@@ -57,13 +57,12 @@ Flag these when clearly present:
 - Essays that are essentially non-responsive: empty, a single word, or a single short fragment. Brief-but-genuine answers are fine.
 - Essays that are clearly spam/advertising, or the SAME text copy-pasted across multiple essay answers.
 - Direct factual contradictions between fields (excluding the email field), or within or across the essays (not mere absence of explanation).
-- Contact details that are placeholder rather than a real.
 
 Do NOT flag (these are normal and must be ignored):
 - A child or co-applicant having a different surname from the applicant. Blended families and differing surnames are common and are NOT suspicious.
 - Missing optional information, or an answer simply being short.
 - Ordinary household context by itself. Only flag a concrete concern; family details are not suspicious on their own.
-- Emails that don't match names. Never flag this as suspicious.
+- Emails that don't match names NEVER imply fake contact information.
 - Anything about pets. Pets are NEVER a flag — they go in the pet inventory instead, no matter how many or how unusual.
 
 ## How to extract pets

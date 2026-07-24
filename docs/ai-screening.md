@@ -80,7 +80,7 @@ The model does not return free text we then parse. It returns data validated aga
 
 ```py
 class ScreeningFlag(BaseModel):
-    category: FlagCategory      # placeholder_name, minimal_essay, fake_contact, ... (8 categories)
+    category: FlagCategory      # placeholder_name, minimal_essay, fake_contact, ... (7 categories)
     summary: str                # one neutral sentence
     evidence: str               # short quote or field reference, no full essays
 
