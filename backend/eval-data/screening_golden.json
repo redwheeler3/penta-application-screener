@@ -585,6 +585,58 @@
           "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "I want my kids to grow up knowing their neighbours and seeing adults solve problems together."
         }
       }
+    },
+    {
+      "key": "nonresponsive_buzzword_essay_fires",
+      "metadata": {
+        "note": "OVER-REACH REGRESSION GUARD: the intro essay is pure corporate word-salad ('leveraging synergies … to drive meaningful, value-added community outcomes') that answers nothing asked. This is a genuine non-responsive concern that SILENTLY VANISHED after the email/junk prompt tuning (guard accumulation lowered the flagging baseline) — production had flagged it spam_essay, a later run dropped it. It sits between the bullets (a full sentence, so not 'minimal'; buzzword filler, not advertising), so accept either spam_essay OR minimal_essay — the test is that the junk answer is caught, not which bucket. The OTHER three essays are substantive, so only the intro is at issue. Also carries a name/email mismatch (morganchen@ for Emerson Delgado) that must NOT fire fake_contact.",
+        "pass": "screening",
+        "source": "synthetic pool, application id 30 (Emerson Delgado) — an exact slice of a real synthetic record; regression found by comparing pre/post prompt-change screening runs.",
+        "expected": {
+          "fires": [
+            [
+              "spam_essay",
+              "minimal_essay"
+            ]
+          ],
+          "absent": [
+            "fake_contact"
+          ],
+          "pets": {
+            "dogs": 1,
+            "cats": 0,
+            "other_pets": []
+          }
+        }
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Emerson Delgado",
+          "co_applicant_name": "Jamie Kim",
+          "child_details": [
+            {
+              "first_name": "Sam",
+              "last_name": "Singh",
+              "age": 4
+            },
+            {
+              "first_name": "Iris",
+              "last_name": "Brown",
+              "age": 5
+            }
+          ],
+          "pets_text": "One dog",
+          "applicant_email": "morganchen@protonmail.com",
+          "co_applicant_email": "jamie.kim@gmail.com",
+          "co_applicant_phone": "778-863-2043"
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "As a highly motivated and detail-oriented individual, I am passionate about leveraging synergies within collaborative living environments to drive meaningful, value-added community outcomes.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "I'm a registered nurse and could organize a basic first-aid station and run a CPR refresher for members. We're both comfortable being on the on-call list for small emergencies.",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "No formal co-op experience yet, though we organized a neighbourhood tool library and a block-watch group. I came to value members who simply do what they said they would. We already spend a lot of time here visiting neighbours we know who are members, so the rhythm of the place is familiar to us.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "We want somewhere secure to raise our family and would gladly help with whatever the co-op needs. I'd keep the shared spaces cared for and the noticeboard up to date."
+        }
+      }
     }
   ]
 }
