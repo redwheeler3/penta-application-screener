@@ -2,6 +2,15 @@
 
 Shared working agreement for Codex, Cline, and any other agent on this repo.
 
+## Cardinal Rule — long-term readability above all
+
+**Optimize for the engineer who reads this code cold in a year, with none of today's context.** The measure of a change is not "does it work" or "was it quick" but "does it read simply to someone who wasn't here when we wrote it." A name, a signature, a module boundary that only makes sense if you know the migration we were mid-way through is a defect, even when it works.
+
+- **Short-term pain for long-term gain is *preferred*, not merely tolerated.** A rename that touches 10 files, a signature churn, an extra migration step — pay it now so the code reads right later. "Least churn today" is never the reason to leave a confusing shape in place. Difficulty is a cost to plan, never a veto (see the persona rules).
+- **"Simple" means *legible to a stranger*, not *fewest edits now* and not *fewest lines*.** A clever compression that needs today's backstory to decode is complex. Boring, obvious, and slightly longer beats clever and terse.
+- **Names must not lie or surprise.** A `get_*` that writes, a `*_run` module whose central type isn't a run, a flag whose meaning inverted — fix the name the moment the meaning drifts. The tell: you'd have to explain it out loud for the reader to not be surprised.
+- This rule outranks convenience and outranks the impulse to minimize diff size. When it conflicts with "just ship it," this wins.
+
 > **⚠️ Read-first hard rules** (the ones most often walked past — full text below in their sections):
 > - **Never reload a webpage to see your own edit.** Vite HMR applies edits live — just `take_snapshot`/`take_screenshot`. Reload ONLY to reset React in-memory state, and say why. (Engineering Defaults)
 > - **Never `git commit` unless Jeff's most-recent message asked for it.** One instruction = one commit. (Collaboration)
