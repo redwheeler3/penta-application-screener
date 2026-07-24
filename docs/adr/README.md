@@ -21,6 +21,7 @@ record states what replaced it and why.
 | [0008](0008-grader-matched-to-output-shape.md) | Grader matched to output shape + derived prompt versions | accepted |
 | [0009](0009-signed-scoring-scale-silence-neutral.md) | Signed −1..+1 scoring scale, silence = neutral | accepted |
 | [0010](0010-provider-adaptable-ai-interface-cost-controls.md) | Provider-adaptable AI interface (Bedrock first) + cost controls | accepted |
+| [0011](0011-per-member-eligible-pool-shared-content-cache.md) | Per-member eligible pool on a shared content-addressed cache (M15) | accepted (scoping; implementation pending) |
 
 ADRs 0001–0004 capture **superseded/reversed** decisions (the "four superseded strata");
-0005–0010 capture **major decisions that still hold**.
+0005–0011 capture **major decisions that still hold**.
