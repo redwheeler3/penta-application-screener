@@ -9,8 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Application, SyncRun
-from app.schemas.settings import AppSettings, EligibilityRules
-from app.services.rules import committee_default_rules
+from app.schemas.settings import AppSettings
 
 EMAIL_ALIASES = ["email address", "applicant email", "email"]
 APPLICANT_NAME_ALIASES = ["applicant name", "name", "applicant full name"]
@@ -77,37 +76,20 @@ def extract_essays(row: dict[str, Any]) -> list[dict[str, str]]:
     return essays
 
 
-def settings_fingerprint(settings: AppSettings, rules: EligibilityRules) -> str:
-    """Stable hash of the settings that determine import eligibility.
+def settings_fingerprint(settings: AppSettings) -> str:
+    """Stable hash of the settings whose change means the last import is out of date.
 
-    Covers the sheet id and every hard-filter input (the COMMITTEE-DEFAULT thresholds +
-    disabled rules) — exactly the settings whose change would reclassify who is eligible on
-    a re-import. Per-member rule divergence is deliberately NOT hashed: import is pre-any-
-    member-view and its eligible/filtered counts describe the shared committee-default
-    baseline, so only the default reclassifies the import. Pet limits ARE hashed as of M15
-    1e: pets became a per-member hard filter (over the committee default here), so a change
-    to the default pet limits reclassifies the import exactly as an income change does. (Pets
-    still don't gate WHO gets screened — the pet check needs the AI-extracted facts that only
-    exist after screening — but they do move the committee-default eligible/filtered counts.)
-    Deliberately EXCLUDES the AI spending cap: it never affects import. Stamped on each
-    SyncRun so the dashboard can flag Import as out of date when the live settings drift.
+    Just the source sheet id: re-syncing pulls DIFFERENT rows only when the sheet changes.
+    Import does NOT evaluate eligibility anymore (M15 — it only pulls + normalizes + upserts;
+    eligibility is per-member, computed on read), so the eligibility rules / pet limits /
+    disabled checks do NOT belong here — changing them reclassifies who's eligible on READ,
+    with no re-import needed, so they must not amber the Sync step. (History: this once hashed
+    the committee-default hard-filter thresholds, back when import stamped an eligible/filtered
+    count off them; that count was dropped in 457758d, so the rules half became vestigial and,
+    worse, false-ambered Sync after unrelated schema renames.) Stamped on each SyncRun so the
+    dashboard flags Import out of date only when the sheet link actually changed.
     """
-    basis = json.dumps(
-        {
-            "google_sheet_id": settings.google_sheet_id,
-            "income_min": rules.income_min,
-            "income_max": rules.income_max,
-            "min_adult_age": rules.min_adult_age,
-            "max_child_age": rules.max_child_age,
-            "min_children": rules.min_children,
-            "max_children": rules.max_children,
-            "max_dogs": rules.max_dogs,
-            "max_cats": rules.max_cats,
-            "allow_other_pets": rules.allow_other_pets,
-            "disabled_checks": sorted(rules.disabled_checks),
-        },
-        sort_keys=True,
-    )
+    basis = json.dumps({"google_sheet_id": settings.google_sheet_id}, sort_keys=True)
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()
 
 
@@ -137,8 +119,6 @@ def import_applications_from_rows(
     # Import only syncs + normalizes + upserts — it does NOT evaluate eligibility. Eligibility
     # is per-member and computed on read (a member's rules + overrides + AI flags), so there is
     # no eligible/filtered count to compute here that would mean anything for a member's view.
-    # The committee default is still loaded, but only to stamp the import-staleness fingerprint.
-    default_rules = committee_default_rules(db)
 
     for email, row in latest_by_email.items():
         raw_hash = hash_row(row)
@@ -178,7 +158,7 @@ def import_applications_from_rows(
         imported_count=imported_count,
         updated_count=updated_count,
         unchanged_count=unchanged_count,
-        settings_fingerprint=settings_fingerprint(settings, default_rules),
+        settings_fingerprint=settings_fingerprint(settings),
     )
     db.add(sync_run)
     db.commit()

@@ -42,7 +42,6 @@ from app.services.eligibility import (
     pet_facts_by_app,
 )
 from app.services.rules import (
-    committee_default_rules,
     hard_filter_reasons_for,
     rules_config_for,
 )
@@ -117,9 +116,7 @@ def _import_is_current(db: Session, settings) -> bool:
     latest = db.scalar(select(SyncRun).order_by(SyncRun.id.desc()).limit(1))
     if latest is None:
         return True
-    return latest.settings_fingerprint == settings_fingerprint(
-        settings, committee_default_rules(db)
-    )
+    return latest.settings_fingerprint == settings_fingerprint(settings)
 
 
 def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:

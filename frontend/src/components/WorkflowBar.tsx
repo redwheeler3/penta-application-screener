@@ -185,10 +185,12 @@ export function WorkflowBar(props: {
             // persists the synced row count (not a fraction).
             disabled={props.isSyncing || props.importConfirm || !props.hasGoogleSheetLink}
             disabledTitle="Add a Google Sheet link in settings to sync."
-            // Amber when sync-relevant settings changed since the last sync: a
-            // re-sync would reclassify eligibility.
+            // Amber only when the source SHEET LINK changed since the last sync — the one
+            // change a re-sync acts on (it pulls different rows). Eligibility-rule changes do
+            // NOT amber Sync: they reclassify on read over the already-normalized data, no
+            // re-sync needed.
             outOfDate={workflow.synced && !workflow.importCurrent}
-            staleTitle="Settings changed since the last sync — re-sync to apply them."
+            staleTitle="The Google Sheet link changed — re-sync to pull from the new sheet."
             onClick={props.onRequestImport}
             caption={
               workflow.synced && dashboardCounts.submitted > 0 ? `${dashboardCounts.submitted} rows` : undefined

@@ -163,17 +163,14 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
 
 
 @pytest.mark.anyio
-async def test_import_current_tracks_settings_fingerprint() -> None:
-    """importCurrent is False once the import-relevant settings change.
-
-    A SyncRun stamped with the settings at import time stays "current" until the
-    live settings diverge; then Import flags amber so the operator re-imports to
-    reclassify eligibility.
+async def test_import_current_tracks_sheet_id() -> None:
+    """importCurrent is False once the SOURCE SHEET changes — the only settings change a
+    re-sync actually acts on (it pulls different rows). A SyncRun stamped at import time stays
+    current until the sheet link diverges; then Import flags amber to pull the new sheet.
     """
     from app.db.models import SyncRun
-    from app.schemas.settings import AppSettings, EligibilityRules
+    from app.schemas.settings import AppSettings
     from app.services.application_import import settings_fingerprint
-    from app.services.rules import committee_default_rules, save_committee_default_rules
     from app.services.settings import save_app_settings
 
     app, db = _logged_in_app()
@@ -181,45 +178,42 @@ async def test_import_current_tracks_settings_fingerprint() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         settings = AppSettings(google_sheet_id="sheet-1")
         save_app_settings(db, settings)
-        save_committee_default_rules(db, EligibilityRules(min_children=1))
-        db.add(SyncRun(
-            source_sheet_id="sheet-1",
-            settings_fingerprint=settings_fingerprint(settings, committee_default_rules(db)),
-        ))
+        db.add(SyncRun(source_sheet_id="sheet-1", settings_fingerprint=settings_fingerprint(settings)))
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow["importCurrent"] is True
 
-        # Change a hard-filter setting (the committee-default rules) -> the latest sync's
-        # fingerprint no longer matches -> Import is out of date.
-        save_committee_default_rules(db, EligibilityRules(min_children=2))
+        # Change the sheet link -> the latest sync's fingerprint no longer matches -> amber.
+        save_app_settings(db, AppSettings(google_sheet_id="sheet-2"))
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow["importCurrent"] is False
 
 
 @pytest.mark.anyio
-async def test_import_current_ignores_non_filter_settings() -> None:
-    """Changing settings that don't affect eligibility (pet limits, AI cap) must
-    NOT flag Import amber — only hard-filter inputs do."""
+async def test_import_current_ignores_eligibility_rule_changes() -> None:
+    """Changing eligibility rules — committee-default thresholds, pet limits, disabled checks,
+    the AI cap — must NOT flag Import amber. Import evaluates no eligibility anymore (M15); a
+    rule change reclassifies who's eligible on READ, with no re-sync needed. Only the sheet id
+    ambers Sync."""
     from app.db.models import SyncRun
-    from app.schemas.settings import AppSettings
+    from app.schemas.settings import AppSettings, EligibilityRules
     from app.services.application_import import settings_fingerprint
-    from app.services.rules import committee_default_rules
+    from app.services.rules import save_committee_default_rules
     from app.services.settings import save_app_settings
 
     app, db = _logged_in_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        settings = AppSettings(google_sheet_id="sheet-1", max_dogs=1)
+        settings = AppSettings(google_sheet_id="sheet-1")
         save_app_settings(db, settings)
-        db.add(SyncRun(
-            source_sheet_id="sheet-1",
-            settings_fingerprint=settings_fingerprint(settings, committee_default_rules(db)),
-        ))
+        save_committee_default_rules(db, EligibilityRules(min_children=1, max_dogs=1))
+        db.add(SyncRun(source_sheet_id="sheet-1", settings_fingerprint=settings_fingerprint(settings)))
         db.commit()
 
-        # Bump a pet limit and the AI cap — neither is a hard filter.
-        changed = AppSettings(google_sheet_id="sheet-1", max_dogs=3)
+        # Change the committee-default rules (income floor, pet limit) + the AI cap — none of
+        # these affect what a sync pulls, so none should amber Import.
+        save_committee_default_rules(db, EligibilityRules(min_children=2, max_dogs=3))
+        changed = AppSettings(google_sheet_id="sheet-1")
         changed.ai.spending_cap_usd = 5.0
         save_app_settings(db, changed)
         workflow = (await client.get("/dashboard")).json()["workflow"]
