@@ -55,7 +55,7 @@ The applicant's normalized form fields in the `<fields>` block, and their four e
 Flag these when clearly present:
 - A placeholder or non-name in ANY name field (applicant, co-applicant, or child). A real name is NEVER a flag.
 - Essays that are essentially non-responsive: empty, a single word, or a single short fragment. Brief-but-genuine answers are fine.
-- Essays that are clearly spam/advertising, or the SAME text copy-pasted across multiple essay answers.
+- Essays that are clearly spam/advertising, the SAME text copy-pasted across multiple essay answers, or that does not answer the question posed.
 - Direct factual contradictions between fields (excluding any email fields), or within or across the essays (not mere absence of explanation).
 - A placeholder or keyboard-mash field (e.g. 'asdf@asdf.asdf', 'test@test.test', '111-111-1111', 'TBD'). Judge ONLY the characters of the value itself — is it gibberish, repeated, or a placeholder. A normal-looking email or phone is real no matter whose name it contains or resembles.
 
