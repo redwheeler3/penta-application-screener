@@ -589,14 +589,15 @@
     {
       "key": "nonresponsive_buzzword_essay_fires",
       "metadata": {
-        "note": "OVER-REACH REGRESSION GUARD: the intro essay is pure corporate word-salad ('leveraging synergies … to drive meaningful, value-added community outcomes') that answers nothing asked. This is a genuine non-responsive concern that SILENTLY VANISHED after the email/junk prompt tuning (guard accumulation lowered the flagging baseline) — production had flagged it spam_essay, a later run dropped it. It sits between the bullets (a full sentence, so not 'minimal'; buzzword filler, not advertising), so accept either spam_essay OR minimal_essay — the test is that the junk answer is caught, not which bucket. The OTHER three essays are substantive, so only the intro is at issue. Also carries a name/email mismatch (morganchen@ for Emerson Delgado) that must NOT fire fake_contact.",
+        "note": "OVER-REACH REGRESSION GUARD: the intro essay is pure corporate word-salad ('leveraging synergies … to drive meaningful, value-added community outcomes') that answers nothing asked. This is a genuine non-responsive concern that SILENTLY VANISHED after the email/junk prompt tuning (guard accumulation lowered the flagging baseline) — production had flagged it spam_essay, a later run dropped it. It sits between the bullets (a full sentence, so not 'minimal'; buzzword filler, not advertising), so accept spam_essay OR minimal_essay OR ai_generated_essay — the test is that the junk answer is caught, not which bucket. The OTHER three essays are substantive, so only the intro is at issue. Also carries a name/email mismatch (morganchen@ for Emerson Delgado) that must NOT fire fake_contact.",
         "pass": "screening",
         "source": "synthetic pool, application id 30 (Emerson Delgado) — an exact slice of a real synthetic record; regression found by comparing pre/post prompt-change screening runs.",
         "expected": {
           "fires": [
             [
               "spam_essay",
-              "minimal_essay"
+              "minimal_essay",
+              "ai_generated_essay"
             ]
           ],
           "absent": [
