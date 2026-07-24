@@ -459,6 +459,132 @@
           "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "We want to put down roots and give back, whether that's chairing a committee or just keeping the boiler room tidy. In return I'd take on a committee seat and keep our records straight."
         }
       }
+    },
+    {
+      "key": "email_is_coapplicant_name_no_flag",
+      "metadata": {
+        "note": "OVER-REACH GUARD (production reproduction): the applicant's email local-part IS the CO-APPLICANT's full name ('morganchen' for co-applicant Morgan Chen), which reads as a recognizable other person rather than a random string — the model finds this MORE tempting to flag than a generic mismatch. A shared/household email is normal; must NOT raise fake_contact. This is the exact shape that slipped past name_email_mismatch_no_flag (whose email was a fuzzy 'sandra.mitchell97', not a clean household name).",
+        "pass": "screening",
+        "source": "synthetic hard-variant of the name/email over-reach guard (reproduces production false-fires).",
+        "expected": {
+          "fires": [],
+          "absent": [
+            "fake_contact"
+          ],
+          "pets": {
+            "dogs": 0,
+            "cats": 0,
+            "other_pets": []
+          }
+        }
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Emerson Delgado",
+          "co_applicant_name": "Morgan Chen",
+          "child_details": [
+            {
+              "first_name": "Nia",
+              "last_name": "Delgado",
+              "age": 7
+            }
+          ],
+          "pets_text": "No pets.",
+          "applicant_email": "morganchen@protonmail.com",
+          "co_applicant_email": "morgan.chen@gmail.com",
+          "co_applicant_phone": "604-555-2044"
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "We're a family of four who spend weekends restoring the community garden and running a tool-share for the block. We try to leave things better than we found them.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "I'm a licensed electrician and my partner keeps the books for a small nonprofit, so between us we can cover repairs and help keep the co-op's finances straight.",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "We sat on a strata council for three years and learned how a few reliable people keep a building running without burning out.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "We want a home where neighbours look out for each other, and we'd gladly take the unglamorous jobs — work parties, budgeting, chasing quotes."
+        }
+      }
+    },
+    {
+      "key": "email_is_unrelated_person_name_no_flag",
+      "metadata": {
+        "note": "OVER-REACH GUARD: the applicant's email local-part is a DIFFERENT, unrelated person's full name ('danielpark' — no one in the household), the most tempting 'misrepresentation' read. The prompt explicitly says an email containing a different person's name (old address, shared/family account) must NOT be flagged. Guards fake_contact.",
+        "pass": "screening",
+        "source": "synthetic hard-variant of the name/email over-reach guard (reproduces production false-fires).",
+        "expected": {
+          "fires": [],
+          "absent": [
+            "fake_contact"
+          ],
+          "pets": {
+            "dogs": 0,
+            "cats": 0,
+            "other_pets": []
+          }
+        }
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Wei Zhang",
+          "co_applicant_name": "Aisha Rahman",
+          "child_details": [
+            {
+              "first_name": "Leo",
+              "last_name": "Zhang",
+              "age": 9
+            }
+          ],
+          "pets_text": "No pets.",
+          "applicant_email": "danielpark@gmail.com",
+          "co_applicant_email": "aisha.rahman@shaw.ca",
+          "co_applicant_phone": "778-555-2071"
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "I teach grade school and my partner is a transit mechanic; we're patient, organized, and used to showing up on time for people who are counting on us.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "I can run the work-shift calendar and new-member orientation; my partner services shared tools and small engines.",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "I spent two years on a food co-op's membership committee, handling orientation and the shift schedule.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "We want to put down roots and give back, whether that's chairing a committee or keeping the boiler room tidy."
+        }
+      }
+    },
+    {
+      "key": "coapplicant_email_is_applicant_name_no_flag",
+      "metadata": {
+        "note": "OVER-REACH GUARD: the CO-APPLICANT's email local-part is the APPLICANT's name ('hiroshitanaka' on the co-applicant's email) — a cross-household shared account, which can tempt EITHER a fake_contact flag OR an internal_inconsistency read. Neither is warranted; a shared family email is normal. Guards fake_contact (the observed failure).",
+        "pass": "screening",
+        "source": "synthetic hard-variant of the name/email over-reach guard (reproduces production false-fires).",
+        "expected": {
+          "fires": [],
+          "absent": [
+            "fake_contact"
+          ],
+          "pets": {
+            "dogs": 0,
+            "cats": 0,
+            "other_pets": []
+          }
+        }
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Hiroshi Tanaka",
+          "co_applicant_name": "Emma Larsen",
+          "child_details": [
+            {
+              "first_name": "Kai",
+              "last_name": "Tanaka",
+              "age": 4
+            }
+          ],
+          "pets_text": "No pets.",
+          "applicant_email": "hiroshi.tanaka@icloud.com",
+          "co_applicant_email": "hiroshitanaka@gmail.com",
+          "co_applicant_phone": "778-555-2099"
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "We foster rescue animals and are active in the local adoption network; we believe a good home is one you help take care of.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "I've done HR and conflict mediation for a decade and can help the co-op resolve disputes fairly.",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "We lived in co-housing in the Kootenays for five years and took turns on the maintenance and finance teams.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "I want my kids to grow up knowing their neighbours and seeing adults solve problems together."
+        }
+      }
     }
   ]
 }
