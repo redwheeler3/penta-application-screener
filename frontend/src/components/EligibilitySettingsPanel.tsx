@@ -51,6 +51,9 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
 
   return (
     <section className="settings-panel no-print" aria-label="Eligibility rules">
+      <div className="settings-header">
+        <h3>Eligibility Settings</h3>
+      </div>
       <div className="settings-panel-body">
         {!draft ? (
           <p className="panel-hint">Loading…</p>

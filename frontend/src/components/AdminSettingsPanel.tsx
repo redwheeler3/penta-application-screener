@@ -23,6 +23,9 @@ export function AdminSettingsPanel(props: {
 
   return (
     <section className="settings-panel no-print" aria-label="Admin settings">
+      <div className="settings-header">
+        <h3>Admin Settings</h3>
+      </div>
       {/* Sub-tabs within the admin panel. Reuses the Observability/Evals underline-tab
           style (.insights-subtabs) so nested navigation reads the same across the app. */}
       <div className="insights-subtabs admin-settings-subtabs" role="tablist" aria-label="Admin settings sections">
