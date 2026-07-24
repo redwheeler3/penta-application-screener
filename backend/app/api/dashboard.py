@@ -13,10 +13,10 @@ from app.ai.screening import applications_for_screening as screening_scope
 from app.ai.screening import screening_prompt_version
 from app.api.dependencies import require_current_user
 from app.db.models import (
+    Analysis,
     Application,
     ApplicationAIResult,
     ApplicationStatus,
-    RankingRun,
     StatusSource,
     SyncRun,
     User,
@@ -28,12 +28,12 @@ from app.schemas.dashboard import (
     DashboardResponse,
     WorkflowState,
 )
-from app.services.application_import import settings_fingerprint
-from app.services.ranking_run import (
+from app.services.analysis import (
     current_dimension_kinds,
-    get_current_run,
+    get_current_analysis,
     ranking_is_current,
 )
+from app.services.application_import import settings_fingerprint
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -86,7 +86,7 @@ def read_dashboard(
             # A full discovery run is fresh when its inputs match; alternatively,
             # complete current-criteria coverage records the score-only path.
             ranking_current=(
-                ranking_is_current(db, get_current_run(db), settings)
+                ranking_is_current(db, get_current_analysis(db), settings)
                 or current_criteria_scored
             ),
         ),
@@ -191,7 +191,7 @@ def _kind_prefix_exists(db: Session, prefix: str) -> bool:
 
 
 def _run_exists(db: Session) -> bool:
-    return db.scalar(select(RankingRun.id).limit(1)) is not None
+    return db.scalar(select(Analysis.id).limit(1)) is not None
 
 
 def _count_by(db: Session, column) -> dict:

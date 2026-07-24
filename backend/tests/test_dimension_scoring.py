@@ -24,7 +24,14 @@ from app.ai.schemas import (
     PoolDimensionReport,
     ScoreConfidence,
 )
-from app.db.models import Application, ApplicationAIResult, ApplicationStatus, Base
+from app.db.models import (
+    Application,
+    ApplicationAIResult,
+    ApplicationStatus,
+    Base,
+    User,
+    UserRole,
+)
 from app.schemas.settings import AppSettings
 
 
@@ -35,7 +42,10 @@ def make_db() -> Session:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    return sessionmaker(bind=engine, autoflush=False, autocommit=False)()
+    db = sessionmaker(bind=engine, autoflush=False, autocommit=False)()
+    db.add(User(email="m@x.com", display_name="M", role=UserRole.MEMBER, is_active=True))
+    db.commit()
+    return db
 
 
 def add_eligible(db: Session, *, email: str, raw_hash: str) -> Application:
@@ -287,7 +297,7 @@ def test_rerun_estimate_cache_aware_fallback_when_no_history() -> None:
     )
     from app.ai.pricing import cost_usd
     from app.ai.provider import Usage
-    from app.services.ranking_run import create_run
+    from app.services.analysis import create_analysis
 
     db = make_db()
     app1 = add_eligible(db, email="a@x.com", raw_hash="h1")
@@ -296,8 +306,8 @@ def test_rerun_estimate_cache_aware_fallback_when_no_history() -> None:
     keys = ["community", "skills", "participation"]
     report = report_with(keys)
 
-    create_run(
-        db, report=report, settings=settings,
+    create_analysis(
+        db, user=db.scalar(select(User)), report=report, settings=settings,
         narrative=None,
     )
     provider = MockProvider()
@@ -329,15 +339,15 @@ def test_rerun_estimate_prefers_measured_history() -> None:
     # than a reconstructed count.
     from app.ai.dimension_scoring_cost import estimate_dimension_scoring
     from app.ai.pricing import PassCost
+    from app.services.analysis import create_analysis
     from app.services.cost_report import record_run_cost
-    from app.services.ranking_run import create_run
 
     db = make_db()
     add_eligible(db, email="a@x.com", raw_hash="h1")
     settings = AppSettings()
     report = report_with(["community", "skills"])
-    create_run(
-        db, report=report, settings=settings,
+    create_analysis(
+        db, user=db.scalar(select(User)), report=report, settings=settings,
         narrative=None,
     )
 

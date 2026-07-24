@@ -29,11 +29,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.score_vectors import load_score_vectors
-from app.db.models import RankingRun, RunCostLedger
+from app.db.models import Analysis, RunCostLedger
 from app.evals.paths import (
     FIXTURE_PATH,
 )
-from app.services.ranking_run import get_current_run
+from app.services.analysis import (
+    consolidate_audit_view,
+    current_dimension_report,
+    decompose_audit_view,
+    get_current_analysis,
+    match_audit_view,
+)
 
 
 @dataclass(frozen=True)
@@ -81,21 +87,21 @@ _PASS_PROMPT_MODULES = {
 }
 
 
-def _build_provenance(db: Session, run: RankingRun) -> Provenance:
-    """The exact models + current prompt versions behind ``run``.
+def _build_provenance(db: Session, analysis: Analysis) -> Provenance:
+    """The exact models + current prompt versions behind ``analysis``.
 
-    Models: the run's rank ledger, correlated by creation order — rank ledgers and
-    ``RankingRun``s are created 1:1 per request, so the Nth rank ledger pairs with the Nth
-    rank run (the same no-FK correlation ``metrics.py`` uses). A pass that made no call
+    Models: the analysis's rank ledger, correlated by creation order — rank ledgers and
+    ``Analysis`` rows are created 1:1 per request, so the Nth rank ledger pairs with the Nth
+    analysis (the same no-FK correlation ``metrics.py`` uses). A pass that made no call
     records "" for its model; dropped here so the map holds only passes that actually ran.
     Prompt versions: imported live from each pass module (see ``Provenance``)."""
     rank_ledgers = list(
         db.scalars(select(RunCostLedger).where(RunCostLedger.kind == "rank").order_by(RunCostLedger.id.asc()))
     )
-    rank_runs = list(db.scalars(select(RankingRun).order_by(RankingRun.id.asc())))
+    analyses = list(db.scalars(select(Analysis).order_by(Analysis.id.asc())))
     pass_models: dict[str, str] = {}
     try:
-        nth = rank_runs.index(run)
+        nth = analyses.index(analysis)
     except ValueError:
         nth = -1
     if 0 <= nth < len(rank_ledgers):
@@ -110,15 +116,15 @@ def _build_provenance(db: Session, run: RankingRun) -> Provenance:
     return Provenance(pass_models=pass_models, pass_prompt_versions=pass_prompt_versions)
 
 
-def build_fixture(db: Session, run: RankingRun) -> EvalFixture:
-    """Assemble a PII-safe fixture from a persisted Rank.
+def build_fixture(db: Session, analysis: Analysis) -> EvalFixture:
+    """Assemble a PII-safe fixture from a persisted Rank (its shared ``Analysis``).
 
     Score vectors are re-keyed from real application_id to an opaque, stable column
     index shared across dimensions (so a candidate is the same column in every axis, and
     correlation still means what it means), then the id mapping is discarded.
     """
-    criteria = run.criteria or {}
-    report = criteria.get("dimension_report") or {}
+    report = current_dimension_report(analysis)
+    report_dims = [d.model_dump(mode="json") for d in report.dimensions] if report else []
 
     raw_vectors = load_score_vectors(db)  # {key: {application_id: score}}
     # One shared column order across ALL dimensions: sort the union of scored ids, and
@@ -136,16 +142,16 @@ def build_fixture(db: Session, run: RankingRun) -> EvalFixture:
     # generalized criteria text (definition/high_end/low_end) stays for the checks.
     dims = [
         {k: v for k, v in d.items() if k != "why_it_differentiates"}
-        for d in report.get("dimensions", [])
+        for d in report_dims
     ]
 
     return EvalFixture(
         dimensions=dims,
-        decompose=_strip_narrative(criteria.get("decompose_audit")),
-        match=_strip_narrative(criteria.get("match_audit")),
-        consolidate=_strip_narrative(criteria.get("consolidate_audit")),
+        decompose=_strip_narrative(decompose_audit_view(analysis)),
+        match=_strip_narrative(match_audit_view(analysis)),
+        consolidate=_strip_narrative(consolidate_audit_view(db, analysis)),
         score_vectors=score_vectors,
-        provenance=_build_provenance(db, run),
+        provenance=_build_provenance(db, analysis),
     )
 
 
@@ -179,10 +185,10 @@ def record(db: Session, path: Path = FIXTURE_PATH) -> EvalFixture:
     """Record the current Rank to ``path`` (pretty JSON, git-committed). Deliberate:
     re-baseline after blessing a run's output — invoked from the Evals tab
     (POST /evals/baseline), then committed to git."""
-    run = get_current_run(db)
-    if run is None:
+    analysis = get_current_analysis(db)
+    if analysis is None:
         raise RuntimeError("No ranking run to record — run a Rank first.")
-    fixture = build_fixture(db, run)
+    fixture = build_fixture(db, analysis)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(_to_json(fixture), indent=2, sort_keys=True))
     return fixture

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.db.models import RankingRun, SyncRun
+from app.db.models import Analysis, SyncRun
 
 # Google Sheet ids whose contents are known-synthetic (the test-data CSV, exported to a
 # sheet for import). Add ONLY sheets you can personally vouch contain no real applicant
@@ -32,34 +32,34 @@ class NonSyntheticPoolError(RuntimeError):
     """Raised when eval-evidence capture is attempted on a pool not proven synthetic."""
 
 
-def source_sheet_id_for_run(db: Session, run: RankingRun) -> str | None:
+def source_sheet_id_for_analysis(db: Session, analysis: Analysis) -> str | None:
     """The Google Sheet id the run's pool was imported from, via its source SyncRun.
     None when the run has no recorded source (older/hand-built runs)."""
-    if run.source_sync_run_id is None:
+    if analysis.source_sync_run_id is None:
         return None
-    sync = db.get(SyncRun, run.source_sync_run_id)
+    sync = db.get(SyncRun, analysis.source_sync_run_id)
     return sync.source_sheet_id if sync is not None else None
 
 
-def is_synthetic_pool(db: Session, run: RankingRun) -> bool:
+def is_synthetic_pool(db: Session, analysis: Analysis) -> bool:
     """True only when the run's pool traces to an allowlisted synthetic sheet."""
-    sheet_id = source_sheet_id_for_run(db, run)
+    sheet_id = source_sheet_id_for_analysis(db, analysis)
     return sheet_id is not None and sheet_id in SYNTHETIC_SHEET_IDS
 
 
-def require_synthetic_pool(db: Session, run: RankingRun) -> str:
+def require_synthetic_pool(db: Session, analysis: Analysis) -> str:
     """Assert the run's pool is safe to commit evidence quotes from; return the sheet id
     (for stamping ``evidence_source``). Raises ``NonSyntheticPoolError`` otherwise — the
     fail-safe gate: an unrecognized or missing source is refused, never assumed safe."""
-    sheet_id = source_sheet_id_for_run(db, run)
+    sheet_id = source_sheet_id_for_analysis(db, analysis)
     if sheet_id is None:
         raise NonSyntheticPoolError(
-            f"Run {run.id} has no recorded source sheet — cannot prove its pool is "
+            f"Analysis {analysis.id} has no recorded source sheet — cannot prove its pool is "
             "synthetic, so committing applicant evidence quotes is refused."
         )
     if sheet_id not in SYNTHETIC_SHEET_IDS:
         raise NonSyntheticPoolError(
-            f"Run {run.id}'s source sheet {sheet_id!r} is not on the synthetic allowlist. "
+            f"Analysis {analysis.id}'s source sheet {sheet_id!r} is not on the synthetic allowlist. "
             "Committing applicant evidence quotes is refused (it may be real applicant "
             "data). Add the sheet to SYNTHETIC_SHEET_IDS only if you can vouch it is "
             "fictional test data."

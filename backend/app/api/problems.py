@@ -31,6 +31,7 @@ PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     # Screening / ranking preconditions and gates.
     "no_eligible_applications": (409, "No eligible applications"),
     "run_required": (409, "Screening run required"),
+    "stale_analysis": (409, "Ranking was refreshed"),
     "unchanged_pool": (409, "Screening already up to date"),
     "cap_exceeded": (402, "Spending cap exceeded"),
     "unknown_dimension_key": (400, "Unknown dimension key"),

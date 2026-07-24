@@ -32,14 +32,15 @@ from app.schemas.applications import (
     ScreeningFlagOut,
 )
 from app.schemas.base import RequestModel
-from app.services.application_import import extract_essays
-from app.services.ranking_run import (
+from app.services.analysis import (
     current_dimension_kinds,
     current_dimension_report,
     dimension_weights,
-    get_current_run,
+    get_current_analysis,
+    get_or_create_member_ranking,
     stored_tiers,
 )
+from app.services.application_import import extract_essays
 from app.services.ranking_view import candidate_scores
 from app.services.stars import is_starred, starred_ids
 
@@ -295,7 +296,7 @@ def _serialize_detail(app: Application, db: Session, user: User) -> ApplicationD
         has_reasons=bool(app.hard_filter_reasons), has_ai_flags=bool(flags)
     )
 
-    dimension_scores = _dimension_scores(db, app)
+    dimension_scores = _dimension_scores(db, app, user)
     return ApplicationDetail(
         **summary.model_dump(),
         auto_status=auto_status.value,
@@ -368,10 +369,10 @@ def _dimension_scoring_trace(
 
 
 def _dimension_scores(
-    db: Session, app: Application
+    db: Session, app: Application, user: User
 ) -> list[DimensionContributionOut] | None:
-    """The candidate's per-dimension scores under the current run, ordered by
-    importance to THIS candidate's ranking.
+    """The candidate's per-dimension scores under the current analysis, ordered by
+    importance to THIS candidate's ranking in the signed-in member's weighting.
 
     Returns None when there is no run or the candidate has no scores for its
     dimension set. These are the candidate's ranking ``contributions`` (the
@@ -380,20 +381,21 @@ def _dimension_scores(
     this candidate come first. Weight-0 (Ignored) dimensions are dropped — they
     contribute nothing to the ranking.
     """
-    run = get_current_run(db)
-    report = current_dimension_report(run) if run is not None else None
+    analysis = get_current_analysis(db)
+    report = current_dimension_report(analysis) if analysis is not None else None
     if report is None:
         return None
+    member_ranking = get_or_create_member_ranking(db, analysis, user)
 
     # An all-Ignore board intentionally falls back to uniform weights so the ranked
-    # list has a stable opening order. It is not a committee weighting decision,
-    # though, so applicant details should not present every raw score as relevant.
-    tiers = stored_tiers(run)
+    # list has a stable opening order. It is not a member weighting decision, though,
+    # so applicant details should not present every raw score as relevant.
+    tiers = stored_tiers(member_ranking)
     if not any(tier.get("dimension_keys") for tier in tiers):
         return []
 
-    weights = dimension_weights(run)
-    ranked = rank_candidates(candidate_scores(db, run), weights)
+    weights = dimension_weights(member_ranking)
+    ranked = rank_candidates(candidate_scores(db, analysis), weights)
     candidate = next((c for c in ranked if c.application_id == app.id), None)
     if candidate is None:
         return None

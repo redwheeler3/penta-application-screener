@@ -308,7 +308,7 @@ export type RankedCandidate = {
 };
 
 export type RankingResponse = {
-  runId: number;
+  analysisId: number;
   weights: Record<string, number>;
   scoredCount: number;
   candidates: RankedCandidate[];
@@ -338,7 +338,7 @@ export type Tier = {
 };
 
 export type CurrentRunResponse = {
-  runId: number;
+  analysisId: number;
   dimensions: PoolDimension[];
   // The model's streamed reasoning from the discovery pass (markdown), shown on the
   // Insights tab. Null for runs from before it was captured.
@@ -364,7 +364,7 @@ export type CurrentRunResponse = {
 // were rewritten, how the match pass mapped it onto prior dimensions, and the
 // derived carry-forward rate. Null when no run exists or the run predates capture.
 export type MatchAuditResponse = {
-  runId: number;
+  analysisId: number;
   rawDiscoveryDimensions: { key: string; name: string; fromCommitteeRequest: boolean }[];
   // new dimension key → the prior dimension it adopted (key + prior user-facing name;
   // name is null for audits written before the prior-names capture).
@@ -383,7 +383,7 @@ export type MatchAuditResponse = {
 // settled into one non-overlapping dimension set for the current run. Null on runs
 // that predate the fan-out redesign (single-discovery runs).
 export type DecomposeAuditResponse = {
-  runId: number;
+  analysisId: number;
   inputReportCount: number;
   inputDimensionCount: number;
   settledCount: number;
@@ -415,7 +415,7 @@ export type DecomposeAuditResponse = {
 // score-vector correlation nominates suspected-duplicate pairs, a confirm call merges
 // genuine ones (older key kept, newer aliased). Null on runs that predate the pass.
 export type ConsolidateAuditResponse = {
-  runId: number;
+  analysisId: number;
   // Applied merges: dropped (newer) key → kept (older canonical) key.
   merges: Record<string, string>;
   // Every nominated pair: keep/drop keys + their user-facing names (snapshotted at
@@ -441,7 +441,7 @@ export type ConsolidateAuditResponse = {
 // decomposition. Each pass is one fresh-context discovery: the dimensions it found +
 // its own reasoning. Null on runs that predate the fan-out redesign.
 export type FanOutAuditResponse = {
-  runId: number;
+  analysisId: number;
   k: number;
   passes: {
     dimensions: { key: string; name: string; definition: string; whyItDifferentiates: string }[];

@@ -25,7 +25,7 @@ class PoolDimensionOut(ResponseModel):
 class CurrentRunResponse(ResponseModel):
     """GET /ranking/current — the current run's discovered criteria, or null."""
 
-    run_id: int
+    analysis_id: int
     dimensions: list[PoolDimensionOut]
     # The model's streamed reasoning from the discovery pass (markdown), for the
     # Insights trace. Null for runs from before it was captured / if the provider
@@ -70,7 +70,7 @@ class MatchAuditResponse(ResponseModel):
     persistently near-1.0 rate on re-runs is the over-matching smell.
     """
 
-    run_id: int
+    analysis_id: int
     raw_discovery_dimensions: list[RawDiscoveryDimensionOut]
     new_to_old: dict[str, PriorDimensionRef]  # new dimension key → the prior dim it adopted
     match_narrative: str | None = None
@@ -121,7 +121,7 @@ class DecomposeAuditResponse(ResponseModel):
     how much the decomposition collapsed; ``foldedRequests`` is the D9 committee-request
     trail (empty when no request was merged away)."""
 
-    run_id: int
+    analysis_id: int
     input_report_count: int
     input_dimension_count: int
     settled_count: int
@@ -156,7 +156,7 @@ class ConsolidateAuditResponse(ResponseModel):
     predates the pass. ``merges`` is the applied drop→keep map; ``nominatedCount`` /
     ``mergedCount`` summarize the pass at a glance."""
 
-    run_id: int
+    analysis_id: int
     merges: dict[str, str] = {}
     pairs: list[ConsolidatedPairOut] = []
     nominated_count: int = 0
@@ -179,7 +179,7 @@ class FanOutAuditResponse(ResponseModel):
     fed decomposition, so the committee can see each discoverer (not just the one whose
     reasoning streamed live). Null on runs that predate the fan-out redesign."""
 
-    run_id: int
+    analysis_id: int
     k: int
     passes: list[FanOutPassOut]
 
@@ -231,9 +231,11 @@ class RankedCandidateOut(ResponseModel):
 
 
 class RankingResponse(ResponseModel):
-    """GET /ranking and PUT /ranking/tiers — the ranked shortlist for the run."""
+    """GET /ranking and PUT /ranking/tiers — the ranked shortlist for the analysis."""
 
-    run_id: int
+    # The shared analysis this ranking is for. The client echoes it back on a tier/seed
+    # save so the server can reject a save against a superseded analysis (409 stale_analysis).
+    analysis_id: int
     weights: dict[str, float]  # keyed by dimension key (data)
     scored_count: int
     candidates: list[RankedCandidateOut]
@@ -276,6 +278,10 @@ class TierModel(RequestModel):
 
 
 class TierLayoutUpdate(RequestModel):
+    # The analysis the client is viewing. If it isn't the current one (another member
+    # re-ranked since), the save is rejected with 409 stale_analysis rather than applied
+    # to the wrong board. Always current at one member, so inert until real concurrency.
+    analysis_id: int
     tiers: list[TierModel]
     # Keys the committee acknowledged as "reviewed" this save (badge ✕ / "mark all
     # reviewed") — they drop out of new_dimension_keys even if left in Ignore.
@@ -287,5 +293,7 @@ class TierLayoutUpdate(RequestModel):
 
 
 class SeedsUpdate(RequestModel):
+    # The analysis the client is viewing — same stale-guard as TierLayoutUpdate.
+    analysis_id: int
     # Optional so a no-op PUT leaves proposals untouched.
     proposed_dimensions: list[str] | None = None

@@ -1,19 +1,22 @@
-"""Ranking-run persistence.
+"""Ranking persistence: shared ``Analysis`` + per-member ``MemberRanking`` (M15).
 
-A ``RankingRun`` holds the discovered ``PoolDimensionReport``. Per-candidate
-scores are NOT stored here — they live in ``ApplicationAIResult`` rows under
-``kind = "dimension_scoring:<dimension_key>"``, so a dimension's **key** joins
-back to a candidate's score. A matched dimension is replaced wholesale by its
-prior self (key + text) via ``adopt_matched_keys`` across a re-rank, so its tier
-placement, cached score, AND the wording that score was computed against all carry
-forward together (see SPEC "Pattern Discovery And Dimension Scoring"). "The current
-run" is the most recent one.
+An ``Analysis`` holds the discovered ``PoolDimensionReport`` — the shared, compute-once AI
+output. Per-candidate scores are NOT stored here — they live in ``ApplicationAIResult`` rows
+under ``kind = "dimension_scoring:<dimension_key>"``, so a dimension's **key** joins back to a
+candidate's score. A matched dimension is replaced wholesale by its prior self (key + text)
+via ``adopt_matched_keys`` across a re-rank, so its tier placement, cached score, AND the
+wording that score was computed against all carry forward together (see SPEC "Pattern
+Discovery And Dimension Scoring"). "The current analysis" is the most recent one.
 
-Weights are derived from the tier layout, never proposed by the AI: the run stores
-the working tiers in ``run_state["tiers"]`` and derives per-dimension weights from
-them on read (never stored). A fresh run opens with empty tiers → uniform equal-weight
-baseline until the committee tiers. Discovering the axes is the AI's job; deciding what
-matters is the committee's.
+Each committee member's *view* of an analysis — importance tiers, new/revived flags,
+proposals — is a per-member ``MemberRanking``, so one member's tiering never becomes
+everyone's. Weights are derived from the tier layout, never proposed by the AI: a
+``MemberRanking`` stores the working tiers in ``run_state["tiers"]`` and derives per-dimension
+weights from them on read (never stored). A fresh view opens with empty tiers → uniform
+equal-weight baseline until the member tiers. A ``MemberRanking`` reaches its shared dimensions
+via ``member_ranking.analysis``, so most read functions take a single ``member_ranking`` and
+resolve both sides from it. Discovering the axes is the AI's job; deciding what matters is each
+member's.
 """
 
 from __future__ import annotations
@@ -25,12 +28,14 @@ from sqlalchemy.orm import Session
 
 from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.db.models import (
+    Analysis,
+    AnalysisAudit,
     Application,
     ApplicationStatus,
     DimensionAlias,
-    RankingRun,
-    RankingRunAudit,
+    MemberRanking,
     SyncRun,
+    User,
 )
 from app.schemas.settings import AppSettings
 
@@ -158,9 +163,10 @@ def adopt_matched_keys(
     return report.model_copy(update={"dimensions": dims})
 
 
-def create_run(
+def create_analysis(
     db: Session,
     *,
+    user: User,
     report: PoolDimensionReport,
     settings: AppSettings,
     narrative: str | None,
@@ -169,64 +175,70 @@ def create_run(
     match_audit: dict | None = None,
     fan_out_audit: dict | None = None,
     decompose_audit: dict | None = None,
-) -> RankingRun:
-    """Persist a freshly discovered pattern report as a new ranking run.
+) -> Analysis:
+    """Persist a freshly discovered pattern report as a new shared ``Analysis`` and seed the
+    triggering member's ``MemberRanking`` view of it.
 
-    ``tier_layout`` carries prior placements forward across a re-rank (see
-    ``carry_forward_layout``); omitted → the default all-Ignore layout. Either way
-    the run stores tiers explicitly and derives ``weights`` from them.
-    ``new_dimension_keys`` are the unmatched new dimensions to flag in the UI; empty
-    on a first run.
+    ``tier_layout``/``new_dimension_keys`` are that member's carried-forward placements and
+    triage flags (see ``carry_forward_layout``); omitted → the default all-Ignore layout. They
+    are per-member, so they live on the new ``MemberRanking``, not the shared analysis. Other
+    members get their own ``MemberRanking`` lazily (carried forward from their own prior view)
+    the first time they read this analysis — see ``get_member_ranking``.
 
-    There is no stored "kept" set: an axis is kept iff the committee placed it in a
-    working (non-Ignore) tier, and ``tier_layout`` already carries those placements
-    forward across re-runs (see ``carry_forward_layout``). ``kept_keys`` derives the
-    set from the tiers at read time, so it can't drift. Pending ``proposed_dimensions``
-    are consumed by the run, so the new run stores an empty list (they are now real
-    dimensions).
+    There is no stored "kept" set: an axis is kept iff the member placed it in a working
+    (non-Ignore) tier, and ``tier_layout`` already carries those placements forward across
+    re-runs. ``kept_keys`` derives the set from the tiers at read time, so it can't drift.
+    Pending ``proposed_dimensions`` are consumed by the run, so the new view stores an empty
+    list (they are now real dimensions).
     """
     layout = tier_layout if tier_layout is not None else default_tier_layout()
-    # Link the run to the sync whose pool it ranked over — the most recent import. This
-    # records the run's data provenance (which imported pool it scored), which the eval
-    # synthetic-source guard reads to decide whether the pool's evidence is safe to commit.
-    # None when nothing has been imported yet (shouldn't happen — ranking needs a pool).
+    # Link the analysis to the sync whose pool it ranked over — the most recent import. This
+    # records data provenance (which imported pool it scored), which the eval synthetic-source
+    # guard reads to decide whether the pool's evidence is safe to commit. None when nothing has
+    # been imported yet (shouldn't happen — ranking needs a pool).
     latest_sync_id = db.scalar(select(SyncRun.id).order_by(SyncRun.id.desc()).limit(1))
-    run = RankingRun(
+    analysis = Analysis(
         source_sync_run_id=latest_sync_id,
         dimension_report=report.model_dump(mode="json"),
-        # Everything this run's ranking depends on — pool + rank-chain prompt and model
-        # identity. The next Rank compares it to flag the run "out of date" when the pool,
+        # Everything this analysis's ranking depends on — pool + rank-chain prompt and model
+        # identity. The next Rank compares it to flag the analysis "out of date" when the pool,
         # any rank-chain prompt, or a model has changed.
         rank_inputs_fingerprint=rank_inputs_fingerprint(db, settings),
-        # The committee's mutable view. Tiers are the source of truth for weights (derived,
-        # never stored). A fresh all-Ignore board derives uniform weights. No stored "kept"
-        # set — tier placement is the keep signal (see kept_keys). Proposals are consumed by
-        # this run, so empty here.
-        run_state={
-            "tiers": layout,
-            "new_dimension_keys": new_dimension_keys or [],
-            "proposed_dimensions": [],
-        },
         # The AI-legibility trail lives in the 1:1 child so the hot read path stays lean.
         #   - discovery_narrative: the discovery pass's streamed reasoning.
         #   - match: raw pre-adopt discovery dims + the match map + narrative, so a re-rank's
         #     "what changed" is inspectable (re-discovery vs. over-matching). None on a first run.
         #   - fan_out: the K raw discovery reports before decomposition settled them. None on
-        #     runs written before fan-out landed.
+        #     analyses written before fan-out landed.
         #   - decompose: per settled axis, the source_keys it absorbed + merge/keep reasoning
         #     (Insights surface + the D9 committee-request trail). None before decomposition.
         #   - consolidate: filled later by apply_consolidation (post-score); None until then.
-        audit=RankingRunAudit(
+        audit=AnalysisAudit(
             discovery_narrative=narrative,
             match=match_audit,
             fan_out=fan_out_audit,
             decompose=decompose_audit,
         ),
     )
-    db.add(run)
+    db.add(analysis)
+    db.flush()  # assign analysis.id for the MemberRanking FK
+    # The triggering member's view. Tiers are the source of truth for weights (derived, never
+    # stored). A fresh all-Ignore board derives uniform weights. Proposals are consumed by this
+    # run, so empty here.
+    db.add(
+        MemberRanking(
+            analysis_id=analysis.id,
+            user_id=user.id,
+            run_state={
+                "tiers": layout,
+                "new_dimension_keys": new_dimension_keys or [],
+                "proposed_dimensions": [],
+            },
+        )
+    )
     db.commit()
-    db.refresh(run)
-    return run
+    db.refresh(analysis)
+    return analysis
 
 
 def _resolve_chains(links: dict[str, str]) -> dict[str, str]:
@@ -253,35 +265,41 @@ def _flatten_merges(merges: dict[str, str]) -> dict[str, str]:
 
 def apply_consolidation(
     db: Session,
-    run: RankingRun,
+    analysis: Analysis,
+    member_ranking: MemberRanking,
     *,
     merges: dict[str, str],
     audit: list[dict],
     narrative: str | None,
-) -> RankingRun:
+) -> Analysis:
     """Fold confirmed duplicate keys into their canonical key on an already-persisted
-    run (the post-score consolidation pass; SPEC "Post-score consolidation").
+    analysis (the post-score consolidation pass; SPEC "Post-score consolidation").
 
-    ``merges`` maps each dropped (newer) key → its kept (older/canonical) key. For each:
-    persist a ``DimensionAlias`` row (so future matches adopt the canonical key), drop
-    the loser from this run's ``dimension_report``, and remove it from every tier — the
-    winner already carries its own tier placement + cached scores, so the loser's rows
-    simply become orphaned cache (harmless, like any dropped dimension).
+    Consolidation is committee-wide: the model call ran once over the shared pool, so the
+    merge is a fact about the shared ``analysis``. Two kinds of write happen here:
+      - **Shared** (on ``analysis``): persist a ``DimensionAlias`` row per merge (so future
+        matches adopt the canonical key), drop the loser from ``dimension_report``, and record
+        the ``consolidate`` audit. These are true for everyone.
+      - **Per-member tier transfer** (on ``member_ranking``, the member who ran this Rank): the
+        loser's tier placement moves to the survivor so the member's "Critical" placement on a
+        dropped twin doesn't vanish. Only the triggering member is reconciled inline — every
+        OTHER member heals through the one carry-forward path when they next open the analysis
+        (``get_or_create_member_ranking``), which keys on dimension keys, so a merged-away
+        loser simply resolves to the survivor's placement. (No AI in either path; the model
+        call already happened.)
 
-    A merge can also heal a CROSS-RUN fork, where the surviving ``keep`` is a PRIOR-run
-    key that never appeared in THIS run (this run discovered only the newer ``drop``
-    twin; the definition-match pass missed it, but score-vector correlation caught it).
-    There the winner is *not* already in the report, so dropping the loser alone would
-    delete the axis entirely. Instead we surface the canonical prior key itself — bring
-    back its frozen MINT record and restore the working tier the committee last placed
-    it in — rather than renaming ``drop`` (keys must never be mixed up: cache identity
-    and committee tier/flag history both ride on the exact key). Weights are re-derived
-    from the collapsed tiers (never stored). Always records the ``consolidate`` audit
-    (even with zero merges — the pass ran), for Insights. The pass's cost lands in the
-    run cost ledger, not here.
+    A merge can also heal a CROSS-RUN fork, where the surviving ``keep`` is a PRIOR-analysis
+    key that never appeared in THIS one (only the newer ``drop`` twin surfaced; the
+    definition-match pass missed the fork, but score-vector correlation caught it). There the
+    winner is *not* already in the report, so dropping the loser alone would delete the axis —
+    instead surface the canonical key itself: bring back its frozen MINT record and restore the
+    working tier the member last placed it in (keys must never be mixed up: cache identity and
+    tier/flag history both ride on the exact key). Weights are re-derived from the collapsed
+    tiers (never stored). Always records the ``consolidate`` audit (even with zero merges — the
+    pass ran), for Insights. The pass's cost lands in the run cost ledger, not here.
     """
-    report_json = dict(run.dimension_report or {})
-    state = dict(run.run_state or {})
+    report_json = dict(analysis.dimension_report or {})
+    state = dict(member_ranking.run_state or {})
 
     # A single run's merges can form a chain: if C→B correlates higher than B→A, the
     # confirm loop emits {C: B, B: A}. Flatten every drop to its TERMINAL survivor
@@ -317,31 +335,31 @@ def apply_consolidation(
             d for d in report_json.get("dimensions", []) if d.get("key") not in merges
         ]
 
-        # Cross-run fork heal: a surviving ``keep`` that isn't in this run's report is a
-        # PRIOR-run key this run never re-discovered on its own — only the newer ``drop``
+        # Cross-run fork heal: a surviving ``keep`` that isn't in this analysis's report is a
+        # PRIOR-analysis key this one never re-discovered on its own — only the newer ``drop``
         # twin surfaced, the definition-match pass missed the fork, and score-vector
         # correlation caught it here. Dropping the loser alone would delete the axis, so
         # surface the canonical key itself: bring back its FROZEN MINT record (never the
         # drop's re-worded text — cache identity rides on the exact key), and restore the
-        # working tier the committee last placed it in (same revival path a normally
-        # re-surfacing key takes, via tier_history's most-recent placement).
+        # working tier the member last placed it in (same revival path a normally
+        # re-surfacing key takes, via this member's tier_history most-recent placement).
         present = {d.get("key") for d in report_dims}
         resurfaced = [k for k in dict.fromkeys(merges.values()) if k not in present]
         if resurfaced:
             history = all_known_dimensions(db)
             mint_by_key = {d.key: d for d in history.dimensions} if history else {}
-            _scaffold, most_recent_tier_by_key = tier_history(db)
+            _scaffold, most_recent_tier_by_key = tier_history(db, member_ranking.user)
             # Only keys we can actually rebuild from a mint record get surfaced+placed.
             resurfaced = [k for k in resurfaced if k in mint_by_key]
             report_dims.extend(mint_by_key[k].model_dump(mode="json") for k in resurfaced)
         report_json["dimensions"] = report_dims
 
         # Placement is now the sole "keep" signal (and the weight source), so a merge
-        # must carry the committee's tier intent from the DROPPED twin to the survivor —
-        # otherwise a member's "Critical" placement on the dropped key would silently
-        # vanish. The survivor inherits the HIGHEST-priority working tier among the keys
-        # collapsing into it (tier order = priority, top = heaviest); a twin left in
-        # Ignore contributes no placement.
+        # must carry the member's tier intent from the DROPPED twin to the survivor —
+        # otherwise a "Critical" placement on the dropped key would silently vanish. The
+        # survivor inherits the HIGHEST-priority working tier among the keys collapsing
+        # into it (tier order = priority, top = heaviest); a twin left in Ignore
+        # contributes no placement.
         old_tiers = state.get("tiers") or []
         placement = {k: i for i, t in enumerate(old_tiers) for k in t.get("dimension_keys", [])}
         target_index: dict[str, int] = {}
@@ -385,9 +403,10 @@ def apply_consolidation(
         state["new_dimension_keys"] = [
             k for k in (state.get("new_dimension_keys") or []) if k not in merges
         ]
-        # Reassign the JSON columns so SQLAlchemy tracks the change.
-        run.dimension_report = report_json
-        run.run_state = state
+        # Reassign the JSON columns so SQLAlchemy tracks the change: dimension_report is
+        # shared (on the analysis), the tier state is this member's (on member_ranking).
+        analysis.dimension_report = report_json
+        member_ranking.run_state = state
 
     # Persisted for EVERY run the pass ran on, merges or not. Each pair row carries both
     # judged definitions (definition_keep/definition_drop), so this audit is the durable,
@@ -397,19 +416,65 @@ def apply_consolidation(
     # merge map is NOT stored here — it's dimension_aliases (the merge-truth); the view
     # derives it from the merged pairs.
     consolidate_audit = {"pairs": audit, "narrative": narrative}
-    if run.audit is None:
-        run.audit = RankingRunAudit(consolidate=consolidate_audit)
+    if analysis.audit is None:
+        analysis.audit = AnalysisAudit(consolidate=consolidate_audit)
     else:
-        run.audit.consolidate = consolidate_audit
+        analysis.audit.consolidate = consolidate_audit
 
     db.commit()
-    db.refresh(run)
-    return run
+    db.refresh(analysis)
+    return analysis
 
 
-def get_current_run(db: Session) -> RankingRun | None:
-    """The most recent ranking run, or None if discovery has never run."""
-    return db.scalar(select(RankingRun).order_by(RankingRun.id.desc()).limit(1))
+def get_current_analysis(db: Session) -> Analysis | None:
+    """The most recent shared analysis, or None if discovery has never run."""
+    return db.scalar(select(Analysis).order_by(Analysis.id.desc()).limit(1))
+
+
+def get_or_create_member_ranking(
+    db: Session, analysis: Analysis, user: User
+) -> MemberRanking:
+    """This member's view of ``analysis``. Named ``get_or_create`` because it WRITES when
+    absent: a member who didn't trigger the Rank has no view of the new analysis until they
+    open it, so the first read materializes one — seeded by carrying their prior tiers forward
+    (the same all-history carry-forward a re-rank uses). A brand-new member (no prior tiering
+    anywhere) gets the default all-Ignore layout.
+    """
+    existing = db.scalar(
+        select(MemberRanking).where(
+            MemberRanking.analysis_id == analysis.id,
+            MemberRanking.user_id == user.id,
+        )
+    )
+    if existing is not None:
+        return existing
+
+    report = current_dimension_report(analysis)
+    scaffold, most_recent = tier_history(db, user)
+    if report is not None and scaffold:
+        immediately_prior = _immediately_prior_keys(db, user, before_analysis_id=analysis.id)
+        layout, flagged = carry_forward_layout(
+            new_report=report,
+            scaffold_tiers=scaffold,
+            most_recent_tier_by_key=most_recent,
+            immediately_prior_keys=immediately_prior,
+        )
+    else:
+        layout, flagged = default_tier_layout(), []
+
+    member_ranking = MemberRanking(
+        analysis_id=analysis.id,
+        user_id=user.id,
+        run_state={
+            "tiers": layout,
+            "new_dimension_keys": flagged,
+            "proposed_dimensions": [],
+        },
+    )
+    db.add(member_ranking)
+    db.commit()
+    db.refresh(member_ranking)
+    return member_ranking
 
 
 def alias_map(db: Session) -> dict[str, str]:
@@ -442,16 +507,16 @@ def key_history(db: Session) -> tuple[dict[str, int], dict[str, str], dict[str, 
     Rank and definition therefore both come from the SAME (earliest) run, so a key's judged
     wording never drifts off the scores it reasons about.
     """
-    runs = db.scalars(select(RankingRun).order_by(RankingRun.id.asc())).all()
+    analyses = db.scalars(select(Analysis).order_by(Analysis.id.asc())).all()
     rank: dict[str, int] = {}
     definitions: dict[str, str] = {}
     names: dict[str, str] = {}
-    for run in runs:
-        report = current_dimension_report(run)
+    for analysis in analyses:
+        report = current_dimension_report(analysis)
         if report is None:
             continue
         for dim in report.dimensions:
-            rank.setdefault(dim.key, run.id)  # first (oldest) run wins the rank
+            rank.setdefault(dim.key, analysis.id)  # first (oldest) analysis wins the rank
             definitions.setdefault(dim.key, dim.definition)  # and the mint definition
             names.setdefault(dim.key, dim.name)  # and the mint name
     return rank, definitions, names
@@ -487,13 +552,13 @@ def all_known_dimensions(db: Session) -> PoolDimensionReport | None:
     ever discovered dimensions.
     """
     aliases = alias_map(db)
-    # Oldest run first, so the first time we see a key is its MINT — the frozen text its
-    # cached scores were computed against. A later run's re-worded re-discovery of the
-    # same key is ignored (the invariant: text can't drift under a key).
-    runs = db.scalars(select(RankingRun).order_by(RankingRun.id.asc())).all()
+    # Oldest analysis first, so the first time we see a key is its MINT — the frozen text
+    # its cached scores were computed against. A later analysis's re-worded re-discovery of
+    # the same key is ignored (the invariant: text can't drift under a key).
+    analyses = db.scalars(select(Analysis).order_by(Analysis.id.asc())).all()
     minted_by_key: dict[str, PoolDimension] = {}
-    for run in runs:
-        report = current_dimension_report(run)
+    for analysis in analyses:
+        report = current_dimension_report(analysis)
         if report is None:
             continue
         for dim in report.dimensions:
@@ -509,106 +574,109 @@ def all_known_dimensions(db: Session) -> PoolDimensionReport | None:
     return PoolDimensionReport(dimensions=list(minted_by_key.values()))
 
 
-def ranking_is_current(db: Session, run: RankingRun | None, settings: AppSettings) -> bool:
-    """True when ``run``'s stored rank-inputs fingerprint matches the inputs now —
+def ranking_is_current(db: Session, analysis: Analysis | None, settings: AppSettings) -> bool:
+    """True when ``analysis``'s stored rank-inputs fingerprint matches the inputs now —
     i.e. the pool, every rank-chain prompt, and both models are unchanged, so a
     re-rank would be a no-op. Drives the "Rank out of date" badge.
 
-    False if there is no run, or the run predates rank-inputs fingerprinting (older
-    runs stored only ``pool_fingerprint``; treat them as stale so the first re-rank
+    False if there is no analysis, or it predates rank-inputs fingerprinting (older
+    analyses stored only ``pool_fingerprint``; treat them as stale so the first re-rank
     re-stamps them with the richer fingerprint).
     """
-    if run is None:
+    if analysis is None:
         return False
-    stored = run.rank_inputs_fingerprint
+    stored = analysis.rank_inputs_fingerprint
     if not stored:
         return False
     return stored == rank_inputs_fingerprint(db, settings)
 
 
-def mark_ranking_current(db: Session, run: RankingRun, settings: AppSettings) -> None:
-    """Record the committee's choice to keep this run's dimensions for current inputs
+def mark_ranking_current(db: Session, analysis: Analysis, settings: AppSettings) -> None:
+    """Record the committee's choice to keep this analysis's dimensions for current inputs
     (stamps ``rank_inputs_fingerprint`` so a score-only run reads as up to date)."""
-    run.rank_inputs_fingerprint = rank_inputs_fingerprint(db, settings)
-    db.add(run)
+    analysis.rank_inputs_fingerprint = rank_inputs_fingerprint(db, settings)
+    db.add(analysis)
     db.commit()
 
 
-def current_dimension_report(run: RankingRun) -> PoolDimensionReport | None:
-    """Parse the stored ``PoolDimensionReport`` from a run, if present."""
-    if not run.dimension_report:
+def current_dimension_report(analysis: Analysis) -> PoolDimensionReport | None:
+    """Parse the stored ``PoolDimensionReport`` from an analysis, if present."""
+    if not analysis.dimension_report:
         return None
-    return PoolDimensionReport.model_validate(run.dimension_report)
+    return PoolDimensionReport.model_validate(analysis.dimension_report)
 
 
-def dimension_weights(run: RankingRun) -> dict[str, float]:
-    """The run's per-dimension weights — a complete map, DERIVED from the tier layout
-    (never stored; tiers are the source of truth). Empty before any dimensions exist."""
-    report = current_dimension_report(run)
+def dimension_weights(member_ranking: MemberRanking) -> dict[str, float]:
+    """The member's per-dimension weights — a complete map, DERIVED from their tier layout
+    (never stored; tiers are the source of truth). Empty before any dimensions exist.
+    Reads the shared dimensions off ``member_ranking.analysis`` and the tiers off the member's
+    own view."""
+    report = current_dimension_report(member_ranking.analysis)
     if report is None:
         return {}
-    return weights_from_tiers([d.key for d in report.dimensions], stored_tiers(run))
+    return weights_from_tiers([d.key for d in report.dimensions], stored_tiers(member_ranking))
 
 
 def current_dimension_kinds(db: Session) -> set[str]:
-    """The cache ``kind`` of every dimension in the current run (empty if no current run).
-    The per-(applicant, dimension) scoring cache keys on these, so both the coverage count
-    and the per-candidate scoring trace resolve which cached rows belong to the live set."""
+    """The cache ``kind`` of every dimension in the current analysis (empty if none). The
+    per-(applicant, dimension) scoring cache keys on these, so both the coverage count and the
+    per-candidate scoring trace resolve which cached rows belong to the live set. Reads the
+    shared dimension set only — no per-member view needed."""
     from app.ai.dimension_scoring import kind_for_dimension
 
-    run = get_current_run(db)
-    report = current_dimension_report(run) if run is not None else None
+    analysis = get_current_analysis(db)
+    report = current_dimension_report(analysis) if analysis is not None else None
     if report is None:
         return set()
     return {kind_for_dimension(d.key) for d in report.dimensions}
 
 
-def kept_keys(run: RankingRun) -> list[str]:
-    """Dimension keys the committee has KEPT — every key placed in a working
+def kept_keys(member_ranking: MemberRanking) -> list[str]:
+    """Dimension keys this member has KEPT — every key they placed in a working
     (non-Ignore) tier. A kept axis is guaranteed to survive the next Rank (injected
     at decomposition as MUST-survive); Ignore is the only "fair game to drop/re-carve"
     bucket. There is no separate stored set: tier placement IS the keep signal, so
-    this derives from the run's tiers and can never drift out of sync with them
+    this derives from the member's tiers and can never drift out of sync with them
     (``carry_forward_layout`` already carries placements across re-runs and merges).
 
-    Only keys still present in the run's report are returned (a stale tier entry
+    Only keys still present in the shared report are returned (a stale tier entry
     naming a dropped dimension is ignored). Ignore is synthesized from what's unplaced,
     so it is never in ``stored_tiers`` — reading the stored working tiers already
     excludes it.
     """
-    report = current_dimension_report(run)
+    report = current_dimension_report(member_ranking.analysis)
     valid = {d.key for d in report.dimensions} if report is not None else set()
-    placed = {key for tier in stored_tiers(run) for key in tier.get("dimension_keys", [])}
+    placed = {key for tier in stored_tiers(member_ranking) for key in tier.get("dimension_keys", [])}
     return sorted(placed & valid)
 
 
-def proposed_dimensions(run: RankingRun) -> list[str]:
-    """Pending free-text axes a member proposed, awaiting the next Rank to realize
+def proposed_dimensions(member_ranking: MemberRanking) -> list[str]:
+    """Pending free-text axes this member proposed, awaiting the next Rank to realize
     them. Cleared once a run consumes them (they become real dimensions).
     """
-    return list((run.run_state or {}).get("proposed_dimensions", []))
+    return list((member_ranking.run_state or {}).get("proposed_dimensions", []))
 
 
-def _audit_field(run: RankingRun, name: str) -> dict | None:
-    """One field off the run's 1:1 audit row (``match``/``decompose``/``consolidate``/
-    ``fan_out``), or None when the run has no audit row (predates the split) — so the
-    audit-view accessors don't each repeat the ``run.audit.<field> if run.audit`` guard.
+def _audit_field(analysis: Analysis, name: str) -> dict | None:
+    """One field off the analysis's 1:1 audit row (``match``/``decompose``/``consolidate``/
+    ``fan_out``), or None when it has no audit row (predates the split) — so the audit-view
+    accessors don't each repeat the ``analysis.audit.<field> if analysis.audit`` guard.
     """
-    return getattr(run.audit, name) if run.audit else None
+    return getattr(analysis.audit, name) if analysis.audit else None
 
 
-def match_audit_view(run: RankingRun) -> dict | None:
-    """The run's carry-forward audit, shaped for the trace viewer, or None when the
-    run predates match-audit capture (older runs stored no audit).
+def match_audit_view(analysis: Analysis) -> dict | None:
+    """The analysis's carry-forward audit, shaped for the trace viewer, or None when it
+    predates match-audit capture (older analyses stored no audit).
 
-    The stored audit (``run.audit.match``) records what discovery *actually*
+    The stored audit (``analysis.audit.match``) records what discovery *actually*
     emitted before ``adopt_matched_keys`` rewrote matched keys, plus the new→old map
     and the match narrative. This adds the derived **carry-forward rate** (matched /
     discovered) — a persistently near-100% rate is the smell that the match pass is
     over-matching. ``carry_forward_rate`` is None on a first run, where there were no
     prior dimensions to match against and the rate is undefined (not zero).
     """
-    audit = _audit_field(run, "match")
+    audit = _audit_field(analysis, "match")
     if not audit:
         return None
     discovered = audit.get("raw_discovery_dimensions", [])
@@ -639,17 +707,17 @@ def match_audit_view(run: RankingRun) -> dict | None:
     }
 
 
-def decompose_audit_view(run: RankingRun) -> dict | None:
-    """The run's decompose audit — how the K fan-out reports were settled into one set —
-    shaped for the trace viewer, or None on runs that predate decomposition (single-
-    discovery runs have no ``run.audit.decompose``).
+def decompose_audit_view(analysis: Analysis) -> dict | None:
+    """The analysis's decompose audit — how the K fan-out reports were settled into one set —
+    shaped for the trace viewer, or None on analyses that predate decomposition (single-
+    discovery runs have no ``analysis.audit.decompose``).
 
     The stored audit (built by ``dimension_decompose.decompose_audit_payload``) is already
     view-shaped: settled axes with source_keys + decision reasoning, the input/settled
     counts, and the D9 ``folded_requests`` trail. This is a thin pass-through with
     defaults, mirroring the other ``*_audit_view`` accessors so the router stays uniform.
     """
-    audit = _audit_field(run, "decompose")
+    audit = _audit_field(analysis, "decompose")
     if not audit:
         return None
     # Which discovery report(s) coined each source key, derived from the fan-out audit
@@ -660,7 +728,7 @@ def decompose_audit_view(run: RankingRun) -> dict | None:
     # uncaptured) simply has no name entry; the UI falls back to the bare key.
     key_to_reports: dict[str, list[int]] = {}
     key_to_name: dict[str, str] = {}
-    fan_out = _audit_field(run, "fan_out") or {}
+    fan_out = _audit_field(analysis, "fan_out") or {}
     for i, p in enumerate(fan_out.get("passes", [])):
         for dim in (p.get("report") or {}).get("dimensions", []):
             key_to_reports.setdefault(dim.get("key"), []).append(i)
@@ -688,36 +756,36 @@ def decompose_audit_view(run: RankingRun) -> dict | None:
     }
 
 
-def consolidate_audit_view(db: Session, run: RankingRun) -> dict | None:
-    """The run's consolidation audit — the correlation-nominated duplicate pairs and the
-    confirm verdict on each — shaped for the trace viewer, or None on runs that predate
-    the pass (no ``run.audit.consolidate``).
+def consolidate_audit_view(db: Session, analysis: Analysis) -> dict | None:
+    """The analysis's consolidation audit — the correlation-nominated duplicate pairs and the
+    confirm verdict on each — shaped for the trace viewer, or None on analyses that predate
+    the pass (no ``analysis.audit.consolidate``).
 
     ``pairs`` are every nominated pair with its keep/drop keys + user-facing names, the
     correlation ``r``, whether it ``merged``, and the model's ``reason``. ``merges`` (the
     applied ``drop_key -> keep_key`` map) is DERIVED from the merged pairs — it isn't stored
     twice; the durable merge-truth is the ``dimension_aliases`` table, and this view is the
-    per-run record of what the pass decided.
+    per-analysis record of what the pass decided.
 
     Names prefer the value SNAPSHOTTED into the pair at consolidation time (the durable
     record — a merged drop key leaves the report, so its name can't be looked up later),
-    falling back to the key's name from history/this run's own artifacts. The fallback
-    covers pairs written before name capture existed: a prior-run key resolves via its
-    MINT name across all reports; a key minted AND retired within THIS run (so never in
-    any report) resolves via this run's own decompose/fan-out names. Only a key with no
-    trace anywhere stays nameless, and the UI then shows the bare key.
+    falling back to the key's name from history/this analysis's own artifacts. The fallback
+    covers pairs written before name capture existed: a prior key resolves via its MINT name
+    across all reports; a key minted AND retired within THIS analysis (so never in any report)
+    resolves via this analysis's own decompose/fan-out names. Only a key with no trace anywhere
+    stays nameless, and the UI then shows the bare key.
     """
-    audit = _audit_field(run, "consolidate")
+    audit = _audit_field(analysis, "consolidate")
     if not audit:
         return None
-    # Resolution map: cross-run mint names, then overlaid with this run's own settled +
-    # discovered names (covers a within-run mint-then-retire that never reached a report).
+    # Resolution map: cross-analysis mint names, then overlaid with this analysis's own
+    # settled + discovered names (covers a within-run mint-then-retire never in a report).
     _rank, _defs, names = key_history(db)
     resolve = dict(names)
-    # `or {}` on each audit: they're stored as null on runs that predate that pass.
-    for s in (_audit_field(run, "decompose") or {}).get("settled", []):
+    # `or {}` on each audit: they're stored as null on analyses that predate that pass.
+    for s in (_audit_field(analysis, "decompose") or {}).get("settled", []):
         resolve.setdefault(s.get("key"), s.get("name", ""))
-    for p in (_audit_field(run, "fan_out") or {}).get("passes", []):
+    for p in (_audit_field(analysis, "fan_out") or {}).get("passes", []):
         for dim in (p.get("report") or {}).get("dimensions", []):
             resolve.setdefault(dim.get("key"), dim.get("name", ""))
     pairs = [
@@ -739,17 +807,17 @@ def consolidate_audit_view(db: Session, run: RankingRun) -> dict | None:
     }
 
 
-def fan_out_audit_view(run: RankingRun) -> dict | None:
-    """The run's fan-out audit — each of the K parallel discoverers' report + reasoning —
-    shaped for the Insights discovery panel, or None on runs that predate the fan-out
-    (single-discovery runs have no ``run.audit.fan_out``, or an older shape).
+def fan_out_audit_view(analysis: Analysis) -> dict | None:
+    """The analysis's fan-out audit — each of the K parallel discoverers' report + reasoning —
+    shaped for the Insights discovery panel, or None on analyses that predate the fan-out
+    (single-discovery runs have no ``analysis.audit.fan_out``, or an older shape).
 
     Returns ``{k, passes: [{dimensions: [{key,name,definition,why...}], narrative}]}``.
     Older audits stored ``reports`` without per-pass narratives; those are tolerated
     (narrative comes back null) so the panel still renders their dimensions. Any extra
     keys in a stored report are ignored — only the fields above are projected.
     """
-    audit = run.audit.fan_out if run.audit else None
+    audit = analysis.audit.fan_out if analysis.audit else None
     if not audit:
         return None
     # Current shape: passes = [{report, narrative}]. Legacy shape: reports = [report].
@@ -779,17 +847,16 @@ def fan_out_audit_view(run: RankingRun) -> dict | None:
 
 def set_proposals(
     db: Session,
-    run: RankingRun,
+    member_ranking: MemberRanking,
     *,
     proposed_dimensions: list[str] | None = None,
-) -> RankingRun:
-    """Persist the committee's pending free-text proposals between runs — the axes a
-    member wants the next Rank to ground in the pool. A no-op when ``None`` is passed.
-    (Keeping an existing axis across re-runs is tier placement, not a stored seed;
-    see ``kept_keys``.)
+) -> MemberRanking:
+    """Persist this member's pending free-text proposals between runs — the axes they
+    want the next Rank to ground in the pool. A no-op when ``None`` is passed. (Keeping an
+    existing axis across re-runs is tier placement, not a stored seed; see ``kept_keys``.)
     """
     if proposed_dimensions is None:
-        return run
+        return member_ranking
     # Trim blanks/whitespace and dedupe while preserving order.
     seen: set[str] = set()
     cleaned: list[str] = []
@@ -798,10 +865,10 @@ def set_proposals(
         if t and t not in seen:
             seen.add(t)
             cleaned.append(t)
-    run.run_state = {**(run.run_state or {}), "proposed_dimensions": cleaned}
+    member_ranking.run_state = {**(member_ranking.run_state or {}), "proposed_dimensions": cleaned}
     db.commit()
-    db.refresh(run)
-    return run
+    db.refresh(member_ranking)
+    return member_ranking
 
 
 # The opening working tiers (most→least important), empty so every dimension is
@@ -825,20 +892,20 @@ def default_tier_layout() -> list[dict]:
     return [dict(t, dimension_keys=list(t["dimension_keys"])) for t in DEFAULT_WORKING_TIERS]
 
 
-def stored_tiers(run: RankingRun) -> list[dict]:
-    """The run's stored *working* tiers (no Ignore zone), or the default when unset."""
-    stored = (run.run_state or {}).get("tiers")
+def stored_tiers(member_ranking: MemberRanking) -> list[dict]:
+    """This member's stored *working* tiers (no Ignore zone), or the default when unset."""
+    stored = (member_ranking.run_state or {}).get("tiers")
     if stored:
         return [dict(t) for t in stored]
-    return default_tier_layout() if current_dimension_report(run) is not None else []
+    return default_tier_layout() if current_dimension_report(member_ranking.analysis) is not None else []
 
 
-def display_tiers(run: RankingRun) -> list[dict]:
-    """The working tiers plus a synthesized Ignore zone of every unplaced dimension
-    — the shape the tier-list UI renders. The Ignore zone is derived, never stored.
+def display_tiers(member_ranking: MemberRanking) -> list[dict]:
+    """This member's working tiers plus a synthesized Ignore zone of every unplaced
+    dimension — the shape the tier-list UI renders. The Ignore zone is derived, never stored.
     """
-    working = stored_tiers(run)
-    report = current_dimension_report(run)
+    working = stored_tiers(member_ranking)
+    report = current_dimension_report(member_ranking.analysis)
     if report is None:
         return working
     placed = {key for t in working for key in t.get("dimension_keys", [])}
@@ -846,19 +913,22 @@ def display_tiers(run: RankingRun) -> list[dict]:
     return [*working, {"id": IGNORE_TIER_ID, "label": IGNORE_TIER_LABEL, "dimension_keys": ignored, "ignore": True}]
 
 
-def tier_history(db: Session) -> tuple[list[dict], dict[str, str]]:
-    """Committee tier intent across ALL runs, for carrying placements forward.
+def tier_history(db: Session, user: User) -> tuple[list[dict], dict[str, str]]:
+    """One member's tier intent across ALL their rankings, for carrying placements forward.
+
+    Tiering is per-member, so this walks THIS member's ``MemberRanking`` rows (newest analysis
+    first), reading their tiers from each and dimension presence from the shared ``analysis``.
 
     Returns ``(scaffold_tiers, most_recent_tier_by_key)``:
-      - ``scaffold_tiers`` — the most recent run's working-tier *structure* (ids +
-        labels, no dimensions), used as the board to place onto. Empty if no runs.
+      - ``scaffold_tiers`` — the member's most recent working-tier *structure* (ids +
+        labels, no dimensions), used as the board to place onto. Empty if they have none.
       - ``most_recent_tier_by_key`` — key → the tier id it was MOST RECENTLY in, across
-        all runs. **Ignore is a first-class tier here** (id ``IGNORE_TIER_ID``): a key
-        that was present in a run's report but in no working tier was Ignored in that
-        run, so it maps to ``"ignore"``. Because we scan newest-first, a recent Ignore
-        correctly overrides an older working placement — dragging a key to Ignore is a
-        durable decision, not the absence of one. A key genuinely absent from a run's
-        report (gone from the pool) records nothing for that run, so its last real
+        this member's rankings. **Ignore is a first-class tier here** (id ``IGNORE_TIER_ID``):
+        a key that was present in an analysis's report but in no working tier of the member's
+        ranking was Ignored by them there, so it maps to ``"ignore"``. Because we scan
+        newest-first, a recent Ignore correctly overrides an older working placement — dragging
+        a key to Ignore is a durable decision, not the absence of one. A key genuinely absent
+        from an analysis's report (gone from the pool) records nothing there, so its last real
         appearance still wins — that is the revival path.
 
     This is the all-history basis for ``carry_forward_layout``: each key restores to
@@ -867,13 +937,18 @@ def tier_history(db: Session) -> tuple[list[dict], dict[str, str]]:
     key mapping to it simply stays unplaced (lands in the derived Ignore zone) — never
     injected into a working tier or the ``kept_keys`` set.
     """
-    runs = db.scalars(select(RankingRun).order_by(RankingRun.id.desc())).all()
+    rankings = db.scalars(
+        select(MemberRanking)
+        .where(MemberRanking.user_id == user.id)
+        .join(Analysis)
+        .order_by(Analysis.id.desc())
+    ).all()
     scaffold: list[dict] = []
     most_recent_tier_by_key: dict[str, str] = {}
-    # Newest run first: the first tier we see for a key is its most-recent one.
-    # Scaffold from the newest run that has working tiers.
-    for run in runs:
-        tiers = stored_tiers(run)
+    # Newest analysis first: the first tier we see for a key is its most-recent one.
+    # Scaffold from the member's newest ranking that has working tiers.
+    for ranking in rankings:
+        tiers = stored_tiers(ranking)
         if not scaffold and tiers:
             scaffold = [
                 {"id": t["id"], "label": t["label"], "dimension_keys": []} for t in tiers
@@ -883,9 +958,10 @@ def tier_history(db: Session) -> tuple[list[dict], dict[str, str]]:
             for key in tier.get("dimension_keys", []):
                 most_recent_tier_by_key.setdefault(key, tier["id"])
                 placed.add(key)
-        # A key present in this run's report but in no working tier was Ignored here.
-        # Record it as such so a recent Ignore beats an older working placement.
-        report = current_dimension_report(run)
+        # A key present in this analysis's report but in no working tier of the member's
+        # ranking was Ignored by them here. Record it so a recent Ignore beats an older
+        # working placement.
+        report = current_dimension_report(ranking.analysis)
         if report is not None:
             for dim in report.dimensions:
                 if dim.key not in placed:
@@ -893,29 +969,48 @@ def tier_history(db: Session) -> tuple[list[dict], dict[str, str]]:
     return scaffold, most_recent_tier_by_key
 
 
-def revived_flag_keys(db: Session, run: RankingRun) -> list[str]:
-    """Of ``run``'s flagged keys (``new_dimension_keys`` — the one unacknowledged
-    triage set), those that appeared in an earlier run get the "revived" label (seen
-    before, dropped for at least the immediately-prior run, now back); the rest are
-    genuinely "new" (never seen in any prior run).
+def _immediately_prior_keys(db: Session, user: User, *, before_analysis_id: int) -> set[str]:
+    """The dimension keys of this member's ranking on the analysis IMMEDIATELY BEFORE
+    ``before_analysis_id`` — the ones continuous in their view (never flagged). Empty if
+    they had no prior ranking. Reads the report off that prior analysis; the member had a
+    view of it (that's what "prior ranking" means)."""
+    prior = db.scalar(
+        select(MemberRanking)
+        .where(MemberRanking.user_id == user.id, MemberRanking.analysis_id < before_analysis_id)
+        .join(Analysis)
+        .order_by(Analysis.id.desc())
+        .limit(1)
+    )
+    if prior is None:
+        return set()
+    report = current_dimension_report(prior.analysis)
+    return {d.key for d in report.dimensions} if report is not None else set()
+
+
+def revived_flag_keys(db: Session, member_ranking: MemberRanking) -> list[str]:
+    """Of this member ranking's flagged keys (``new_dimension_keys`` — the one unacknowledged
+    triage set), those that appeared in an earlier analysis get the "revived" label (seen
+    before, dropped for at least the immediately-prior analysis, now back); the rest are
+    genuinely "new" (never seen in any prior analysis).
 
     Label only, derived at read time — both kinds share the one stored flagged set,
     so there is no second field to keep in sync (SPEC "badge is presence-driven,
     reuses the one existing flags set"). New = flagged − revived, computed by the
     caller/frontend.
 
-    Note the gap semantics: a flagged key is by construction absent from the
-    immediately-prior run (``carry_forward_layout`` only flags absent-from-prior
-    keys), so "seen in any run before this one" is equivalent to "seen in a run
-    *before the immediately-prior one*" for a flagged key — a revived key genuinely
-    SKIPPED at least the last run. A dimension that persists run-to-run is never
-    flagged, so never labelled revived.
+    "Seen before" is a fact about the shared dimension history (the analyses), not about this
+    member's tiering — a key counts as seen once any earlier analysis discovered it. A flagged
+    key is by construction absent from the immediately-prior analysis, so "seen in any analysis
+    before this one" means a revived key genuinely SKIPPED at least the last one. A dimension
+    that persists run-to-run is never flagged, so never labelled revived.
     """
-    flagged = set((run.run_state or {}).get("new_dimension_keys", []))
+    flagged = set((member_ranking.run_state or {}).get("new_dimension_keys", []))
     if not flagged:
         return []
     earlier = db.scalars(
-        select(RankingRun).where(RankingRun.id < run.id).order_by(RankingRun.id.desc())
+        select(Analysis)
+        .where(Analysis.id < member_ranking.analysis_id)
+        .order_by(Analysis.id.desc())
     ).all()
     seen_before: set[str] = set()
     for prior in earlier:
@@ -925,21 +1020,22 @@ def revived_flag_keys(db: Session, run: RankingRun) -> list[str]:
     return sorted(flagged & seen_before)
 
 
-def requested_flag_keys(run: RankingRun) -> list[str]:
-    """This run's committee-requested dimensions still awaiting acknowledgement — the
-    keys with ``from_committee_request`` set (a member proposed this axis THIS run;
-    see ``enforce_committee_requests``) minus any the committee has dismissed.
+def requested_flag_keys(member_ranking: MemberRanking) -> list[str]:
+    """This member's committee-requested dimensions still awaiting their acknowledgement — the
+    keys with ``from_committee_request`` set on the shared analysis (a member proposed this axis
+    for the Rank that produced it; see ``enforce_committee_requests``) minus any this member has
+    dismissed.
 
-    Provenance, not triage: unlike ``new_dimension_keys`` this flag is authoritative on
-    the run's report (recomputed per run, cleared on the next Rank), so the "still
-    flagged" set is derived — the report flag minus a stored ``acknowledged_requested_keys``
-    dismissal set, the same shape the badge ✕ uses for new/revived. Empty on runs with
-    no proposal.
+    Provenance, not triage: unlike ``new_dimension_keys`` this flag is authoritative on the
+    shared report (recomputed per analysis, cleared on the next Rank), so the "still flagged"
+    set is derived — the report flag minus this member's stored ``acknowledged_requested_keys``
+    dismissal set, the same shape the badge ✕ uses for new/revived. The dismissal is per-member;
+    the request provenance is shared. Empty when the analysis had no proposal.
     """
-    report = current_dimension_report(run)
+    report = current_dimension_report(member_ranking.analysis)
     if report is None:
         return []
-    acknowledged = set((run.run_state or {}).get("acknowledged_requested_keys", []))
+    acknowledged = set((member_ranking.run_state or {}).get("acknowledged_requested_keys", []))
     return sorted(
         d.key for d in report.dimensions if d.from_committee_request and d.key not in acknowledged
     )
@@ -1040,32 +1136,32 @@ def weights_from_tiers(
 
 def set_tiers(
     db: Session,
-    run: RankingRun,
+    member_ranking: MemberRanking,
     tier_layout: list[dict],
     acknowledged_keys: list[str] | None = None,
     acknowledged_requested_keys: list[str] | None = None,
-) -> RankingRun:
-    """Persist a new tier layout and the weights derived from it.
+) -> MemberRanking:
+    """Persist this member's new tier layout (weights are derived from it, never stored).
 
-    Validates that every placed key is a real dimension of this run. Only working
-    tiers are stored — the UI's Ignore zone is dropped before persisting (an empty
-    layout just means everything is ignored → uniform fallback).
+    Validates that every placed key is a real dimension of the shared analysis. Only working
+    tiers are stored — the UI's Ignore zone is dropped before persisting (an empty layout just
+    means everything is ignored → uniform fallback).
 
-    ``acknowledged_requested_keys`` dismiss the "requested" provenance pill (badge ✕).
-    Unlike new/revived, the requested flag is authoritative on the report and is NOT
-    cleared by moving the chip — it is provenance, so only an explicit dismissal (or the
-    next Rank clearing the underlying flag) removes it. The dismissals accumulate in
-    ``acknowledged_requested_keys`` on run_state; ``requested_flag_keys`` subtracts them.
+    ``acknowledged_requested_keys`` dismiss the "requested" provenance pill (badge ✕). Unlike
+    new/revived, the requested flag is authoritative on the shared report and is NOT cleared by
+    moving the chip — it is provenance, so only an explicit dismissal (or the next Rank clearing
+    the underlying flag) removes it. The dismissals accumulate per-member in
+    ``acknowledged_requested_keys``; ``requested_flag_keys`` subtracts them.
 
-    ``new_dimension_keys`` (the one unacknowledged-flag set — "new" OR "revived") clears
-    on the SAME rule as the requested pill, for consistency across all three badges: a
-    flag clears ONLY on an explicit acknowledgement (badge ✕ / "mark all reviewed") — NOT
-    on moving the chip to a tier — and otherwise rides until the next Rank recomputes the
-    flagged set. Dragging a flagged chip into a working tier keeps its badge (it is now
-    weighted AND still flagged as newly-arrived); the member dismisses it with the ✕ when
-    they have taken it in. Only re-discovery / carry-forward re-flags.
+    ``new_dimension_keys`` (the one unacknowledged-flag set — "new" OR "revived") clears on the
+    SAME rule as the requested pill, for consistency across all three badges: a flag clears ONLY
+    on an explicit acknowledgement (badge ✕ / "mark all reviewed") — NOT on moving the chip to a
+    tier — and otherwise rides until the next Rank recomputes the flagged set. Dragging a flagged
+    chip into a working tier keeps its badge (it is now weighted AND still flagged as
+    newly-arrived); the member dismisses it with the ✕ when they have taken it in. Only
+    re-discovery / carry-forward re-flags.
     """
-    report = current_dimension_report(run)
+    report = current_dimension_report(member_ranking.analysis)
     valid_keys = {d.key for d in report.dimensions} if report is not None else set()
     for tier in tier_layout:
         for key in tier.get("dimension_keys", []):
@@ -1080,9 +1176,9 @@ def set_tiers(
 
     # Recompute the still-flagged set: drop only the explicitly-acknowledged keys. Moving
     # a chip no longer clears its flag (consistent with the requested pill) — the badge
-    # rides until the ✕ or the next Rank. Keys still valid on this run only.
+    # rides until the ✕ or the next Rank. Keys still valid on this analysis only.
     acknowledged = set(acknowledged_keys or ())
-    prior_flagged = (run.run_state or {}).get("new_dimension_keys", [])
+    prior_flagged = (member_ranking.run_state or {}).get("new_dimension_keys", [])
     surviving = [
         k for k in prior_flagged
         if k in valid_keys and k not in acknowledged
@@ -1090,8 +1186,8 @@ def set_tiers(
 
     # Accumulate requested-pill dismissals (explicit ✕ only). Union with what's already
     # stored so a later save doesn't resurrect an earlier dismissal; keep only keys still
-    # requested on this run's report (a dismissal for a non-requested key is meaningless).
-    prior_ack_requested = set((run.run_state or {}).get("acknowledged_requested_keys", []))
+    # requested on the shared report (a dismissal for a non-requested key is meaningless).
+    prior_ack_requested = set((member_ranking.run_state or {}).get("acknowledged_requested_keys", []))
     requested_keys = {d.key for d in report.dimensions if d.from_committee_request} if report else set()
     ack_requested = sorted(
         (prior_ack_requested | set(acknowledged_requested_keys or ())) & requested_keys
@@ -1099,12 +1195,12 @@ def set_tiers(
 
     # run_state is a JSON column; reassign a new dict so SQLAlchemy sees the change.
     # proposed_dimensions is preserved; weights are derived from tiers, never stored.
-    run.run_state = {
-        **(run.run_state or {}),
+    member_ranking.run_state = {
+        **(member_ranking.run_state or {}),
         "tiers": working,
         "new_dimension_keys": surviving,
         "acknowledged_requested_keys": ack_requested,
     }
     db.commit()
-    db.refresh(run)
-    return run
+    db.refresh(member_ranking)
+    return member_ranking

@@ -12,7 +12,7 @@ import type { CurrentRunResponse } from "../types";
 //
 // One collapsible per discoverer: its dimensions (the comparison signal — who found
 // what) plus its reasoning. Self-fetches the fan-out audit (mount-once via useFetchOnce;
-// the caller keys this by runId so a run change remounts and re-fetches). Falls back to the
+// the caller keys this by analysisId so an analysis change remounts and re-fetches). Falls back to the
 // single run-level narrative for runs that predate the fan-out (no per-pass audit).
 export function DiscoveryPanel(props: { run: CurrentRunResponse }): ReactNode {
   const { data: audit, state } = useFetchOnce(fetchFanOutAudit);
