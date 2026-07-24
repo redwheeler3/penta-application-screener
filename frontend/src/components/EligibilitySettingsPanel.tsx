@@ -15,15 +15,19 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
   const [draft, setDraft] = useState<EligibilityRules | null>(null);
   const [isDefault, setIsDefault] = useState(true);
   const [saving, setSaving] = useState(false);
+  // The current committee default, for the "compared to committee default" divergence diff
+  // (M15 1f). Computed lazily on read (member's blob vs current default) — no stored state.
+  const [committeeDefault, setCommitteeDefault] = useState<EligibilityRules | null>(null);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     let live = true;
-    api
-      .fetchEligibilityRules()
-      .then((payload) => {
+    Promise.all([api.fetchEligibilityRules(), api.fetchCommitteeDefaultRules()])
+      .then(([mine, def]) => {
         if (!live) return;
-        setDraft(payload.rules);
-        setIsDefault(payload.isDefault);
+        setDraft(mine.rules);
+        setIsDefault(mine.isDefault);
+        setCommitteeDefault(def);
       })
       .catch(() => live && props.onError("Could not load your eligibility rules."));
     return () => {
@@ -49,6 +53,21 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
     setIsDefault(payload.isDefault);
   }
 
+  async function reset() {
+    if (resetting) return;
+    setResetting(true);
+    const response = await api.resetEligibilityRules();
+    setResetting(false);
+    if (!response.ok) {
+      props.onError((await readProblem(response)) ?? "Could not reset to the committee default.");
+      return;
+    }
+    // Server returns the now-effective (default) rules; adopt them and drop divergence.
+    const payload: { rules: EligibilityRules; isDefault: boolean } = await response.json();
+    setDraft(payload.rules);
+    setIsDefault(payload.isDefault);
+  }
+
   return (
     <section className="settings-panel no-print" aria-label="Eligibility rules">
       <div className="settings-header">
@@ -63,7 +82,14 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
               <p className="panel-hint eligibility-default-hint">
                 You're using the committee default — saving creates your own copy to tune.
               </p>
-            ) : null}
+            ) : (
+              <DivergencePanel
+                mine={draft}
+                committeeDefault={committeeDefault}
+                onReset={reset}
+                resetting={resetting}
+              />
+            )}
             <label>
               <span>Income minimum</span>
               <NumberInput
@@ -173,6 +199,99 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
       </div>
     </section>
   );
+}
+
+// The numeric/boolean rule fields, with member-facing labels, for the divergence diff.
+const RULE_FIELDS: { key: keyof EligibilityRules; label: string }[] = [
+  { key: "incomeMin", label: "Income minimum" },
+  { key: "incomeMax", label: "Income maximum" },
+  { key: "minAdultAge", label: "Min adult age" },
+  { key: "maxChildAge", label: "Max child age" },
+  { key: "minChildren", label: "Min children per unit" },
+  { key: "maxChildren", label: "Max children per unit" },
+  { key: "maxDogs", label: "Max dogs" },
+  { key: "maxCats", label: "Max cats" },
+  { key: "allowOtherPets", label: "Allow other pets" },
+];
+
+function fmt(v: number | boolean | string[]): string {
+  if (typeof v === "boolean") return v ? "yes" : "no";
+  if (Array.isArray(v)) return v.length ? v.join(", ") : "none";
+  return String(v);
+}
+
+// The lazy "compared to committee default" diff (M15 1f): field-by-field, mine → default,
+// ONLY for fields that differ, computed on read from the member's rules vs the CURRENT
+// default. Purely informational, so "Reset" is never scary — it shows exactly what will
+// change. Compares the live draft (not just the saved rules) so it reflects unsaved edits too.
+function DivergencePanel(props: {
+  mine: EligibilityRules;
+  committeeDefault: EligibilityRules | null;
+  onReset: () => void;
+  resetting: boolean;
+}): ReactNode {
+  const { mine, committeeDefault, onReset, resetting } = props;
+  const diffs = committeeDefault
+    ? [
+        ...RULE_FIELDS.filter((f) => mine[f.key] !== committeeDefault[f.key]).map((f) => ({
+          label: f.label,
+          mine: fmt(mine[f.key] as number | boolean),
+          def: fmt(committeeDefault[f.key] as number | boolean),
+        })),
+        // disabledChecks is a list — compare as sets, show if they differ.
+        ...(sameChecks(mine.disabledChecks, committeeDefault.disabledChecks)
+          ? []
+          : [
+              {
+                label: "Disabled checks",
+                mine: fmt([...mine.disabledChecks].sort()),
+                def: fmt([...committeeDefault.disabledChecks].sort()),
+              },
+            ]),
+      ]
+    : [];
+
+  return (
+    <div className="divergence-panel">
+      <div className="divergence-head">
+        <p className="panel-hint">
+          These are your own rules, forked from the committee default.
+          {committeeDefault && diffs.length === 0
+            ? " They currently match the default."
+            : " Reset drops your copy and follows the committee default again."}
+        </p>
+        <button type="button" className="secondary-button" onClick={onReset} disabled={resetting}>
+          {resetting ? "Resetting" : "Reset to committee default"}
+        </button>
+      </div>
+      {diffs.length > 0 ? (
+        <table className="divergence-diff">
+          <thead>
+            <tr>
+              <th>Rule</th>
+              <th>Yours</th>
+              <th>Committee default</th>
+            </tr>
+          </thead>
+          <tbody>
+            {diffs.map((d) => (
+              <tr key={d.label}>
+                <td>{d.label}</td>
+                <td className="divergence-mine">{d.mine}</td>
+                <td className="divergence-default">{d.def}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+    </div>
+  );
+}
+
+function sameChecks(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const setB = new Set(b);
+  return a.every((x) => setB.has(x));
 }
 
 // One labeled group of check toggles. Both groups edit the SAME flat draft.disabledChecks

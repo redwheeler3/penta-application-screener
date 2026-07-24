@@ -90,6 +90,27 @@ export function saveEligibilityRules(rules: EligibilityRules): Promise<Response>
   });
 }
 
+// Reset the member to the committee default — drops their divergence (M15 1f). Returns the
+// now-effective (default) rules.
+export function resetEligibilityRules(): Promise<Response> {
+  return fetch(url("/eligibility-rules"), { method: "DELETE", credentials: "include" });
+}
+
+// The shared committee default — the baseline a member follows until they diverge, and the
+// reference the Eligibility Settings "compared to default" diff reads (M15 1f).
+export const fetchCommitteeDefaultRules = () =>
+  getJson<EligibilityRules>("/eligibility-rules/committee-default");
+
+// Admin-only: edit the committee default (M15 1f). Zero side effects on member rows (Model A).
+export function saveCommitteeDefaultRules(rules: EligibilityRules): Promise<Response> {
+  return fetch(url("/eligibility-rules/committee-default"), {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(rules),
+  });
+}
+
 export const fetchDashboard = () =>
   getJson<{ counts: DashboardCounts; workflow: WorkflowState; coverage: Coverage }>("/dashboard");
 

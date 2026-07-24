@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from googleapiclient.errors import HttpError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import require_current_user
+from app.api.dependencies import require_admin, require_current_user
 from app.api.problems import Problem
 from app.core.config import get_settings
 from app.db.models import User
@@ -16,7 +16,13 @@ from app.schemas.settings import (
 )
 from app.services.google_credentials import get_google_token
 from app.services.google_sheets import fetch_sheet_title
-from app.services.rules import member_rules, save_member_rules
+from app.services.rules import (
+    committee_default_rules,
+    member_rules,
+    reset_member_rules,
+    save_committee_default_rules,
+    save_member_rules,
+)
 from app.services.settings import get_app_settings, save_app_settings
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -97,3 +103,40 @@ def update_eligibility_rules(
     _validate_rules(rules)
     saved = save_member_rules(db, user.id, rules)
     return EligibilityRulesResponse(rules=saved, is_default=False)
+
+
+@rules_router.delete("", response_model=EligibilityRulesResponse)
+def reset_eligibility_rules(
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> EligibilityRulesResponse:
+    """Reset this member to the committee default — drop their copy-on-write divergence (M15
+    1f). Idempotent: a no-op if they never diverged. Returns the now-effective rules, which
+    are the committee default (``is_default`` True)."""
+    reset_member_rules(db, user.id)
+    return EligibilityRulesResponse(rules=committee_default_rules(db), is_default=True)
+
+
+@rules_router.get("/committee-default", response_model=EligibilityRules)
+def read_committee_default_rules(
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> EligibilityRules:
+    """The shared committee-default rules. Any member may read it — it's the baseline they
+    follow until they diverge, and the Eligibility Settings page shows it as the "compared to
+    committee default" reference (M15 1f lazy divergence diff)."""
+    return committee_default_rules(db)
+
+
+@rules_router.put("/committee-default", response_model=EligibilityRules)
+def update_committee_default_rules(
+    rules: EligibilityRules,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> EligibilityRules:
+    """Admin-gated edit of the shared committee-default rules (M15 1f). Editing the default has
+    ZERO side effects on member rows (Model A — no reconciliation, no write-fanout): a diverged
+    member keeps their own rules until they reset; every non-diverged member reads the new
+    default on their next read."""
+    _validate_rules(rules)
+    return save_committee_default_rules(db, rules)

@@ -390,6 +390,56 @@ h1 {
   margin: 0;
 }
 
+/* The "compared to committee default" divergence panel (M15 1f), full-width above the
+   member's own rule fields. Shows only the fields that differ + a Reset action. */
+.divergence-panel {
+  grid-column: 1 / -1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin: 0 0 0.5rem;
+  background: var(--surface-muted, rgba(0, 0, 0, 0.02));
+}
+
+.divergence-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.divergence-head .panel-hint {
+  margin: 0;
+}
+
+.divergence-diff {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.6rem;
+  font-size: 0.82rem;
+}
+
+.divergence-diff th,
+.divergence-diff td {
+  text-align: left;
+  padding: 0.25rem 0.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.divergence-diff th {
+  font-weight: 600;
+  color: var(--muted);
+  border-top: none;
+}
+
+.divergence-mine {
+  font-weight: 600;
+}
+
+.divergence-default {
+  color: var(--muted);
+}
+
 .settings-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

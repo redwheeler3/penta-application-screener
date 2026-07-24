@@ -82,6 +82,16 @@ def save_member_rules(
     return rules
 
 
+def reset_member_rules(db: Session, user_id: int) -> None:
+    """Drop this member's copy-on-write ``MemberRules`` row so they follow the committee
+    default again (M15 1f "reset to committee default"). Idempotent: a no-op if the member
+    never diverged. A single-row delete — Model A means there is nothing to reconcile."""
+    record = db.scalar(select(MemberRules).where(MemberRules.user_id == user_id))
+    if record is not None:
+        db.delete(record)
+        db.commit()
+
+
 def rules_config_from(rules: EligibilityRules) -> RulesConfig:
     """Map an ``EligibilityRules`` blob onto the domain ``RulesConfig`` (income_min ->
     min_income, disabled_checks -> tuple). ``today`` keeps its RulesConfig default."""
