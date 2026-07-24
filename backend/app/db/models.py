@@ -123,14 +123,11 @@ class Application(TimestampMixin, Base):
     raw_row: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     raw_row_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     normalized: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    # Immutable record of why the deterministic rules excluded the applicant — the shared
-    # machine baseline. Eligibility status is NOT stored here: it is a pure derivation
-    # (``resolve_machine_status`` over these reasons + the cached screening flags), computed
-    # on read per member. A member's *human override* of that verdict lives in
-    # ``MemberEligibility``; absent an override, every member sees the same computed machine
-    # status. (M15 1c: status/status_source/reviewed_fingerprint left this row — they were
-    # stored derivations that became per-member.)
-    hard_filter_reasons: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    # NB: no eligibility columns. Eligibility is a pure derivation computed on read per member
+    # (M15 1c–1d): the deterministic hard-filter reasons come from ``evaluate_hard_filters`` over
+    # ``normalized`` + the member's rules (per-member as of 1d); the AI half from the cached
+    # screening flags; a member's human override from ``MemberEligibility``. Import only syncs
+    # + normalizes — it stores no verdict. See ``services/eligibility`` + ``services/rules``.
 
 
 class MemberEligibility(TimestampMixin, Base):
@@ -159,6 +156,26 @@ class MemberEligibility(TimestampMixin, Base):
     reviewed_fingerprint: Mapped[str | None] = mapped_column(String(64))
 
     application: Mapped[Application] = relationship()
+    user: Mapped[User] = relationship()
+
+
+class MemberRules(TimestampMixin, Base):
+    """One member's diverged eligibility thresholds (M15 1d).
+
+    Sparse copy-on-write: a row exists ONLY once a member customizes their rules away from the
+    shared committee default (stored in ``AdminSetting`` under ``committee_default_rules``).
+    Until then the member reads the default — most members never diverge, so most have no row.
+    ``rules`` is the ``EligibilityRules`` blob (income/age/children/disabled_rules); pets are
+    not here (they stay committee-wide — see ``EligibilityRules``).
+    """
+
+    __tablename__ = "member_rules"
+    __table_args__ = (UniqueConstraint("user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True, nullable=False)
+    rules: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
     user: Mapped[User] = relationship()
 
 

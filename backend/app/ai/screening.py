@@ -24,8 +24,10 @@ from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider
 from app.ai.schemas import ScreeningReport
 from app.db.models import Application
+from app.domain.hard_filters import evaluate_hard_filters
 from app.schemas.settings import AppSettings
 from app.services.application_import import extract_essays
+from app.services.rules import committee_default_rules_config
 
 KIND = "screening"
 
@@ -127,17 +129,23 @@ def build_prompt(application: Application, settings: AppSettings) -> str:
 
 def applications_for_screening(db: Session) -> list[Application]:
     """The applications the screening pass should (re-)analyze: every application the
-    deterministic rules did NOT disqualify (empty ``hard_filter_reasons``).
+    deterministic rules did NOT disqualify under the COMMITTEE-DEFAULT ruleset.
 
-    Screening's job is to (re)compute the AI flags that feed the shared machine baseline;
-    it does not read or gate on any member's eligibility, because overrides sit on TOP of
-    that baseline. So it screens every non-rules-ineligible applicant — the AI flags may
-    have appeared or cleared since the last pass, which is exactly what a re-run should
-    catch. Rules-ineligible apps (``hard_filter_reasons`` present) are excluded: their
-    verdict is deterministic and high-trust, so no AI pass could change it.
+    Screening is SHARED — it (re)computes the AI flags that feed the shared machine baseline,
+    and eligibility rules are now per-member. So it gates on the committee-default ruleset
+    (the shared substrate), NOT any one member's rules: an applicant a diverged member finds
+    rules-ineligible is still screened for everyone else who reads the default. Screening does
+    not read any member's overrides, because those sit on TOP of the baseline. Rules-ineligible
+    apps (under the default) are excluded: their verdict is deterministic and high-trust, so no
+    AI pass could change it.
     """
+    rules_config = committee_default_rules_config(db)
     applications = db.scalars(select(Application).order_by(Application.id)).all()
-    return [app for app in applications if not app.hard_filter_reasons]
+    return [
+        app
+        for app in applications
+        if not evaluate_hard_filters(app.normalized or {}, rules_config).reasons
+    ]
 
 
 def estimate_screening(db: Session, settings: AppSettings) -> CostEstimate:

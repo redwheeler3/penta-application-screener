@@ -36,7 +36,6 @@ def make_application(db: Session, *, email: str = "a@example.com", raw_hash: str
         raw_row={"x": 1},
         raw_row_hash=raw_hash,
         normalized={},
-        hard_filter_reasons=[],
     )
     db.add(app)
     db.commit()

@@ -34,18 +34,13 @@ export type AISettings = {
   maxWorkers: number;
 };
 
+// The shared admin/infra config (GET/PUT /settings): the data source, pet limits, and
+// the AI knobs. The per-member eligibility rules live separately (EligibilityRules).
 export type AppSettings = {
   googleSheetId: string;
-  incomeMin: number;
-  incomeMax: number;
-  minAdultAge: number;
-  maxChildAge: number;
-  minChildren: number;
-  maxChildren: number;
   maxDogs: number;
   maxCats: number;
   allowOtherPets: boolean;
-  disabledRules: string[];
   ai: AISettings;
 };
 
@@ -53,6 +48,27 @@ export type SettingsResponse = {
   settings: AppSettings;
   googleSheetUrl: string;
   googleSheetTitle: string | null;
+};
+
+// The numeric screening rules each member tunes for themselves (GET/PUT
+// /eligibility-rules). Members start on the shared committee default and only diverge
+// once they save their own — see EligibilityRulesResponse.isDefault. disabledRules
+// holds the ids (from ALL_RULES) of rules the member has switched off.
+export type EligibilityRules = {
+  incomeMin: number;
+  incomeMax: number;
+  minAdultAge: number;
+  maxChildAge: number;
+  minChildren: number;
+  maxChildren: number;
+  disabledRules: string[];
+};
+
+// isDefault: true when the member is still reading the shared committee default (they
+// haven't saved their own rules yet); false once they've diverged.
+export type EligibilityRulesResponse = {
+  rules: EligibilityRules;
+  isDefault: boolean;
 };
 
 export type AppStatus = "eligible" | "ineligible";

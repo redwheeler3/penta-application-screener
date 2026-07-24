@@ -78,8 +78,6 @@ def add_eligible(
         # route a specific verdict to this application regardless of the order
         # concurrent screening calls complete in.
         normalized={"applicant_name": name},
-       
-        hard_filter_reasons=[],
     )
     db.add(app)
     db.commit()

@@ -132,9 +132,9 @@ def test_import_applications_dedupes_by_latest_email_and_applies_filters() -> No
     assert sync_run.imported_count == 1
     assert application is not None
     assert application.applicant_name == "New"
-    # This fixture row owns real estate, so the rules record a hard-filter reason — the
-    # machine baseline that makes it ineligible on read, and counts it filtered-out.
-    assert application.hard_filter_reasons
+    # This fixture row owns real estate, so under the committee-default ruleset it trips a
+    # hard filter — the import summary counts it filtered-out (reasons themselves are no
+    # longer stored; they're computed on read per member).
     assert sync_run.filtered_out_count == 1
     assert sync_run.eligible_count == 0
 

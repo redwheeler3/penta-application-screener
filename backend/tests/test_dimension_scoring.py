@@ -54,8 +54,6 @@ def add_eligible(db: Session, *, email: str, raw_hash: str) -> Application:
         raw_row={"Why a co-op": "We want community."},
         raw_row_hash=raw_hash,
         normalized={},
-       
-        hard_filter_reasons=[],
     )
     db.add(app)
     db.commit()
@@ -126,9 +124,8 @@ def test_scores_all_dimensions_and_does_not_touch_status() -> None:
     assert len(rows) == 2
     assert {r.kind for r in rows} == {kind_for_dimension("community"), kind_for_dimension("skills")}
     # Informational: scoring writes only score rows, never an eligibility fact. The only
-    # eligibility signals are hard_filter_reasons + screening flags, so a clean applicant's
-    # machine verdict is untouched by scoring.
-    assert not app1.hard_filter_reasons
+    # eligibility signals are the on-read hard-filter reasons + screening flags, so a clean
+    # applicant's machine verdict is untouched by scoring.
     assert db.scalar(select(ApplicationAIResult).where(ApplicationAIResult.kind == "screening")) is None
 
 

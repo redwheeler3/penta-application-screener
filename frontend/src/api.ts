@@ -12,6 +12,8 @@ import type {
   CurrentUser,
   DashboardCounts,
   DecomposeAuditResponse,
+  EligibilityRules,
+  EligibilityRulesResponse,
   EvalRunMode,
   FanOutAuditResponse,
   LastRunsReport,
@@ -69,6 +71,22 @@ export function saveSettings(draft: AppSettings): Promise<Response> {
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(draft),
+  });
+}
+
+// --- Eligibility rules (per member) ----------------------------------------
+// The numeric screening rules each member tunes for themselves. A member reads the
+// shared committee default until they save their own (see EligibilityRulesResponse).
+
+export const fetchEligibilityRules = () =>
+  getJson<EligibilityRulesResponse>("/eligibility-rules");
+
+export function saveEligibilityRules(rules: EligibilityRules): Promise<Response> {
+  return fetch(url("/eligibility-rules"), {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(rules),
   });
 }
 

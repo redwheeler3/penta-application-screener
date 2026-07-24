@@ -48,6 +48,7 @@ from app.services.analysis import (
 from app.services.application_import import extract_essays
 from app.services.eligibility import overrides_by_app
 from app.services.ranking_view import candidate_scores
+from app.services.rules import hard_filter_reasons_for, rules_config_for
 from app.services.stars import is_starred, starred_ids
 
 router = APIRouter(prefix="/applications", tags=["applications"])
@@ -65,10 +66,14 @@ def list_applications(
     flags_by_app = _latest_flags(db, ids)
     starred = starred_ids(db, user.id, ids)
     overrides = overrides_by_app(db, user.id, ids)
+    # This member's rules are one ruleset, so resolve once and evaluate the hard filters
+    # once per application — the reasons are computed on read (no stored column).
+    rules_config = rules_config_for(db, user.id)
     return ApplicationListResponse(
         applications=[
             _serialize_summary(
                 app,
+                reasons=hard_filter_reasons_for(rules_config, app),
                 override=overrides.get(app.id),
                 flags=flags_by_app.get(app.id),
                 starred=app.id in starred,
@@ -115,7 +120,8 @@ def override_status(
         raise Problem("not_found", detail="Application not found.")
 
     flags = _latest_flags(db, [application_id]).get(application_id)
-    fingerprint = findings_fingerprint(application.hard_filter_reasons, flags)
+    reasons = hard_filter_reasons_for(rules_config_for(db, user.id), application)
+    fingerprint = findings_fingerprint(reasons, flags)
     override = db.scalar(
         select(MemberEligibility).where(
             MemberEligibility.application_id == application_id,
@@ -241,17 +247,19 @@ def remove_star(
 
 def _serialize_summary(
     app: Application,
+    reasons: list[dict[str, Any]],
     override: MemberEligibility | None = None,
     flags: list[dict[str, Any]] | None = None,
     starred: bool = False,
 ) -> ApplicationSummary:
     """One application as the signed-in member sees it. ``status``/``status_source``/``stale``
-    are that member's effective view: their override if present, else the shared machine
-    verdict computed from the current findings."""
+    are that member's effective view: their override if present, else the machine verdict
+    computed from the current findings — where ``reasons`` are the deterministic hard-filter
+    reasons under THIS member's rules (computed on read, no longer stored)."""
     normalized = app.normalized or {}
     status, source = effective_status(
         override,
-        has_reasons=bool(app.hard_filter_reasons),
+        has_reasons=bool(reasons),
         has_ai_flags=bool(flags),
     )
     return ApplicationSummary(
@@ -261,8 +269,8 @@ def _serialize_summary(
         co_applicant_name=app.co_applicant_name,
         status=status.value,
         status_source=source.value,
-        stale=override_is_stale(override, app.hard_filter_reasons, flags),
-        hard_filter_reasons=app.hard_filter_reasons,
+        stale=override_is_stale(override, reasons, flags),
+        hard_filter_reasons=reasons,
         child_count=normalized.get("child_count"),
         household_income=normalized.get("household_income"),
         # null = screening pass not run; int = flag count (0 = ran clean).
@@ -322,14 +330,17 @@ def _serialize_detail(app: Application, db: Session, user: User) -> ApplicationD
     flag_result = _latest_results(db, "screening", [app.id]).get(app.id)
     flags = (flag_result.output or {}).get("flags", []) if flag_result else None
     override = overrides_by_app(db, user.id, [app.id]).get(app.id)
+    reasons = hard_filter_reasons_for(rules_config_for(db, user.id), app)
     summary = _serialize_summary(
-        app, override=override, flags=flags, starred=is_starred(db, app.id, user.id)
+        app, reasons=reasons, override=override, flags=flags,
+        starred=is_starred(db, app.id, user.id),
     )
     # What the machine would decide from the current findings, independent of this
     # member's override — lets the UI show the live automatic verdict (the result of
-    # clearing the override) without re-deriving the rules client-side.
+    # clearing the override) without re-deriving the rules client-side. Uses THIS member's
+    # rules for the reasons half.
     auto_status, auto_source = resolve_machine_status(
-        has_reasons=bool(app.hard_filter_reasons), has_ai_flags=bool(flags)
+        has_reasons=bool(reasons), has_ai_flags=bool(flags)
     )
 
     dimension_scores = _dimension_scores(db, app, user)
