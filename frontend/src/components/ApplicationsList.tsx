@@ -133,13 +133,18 @@ export function ApplicationsList(props: {
           </thead>
           <tbody>
             {applications.map((app) => {
-              // Reason cell shows the machine's "why" for an exclusion: rules
-              // reasons, or AI flag categories. Human overrides show neither.
+              // Reason cell shows the machine's "why" for an exclusion. Rules: the
+              // hard-filter reasons. AI: the flag categories AND any hard-filter reasons
+              // (pets are a deterministic reason but attribute to the AI source — M15 1g —
+              // so an AI row's "why" can live in either list; show both). Human: neither.
               const reason =
                 app.statusSource === "rules"
                   ? app.hardFilterReasons.map((r) => r.message).join("; ")
                   : app.statusSource === "ai"
-                    ? (app.flagCategories ?? []).map(flagCategoryLabel).join("; ")
+                    ? [
+                        ...(app.flagCategories ?? []).map(flagCategoryLabel),
+                        ...app.hardFilterReasons.map((r) => r.message),
+                      ].join("; ")
                     : "—";
               return (
                 <tr
