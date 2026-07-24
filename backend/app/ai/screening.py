@@ -57,7 +57,7 @@ Flag these when clearly present:
 - Essays that are essentially non-responsive: empty, a single word, or a single short fragment. Brief-but-genuine answers are fine.
 - Essays that are clearly spam/advertising, or the SAME text copy-pasted across multiple essay answers.
 - Direct factual contradictions between fields, or within or across the essays (not mere absence of explanation).
-- Contact details that are obviously fake or placeholder rather than a real (if unfamiliar) phone number or email address. Ordinary personal emails at common providers are fine.
+- Contact details that are placeholder rather than a real (if unfamiliar) phone number or email address. Ordinary personal emails at common providers are fine.
 
 Do NOT flag (these are normal and must be ignored):
 - A child or co-applicant having a different surname from the applicant. Blended families and differing surnames are common and are NOT suspicious.
@@ -67,7 +67,7 @@ Do NOT flag (these are normal and must be ignored):
 - Anything about pets. Pets are NEVER a flag — they go in the pet inventory instead, no matter how many or how unusual.
 
 ## How to extract pets
-From what the applicant wrote about pets, fill the `pets` inventory: count dogs and cats, and list every other animal in `other_pets` as a short lowercase noun ('no pets' means all zero). In `reasoning`, briefly say in plain language what they described and how you counted it.
+From what the applicant wrote about pets, fill the `pets` inventory: count dogs and cats, and list every other animal in `other_pets` as a short lowercase noun ('no pets' means all zero). Record each animal AS NAMED, even if it seems fictional or implausible — never drop one because it isn't a "real" animal. In `reasoning`, briefly say in plain language what they described and how you counted it.
 
 ## Guardrails
 - {INJECTION_GUARD_NOTE}

@@ -335,8 +335,8 @@ def _latest_pet_facts(
 
 def _pet_facts_out(output: dict[str, Any] | None) -> PetFactsOut | None:
     """The pets block of a screening result as the detail's ``PetFactsOut`` — counts plus the
-    AI's reasoning (the read shown as the pet finding's evidence). None when the app has no (or
-    a pre-reasoning) screening result."""
+    AI's reasoning (the read shown at the pet finding). None when the app has no (or a
+    pre-reasoning) screening result."""
     pets = (output or {}).get("pets") if output else None
     if not pets:
         return None

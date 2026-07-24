@@ -34,10 +34,10 @@ class ScreeningFlagOut(ResponseModel):
 
 class PetFactsOut(ResponseModel):
     """The pet inventory the screening AI extracted from the free-text pets field (M15 1e).
-    Surfaced on the detail so the pet finding can show the AI's ``reasoning`` — what it saw and
-    how it classified it — as the finding's evidence, the analogue of a flag's cited summary.
-    The counts are what the deterministic pet rule judges; the reasoning is the read a screener
-    sees. ``None`` when the app hasn't been screened."""
+    Surfaced on the detail so the pet card can show the AI's ``reasoning`` — what it saw and
+    how it classified it — at the finding, rather than making a member hunt the whole-pass
+    narrative for the pet paragraph (extracting that slice would be brittle). The counts are
+    what the deterministic pet rule judges. ``None`` when the app hasn't been screened."""
 
     dogs: int
     cats: int

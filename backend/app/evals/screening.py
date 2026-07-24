@@ -118,13 +118,16 @@ def _screen(
     categories = [f.category.value for f in flags]
     pets = result.output.pets
     per_flag = "; ".join(f"{f.category.value}: {f.summary}" for f in flags) or "no flags"
-    pet_line = f"pets: {pets.dogs} dog(s), {pets.cats} cat(s), other={pets.other_pets or 'none'}"
+    other = ", ".join(pets.other_pets) if pets.other_pets else "none"
+    # Just the structured counts here — the AI's pet reasoning is in the narrative below, so
+    # appending it would duplicate it in the headline.
+    pet_line = f"pets: {pets.dogs} dog(s), {pets.cats} cat(s), other: {other}"
     narrative = (result.narrative or "").strip()
-    # Lead with the model's reasoning (if any), then the per-flag evidence + extracted pets.
-    # A miss has no per-flag line by nature, so the narrative is where "why I didn't flag X"
-    # would live.
-    body = f"{per_flag}\n{pet_line}"
-    detail = f"{narrative}\n\n{body}" if narrative else body
+    # Lead with the headline (flags + extracted pets) so both are visible even when the detail
+    # is truncated, THEN the model's free-form reasoning. A miss has no per-flag line by
+    # nature, so the narrative is where "why I didn't flag X" would live.
+    headline = f"flags: {per_flag}\n{pet_line}"
+    detail = f"{headline}\n\n{narrative}" if narrative else headline
     return categories, pets, detail
 
 
@@ -279,10 +282,10 @@ def stability_run(
     emit(on_delta, f"Screening **{name}** x{k} on `{screening_model}`…\n\n")
 
     def run_once() -> tuple[str, str]:
-        cats, pets, reasoning = _screen(provider, case, screening_model=screening_model)
+        cats, pets, detail = _screen(provider, case, screening_model=screening_model)
         outcome = "fail" if _check(case, cats, pets) else "pass"
-        shown = ", ".join(cats) or "none"
-        return outcome, f"flags: {shown} — {reasoning}"
+        # `detail` already leads with the flags + pets headline (see _screen).
+        return outcome, detail
 
     # A screening golden case has no "contested" notion; a graded pass/fail flip is a real signal.
     report = run_stability(run_once, k=k, contested=False, on_delta=on_delta)

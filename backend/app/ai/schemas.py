@@ -44,16 +44,17 @@ class PetFacts(BaseModel):
         default_factory=list,
         description=(
             "Every non-dog, non-cat animal named, each as a short lowercase noun "
-            "(e.g. 'rabbit', 'snake'). Empty if none. This is a neutral inventory — do "
-            "NOT judge whether these are allowed; the committee's per-member policy does."
+            "(e.g. 'rabbit', 'snake'). List each animal AS NAMED, even if it seems fictional, "
+            "exotic, or implausible — do NOT decide whether it is a 'real' animal, and do NOT "
+            "judge whether it is allowed. Empty only if none are named."
         ),
     )
     reasoning: str = Field(
         default="",
         description=(
             "Brief plain-language reasoning on what the applicant described about their pets "
-            "and how you counted it — the read a screener sees. Describe and classify only; "
-            "never judge whether it is within policy."
+            "and how you counted it — the read a screener sees. Report what is named; never "
+            "second-guess whether an animal is real/legitimate, and never judge policy."
         ),
     )
 
