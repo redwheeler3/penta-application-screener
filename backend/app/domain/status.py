@@ -1,8 +1,11 @@
-"""Application status resolution — the single home for the status model rules.
+"""Application status resolution — the single home for the eligibility model.
 
-Status (`eligible` / `ineligible`) is owned by whichever actor last acted, tracked
-in `status_source`. Machine actors (rules, AI) never overwrite a human-set status;
-they only refresh the underlying records. See SPEC "Application Status Model".
+Eligibility (`eligible` / `ineligible`) is a **pure derivation**, computed on read, never
+stored on the applicant. The *machine verdict* comes from the shared findings (deterministic
+rule reasons + cached AI flags); a *member's human override* of that verdict lives in a
+``MemberEligibility`` row. Effective status for a member = their override if present, else the
+machine verdict. Machine actors (rules, AI) only refresh the underlying findings — they never
+overwrite a member's override. See SPEC "Application Status Model" + M15 1c.
 """
 
 from __future__ import annotations
@@ -10,16 +13,17 @@ from __future__ import annotations
 import hashlib
 import json
 
-from app.db.models import Application, ApplicationStatus, StatusSource
+from app.db.models import ApplicationStatus, MemberEligibility, StatusSource
 
 
 def resolve_machine_status(
     *, has_reasons: bool, has_ai_flags: bool
 ) -> tuple[ApplicationStatus, StatusSource]:
-    """The status a machine actor would assign, given the current findings.
+    """The status the machine assigns given the current findings — the shared baseline
+    every member sees unless they override it.
 
-    Rules take precedence over AI (high trust first); with neither, the
-    application is clean and untouched.
+    Rules take precedence over AI (high trust first); with neither, the application is
+    clean and untouched.
     """
     if has_reasons:
         return ApplicationStatus.INELIGIBLE, StatusSource.RULES
@@ -28,21 +32,15 @@ def resolve_machine_status(
     return ApplicationStatus.ELIGIBLE, StatusSource.UNTOUCHED
 
 
-def apply_machine_status(
-    application: Application, *, has_reasons: bool, has_ai_flags: bool
-) -> None:
-    """Set status from the machine findings, unless a human owns the decision.
-
-    A human-set status is sticky: the caller still refreshes the reason/flag
-    records, but the status itself is left untouched.
-    """
-    if application.status_source == StatusSource.HUMAN:
-        return
-    status, source = resolve_machine_status(
-        has_reasons=has_reasons, has_ai_flags=has_ai_flags
-    )
-    application.status = status
-    application.status_source = source
+def effective_status(
+    override: MemberEligibility | None, *, has_reasons: bool, has_ai_flags: bool
+) -> tuple[ApplicationStatus, StatusSource]:
+    """A member's effective (status, source) for an applicant: their human override if one
+    exists, else the computed machine verdict. The single resolver every read path uses so
+    "whose eligibility?" is answered one way."""
+    if override is not None:
+        return override.status, StatusSource.HUMAN
+    return resolve_machine_status(has_reasons=has_reasons, has_ai_flags=has_ai_flags)
 
 
 def findings_fingerprint(
@@ -50,7 +48,7 @@ def findings_fingerprint(
 ) -> str:
     """Stable hash of the machine findings (reason codes + AI flag categories).
 
-    Snapshotted when a human sets the status; a later mismatch means new findings
+    Snapshotted when a member sets an override; a later mismatch means new findings
     have appeared since their review (staleness).
     """
     reason_codes = sorted((r.get("code") or "") for r in (reasons or []))
@@ -61,13 +59,14 @@ def findings_fingerprint(
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()
 
 
-def is_stale(application: Application, flags: list[dict] | None) -> bool:
-    """True if machine findings changed since a human last reviewed.
-
-    Only human-set statuses can be stale; machine-owned statuses always reflect
-    the current findings.
+def override_is_stale(
+    override: MemberEligibility | None,
+    reasons: list[dict] | None,
+    flags: list[dict] | None,
+) -> bool:
+    """True if machine findings changed since this member set their override. Only an
+    override can be stale; a computed machine status always reflects the current findings.
     """
-    if application.status_source != StatusSource.HUMAN:
+    if override is None:
         return False
-    current = findings_fingerprint(application.hard_filter_reasons, flags)
-    return current != application.reviewed_fingerprint
+    return findings_fingerprint(reasons, flags) != override.reviewed_fingerprint

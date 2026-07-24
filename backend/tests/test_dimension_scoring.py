@@ -27,7 +27,6 @@ from app.ai.schemas import (
 from app.db.models import (
     Application,
     ApplicationAIResult,
-    ApplicationStatus,
     Base,
     User,
     UserRole,
@@ -55,7 +54,7 @@ def add_eligible(db: Session, *, email: str, raw_hash: str) -> Application:
         raw_row={"Why a co-op": "We want community."},
         raw_row_hash=raw_hash,
         normalized={},
-        status=ApplicationStatus.ELIGIBLE,
+       
         hard_filter_reasons=[],
     )
     db.add(app)
@@ -126,9 +125,11 @@ def test_scores_all_dimensions_and_does_not_touch_status() -> None:
     rows = db.scalars(select(ApplicationAIResult)).all()
     assert len(rows) == 2
     assert {r.kind for r in rows} == {kind_for_dimension("community"), kind_for_dimension("skills")}
-    # Informational: status untouched.
-    db.refresh(app1)
-    assert app1.status == ApplicationStatus.ELIGIBLE
+    # Informational: scoring writes only score rows, never an eligibility fact. The only
+    # eligibility signals are hard_filter_reasons + screening flags, so a clean applicant's
+    # machine verdict is untouched by scoring.
+    assert not app1.hard_filter_reasons
+    assert db.scalar(select(ApplicationAIResult).where(ApplicationAIResult.kind == "screening")) is None
 
 
 def test_cached_dimension_is_reused_only_uncached_dims_are_sent() -> None:

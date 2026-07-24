@@ -48,9 +48,10 @@ from app.ai.schemas import (
     PoolDimensionReport,
     ScoreConfidence,
 )
-from app.db.models import Application, ApplicationAIResult, ApplicationStatus
+from app.db.models import Application, ApplicationAIResult
 from app.schemas.settings import AppSettings
 from app.services.application_import import extract_essays
+from app.services.eligibility import union_eligible_application_ids
 
 KIND_PREFIX = "dimension_scoring"
 
@@ -151,11 +152,12 @@ def kind_for_dimension(dimension_key: str) -> str:
 
 
 def applications_to_score(db: Session) -> list[Application]:
-    """Eligible applications only — same scope as essay analysis."""
+    """The UNION-eligible applications — same scope as pattern discovery."""
+    eligible_ids = union_eligible_application_ids(db)
     return list(
         db.scalars(
             select(Application)
-            .where(Application.status == ApplicationStatus.ELIGIBLE)
+            .where(Application.id.in_(eligible_ids))
             .order_by(Application.id)
         ).all()
     )

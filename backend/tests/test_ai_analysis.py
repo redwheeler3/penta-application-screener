@@ -14,7 +14,7 @@ from app.ai.mock_provider import MockProvider
 from app.ai.pricing import cost_usd, price_for_model
 from app.ai.provider import Usage
 from app.ai.schemas import ScreeningReport
-from app.db.models import Application, ApplicationAIResult, ApplicationStatus, Base
+from app.db.models import Application, ApplicationAIResult, Base
 
 MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 KIND = "screening"
@@ -36,7 +36,6 @@ def make_application(db: Session, *, email: str = "a@example.com", raw_hash: str
         raw_row={"x": 1},
         raw_row_hash=raw_hash,
         normalized={},
-        status=ApplicationStatus.ELIGIBLE,
         hard_filter_reasons=[],
     )
     db.add(app)

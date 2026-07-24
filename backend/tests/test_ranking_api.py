@@ -21,7 +21,7 @@ from app.ai.schemas import (
     ScoreConfidence,
 )
 from app.api.dependencies import get_ai_provider, require_current_user
-from app.db.models import Application, ApplicationStatus, Base, User, UserRole
+from app.db.models import Application, Base, User, UserRole
 from app.db.session import get_db
 from app.main import create_app
 from app.services.cost_report import RANK_PASS_LABELS
@@ -93,7 +93,7 @@ def add_eligible(db: Session, *, email: str, raw_hash: str) -> Application:
         raw_row={"Why a co-op": "We want community and will pitch in."},
         raw_row_hash=raw_hash,
         normalized={},
-        status=ApplicationStatus.ELIGIBLE,
+       
         hard_filter_reasons=[],
     )
     db.add(app)

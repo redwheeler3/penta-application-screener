@@ -14,7 +14,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import (
-    AnalysisOutcome,
     CostEstimate,
     PassResult,
     derive_prompt_version,
@@ -24,8 +23,7 @@ from app.ai.analysis import (
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider
 from app.ai.schemas import ScreeningReport
-from app.db.models import Application, ApplicationStatus, StatusSource
-from app.domain.status import apply_machine_status
+from app.db.models import Application
 from app.schemas.settings import AppSettings
 from app.services.application_import import extract_essays
 
@@ -128,29 +126,18 @@ def build_prompt(application: Application, settings: AppSettings) -> str:
 
 
 def applications_for_screening(db: Session) -> list[Application]:
-    """The applications the screening pass should (re-)analyze: everything except
-    those the rules disqualified.
+    """The applications the screening pass should (re-)analyze: every application the
+    deterministic rules did NOT disqualify (empty ``hard_filter_reasons``).
 
-    Covers any eligible application plus those a *previous AI pass* marked
-    ineligible — re-analyzing the latter lets a prompt change clear a flag and
-    restore eligibility, not just the reverse (``apply_machine_status`` handles both
-    and keeps human statuses sticky). Rules-ineligible apps are excluded (rules
-    outrank AI, so re-running could never change their status). Human-owned statuses
-    are included so their flags refresh for the staleness nudge.
+    Screening's job is to (re)compute the AI flags that feed the shared machine baseline;
+    it does not read or gate on any member's eligibility, because overrides sit on TOP of
+    that baseline. So it screens every non-rules-ineligible applicant — the AI flags may
+    have appeared or cleared since the last pass, which is exactly what a re-run should
+    catch. Rules-ineligible apps (``hard_filter_reasons`` present) are excluded: their
+    verdict is deterministic and high-trust, so no AI pass could change it.
     """
-    return list(
-        db.scalars(
-            select(Application)
-            .where(
-                (Application.status == ApplicationStatus.ELIGIBLE)
-                | (
-                    (Application.status == ApplicationStatus.INELIGIBLE)
-                    & (Application.status_source != StatusSource.RULES)
-                )
-            )
-            .order_by(Application.id)
-        ).all()
-    )
+    applications = db.scalars(select(Application).order_by(Application.id)).all()
+    return [app for app in applications if not app.hard_filter_reasons]
 
 
 def estimate_screening(db: Session, settings: AppSettings) -> CostEstimate:
@@ -167,23 +154,6 @@ def estimate_screening(db: Session, settings: AppSettings) -> CostEstimate:
     )
 
 
-def _apply_outcome_status(
-    db: Session, application: Application, outcome: AnalysisOutcome
-) -> None:
-    """Set the application's status from an outcome's flags and commit.
-
-    The AI actor sets status unless a human owns the decision (flags still refresh
-    for the staleness nudge). Touches the session, so it runs on the ``db`` thread.
-    """
-    report: ScreeningReport = outcome.output
-    apply_machine_status(
-        application,
-        has_reasons=bool(application.hard_filter_reasons),
-        has_ai_flags=bool(report.flags),
-    )
-    db.commit()
-
-
 def run_screening(
     db: Session,
     provider: AIProvider,
@@ -192,8 +162,12 @@ def run_screening(
     settings: AppSettings,
     max_workers: int,
 ) -> Iterator[PassResult]:
-    """Run the screening pass over ``applications`` via the shared screening
-    engine, applying status from each result's flags as it completes.
+    """Run the screening pass over ``applications`` via the shared screening engine.
+
+    The pass's only effect on eligibility is the flags it caches: the machine verdict is
+    computed on read from those flags (plus the deterministic rule reasons), so there is no
+    status to write here — persisting each result's flags via the shared AI-result cache is
+    the whole job.
     """
     return screen_applications(
         db,
@@ -206,7 +180,4 @@ def run_screening(
         build_prompt=lambda application: build_prompt(application, settings),
         system_prompt=SYSTEM_PROMPT,
         max_workers=max_workers,
-        on_result=lambda application, outcome: _apply_outcome_status(
-            db, application, outcome
-        ),
     )

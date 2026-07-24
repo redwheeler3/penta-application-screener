@@ -31,31 +31,35 @@ from app.db.models import (
     Analysis,
     AnalysisAudit,
     Application,
-    ApplicationStatus,
     DimensionAlias,
     MemberRanking,
     SyncRun,
     User,
 )
 from app.schemas.settings import AppSettings
+from app.services.eligibility import union_eligible_application_ids
 
 
 def pool_fingerprint(db: Session) -> str:
-    """A stable hash of the eligible pool's inputs.
+    """A stable hash of the union-eligible pool's inputs.
 
-    Built from the sorted ``raw_row_hash`` of every eligible application, which
-    captures the three pool changes that should trigger a re-rank: a new applicant,
-    an edited application (its hash changes), and an eligibility flip. Status source
-    and AI outputs are excluded — they don't change what the pool says.
+    Built from the sorted ``raw_row_hash`` of every application eligible for at least one
+    member (the same UNION pool the AI passes discover and score over). It captures the
+    pool changes that should trigger a re-rank: a new applicant, an edited application (its
+    hash changes), and an eligibility flip in ANY member's view — a member overriding an
+    applicant into or out of their eligible set changes the union, so the fingerprint moves
+    and Rank reads as out of date. AI outputs themselves are excluded — they don't change
+    what the pool says.
 
     This is the *pool* half of the rank-inputs fingerprint; ``rank_inputs_fingerprint``
     combines it with the prompt + model identity of the passes a Rank runs.
     """
-    hashes = db.scalars(
-        select(Application.raw_row_hash)
-        .where(Application.status == ApplicationStatus.ELIGIBLE)
-        .order_by(Application.raw_row_hash)
-    ).all()
+    eligible_ids = union_eligible_application_ids(db)
+    hashes = sorted(
+        db.scalars(
+            select(Application.raw_row_hash).where(Application.id.in_(eligible_ids))
+        ).all()
+    )
     basis = "\n".join(hashes)
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
 

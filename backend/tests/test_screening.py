@@ -12,7 +12,7 @@ from app.ai.screening import (
     estimate_screening,
     run_screening,
 )
-from app.db.models import Application, ApplicationStatus, Base, StatusSource
+from app.db.models import Application, Base
 from app.schemas.settings import AppSettings
 
 
@@ -26,21 +26,21 @@ def add_application(
     db: Session,
     *,
     email: str,
-    status: ApplicationStatus,
     raw_hash: str,
-    status_source: StatusSource = StatusSource.UNTOUCHED,
+    hard_filter_reasons: list[dict] | None = None,
     raw_row: dict | None = None,
     normalized: dict | None = None,
 ) -> Application:
+    """An applicant on the machine baseline. Eligibility is computed on read from
+    ``hard_filter_reasons`` (+ cached AI flags), so a rules-ineligible applicant is one
+    with a reason; everything else is machine-eligible."""
     app = Application(
         primary_email=email,
         applicant_name="Test Applicant",
         raw_row=raw_row or {},
         raw_row_hash=raw_hash,
         normalized=normalized or {},
-        status=status,
-        status_source=status_source,
-        hard_filter_reasons=[],
+        hard_filter_reasons=hard_filter_reasons or [],
     )
     db.add(app)
     db.commit()
@@ -64,36 +64,23 @@ def flagged() -> ScreeningReport:
 
 
 def test_applications_for_screening_scope() -> None:
-    """Eligible and AI-ineligible apps are analyzed so a prompt change can revise
-    the verdict either way; rules-ineligible apps are excluded (rules outrank AI).
-    Human-owned statuses are included so their flags refresh for the staleness nudge.
+    """Every application the rules did NOT disqualify is analyzed — screening recomputes
+    the AI flags that feed the shared machine baseline, so it screens whether or not any
+    member later overrode the verdict. Only rules-ineligible apps (a hard-filter reason
+    present) are excluded: their verdict is deterministic, so no AI pass could change it.
     """
     db = make_session()
-    add_application(db, email="eligible@x.com", status=ApplicationStatus.ELIGIBLE, raw_hash="h1")
-    add_application(
-        db,
-        email="ai-no@x.com",
-        status=ApplicationStatus.INELIGIBLE,
-        status_source=StatusSource.AI,
-        raw_hash="h2",
-    )
+    add_application(db, email="clean@x.com", raw_hash="h1")
+    add_application(db, email="clean-2@x.com", raw_hash="h2")
     add_application(
         db,
         email="rules-no@x.com",
-        status=ApplicationStatus.INELIGIBLE,
-        status_source=StatusSource.RULES,
         raw_hash="h3",
-    )
-    add_application(
-        db,
-        email="human-no@x.com",
-        status=ApplicationStatus.INELIGIBLE,
-        status_source=StatusSource.HUMAN,
-        raw_hash="h4",
+        hard_filter_reasons=[{"code": "owns_real_estate", "message": "x", "details": {}}],
     )
 
     emails = {a.primary_email for a in applications_for_screening(db)}
-    assert emails == {"eligible@x.com", "ai-no@x.com", "human-no@x.com"}
+    assert emails == {"clean@x.com", "clean-2@x.com"}
 
 
 def test_build_prompt_includes_essays_and_pet_policy() -> None:
@@ -101,7 +88,6 @@ def test_build_prompt_includes_essays_and_pet_policy() -> None:
     app = add_application(
         db,
         email="a@x.com",
-        status=ApplicationStatus.ELIGIBLE,
         raw_hash="h1",
         raw_row={
             "If you have any pets, please describe them here.": "Two dogs and a cat",
@@ -138,7 +124,7 @@ def test_screening_version_changes_with_pet_policy() -> None:
 
 def test_screening_runs_and_caches() -> None:
     db = make_session()
-    app = add_application(db, email="a@x.com", status=ApplicationStatus.ELIGIBLE, raw_hash="h1")
+    app = add_application(db, email="a@x.com", raw_hash="h1")
     provider = MockProvider()
     provider.queue(flagged(), model_id=AppSettings().ai.screening_model)
     settings = AppSettings()
@@ -159,11 +145,11 @@ def test_screen_isolates_a_failed_call() -> None:
     """
     db = make_session()
     good = add_application(
-        db, email="good@x.com", status=ApplicationStatus.ELIGIBLE, raw_hash="h1",
+        db, email="good@x.com", raw_hash="h1",
         normalized={"applicant_name": "Good One"},
     )
     bad = add_application(
-        db, email="bad@x.com", status=ApplicationStatus.ELIGIBLE, raw_hash="h2",
+        db, email="bad@x.com", raw_hash="h2",
         normalized={"applicant_name": "Bad One"},
     )
 
@@ -202,7 +188,7 @@ def test_screen_runs_calls_concurrently() -> None:
     db = make_session()
     apps = [
         add_application(
-            db, email=f"a{i}@x.com", status=ApplicationStatus.ELIGIBLE,
+            db, email=f"a{i}@x.com",
             raw_hash=f"h{i}", normalized={"applicant_name": f"Person {i}"},
         )
         for i in range(n)
@@ -232,23 +218,16 @@ def test_screen_runs_calls_concurrently() -> None:
 
 def test_estimate_counts_analyzable_excluding_rules_ineligible() -> None:
     db = make_session()
-    add_application(db, email="a@x.com", status=ApplicationStatus.ELIGIBLE, raw_hash="h1")
-    add_application(db, email="b@x.com", status=ApplicationStatus.ELIGIBLE, raw_hash="h2")
-    # AI-ineligible: counted, so a prompt change can re-clear it.
-    add_application(
-        db,
-        email="c@x.com",
-        status=ApplicationStatus.INELIGIBLE,
-        status_source=StatusSource.AI,
-        raw_hash="h3",
-    )
-    # Rules-ineligible: excluded, rules outrank AI.
+    add_application(db, email="a@x.com", raw_hash="h1")
+    add_application(db, email="b@x.com", raw_hash="h2")
+    # No hard-filter reason: analyzed (a re-run may add or clear AI flags).
+    add_application(db, email="c@x.com", raw_hash="h3")
+    # Rules-ineligible (a hard-filter reason present): excluded, verdict is deterministic.
     add_application(
         db,
         email="d@x.com",
-        status=ApplicationStatus.INELIGIBLE,
-        status_source=StatusSource.RULES,
         raw_hash="h4",
+        hard_filter_reasons=[{"code": "owns_real_estate", "message": "x", "details": {}}],
     )
 
     est = estimate_screening(db, AppSettings())

@@ -46,6 +46,7 @@ from app.services.analysis import (
     set_proposals,
     set_tiers,
 )
+from app.services.eligibility import eligible_application_ids_for
 from app.services.ranking_view import candidate_scores
 from app.services.stars import starred_ids
 
@@ -83,7 +84,17 @@ def _ranking_payload(db: Session, member_ranking: MemberRanking, user: User) -> 
     are shared, resolved off the analysis / this user.
     """
     weights = dimension_weights(member_ranking)
-    ranked = rank_candidates(candidate_scores(db, member_ranking.analysis), weights)
+    # The scored pool is the shared UNION (every applicant eligible for at least one member),
+    # so restrict this member's shortlist to the applicants eligible in THEIR own view —
+    # another member's eligible-only applicant is scored but must not appear on this board.
+    # Pool means/impact still come from the full scored set (shared math), so a candidate's
+    # numbers don't shift with who is filtering; we only drop rows the member excluded.
+    eligible_ids = eligible_application_ids_for(db, user.id)
+    ranked = [
+        c
+        for c in rank_candidates(candidate_scores(db, member_ranking.analysis), weights)
+        if c.application_id in eligible_ids
+    ]
     starred = starred_ids(db, user.id, [c.application_id for c in ranked])
     return RankingResponse(
         analysis_id=member_ranking.analysis_id,
