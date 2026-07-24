@@ -12,6 +12,9 @@ DEFAULT_MIN_ADULT_AGE = 18
 DEFAULT_MAX_CHILD_AGE = 17
 DEFAULT_MIN_CHILDREN = 1
 DEFAULT_MAX_CHILDREN = 4
+DEFAULT_MAX_DOGS = 1
+DEFAULT_MAX_CATS = 1
+DEFAULT_ALLOW_OTHER_PETS = False
 
 
 class FilterStatus(StrEnum):
@@ -27,8 +30,22 @@ class RulesConfig:
     max_child_age: int = DEFAULT_MAX_CHILD_AGE
     min_children: int = DEFAULT_MIN_CHILDREN
     max_children: int = DEFAULT_MAX_CHILDREN
+    max_dogs: int = DEFAULT_MAX_DOGS
+    max_cats: int = DEFAULT_MAX_CATS
+    allow_other_pets: bool = DEFAULT_ALLOW_OTHER_PETS
     disabled_rules: tuple[str, ...] = ()
     today: date = field(default_factory=date.today)
+
+
+@dataclass(frozen=True)
+class PetFacts:
+    """The extracted pet inventory the pet hard filter reads — the domain mirror of the
+    AI ``PetFacts`` schema (M15 1e). Kept in the domain layer (no pydantic) so
+    ``evaluate_hard_filters`` stays a pure function with no schema/AI import."""
+
+    dogs: int = 0
+    cats: int = 0
+    other_pets: tuple[str, ...] = ()
 
 
 
@@ -49,8 +66,21 @@ class FilterResult:
 
 
 def evaluate_hard_filters(
-    application: dict[str, Any], rules: RulesConfig = RulesConfig()
+    application: dict[str, Any],
+    rules: RulesConfig = RulesConfig(),
+    *,
+    pet_facts: PetFacts | None = None,
 ) -> FilterResult:
+    """Evaluate every hard filter over one normalized application, returning the reasons
+    it fails (empty = eligible).
+
+    ``pet_facts`` is the one input that does NOT come from ``application`` (normalized): pet
+    counts are extracted by the screening AI pass, not derived from the raw row, so they ride
+    in separately and are OPTIONAL (M15 1e). When ``None`` the pet check is skipped entirely
+    — deliberately, so the pre-screen callers (import; the screening-eligibility gate) don't
+    gate on facts that only exist AFTER screening. The on-read eligibility path loads the
+    screening result and passes ``pet_facts`` in, so pets gate per member there.
+    """
     reasons: list[FilterReason] = []
 
     reasons.extend(_child_count_mismatch(application))
@@ -67,6 +97,8 @@ def evaluate_hard_filters(
     reasons.extend(_negative_number(application))
     reasons.extend(_future_employment_start(application, rules))
     reasons.extend(_co_applicant_incomplete(application))
+    if pet_facts is not None:
+        reasons.extend(_pets_over_limit(pet_facts, rules))
 
     if rules.disabled_rules:
         reasons = [r for r in reasons if r.code not in rules.disabled_rules]
@@ -286,6 +318,41 @@ def _income_arithmetic_mismatch(application: dict[str, Any]) -> list[FilterReaso
             )
         ]
     return []
+
+
+def _pets_over_limit(pet_facts: PetFacts, rules: RulesConfig) -> list[FilterReason]:
+    """The per-member pet policy, applied deterministically to extracted pet counts (M15
+    1e). One reason per violated category (too many dogs, too many cats, a disallowed other
+    pet) — all under the single ``pets_over_limit`` code so the detail view maps them to the
+    pets field uniformly. Pets are judged HERE, not by the screening AI, because the limits
+    are per-member: the same household is within one member's policy and over another's."""
+    reasons: list[FilterReason] = []
+    if pet_facts.dogs > rules.max_dogs:
+        reasons.append(
+            FilterReason(
+                code="pets_over_limit",
+                message=f"Household has {pet_facts.dogs} dog(s); at most {rules.max_dogs} allowed.",
+                details={"kind": "dogs", "count": pet_facts.dogs, "max": rules.max_dogs},
+            )
+        )
+    if pet_facts.cats > rules.max_cats:
+        reasons.append(
+            FilterReason(
+                code="pets_over_limit",
+                message=f"Household has {pet_facts.cats} cat(s); at most {rules.max_cats} allowed.",
+                details={"kind": "cats", "count": pet_facts.cats, "max": rules.max_cats},
+            )
+        )
+    if pet_facts.other_pets and not rules.allow_other_pets:
+        listed = ", ".join(pet_facts.other_pets)
+        reasons.append(
+            FilterReason(
+                code="pets_over_limit",
+                message=f"Household has pets other than dogs and cats ({listed}); only dogs and cats are allowed.",
+                details={"kind": "other", "other_pets": list(pet_facts.other_pets)},
+            )
+        )
+    return reasons
 
 
 def _owns_real_estate(application: dict[str, Any]) -> list[FilterReason]:

@@ -185,7 +185,7 @@ class StabilityReport:
         """Per-run (display label, reasoning) pairs — same shape the other passes carry, so a judge
         stability flip is as self-explaining as a live-pass one. Uses the RAW display label (the
         actual score/verdict/flag set), NOT the graded token, so a screening run still shows
-        'pet_policy, internal_inconsistency' rather than a bare 'agrees'."""
+        'fake_contact, internal_inconsistency' rather than a bare 'agrees'."""
         return [stability.RunDetail(disp, detail) for disp, detail in zip(self.displays, self.details)]
 
     @property
@@ -241,7 +241,7 @@ def _stability_token(case: JudgeCase, result: JudgeResult) -> str:
     - SCREENING grades a FLAG SET per-category (some categories fire-required, some guarded, the
       rest ungraded). Two runs that both satisfy the case but differ in an UNGRADED incidental
       flag (e.g. one adds internal_inconsistency the case neither requires nor forbids) are the
-      same graded outcome; tokening the raw "pet_policy, internal_inconsistency" string would
+      same graded outcome; tokening the raw "fake_contact, internal_inconsistency" string would
       flip on that incidental flag. Token the graded agree/disagree.
 
     The three CATEGORICAL passes (consolidation/matching/decomposition) DO have a single graded

@@ -353,7 +353,11 @@ classify the flip before "fixing" anything — the right response differs comple
   caught every time; only the *category* wavered (and the policy text literally said "no
   **other**/exotic pets", colliding with the `other` category). → fix the naming collision;
   accept an "at least one of {pet_policy, other}" fire — the test is that it's flagged, not
-  which bucket.
+  which bucket. *(Superseded by M15 1e: pets are no longer a flag at all. The model now
+  EXTRACTS neutral pet facts — the velociraptor lands in `other_pets` — and a deterministic
+  per-member filter judges the limit. The eval grades extraction accuracy, so the bucket-
+  wavering failure mode is gone by construction. Kept here as the reasoning that motivated
+  the redesign.)*
 - **A threshold disagreement (genuinely two-sided).** A "TBD" child name: every run *saw* the
   placeholder but split on whether it crossed the flag bar, each side reasoned coherently. →
   decide the policy and state it in the prompt (we chose "flag it for a human to confirm

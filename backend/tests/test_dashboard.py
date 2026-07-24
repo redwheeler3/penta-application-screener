@@ -241,9 +241,9 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
 
     app, db = _logged_in_app()
     model = AppSettings().ai.screening_model
-    # Dashboard coverage derives the screening version from settings (it folds in the
-    # pet policy), so match that here or the current-content rows won't be counted.
-    SCREENING_VERSION = screening_prompt_version(AppSettings())
+    # Dashboard coverage derives the screening version from the prompt text alone (M15 1e:
+    # pets left the prompt), so match that here or the current-content rows won't be counted.
+    SCREENING_VERSION = screening_prompt_version()
 
     # Two eligible applicants in screening scope.
     a = Application(

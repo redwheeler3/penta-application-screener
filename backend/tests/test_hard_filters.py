@@ -295,3 +295,104 @@ def test_disabled_rule_skips_filtered_out() -> None:
     assert result.status == FilterStatus.ELIGIBLE
     assert "child_count_mismatch" not in reason_codes(result)
 
+
+
+# --- Pet policy (M15 1e) -----------------------------------------------------
+#
+# Pets are the one hard filter whose input is NOT derived from `normalized`: the counts are
+# AI-extracted from the free-text pets field and passed in as `pet_facts` (see PetFacts).
+# When `pet_facts` is None the check is skipped entirely — the pre-screen callers (import,
+# the screening gate) never gate on facts that only exist after screening.
+
+
+def test_pet_facts_none_skips_the_check() -> None:
+    # No extracted facts (unscreened, or a pre-screen caller): the pet check is a no-op even
+    # against a strict limit — pets can't gate before we've screened to get the counts.
+    from app.domain.hard_filters import PetFacts
+
+    rules = RulesConfig(max_dogs=0, max_cats=0, allow_other_pets=False)
+    result = evaluate_hard_filters(eligible_application(), rules, pet_facts=None)
+
+    assert result.status == FilterStatus.ELIGIBLE
+    assert "pets_over_limit" not in reason_codes(result)
+    # And explicitly zero facts also pass under any limit.
+    zero = evaluate_hard_filters(eligible_application(), rules, pet_facts=PetFacts())
+    assert zero.status == FilterStatus.ELIGIBLE
+
+
+def test_too_many_dogs_is_filtered_out() -> None:
+    from app.domain.hard_filters import PetFacts
+
+    rules = RulesConfig(max_dogs=1, max_cats=1, allow_other_pets=False)
+    result = evaluate_hard_filters(
+        eligible_application(), rules, pet_facts=PetFacts(dogs=2, cats=1)
+    )
+
+    assert result.status == FilterStatus.FILTERED_OUT
+    assert "pets_over_limit" in reason_codes(result)
+    reason = next(r for r in result.reasons if r.code == "pets_over_limit")
+    assert reason.details["kind"] == "dogs"
+
+
+def test_too_many_cats_is_filtered_out() -> None:
+    from app.domain.hard_filters import PetFacts
+
+    rules = RulesConfig(max_dogs=1, max_cats=1, allow_other_pets=False)
+    result = evaluate_hard_filters(
+        eligible_application(), rules, pet_facts=PetFacts(dogs=1, cats=2)
+    )
+
+    assert result.status == FilterStatus.FILTERED_OUT
+    kinds = {r.details.get("kind") for r in result.reasons if r.code == "pets_over_limit"}
+    assert kinds == {"cats"}
+
+
+def test_disallowed_other_pet_is_filtered_out() -> None:
+    from app.domain.hard_filters import PetFacts
+
+    rules = RulesConfig(max_dogs=1, max_cats=1, allow_other_pets=False)
+    result = evaluate_hard_filters(
+        eligible_application(), rules, pet_facts=PetFacts(other_pets=("rabbit",))
+    )
+
+    assert result.status == FilterStatus.FILTERED_OUT
+    reason = next(r for r in result.reasons if r.code == "pets_over_limit")
+    assert reason.details["kind"] == "other"
+    assert "rabbit" in reason.details["other_pets"]
+
+
+def test_other_pet_allowed_when_policy_permits() -> None:
+    from app.domain.hard_filters import PetFacts
+
+    rules = RulesConfig(max_dogs=1, max_cats=1, allow_other_pets=True)
+    result = evaluate_hard_filters(
+        eligible_application(), rules, pet_facts=PetFacts(dogs=1, cats=1, other_pets=("rabbit",))
+    )
+
+    assert result.status == FilterStatus.ELIGIBLE
+    assert "pets_over_limit" not in reason_codes(result)
+
+
+def test_multiple_pet_violations_each_get_a_reason() -> None:
+    from app.domain.hard_filters import PetFacts
+
+    rules = RulesConfig(max_dogs=1, max_cats=1, allow_other_pets=False)
+    result = evaluate_hard_filters(
+        eligible_application(), rules,
+        pet_facts=PetFacts(dogs=2, cats=3, other_pets=("snake",)),
+    )
+
+    kinds = {r.details.get("kind") for r in result.reasons if r.code == "pets_over_limit"}
+    assert kinds == {"dogs", "cats", "other"}
+
+
+def test_disabled_pets_rule_is_skipped() -> None:
+    from app.domain.hard_filters import PetFacts
+
+    rules = RulesConfig(max_dogs=0, max_cats=0, disabled_rules=("pets_over_limit",))
+    result = evaluate_hard_filters(
+        eligible_application(), rules, pet_facts=PetFacts(dogs=2, cats=2)
+    )
+
+    assert result.status == FilterStatus.ELIGIBLE
+    assert "pets_over_limit" not in reason_codes(result)

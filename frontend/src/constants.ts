@@ -38,7 +38,6 @@ export const FLAG_CATEGORY_LABELS: Record<string, string> = {
   duplicated_answers: "Duplicated answers",
   internal_inconsistency: "Internal inconsistency",
   fake_contact: "Suspicious contact info",
-  pet_policy: "Pet policy",
   other: "Other",
 };
 
@@ -58,13 +57,14 @@ export const REASON_FIELDS: Record<string, string[]> = {
   child_age_exceeds_parent: ["child_details", "applicant_age", "co_applicant_age"],
   co_applicant_incomplete: ["co_applicant_name", "co_applicant_age", "co_applicant_phone", "co_applicant_email"],
   future_employment_start: ["applicant_employment_start", "co_applicant_employment_start"],
+  // Pets became a deterministic per-member reason in M15 1e (was an AI pet_policy flag).
+  pets_over_limit: ["pets_text"],
 };
 
 // Maps AI screening flag categories to the normalized fields they concern. These
 // use the same red field treatment as deterministic filter reasons in the detail view.
-export const FLAG_FIELDS: Record<string, string[]> = {
-  pet_policy: ["pets_text"],
-};
+// (Pets are no longer a flag as of M15 1e — see pets_over_limit in REASON_FIELDS.)
+export const FLAG_FIELDS: Record<string, string[]> = {};
 
 // Status and "who set it" are independent axes, shown as separate columns.
 export const STATUS_LABELS: Record<AppStatus, string> = {

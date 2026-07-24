@@ -1,18 +1,21 @@
 {
-  "_comment": "Golden cases for the LIVE screening eval (app/evals/live_screening.py). Each case is a real SYNTHETIC applicant (exact slice from the pool), run through the REAL production screening prompt+model. Screening produces a LIST of integrity flags; the grade is per-CATEGORY: metadata.expected.fires = categories that MUST appear; metadata.expected.absent = categories that must NOT (the over-reach guards — flagging benign things is the costly error since flags gate eligibility). A clean applicant has empty fires and any flag fails it. given.fields (normalized form fields) + given.essays (keyed by the real form-question column) are what the screening prompt receives; metadata is harness-only. See docs/eval-case-schema.md.",
-  "judge_background": "Screening reviews an applicant's fields and essays for INFORMATIONAL integrity concerns — never disqualifying, only surfaced for a human to review. Flag genuine concerns such as: internal inconsistencies between fields/essays; placeholder or fake contact details (keyboard-mash emails, obviously bogus phone numbers); placeholder names (e.g. a child named 'TBD'); and pet descriptions that violate the co-op pet policy (at most 1 dog; at most 1 cat; no other/exotic pets — the pets field is free text, so account for negation like 'no pets' and unclear phrasing). The following must not be flagged: a child with a different surname, an email address with a full name in it that doesn't match someone in the household. The cases you must not flag do not indicate a fake contact.",
+  "_comment": "Golden cases for the LIVE screening eval (app/evals/screening.py). Each case is a real SYNTHETIC applicant (exact slice from the pool), run through the REAL production screening prompt+model. Screening produces (1) a LIST of integrity flags and (2) an extracted PET inventory. The grade is per-CATEGORY for flags — metadata.expected.fires = categories that MUST appear; metadata.expected.absent = categories that must NOT (the over-reach guards — flagging benign things is the costly error since flags gate eligibility) — PLUS, when metadata.expected.pets is set, the extracted pet facts must match (dogs/cats exact; each other_pets noun present). Pets are NO LONGER a flag (M15 1e): the model only EXTRACTS the neutral inventory, and a deterministic per-member hard filter judges the limits downstream — so a pet case grades extraction, never a pet_policy verdict. A clean applicant (no fires, no absent, no pets expectation) must produce zero flags. given.fields (normalized form fields) + given.essays (keyed by the real form-question column) are what the screening prompt receives; metadata is harness-only. See docs/eval-case-schema.md.",
+  "judge_background": "Screening reviews an applicant's fields and essays for INFORMATIONAL integrity concerns — never disqualifying, only surfaced for a human to review — and separately EXTRACTS a neutral inventory of the household's pets. Flag genuine concerns such as: internal inconsistencies between fields/essays; placeholder or fake contact details (keyboard-mash emails, obviously bogus phone numbers); and placeholder names (e.g. a child named 'TBD'). Pets are NEVER a flag: report what animals are present (dogs, cats, other) and let the committee's per-member policy decide — account for negation like 'no pets' and unclear phrasing when counting. The following must not be flagged: a child with a different surname, an email address with a full name in it that doesn't match someone in the household. The cases you must not flag do not indicate a fake contact.",
   "cases": [
     {
-      "key": "pet_over_limit_fires",
+      "key": "pet_two_dogs_one_cat_extracted",
       "metadata": {
-        "note": "Two dogs and a cat against a 1-dog/1-cat policy — a clear pet_policy flag.",
+        "note": "EXTRACTION: 'Two dogs and a cat' must be counted as dogs=2, cats=1, no others. (Pre-1e this was a pet_policy flag; pets are now extracted facts and the per-member filter judges the 1-dog/1-cat limit downstream.)",
         "pass": "screening",
         "source": "synthetic pool, application id 59 (Roberto Vega) — an exact slice of a real synthetic record.",
         "expected": {
-          "fires": [
-            "pet_policy"
-          ],
-          "absent": []
+          "fires": [],
+          "absent": [],
+          "pets": {
+            "dogs": 2,
+            "cats": 1,
+            "other_pets": []
+          }
         }
       },
       "given": {
@@ -45,21 +48,22 @@
       }
     },
     {
-      "key": "pet_exotic_velociraptor_fires",
+      "key": "pet_exotic_velociraptor_extracted",
       "metadata": {
-        "note": "A FICTIONAL pet (\"velociraptor\") — not a real animal, so the model reasonably reads it as EITHER a pet-policy breach (not a dog/cat) OR an integrity/misrepresentation issue (a bogus pet). The test is that it gets flagged for review, not which bucket; accept pet_policy OR other.",
+        "note": "EXTRACTION of an exotic/other pet: a FICTIONAL 'velociraptor' is neither a dog nor a cat, so it must land in other_pets (dogs=0, cats=0). The model reports it neutrally; whether an exotic pet is allowed is the committee's per-member call, judged downstream — not a flag here. Matching is substring/case-insensitive, so 'velociraptor' matches an extracted 'velociraptor named kevin' too.",
         "pass": "screening",
         "source": "synthetic pool, application id 6 (Quinn Kim) — an exact slice of a real synthetic record.",
         "expected": {
-          "fires": [
-            [
-              "pet_policy",
-              "other"
+          "fires": [],
+          "absent": [],
+          "pets": {
+            "dogs": 0,
+            "cats": 0,
+            "other_pets": [
+              "velociraptor"
             ]
-          ],
-          "absent": []
-        },
-        "label_rationale": "The concern is that a fake pet is surfaced at all. Whether that is pet_policy (not a permitted animal) or other (a data-integrity misrepresentation) is a defensible model call — both are correct — so at least one of {pet_policy, other} must fire. Contrast pet_rabbit_other_pets_fires: a REAL disallowed animal is cleanly pet_policy."
+          }
+        }
       },
       "given": {
         "fields": {
@@ -93,14 +97,19 @@
     {
       "key": "name_email_mismatch_no_flag",
       "metadata": {
-        "note": "OVER-REACH GUARD: an email local-part that differs from the applicant name is common (old address, shared account) — must NOT raise a fake_contact flag. Production flagged this in run 2; the judge labelled it flag_unsupported.",
+        "note": "OVER-REACH GUARD: an email local-part that differs from the applicant name is common (old address, shared account) — must NOT raise a fake_contact flag. Production flagged this in run 2; the judge labelled it flag_unsupported. Also an EXTRACTION-negation check: 'Not applicable, we are not pet owners' must count as zero pets (dogs=0, cats=0, no others), not confabulate any.",
         "pass": "screening",
         "source": "synthetic pool, application id 88 (Jules Abara) — an exact slice of a real synthetic record.",
         "expected": {
           "fires": [],
           "absent": [
             "fake_contact"
-          ]
+          ],
+          "pets": {
+            "dogs": 0,
+            "cats": 0,
+            "other_pets": []
+          }
         }
       },
       "given": {
@@ -140,14 +149,19 @@
     {
       "key": "differing_child_surnames_no_flag",
       "metadata": {
-        "note": "OVER-REACH GUARD: children with surnames differing from the adults is normal (blended families, kept names) — must NOT raise an internal_inconsistency flag.",
+        "note": "OVER-REACH GUARD: children with surnames differing from the adults is normal (blended families, kept names) — must NOT raise an internal_inconsistency flag. Also the both-present EXTRACTION baseline: 'One dog and one cat' must count as dogs=1, cats=1, no others.",
         "pass": "screening",
         "source": "synthetic pool, application id 27 (Sloan Obrien) — an exact slice of a real synthetic record.",
         "expected": {
           "fires": [],
           "absent": [
             "internal_inconsistency"
-          ]
+          ],
+          "pets": {
+            "dogs": 1,
+            "cats": 1,
+            "other_pets": []
+          }
         }
       },
       "given": {
@@ -187,7 +201,7 @@
     {
       "key": "ordinary_applicant_clean",
       "metadata": {
-        "note": "A wholly unremarkable applicant — expect ZERO flags. Any flag is a false positive.",
+        "note": "A wholly unremarkable applicant — expect ZERO flags. Any flag is a false positive. (No pets expectation: this is the pure zero-flags guard.)",
         "pass": "screening",
         "source": "synthetic pool, application id 1 (Avery Nguyen) — an exact slice of a real synthetic record.",
         "expected": {
@@ -311,17 +325,20 @@
       }
     },
     {
-      "key": "modesty_essay_contested_pet_fires",
+      "key": "modesty_essay_contested_axis",
       "metadata": {
-        "note": "pet_policy (two cats vs max one) is the hard, agreed fire. internal_inconsistency on the skills essay is a CONTESTED axis, deliberately left out of BOTH fires and absent so it's ungraded either way: the same essay ('we don't really have any handy skills… that said, I'm a certified electrician') was read by one production run as self-deprecating modesty (don't flag) and by another — after the prompt broadened contradictions to cover within-essay — as a direct self-contradiction (flag). Both are defensible tone-vs-fact calls; stability on that flag is the signal, not its direction. Screening is per-category, so only the contested AXIS is left ungraded, not the whole case.",
+        "note": "EXTRACTION anchor (two cats -> dogs=0, cats=2, no others) keeps this case non-clean, while internal_inconsistency on the skills essay is a CONTESTED axis, deliberately left out of BOTH fires and absent so it's ungraded either way: the same essay ('we don't really have any handy skills… that said, I'm a certified electrician') was read by one production run as self-deprecating modesty (don't flag) and by another — after the prompt broadened contradictions to cover within-essay — as a direct self-contradiction (flag). Both are defensible tone-vs-fact calls; stability on that flag is the signal, not its direction. Because the case sets a pets expectation, an incidental flag doesn't fail it (it isn't a 'clean' case), so only the pet extraction is graded and the contested axis stays ungraded. (Pre-1e the anchor was a pet_policy flag; the two cats are now an extraction fact.)",
         "pass": "screening",
         "source": "synthetic pool, application id 12 (Riley Singh) — an exact slice of a real synthetic record.",
-        "label_rationale": "pet_policy FIRES (two cats exceed the max of one) — both runs agree. internal_inconsistency is genuinely contested (modesty-self-corrected vs. factual self-contradiction), so it is neither required nor forbidden here; the case grades only on the pet_policy breach.",
+        "label_rationale": "The two cats are extracted as facts (dogs=0, cats=2); the per-member cat limit is judged downstream, not here. internal_inconsistency is genuinely contested (modesty-self-corrected vs. factual self-contradiction), so it is neither required nor forbidden; the case grades only the pet extraction.",
         "expected": {
-          "fires": [
-            "pet_policy"
-          ],
-          "absent": []
+          "fires": [],
+          "absent": [],
+          "pets": {
+            "dogs": 0,
+            "cats": 2,
+            "other_pets": []
+          }
         }
       },
       "given": {
@@ -364,17 +381,21 @@
       }
     },
     {
-      "key": "pet_rabbit_other_pets_fires",
+      "key": "pet_rabbit_extracted",
       "metadata": {
-        "note": "A rabbit against a dogs/cats-only policy (no other/exotic pets) — a pet_policy flag.",
+        "note": "EXTRACTION of a real 'other' pet: a rabbit is neither a dog nor a cat, so it must land in other_pets (dogs=0, cats=0). The model reports it neutrally; whether 'other' pets are allowed is the committee's per-member call, judged downstream — not a flag here.",
         "pass": "screening",
         "source": "synthetic pool, application id 38 (Hiroshi Tanaka) — an exact slice of a real synthetic record.",
-        "label_rationale": "FLAG_SUPPORTED: the policy explicitly bars 'other/exotic pets', and a rabbit is neither a dog nor a cat, so it falls under 'other' — a genuine violation. Note the policy line is included in the case (fidelity): without it, the quote alone ('at most 1 dog and 1 cat') could look like it doesn't cover rabbits; with it, the flag is clearly warranted.",
         "expected": {
-          "fires": [
-            "pet_policy"
-          ],
-          "absent": []
+          "fires": [],
+          "absent": [],
+          "pets": {
+            "dogs": 0,
+            "cats": 0,
+            "other_pets": [
+              "rabbit"
+            ]
+          }
         }
       },
       "given": {

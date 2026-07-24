@@ -156,8 +156,6 @@ def current_prompt_version(eval_key: str, db: Session) -> str:
     """The prompt version a fresh run of ``eval_key`` would exercise right now — so a
     rehydrated last run can be flagged stale when the prompt has since changed. Judge and
     stability share the judge prompt; scoring uses the scoring prompt."""
-    from app.services.settings import get_app_settings
-
     if eval_key in ("scoring", "scoring_stability"):
         from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_PROMPT_VERSION
 
@@ -181,7 +179,7 @@ def current_prompt_version(eval_key: str, db: Session) -> str:
     if eval_key in ("screening", "screening_stability"):
         from app.ai.screening import screening_prompt_version
 
-        return screening_prompt_version(get_app_settings(db))
+        return screening_prompt_version()
     if eval_key in ("judge", "stability"):
         from app.evals.judge import prompt_version as judge_prompt_version
 

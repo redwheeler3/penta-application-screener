@@ -35,7 +35,11 @@ from app.services.analysis import (
     ranking_is_current,
 )
 from app.services.application_import import settings_fingerprint
-from app.services.eligibility import machine_flags_by_app, overrides_by_app
+from app.services.eligibility import (
+    machine_flags_by_app,
+    overrides_by_app,
+    pet_facts_by_app,
+)
 from app.services.rules import (
     committee_default_rules,
     hard_filter_reasons_for,
@@ -141,11 +145,12 @@ def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
         return CoverageEntry(cached=cached, in_scope=len(applications))
 
     result = {
-        # Screening's version folds in the pet-policy line, so changing the pet limits
-        # drops coverage (cached < inScope) and Screen shows out of date — same as a
-        # prompt edit.
+        # Screening's version is a pure function of the prompt text (M15 1e: pets left the
+        # prompt for a deterministic per-member filter), so pet-limit changes no longer drop
+        # Screen coverage — they're a hard-filter change, judged on read. Only a prompt/model
+        # change shows Screen out of date now.
         "screened": covered(
-            screening_scope(db), "screening", screening_prompt_version(settings),
+            screening_scope(db), "screening", screening_prompt_version(),
             settings.ai.screening_model,
         ),
     }
@@ -212,13 +217,14 @@ def _member_status_counts(
     applications = db.scalars(select(Application)).all()
     ids = [app.id for app in applications]
     flags_by_app = machine_flags_by_app(db, ids)
+    facts_by_app = pet_facts_by_app(db, ids)
     overrides = overrides_by_app(db, user_id, ids)
     rules_config = rules_config_for(db, user_id)
 
     by_status: dict[ApplicationStatus, int] = {}
     by_source: dict[StatusSource, int] = {}
     for app in applications:
-        reasons = hard_filter_reasons_for(rules_config, app)
+        reasons = hard_filter_reasons_for(rules_config, app, pet_facts=facts_by_app.get(app.id))
         status, source = effective_status(
             overrides.get(app.id),
             has_reasons=bool(reasons),

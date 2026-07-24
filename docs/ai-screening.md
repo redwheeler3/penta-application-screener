@@ -8,7 +8,7 @@ The per-applicant passes are built on one shared engine (`app/ai/analysis.py`): 
 
 ## What It Is, And What It Is Not
 
-The AI screening pass reads each application and surfaces **informational concerns** a human screener should be aware of — a placeholder-looking name, a non-responsive essay, a pet description that conflicts with the co-op policy, an obviously fake phone number.
+The AI screening pass reads each application and surfaces **informational concerns** a human screener should be aware of — a placeholder-looking name, a non-responsive essay, an obviously fake phone number. It also **extracts the household's pets** as neutral counts (M15 1e); pets are not a concern the model judges — the per-member pet limit is applied deterministically downstream.
 
 Two principles bound the whole feature:
 
@@ -80,15 +80,21 @@ The model does not return free text we then parse. It returns data validated aga
 
 ```py
 class ScreeningFlag(BaseModel):
-    category: FlagCategory      # placeholder_name, minimal_essay, pet_policy, ... (10 categories)
+    category: FlagCategory      # placeholder_name, minimal_essay, fake_contact, ... (9 categories)
     summary: str                # one neutral sentence
     evidence: str               # short quote or field reference, no full essays
 
+class PetFacts(BaseModel):      # M15 1e: neutral extraction, never a verdict
+    dogs: int = 0
+    cats: int = 0
+    other_pets: list[str] = Field(default_factory=list)
+
 class ScreeningReport(BaseModel):
     flags: list[ScreeningFlag] = Field(default_factory=list)
+    pets: PetFacts = Field(default_factory=PetFacts)
 ```
 
-An empty `flags` list means "the screening pass found nothing." The same schema definition is the contract for the prompt (what the model must produce), storage (`ApplicationAIResult.output` JSON), the API, and the UI rendering — so they cannot drift apart.
+An empty `flags` list means "the screening pass found no integrity concern." The same schema definition is the contract for the prompt (what the model must produce), storage (`ApplicationAIResult.output` JSON), the API, and the UI rendering — so they cannot drift apart. As of M15 1e the report also carries extracted **pet facts** (`pets`): the model reports the household's animals as neutral counts (it never judges the pet policy — pets are not a flag category), and a deterministic per-member hard filter decides pass/fail against each member's pet limits on read.
 
 Alongside the structured flags, the provider also captures the model's free-text **narrative** (its reasoning). Producing structured output splits the model's reasoning across several assistant turns, so `strands_provider.py` walks every assistant message and concatenates the text blocks. The narrative is stored for the "Raw AI output" view on the candidate detail page and is never parsed.
 
@@ -105,7 +111,7 @@ The key combines:
 - **`raw_row_hash`** — the application content. Edit the application, miss the cache.
 - **`kind`** — the analysis type (`screening`), so different passes don't collide.
 - **`model_id`** — change the model, miss the cache.
-- **`prompt_version`** — **derived by hashing each pass's static prompt text** (`derive_prompt_version` in `analysis.py`), not bumped by hand: editing the prompt or an embedded fragment re-derives it automatically, so old results are not reused after a prompt change. (Screening folds the *filled* pet-policy line in via `screening_prompt_version(settings)`, since changing the policy changes the model's answer.)
+- **`prompt_version`** — **derived by hashing each pass's static prompt text** (`derive_prompt_version` in `analysis.py`), not bumped by hand: editing the prompt or an embedded fragment re-derives it automatically, so old results are not reused after a prompt change. Screening's `screening_prompt_version()` is a pure function of its prompt text (M15 1e: the prompt no longer cites the pet policy — it extracts neutral facts — so a pet-limit change is a hard-filter change judged on read, not a screening-cache change).
 
 Cached results are stored in the `application_ai_results` table along with token counts, cost, and the narrative — kept for auditability. A cache hit is free and is never blocked by the spending cap.
 

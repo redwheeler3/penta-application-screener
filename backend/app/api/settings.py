@@ -62,7 +62,8 @@ def update_settings(
     db: Session = Depends(get_db),
 ) -> SettingsResponse:
     # No income cross-check here: the numeric eligibility thresholds moved to
-    # /eligibility-rules (M15 1d). This surface is shared infra only (sheet + pets + AI).
+    # /eligibility-rules (M15 1d; pets joined them in 1e). This surface is shared infra
+    # only (sheet + AI).
     return build_settings_response(db, user, save_app_settings(db, settings))
 
 

@@ -21,15 +21,15 @@ def test_get_app_settings_returns_defaults_when_none_saved() -> None:
     settings = get_app_settings(db)
 
     assert settings.google_sheet_id == ""
-    assert settings.max_dogs == 1
-    assert settings.max_cats == 1
-    assert settings.allow_other_pets is False
+    # AppSettings is pure infra now (sheet + AI); pet limits moved to EligibilityRules in 1e.
+    assert settings.ai.region == "us-west-2"
 
 
 def test_get_app_settings_ignores_pre_split_rule_keys() -> None:
-    """A stored app_settings blob written before M15 1d still carries the numeric rule keys
-    (income_min, etc.). Those moved to committee_default_rules, but the old keys must not
-    break load — AppSettings ignores unknown keys."""
+    """A stored app_settings blob written before the M15 rule split still carries keys that
+    have since moved off AppSettings — the numeric rules (income_min, etc.; moved in 1d) and
+    the pet limits (max_dogs, etc.; moved in 1e to committee_default_rules). Those old keys
+    must not break load — AppSettings ignores unknown keys."""
     db = make_session()
     db.add(
         AdminSetting(
@@ -49,17 +49,12 @@ def test_get_app_settings_ignores_pre_split_rule_keys() -> None:
     settings = get_app_settings(db)
 
     assert settings.google_sheet_id == "sheet-123"
-    assert settings.max_dogs == 2
 
 
 def test_save_app_settings_round_trips() -> None:
     db = make_session()
-    saved = AppSettings(
-        google_sheet_id="sheet-123",
-        max_dogs=2,
-        max_cats=0,
-        allow_other_pets=True,
-    )
+    saved = AppSettings(google_sheet_id="sheet-123")
+    saved.ai.discovery_fan_out = 3
 
     save_app_settings(db, saved)
     loaded = get_app_settings(db)

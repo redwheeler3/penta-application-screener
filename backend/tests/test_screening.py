@@ -81,7 +81,9 @@ def test_applications_for_screening_scope() -> None:
     assert emails == {"clean@x.com", "clean-2@x.com"}
 
 
-def test_build_prompt_includes_essays_and_pet_policy() -> None:
+def test_build_prompt_surfaces_pets_and_essays_and_asks_for_extraction() -> None:
+    # M15 1e: the prompt no longer cites a pet POLICY (no threshold interpolated); it
+    # surfaces the free-text pets field and asks the model to EXTRACT a neutral inventory.
     db = make_session()
     app = add_application(
         db,
@@ -93,31 +95,25 @@ def test_build_prompt_includes_essays_and_pet_policy() -> None:
         },
         normalized={"pets_text": "Two dogs and a cat", "applicant_name": "Avery"},
     )
-    settings = AppSettings()
 
-    prompt = build_prompt(app, settings)
+    prompt = build_prompt(app)
 
-    assert "Two dogs and a cat" in prompt  # pets text surfaced
+    assert "Two dogs and a cat" in prompt  # pets text surfaced for extraction
     assert "We are a family." in prompt  # essay surfaced
-    assert "at most 1 dog(s)" in prompt  # pet policy from settings
-    assert "only dogs and cats are allowed" in prompt
+    assert "How to extract pets" in prompt  # instructs neutral extraction
+    # The prompt must NOT cite a threshold or ask the model to judge policy (that moved to
+    # the deterministic per-member hard filter).
+    assert "at most 1 dog" not in prompt
+    assert "only dogs and cats are allowed" not in prompt
 
 
-def test_screening_version_changes_with_pet_policy() -> None:
-    # Regression: the pet-policy threshold is a judgment input (max 1 vs 2 cats flips a
-    # 2-cat applicant), so it must be in the version → changing it misses the cache and
-    # shows Screen out of date. Previously the version hashed only the template, so a
-    # policy change silently reused stale results and reported "up to date".
+def test_screening_version_is_stable_and_settings_independent() -> None:
+    # M15 1e: pets left the prompt for a deterministic per-member filter, so the version is
+    # now a pure function of the prompt text — no settings argument, and a pet-limit change
+    # (which is a hard-filter change, judged on read) no longer invalidates the cache.
     from app.ai.screening import screening_prompt_version
 
-    one_cat = AppSettings()
-    one_cat.max_cats = 1
-    two_cats = AppSettings()
-    two_cats.max_cats = 2
-
-    assert screening_prompt_version(one_cat) != screening_prompt_version(two_cats)
-    # Same settings → stable version (still a real cache when nothing changed).
-    assert screening_prompt_version(one_cat) == screening_prompt_version(AppSettings())
+    assert screening_prompt_version() == screening_prompt_version()
 
 
 def test_screening_runs_and_caches() -> None:

@@ -48,7 +48,11 @@ from app.services.analysis import (
 from app.services.application_import import extract_essays
 from app.services.eligibility import overrides_by_app
 from app.services.ranking_view import candidate_scores
-from app.services.rules import hard_filter_reasons_for, rules_config_for
+from app.services.rules import (
+    hard_filter_reasons_for,
+    pet_facts_from_screening,
+    rules_config_for,
+)
 from app.services.stars import is_starred, starred_ids
 
 router = APIRouter(prefix="/applications", tags=["applications"])
@@ -64,6 +68,7 @@ def list_applications(
     applications = db.scalars(select(Application).order_by(Application.id)).all()
     ids = [app.id for app in applications]
     flags_by_app = _latest_flags(db, ids)
+    pet_facts_by_app = _latest_pet_facts(db, ids)
     starred = starred_ids(db, user.id, ids)
     overrides = overrides_by_app(db, user.id, ids)
     # This member's rules are one ruleset, so resolve once and evaluate the hard filters
@@ -73,7 +78,9 @@ def list_applications(
         applications=[
             _serialize_summary(
                 app,
-                reasons=hard_filter_reasons_for(rules_config, app),
+                reasons=hard_filter_reasons_for(
+                    rules_config, app, pet_facts=pet_facts_by_app.get(app.id)
+                ),
                 override=overrides.get(app.id),
                 flags=flags_by_app.get(app.id),
                 starred=app.id in starred,
@@ -120,7 +127,10 @@ def override_status(
         raise Problem("not_found", detail="Application not found.")
 
     flags = _latest_flags(db, [application_id]).get(application_id)
-    reasons = hard_filter_reasons_for(rules_config_for(db, user.id), application)
+    pet_facts = _latest_pet_facts(db, [application_id]).get(application_id)
+    reasons = hard_filter_reasons_for(
+        rules_config_for(db, user.id), application, pet_facts=pet_facts
+    )
     fingerprint = findings_fingerprint(reasons, flags)
     override = db.scalar(
         select(MemberEligibility).where(
@@ -305,6 +315,22 @@ def _latest_flags(
     }
 
 
+def _latest_pet_facts(
+    db: Session, application_ids: list[int] | None = None
+) -> dict[int, Any]:
+    """Extracted pet facts from each application's most recent screening result, as
+    {application_id: PetFacts} (M15 1e). Sibling to ``_latest_flags`` — same source,
+    the ``pets`` half of the screening report — feeding the per-member pet hard filter on
+    read. Apps with no (or pre-1e) result are absent, so the pet check is skipped for them.
+    """
+    latest = _latest_results(db, "screening", application_ids)
+    facts = {
+        app_id: pet_facts_from_screening(result.output)
+        for app_id, result in latest.items()
+    }
+    return {app_id: f for app_id, f in facts.items() if f is not None}
+
+
 def _latest_results(
     db: Session, kind: str, application_ids: list[int] | None = None
 ) -> dict[int, ApplicationAIResult]:
@@ -329,8 +355,11 @@ def _serialize_detail(app: Application, db: Session, user: User) -> ApplicationD
     # trusted screeners, and these just back the data the member already sees.
     flag_result = _latest_results(db, "screening", [app.id]).get(app.id)
     flags = (flag_result.output or {}).get("flags", []) if flag_result else None
+    pet_facts = pet_facts_from_screening(flag_result.output) if flag_result else None
     override = overrides_by_app(db, user.id, [app.id]).get(app.id)
-    reasons = hard_filter_reasons_for(rules_config_for(db, user.id), app)
+    reasons = hard_filter_reasons_for(
+        rules_config_for(db, user.id), app, pet_facts=pet_facts
+    )
     summary = _serialize_summary(
         app, reasons=reasons, override=override, flags=flags,
         starred=is_starred(db, app.id, user.id),

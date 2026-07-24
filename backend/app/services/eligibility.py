@@ -29,12 +29,13 @@ from app.db.models import (
     StatusSource,
     User,
 )
-from app.domain.hard_filters import RulesConfig
+from app.domain.hard_filters import PetFacts, RulesConfig
 from app.domain.status import effective_status
 from app.schemas.settings import EligibilityRules
 from app.services.rules import (
     committee_default_rules_config,
     hard_filter_reasons_for,
+    pet_facts_from_screening,
     rules_config_for,
     rules_config_from,
 )
@@ -61,6 +62,31 @@ def machine_flags_by_app(
         .order_by(ApplicationAIResult.created_at)
     ):
         latest[result.application_id] = (result.output or {}).get("flags", [])
+    return latest
+
+
+def pet_facts_by_app(
+    db: Session, application_ids: list[int]
+) -> dict[int, PetFacts]:
+    """The extracted pet inventory per application, as ``{application_id: PetFacts}`` (M15
+    1e). Sibling to ``machine_flags_by_app``: same latest-screening-result source, other
+    half of ``ScreeningReport`` (``pets`` rather than ``flags``). Apps without a screening
+    result — or a pre-1e result with no ``pets`` — are absent, so ``.get`` yields None and
+    the per-member pet filter is skipped for them. One query, off the N+1 path."""
+    if not application_ids:
+        return {}
+    latest: dict[int, PetFacts] = {}
+    for result in db.scalars(
+        select(ApplicationAIResult)
+        .where(
+            ApplicationAIResult.kind == "screening",
+            ApplicationAIResult.application_id.in_(application_ids),
+        )
+        .order_by(ApplicationAIResult.created_at)
+    ):
+        facts = pet_facts_from_screening(result.output)
+        if facts is not None:
+            latest[result.application_id] = facts
     return latest
 
 
@@ -102,7 +128,10 @@ def effective_status_for(
     under THIS member's rules)."""
     override = _member_override(db, user_id, application.id)
     flags = machine_flags_by_app(db, [application.id]).get(application.id)
-    reasons = hard_filter_reasons_for(rules_config_for(db, user_id), application)
+    pet_facts = pet_facts_by_app(db, [application.id]).get(application.id)
+    reasons = hard_filter_reasons_for(
+        rules_config_for(db, user_id), application, pet_facts=pet_facts
+    )
     return effective_status(
         override,
         has_reasons=bool(reasons),
@@ -117,6 +146,7 @@ def eligible_application_ids_for(db: Session, user_id: int) -> set[int]:
     applications = db.scalars(select(Application)).all()
     ids = [app.id for app in applications]
     flags_by_app = machine_flags_by_app(db, ids)
+    facts_by_app = pet_facts_by_app(db, ids)
     rules_config = rules_config_for(db, user_id)
     overrides = {
         override.application_id: override
@@ -129,7 +159,7 @@ def eligible_application_ids_for(db: Session, user_id: int) -> set[int]:
     }
     eligible: set[int] = set()
     for app in applications:
-        reasons = hard_filter_reasons_for(rules_config, app)
+        reasons = hard_filter_reasons_for(rules_config, app, pet_facts=facts_by_app.get(app.id))
         status, _ = effective_status(
             overrides.get(app.id),
             has_reasons=bool(reasons),
@@ -181,6 +211,7 @@ def union_eligible_application_ids(db: Session) -> set[int]:
     applications = db.scalars(select(Application)).all()
     ids = [app.id for app in applications]
     flags_by_app = machine_flags_by_app(db, ids)
+    facts_by_app = pet_facts_by_app(db, ids)
 
     ruleset_by_user, _ = _ruleset_by_user(db)
     users_per_ruleset: dict[RulesConfig, int] = defaultdict(int)
@@ -217,7 +248,7 @@ def union_eligible_application_ids(db: Session) -> set[int]:
         for user_id in override_users:
             override_counts_by_ruleset[ruleset_by_user[user_id]] += 1
         for rules_config in distinct_rulesets:
-            if hard_filter_reasons_for(rules_config, app):
+            if hard_filter_reasons_for(rules_config, app, pet_facts=facts_by_app.get(app.id)):
                 continue  # rules-ineligible under this ruleset
             available = (
                 users_per_ruleset[rules_config]

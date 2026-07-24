@@ -4,10 +4,10 @@ import { AccessPanel } from "./AccessPanel";
 import type { AppSettings, SettingsResponse } from "../types";
 
 // The admin-only config surface, organized as two sub-views:
-//   Configuration — the data source (Google Sheet), pet limits, and AI screening knobs.
+//   Configuration — the data source (Google Sheet) and AI screening knobs.
 //   Access        — the sign-in allowlist (the existing AccessPanel, self-fetching).
-// Per-member eligibility rules are NOT here; each member tunes those on their own
-// Eligibility Settings tab (see EligibilitySettingsPanel).
+// Per-member eligibility rules — including pet limits as of M15 1e — are NOT here; each
+// member tunes those on their own Eligibility Settings tab (see EligibilitySettingsPanel).
 type AdminSubtab = "configuration" | "access";
 
 export function AdminSettingsPanel(props: {
@@ -68,32 +68,6 @@ export function AdminSettingsPanel(props: {
                     {saved.googleSheetTitle}
                   </a>
                 ) : null}
-              </label>
-              <label>
-                <span>Max dogs</span>
-                <NumberInput
-                  min="0"
-                  max="10"
-                  value={draft.maxDogs}
-                  onChange={(v) => setDraft({ ...draft, maxDogs: v ?? 0 })}
-                />
-              </label>
-              <label>
-                <span>Max cats</span>
-                <NumberInput
-                  min="0"
-                  max="10"
-                  value={draft.maxCats}
-                  onChange={(v) => setDraft({ ...draft, maxCats: v ?? 0 })}
-                />
-              </label>
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={draft.allowOtherPets}
-                  onChange={(event) => setDraft({ ...draft, allowOtherPets: event.target.checked })}
-                />
-                <span>Allow other pets</span>
               </label>
               <div className="rules-section">
                 <h3>AI Screening</h3>

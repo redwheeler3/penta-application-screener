@@ -70,7 +70,24 @@ def screen_flagged(db: Session, application_id: int) -> None:
             cache_key=f"k-{application_id}",
             model_id="m",
             prompt_version="v",
-            output={"flags": [{"category": "pet_policy"}]},
+            output={"flags": [{"category": "fake_contact"}]},
+        )
+    )
+    db.commit()
+
+
+def screen_pets(db: Session, application_id: int, *, dogs: int = 0, cats: int = 0,
+                other_pets: list[str] | None = None) -> None:
+    """Cache a screening result carrying only extracted pet facts (no flags), so the pet hard
+    filter has facts to judge on read (M15 1e)."""
+    db.add(
+        ApplicationAIResult(
+            application_id=application_id,
+            kind="screening",
+            cache_key=f"pets-{application_id}",
+            model_id="m",
+            prompt_version="v",
+            output={"flags": [], "pets": {"dogs": dogs, "cats": cats, "other_pets": other_pets or []}},
         )
     )
     db.commit()
@@ -187,3 +204,51 @@ def test_per_member_rules_change_who_each_member_sees_eligible() -> None:
 
     # Eligible under lenient's rules with no override anywhere -> in the union pool.
     assert union_eligible_application_ids(db) == {borderline.id}
+
+
+def test_per_member_pet_limit_changes_eligibility_from_extracted_facts() -> None:
+    """M15 1e: pets diverge per member exactly like income. An applicant screened as having 2
+    dogs is rules-ineligible for a member on the default max_dogs=1, but eligible for a member
+    who raised max_dogs to 2 — driven purely by the AI-extracted pet facts + each member's
+    limit. The union includes them (eligible under the lenient member's rules)."""
+    db = make_session()
+    strict = add_user(db, "strict@x.com")          # default rules: max_dogs=1
+    lenient = add_user(db, "lenient@x.com")
+    two_dogs = add_app(
+        db,
+        email="twodogs@x.com",
+        normalized={
+            "household_income": 100_000,
+            "child_count": 1,
+            "child_details": [{"first_name": "Kid", "last_name": "One", "age": 5}],
+        },
+    )
+    # The screening pass extracted two dogs (a fact); no flags.
+    screen_pets(db, two_dogs.id, dogs=2)
+
+    set_member_rules(db, lenient.id, max_dogs=2)
+
+    assert eligible_application_ids_for(db, strict.id) == set()       # over the default limit
+    assert eligible_application_ids_for(db, lenient.id) == {two_dogs.id}
+    assert union_eligible_application_ids(db) == {two_dogs.id}
+
+
+def test_pet_facts_absent_before_screening_do_not_gate() -> None:
+    """Before screening there are no extracted pet facts, so the pet check can't gate — a
+    strict pet limit doesn't exclude an unscreened applicant (we need the screen to get the
+    counts). This keeps the screening-eligibility gate consistent with import."""
+    db = make_session()
+    strict = add_user(db, "strict@x.com")
+    unscreened = add_app(
+        db,
+        email="unscreened@x.com",
+        normalized={
+            "household_income": 100_000,
+            "child_count": 1,
+            "child_details": [{"first_name": "Kid", "last_name": "One", "age": 5}],
+        },
+    )
+    set_member_rules(db, strict.id, max_dogs=0, max_cats=0)
+
+    # No screening result cached -> no pet facts -> pet check skipped -> still eligible.
+    assert eligible_application_ids_for(db, strict.id) == {unscreened.id}

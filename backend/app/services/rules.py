@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import AdminSetting, Application, MemberRules
-from app.domain.hard_filters import RulesConfig, evaluate_hard_filters
+from app.domain.hard_filters import PetFacts, RulesConfig, evaluate_hard_filters
 from app.schemas.settings import EligibilityRules
 
 COMMITTEE_DEFAULT_RULES_KEY: Final = "committee_default_rules"
@@ -92,6 +92,9 @@ def rules_config_from(rules: EligibilityRules) -> RulesConfig:
         max_child_age=rules.max_child_age,
         min_children=rules.min_children,
         max_children=rules.max_children,
+        max_dogs=rules.max_dogs,
+        max_cats=rules.max_cats,
+        allow_other_pets=rules.allow_other_pets,
         disabled_rules=tuple(rules.disabled_rules),
     )
 
@@ -115,8 +118,32 @@ def _reason_to_payload(reason: Any) -> dict[str, Any]:
     return {"code": reason.code, "message": reason.message, "details": reason.details}
 
 
+def pet_facts_from_screening(flags_output: dict[str, Any] | None) -> PetFacts | None:
+    """The extracted pet inventory from a cached screening result's ``output``, as the
+    domain ``PetFacts`` the pet hard filter reads — or ``None`` if the app hasn't been
+    screened yet (so the pet check is skipped, exactly as pre-screen callers skip it).
+
+    Pet facts are AI-extracted from the free-text pets field (they can't be derived
+    deterministically), so they live on the screening result, not on ``normalized`` — this
+    is where the on-read eligibility path lifts them out to feed the per-member pet filter.
+    """
+    if not flags_output:
+        return None
+    pets = flags_output.get("pets")
+    if not pets:
+        return None
+    return PetFacts(
+        dogs=pets.get("dogs", 0),
+        cats=pets.get("cats", 0),
+        other_pets=tuple(pets.get("other_pets", []) or ()),
+    )
+
+
 def hard_filter_reasons_for(
-    rules_config: RulesConfig, application: Application
+    rules_config: RulesConfig,
+    application: Application,
+    *,
+    pet_facts: PetFacts | None = None,
 ) -> list[dict[str, Any]]:
     """This member's deterministic hard-filter reasons for one applicant, computed on read
     from ``application.normalized`` + a resolved ``RulesConfig``. Same dict shape the removed
@@ -124,6 +151,11 @@ def hard_filter_reasons_for(
 
     Takes an already-resolved ``RulesConfig`` (not a user_id) so callers ranking many apps
     resolve the member's rules once and reuse it across the pool — no per-app DB read.
+    ``pet_facts`` (from the app's screening result via ``pet_facts_from_screening``) is passed
+    through to ``evaluate_hard_filters`` so the per-member pet limit gates on read; ``None``
+    skips the pet check (an unscreened app, or a caller that gates before screening).
     """
-    result = evaluate_hard_filters(application.normalized or {}, rules_config)
+    result = evaluate_hard_filters(
+        application.normalized or {}, rules_config, pet_facts=pet_facts
+    )
     return [_reason_to_payload(reason) for reason in result.reasons]

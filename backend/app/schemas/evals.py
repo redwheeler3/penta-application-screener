@@ -224,7 +224,7 @@ class ScreeningResponse(ResponseModel):
 class ScreeningStabilityCaseOut(ResponseModel):
     key: str
     marker: str
-    majority: str  # the modal flag-set token (e.g. "pet_policy" or "none")
+    majority: str  # the modal flag-set token (e.g. "fake_contact" or "none")
     agreement: float
     flipped: bool
     tally: dict[str, int]  # flag-set token -> count

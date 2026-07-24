@@ -19,7 +19,6 @@ class FlagCategory(StrEnum):
     DUPLICATED_ANSWERS = "duplicated_answers"
     INTERNAL_INCONSISTENCY = "internal_inconsistency"
     FAKE_CONTACT = "fake_contact"
-    PET_POLICY = "pet_policy"
     OTHER = "other"
 
 
@@ -31,14 +30,38 @@ class ScreeningFlag(BaseModel):
     )
 
 
-class ScreeningReport(BaseModel):
-    """The complete set of informational screening flags for one application.
+class PetFacts(BaseModel):
+    """Neutral pet COUNTS extracted from the free-text pets field — a fact the model can
+    ground, never a policy verdict (M15 1e). The pet limits are per-member, so the model
+    must NOT judge whether the household is within policy; it only reports what animals are
+    present. A deterministic per-member hard filter (``evaluate_hard_filters``) decides
+    pass/fail from these counts + that member's limits. Absence of pets is 0/0/[], not a
+    missing report — the model extracts these on every application.
+    """
 
-    Empty ``flags`` means the integrity pass found nothing of concern. Flags are
-    never disqualifying — they only surface things for the screener to review.
+    dogs: int = Field(default=0, ge=0, description="Number of dogs. 0 if none stated.")
+    cats: int = Field(default=0, ge=0, description="Number of cats. 0 if none stated.")
+    other_pets: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Every non-dog, non-cat animal named, each as a short lowercase noun "
+            "(e.g. 'rabbit', 'snake'). Empty if none. This is a neutral inventory — do "
+            "NOT judge whether these are allowed; the committee's per-member policy does."
+        ),
+    )
+
+
+class ScreeningReport(BaseModel):
+    """One application's integrity flags plus its extracted pet facts.
+
+    Empty ``flags`` means the integrity pass found nothing of concern; flags are never
+    disqualifying — they only surface things for the screener to review. ``pets`` carries the
+    neutral pet inventory the per-member pet hard filter reads (M15 1e); it is a fact, not a
+    verdict — pet eligibility is decided deterministically per member, not here.
     """
 
     flags: list[ScreeningFlag] = Field(default_factory=list)
+    pets: PetFacts = Field(default_factory=PetFacts)
 
 
 # --- Pattern discovery and dimension scoring --------------------------------

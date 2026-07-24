@@ -116,6 +116,32 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
                 onChange={(v) => setDraft({ ...draft, maxChildren: v ?? 0 })}
               />
             </label>
+            <label>
+              <span>Max dogs</span>
+              <NumberInput
+                min="0"
+                max="10"
+                value={draft.maxDogs}
+                onChange={(v) => setDraft({ ...draft, maxDogs: v ?? 0 })}
+              />
+            </label>
+            <label>
+              <span>Max cats</span>
+              <NumberInput
+                min="0"
+                max="10"
+                value={draft.maxCats}
+                onChange={(v) => setDraft({ ...draft, maxCats: v ?? 0 })}
+              />
+            </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={draft.allowOtherPets}
+                onChange={(event) => setDraft({ ...draft, allowOtherPets: event.target.checked })}
+              />
+              <span>Allow other pets</span>
+            </label>
             <div className="rules-section">
               <h3>Screening Rules</h3>
               <p className="rules-hint">Uncheck a rule to disable it. Disabled rules will not run during screening.</p>

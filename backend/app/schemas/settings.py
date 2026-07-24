@@ -5,8 +5,11 @@ from pydantic import Field, field_validator
 # Threshold defaults are owned by the domain layer (the single source of truth);
 # the settings schema references them so a default can't drift between the two.
 from app.domain.hard_filters import (
+    DEFAULT_ALLOW_OTHER_PETS,
+    DEFAULT_MAX_CATS,
     DEFAULT_MAX_CHILD_AGE,
     DEFAULT_MAX_CHILDREN,
+    DEFAULT_MAX_DOGS,
     DEFAULT_MAX_INCOME,
     DEFAULT_MIN_ADULT_AGE,
     DEFAULT_MIN_CHILDREN,
@@ -92,14 +95,15 @@ class AISettings(BridgeModel):
 
 
 class EligibilityRules(BridgeModel):
-    """The deterministic hard-filter thresholds — per-member as of M15 1d.
+    """The deterministic hard-filter thresholds — per-member as of M15 1d, including pet
+    limits as of 1e.
 
     Each member screens against their own thresholds; a member who hasn't diverged reads the
-    shared committee default. The numeric rules are pure math (evaluated on read via
-    ``evaluate_hard_filters``), so they live here, separate from the shared infra config in
-    ``AppSettings``. Pet limits are NOT here: they are judged inside the shared screening
-    prompt, so they stay on ``AppSettings`` (committee-wide) until slice 1e moves pet judgment
-    to a deterministic per-member filter.
+    shared committee default. Every rule here is pure math evaluated on read via
+    ``evaluate_hard_filters`` — the numeric thresholds over ``normalized`` fields, plus the
+    pet limits over the pet facts the screening pass extracts (1e moved pets out of the
+    shared screening prompt into this per-member filter). So they live here, separate from the
+    shared infra config in ``AppSettings``.
     """
 
     income_min: int = Field(default=DEFAULT_MIN_INCOME, ge=0)
@@ -108,18 +112,18 @@ class EligibilityRules(BridgeModel):
     max_child_age: int = Field(default=DEFAULT_MAX_CHILD_AGE, ge=0, le=100)
     min_children: int = Field(default=DEFAULT_MIN_CHILDREN, ge=0, le=20)
     max_children: int = Field(default=DEFAULT_MAX_CHILDREN, ge=0, le=20)
+    max_dogs: int = Field(default=DEFAULT_MAX_DOGS, ge=0, le=10)
+    max_cats: int = Field(default=DEFAULT_MAX_CATS, ge=0, le=10)
+    allow_other_pets: bool = Field(default=DEFAULT_ALLOW_OTHER_PETS)
     disabled_rules: list[str] = Field(default_factory=list)
 
 
 class AppSettings(BridgeModel):
-    """Shared, committee-wide infra config: the source sheet, AI provider settings, and the
-    pet-policy limits (still shared — see ``EligibilityRules``). The per-member numeric
-    eligibility thresholds live in ``EligibilityRules``, not here (M15 1d)."""
+    """Shared, committee-wide infra config: the source sheet and AI provider settings. The
+    per-member eligibility thresholds — including pet limits as of M15 1e — live in
+    ``EligibilityRules``, not here."""
 
     google_sheet_id: str = Field(default="", max_length=2000)
-    max_dogs: int = Field(default=1, ge=0, le=10)
-    max_cats: int = Field(default=1, ge=0, le=10)
-    allow_other_pets: bool = False
     ai: AISettings = Field(default_factory=AISettings)
 
     @field_validator("google_sheet_id")

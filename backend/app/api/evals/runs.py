@@ -199,7 +199,7 @@ def run_screening(
 
     settings = get_app_settings(db)
     model = settings.ai.screening_model
-    version = screening_prompt_version(settings)
+    version = screening_prompt_version()
     cases = select(list(load_screening_cases()), case, lambda c: c.key)
 
     if mode == "stability":
@@ -207,7 +207,7 @@ def run_screening(
 
         def one_stability(c, case_delta) -> ScreeningStabilityCaseOut:
             case_delta(f"\n\n### {c.key} (x{k})\n")
-            rep = screening_stability_run(provider, c, screening_model=model, settings=settings, k=k, on_delta=case_delta)
+            rep = screening_stability_run(provider, c, screening_model=model, k=k, on_delta=case_delta)
             return ScreeningStabilityCaseOut(
                 key=c.key, marker=rep.marker, majority=rep.majority,
                 agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
@@ -222,7 +222,7 @@ def run_screening(
 
     def one(c, case_delta):
         case_delta(f"\n\n### {c.key}\n")
-        return run_screening_case(provider, c, screening_model=model, settings=settings, on_delta=case_delta)
+        return run_screening_case(provider, c, screening_model=model, on_delta=case_delta)
 
     def work(on_delta) -> ScreeningResponse:
         results = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings))

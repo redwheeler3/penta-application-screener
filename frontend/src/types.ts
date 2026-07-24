@@ -34,13 +34,11 @@ export type AISettings = {
   maxWorkers: number;
 };
 
-// The shared admin/infra config (GET/PUT /settings): the data source, pet limits, and
-// the AI knobs. The per-member eligibility rules live separately (EligibilityRules).
+// The shared admin/infra config (GET/PUT /settings): the data source and the AI knobs.
+// The per-member eligibility rules — including pet limits as of M15 1e — live separately
+// (EligibilityRules).
 export type AppSettings = {
   googleSheetId: string;
-  maxDogs: number;
-  maxCats: number;
-  allowOtherPets: boolean;
   ai: AISettings;
 };
 
@@ -50,10 +48,11 @@ export type SettingsResponse = {
   googleSheetTitle: string | null;
 };
 
-// The numeric screening rules each member tunes for themselves (GET/PUT
-// /eligibility-rules). Members start on the shared committee default and only diverge
-// once they save their own — see EligibilityRulesResponse.isDefault. disabledRules
-// holds the ids (from ALL_RULES) of rules the member has switched off.
+// The screening rules each member tunes for themselves (GET/PUT /eligibility-rules):
+// the numeric thresholds plus the pet limits (pets joined here in M15 1e). Members start
+// on the shared committee default and only diverge once they save their own — see
+// EligibilityRulesResponse.isDefault. disabledRules holds the ids (from ALL_RULES) of
+// rules the member has switched off.
 export type EligibilityRules = {
   incomeMin: number;
   incomeMax: number;
@@ -61,6 +60,9 @@ export type EligibilityRules = {
   maxChildAge: number;
   minChildren: number;
   maxChildren: number;
+  maxDogs: number;
+  maxCats: number;
+  allowOtherPets: boolean;
   disabledRules: string[];
 };
 

@@ -32,72 +32,62 @@ from app.services.rules import committee_default_rules_config
 KIND = "screening"
 
 SYSTEM_PROMPT = """\
-You are a careful assistant helping a housing co-op screening committee review applications, surfacing both data-integrity concerns and policy issues (such as pets) a screener should see.
-You only surface things for a human to review; you never make the eligibility or acceptance decision yourself. Surfacing a policy issue as a flag is NOT making that decision — raise it and leave the call to the committee.
+You are a careful assistant helping a housing co-op screening committee review applications: you surface data-integrity concerns for a screener AND extract a neutral inventory of the household's pets.
+You only surface things for a human to review; you never make the eligibility or acceptance decision yourself. For pets you only report WHAT is present — you never judge whether it is within policy, because the committee sets pet limits per member and decides that itself.
 Be conservative: flag only on concrete evidence. When in doubt, do not flag.
 """
 
-# The static instruction template. Held as a module constant (with a {pet_policy}
-# placeholder for the only per-settings value) so the cache version can be derived
-# from the prompt text — see PROMPT_VERSION. The pet policy is interpolated per call
-# in build_prompt; it is deliberately NOT part of the version (a policy change does
-# not alter how the model reasons, only the threshold it cites).
-# f-string so the shared INJECTION_GUARD_NOTE resolves at import (landing in the
-# hashed text, so guard edits re-run this pass). The per-call `{pet_policy}` is
-# escaped as `{{pet_policy}}` to survive as a literal placeholder for build_prompt's
-# .format() — that threshold stays out of the version, see PROMPT_VERSION below.
+# The static instruction template. Held as a module constant so the cache version can be
+# derived from the prompt text — see screening_prompt_version. No per-settings value is
+# interpolated: as of M15 1e the pet POLICY left this prompt (a deterministic per-member
+# hard filter judges pet counts now), so the prompt only EXTRACTS neutral pet facts, which
+# don't depend on any threshold. The version is therefore a pure function of the prompt text.
+# f-string so the shared INJECTION_GUARD_NOTE resolves at import (landing in the hashed
+# text, so guard edits re-run this pass).
 _INSTRUCTIONS_TEMPLATE = f"""\
 ## Task
-Review this housing co-op application and return any screening flags — both data-integrity concerns and policy issues (such as pets) a screener should see. Flag ONLY clear, concrete problems. If you are unsure, do not flag. It is correct and expected for most applications to have zero flags.
+Review this housing co-op application. Do two things: (1) return any data-integrity screening flags, and (2) extract a neutral inventory of the household's pets. Flag ONLY clear, concrete problems — if you are unsure, do not flag; it is correct and expected for most applications to have zero flags. Pet extraction is separate from flagging: report the pets present, never whether they are allowed.
 
 ## Inputs
 The applicant's normalized form fields in the `<fields>` block, and their four essay answers in the `<essays>` block, below.
 
-## How to judge
+## How to judge (flags)
 Flag these when clearly present:
 - A placeholder or non-name in ANY name field (applicant, co-applicant, or child) — flag it for a human to confirm rather than excusing it as probably innocent. A real name is NEVER a flag.
 - Essays that are essentially non-responsive: empty, a single word, or a single short fragment. Brief-but-genuine answers are fine.
 - Essays that are clearly spam/advertising, or the SAME text copy-pasted across multiple essay answers.
 - Direct factual contradictions between fields, or within or across the essays (not mere absence of explanation).
 - Contact details that are obviously fake or placeholder rather than a real (if unfamiliar) phone number or email address. Ordinary personal emails at common providers are fine.
-- Pet descriptions that violate the co-op pet policy ({{pet_policy}}). The pets field is free text, so account for negation ('no pets') and unclear phrasing.
 
 Do NOT flag (these are normal and must be ignored):
 - A child or co-applicant having a different surname from the applicant. Blended families and differing surnames are common and are NOT suspicious.
 - Missing optional information, or an answer simply being short.
 - Ordinary household context by itself. Only flag a concrete concern; family details are not suspicious on their own.
 - An email whose address does not relate to the applicant's name — including one that contains a DIFFERENT person's name.
+- Anything about pets. Pets are NEVER a flag — they go in the pet inventory instead, no matter how many or how unusual.
+
+## How to extract pets
+From the free-text `pets_text` field, count the household's animals into the `pets` inventory: `dogs`, `cats`, and `other_pets` (every non-dog, non-cat animal, each a short lowercase noun like 'rabbit' or 'snake'). Account for negation and unclear phrasing: 'no pets' / 'not applicable' means 0 dogs, 0 cats, no others. Report exactly what is stated; never decide whether it is within policy — that is the committee's per-member call, made deterministically downstream.
 
 ## Guardrails
 - {INJECTION_GUARD_NOTE}
 
 ## Output
 - Cite only short excerpts or field names as evidence; do not quote whole essays back.
-- Before returning the structured flags, briefly explain your reasoning as Markdown. Then return the structured flags."""
-
-def _pet_policy_line(settings: AppSettings) -> str:
-    parts = [f"at most {settings.max_dogs} dog(s)", f"at most {settings.max_cats} cat(s)"]
-    if not settings.allow_other_pets:
-        # Phrase the restriction positively — "only dogs and cats" rather than "no other pets"
-        # — so the word "other" doesn't read as the OTHER flag category and pull a pet
-        # violation into that bucket instead of pet_policy.
-        parts.append("only dogs and cats are allowed")
-    return "; ".join(parts)
+- Before returning the structured result, briefly explain your reasoning as Markdown. Then return the structured flags and pet inventory."""
 
 
-# Cached pass: the version gates this pass's cache (see derive_prompt_version). It
-# hashes the static prompt text AND the filled pet-policy line — NOT just the template
-# with its `{pet_policy}` placeholder. The threshold is a genuine judgment input (at
-# "max 1 cat" the model flags a 2-cat applicant; at "max 2" it doesn't), so changing it
-# must miss the cache and show Screen "out of date" — exactly as a prompt edit does.
-# (An earlier version hashed only the template, so a policy change silently reused stale
-# results. This is the documented exception to "per-settings values stay out of the
-# version": they stay out only when they don't change the model's judgment.)
-def screening_prompt_version(settings: AppSettings) -> str:
-    return derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS_TEMPLATE, _pet_policy_line(settings))
+# Cached pass: the version gates this pass's cache (see derive_prompt_version). As of M15
+# 1e it hashes ONLY the prompt text — no settings value folds in, because the prompt no
+# longer cites the pet policy (it extracts neutral facts, which no threshold changes). So a
+# pet-limit change no longer invalidates this cache: it's a hard-filter change judged on
+# read, not a screening change. (Before 1e the filled pet-policy line was hashed here, since
+# the prompt asked the model to JUDGE pets; that judgment moved to the deterministic filter.)
+def screening_prompt_version() -> str:
+    return derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS_TEMPLATE)
 
 
-def build_prompt(application: Application, settings: AppSettings) -> str:
+def build_prompt(application: Application) -> str:
     """Assemble the analysis input from normalized fields, essays, and pets. Essays
     are included in full (they're the basis for several flags), but the model is
     told not to echo them back wholesale.
@@ -115,14 +105,12 @@ def build_prompt(application: Application, settings: AppSettings) -> str:
         "co_applicant_phone": normalized.get("co_applicant_phone"),
     }
 
-    # Fill the only per-settings value into the static template. The field/essay
-    # JSON is appended separately (its braces would collide with .format()).
-    instructions = _INSTRUCTIONS_TEMPLATE.format(pet_policy=_pet_policy_line(settings))
-
+    # The field/essay JSON is appended separately from the static instructions (its braces
+    # would collide with any .format()); no per-settings interpolation remains.
     fields_json = json.dumps(fields, indent=2, default=str)
     essays_json = json.dumps(essays, indent=2, default=str)
     return (
-        f"{instructions}\n\n<fields>\n{fields_json}\n</fields>"
+        f"{_INSTRUCTIONS_TEMPLATE}\n\n<fields>\n{fields_json}\n</fields>"
         f"\n\n<essays>\n{essays_json}\n</essays>"
     )
 
@@ -154,7 +142,7 @@ def estimate_screening(db: Session, settings: AppSettings) -> CostEstimate:
         applications=applications_for_screening(db),
         kind=KIND,
         model_id=settings.ai.screening_model,
-        prompt_version=screening_prompt_version(settings),
+        prompt_version=screening_prompt_version(),
         # Fallback only (no real usage yet). Order-of-magnitude from observed runs;
         # the prompt asks for a Markdown narrative, so output is several hundred tokens.
         fallback_input_tokens=2800,
@@ -184,8 +172,8 @@ def run_screening(
         kind=KIND,
         schema=ScreeningReport,
         model_id=settings.ai.screening_model,
-        prompt_version=screening_prompt_version(settings),
-        build_prompt=lambda application: build_prompt(application, settings),
+        prompt_version=screening_prompt_version(),
+        build_prompt=build_prompt,
         system_prompt=SYSTEM_PROMPT,
         max_workers=max_workers,
     )

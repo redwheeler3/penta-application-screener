@@ -301,9 +301,9 @@ async def test_ai_flag_sets_needs_review_status_and_filter() -> None:
         ScreeningReport(
             flags=[
                 ScreeningFlag(
-                    category=FlagCategory.PET_POLICY,
-                    summary="Too many pets.",
-                    evidence="pets",
+                    category=FlagCategory.FAKE_CONTACT,
+                    summary="Contact details look fake.",
+                    evidence="phone",
                 )
             ]
         ),
@@ -320,7 +320,7 @@ async def test_ai_flag_sets_needs_review_status_and_filter() -> None:
         assert by_email["flag@x.com"]["status"] == "ineligible"
         assert by_email["flag@x.com"]["statusSource"] == "ai"
         assert by_email["flag@x.com"]["flagCount"] == 1
-        assert by_email["flag@x.com"]["flagCategories"] == ["pet_policy"]
+        assert by_email["flag@x.com"]["flagCategories"] == ["fake_contact"]
         # Clean -> stays eligible / untouched.
         assert by_email["clean@x.com"]["status"] == "eligible"
         assert by_email["clean@x.com"]["statusSource"] == "untouched"
@@ -348,13 +348,13 @@ async def test_raw_row_and_narrative_visible_to_members() -> None:
         ScreeningReport(
             flags=[
                 ScreeningFlag(
-                    category=FlagCategory.PET_POLICY,
-                    summary="Too many pets.",
-                    evidence="pets",
+                    category=FlagCategory.FAKE_CONTACT,
+                    summary="Contact details look fake.",
+                    evidence="phone",
                 )
             ]
         ),
-        narrative="Checking pets: a hamster is outside the allowed categories.",
+        narrative="Checking contact details: the phone number looks like a placeholder.",
     )
 
     transport = ASGITransport(app=app)
@@ -365,7 +365,7 @@ async def test_raw_row_and_narrative_visible_to_members() -> None:
             "application"
         ]
         assert member_detail["aiNarrative"] == (
-            "Checking pets: a hamster is outside the allowed categories."
+            "Checking contact details: the phone number looks like a placeholder."
         )
         trace = member_detail["screeningTrace"]
         assert trace["modelId"] == "mock-model"
@@ -383,9 +383,9 @@ async def test_human_override_is_sticky_and_snapshots_fingerprint() -> None:
         ScreeningReport(
             flags=[
                 ScreeningFlag(
-                    category=FlagCategory.PET_POLICY,
-                    summary="Too many pets.",
-                    evidence="pets",
+                    category=FlagCategory.FAKE_CONTACT,
+                    summary="Contact details look fake.",
+                    evidence="phone",
                 )
             ]
         )
@@ -434,9 +434,9 @@ async def test_clear_override_restores_machine_status() -> None:
         ScreeningReport(
             flags=[
                 ScreeningFlag(
-                    category=FlagCategory.PET_POLICY,
-                    summary="Too many pets.",
-                    evidence="pets",
+                    category=FlagCategory.FAKE_CONTACT,
+                    summary="Contact details look fake.",
+                    evidence="phone",
                 )
             ]
         )

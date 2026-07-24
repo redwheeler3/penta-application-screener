@@ -85,10 +85,13 @@ def settings_fingerprint(settings: AppSettings, rules: EligibilityRules) -> str:
     disabled rules) — exactly the settings whose change would reclassify who is eligible on
     a re-import. Per-member rule divergence is deliberately NOT hashed: import is pre-any-
     member-view and its eligible/filtered counts describe the shared committee-default
-    baseline, so only the default reclassifies the import. Deliberately EXCLUDES pet limits
-    and the AI spending cap: pets are an AI screening concern (the Screen step), not a hard
-    filter, and the cap never affects import. Stamped on each SyncRun so the dashboard can
-    flag Import as out of date when the live settings no longer match.
+    baseline, so only the default reclassifies the import. Pet limits ARE hashed as of M15
+    1e: pets became a per-member hard filter (over the committee default here), so a change
+    to the default pet limits reclassifies the import exactly as an income change does. (Pets
+    still don't gate WHO gets screened — the pet check needs the AI-extracted facts that only
+    exist after screening — but they do move the committee-default eligible/filtered counts.)
+    Deliberately EXCLUDES the AI spending cap: it never affects import. Stamped on each
+    SyncRun so the dashboard can flag Import as out of date when the live settings drift.
     """
     basis = json.dumps(
         {
@@ -99,6 +102,9 @@ def settings_fingerprint(settings: AppSettings, rules: EligibilityRules) -> str:
             "max_child_age": rules.max_child_age,
             "min_children": rules.min_children,
             "max_children": rules.max_children,
+            "max_dogs": rules.max_dogs,
+            "max_cats": rules.max_cats,
+            "allow_other_pets": rules.allow_other_pets,
             "disabled_rules": sorted(rules.disabled_rules),
         },
         sort_keys=True,
