@@ -322,9 +322,9 @@ Strong negative essay signals include (not limited to): the applicant appears un
 
 The pipeline makes real, non-deterministic model judgments, so it is instrumented across four pillars (build history in CHANGELOG M13; grader design in ADR 0008 and [docs/ai-evals.md](docs/ai-evals.md)):
 
-- **Cost** — an Insights "Cost" subtab: cumulative and last-run AI spend, per pass, with a token (in→out) + model breakdown and estimate-vs-actual reconciliation. All cost accounting flows through one `PassCost` value object into `run_cost_ledger` + `run_pass_cost`, which both Screen and Rank write and both surfaces read.
-- **Per-pass AI trace viewer** — each pass's raw output is legible: per-application (screening flags, scoring rationale/evidence) on the candidate detail page; per-run (discovery, decomposition, matching, consolidation audits) on the Insights subtabs.
-- **Operational metrics** — an Insights "Trends" subtab: per-run/per-pass cost, tokens, wall-clock latency, cache-hit rate, failure count, and dimension count over time.
+- **Cost** — an Observability "Cost" subtab: cumulative and last-run AI spend, per pass, with a token (in→out) + model breakdown and estimate-vs-actual reconciliation. All cost accounting flows through one `PassCost` value object into `run_cost_ledger` + `run_pass_cost`, which both Screen and Rank write and both surfaces read.
+- **Per-pass AI trace viewer** — each pass's raw output is legible: per-application (screening flags, scoring rationale/evidence) on the candidate detail page; per-run (discovery, decomposition, matching, consolidation audits) on the Observability subtabs.
+- **Operational metrics** — an Observability "Trends" subtab: per-run/per-pass cost, tokens, wall-clock latency, cache-hit rate, failure count, and dimension count over time.
 - **Evals** — run in-app from the **Evals** tab, never gating a commit:
   - **Invariants** (deterministic, the only CI gate): things always a bug — every dimension has distinct high/low poles; no criterion keys on a protected class. "Re-baseline from current Rank" records the blessed fixture.
   - **Live per-pass evals** — each pass's golden cases fed through the *real* production prompt and graded by a grader matched to the output shape (categorical → exact-match; scoring → a band; screening → per-category), with a `?mode=stability` K-repeat run measuring verdict flips. See ADR 0008.
@@ -355,7 +355,7 @@ It is acceptable to send full application context, including names/contact conte
 | Applicant pool + sync | shared | one source of truth |
 | Discovered dimension set | **shared union** | grown by any member's Rank, de-duped by the existing match pass + `dimension_aliases` |
 | Per-(app, dim) AI scores | **shared** | content-addressed cache key has no member id — sharing is automatic |
-| Cost ledger / traces / evals | shared | + a "triggered-by member" stamp per run; Insights stays committee-wide |
+| Cost ledger / traces / evals | shared | + a "triggered-by member" stamp per run; Observability stays committee-wide |
 | Eligibility **rules** (income/age/children/pet thresholds, `disabled_rules`) | **per-member** | one shared committee default; a member's row is copy-on-write, created only when they diverge |
 | Eligibility **overrides** (per applicant) | **per-member** | |
 | Tier placement + ranking + new/revived/requested badges | **per-member** | weights stay **derived** from tiers, so per-member re-weighting is free math |
@@ -488,7 +488,7 @@ This restructure lands with the **1d** settings split (it needs per-member rule 
      - **Separate housekeeping (NOT part of 1g) — drop `SyncRun.eligible_count` / `filtered_out_count`.** These are **latent dead weight, pre-existing** (dead since 1c made eligibility compute-on-read): import computes them via a full hard-filter pass and the API ships them, but nothing displays them (the sync toast shows only row/imported/updated/unchanged; the dashboard's eligible/filtered come from the on-read per-member computation). Orthogonal to 1g — do it on its own merits in its own commit, never bundled with the badge/toggle work (bundling would re-conflate "what appears" with "what is"). Mild extra reason to remove: once Move 2 lands, an import-time committee-default tally would be *actively* misleading (can't reflect per-member state). A reverted first attempt (drop the two columns + `SyncResponse` fields + the import tally, with a migration) round-tripped cleanly on a copy — straightforward when we pick it up.
 2. Per-member tiering/ranking; shared-union discovery merge; "keep if any member tiered it"; weight-0 new-axis behavior. Consolidation stays shared (a true duplicate merge is a committee-wide concept-identity fact, not member taste) — the survivor inherits the **highest** working tier among the merged twins, so a member never loses the concept or weight; at most the surviving key holds the higher of two tiers they'd split across the twins. Per-member consolidation is deliberately not built (ADR 0011).
 3. Per-member overrides + notes wiring (notes already per-member).
-4. Observability: triggered-by-member stamp; Insights stays shared.
+4. Observability: triggered-by-member stamp; Observability stays shared.
 5. SPEC/CHANGELOG/ADR finalization.
 
 **How M15 resolves the single-tenant assumptions** (the load-bearing global singletons, called out so they read as a contract, not landmines):
@@ -524,4 +524,8 @@ The mock suite proves plumbing, not judgment. Still owed on real data (parked so
 
 ### UI Consistency Walkthrough (owed)
 
-A systematic tab-by-tab, panel-by-panel walkthrough of the whole UI to find and fix cross-surface divergences — the kind that accrete when tabs/panels are built at different times. Prompted by the settings tabs shipping without the title heading every other tab (Observability/Evals) has (fixed 2026-07-24, but found by eye, not systematically). Check each surface against shared conventions: title heading present; sub-navigation style (`.insights-subtab` underline tabs); heading levels; spacing/padding; empty/loading/error states; button placement + labels; `no-print` on interactive chrome; icon sizing. Produce a checklist of divergences, then fix in one consistency pass.
+A systematic tab-by-tab, panel-by-panel walkthrough of the whole UI to find and fix cross-surface divergences — the kind that accrete when tabs/panels are built at different times. Prompted by the settings tabs shipping without the title heading every other tab (Observability/Evals) has (fixed 2026-07-24, but found by eye, not systematically). Check each surface against shared conventions: title heading present; sub-navigation style (the shared `.subtab` underline tabs); heading levels; spacing/padding; empty/loading/error states; button placement + labels; `no-print` on interactive chrome; icon sizing. Produce a checklist of divergences, then fix in one consistency pass.
+
+### Eval golden ergonomics — pipe-input sugar for any-of `fires` (owed)
+
+A screening golden's `fires` any-of group is stored as a nested list — `[["spam_essay", "minimal_essay"]]` = "at least one of these must fire" — but the eval *displays* it pipe-joined ("spam_essay | minimal_essay", see `fire_label`). That display↔input mismatch is a real footgun: hand-editing a golden, it's natural to type the pipe form (`"spam_essay|minimal_essay"`) back into the data, which is a bare string the grader can't iterate — and it killed the Evals page render once (2026-07-24). Close the gap: teach the golden loader (`load_cases` in `app/evals/screening.py`) to accept a pipe-delimited string as sugar for an any-of group (`"a|b|c"` → `["a","b","c"]`), so what you see is what you can type. Small, isolated to the loader; update `docs/eval-case-schema.md` to document the accepted forms. (Not a bug — the nested-list form works; this is ergonomics to prevent the mistake.)

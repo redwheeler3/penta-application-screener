@@ -526,7 +526,7 @@ def _stream_criteria(
             # Persist every discoverer's report AND its own reasoning, built here
             # where the passes are in scope. Each pass = one fresh-context discovery;
             # keeping all K narratives (not just the streamed one) is what lets the
-            # Insights panel show each discoverer — and reasoning has proven vital for
+            # Observability panel show each discoverer — and reasoning has proven vital for
             # debugging (see .clinerules).
             fan_out_audit = {
                 "k": len(fan_out.passes),  # survivors (the reports decomposition saw)
@@ -645,7 +645,7 @@ def _stream_criteria(
             )
         )
     # Decompose audit: per settled axis, the source_keys it absorbed + the merge/keep
-    # reasoning (the Insights panel surface, and the D9 committee-request trail). Built
+    # reasoning (the Observability panel surface, and the D9 committee-request trail). Built
     # from the pre-adopt decomposition so it reflects what decomposition actually did,
     # before the match pass rewrites matched keys to prior ones below.
     decompose_audit = decompose_audit_payload(

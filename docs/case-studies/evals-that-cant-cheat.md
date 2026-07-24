@@ -143,7 +143,7 @@ hard-fail **invariants**, and a pytest gate over the invariants. LLM-as-judge ev
 ones that *can* assess "did consolidation over-merge in a way a human would object to" —
 are deliberately kept off the commit gate: they run from the in-app Evals tab, watched as
 a trend. (Report-only judgement *signals* once lived alongside the invariants but were
-retired — the Insights tab shows them better over the live run.)
+retired — the Observability tab shows them better over the live run.)
 That's not a scoping cut; it's the same principle as Move 1, one layer up.
 
 ## The transferable core

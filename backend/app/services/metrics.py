@@ -1,4 +1,4 @@
-"""Operational-metrics trends for the Insights tab (M13 Pillar 3).
+"""Operational-metrics trends for the Observability tab (M13 Pillar 3).
 
 Every completed run persisted a ``RunCostLedger`` + child ``RunPassCost`` rows (see
 ``cost_report``). Pillar 1 reads those for *spend*; this reads the same rows for
@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.time import utc_isoformat
 from app.db.models import Analysis, RunCostLedger
-from app.schemas.insights import MetricsReport, PassTrendPoint, TrendPoint
+from app.schemas.observability import MetricsReport, PassTrendPoint, TrendPoint
 from app.services.analysis import current_dimension_report
 from app.services.cost_report import CACHEABLE_PASSES
 

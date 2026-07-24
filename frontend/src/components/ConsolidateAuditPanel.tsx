@@ -107,8 +107,8 @@ function ConsolidateAuditBody(props: { audit: ConsolidateAuditResponse }): React
       </table>
 
       {audit.narrative ? (
-        <div className="insights-narrative">
-          <span className="insights-label">Consolidation reasoning</span>
+        <div className="observability-narrative">
+          <span className="observability-label">Consolidation reasoning</span>
           <div className="ai-narrative">
             <ReactMarkdown>{audit.narrative}</ReactMarkdown>
           </div>

@@ -21,7 +21,7 @@ import { AdminSettingsPanel } from "./components/AdminSettingsPanel";
 import { ApplicationsList } from "./components/ApplicationsList";
 import { CandidateDetail } from "./components/CandidateDetail";
 import { EligibilitySettingsPanel } from "./components/EligibilitySettingsPanel";
-import { InsightsView } from "./components/InsightsView";
+import { AIQualityView } from "./components/AIQualityView";
 import { RankingView } from "./components/RankingView";
 import { Toasts } from "./components/Toasts";
 import { WorkflowBar } from "./components/WorkflowBar";
@@ -148,7 +148,7 @@ export function App() {
   // ranking — with `activeTab` choosing which is shown (a candidate detail drills in
   // over either). The Ranking tab only appears once a run exists (see the tab strip).
   const [activeTab, setActiveTab] = useState<
-    "applications" | "ranking" | "insights" | "evals" | "eligibilitySettings" | "adminSettings"
+    "applications" | "ranking" | "observability" | "evals" | "eligibilitySettings" | "adminSettings"
   >("applications");
   const isAdmin = user?.role === "admin";
 
@@ -599,11 +599,11 @@ export function App() {
               <button
                 type="button"
                 role="tab"
-                aria-selected={activeTab === "insights" && !selectedApp}
-                className={`tab-button${activeTab === "insights" && !selectedApp ? " active" : ""}`}
+                aria-selected={activeTab === "observability" && !selectedApp}
+                className={`tab-button${activeTab === "observability" && !selectedApp ? " active" : ""}`}
                 onClick={() => {
                   setSelectedApp(null);
-                  setActiveTab("insights");
+                  setActiveTab("observability");
                 }}
               >
                 Observability
@@ -691,10 +691,10 @@ export function App() {
                 onSelectApplication={viewApplication}
                 onToggleStar={toggleStar}
               />
-            ) : activeTab === "insights" ? (
-              <InsightsView family="obs" run={rankingRun} onToast={showToast} onError={showError} />
+            ) : activeTab === "observability" ? (
+              <AIQualityView family="obs" run={rankingRun} onToast={showToast} onError={showError} />
             ) : activeTab === "evals" ? (
-              <InsightsView family="eval" run={rankingRun} onToast={showToast} onError={showError} />
+              <AIQualityView family="eval" run={rankingRun} onToast={showToast} onError={showError} />
             ) : (
               <ApplicationsList
                 applications={applications}

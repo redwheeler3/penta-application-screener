@@ -162,7 +162,7 @@ def _invariants_response() -> InvariantsResponse:
 @router.get("/invariants", response_model=InvariantsResponse)
 def invariants(user: User = Depends(require_current_user)) -> InvariantsResponse:
     """Run the deterministic invariants over the committed fixture. Free (no model calls).
-    (Judgement signals — overlap, carry-forward rate — live on the Insights tab over the
+    (Judgement signals — overlap, carry-forward rate — live on the Observability tab over the
     live run, which shows them better; they aren't duplicated here.)"""
     return _invariants_response()
 

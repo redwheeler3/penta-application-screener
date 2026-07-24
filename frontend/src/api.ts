@@ -150,13 +150,13 @@ export const fetchFanOutAudit = () =>
   getJson<FanOutAuditResponse | null>("/ranking/current/fan-out-audit");
 
 // Aggregated AI spend (M13 Pillar 1): cumulative, grouped by run.
-export const fetchCostReport = () => getJson<CostReport>("/insights/cost");
+export const fetchCostReport = () => getJson<CostReport>("/observability/cost");
 
 // The most recent Screen and Rank runs, each with fresh spend + cache savings.
-export const fetchLastRuns = () => getJson<LastRunsReport>("/insights/last-runs");
+export const fetchLastRuns = () => getJson<LastRunsReport>("/observability/last-runs");
 
 // Operational trends across all runs (M13 Pillar 3): cost/tokens/latency/cache/failures.
-export const fetchMetrics = () => getJson<MetricsReport>("/insights/metrics");
+export const fetchMetrics = () => getJson<MetricsReport>("/observability/metrics");
 
 export const fetchScreeningEstimate = () => fetch(url("/screening/run/estimate"), { credentials: "include" });
 export const runScreening = () => fetch(url("/screening/run"), { method: "POST", credentials: "include" });

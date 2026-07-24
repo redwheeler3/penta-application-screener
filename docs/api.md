@@ -83,15 +83,15 @@ The **Rank chain** and the deterministic ranked shortlist. Rank is one button th
 | PUT | `/ranking/tiers` | Persist a new tier layout, derive weights from it, and return the freshly re-sorted ranking. Unknown dimension keys → 422; no run → 409. No model call. | Login |
 | PUT | `/ranking/seeds` | Persist pending free-text dimension proposals for the next Rank's discovery. 409 before a run exists. | Login |
 
-### Insights — `app/api/insights.py`
+### Observability — `app/api/observability.py`
 
 Cross-run observability (M13 Pillars 1 + 3): spend and operational trends over every run kind (Screen, Rank, score-current). Top-level, not under `/ranking`, because they span all runs. No model calls.
 
 | Method | Path | Purpose | Auth |
 | --- | --- | --- | --- |
-| GET | `/insights/cost` | Cumulative AI spend, grouped by run. | Login |
-| GET | `/insights/last-runs` | The most recent Screen and Rank runs, each with fresh spend + cache savings. | Login |
-| GET | `/insights/metrics` | Operational trends across all runs: cost/tokens/latency/cache-hit/failures per run and pass. | Login |
+| GET | `/observability/cost` | Cumulative AI spend, grouped by run. | Login |
+| GET | `/observability/last-runs` | The most recent Screen and Rank runs, each with fresh spend + cache savings. | Login |
+| GET | `/observability/metrics` | Operational trends across all runs: cost/tokens/latency/cache-hit/failures per run and pass. | Login |
 
 ### Evals — `app/api/evals/` (package)
 

@@ -27,8 +27,8 @@ export function DiscoveryPanel(props: { run: CurrentRunResponse }): ReactNode {
     }
     return (
       <div className="discovery-audit">
-        <div className="insights-narrative">
-          <span className="insights-label">Model reasoning</span>
+        <div className="observability-narrative">
+          <span className="observability-label">Model reasoning</span>
           <div className="ai-narrative">
             <ReactMarkdown>{props.run.discoveryNarrative}</ReactMarkdown>
           </div>
@@ -60,8 +60,8 @@ export function DiscoveryPanel(props: { run: CurrentRunResponse }): ReactNode {
               ))}
             </ul>
             {pass.narrative ? (
-              <div className="insights-narrative">
-                <span className="insights-label">Reasoning</span>
+              <div className="observability-narrative">
+                <span className="observability-label">Reasoning</span>
                 <div className="ai-narrative">
                   <ReactMarkdown>{pass.narrative}</ReactMarkdown>
                 </div>

@@ -4,7 +4,7 @@ import { money } from "../format";
 import { useFetchOnce } from "../hooks/useFetchOnce";
 import type { CostReport, InsightRunKind, LastRunCost, LastRunsReport } from "../types";
 
-// M13 Pillar 1: AI cost, an Insights subtab. Two sections, same column layout so they
+// M13 Pillar 1: AI cost, an Observability subtab. Two sections, same column layout so they
 // line up: [ label | tokens (in→out) | uncached | cached | saved by cache | spent ].
 // Spent is the rightmost hard number; cache savings sit to its left as the softer
 // estimate; tokens sit next to the label as the "why it cost that" breakdown.
@@ -72,7 +72,7 @@ export function CostPanel(): ReactNode {
     <div className="cost-report">
       <div className="cost-section">
         <div className="cost-block-head">
-          <span className="insights-label">Last runs</span>
+          <span className="observability-label">Last runs</span>
           <span className="cost-block-total">{`$${lastSpent.toFixed(2)}`} spent</span>
         </div>
         <p className="panel-hint">
@@ -118,7 +118,7 @@ export function CostPanel(): ReactNode {
 
       <div className="cost-section">
         <div className="cost-block-head">
-          <span className="insights-label">Cumulative spend</span>
+          <span className="observability-label">Cumulative spend</span>
           <span className="cost-block-total">{`$${cost.totalCostUsd.toFixed(2)}`} spent</span>
         </div>
         <p className="panel-hint">

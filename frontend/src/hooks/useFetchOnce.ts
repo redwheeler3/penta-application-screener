@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-// Fetch once on mount and track loading/ready/error — the shared shape the Insights panels
+// Fetch once on mount and track loading/ready/error — the shared shape the Observability panels
 // (match/consolidate/decompose audit, discovery, cost, metrics) all repeated. Returns the data
 // (null until ready) and a state tag; each panel renders its own error/empty text, since those
 // differ per panel. `fetcher` should be stable (a module-level api fn or a Promise.all of them);

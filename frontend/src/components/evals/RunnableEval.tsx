@@ -336,7 +336,7 @@ const CATEGORICAL = new Set(["consolidation", "matching", "decomposition"]);
 
 // The AI passes in PIPELINE order (screening runs first, then the Rank chain). The judge's
 // per-pass case groups render in this order so they read the way the app runs + the eval subtabs
-// list — not alphabetically. Keep in sync with InsightsView's evalTabs.
+// list — not alphabetically. Keep in sync with AIQualityView's evalTabs.
 const PASS_PIPELINE_ORDER = ["screening", "decomposition", "matching", "scoring", "consolidation"];
 
 function dotFor(mode: EvalRunMode, result: EvalCaseResult): "ok" | "fail" | "contested" {

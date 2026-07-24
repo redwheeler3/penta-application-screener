@@ -19,8 +19,8 @@ Split by what each file owns (all under the ``/ranking`` prefix):
   - current.py   — the current run's criteria + the AI-legibility audits.
   - shortlist.py — the deterministic ranked list + tiers + discovery seeds.
 
-Cross-run Insights reads (cost / last-runs / metrics) are NOT here — they span Screen,
-Rank, and score-current, so they live at top-level ``/insights`` (``app/api/insights.py``).
+Cross-run Observability reads (cost / last-runs / metrics) are NOT here — they span Screen,
+Rank, and score-current, so they live at top-level ``/observability`` (``app/api/observability.py``).
 """
 
 from fastapi import APIRouter

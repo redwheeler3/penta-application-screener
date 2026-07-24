@@ -166,8 +166,8 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
       </table>
 
       {audit.narrative ? (
-        <div className="insights-narrative">
-          <span className="insights-label">Decomposition reasoning</span>
+        <div className="observability-narrative">
+          <span className="observability-label">Decomposition reasoning</span>
           <div className="ai-narrative">
             <ReactMarkdown>{audit.narrative}</ReactMarkdown>
           </div>

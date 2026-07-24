@@ -9,7 +9,7 @@ checks were tuned to it — if a real run regresses, re-record only after a huma
 the new output is actually fine (rebaseline with a reason), never by weakening a check.
 
 Only invariants gate CI. Judgement observations (overlap, carry-forward rate) that can't
-honestly pass/fail aren't checked here or in the Evals tab — the Insights tab shows them
+honestly pass/fail aren't checked here or in the Evals tab — the Observability tab shows them
 over the live run, better. Putting them in CI would just pressure us to soften them.
 """
 

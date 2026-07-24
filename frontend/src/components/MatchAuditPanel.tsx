@@ -11,7 +11,7 @@ import type { MatchAuditResponse } from "../types";
 // job is letting a human eyeball individual matches for a wrong mapping, without a
 // SQLite spelunk.
 //
-// Self-fetches on mount. Rendered as the active Insights subtab, so an absent audit
+// Self-fetches on mount. Rendered as the active Observability subtab, so an absent audit
 // (a first run, or a run from before capture) shows an explicit empty state rather
 // than vanishing — "nothing carried forward" is information, not a broken panel.
 export function MatchAuditPanel(): ReactNode {
@@ -123,8 +123,8 @@ function MatchAuditBody(props: { audit: MatchAuditResponse }): ReactNode {
       </table>
 
       {audit.matchNarrative ? (
-        <div className="insights-narrative">
-          <span className="insights-label">Match reasoning</span>
+        <div className="observability-narrative">
+          <span className="observability-label">Match reasoning</span>
           {/* Reuse the .ai-narrative markdown box (same as the screening narrative)
               so the match reasoning renders as markdown, not raw text. */}
           <div className="ai-narrative">

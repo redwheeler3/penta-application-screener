@@ -355,11 +355,11 @@ h1 {
 /* Settings is now the content of the Settings tab; the surrounding .panel supplies
    the card, so this is just a body wrapper. */
 /* Tab title at the top of each settings tab, matching the Observability/Evals heading
-   (.insights-header) so every tab opens with its name. Left-padded to align with the
+   (.observability-header) so every tab opens with its name. Left-padded to align with the
    settings body content (20px). */
 .settings-header {
   padding: 20px 20px 0;
-  /* Breathing room before the subtabs/form below — matches .insights-header's 1rem gap
+  /* Breathing room before the subtabs/form below — matches .observability-header's 1rem gap
      so the heading doesn't sit flush against what follows. */
   margin-bottom: 1rem;
 }
@@ -377,7 +377,7 @@ h1 {
 /* Sub-tab bar inside the Admin Settings panel (Configuration / Access). Sits at the
    top of the panel, above the active section. Reuses the .tab-button pill look; a
    simple bottom rule separates the bar from the content below it. */
-/* Admin Settings' sub-tabs reuse .insights-subtabs (see Observability/Evals). The tab
+/* Admin Settings' sub-tabs reuse .subtabs (see Observability/Evals). The tab
    heading sits above them; this just aligns them horizontally with the body content. */
 .admin-settings-subtabs {
   padding: 0 1.25rem;
@@ -1734,7 +1734,7 @@ h1 {
 }
 
 /* The unifying "inputs → keeper" arrow between the two dimension columns on every
-   Insights relationship tab (Matching, Decomposition, Consolidation): candidates on the
+   Observability relationship tab (Matching, Decomposition, Consolidation): candidates on the
    left flow into the surviving/settled dimension on the right. A narrow, centred,
    non-wrapping cell so the arrow sits mid-row and reads as the flow direction. */
 .match-audit-arrow {
@@ -1808,10 +1808,10 @@ h1 {
   padding: 0 0.4rem;
 }
 
-/* Small uppercase sub-label used across the Insights panels (Pool summary, Model
+/* Small uppercase sub-label used across the Observability panels (Pool summary, Model
    reasoning, Match reasoning). Sits above its content; the .ai-narrative box (when
    present) owns its own border/padding, so this wrapper stays unstyled. */
-.insights-label {
+.observability-label {
   display: block;
   margin-bottom: 0.35rem;
   font-size: 0.7rem;
@@ -1820,7 +1820,7 @@ h1 {
   color: var(--muted);
 }
 
-.insights-narrative {
+.observability-narrative {
   margin-top: 1rem;
 }
 
@@ -1902,15 +1902,15 @@ h1 {
   font-style: italic;
 }
 
-/* A second concern within one Insights subtab, set off with a rule + heading so two
+/* A second concern within one Observability subtab, set off with a rule + heading so two
    related-but-distinct audits read cleanly stacked. */
-.insights-subsection {
+.observability-subsection {
   margin-top: 1.75rem;
   padding-top: 1.25rem;
   border-top: 1px solid var(--line);
 }
 
-.insights-subsection-title {
+.observability-subsection-title {
   margin: 0 0 0.5rem;
   font-size: 0.9rem;
   font-weight: 600;
@@ -2371,25 +2371,25 @@ h1 {
   line-height: 1.45;
 }
 
-.insights-view {
+.observability-view {
   /* Like .ranking-view: .panel has no padding, so the view supplies its own inset. */
   padding: 1.25rem;
 }
 
-.insights-header {
+.observability-header {
   margin-bottom: 1rem;
 }
 
-/* Insights subtabs: a secondary level below the folder tabs, so they use a quieter
+/* Subtabs: a secondary level below the folder tabs, so they use a quieter
    underline style (not the green folder-tab treatment) to read as subordinate. */
-.insights-subtabs {
+.subtabs {
   display: flex;
   gap: 1.25rem;
   border-bottom: 1px solid var(--line);
   margin-bottom: 1.25rem;
 }
 
-.insights-subtab {
+.subtab {
   padding: 0 0 0.5rem;
   border: none;
   background: none;
@@ -2400,11 +2400,11 @@ h1 {
   margin-bottom: -1px; /* overlap the container border so the active underline sits on it */
 }
 
-.insights-subtab:hover {
+.subtab:hover {
   color: var(--ink);
 }
 
-.insights-subtab.active {
+.subtab.active {
   color: var(--penta-green-dark);
   border-bottom-color: var(--penta-green);
   font-weight: 600;
@@ -2587,7 +2587,7 @@ h1 {
   font-weight: 600;
 }
 
-.insights-header h3 {
+.observability-header h3 {
   margin: 0;
 }
 
@@ -3120,7 +3120,7 @@ h1 {
 }
 
 
-/* --- AI Quality: eval subtabs (live under .insights-view) ------------------ */
+/* --- AI Quality: eval subtabs (live under .observability-view) ------------------ */
 .eval-section { display: grid; gap: 16px; }
 .eval-section-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .eval-card-desc { margin: 0; color: var(--muted); font-size: 0.9rem; }
@@ -3132,7 +3132,7 @@ h1 {
 
 /* Thin separator between subtab groups (per-pass evals vs. cross-cutting; traces vs.
    aggregates). */
-.insights-subtab-divider {
+.observability-subtab-divider {
   width: 1px;
   align-self: stretch;
   margin: 0 4px;

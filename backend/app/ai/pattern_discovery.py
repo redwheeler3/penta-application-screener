@@ -196,7 +196,7 @@ def _discover_from_prompt(
 @dataclass(frozen=True)
 class DiscoveryPass:
     """One of the K fan-out discovery calls: the report it produced and its own
-    reasoning narrative (kept per-pass so the Insights panel can show each discoverer,
+    reasoning narrative (kept per-pass so the Observability panel can show each discoverer,
     not just the one that streamed live)."""
 
     report: PoolDimensionReport

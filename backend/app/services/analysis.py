@@ -215,7 +215,7 @@ def create_analysis(
         #   - fan_out: the K raw discovery reports before decomposition settled them. None on
         #     analyses written before fan-out landed.
         #   - decompose: per settled axis, the source_keys it absorbed + merge/keep reasoning
-        #     (Insights surface + the D9 committee-request trail). None before decomposition.
+        #     (Observability surface + the D9 committee-request trail). None before decomposition.
         #   - consolidate: filled later by apply_consolidation (post-score); None until then.
         audit=AnalysisAudit(
             discovery_narrative=narrative,
@@ -300,7 +300,7 @@ def apply_consolidation(
     working tier the member last placed it in (keys must never be mixed up: cache identity and
     tier/flag history both ride on the exact key). Weights are re-derived from the collapsed
     tiers (never stored). Always records the ``consolidate`` audit (even with zero merges — the
-    pass ran), for Insights. The pass's cost lands in the run cost ledger, not here.
+    pass ran), for Observability. The pass's cost lands in the run cost ledger, not here.
     """
     report_json = dict(analysis.dimension_report or {})
     state = dict(member_ranking.run_state or {})
@@ -813,7 +813,7 @@ def consolidate_audit_view(db: Session, analysis: Analysis) -> dict | None:
 
 def fan_out_audit_view(analysis: Analysis) -> dict | None:
     """The analysis's fan-out audit — each of the K parallel discoverers' report + reasoning —
-    shaped for the Insights discovery panel, or None on analyses that predate the fan-out
+    shaped for the Observability discovery panel, or None on analyses that predate the fan-out
     (single-discovery runs have no ``analysis.audit.fan_out``, or an older shape).
 
     Returns ``{k, passes: [{dimensions: [{key,name,definition,why...}], narrative}]}``.

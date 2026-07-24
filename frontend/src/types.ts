@@ -193,7 +193,7 @@ export type ApplicationDetail = ApplicationSummary & {
   privateNote: string;
 };
 
-// GET /ranking/insights/cost — aggregated AI spend for the Insights tab (M13).
+// GET /ranking/observability/cost — aggregated AI spend for the Observability tab (M13).
 export type CostPass = {
   passLabel: string;
   // Uncached result units; dimension scoring counts per-dimension rows.
@@ -226,7 +226,7 @@ export type CostReport = {
   totalSavedUsd: number;
 };
 
-// One pass within a single completed run (GET /ranking/insights/last-runs).
+// One pass within a single completed run (GET /ranking/observability/last-runs).
 // cachedSavedUsd = reused results' original cost — an estimate of what caching saved.
 export type LastRunPass = {
   label: string;
@@ -253,7 +253,7 @@ export type LastRunCost = {
   passes: LastRunPass[];
 };
 
-// GET /ranking/insights/metrics — operational trends across all runs (M13 Pillar 3).
+// GET /ranking/observability/metrics — operational trends across all runs (M13 Pillar 3).
 // One point per completed run, oldest→newest.
 export type TrendPoint = {
   at: string;
@@ -364,7 +364,7 @@ export type CurrentRunResponse = {
   analysisId: number;
   dimensions: PoolDimension[];
   // The model's streamed reasoning from the discovery pass (markdown), shown on the
-  // Insights tab. Null for runs from before it was captured.
+  // Observability tab. Null for runs from before it was captured.
   discoveryNarrative: string | null;
   // Flagged dimensions (new OR revived) absent from the immediately-prior run — they
   // are badged until the committee triages them. Empty on a first run.

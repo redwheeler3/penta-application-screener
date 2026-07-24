@@ -95,7 +95,7 @@ def test_audit_row_captures_both_judged_definitions_on_keep() -> None:
 
 def test_audit_row_captures_both_names() -> None:
     # The audit must also snapshot both user-facing names, for the SAME reason as the
-    # definitions: a merged drop key is removed from the report, so the Insights panel
+    # definitions: a merged drop key is removed from the report, so the Observability panel
     # can't resolve its name later. keep = the prior (older) key, drop = this run's newer.
     row = _consolidate_one_pair(same_concept=True)
     assert row["merged"] is True

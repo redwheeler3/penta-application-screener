@@ -328,7 +328,7 @@ def decompose_audit_payload(
 
     Captures, per settled axis, the ``source_keys`` it absorbed and the ``decision``
     reasoning (why merged / kept distinct) — the merge audit trail, and the surface the
-    Insights panel renders (the reconcile-reasoning lesson: persist the *why*). Also the
+    Observability panel renders (the reconcile-reasoning lesson: persist the *why*). Also the
     input dimension count (K reports → how many raw axes fed in) so the settle-down
     ratio is inspectable. A merge is any settled axis with more than one source key.
     """

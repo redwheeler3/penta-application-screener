@@ -20,14 +20,14 @@ import { MetricsPanel } from "./MetricsPanel";
 // consolidate), so both tabs read left-to-right along the process. Eval subtabs drop the
 // "Live" prefix — the tab is already "Evals", so the pass name alone reads clean.
 
-export type InsightsFamily = "obs" | "eval";
+export type AIQualityFamily = "obs" | "eval";
 
 type Tab =
   | "discovery" | "decompose" | "match" | "consolidate" | "cost" | "metrics"
   | "invariants" | "scoring" | "consolidation" | "matching" | "decomposition" | "screening" | "judge";
 
-export function InsightsView(props: {
-  family: InsightsFamily;
+export function AIQualityView(props: {
+  family: AIQualityFamily;
   run: CurrentRunResponse | null;
   // Save outcomes (golden case, judge brief) surface as the app's standard toasts, same as
   // Settings and the Rank flows — not inline text.
@@ -81,23 +81,23 @@ export function InsightsView(props: {
   const calls = (k: string) => catalog?.find((e) => e.key === k)?.estimatedCalls ?? 0;
 
   return (
-    <div className="insights-view">
-      <div className="insights-header">
+    <div className="observability-view">
+      <div className="observability-header">
         <h3>{family === "obs" ? "Observability" : "Evals"}</h3>
       </div>
 
-      <div className="insights-subtabs" role="tablist" aria-label={`${family === "obs" ? "Observability" : "Evals"} sections`}>
+      <div className="subtabs" role="tablist" aria-label={`${family === "obs" ? "Observability" : "Evals"} sections`}>
         {tabs.map((t, i) => {
           // A thin divider where the group changes (per-pass → cross-cutting; traces → aggregates).
           const divider = i > 0 && tabs[i - 1].group !== t.group;
           return (
             <span key={t.id} style={{ display: "contents" }}>
-              {divider ? <span className="insights-subtab-divider" aria-hidden="true" /> : null}
+              {divider ? <span className="observability-subtab-divider" aria-hidden="true" /> : null}
               <button
                 type="button"
                 role="tab"
                 aria-selected={activeTab === t.id}
-                className={`insights-subtab${activeTab === t.id ? " active" : ""}`}
+                className={`subtab${activeTab === t.id ? " active" : ""}`}
                 onClick={() => setTab(t.id)}
               >
                 {t.label}
@@ -107,7 +107,7 @@ export function InsightsView(props: {
         })}
       </div>
 
-      <div className="insights-subtab-body">
+      <div className="observability-subtab-body">
         {activeTab === "discovery" && props.run ? (
           // Key by analysisId so an analysis change remounts the panel (its fetch is mount-once).
           <DiscoveryPanel key={props.run.analysisId} run={props.run} />

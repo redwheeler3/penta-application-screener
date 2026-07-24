@@ -1,4 +1,4 @@
-"""Cost aggregation for the Insights tab (M13 Pillar 1).
+"""Cost aggregation for the Observability tab (M13 Pillar 1).
 
 Every AI pass — pool-level (discovery, decompose, match, consolidate) and per-
 application (screening, scoring) alike — records its spend the same way: a ``PassCost``
@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from app.ai.pricing import PassCost
 from app.core.time import utc_isoformat
 from app.db.models import RunCostLedger, RunPassCost
-from app.schemas.insights import (
+from app.schemas.observability import (
     CostGroup,
     CostPass,
     CostReport,

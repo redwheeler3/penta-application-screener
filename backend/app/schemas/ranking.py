@@ -28,7 +28,7 @@ class CurrentRunResponse(ResponseModel):
     analysis_id: int
     dimensions: list[PoolDimensionOut]
     # The model's streamed reasoning from the discovery pass (markdown), for the
-    # Insights trace. Null for runs from before it was captured / if the provider
+    # Observability trace. Null for runs from before it was captured / if the provider
     # surfaced none.
     discovery_narrative: str | None = None
     new_dimension_keys: list[str] = []
@@ -82,7 +82,7 @@ class MatchAuditResponse(ResponseModel):
 
 
 class SettledDimensionOut(ResponseModel):
-    """One settled axis from the decomposition, for the Insights trace: what it is,
+    """One settled axis from the decomposition, for the Observability trace: what it is,
     the input axes it absorbed (``sourceKeys`` — one = kept as-is, several = a merge),
     and the model's ``decision`` reasoning (why merged / kept distinct).
 
@@ -128,7 +128,7 @@ class DecomposeAuditResponse(ResponseModel):
     merge_count: int
     settled: list[SettledDimensionOut]
     folded_requests: list[FoldedRequestOut] = []
-    # The decomposition pass's free-text reasoning (markdown), for the Insights panel.
+    # The decomposition pass's free-text reasoning (markdown), for the Observability panel.
     narrative: str | None = None
 
 
@@ -161,12 +161,12 @@ class ConsolidateAuditResponse(ResponseModel):
     pairs: list[ConsolidatedPairOut] = []
     nominated_count: int = 0
     merged_count: int = 0
-    # The confirm call's free-text reasoning (markdown), for the Insights panel.
+    # The confirm call's free-text reasoning (markdown), for the Observability panel.
     narrative: str | None = None
 
 
 class FanOutPassOut(ResponseModel):
-    """One of the K parallel discoverers, for the Insights discovery panel: the
+    """One of the K parallel discoverers, for the Observability discovery panel: the
     dimensions it found and its own reasoning narrative (null on legacy runs that stored
     reports without per-pass narratives)."""
 

@@ -282,10 +282,10 @@ async def test_score_current_fills_only_missing_scores_without_replacing_run() -
         assert tiers[0]["dimensionKeys"] == ["skills_offered"]
         assert (await client.get("/dashboard")).json()["workflow"]["rankingCurrent"] is True
 
-        last_runs = (await client.get("/insights/last-runs")).json()
+        last_runs = (await client.get("/observability/last-runs")).json()
         assert last_runs["rankScores"]["kind"] == "rank_scores"
         assert [p["label"] for p in last_runs["rankScores"]["passes"]] == ["Dimension scoring"]
-        metrics = (await client.get("/insights/metrics")).json()
+        metrics = (await client.get("/observability/metrics")).json()
         assert metrics["runs"][-1]["kind"] == "rank_scores"
         assert metrics["runs"][-1]["dimensions"] is None
 
@@ -300,7 +300,7 @@ async def test_score_current_requires_existing_criteria() -> None:
 
 
 @pytest.mark.anyio
-async def test_insights_cost_aggregates_by_pass() -> None:
+async def test_observability_cost_aggregates_by_pass() -> None:
     # After a rank, the cost report sums stored spend by pass: scoring from
     # ApplicationAIResult, discovery from the run. (Screening isn't run in this flow.)
     app, db, provider = setup_app(role=UserRole.MEMBER)
@@ -311,7 +311,7 @@ async def test_insights_cost_aggregates_by_pass() -> None:
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
-        report = (await client.get("/insights/cost")).json()
+        report = (await client.get("/observability/cost")).json()
         groups = {g["runLabel"]: g for g in report["groups"]}
         # Grouped by triggering run: Screen, full discovery-and-rank, and score-current.
         assert set(groups) == {"Screen", "Discover criteria & rank", "Score current criteria"}
@@ -355,7 +355,7 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
-        first = (await client.get("/insights/last-runs")).json()
+        first = (await client.get("/observability/last-runs")).json()
         assert first["screen"] is None  # no Screen run happened
         rank = first["rank"]
         by_pass = {p["label"]: p for p in rank["passes"]}
@@ -378,7 +378,7 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
-        second = (await client.get("/insights/last-runs")).json()["rank"]
+        second = (await client.get("/observability/last-runs")).json()["rank"]
         by_pass2 = {p["label"]: p for p in second["passes"]}
         # Scoring reused from cache → cached counts and a nonzero saving.
         # Dimension scoring persists one cache row per dimension, matching the
@@ -402,11 +402,11 @@ async def test_cost_surfaces_agree_on_rank_passes() -> None:
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
-        cumulative = (await client.get("/insights/cost")).json()
+        cumulative = (await client.get("/observability/cost")).json()
         rank_group = next(g for g in cumulative["groups"] if g["runLabel"] == "Discover criteria & rank")
         cumulative_labels = {p["passLabel"] for p in rank_group["passes"]}
 
-        last = (await client.get("/insights/last-runs")).json()["rank"]
+        last = (await client.get("/observability/last-runs")).json()["rank"]
         ledger_labels = {p["label"] for p in last["passes"]}
 
     assert cumulative_labels == set(RANK_PASS_LABELS)
@@ -414,7 +414,7 @@ async def test_cost_surfaces_agree_on_rank_passes() -> None:
 
 
 @pytest.mark.anyio
-async def test_insights_metrics_trends_after_a_rank() -> None:
+async def test_observability_metrics_trends_after_a_rank() -> None:
     # Pillar 3: after a Rank, the metrics endpoint reports a per-run trend point with
     # captured latency, the live dimension count, and a per-pass breakdown.
     app, db, provider = setup_app(role=UserRole.MEMBER)
@@ -425,7 +425,7 @@ async def test_insights_metrics_trends_after_a_rank() -> None:
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
-        metrics = (await client.get("/insights/metrics")).json()
+        metrics = (await client.get("/observability/metrics")).json()
         assert len(metrics["runs"]) == 1
         run = metrics["runs"][0]
         assert run["kind"] == "rank"
@@ -646,7 +646,7 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
         # The run settled to 2 dims (the merge collapsed 3 → 2), not the 3 discovered.
         assert summary["dimensions"] == 2
 
-        # The decompose-audit endpoint surfaces the merge (the Insights panel's source).
+        # The decompose-audit endpoint surfaces the merge (the Observability panel's source).
         endpoint = (await client.get("/ranking/current/decompose-audit")).json()
         assert endpoint["mergeCount"] == 1
         assert endpoint["settledCount"] == 2
@@ -948,7 +948,7 @@ def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
     # Consolidation must drop the newer twin AND surface the canonical prior key with its
     # frozen MINT record, restored to the tier the committee last placed it in — never
     # rename the twin (keys must not be mixed up). Regression for the bug where the axis
-    # vanished from the report entirely while the Insights panel showed the merge.
+    # vanished from the report entirely while the Observability panel showed the merge.
     from sqlalchemy import select
 
     from app.db.models import DimensionAlias

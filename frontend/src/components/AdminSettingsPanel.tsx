@@ -31,13 +31,13 @@ export function AdminSettingsPanel(props: {
         <h3>Admin Settings</h3>
       </div>
       {/* Sub-tabs within the admin panel. Reuses the Observability/Evals underline-tab
-          style (.insights-subtabs) so nested navigation reads the same across the app. */}
-      <div className="insights-subtabs admin-settings-subtabs" role="tablist" aria-label="Admin settings sections">
+          style (.subtabs) so nested navigation reads the same across the app. */}
+      <div className="subtabs admin-settings-subtabs" role="tablist" aria-label="Admin settings sections">
         <button
           type="button"
           role="tab"
           aria-selected={subtab === "configuration"}
-          className={`insights-subtab${subtab === "configuration" ? " active" : ""}`}
+          className={`subtab${subtab === "configuration" ? " active" : ""}`}
           onClick={() => setSubtab("configuration")}
         >
           Configuration
@@ -46,7 +46,7 @@ export function AdminSettingsPanel(props: {
           type="button"
           role="tab"
           aria-selected={subtab === "defaults"}
-          className={`insights-subtab${subtab === "defaults" ? " active" : ""}`}
+          className={`subtab${subtab === "defaults" ? " active" : ""}`}
           onClick={() => setSubtab("defaults")}
         >
           Committee Defaults
@@ -55,7 +55,7 @@ export function AdminSettingsPanel(props: {
           type="button"
           role="tab"
           aria-selected={subtab === "access"}
-          className={`insights-subtab${subtab === "access" ? " active" : ""}`}
+          className={`subtab${subtab === "access" ? " active" : ""}`}
           onClick={() => setSubtab("access")}
         >
           Access

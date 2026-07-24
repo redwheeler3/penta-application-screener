@@ -305,7 +305,7 @@ class RunPassCost(TimestampMixin, Base):
     """One pass's spend within a completed run (M13) — the single source of per-pass cost
     for BOTH pool-level passes (discovery, decompose, match, consolidate) and per-
     application passes (screening, scoring). Every pass writes the same shape here, so the
-    Insights cost surfaces read one table instead of stitching together criteria keys,
+    Observability cost surfaces read one table instead of stitching together criteria keys,
     summed cache rows, and a JSON blob.
 
     ``calls`` is fresh model calls (per-dimension units for scoring); ``input_tokens`` /

@@ -331,7 +331,7 @@ Current important files:
 
 `backend/app/main.py` creates the FastAPI app (the backend equivalent of the frontend entry point).
 
-`backend/app/api/*.py` files (and packages) define routes — HTTP endpoints such as `GET /dashboard` or `POST /sync/applications`. The modules are `applications.py` (list/detail/status-override), `auth.py`, `dashboard.py`, `health.py`, `screening.py` (the AI screening estimate/run endpoints), `ranking/` (the Rank-chain package: `run`/`current`/`shortlist`), `insights.py` (cost/metrics/last-runs), `evals/` (the eval cockpit package), `settings.py`, and `sync.py`, plus `dependencies.py` for shared FastAPI dependencies (e.g. `require_current_user`) and `problems.py` for the RFC 9457 error contract.
+`backend/app/api/*.py` files (and packages) define routes — HTTP endpoints such as `GET /dashboard` or `POST /sync/applications`. The modules are `applications.py` (list/detail/status-override), `auth.py`, `dashboard.py`, `health.py`, `screening.py` (the AI screening estimate/run endpoints), `ranking/` (the Rank-chain package: `run`/`current`/`shortlist`), `observability.py` (cost/metrics/last-runs), `evals/` (the eval cockpit package), `settings.py`, and `sync.py`, plus `dependencies.py` for shared FastAPI dependencies (e.g. `require_current_user`) and `problems.py` for the RFC 9457 error contract.
 
 `backend/app/services/*.py` files contain reusable operations that routes call. For example, sync route code does not know every detail of importing application rows; it calls service functions.
 
@@ -361,7 +361,7 @@ The health check is `http://localhost:8000/health`.
 
 - `SessionMiddleware`, which signs the browser session cookie and reads/writes it on each request.
 - `CORSMiddleware`, which allows the local React frontend at port `5173` to call the backend at port `8000` with credentials.
-- Route modules from `app.api.applications`, `app.api.auth`, `app.api.dashboard`, `app.api.evals`, `app.api.health`, `app.api.insights`, `app.api.screening`, `app.api.ranking`, `app.api.settings`, and `app.api.sync`.
+- Route modules from `app.api.applications`, `app.api.auth`, `app.api.dashboard`, `app.api.evals`, `app.api.health`, `app.api.observability`, `app.api.screening`, `app.api.ranking`, `app.api.settings`, and `app.api.sync`.
 
 The app uses an app factory, which makes testing easier because tests can create a fresh app instance:
 
@@ -378,7 +378,7 @@ app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(evals_router)
 app.include_router(health_router)
-app.include_router(insights_router)
+app.include_router(observability_router)
 app.include_router(screening_router)
 app.include_router(ranking_router)
 app.include_router(settings_router)

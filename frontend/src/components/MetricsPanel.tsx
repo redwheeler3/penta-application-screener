@@ -4,7 +4,7 @@ import { money } from "../format";
 import { useFetchOnce } from "../hooks/useFetchOnce";
 import type { MetricsReport, TrendPoint } from "../types";
 
-// M13 Pillar 3: operational trends across runs, an Insights subtab. Reads the same
+// M13 Pillar 3: operational trends across runs, an Observability subtab. Reads the same
 // RunPassCost rows Cost does, but for *behaviour over time* rather than spend: per-run
 // cost, latency, cache-hit rate, failures, and dimension count. Deliberately plain —
 // one row per run, newest first, with a tiny inline bar for at-a-glance shape rather
@@ -61,7 +61,7 @@ function RunTable(props: { title: string; runs: TrendPoint[] }): ReactNode {
   return (
     <div className="cost-section">
       <div className="cost-block-head">
-        <span className="insights-label">{props.title}</span>
+        <span className="observability-label">{props.title}</span>
         <span className="cost-block-total">{runs.length} runs</span>
       </div>
       <table className="cost-table metrics-table">
