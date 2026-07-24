@@ -93,7 +93,7 @@ export function App() {
     if (row) {
       // Align the row near the top of the viewport (not centered). scrollMarginTop
       // leaves a little breathing room so it sits just below the top edge.
-      row.style.scrollMarginTop = "80px";
+      row.style.scrollMarginTop = "16px";
       row.scrollIntoView({ block: "start" });
     }
     setPendingScrollId(null);
@@ -182,8 +182,13 @@ export function App() {
     const application = await api.fetchApplication(id);
     setSelectedApp(application);
     // The clicked row can be far below the detail heading (especially in Ranking),
-    // so reveal the new view rather than preserving the old scroll position.
-    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+    // so reveal the detail panel's top (the Back/Print bar) rather than the whole
+    // page top. Instant (not smooth) so it appears immediately, no scroll animation.
+    requestAnimationFrame(() => {
+      document
+        .querySelector(".app-detail")
+        ?.scrollIntoView({ block: "start", behavior: "instant" });
+    });
   }
 
   function login() {
