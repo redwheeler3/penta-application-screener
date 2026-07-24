@@ -257,6 +257,98 @@ h1 {
   color: var(--muted);
 }
 
+.login-denied {
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  background: #fef2f2; /* red-50 */
+  border: 1px solid #fecaca; /* red-200 */
+  color: #991b1b; /* red-800 */
+  font-size: 0.9rem;
+}
+
+/* Access allowlist (admin-only tab) */
+.access-panel {
+  display: grid;
+  gap: 1.1rem;
+  padding: 1.25rem;
+}
+
+.access-panel-head h3 {
+  margin: 0 0 0.25rem;
+}
+
+.access-add {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.access-add input[type="email"] {
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.access-add select {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.access-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.access-table th {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.access-table td {
+  padding: 0.55rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.access-remove-cell {
+  text-align: right;
+  width: 48px;
+}
+
+.role-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.role-admin {
+  background: var(--penta-green-soft);
+  color: var(--penta-green-dark);
+  border: 1px solid #bbf7d0;
+}
+
+.role-member {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+}
+
 /* Mirror the .panel structure so the header gets the same edge-to-edge green
    row: no padding on the container (overflow clips the header to the radius),
    padding lives on the header and body sections. */

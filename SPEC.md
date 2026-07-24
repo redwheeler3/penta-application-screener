@@ -446,6 +446,18 @@ The report is the browser print of the ranked view, so the format question is re
 
 The multi-member *logic* is decided (Jeff, 2026-07-23): M15 is per-member independent screening on a shared compute-once substrate — no merge/disagreement/comparison surface. The full model is in "Multi-Member MOMI Workflow" above; the earlier open questions (merge formula, disagreement flags, criteria-comparison layout) are **dissolved** — those features are not built.
 
+**Access control (decided 2026-07-24).** Going multi-user makes an access gate a *safety prerequisite*, not a feature: today any Google account that completes OAuth is admitted (`upsert_google_user`), so an ungated deploy would expose applicant PII to anyone. So M15 adds an **email allowlist**, which is also the first genuinely admin-only surface (the deferred `require_admin` gate finally lands here).
+- **Allowlist entry = `(email, role)`**, role ∈ {admin, member}; multiple admins allowed. The allowlist *is* role management — there is no separate promote/demote flow; adding an `admin` entry grants admin. Editing it is `require_admin`.
+- **Login gate:** OAuth succeeds → the email must match an allowlist entry → a `User` row is created (or its role synced) from that entry. A non-listed email is denied. (Replaces the "first login = admin" rule, which is retired — order-dependent and implicit.)
+- **Bootstrap:** a committed-format-but-gitignored config file (`config/initial-admins.txt`, one email per line, `#` comments; `.example` shipped) seeds initial admins onto the allowlist at startup — idempotent, survives a DB reset, operator-controlled. **Bootstrap-only:** once seeded, admins manage the live allowlist in-app; removing an email from the file does not revoke (that's an in-app action). Path via `Settings.initial_admins_file` + `resolve_backend_path`, mirroring the `google_oauth_client_secrets_file` precedent.
+
+**Navigation & settings surfaces (decided 2026-07-24).** Going multi-user splits the tab strip by audience — whole-tab gating (`require_admin`), not per-field mixed-gate pages. The single "Settings" tab becomes two, split on the audience-and-nature line (who-edits and whose-value-is-it coincide):
+- **Eligibility Settings** (member; funnel icon `Filter`) — the member's own screening rules: income, age, children, disabled rules, and **pet limits** (a per-member eligibility bar, though enforced via the AI screening pass, not a hard filter). Named "Eligibility Settings" not "Criteria" — "criteria" already means the ranking *dimensions* (CriteriaComposer, "weighs N criteria"); reusing it would conflate a member's eligibility bar with the AI's ranking axes.
+- **Admin Settings** (admin-only; gear icon `Settings`, with subtabs since the audience is uniform) — Google sheet link, AI config (models, `discovery_fan_out`, `consolidate_correlation_threshold`, cap, workers, region), and the **access allowlist** subtab.
+- **Observability and Evals tabs are also admin-only.** So a member's world is `[Applications] [Ranking] [Eligibility Settings]`; an admin additionally sees Observability, Evals, and Admin Settings. Tab position TBD at build (config tabs likely grouped right; Applications stays default).
+
+This restructure lands with the **1d** settings split (it needs per-member rule storage to be true — until then "members edit rules" would clobber a shared blob). **1a** only introduces the admin-only Access surface (allowlist UI) + the denied-login message.
+
 **Data-model split** (the core change):
 - **`Analysis` (shared, one current):** `dimension_report` + `rank_inputs_fingerprint` + the 1:1 audit. The output of discovery/scoring/consolidation over the union pool. `get_current_analysis()` replaces the `max(id)` `get_current_run`.
 - **`MemberRanking` (member × analysis):** tiers, new/revived/requested badges, proposals. Weights stay derived.
@@ -453,7 +465,11 @@ The multi-member *logic* is decided (Jeff, 2026-07-23): M15 is per-member indepe
 - **Eligibility rules** split out of the shared `app_settings` blob into a shared committee default + per-member copy-on-write override; infra config (sheet id, model ids, cap, region) stays one shared row.
 
 **Phasing** (each tree-green; DB changes verified on a copy first):
-1. Data-model split + migration off the global eligibility columns and settings blob.
+1. Data-model split, sliced into four independently-shippable, separately-migrated steps (the maps confirmed the `RankingRun` write side funnels through 4 service functions, but ~10 "BOTH" functions join member-view to shared-analysis, and `status == ELIGIBLE` is the pool filter in four independent places — so slicing keeps each migration small and round-trip-verifiable):
+   - **1a — Access allowlist + `require_admin` + config bootstrap.** Auth-layer only, zero entanglement with the ranking/eligibility schema; lands the safety gate first. Additive `allowlist` table + startup seed.
+   - **1b — `RankingRun` → `Analysis` + `MemberRanking`.** The choke-point split; `get_current_analysis()` replaces `get_current_run`. Per-member reads resolve via `require_current_user` (one logged-in member for now — forward-compatible, no placeholder).
+   - **1c — eligibility columns → `MemberEligibility`.** Makes all four `status == ELIGIBLE` pool filters per-member; ties into the union-pool logic (phase 2).
+   - **1d — settings blob split** (rules per-member, infra shared) — the most separable; slots last.
 2. Union eligible pool + per-member cache-gap staleness.
 3. Per-member tiering/ranking; shared-union discovery merge; "keep if any member tiered it"; weight-0 new-axis behavior. Consolidation stays shared (a true duplicate merge is a committee-wide concept-identity fact, not member taste) — the survivor inherits the **highest** working tier among the merged twins, so a member never loses the concept or weight; at most the surviving key holds the higher of two tiers they'd split across the twins. Per-member consolidation is deliberately not built (ADR 0011).
 4. Per-member overrides + notes wiring (notes already per-member).

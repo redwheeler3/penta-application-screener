@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.ai.provider import AIProvider
 from app.ai.strands_provider import StrandsProvider
 from app.api.problems import Problem
-from app.db.models import User
+from app.db.models import User, UserRole
 from app.db.session import get_db
 from app.services.settings import get_app_settings
 
@@ -22,9 +22,13 @@ def require_current_user(request: Request, db: Session = Depends(get_db)) -> Use
     return user
 
 
-# Note: there is intentionally no role gate here. Every committee member is a
-# trusted screener, so all routes use require_current_user. Re-add a
-# require_admin dependency if a genuinely admin-only surface ever appears.
+def require_admin(user: User = Depends(require_current_user)) -> User:
+    """Gate an admin-only surface. The screening workflow itself has no admin gate —
+    every committee member is a trusted screener — so this is reserved for genuinely
+    admin-only capabilities, currently just managing the access allowlist (M15)."""
+    if user.role != UserRole.ADMIN:
+        raise Problem("forbidden", detail="This action requires an admin.")
+    return user
 
 
 def get_ai_provider(db: Session = Depends(get_db)) -> AIProvider:

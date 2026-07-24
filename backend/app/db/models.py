@@ -74,6 +74,27 @@ class User(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
 
 
+class AccessAllowlistEntry(TimestampMixin, Base):
+    """One approved Google account (by email) and the role it is admitted with.
+
+    The allowlist is the access gate: an OAuth login is admitted only if its email
+    matches an entry here, and the resulting ``User`` takes the entry's role. It is
+    also role management — there is no separate promote/demote flow; an ``admin``
+    entry grants admin. Initial admins are seeded from a config file at startup (see
+    ``services/allowlist``); after that admins manage the list in-app.
+    """
+
+    __tablename__ = "access_allowlist"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
+    role: Mapped[UserRole] = mapped_column(
+        Enum(UserRole, values_callable=enum_values),
+        default=UserRole.MEMBER,
+        nullable=False,
+    )
+
+
 class GoogleCredential(TimestampMixin, Base):
     __tablename__ = "google_credentials"
 

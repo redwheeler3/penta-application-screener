@@ -9,6 +9,13 @@ export type CurrentUser = {
   role: "admin" | "member";
 };
 
+// Mirrors backend AccessAllowlistEntry — one approved email + the role it's admitted
+// with. Admin-only surface (the access allowlist).
+export type AllowlistEntry = {
+  email: string;
+  role: "admin" | "member";
+};
+
 // Mirrors backend AISettings. The UI edits spendingCapUsd and discoveryFanOut; the
 // rest are round-tripped so a save never resets them.
 export type AISettings = {

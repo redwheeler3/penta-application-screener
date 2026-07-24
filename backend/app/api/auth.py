@@ -8,6 +8,7 @@ from app.core.google_oauth import get_oauth
 from app.db.models import User
 from app.db.session import get_db
 from app.schemas.auth import CurrentUser, LogoutResponse, MeResponse
+from app.services.allowlist import get_entry
 from app.services.google_credentials import save_google_token
 from app.services.users import upsert_google_user
 
@@ -55,12 +56,20 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
             detail="Google did not return required user identity fields.",
         )
 
+    # Access gate: only allowlisted emails may sign in, and the entry's role is the
+    # user's role. A non-listed account is bounced back to the login screen with a
+    # flag (an OAuth redirect can't carry a problem+json body) rather than admitted.
+    entry = get_entry(db, str(email))
+    if entry is None:
+        return RedirectResponse(f"{get_settings().frontend_url}?access=denied")
+
     user = upsert_google_user(
         db,
         google_subject=str(google_subject),
         email=str(email),
         display_name=str(display_name),
         avatar_url=user_info.get("picture"),
+        role=entry.role,
     )
     save_google_token(db, user_id=user.id, token=dict(token))
     request.session["user_id"] = user.id

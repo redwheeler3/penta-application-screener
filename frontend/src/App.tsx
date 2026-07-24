@@ -1,4 +1,4 @@
-import { LogIn, LogOut, Settings } from "lucide-react";
+import { LogIn, LogOut, Settings, ShieldCheck } from "lucide-react";
 import { type SyntheticEvent, useEffect, useLayoutEffect, useState } from "react";
 import { HouseIcon } from "./HouseIcon";
 import * as api from "./api";
@@ -17,6 +17,7 @@ import type {
   SettingsResponse,
   WorkflowState,
 } from "./types";
+import { AccessPanel } from "./components/AccessPanel";
 import { ApplicationsList } from "./components/ApplicationsList";
 import { CandidateDetail } from "./components/CandidateDetail";
 import { InsightsView } from "./components/InsightsView";
@@ -31,6 +32,9 @@ import { useToasts } from "./hooks/useToasts";
 export function App() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
+  // Set when the OAuth callback bounced a non-allowlisted account back here
+  // (?access=denied). Read once from the URL; the flag is stripped so a reload clears it.
+  const [accessDenied, setAccessDenied] = useState(false);
 
   // The form draft the user edits. Separate from `saved` so typing never affects
   // affordances that gate on persisted state until the change is saved. Null until
@@ -143,13 +147,23 @@ export function App() {
   // The results area is split into two peer tabs — the applications list and the
   // ranking — with `activeTab` choosing which is shown (a candidate detail drills in
   // over either). The Ranking tab only appears once a run exists (see the tab strip).
-  const [activeTab, setActiveTab] = useState<"applications" | "ranking" | "insights" | "evals" | "settings">("applications");
+  const [activeTab, setActiveTab] = useState<
+    "applications" | "ranking" | "insights" | "evals" | "settings" | "access"
+  >("applications");
+  const isAdmin = user?.role === "admin";
 
   useEffect(() => {
     api
       .fetchCurrentUser()
       .then(setUser)
       .finally(() => setIsLoadingUser(false));
+    // The OAuth callback redirects here with ?access=denied for a non-allowlisted
+    // account. Read it once, then strip it from the URL so a later reload is clean.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("access") === "denied") {
+      setAccessDenied(true);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }, []);
 
   useEffect(() => {
@@ -501,7 +515,14 @@ export function App() {
         <section className="login-panel">
           <span className="panel-kicker">Member access</span>
           <h2>{isLoadingUser ? "Checking session" : "Sign in to continue"}</h2>
-          <p>Use your approved Google account.</p>
+          {accessDenied && !isLoadingUser ? (
+            <p className="login-denied" role="alert">
+              That Google account isn't approved for this screener. Ask an admin to add your email,
+              then sign in again.
+            </p>
+          ) : (
+            <p>Use your approved Google account.</p>
+          )}
           <button className="primary-button" onClick={login} disabled={isLoadingUser}>
             <LogIn size={18} />
             <span>Sign in with Google</span>
@@ -596,6 +617,24 @@ export function App() {
             >
               Evals
             </button>
+            {/* Admin-only: manage who can sign in. The full Settings→Admin Settings
+                split (and gating Observability/Evals) lands with slice 1d; for now
+                only the access allowlist is admin-gated. */}
+            {isAdmin ? (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "access" && !selectedApp}
+                className={`tab-button${activeTab === "access" && !selectedApp ? " active" : ""}`}
+                onClick={() => {
+                  setSelectedApp(null);
+                  setActiveTab("access");
+                }}
+              >
+                <ShieldCheck size={14} />
+                <span>Access</span>
+              </button>
+            ) : null}
             <button
               type="button"
               role="tab"
@@ -643,6 +682,8 @@ export function App() {
                 onSelectApplication={viewApplication}
                 onToggleStar={toggleStar}
               />
+            ) : activeTab === "access" && isAdmin ? (
+              <AccessPanel onError={showError} />
             ) : activeTab === "insights" ? (
               <InsightsView family="obs" run={rankingRun} onToast={showToast} onError={showError} />
             ) : activeTab === "evals" ? (
