@@ -226,6 +226,8 @@ class RankedCandidateOut(ResponseModel):
     fit: float
     band: str
     contributions: list[DimensionContributionOut]
+    # Whether the current member has starred this applicant (private per member).
+    starred_by_me: bool = False
 
 
 class RankingResponse(ResponseModel):

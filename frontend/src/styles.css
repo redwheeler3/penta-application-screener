@@ -617,9 +617,78 @@ h1 {
   background: var(--penta-green-soft);
 }
 
-.clickable-row td:first-child {
+/* The applicant-name cell (now the second cell — a star column leads the row). */
+.clickable-row td.applicant-cell {
   font-weight: 600;
   color: var(--penta-green-dark);
+}
+
+/* Star column: narrow, centered, and quiet so the name stays the row's anchor. */
+.app-table th.star-col,
+.app-table td.star-col {
+  width: 40px;
+  padding-left: 0.5rem;
+  padding-right: 0;
+  text-align: center;
+}
+
+/* The favourite toggle itself — a gold star that fills when active. Ghost button:
+   no chrome until hover, so a table of them reads calm. */
+.star-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #cbd5e1; /* slate-300: an empty star is a faint hint, not a demand */
+  transition:
+    color 0.12s ease,
+    background 0.12s ease,
+    transform 0.08s ease;
+}
+
+.star-button:hover {
+  color: var(--penta-green); /* preview the green fill on hover */
+  background: var(--penta-green-soft);
+}
+
+.star-button:active {
+  transform: scale(0.88);
+}
+
+.star-button.is-starred {
+  color: var(--penta-green); /* filled green */
+}
+
+.star-button.is-starred:hover {
+  color: var(--penta-green-dark); /* darken slightly to signal "click to remove" */
+}
+
+.star-button:focus-visible {
+  outline: 2px solid var(--penta-green);
+  outline-offset: 1px;
+}
+
+/* The "Favourites" filter/view toggle (list controls + ranking header). Reuses the
+   tab-button shell; this just aligns its leading star icon with the label. */
+.favourites-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.favourites-toggle.active {
+  background: var(--penta-green);
+  border-color: var(--penta-green);
+  color: white;
+}
+
+.favourites-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Sortable headers */
@@ -855,54 +924,6 @@ h1 {
 
 
 /* Pagination */
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.6rem 0.75rem;
-  border-top: 1px solid var(--line);
-  font-size: 0.8rem;
-}
-
-.pagination-size {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  color: var(--muted);
-}
-
-.pagination-size select {
-  padding: 0.25rem 0.4rem;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  font-size: 0.8rem;
-}
-
-.pagination-pages {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-
-.pagination-pages span {
-  padding: 0 0.5rem;
-  color: var(--muted);
-}
-
-.pagination-pages button {
-  padding: 0.3rem 0.6rem;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: white;
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-
-.pagination-pages button:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
-
 /* Application detail */
 .app-detail {
   padding: 1.25rem;
@@ -2128,6 +2149,29 @@ h1 {
   margin: 0;
 }
 
+/* Let the title/subhead block take the remaining width so the Print button stays on
+   the same line, pinned right (space-between) instead of wrapping to the left. Basis
+   0 (not auto) so the long subhead counts as shrinkable for wrap calc — otherwise its
+   content width fills the row and the button drops below. */
+.ranking-header > div:first-child {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* Sits just above the ranked list — the favourites view filter, placed next to the
+   names it filters rather than up in the header. */
+.ranking-list-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.6rem;
+}
+
+/* The star sits just left of the name; nudge it a hair so its optical centre lines
+   up with the text baseline rather than the tallest glyph. */
+.ranking-name-row .star-button {
+  margin-left: -0.15rem;
+}
+
 .ranking-subhead {
   margin: 0.25rem 0 0;
   color: var(--muted);
@@ -2826,7 +2870,6 @@ h1 {
   .criteria-head-title,
   .criteria-detail,
   .tier-list,
-  .ranking-header > button,
   .ranking-subhead,
   .raw-row-section {
     display: none !important;

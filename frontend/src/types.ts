@@ -84,6 +84,8 @@ export type Coverage = Partial<
 export type AppFacets = {
   status: Record<AppStatus, number>;
   source: Record<StatusSource, number>;
+  // Count of the member's starred applications under the other active filters.
+  favourites: number;
 };
 
 export type ApplicationSummary = {
@@ -102,6 +104,9 @@ export type ApplicationSummary = {
   flagCount: number | null;
   // Distinct flag categories from the latest pass (null if not run).
   flagCategories: string[] | null;
+  // Whether the signed-in member has starred (favourited) this applicant. Private
+  // per member; a personal working aid with no effect on ranking or eligibility.
+  starredByMe: boolean;
   createdAt: string | null;
 };
 
@@ -291,6 +296,8 @@ export type RankedCandidate = {
   fit: number; // -1..+1 weighted average — supporting detail, not the headline
   band: string; // relative pool-position label (Strong fit … Limited)
   contributions: DimensionContribution[];
+  // Whether the signed-in member has starred this applicant (private per member).
+  starredByMe: boolean;
 };
 
 export type RankingResponse = {
@@ -484,7 +491,7 @@ export type SortKey = "applicant" | "co_applicant" | "children" | "income" | "st
 export type SortState = { key: SortKey; direction: "asc" | "desc" } | null;
 
 // The filter that the applications list / facets are keyed on.
-export type AppFilter = { status?: AppStatus; statusSource?: StatusSource };
+export type AppFilter = { status?: AppStatus; statusSource?: StatusSource; favourites?: boolean };
 
 // Live progress emitted by the streaming Rank chain. `stage` is the current sub-step
 // within the criteria phase (discovery → decompose → match), set by "stage" events so

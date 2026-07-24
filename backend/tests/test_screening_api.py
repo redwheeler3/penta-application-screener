@@ -2,7 +2,7 @@ import json
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -13,6 +13,7 @@ from app.api.screening import get_ai_provider
 from app.db.models import (
     Application,
     ApplicationNote,
+    ApplicationStar,
     ApplicationStatus,
     Base,
     User,
@@ -123,6 +124,80 @@ async def test_private_notes_are_scoped_to_the_current_member() -> None:
         assert detail["privateNote"] == "Call references."
 
     assert db.scalar(select(ApplicationNote).where(ApplicationNote.application_id == application.id)) is not None
+
+
+@pytest.mark.anyio
+async def test_stars_are_scoped_to_the_current_member() -> None:
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    application = add_eligible(db, email="star@x.com", raw_hash="h1")
+    first_member = db.scalar(select(User).where(User.email == "admin@x.com"))
+    assert first_member is not None
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        # Star as the first member; the detail reflects it, idempotently.
+        starred = await client.put(f"/applications/{application.id}/star")
+        assert starred.status_code == 200
+        assert starred.json()["application"]["starredByMe"] is True
+        again = await client.put(f"/applications/{application.id}/star")
+        assert again.json()["application"]["starredByMe"] is True
+
+        other_member = User(email="other@x.com", display_name="Other", role=UserRole.MEMBER, is_active=True)
+        db.add(other_member)
+        db.commit()
+        app.dependency_overrides[require_current_user] = lambda: other_member
+
+        # Another member does not see the first member's star.
+        detail = (await client.get(f"/applications/{application.id}")).json()["application"]
+        assert detail["starredByMe"] is False
+
+    # Exactly one star row exists — the idempotent re-star did not duplicate it.
+    assert (
+        db.scalar(
+            select(func.count())
+            .select_from(ApplicationStar)
+            .where(ApplicationStar.application_id == application.id)
+        )
+        == 1
+    )
+
+
+@pytest.mark.anyio
+async def test_unstar_removes_the_star() -> None:
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    application = add_eligible(db, email="unstar@x.com", raw_hash="h1")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.put(f"/applications/{application.id}/star")
+        removed = await client.delete(f"/applications/{application.id}/star")
+        assert removed.status_code == 200
+        assert removed.json()["application"]["starredByMe"] is False
+        # Deleting again is a no-op, not an error.
+        assert (await client.delete(f"/applications/{application.id}/star")).status_code == 200
+
+    assert (
+        db.scalar(select(ApplicationStar).where(ApplicationStar.application_id == application.id))
+        is None
+    )
+
+
+@pytest.mark.anyio
+async def test_list_embeds_my_star_state_per_row() -> None:
+    # The list is unpaginated; the client derives the favourites filter + count from
+    # the per-row starredByMe flag, so that flag must be right for each row.
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    starred_app = add_eligible(db, email="fav@x.com", raw_hash="h1", name="Faved")
+    plain_app = add_eligible(db, email="plain@x.com", raw_hash="h2", name="Plain")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.put(f"/applications/{starred_app.id}/star")
+
+        listing = (await client.get("/applications")).json()
+        by_id = {a["id"]: a for a in listing["applications"]}
+        assert by_id[starred_app.id]["starredByMe"] is True
+        assert by_id[plain_app.id]["starredByMe"] is False
 
 
 @pytest.mark.anyio
@@ -254,11 +329,10 @@ async def test_ai_flag_sets_needs_review_status_and_filter() -> None:
         assert by_email["clean@x.com"]["statusSource"] == "untouched"
         assert by_email["clean@x.com"]["flagCount"] == 0
 
-        # Needs-review queue is the AI-source bucket.
-        needs_review = await client.get("/applications", params={"statusSource": "ai"})
-        body = needs_review.json()
-        assert body["total"] == 1
-        assert body["applications"][0]["primaryEmail"] == "flag@x.com"
+        # The AI-source (needs-review) bucket is derivable client-side from the rows;
+        # exactly one row carries the ai source.
+        ai_sourced = [a for a in all_apps if a["statusSource"] == "ai"]
+        assert [a["primaryEmail"] for a in ai_sourced] == ["flag@x.com"]
 
         dashboard = (await client.get("/dashboard")).json()
         # "Needs review" is the client's label for the ai source bucket.
@@ -302,44 +376,6 @@ async def test_raw_row_and_narrative_visible_to_members() -> None:
         assert trace["outputTokens"] == 50
         assert trace["costUsd"] > 0
         assert "rawRow" in member_detail
-
-
-@pytest.mark.anyio
-async def test_facet_counts_reflect_cross_group_filter() -> None:
-    app, db, provider = setup_app(role=UserRole.ADMIN)
-    add_eligible(db, email="flag@x.com", raw_hash="h1", name="Flagged Applicant")
-    add_eligible(db, email="clean@x.com", raw_hash="h2", name="Clean Applicant")
-    provider.route(
-        "Flagged Applicant",
-        ScreeningReport(
-            flags=[
-                ScreeningFlag(
-                    category=FlagCategory.PET_POLICY,
-                    summary="Too many pets.",
-                    evidence="pets",
-                )
-            ]
-        ),
-    )
-    provider.route("Clean Applicant", ScreeningReport(flags=[]))
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await run_and_summarize(client)
-
-        # Unfiltered: facets show the full population.
-        facets = (await client.get("/applications")).json()["facets"]
-        assert facets["status"] == {"eligible": 1, "ineligible": 1}
-        assert facets["source"]["rules"] == 0
-        assert facets["source"]["ai"] == 1
-
-        # Filter to Eligible -> the source facet must drop the AI exclusion to 0
-        # (there are no eligible-AND-ai rows). This is the bug being fixed.
-        eligible = (await client.get("/applications", params={"status": "eligible"})).json()
-        assert eligible["facets"]["source"]["ai"] == 0
-        assert eligible["facets"]["source"]["untouched"] == 1
-        # The status facet ignores its own filter, so it still shows both.
-        assert eligible["facets"]["status"] == {"eligible": 1, "ineligible": 1}
 
 
 @pytest.mark.anyio

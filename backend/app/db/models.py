@@ -144,6 +144,28 @@ class ApplicationNote(TimestampMixin, Base):
     user: Mapped[User] = relationship()
 
 
+class ApplicationStar(TimestampMixin, Base):
+    """A reviewer's private star (favourite) on one application.
+
+    Like a note, a star belongs to one member and is never shared: it is a
+    personal working aid — a bookmark plus a list filter — with no effect on
+    ranking, eligibility, or reports. The row's existence IS the state (starred
+    when present), so there is no boolean column; unstarring deletes the row.
+    """
+
+    __tablename__ = "application_stars"
+    __table_args__ = (UniqueConstraint("application_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id"), index=True, nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+
+    application: Mapped[Application] = relationship()
+    user: Mapped[User] = relationship()
+
+
 class ApplicationAIResult(TimestampMixin, Base):
     """Cached AI analysis for one application and analysis kind.
 
