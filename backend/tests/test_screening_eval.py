@@ -134,11 +134,11 @@ def test_contested_stability_flip_reads_contested_split_not_unstable() -> None:
         ))
     rep = stability_run(provider, case, screening_model="m", k=4)
     assert rep.marker == "[contested-split]"
-    # The reps that FIRED the contested flag read as the divergent 'fail' side; conservative
-    # reps read 'pass' — so the split is visible rep-by-rep, not all-'pass'.
+    # The EXPECTATION is that a contested category fires, so a rep that fired one reads 'pass'
+    # and a rep that caught nothing reads 'fail' — the split is visible and the right way round.
     outcomes = [r.outcome for r in rep.runs]
-    assert any(o.startswith("fail") for o in outcomes), "a fired-contested rep should token fail"
-    assert any(o == "pass" for o in outcomes), "a conservative rep should token pass"
+    assert any(o.startswith("pass") for o in outcomes), "a fired-contested rep should token pass"
+    assert any(o.startswith("fail") for o in outcomes), "a rep that caught nothing should token fail"
 
 
 def test_stability_flags_a_changing_flag_set() -> None:

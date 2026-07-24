@@ -322,13 +322,14 @@ def stability_run(
         if _check(case, cats, pets):
             outcome = "fail"  # a real graded failure (over-reach / missed required flag)
         else:
-            # A contested category can't fail the case (it's ungraded), but a rep that FIRED it
-            # took the debatable side — the divergence a contested case is about. Token that rep
-            # 'fail (contested: …)' so the reps read as a genuine split (e.g. 3× pass, 2× fail),
-            # while the conservative reps read 'pass'. Because the case is contested, the split
-            # marker is [contested-split] (informational), never [UNSTABLE] — both sides are OK.
+            # For a contested case, the EXPECTATION is that one of the contested categories
+            # fires (it's the concern we want caught) — so a rep that FIRED one reads 'pass'
+            # (met the expectation) and a rep that fired NONE reads 'fail (contested: caught
+            # nothing)' (missed it). Both are defensible, so the run-to-run flip is still just
+            # [contested-split] (informational), never [UNSTABLE] — but the per-rep tokens now
+            # read the right way round.
             fired = sorted(set(cats) & set(case.contested))
-            outcome = f"fail (contested: {', '.join(fired)})" if fired else "pass"
+            outcome = f"pass ({', '.join(fired)})" if fired else "fail (contested: none caught)"
         # `detail` already leads with the flags + pets headline (see _screen).
         return outcome, detail
 

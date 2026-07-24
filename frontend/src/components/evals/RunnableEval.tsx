@@ -352,15 +352,16 @@ function dotFor(mode: EvalRunMode, result: EvalCaseResult): "ok" | "fail" | "con
   if (CATEGORICAL.has(mode) && result.contested) {
     return result.verdict === result.expected ? "ok" : "contested";  // agree = green, diverge = amber
   }
-  // Screening: for a case that names a contested category, mirror consolidation's contested
-  // dot — green when the model stayed on the safe side (the contested flag did NOT fire),
-  // amber only when it took the debatable flag (fired it). Both pass; a contested flag never
-  // reds. A real failure elsewhere (over-reach or missed required flag) still wins as red.
+  // Screening: for a case that names a contested category, the EXPECTATION is that one of
+  // those categories fires (the concern we want caught). Green when the model met it (fired a
+  // contested flag); amber half-and-half when it caught NONE (defensible, but the debated
+  // concern went unflagged this run). Never reds on the contested axis — a real failure
+  // elsewhere (over-reach or missed required flag) still wins as red via resultOk.
   if (mode === "screening" && result.contestedCategories?.length && resultOk(mode, result)) {
     const firedContested = (result.categories ?? []).some((c) =>
       result.contestedCategories?.includes(c),
     );
-    return firedContested ? "contested" : "ok";
+    return firedContested ? "ok" : "contested";
   }
   return resultOk(mode, result) ? "ok" : "fail";
 }
