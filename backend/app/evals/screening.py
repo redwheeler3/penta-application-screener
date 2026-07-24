@@ -300,14 +300,15 @@ def stability_run(
     def run_once() -> tuple[str, str]:
         cats, pets, detail = _screen(provider, case, screening_model=screening_model)
         if _check(case, cats, pets):
-            outcome = "fail"  # a real graded failure always dominates the token
+            outcome = "fail"  # a real graded failure (over-reach / missed required flag)
         else:
-            # A contested category is ungraded, so it never moves pass/fail — but whether it
-            # FIRED is exactly the wobble a contested case is about. Fold the fired-contested
-            # set into the pass token so a waffle (pass-with-flag vs pass-without) is a distinct
-            # outcome, which makes the marker read [contested-split] rather than a false [stable].
+            # A contested category can't fail the case (it's ungraded), but a rep that FIRED it
+            # took the debatable side — the divergence a contested case is about. Token that rep
+            # 'fail (contested: …)' so the reps read as a genuine split (e.g. 3× pass, 2× fail),
+            # while the conservative reps read 'pass'. Because the case is contested, the split
+            # marker is [contested-split] (informational), never [UNSTABLE] — both sides are OK.
             fired = sorted(set(cats) & set(case.contested))
-            outcome = f"pass ({', '.join(fired)})" if fired else "pass"
+            outcome = f"fail (contested: {', '.join(fired)})" if fired else "pass"
         # `detail` already leads with the flags + pets headline (see _screen).
         return outcome, detail
 
