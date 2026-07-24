@@ -92,9 +92,13 @@ export const SOURCE_DESCRIPTIONS: Record<StatusSource, string> = {
   human: "Set by a reviewer.",
 };
 
-// Kept in alphabetical order by label so the toggle grid reads predictably; the
-// render sorts defensively too, so a new rule added out of order still slots in.
-export const ALL_RULES = [
+// The two groups of toggleable checks a member can switch off (M15 1g Move 2). Both feed the
+// SAME flat `disabledChecks` list on EligibilityRules — the split is presentation only, so a
+// member sees the trust difference between a deterministic threshold and an AI judgment.
+// Kept alphabetical by label; the render sorts defensively too.
+
+// DETERMINISTIC rules — Sync-knowable threshold checks over the normalized form fields.
+export const DETERMINISTIC_CHECKS = [
   { id: "applicant_under_min_age", label: "Applicant under minimum age" },
   { id: "child_age_exceeds_parent", label: "Child age exceeds parent" },
   { id: "child_age_over_max", label: "Child over max age" },
@@ -109,4 +113,21 @@ export const ALL_RULES = [
   { id: "owns_real_estate", label: "Real estate ownership" },
   { id: "too_few_children", label: "Too few children" },
   { id: "too_many_children", label: "Too many children" },
+] as const;
+
+// AI screening checks — need the model to run (Screen), so they attribute to the AI source.
+// The 9 flag categories plus the pet check (a deterministic verdict over AI-extracted pet
+// facts — see M15 1g; it groups here because it presents as AI to the member). ids match the
+// backend: flag categories are the FlagCategory values, pets is the `pets_over_limit` reason.
+export const AI_CHECKS = [
+  { id: "pets_over_limit", label: "Pet policy" },
+  { id: "placeholder_name", label: FLAG_CATEGORY_LABELS.placeholder_name },
+  { id: "suspicious_name", label: FLAG_CATEGORY_LABELS.suspicious_name },
+  { id: "minimal_essay", label: FLAG_CATEGORY_LABELS.minimal_essay },
+  { id: "spam_essay", label: FLAG_CATEGORY_LABELS.spam_essay },
+  { id: "ai_generated_essay", label: FLAG_CATEGORY_LABELS.ai_generated_essay },
+  { id: "duplicated_answers", label: FLAG_CATEGORY_LABELS.duplicated_answers },
+  { id: "internal_inconsistency", label: FLAG_CATEGORY_LABELS.internal_inconsistency },
+  { id: "fake_contact", label: FLAG_CATEGORY_LABELS.fake_contact },
+  { id: "other", label: FLAG_CATEGORY_LABELS.other },
 ] as const;

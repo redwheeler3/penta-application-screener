@@ -278,7 +278,7 @@ def test_co_applicant_incomplete_is_filtered_out() -> None:
 
 
 def test_disabled_rule_is_skipped() -> None:
-    rules = RulesConfig(disabled_rules=("owns_real_estate",))
+    rules = RulesConfig(disabled_checks=("owns_real_estate",))
     result = evaluate_hard_filters(eligible_application(has_real_estate=True), rules)
 
     assert result.status == FilterStatus.ELIGIBLE
@@ -286,7 +286,7 @@ def test_disabled_rule_is_skipped() -> None:
 
 
 def test_disabled_rule_skips_filtered_out() -> None:
-    rules = RulesConfig(disabled_rules=("child_count_mismatch",))
+    rules = RulesConfig(disabled_checks=("child_count_mismatch",))
     result = evaluate_hard_filters(eligible_application(
         child_count=2,
         child_details=[{"first_name": "Maya", "last_name": "Garcia", "age": 5}],
@@ -389,7 +389,7 @@ def test_multiple_pet_violations_each_get_a_reason() -> None:
 def test_disabled_pets_rule_is_skipped() -> None:
     from app.domain.hard_filters import PetFacts
 
-    rules = RulesConfig(max_dogs=0, max_cats=0, disabled_rules=("pets_over_limit",))
+    rules = RulesConfig(max_dogs=0, max_cats=0, disabled_checks=("pets_over_limit",))
     result = evaluate_hard_filters(
         eligible_application(), rules, pet_facts=PetFacts(dogs=2, cats=2)
     )

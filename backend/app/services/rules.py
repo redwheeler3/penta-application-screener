@@ -84,7 +84,7 @@ def save_member_rules(
 
 def rules_config_from(rules: EligibilityRules) -> RulesConfig:
     """Map an ``EligibilityRules`` blob onto the domain ``RulesConfig`` (income_min ->
-    min_income, disabled_rules -> tuple). ``today`` keeps its RulesConfig default."""
+    min_income, disabled_checks -> tuple). ``today`` keeps its RulesConfig default."""
     return RulesConfig(
         min_income=rules.income_min,
         max_income=rules.income_max,
@@ -95,7 +95,7 @@ def rules_config_from(rules: EligibilityRules) -> RulesConfig:
         max_dogs=rules.max_dogs,
         max_cats=rules.max_cats,
         allow_other_pets=rules.allow_other_pets,
-        disabled_rules=tuple(rules.disabled_rules),
+        disabled_checks=tuple(rules.disabled_checks),
     )
 
 

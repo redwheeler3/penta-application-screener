@@ -115,7 +115,13 @@ class EligibilityRules(BridgeModel):
     max_dogs: int = Field(default=DEFAULT_MAX_DOGS, ge=0, le=10)
     max_cats: int = Field(default=DEFAULT_MAX_CATS, ge=0, le=10)
     allow_other_pets: bool = Field(default=DEFAULT_ALLOW_OTHER_PETS)
-    disabled_rules: list[str] = Field(default_factory=list)
+    # The checks this member has switched off (1g Move 3, renamed from disabled_rules). ONE
+    # flat list spanning BOTH kinds of eligibility check: deterministic hard-filter reason
+    # codes (income_below_range, pets_over_limit, …) AND AI screening flag categories
+    # (fake_contact, internal_inconsistency, …). The two namespaces are disjoint; the hard
+    # filter drops matching reason codes and the flag filter drops matching categories, each
+    # ignoring the other's strings. Wire key: disabledChecks.
+    disabled_checks: list[str] = Field(default_factory=list)
 
 
 class AppSettings(BridgeModel):

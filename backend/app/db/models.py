@@ -165,8 +165,9 @@ class MemberRules(TimestampMixin, Base):
     Sparse copy-on-write: a row exists ONLY once a member customizes their rules away from the
     shared committee default (stored in ``AdminSetting`` under ``committee_default_rules``).
     Until then the member reads the default — most members never diverge, so most have no row.
-    ``rules`` is the ``EligibilityRules`` blob (income/age/children/disabled_rules); pets are
-    not here (they stay committee-wide — see ``EligibilityRules``).
+    ``rules`` is the ``EligibilityRules`` blob: numeric thresholds (income/age/children), pet
+    limits (as of 1e), and ``disabled_checks`` — the flat set of switched-off checks spanning
+    both deterministic reason codes and AI flag categories (as of 1g).
     """
 
     __tablename__ = "member_rules"

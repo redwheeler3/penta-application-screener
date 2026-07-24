@@ -105,7 +105,7 @@ def settings_fingerprint(settings: AppSettings, rules: EligibilityRules) -> str:
             "max_dogs": rules.max_dogs,
             "max_cats": rules.max_cats,
             "allow_other_pets": rules.allow_other_pets,
-            "disabled_rules": sorted(rules.disabled_rules),
+            "disabled_checks": sorted(rules.disabled_checks),
         },
         sort_keys=True,
     )

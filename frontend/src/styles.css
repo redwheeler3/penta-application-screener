@@ -1925,6 +1925,18 @@ h1 {
   font-size: 0.9rem;
 }
 
+/* Each toggle group (Deterministic rules / AI screening checks) within the checks section.
+   Spacing between the two groups; the second gets a light divider so the split reads. */
+.check-group {
+  margin-top: 1rem;
+}
+
+.check-group h4 {
+  margin: 0 0 0.15rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .rules-hint {
   font-size: 0.78rem;
   color: var(--muted);

@@ -39,7 +39,14 @@ class RulesConfig:
     max_dogs: int = DEFAULT_MAX_DOGS
     max_cats: int = DEFAULT_MAX_CATS
     allow_other_pets: bool = DEFAULT_ALLOW_OTHER_PETS
-    disabled_rules: tuple[str, ...] = ()
+    # Checks the member has switched off (M15 1g Move 3, renamed from disabled_rules). ONE
+    # flat set spanning both kinds of eligibility check: deterministic hard-filter reason
+    # codes (income_below_range, …) AND AI screening flag categories (fake_contact, …). The
+    # two namespaces are disjoint, so this filter drops the matching REASON codes and harmlessly
+    # ignores any flag-category strings — the flag half is applied separately (see
+    # ``services/eligibility.active_flags``). A disabled check is hidden AND non-gating for
+    # that member, matching how a disabled reason already behaves.
+    disabled_checks: tuple[str, ...] = ()
     today: date = field(default_factory=date.today)
 
 
@@ -106,8 +113,8 @@ def evaluate_hard_filters(
     if pet_facts is not None:
         reasons.extend(_pets_over_limit(pet_facts, rules))
 
-    if rules.disabled_rules:
-        reasons = [r for r in reasons if r.code not in rules.disabled_rules]
+    if rules.disabled_checks:
+        reasons = [r for r in reasons if r.code not in rules.disabled_checks]
 
     if reasons:
         return FilterResult(FilterStatus.FILTERED_OUT, reasons)

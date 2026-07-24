@@ -300,3 +300,36 @@ def test_mixed_pet_and_numeric_ineligible_stays_rules_source(monkeypatch) -> Non
     status, source = effective_status_for(db, member.id, over)
     assert status == ApplicationStatus.INELIGIBLE
     assert source == StatusSource.RULES
+
+
+def test_member_muting_a_flag_category_makes_them_eligible() -> None:
+    """M15 1g Move 2: a member who disables an AI flag category (via disabled_checks) is no
+    longer gated by that flag — it stops counting AND stops showing for them — while a member
+    who hasn't muted it still sees the applicant ineligible."""
+    db = make_session()
+    picky = add_user(db, "picky@x.com")
+    lenient = add_user(db, "lenient@x.com")
+    flagged = add_app(db, email="flagged@x.com")
+    screen_flagged(db, flagged.id)  # a fake_contact flag
+
+    # lenient mutes fake_contact; picky keeps it.
+    set_member_rules(db, lenient.id, disabled_checks=["fake_contact"])
+
+    assert eligible_application_ids_for(db, picky.id) == set()          # still gated
+    assert eligible_application_ids_for(db, lenient.id) == {flagged.id}  # muted -> eligible
+    # Union includes it: eligible for the lenient member, no override anywhere.
+    assert union_eligible_application_ids(db) == {flagged.id}
+
+
+def test_muted_flag_effective_status_is_untouched_not_ai() -> None:
+    """A muted flag doesn't just flip eligibility — the source reads UNTOUCHED (nothing is
+    gating), not AI, because the flag no longer counts for that member."""
+    db = make_session()
+    member = add_user(db, "m@x.com")
+    flagged = add_app(db, email="flagged@x.com")
+    screen_flagged(db, flagged.id)
+    set_member_rules(db, member.id, disabled_checks=["fake_contact"])
+
+    status, source = effective_status_for(db, member.id, flagged)
+    assert status == ApplicationStatus.ELIGIBLE
+    assert source == StatusSource.UNTOUCHED

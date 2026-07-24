@@ -51,8 +51,9 @@ export type SettingsResponse = {
 // The screening rules each member tunes for themselves (GET/PUT /eligibility-rules):
 // the numeric thresholds plus the pet limits (pets joined here in M15 1e). Members start
 // on the shared committee default and only diverge once they save their own — see
-// EligibilityRulesResponse.isDefault. disabledRules holds the ids (from ALL_RULES) of
-// rules the member has switched off.
+// EligibilityRulesResponse.isDefault. disabledChecks holds the ids of checks the member has
+// switched off — a flat list spanning BOTH deterministic reason codes (DETERMINISTIC_CHECKS)
+// and AI screening flag categories (AI_CHECKS, incl. pets_over_limit), matching the backend (M15 1g).
 export type EligibilityRules = {
   incomeMin: number;
   incomeMax: number;
@@ -63,7 +64,7 @@ export type EligibilityRules = {
   maxDogs: number;
   maxCats: number;
   allowOtherPets: boolean;
-  disabledRules: string[];
+  disabledChecks: string[];
 };
 
 // isDefault: true when the member is still reading the shared committee default (they

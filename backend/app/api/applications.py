@@ -46,7 +46,7 @@ from app.services.analysis import (
     stored_tiers,
 )
 from app.services.application_import import extract_essays
-from app.services.eligibility import overrides_by_app
+from app.services.eligibility import active_flags, overrides_by_app
 from app.services.ranking_view import candidate_scores
 from app.services.rules import (
     hard_filter_reasons_for,
@@ -82,7 +82,9 @@ def list_applications(
                     rules_config, app, pet_facts=pet_facts_by_app.get(app.id)
                 ),
                 override=overrides.get(app.id),
-                flags=flags_by_app.get(app.id),
+                # Muted categories are hidden AND non-gating for this member (1g Move 2),
+                # so pass only the active flags — they drive both status and display.
+                flags=active_flags(flags_by_app.get(app.id), rules_config.disabled_checks),
                 starred=app.id in starred,
             )
             for app in applications
@@ -126,11 +128,10 @@ def override_status(
     if application is None:
         raise Problem("not_found", detail="Application not found.")
 
-    flags = _latest_flags(db, [application_id]).get(application_id)
+    rules_config = rules_config_for(db, user.id)
+    flags = active_flags(_latest_flags(db, [application_id]).get(application_id), rules_config.disabled_checks)
     pet_facts = _latest_pet_facts(db, [application_id]).get(application_id)
-    reasons = hard_filter_reasons_for(
-        rules_config_for(db, user.id), application, pet_facts=pet_facts
-    )
+    reasons = hard_filter_reasons_for(rules_config, application, pet_facts=pet_facts)
     fingerprint = findings_fingerprint(reasons, flags)
     override = db.scalar(
         select(MemberEligibility).where(
@@ -353,13 +354,17 @@ def _latest_results(
 def _serialize_detail(app: Application, db: Session, user: User) -> ApplicationDetail:
     # The raw source row and AI narrative are shown to any committee member: they're
     # trusted screeners, and these just back the data the member already sees.
+    rules_config = rules_config_for(db, user.id)
     flag_result = _latest_results(db, "screening", [app.id]).get(app.id)
-    flags = (flag_result.output or {}).get("flags", []) if flag_result else None
+    # Muted categories are hidden AND non-gating for this member (1g Move 2): show only the
+    # active flags, and use them for the verdict.
+    flags = active_flags(
+        (flag_result.output or {}).get("flags", []) if flag_result else None,
+        rules_config.disabled_checks,
+    )
     pet_facts = pet_facts_from_screening(flag_result.output) if flag_result else None
     override = overrides_by_app(db, user.id, [app.id]).get(app.id)
-    reasons = hard_filter_reasons_for(
-        rules_config_for(db, user.id), app, pet_facts=pet_facts
-    )
+    reasons = hard_filter_reasons_for(rules_config, app, pet_facts=pet_facts)
     summary = _serialize_summary(
         app, reasons=reasons, override=override, flags=flags,
         starred=is_starred(db, app.id, user.id),

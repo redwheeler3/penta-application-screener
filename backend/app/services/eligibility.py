@@ -41,14 +41,36 @@ from app.services.rules import (
 )
 
 
+def active_flags(
+    flags: list[dict[str, Any]] | None, disabled_checks: tuple[str, ...]
+) -> list[dict[str, Any]] | None:
+    """The flags that still count for a member — those whose category is not in the member's
+    ``disabled_checks`` (M15 1g Move 2). The flag analogue of how ``evaluate_hard_filters``
+    drops disabled reason codes: a member can mute a screening check (fake_contact, …) so it
+    neither shows nor gates for them. Callers pass a member's ``RulesConfig.disabled_checks``
+    (the flat set spanning both reason codes and flag categories; the reason codes here are
+    simply absent from any flag's category, so they no-op). Order preserved.
+
+    ``None`` (no screening result yet — "unknown") passes through as ``None``, distinct from
+    ``[]`` (screened, no active flags), so callers can still tell unscreened from clean."""
+    if flags is None:
+        return None
+    if not disabled_checks:
+        return list(flags)
+    muted = set(disabled_checks)
+    return [f for f in flags if f.get("category") not in muted]
+
+
 def machine_flags_by_app(
     db: Session, application_ids: list[int]
 ) -> dict[int, list[dict[str, Any]]]:
     """The latest screening flags per application, as ``{application_id: flag_list}``.
 
-    Applications with no screening result are absent (so ``.get`` yields None). The flags
-    are the AI half of the machine findings: an app "has AI flags" iff its flag list is
-    non-empty. Batch-loaded in one query to keep the pool filters off the N+1 path.
+    Applications with no screening result are absent (so ``.get`` yields None). Flags are
+    returned RAW (unfiltered by any member's disabled checks) — callers apply ``active_flags``
+    with the reading member's ``disabled_checks``, because muting is per-member. An app "has AI
+    flags" for a member iff its ``active_flags`` list is non-empty. Batch-loaded in one query
+    to keep the pool filters off the N+1 path.
     """
     if not application_ids:
         return {}
@@ -127,15 +149,14 @@ def effective_status_for(
     else the computed machine verdict over the current findings (rule reasons evaluated
     under THIS member's rules)."""
     override = _member_override(db, user_id, application.id)
+    rules_config = rules_config_for(db, user_id)
     flags = machine_flags_by_app(db, [application.id]).get(application.id)
     pet_facts = pet_facts_by_app(db, [application.id]).get(application.id)
-    reasons = hard_filter_reasons_for(
-        rules_config_for(db, user_id), application, pet_facts=pet_facts
-    )
+    reasons = hard_filter_reasons_for(rules_config, application, pet_facts=pet_facts)
     return effective_status(
         override,
         reasons=reasons,
-        has_ai_flags=bool(flags),
+        has_ai_flags=bool(active_flags(flags, rules_config.disabled_checks)),
     )
 
 
@@ -163,7 +184,7 @@ def eligible_application_ids_for(db: Session, user_id: int) -> set[int]:
         status, _ = effective_status(
             overrides.get(app.id),
             reasons=reasons,
-            has_ai_flags=bool(flags_by_app.get(app.id)),
+            has_ai_flags=bool(active_flags(flags_by_app.get(app.id), rules_config.disabled_checks)),
         )
         if status == ApplicationStatus.ELIGIBLE:
             eligible.add(app.id)
@@ -236,13 +257,13 @@ def union_eligible_application_ids(db: Session) -> set[int]:
         if app.id in has_eligible_override:
             union.add(app.id)
             continue
-        # An AI flag makes the machine verdict INELIGIBLE for everyone regardless of rules,
-        # so only an ELIGIBLE override (handled above) could put a flagged app in the union.
-        if flags_by_app.get(app.id):
-            continue
-        # No flags: the app is machine-eligible for a member iff it is rules-clean under
-        # that member's ruleset. It enters the union if any member WITHOUT an override on it
-        # uses a ruleset that finds it clean.
+        # The app is machine-eligible for a member iff, under that member's ruleset, it has no
+        # hard-filter reason AND no ACTIVE AI flag (a flag whose category the member hasn't
+        # muted — M15 1g Move 2). Both halves are per-ruleset now: disabled_checks is part of
+        # RulesConfig, so members with different mutes are already distinct rulesets. The app
+        # enters the union if any member WITHOUT an override on it uses such a ruleset. (Before
+        # 1g, any flag blocked everyone; now a member who muted the flagged category isn't
+        # blocked by it.)
         override_users = override_users_by_app.get(app.id, set())
         override_counts_by_ruleset: dict[RulesConfig, int] = defaultdict(int)
         for user_id in override_users:
@@ -250,6 +271,8 @@ def union_eligible_application_ids(db: Session) -> set[int]:
         for rules_config in distinct_rulesets:
             if hard_filter_reasons_for(rules_config, app, pet_facts=facts_by_app.get(app.id)):
                 continue  # rules-ineligible under this ruleset
+            if active_flags(flags_by_app.get(app.id), rules_config.disabled_checks):
+                continue  # an un-muted AI flag makes it ineligible under this ruleset
             available = (
                 users_per_ruleset[rules_config]
                 - override_counts_by_ruleset.get(rules_config, 0)

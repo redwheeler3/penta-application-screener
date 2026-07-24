@@ -36,6 +36,7 @@ from app.services.analysis import (
 )
 from app.services.application_import import settings_fingerprint
 from app.services.eligibility import (
+    active_flags,
     machine_flags_by_app,
     overrides_by_app,
     pet_facts_by_app,
@@ -228,7 +229,7 @@ def _member_status_counts(
         status, source = effective_status(
             overrides.get(app.id),
             reasons=reasons,
-            has_ai_flags=bool(flags_by_app.get(app.id)),
+            has_ai_flags=bool(active_flags(flags_by_app.get(app.id), rules_config.disabled_checks)),
         )
         by_status[status] = by_status.get(status, 0) + 1
         by_source[source] = by_source.get(source, 0) + 1

@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useState } from "react";
-import { ALL_RULES } from "../constants";
+import { AI_CHECKS, DETERMINISTIC_CHECKS } from "../constants";
 import * as api from "../api";
 import { readProblem } from "../format";
 import { NumberInput } from "./NumberInput";
@@ -143,25 +143,25 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
               <span>Allow other pets</span>
             </label>
             <div className="rules-section">
-              <h3>Screening Rules</h3>
-              <p className="rules-hint">Uncheck a rule to disable it. Disabled rules will not run during screening.</p>
-              <div className="rules-grid">
-                {[...ALL_RULES].sort((a, b) => a.label.localeCompare(b.label)).map((rule) => (
-                  <label key={rule.id} className="checkbox-label rule-toggle">
-                    <input
-                      type="checkbox"
-                      checked={!draft.disabledRules.includes(rule.id)}
-                      onChange={(event) => {
-                        const disabled = event.target.checked
-                          ? draft.disabledRules.filter((r) => r !== rule.id)
-                          : [...draft.disabledRules, rule.id];
-                        setDraft({ ...draft, disabledRules: disabled });
-                      }}
-                    />
-                    <span>{rule.label}</span>
-                  </label>
-                ))}
-              </div>
+              <h3>Screening checks</h3>
+              <p className="rules-hint">
+                Uncheck a check to disable it for your own list — it won't flag or exclude an
+                applicant for you. Others' lists are unaffected.
+              </p>
+              <CheckGroup
+                title="Deterministic rules"
+                hint="Threshold checks decided at Sync from the form data."
+                checks={DETERMINISTIC_CHECKS}
+                draft={draft}
+                setDraft={setDraft}
+              />
+              <CheckGroup
+                title="AI screening checks"
+                hint="Decided at Screen — the AI reads the application (pets are judged from what it extracts)."
+                checks={AI_CHECKS}
+                draft={draft}
+                setDraft={setDraft}
+              />
             </div>
             <div className="settings-actions">
               <button className="primary-button" type="submit" disabled={saving}>
@@ -172,5 +172,41 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
         )}
       </div>
     </section>
+  );
+}
+
+// One labeled group of check toggles. Both groups edit the SAME flat draft.disabledChecks
+// list — a check is ON when it is NOT in the list; unchecking adds its id. The
+// deterministic/AI split is presentational (see AI_CHECKS / DETERMINISTIC_CHECKS).
+function CheckGroup(props: {
+  title: string;
+  hint: string;
+  checks: readonly { id: string; label: string }[];
+  draft: EligibilityRules;
+  setDraft: (next: EligibilityRules) => void;
+}): ReactNode {
+  const { title, hint, checks, draft, setDraft } = props;
+  return (
+    <div className="check-group">
+      <h4>{title}</h4>
+      <p className="rules-hint">{hint}</p>
+      <div className="rules-grid">
+        {[...checks].sort((a, b) => a.label.localeCompare(b.label)).map((check) => (
+          <label key={check.id} className="checkbox-label rule-toggle">
+            <input
+              type="checkbox"
+              checked={!draft.disabledChecks.includes(check.id)}
+              onChange={(event) => {
+                const disabled = event.target.checked
+                  ? draft.disabledChecks.filter((c) => c !== check.id)
+                  : [...draft.disabledChecks, check.id];
+                setDraft({ ...draft, disabledChecks: disabled });
+              }}
+            />
+            <span>{check.label}</span>
+          </label>
+        ))}
+      </div>
+    </div>
   );
 }

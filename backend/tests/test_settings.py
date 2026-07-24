@@ -40,7 +40,7 @@ def test_get_app_settings_ignores_pre_split_rule_keys() -> None:
                 "income_min": 70_000,
                 "income_max": 150_000,
                 "min_children": 1,
-                "disabled_rules": ["owns_real_estate"],
+                "disabled_checks": ["owns_real_estate"],
             },
         )
     )
@@ -172,7 +172,7 @@ async def test_get_and_put_eligibility_rules_round_trip() -> None:
             "/eligibility-rules",
             json={
                 "incomeMin": 80_000, "incomeMax": 160_000, "minAdultAge": 18,
-                "maxChildAge": 17, "minChildren": 1, "maxChildren": 4, "disabledRules": [],
+                "maxChildAge": 17, "minChildren": 1, "maxChildren": 4, "disabledChecks": [],
             },
         )
         assert put.status_code == 200
@@ -190,7 +190,7 @@ async def test_put_eligibility_rules_rejects_inverted_income_range() -> None:
             "/eligibility-rules",
             json={
                 "incomeMin": 200_000, "incomeMax": 100_000, "minAdultAge": 18,
-                "maxChildAge": 17, "minChildren": 1, "maxChildren": 4, "disabledRules": [],
+                "maxChildAge": 17, "minChildren": 1, "maxChildren": 4, "disabledChecks": [],
             },
         )
         assert resp.status_code == 422
