@@ -33,6 +33,7 @@ from app.schemas.applications import (
     ApplicationSummary,
     DimensionContributionOut,
     DimensionScoringTraceOut,
+    PetFactsOut,
     PrivateNoteUpdate,
     ScreeningFlagOut,
 )
@@ -332,6 +333,21 @@ def _latest_pet_facts(
     return {app_id: f for app_id, f in facts.items() if f is not None}
 
 
+def _pet_facts_out(output: dict[str, Any] | None) -> PetFactsOut | None:
+    """The pets block of a screening result as the detail's ``PetFactsOut`` — counts plus the
+    AI's reasoning (the read shown as the pet finding's evidence). None when the app has no (or
+    a pre-reasoning) screening result."""
+    pets = (output or {}).get("pets") if output else None
+    if not pets:
+        return None
+    return PetFactsOut(
+        dogs=pets.get("dogs", 0),
+        cats=pets.get("cats", 0),
+        other_pets=list(pets.get("other_pets", []) or []),
+        reasoning=pets.get("reasoning", "") or "",
+    )
+
+
 def _latest_results(
     db: Session, kind: str, application_ids: list[int] | None = None
 ) -> dict[int, ApplicationAIResult]:
@@ -387,6 +403,10 @@ def _serialize_detail(app: Application, db: Session, user: User) -> ApplicationD
         flags=(
             [ScreeningFlagOut(**f) for f in flags] if flags is not None else None
         ),
+        # Pull the pets block (incl. the AI's neutral summary) straight from the screening
+        # output — the domain pet_facts above carries only the counts the filter judges, not
+        # the display prose.
+        pet_facts=_pet_facts_out(flag_result.output if flag_result else None),
         raw_row=app.raw_row,
         ai_narrative=flag_result.narrative if flag_result is not None else None,
         screening_trace=_result_trace(flag_result),

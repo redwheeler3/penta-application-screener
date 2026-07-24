@@ -49,6 +49,15 @@ class PetFacts(BaseModel):
             "NOT judge whether these are allowed; the committee's per-member policy does."
         ),
     )
+    reasoning: str = Field(
+        default="",
+        description=(
+            "Your brief reasoning on what the pets field states and how you classified it into "
+            "the counts above — the read a screener sees. Note anything unclear or "
+            "contradictory. Describe and classify only; never judge whether it is within policy "
+            "(a per-member rule decides that)."
+        ),
+    )
 
 
 class ScreeningReport(BaseModel):

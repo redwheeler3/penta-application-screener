@@ -174,6 +174,10 @@ export type ApplicationDetail = ApplicationSummary & {
   essays: Essay[];
   // null = screening pass not yet run for this application; [] = ran, clean.
   flags: ScreeningFlag[] | null;
+  // The AI's extracted pet inventory (M15 1e). `reasoning` is the AI's read on what the pets
+  // field states and how it classified it — the pet finding's evidence, the analogue of a
+  // flag summary. null = not screened (or a pre-reasoning result).
+  petFacts?: { dogs: number; cats: number; otherPets: string[]; reasoning: string } | null;
   rawRow?: Record<string, unknown>;
   // The model's free-text reasoning from the latest screening pass.
   aiNarrative?: string | null;

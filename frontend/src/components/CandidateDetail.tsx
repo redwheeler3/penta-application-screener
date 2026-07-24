@@ -236,6 +236,15 @@ export function CandidateDetail(props: {
     ...app.hardFilterReasons.flatMap((reason) => REASON_FIELDS[reason.code] ?? []),
     ...(app.flags ?? []).flatMap((flag) => FLAG_FIELDS[flag.category] ?? []),
   ]);
+  // Findings are grouped by SOURCE to match the status badge (M15 1g): the deterministic
+  // rules (Sync-knowable threshold reasons) vs. the AI screening pass. Pets are a hard-filter
+  // reason but attribute to AI (the model extracts the pet counts), so they render in the AI
+  // panel as evidence cards alongside the flags — not in the deterministic panel.
+  const petReasons = app.hardFilterReasons.filter((r) => r.code === "pets_over_limit");
+  const ruleReasons = app.hardFilterReasons.filter((r) => r.code !== "pets_over_limit");
+  const normalizedFields = app.normalized ?? {};
+  const petsText = typeof normalizedFields.pets_text === "string" ? normalizedFields.pets_text : "";
+  const petReasoning = app.petFacts?.reasoning ?? "";
   const isHuman = app.statusSource === "human";
   const autoLabel = STATUS_LABELS[app.autoStatus];
   const detailSections = buildDetailSections(app);
@@ -332,24 +341,42 @@ export function CandidateDetail(props: {
           ) : null}
         </section>
       </div>
-      {app.hardFilterReasons.length > 0 ? (
+      {ruleReasons.length > 0 ? (
         <div className="filter-reasons">
-          <strong>Filter reasons:</strong>
+          <strong>Deterministic rules</strong>
+          <p className="flags-hint">Decided at Sync from the form data.</p>
           <ul>
-            {app.hardFilterReasons.map((reason, i) => (
+            {ruleReasons.map((reason, i) => (
               <li key={i}>{reason.message}</li>
             ))}
           </ul>
         </div>
       ) : null}
-      {app.flags && app.flags.length > 0 ? (
+      {(app.flags && app.flags.length > 0) || petReasons.length > 0 ? (
         <div className="flags-panel">
-          <strong>Screening flags</strong>
+          <strong>AI screening</strong>
           <p className="flags-hint">
-            The AI raised these. Decide for yourself which matter — set the status above.
+            Raised by the AI screening pass. Decide for yourself which matter — set the status above.
           </p>
           <ul>
-            {app.flags.map((flag, i) => (
+            {/* Pet findings first: a deterministic verdict over AI-extracted pet counts,
+                rendered as evidence cards like the flags — the raw pets field is the evidence
+                the AI read the counts from, symmetric with a flag citing its field. */}
+            {petReasons.map((reason, i) => (
+              <li key={`pet-${i}`} className="flag">
+                <span className="flag-category">Pet policy</span>
+                <span className="flag-summary">{reason.message}</span>
+                {/* Evidence = the AI's reasoning on the pets field (the analogue of a flag's
+                    cited summary). Falls back to the raw field only if a result predates the
+                    reasoning. */}
+                {petReasoning ? (
+                  <span className="flag-evidence">{petReasoning}</span>
+                ) : petsText ? (
+                  <span className="flag-evidence">pets: {petsText}</span>
+                ) : null}
+              </li>
+            ))}
+            {(app.flags ?? []).map((flag, i) => (
               <li key={i} className="flag">
                 <span className="flag-category">{flagCategoryLabel(flag.category)}</span>
                 <span className="flag-summary">{flag.summary}</span>
