@@ -455,7 +455,7 @@ The multi-member *logic* is decided (Jeff, 2026-07-23): M15 is per-member indepe
 **Phasing** (each tree-green; DB changes verified on a copy first):
 1. Data-model split + migration off the global eligibility columns and settings blob.
 2. Union eligible pool + per-member cache-gap staleness.
-3. Per-member tiering/ranking; shared-union discovery merge; "keep if any member tiered it"; weight-0 new-axis behavior. Consolidation stays shared (a true duplicate merge is committee-wide) — an accepted corner case is that it can shift another member's tiering without their acting; per-member consolidation is deliberately not built (ADR 0011).
+3. Per-member tiering/ranking; shared-union discovery merge; "keep if any member tiered it"; weight-0 new-axis behavior. Consolidation stays shared (a true duplicate merge is a committee-wide concept-identity fact, not member taste) — the survivor inherits the **highest** working tier among the merged twins, so a member never loses the concept or weight; at most the surviving key holds the higher of two tiers they'd split across the twins. Per-member consolidation is deliberately not built (ADR 0011).
 4. Per-member overrides + notes wiring (notes already per-member).
 5. Observability: triggered-by-member stamp; Insights stays shared.
 6. SPEC/CHANGELOG/ADR finalization.

@@ -72,10 +72,16 @@ existing content-addressed cache, not on a shared pool.**
   "you requested this" provenance badge is per-member.
 - Observability stays committee-wide (shared spend must be legible to all); runs gain a
   "triggered-by member" stamp so shared cost stays attributable.
-- **Accepted corner case (Jeff, 2026-07-23):** consolidation is shared, so one member's run
-  merging a true duplicate pair can shift another member's tiering (the survivor inherits the
-  highest working-tier placement) without that member acting. This is accepted — a genuine
-  duplicate merging is correct for everyone — rather than building per-member consolidation.
-  A member adding applicants never ambers another member (staleness is per-member,
+- **Accepted corner case (Jeff, 2026-07-23):** consolidation is shared, because "these two
+  axes are the same concept" is a committee-wide fact (high score-vector correlation *and* a
+  model `same_concept` verdict), not a matter of member taste — so per-member consolidation is
+  deliberately not built. Crucially, a member never *loses* a merged concept: the survivor is
+  the older/canonical key (`dimension_consolidate.py` orders keys oldest-wins) and it inherits
+  the **highest-priority working tier** among all keys collapsing into it (`apply_consolidation`
+  in `ranking_run.py`) — max-of-tiers is the non-destructive direction, so a merge can only
+  ever nudge a survivor *up* to the strongest tier that member assigned across the twins, never
+  drop the axis or reduce its weight. The only residual cross-member ripple is cosmetic: if a
+  member had the two twins split across *different* tiers, the surviving key now holds the
+  higher one. A member adding applicants never ambers another member (staleness is per-member,
   view-scoped); the only cross-member ripples from a run are an inert weight-0 new dimension
-  and this consolidation-driven tier shift.
+  and this benign consolidation promotion.
