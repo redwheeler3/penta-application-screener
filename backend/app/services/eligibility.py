@@ -134,7 +134,7 @@ def effective_status_for(
     )
     return effective_status(
         override,
-        has_reasons=bool(reasons),
+        reasons=reasons,
         has_ai_flags=bool(flags),
     )
 
@@ -162,7 +162,7 @@ def eligible_application_ids_for(db: Session, user_id: int) -> set[int]:
         reasons = hard_filter_reasons_for(rules_config, app, pet_facts=facts_by_app.get(app.id))
         status, _ = effective_status(
             overrides.get(app.id),
-            has_reasons=bool(reasons),
+            reasons=reasons,
             has_ai_flags=bool(flags_by_app.get(app.id)),
         )
         if status == ApplicationStatus.ELIGIBLE:

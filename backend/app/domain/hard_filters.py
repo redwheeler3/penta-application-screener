@@ -16,6 +16,12 @@ DEFAULT_MAX_DOGS = 1
 DEFAULT_MAX_CATS = 1
 DEFAULT_ALLOW_OTHER_PETS = False
 
+# The reason code for a pet-limit violation. Named because it is load-bearing beyond this
+# module: status resolution treats it specially (M15 1g) — a pet verdict needs the AI to
+# extract pet counts from free text first, so it can only land at Screen, and it attributes
+# to the AI status source, not Rules. Every other hard-filter reason is Sync-knowable (Rules).
+PETS_OVER_LIMIT_CODE = "pets_over_limit"
+
 
 class FilterStatus(StrEnum):
     ELIGIBLE = "eligible"
@@ -330,7 +336,7 @@ def _pets_over_limit(pet_facts: PetFacts, rules: RulesConfig) -> list[FilterReas
     if pet_facts.dogs > rules.max_dogs:
         reasons.append(
             FilterReason(
-                code="pets_over_limit",
+                code=PETS_OVER_LIMIT_CODE,
                 message=f"Household has {pet_facts.dogs} dog(s); at most {rules.max_dogs} allowed.",
                 details={"kind": "dogs", "count": pet_facts.dogs, "max": rules.max_dogs},
             )
@@ -338,7 +344,7 @@ def _pets_over_limit(pet_facts: PetFacts, rules: RulesConfig) -> list[FilterReas
     if pet_facts.cats > rules.max_cats:
         reasons.append(
             FilterReason(
-                code="pets_over_limit",
+                code=PETS_OVER_LIMIT_CODE,
                 message=f"Household has {pet_facts.cats} cat(s); at most {rules.max_cats} allowed.",
                 details={"kind": "cats", "count": pet_facts.cats, "max": rules.max_cats},
             )
@@ -347,7 +353,7 @@ def _pets_over_limit(pet_facts: PetFacts, rules: RulesConfig) -> list[FilterReas
         listed = ", ".join(pet_facts.other_pets)
         reasons.append(
             FilterReason(
-                code="pets_over_limit",
+                code=PETS_OVER_LIMIT_CODE,
                 message=f"Household has pets other than dogs and cats ({listed}); only dogs and cats are allowed.",
                 details={"kind": "other", "other_pets": list(pet_facts.other_pets)},
             )

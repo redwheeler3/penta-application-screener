@@ -85,7 +85,10 @@ export const SOURCE_LABELS: Record<StatusSource, string> = {
 export const SOURCE_DESCRIPTIONS: Record<StatusSource, string> = {
   untouched: "Passed the deterministic rules; the AI pass raised no flags.",
   rules: "Set ineligible by the deterministic screening rules.",
-  ai: "Flagged by the AI screening pass.",
+  // AI covers both a flag the screening pass raised AND a pet-limit verdict: pets are
+  // deterministic, but the AI must read the pet counts from free text first, so they
+  // land with the AI pass, not the Sync-time rules (M15 1g).
+  ai: "Set ineligible by the AI screening pass — a flag it raised or the pet count it read.",
   human: "Set by a reviewer.",
 };
 

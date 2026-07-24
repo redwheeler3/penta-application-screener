@@ -14,33 +14,54 @@ import hashlib
 import json
 
 from app.db.models import ApplicationStatus, MemberEligibility, StatusSource
+from app.domain.hard_filters import PETS_OVER_LIMIT_CODE
+
+
+def _reason_codes(reasons: list[dict] | None) -> set[str]:
+    return {r.get("code") for r in (reasons or []) if r.get("code")}
 
 
 def resolve_machine_status(
-    *, has_reasons: bool, has_ai_flags: bool
+    *, reasons: list[dict] | None, has_ai_flags: bool
 ) -> tuple[ApplicationStatus, StatusSource]:
     """The status the machine assigns given the current findings — the shared baseline
     every member sees unless they override it.
 
-    Rules take precedence over AI (high trust first); with neither, the application is
-    clean and untouched.
+    Attribution follows WHEN a finding could be known, so the source badge never implies a
+    verdict was knowable earlier than it was (M15 1g):
+
+      - a NON-pet deterministic reason (income/age/children/real-estate) is Sync-knowable and
+        high-trust → ``RULES``;
+      - otherwise a pet reason OR an AI flag → ``AI``. A pet verdict is deterministic math, but
+        it needs the screening AI to first extract pet counts from the free-text pets field, so
+        it can only land at Screen alongside the AI flags — it attributes to AI, not Rules.
+      - neither → clean and ``UNTOUCHED``.
+
+    A mixed income+pet ineligibility stays ``RULES``: the income reason alone made it
+    ineligible at Sync, so Rules is the honest, higher-trust source. Only a pet-ONLY
+    deterministic verdict moves to AI. Eligibility OUTCOME is unaffected either way (any reason
+    or flag = ineligible) — this only sets which source badge the member sees.
     """
-    if has_reasons:
+    codes = _reason_codes(reasons)
+    if codes - {PETS_OVER_LIMIT_CODE}:  # any non-pet reason
         return ApplicationStatus.INELIGIBLE, StatusSource.RULES
-    if has_ai_flags:
+    if PETS_OVER_LIMIT_CODE in codes or has_ai_flags:
         return ApplicationStatus.INELIGIBLE, StatusSource.AI
     return ApplicationStatus.ELIGIBLE, StatusSource.UNTOUCHED
 
 
 def effective_status(
-    override: MemberEligibility | None, *, has_reasons: bool, has_ai_flags: bool
+    override: MemberEligibility | None,
+    *,
+    reasons: list[dict] | None,
+    has_ai_flags: bool,
 ) -> tuple[ApplicationStatus, StatusSource]:
     """A member's effective (status, source) for an applicant: their human override if one
     exists, else the computed machine verdict. The single resolver every read path uses so
     "whose eligibility?" is answered one way."""
     if override is not None:
         return override.status, StatusSource.HUMAN
-    return resolve_machine_status(has_reasons=has_reasons, has_ai_flags=has_ai_flags)
+    return resolve_machine_status(reasons=reasons, has_ai_flags=has_ai_flags)
 
 
 def findings_fingerprint(

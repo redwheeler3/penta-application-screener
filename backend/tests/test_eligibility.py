@@ -10,11 +10,13 @@ from app.db.models import (
     Base,
     MemberEligibility,
     MemberRules,
+    StatusSource,
     User,
     UserRole,
 )
 from app.schemas.settings import EligibilityRules
 from app.services.eligibility import (
+    effective_status_for,
     eligible_application_ids_for,
     union_eligible_application_ids,
 )
@@ -252,3 +254,49 @@ def test_pet_facts_absent_before_screening_do_not_gate() -> None:
 
     # No screening result cached -> no pet facts -> pet check skipped -> still eligible.
     assert eligible_application_ids_for(db, strict.id) == {unscreened.id}
+
+
+def test_pet_only_ineligible_attributes_to_ai_source(monkeypatch) -> None:
+    """M15 1g: a pet-limit verdict shows source AI, not Rules — pets need the AI to extract
+    counts from free text first, so they land at Screen. The applicant is otherwise clean, so
+    pets are the sole reason."""
+    db = make_session()
+    member = add_user(db, "m@x.com")
+    over = add_app(
+        db,
+        email="dogs@x.com",
+        normalized={
+            "household_income": 100_000,
+            "child_count": 1,
+            "child_details": [{"first_name": "Kid", "last_name": "One", "age": 5}],
+        },
+    )
+    screen_pets(db, over.id, dogs=2)  # committee default max_dogs=1 -> over the limit
+
+    status, source = effective_status_for(db, member.id, over)
+    assert status == ApplicationStatus.INELIGIBLE
+    assert source == StatusSource.AI
+
+
+def test_mixed_pet_and_numeric_ineligible_stays_rules_source(monkeypatch) -> None:
+    """A numeric reason present alongside pets keeps source Rules: the numeric reason alone
+    made it ineligible at Sync, so Rules is the honest higher-trust source. Only a pet-ONLY
+    verdict moves to AI."""
+    db = make_session()
+    member = add_user(db, "m@x.com")
+    # Owns real estate (numeric rule) AND two dogs (pet rule).
+    over = add_app(
+        db,
+        email="both@x.com",
+        rules_ineligible=True,
+        normalized={
+            "household_income": 100_000,
+            "child_count": 1,
+            "child_details": [{"first_name": "Kid", "last_name": "One", "age": 5}],
+        },
+    )
+    screen_pets(db, over.id, dogs=2)
+
+    status, source = effective_status_for(db, member.id, over)
+    assert status == ApplicationStatus.INELIGIBLE
+    assert source == StatusSource.RULES

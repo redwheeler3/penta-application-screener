@@ -227,7 +227,7 @@ def _member_status_counts(
         reasons = hard_filter_reasons_for(rules_config, app, pet_facts=facts_by_app.get(app.id))
         status, source = effective_status(
             overrides.get(app.id),
-            has_reasons=bool(reasons),
+            reasons=reasons,
             has_ai_flags=bool(flags_by_app.get(app.id)),
         )
         by_status[status] = by_status.get(status, 0) + 1

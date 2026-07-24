@@ -269,7 +269,7 @@ def _serialize_summary(
     normalized = app.normalized or {}
     status, source = effective_status(
         override,
-        has_reasons=bool(reasons),
+        reasons=reasons,
         has_ai_flags=bool(flags),
     )
     return ApplicationSummary(
@@ -369,7 +369,7 @@ def _serialize_detail(app: Application, db: Session, user: User) -> ApplicationD
     # clearing the override) without re-deriving the rules client-side. Uses THIS member's
     # rules for the reasons half.
     auto_status, auto_source = resolve_machine_status(
-        has_reasons=bool(reasons), has_ai_flags=bool(flags)
+        reasons=reasons, has_ai_flags=bool(flags)
     )
 
     dimension_scores = _dimension_scores(db, app, user)

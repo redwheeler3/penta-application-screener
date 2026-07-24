@@ -18,24 +18,49 @@ def make_override(**kwargs) -> MemberEligibility:
     return MemberEligibility(**defaults)
 
 
-def test_resolve_rules_take_precedence_over_ai() -> None:
-    assert resolve_machine_status(has_reasons=True, has_ai_flags=True) == (
+def _reasons(*codes: str) -> list[dict]:
+    return [{"code": c, "message": "", "details": {}} for c in codes]
+
+
+def test_resolve_non_pet_rule_takes_precedence_over_ai() -> None:
+    assert resolve_machine_status(reasons=_reasons("income_below_range"), has_ai_flags=True) == (
         ApplicationStatus.INELIGIBLE,
         StatusSource.RULES,
     )
 
 
 def test_resolve_ai_only() -> None:
-    assert resolve_machine_status(has_reasons=False, has_ai_flags=True) == (
+    assert resolve_machine_status(reasons=[], has_ai_flags=True) == (
         ApplicationStatus.INELIGIBLE,
         StatusSource.AI,
     )
 
 
 def test_resolve_clean_is_untouched() -> None:
-    assert resolve_machine_status(has_reasons=False, has_ai_flags=False) == (
+    assert resolve_machine_status(reasons=[], has_ai_flags=False) == (
         ApplicationStatus.ELIGIBLE,
         StatusSource.UNTOUCHED,
+    )
+
+
+def test_resolve_pet_only_reason_attributes_to_ai() -> None:
+    # M15 1g: a pet verdict is deterministic, but it needs the AI to extract pet counts from
+    # free text first, so it lands at Screen and attributes to AI — not Rules (which would
+    # imply it was knowable at Sync).
+    assert resolve_machine_status(reasons=_reasons("pets_over_limit"), has_ai_flags=False) == (
+        ApplicationStatus.INELIGIBLE,
+        StatusSource.AI,
+    )
+
+
+def test_resolve_mixed_pet_and_non_pet_reason_stays_rules() -> None:
+    # An income reason alone made it ineligible at Sync, so Rules is the honest, higher-trust
+    # source even when a pet reason is also present. Only a pet-ONLY verdict moves to AI.
+    assert resolve_machine_status(
+        reasons=_reasons("income_below_range", "pets_over_limit"), has_ai_flags=False
+    ) == (
+        ApplicationStatus.INELIGIBLE,
+        StatusSource.RULES,
     )
 
 
@@ -43,14 +68,14 @@ def test_effective_status_uses_override_when_present() -> None:
     # A member's override wins over the machine verdict (here: rules-ineligible), and its
     # source is always HUMAN.
     override = make_override(status=ApplicationStatus.ELIGIBLE)
-    assert effective_status(override, has_reasons=True, has_ai_flags=False) == (
+    assert effective_status(override, reasons=_reasons("income_below_range"), has_ai_flags=False) == (
         ApplicationStatus.ELIGIBLE,
         StatusSource.HUMAN,
     )
 
 
 def test_effective_status_falls_back_to_machine_without_override() -> None:
-    assert effective_status(None, has_reasons=True, has_ai_flags=False) == (
+    assert effective_status(None, reasons=_reasons("income_below_range"), has_ai_flags=False) == (
         ApplicationStatus.INELIGIBLE,
         StatusSource.RULES,
     )
