@@ -312,7 +312,7 @@ Then the ranked list is **pure deterministic math** (`app/domain/ranking.py`): f
 
 The primary output is a ranked list. It is explainable and preserves evidence behind each recommendation. AI produces qualitative labels for user-facing screening; hidden internal scores support ranking, but the UI explains rankings in plain language rather than centering numeric scores. AI summaries use a neutral committee tone and stay transparent enough to detect bias or unsupported claims. Direct essay excerpts are used sparingly; entire essays are never reproduced in summaries or reports.
 
-For debugging and learning, raw AI analysis, traces, prompts, and intermediate outputs are accessible to any logged-in member (the Observability tab + candidate detail pages). The app provides `why not selected` explanations for candidates below a member's shortlist, for merged MOMI comparison (internal only). Each screening run is saved with its criteria, prompts, model outputs, ranking outputs, and shortlist. AI output schemas are defined in `app/ai/schemas.py`, shared by prompt, storage, API, UI, and evals.
+For debugging and learning, raw AI analysis, traces, prompts, and intermediate outputs are accessible to any logged-in member (the Observability tab + candidate detail pages). The app provides `why not selected` explanations for candidates below a member's shortlist (internal only). Each screening run is saved with its criteria, prompts, model outputs, ranking outputs, and shortlist. AI output schemas are defined in `app/ai/schemas.py`, shared by prompt, storage, API, UI, and evals.
 
 ### Essay Judgment
 
@@ -344,29 +344,44 @@ Every AI recommendation is reviewable and overrideable, and explains why a candi
 
 It is acceptable to send full application context, including names/contact context, to the AI model. Redaction is not required. Applicant data is still treated as sensitive: deterministic filtering stays separate from AI judgment; prompts, model outputs, filter decisions, ranking rationales, and overrides are auditable; the app does not write back to source Google Sheets. The eval-oriented design (fixtures, schema-consistency checks, grounding/evidence-quality tracking, enough trace data to debug regressions) is built and described above.
 
-## Multi-Member MOMI Workflow
+## Multi-Member MOMI Workflow (Milestone 15)
 
-Each MOMI member can run their own screening process separately. For each member the app preserves: the patterns surfaced by AI, the member's tier weighting and inferred priorities, the resulting ranked shortlist, and applicant-specific rationale and evidence. Each member uses their own login; members may see each other's criteria and shortlists (anonymization is not required).
+**M15 is an *isolation* feature, not a merge feature.** Each of the ~5 committee members screens independently — their own eligibility rules, eligibility overrides, dimension tiering, ranking, and notes — layered on a **shared, compute-once substrate**: the applicant pool, the AI-discovered dimension set, and the expensive per-(applicant × dimension) scores. Members bring their own lists to a meeting and debate live; the app does **not** merge, compare, or reconcile them. (This supersedes the earlier merged-shortlist design — there is no merge formula, no disagreement flag, no criteria-comparison surface, and no cross-member visibility inside the app.)
 
-The app then supports combining member shortlists into a merged ranked list, making criteria visible so committee discussion can address not only *which* applicants were selected but *why* each member valued particular signals. Merged behavior:
+**Shared / per-member boundary:**
 
-- Member rankings are weighted equally.
-- Applicants appearing on multiple member shortlists are prioritized.
-- Strong disagreement (one member strongly rejecting a candidate another ranks highly) is flagged for discussion.
-- The merged output includes consensus recommendations, disagreement/discussion-needed candidates, and not-recommended candidates.
+| State | Scope | Notes |
+|---|---|---|
+| Applicant pool + sync | shared | one source of truth |
+| Discovered dimension set | **shared union** | grown by any member's Rank, de-duped by the existing match pass + `dimension_aliases` |
+| Per-(app, dim) AI scores | **shared** | content-addressed cache key has no member id — sharing is automatic |
+| Cost ledger / traces / evals | shared | + a "triggered-by member" stamp per run; Insights stays committee-wide |
+| Eligibility **rules** (income/age/children/pet thresholds, `disabled_rules`) | **per-member** | one shared committee default; a member's row is copy-on-write, created only when they diverge |
+| Eligibility **overrides** (per applicant) | **per-member** | |
+| Tier placement + ranking + new/revived/requested badges | **per-member** | weights stay **derived** from tiers, so per-member re-weighting is free math |
+| Notes | per-member | already are, today |
+| AI/model/cap/sheet settings | shared | infra config, not judgment — split out of the eligibility-rules blob |
 
-Criteria comparison identifies: criteria shared across members, criteria that differed, criteria unique to a member, and plain-language summaries of each member's priorities. Members can write private, per-applicant notes separate from AI rationale — notes belong to their author, stay out of AI inputs and shared reports, and never appear to other members (they remain on the author's printed candidate detail). Any user may finalize the merged list (in practice the MOMI chair's job; no special chair role required). The committee-facing report includes both interview recommendations and a summary of how the pool was screened.
+**Union eligible pool.** An applicant is **globally eligible** if they pass *any* member's effective screen (that member's rules *or* an explicit override) — a derived predicate over the per-member views, not new stored state. Discovery and scoring operate on this union floor; **globally ineligible** applicants (no member passes them) are never scored — preserving "don't score applicants who won't clear the screen." A member's ranked list is the shared analysis **filtered to their eligible view and weighted by their tiers** — pure math, instant, free.
 
-*(The exact merged-ranking formula, disagreement-flag calculation, and criteria-comparison layout are open — see "Remaining Open Questions". Multi-member is Milestone 15.)*
+**How cost stays low (the payoff).** The score cache keys on `(raw_row_hash, dimension_key, model, prompt_version)` with no member id, so sharing rides on *applicant identity*, not pool identity. An applicant scored once (because any member ranked them eligible) is free for every other member who later includes them. **Staleness is per-member**, and reduces to a cache-gap check: a member sees "re-rank needed" only when their eligible view references an applicant not yet in the shared analysis. Member A marking applicant X eligible ambers only A's badge; once A runs it, X grounds discovery + gets scored, and B — including X later — rides the cache with no new spend. The only real AI cost is an applicant entering the union for the first time (or a rank-chain prompt/model change). A new shared dimension surfaced by one member's Rank lands on every board at **weight 0** (inert until that member tiers it), so it costs others nothing until they opt in. **Screening staleness works the same way per-member:** a member's eligibility-rule values fold into their screening prompt version (as the pet policy already does — see the versioning rule), so changing rules flips that member's screening cache while others' stays valid; members whose rule values coincide share the screening cache automatically. Staleness is detectable the moment an applicant enters a member's view — the amber signals uncached work waiting, before any run.
+
+**Dimension survival on re-rank:** the shared set keeps any dimension in **any** member's working tier; a dimension drops only when no member has it working-tiered.
+
+**Committee-proposed seeds** feed the one shared discovery (the resulting axis is shared), but the "you requested this" badge shows only for the requesting member (`from_committee_request` provenance is already per-run).
+
+**Out of scope (M15):** merged shortlist, disagreement flags, criteria comparison, cross-member list visibility, and `require_admin` roles (M16). Notes remain private to their author, out of AI inputs and reports, on the author's printed candidate detail only.
+
+*(The data-model split — shared `Analysis` + per-member ranking/eligibility — and phasing are tracked in "Remaining Open Questions" → M15, and the per-member-pool / shared-content-cache decision is recorded as an ADR.)*
 
 ## Users, Roles, And Authentication
 
 The MVP uses real Google login (multi-member screening is a major design requirement). Access is invitation/approval based when live; Jeff is the initial admin and can invite MOMI members. Roles:
 
 - `Admin`: the initial account; will gate user management once invitations are built.
-- `Member`: a MOMI committee screener — runs screening sessions, runs shared cached AI runs, ranks candidates, adds notes, participates in merged comparison.
+- `Member`: a MOMI committee screener — screens independently (own eligibility rules, overrides, tiering, ranking, notes) over the shared cached AI substrate; no merged comparison surface (M15 is isolation, not merge).
 
-Every committee member is a trusted screener, so **the screening workflow has no admin-only surface.** Status overrides, the raw source row, and the raw AI narrative are all available to any logged-in member — the privacy boundary is screeners-vs-outsiders, with members inside it. The `Admin`/`Member` distinction exists in the data model (the first user created becomes admin) and is intended to gate user management, but does not currently gate any route. Settings are login-only. The engineering default is `require_current_user`; a role gate is added only for a genuinely admin-only capability, as a deliberate decision (re-add `require_admin` when multi-member roles land — M15/M16).
+Every committee member is a trusted screener, so **the screening workflow has no admin-only surface.** The raw source row and the raw AI narrative are available to any logged-in member — the outsider-vs-screener boundary is the only trust boundary. (M15 adds a *second*, intra-committee boundary: each member's eligibility rules, overrides, tiering, and ranking become **private per member** — shared artifacts stay open to all, personal judgment does not.) The `Admin`/`Member` distinction exists in the data model (the first user created becomes admin) and is intended to gate user management, but does not currently gate any route. Settings are login-only. The engineering default is `require_current_user`; a role gate is added only for a genuinely admin-only capability, as a deliberate decision (re-add `require_admin` when multi-member roles land — M16).
 
 AI screening results are shared across users and cached per application content, model, and prompt version. Any logged-in member may run the checks; the cost concern is uncached work, not which member initiates a shared run.
 
@@ -413,7 +428,7 @@ Implementation defaults:
 - Clean changes over backward compatibility for internal APIs, local schemas, fixtures, and UI shapes; backward compatibility is added only when real users or real applicant data require it.
 - Relational tables for workflow data, JSON columns for raw rows, flexible payloads, AI outputs, and debug traces; the relational model stays portable to Postgres.
 
-**Milestones 1–14 are complete** and proven end-to-end against real Bedrock (sync → screen → discover ~14–16 fact-aware dimensions → score the pool → rank with the tier-list weighting → print a committee-ready PDF). Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md). The remaining milestones are **15 (multi-member screening + merged shortlist comparison)** and **16 (hosting / go-live)**.
+**Milestones 1–14 are complete** and proven end-to-end against real Bedrock (sync → screen → discover ~14–16 fact-aware dimensions → score the pool → rank with the tier-list weighting → print a committee-ready PDF). Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md). The remaining milestones are **15 (per-member independent screening on a shared compute-once substrate)** and **16 (hosting / go-live)**.
 
 ## Remaining Open Questions
 
@@ -427,21 +442,29 @@ The report is the browser print of the ranked view, so the format question is re
 2. The amount of applicant personal/contact detail appropriate for MOMI reports.
 3. The tone/format of an explicit recommendation and `why not selected` explanation, if wanted beyond the per-candidate rationale lines.
 
-### Before Multi-Member V2 (M15)
+### Multi-Member V2 (M15) — model settled, implementation pending
 
-Multi-member *logic*, to resolve when scoping M15:
+The multi-member *logic* is decided (Jeff, 2026-07-23): M15 is per-member independent screening on a shared compute-once substrate — no merge/disagreement/comparison surface. The full model is in "Multi-Member MOMI Workflow" above; the earlier open questions (merge formula, disagreement flags, criteria-comparison layout) are **dissolved** — those features are not built.
 
-1. The exact merged-ranking formula for equal-weight member rankings.
-2. How disagreement flags are calculated.
-3. The criteria-comparison report layout.
+**Data-model split** (the core change):
+- **`Analysis` (shared, one current):** `dimension_report` + `rank_inputs_fingerprint` + the 1:1 audit. The output of discovery/scoring/consolidation over the union pool. `get_current_analysis()` replaces the `max(id)` `get_current_run`.
+- **`MemberRanking` (member × analysis):** tiers, new/revived/requested badges, proposals. Weights stay derived.
+- **`MemberEligibility` (member × applicant):** replaces the global `status`/`status_source`/`reviewed_fingerprint` columns on `Application`.
+- **Eligibility rules** split out of the shared `app_settings` blob into a shared committee default + per-member copy-on-write override; infra config (sheet id, model ids, cap, region) stays one shared row.
 
-**Single-tenant assumptions (the M15 boundary).** The codebase is deliberately single-tenant today — correct for one committee on a local DB, but three global-singleton assumptions are load-bearing and will become correctness bugs the moment there is more than one concurrent member/session. They're called out here so they read as an explicit contract, not landmines. None should be "fixed" pre-M15 — the right shape depends on the multi-user model chosen (per-committee vs. per-user vs. shared workspace) — but each is a decision M15 must make deliberately:
+**Phasing** (each tree-green; DB changes verified on a copy first):
+1. Data-model split + migration off the global eligibility columns and settings blob.
+2. Union eligible pool + per-member cache-gap staleness.
+3. Per-member tiering/ranking; shared-union discovery merge; "keep if any member tiered it"; weight-0 new-axis behavior. Consolidation stays shared (a true duplicate merge is committee-wide) — an accepted corner case is that it can shift another member's tiering without their acting; per-member consolidation is deliberately not built (ADR 0011).
+4. Per-member overrides + notes wiring (notes already per-member).
+5. Observability: triggered-by-member stamp; Insights stays shared.
+6. SPEC/CHANGELOG/ADR finalization.
 
-1. **"Current run" is global-latest-wins** — `get_current_run` is `SELECT … ORDER BY id DESC LIMIT 1` (`app/services/ranking_run.py`), and nearly every read path (dashboard, applicant scoring trace, insights, shortlist) funnels through it. With two members, one person's Rank silently becomes everyone's current run. This is the **deepest** assumption and the costliest to unwind late — decide early whether "current run" is per-workspace, per-member, or explicitly selected.
-2. **Settings is one global row** — `AdminSetting` keyed `"app_settings"` (`app/services/settings.py`), last-write-wins with no optimistic concurrency. Two members editing config (e.g. pet limits) silently clobber each other. Needs either per-scope settings or a concurrency guard.
-3. **The spending cap is per-request, read-then-act** — `enforce_cap` checks each run's *own* projection against the cap (`app/ai/analysis.py`); it is not a shared budget ceiling. Two concurrent Ranks each pass the check and both spend. Under real concurrency the cap needs to reserve against a shared, atomic budget.
+**How M15 resolves the single-tenant assumptions** (the load-bearing global singletons, called out so they read as a contract, not landmines):
 
-(These overlap with M16's hosted-concurrency item #2 below; the distinction is that M15 introduces the *logical* multi-member model on SQLite, so it is the milestone that first exposes them even before the hosted DB move.)
+1. **"Current run" is global-latest-wins** — `get_current_run` is `SELECT … ORDER BY id DESC LIMIT 1` (`app/services/ranking_run.py`); nearly every read path funnels through it, so one member's Rank silently becomes everyone's. **M15 resolution:** split into a shared `Analysis` (the AI output, one current) + per-member `MemberRanking` (the view). This is the deepest change and phase 1's core.
+2. **Settings is one global row** — `AdminSetting` keyed `"app_settings"` (`app/services/settings.py`), last-write-wins. **M15 resolution:** eligibility rules become per-member (shared default + copy-on-write); infra config stays one shared row (last-write-wins is acceptable there for ~5 trusted members — a concurrency guard is an M16 concern).
+3. **The spending cap is per-request, read-then-act** — `enforce_cap` checks each run's own projection, not a shared budget (`app/ai/analysis.py`). **M15 keeps the per-run cap**; a true atomic shared-budget ceiling needs the hosted DB and is deferred to M16 (see below). At ~5 members the caching (only first-time-eligible applicants cost anything) is the practical cost control.
 
 ### Hosting / Go-Live (M16)
 
