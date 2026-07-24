@@ -1,7 +1,8 @@
-import { Plus, Printer, X } from "lucide-react";
+import { Plus, Printer, Star, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { bandClass, scoreBand } from "../format";
 import type { RankingResponse, CurrentRunResponse, PoolDimension, Tier } from "../types";
+import { StarButton } from "./StarButton";
 import { TierList, TierSummaryForPrint } from "./TierList";
 
 // The always-visible description pane beside the tiers. Shows the tapped criterion's
@@ -114,8 +115,13 @@ export function RankingView(props: {
   onAddProposal: (text: string) => void;
   onRemoveProposal: (text: string) => void;
   onSelectApplication: (id: number) => void;
+  onToggleStar: (id: number, starred: boolean) => void;
 }): ReactNode {
   const { ranking, rankingRun, tiers, proposedDimensions } = props;
+  // "Favourites only" is a local view filter over this member's stars — the ranked
+  // list is one short page, so it filters client-side (no refetch, no pagination).
+  const [favouritesOnly, setFavouritesOnly] = useState(false);
+  const starredCount = ranking.candidates.filter((c) => c.starredByMe).length;
   const labelFor = (key: string) => rankingRun?.dimensions.find((d) => d.key === key)?.name ?? key;
   // Which criterion's description is open (one at a time, shown below the tiers), and
   // whether the "add your own" composer is revealed. The criteria live as the tier
@@ -196,8 +202,23 @@ export function RankingView(props: {
           <p>No scored candidates to rank yet. Run scoring first.</p>
         </div>
       ) : (
+        <>
+        <div className="ranking-list-toolbar no-print">
+          <button
+            type="button"
+            className={`tab-button favourites-toggle ${favouritesOnly ? "active" : ""}`}
+            aria-pressed={favouritesOnly}
+            disabled={starredCount === 0 && !favouritesOnly}
+            onClick={() => setFavouritesOnly((v) => !v)}
+          >
+            <Star size={13} fill={favouritesOnly ? "currentColor" : "none"} strokeWidth={2} />
+            <span>Favourites{starredCount > 0 ? ` (${starredCount})` : ""}</span>
+          </button>
+        </div>
         <ol className="ranking-list">
-          {ranking.candidates.map((candidate) => {
+          {ranking.candidates
+            .filter((candidate) => !favouritesOnly || candidate.starredByMe)
+            .map((candidate) => {
             // Lead with what most moved this candidate's rank — by |impact|, not raw
             // weight×score — so a heavy strike surfaces as readily as a strength.
             // The score band's colour says which is which.
@@ -211,6 +232,11 @@ export function RankingView(props: {
                   <span className="ranking-rank">#{candidate.rank}</span>
                   <div className="ranking-main">
                     <div className="ranking-name-row">
+                      <StarButton
+                        starred={candidate.starredByMe}
+                        onToggle={(next) => props.onToggleStar(candidate.applicationId, next)}
+                        stopPropagation
+                      />
                       <span className="ranking-name">{candidate.name || "Unnamed applicant"}</span>
                       <span className={`fit-band band-${bandClass(candidate.band)}`}>{candidate.band}</span>
                     </div>
@@ -233,6 +259,7 @@ export function RankingView(props: {
             );
           })}
         </ol>
+        </>
       )}
     </div>
   );

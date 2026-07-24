@@ -87,6 +87,9 @@ class ApplicationSummary(ResponseModel):
     # null = screening pass not run; int = flag count (0 = ran clean).
     flag_count: int | None = None
     flag_categories: list[str] | None = None
+    # Whether the current member has starred (favourited) this applicant. Private
+    # per member; a personal working aid with no effect on ranking or eligibility.
+    starred_by_me: bool = False
     created_at: str | None = None
 
 
@@ -116,15 +119,7 @@ class ApplicationEnvelope(ResponseModel):
     application: ApplicationDetail
 
 
-class Facets(ResponseModel):
-    # Keyed by enum values (data): {eligible, ineligible}, {untouched, rules, ...}.
-    status: dict[str, int]
-    source: dict[str, int]
-
-
 class ApplicationListResponse(ResponseModel):
+    # The whole pool, unpaginated; the client derives filters, sorting, and facet
+    # counts (status/source/favourites) from it.
     applications: list[ApplicationSummary]
-    total: int
-    page: int
-    page_size: int
-    facets: Facets

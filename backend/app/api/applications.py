@@ -1,8 +1,8 @@
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_current_user
@@ -12,6 +12,7 @@ from app.db.models import (
     Application,
     ApplicationAIResult,
     ApplicationNote,
+    ApplicationStar,
     ApplicationStatus,
     StatusSource,
     User,
@@ -27,7 +28,6 @@ from app.schemas.applications import (
     ApplicationSummary,
     DimensionContributionOut,
     DimensionScoringTraceOut,
-    Facets,
     PrivateNoteUpdate,
     ScreeningFlagOut,
 )
@@ -41,124 +41,28 @@ from app.services.ranking_run import (
     stored_tiers,
 )
 from app.services.ranking_view import candidate_scores
+from app.services.stars import is_starred, starred_ids
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
-# Sort keys the client may request. Name and status are real columns; the rest
-# live in the normalized JSON blob and are sorted in Python after fetching.
-_COLUMN_SORTS = {
-    "applicant": Application.applicant_name,
-    "co_applicant": Application.co_applicant_name,
-    "status": Application.status,
-}
-_NORMALIZED_SORTS = {
-    "children": "child_count",
-    "income": "household_income",
-}
-
-
 @router.get("", response_model=ApplicationListResponse)
 def list_applications(
-    status: str | None = Query(None, pattern="^(eligible|ineligible)$"),
-    status_source: str | None = Query(
-        None, alias="statusSource", pattern="^(untouched|rules|ai|human)$"
-    ),
-    search: str | None = Query(None, max_length=200),
-    sort: str | None = Query(None, pattern="^(applicant|co_applicant|children|income|status)$"),
-    direction: str = Query("asc", pattern="^(asc|desc)$"),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(25, alias="pageSize", ge=1, le=100),
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> ApplicationListResponse:
-    # Filters mirror the real columns; named views are composed client-side.
-    status_cond = (
-        Application.status == ApplicationStatus(status) if status else None
-    )
-    source_cond = (
-        Application.status_source == StatusSource(status_source) if status_source else None
-    )
-    search_cond = None
-    if search:
-        pattern = f"%{search}%"
-        search_cond = (
-            Application.applicant_name.ilike(pattern)
-            | Application.co_applicant_name.ilike(pattern)
-            | Application.primary_email.ilike(pattern)
-        )
-
-    def with_conds(*conds) -> Any:
-        q = select(Application)
-        for cond in conds:
-            if cond is not None:
-                q = q.where(cond)
-        return q
-
-    query = with_conds(status_cond, source_cond, search_cond)
-
-    total_query = select(func.count()).select_from(query.subquery())
-    total = db.scalar(total_query) or 0
-    descending = direction == "desc"
-
-    if sort in _NORMALIZED_SORTS:
-        # The value lives in the JSON blob, so sort the full result set in Python
-        # before paginating. Nulls always sort last regardless of direction.
-        field = _NORMALIZED_SORTS[sort]
-        rows = db.scalars(query.order_by(Application.id)).all()
-        rows.sort(key=lambda app: _sort_key((app.normalized or {}).get(field), descending))
-        offset = (page - 1) * page_size
-        applications = rows[offset : offset + page_size]
-    else:
-        column = _COLUMN_SORTS.get(sort, Application.id)
-        order = column.desc() if descending else column.asc()
-        offset = (page - 1) * page_size
-        applications = db.scalars(query.order_by(order).offset(offset).limit(page_size)).all()
-
-    # Batch-fetch flags for just this page rather than per-row querying.
-    flags_by_app = _latest_flags(db, [app.id for app in applications])
-
-    # Faceted counts: each facet applies every active filter except its own, so the
-    # two filter groups stay consistent with each other.
-    status_facet = with_conds(source_cond, search_cond)
-    source_facet = with_conds(status_cond, search_cond)
-    facets = {
-        "status": _facet_counts(db, status_facet, Application.status, ApplicationStatus),
-        "source": _facet_counts(db, source_facet, Application.status_source, StatusSource),
-    }
-
+    """Every application, unpaginated. A co-op pool is a few hundred rows at most, so
+    the client holds the whole list and owns filtering, sorting, facet counts, and the
+    favourites view — no server-side paging to keep consistent."""
+    applications = db.scalars(select(Application).order_by(Application.id)).all()
+    ids = [app.id for app in applications]
+    flags_by_app = _latest_flags(db, ids)
+    starred = starred_ids(db, user.id, ids)
     return ApplicationListResponse(
         applications=[
-            _serialize_summary(app, flags=flags_by_app.get(app.id)) for app in applications
+            _serialize_summary(app, flags=flags_by_app.get(app.id), starred=app.id in starred)
+            for app in applications
         ],
-        total=total,
-        page=page,
-        page_size=page_size,
-        facets=Facets(status=facets["status"], source=facets["source"]),
     )
-
-
-def _facet_counts(db: Session, base_query, column, enum_cls) -> dict[str, int]:
-    """Count rows per value of `column` within `base_query`, including zeros for
-    enum values with no matches (so a filtered-out option shows "(0)")."""
-    rows = db.execute(
-        base_query.with_only_columns(column, func.count()).group_by(column)
-    ).all()
-    counts = dict(rows)
-    # Keys may come back as the enum or its value depending on the driver.
-    result = {}
-    for member in enum_cls:
-        result[member.value] = counts.get(member, counts.get(member.value, 0))
-    return result
-
-
-def _sort_key(value: Any, descending: bool) -> tuple[int, Any]:
-    """Sort missing values last in both directions; numbers compare naturally."""
-    if value is None:
-        return (1, 0)
-    # Flip the value for descending so the null sentinel (group 1) stays last.
-    if isinstance(value, (int, float)):
-        return (0, -value if descending else value)
-    return (0, value)
 
 
 @router.get("/{application_id}", response_model=ApplicationEnvelope)
@@ -266,8 +170,54 @@ def save_private_note(
     return ApplicationEnvelope(application=_serialize_detail(application, db, user))
 
 
+@router.put("/{application_id}/star", response_model=ApplicationEnvelope)
+def add_star(
+    application_id: int,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> ApplicationEnvelope:
+    """Star (favourite) this applicant for the current member. Idempotent: the row's
+    existence is the state, so re-starring is a no-op guarded by the unique
+    constraint. A personal working aid — no effect on ranking, eligibility, or reports."""
+    application = db.get(Application, application_id)
+    if application is None:
+        raise Problem("not_found", detail="Application not found.")
+
+    if not is_starred(db, application_id, user.id):
+        db.add(ApplicationStar(application_id=application_id, user_id=user.id))
+        db.commit()
+
+    return ApplicationEnvelope(application=_serialize_detail(application, db, user))
+
+
+@router.delete("/{application_id}/star", response_model=ApplicationEnvelope)
+def remove_star(
+    application_id: int,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> ApplicationEnvelope:
+    """Unstar this applicant for the current member. No-op if not starred."""
+    application = db.get(Application, application_id)
+    if application is None:
+        raise Problem("not_found", detail="Application not found.")
+
+    star = db.scalar(
+        select(ApplicationStar).where(
+            ApplicationStar.application_id == application_id,
+            ApplicationStar.user_id == user.id,
+        )
+    )
+    if star is not None:
+        db.delete(star)
+        db.commit()
+
+    return ApplicationEnvelope(application=_serialize_detail(application, db, user))
+
+
 def _serialize_summary(
-    app: Application, flags: list[dict[str, Any]] | None = None
+    app: Application,
+    flags: list[dict[str, Any]] | None = None,
+    starred: bool = False,
 ) -> ApplicationSummary:
     normalized = app.normalized or {}
     return ApplicationSummary(
@@ -285,6 +235,7 @@ def _serialize_summary(
         flag_count=None if flags is None else len(flags),
         # Distinct flag categories from the latest pass, for the list REASON cell.
         flag_categories=None if flags is None else _distinct_categories(flags),
+        starred_by_me=starred,
         created_at=utc_isoformat(app.created_at),
     )
 
@@ -336,7 +287,7 @@ def _serialize_detail(app: Application, db: Session, user: User) -> ApplicationD
     # trusted screeners, and these just back the data the member already sees.
     flag_result = _latest_results(db, "screening", [app.id]).get(app.id)
     flags = (flag_result.output or {}).get("flags", []) if flag_result else None
-    summary = _serialize_summary(app, flags=flags)
+    summary = _serialize_summary(app, flags=flags, starred=is_starred(db, app.id, user.id))
     # What the machine would decide from the current findings, whoever owns status
     # now — lets the UI show the live automatic verdict (the result of clearing an
     # override) without re-deriving the rules client-side.

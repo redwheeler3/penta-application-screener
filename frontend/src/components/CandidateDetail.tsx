@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import { FLAG_FIELDS, REASON_FIELDS, SOURCE_DESCRIPTIONS, SOURCE_LABELS, STATUS_LABELS } from "../constants";
 import { fieldLabel, flagCategoryLabel, formatFieldValue, money, scoreBand } from "../format";
 import type { AIResultTrace, ApplicationDetail, AppStatus, DimensionScoringTrace } from "../types";
+import { StarButton } from "./StarButton";
 
 type DetailField = {
   key: string;
@@ -165,6 +166,7 @@ export function CandidateDetail(props: {
   onOverrideStatus: (id: number, status: AppStatus) => void;
   onClearOverride: (id: number) => void;
   onSavePrivateNote: (id: number, note: string) => Promise<boolean>;
+  onToggleStar: (id: number, starred: boolean) => void;
 }): ReactNode {
   const { app } = props;
   const [privateNote, setPrivateNote] = useState(app.privateNote);
@@ -251,6 +253,11 @@ export function CandidateDetail(props: {
         </button>
       </div>
       <div className="app-detail-header">
+        <StarButton
+          starred={app.starredByMe}
+          onToggle={(next) => props.onToggleStar(app.id, next)}
+          size="md"
+        />
         <h3>{app.applicantName || app.primaryEmail}</h3>
         <span className={`status-badge status-${app.status}`}>{STATUS_LABELS[app.status]}</span>
         {app.statusSource !== "untouched" ? (

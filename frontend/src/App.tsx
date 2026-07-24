@@ -65,18 +65,15 @@ export function App() {
   // errors/warnings persist until dismissed). See useToasts.
   const { toasts, showToast, showError, showWarning, dismissToast } = useToasts();
 
-  // The applications-list view state (fetched page + facets + filter/search/sort/paging).
+  // The applications-list view state (full pool + client-derived filter/sort/facets).
   // See useApplications; the selected candidate detail stays here (cross-cutting).
   const {
     applications,
-    appTotal,
-    appPage,
-    appPageSize,
     appFilter,
     appFacets,
     appSearch,
     appSort,
-    loadApplications,
+    reloadApplications,
     toggleSort,
     applyFilter,
     search: searchApplications,
@@ -160,7 +157,7 @@ export function App() {
     api.fetchSettings().then(applySettingsResponse);
     refreshDashboard();
     refreshRankingRun();
-    loadApplications({ filter: {}, page: 1, search: "" });
+    reloadApplications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
@@ -245,7 +242,7 @@ export function App() {
           `Synced ${rowCount} rows: ${importedCount} imported, ${updatedCount} updated, ${unchangedCount} unchanged.`,
         );
         refreshDashboard();
-        loadApplications({ page: 1 });
+        reloadApplications();
       } else {
         const problem = await readProblem(response);
         showError(problem ? `Sync failed: ${problem}` : `Sync failed (HTTP ${response.status}).`);
@@ -300,7 +297,7 @@ export function App() {
         // Refresh dashboard counts, the list + facet counts, and the open candidate
         // so new flags/status show immediately after the run.
         refreshDashboard();
-        loadApplications({ page: appPage });
+        reloadApplications();
         setSelectedApp(null);
         setActiveTab("applications");
       }
@@ -409,7 +406,7 @@ export function App() {
       setSelectedApp(payload.application);
       // Refresh dashboard + list/facet counts so the change shows on "Back to list".
       refreshDashboard();
-      loadApplications({ page: appPage });
+      reloadApplications();
     }
   }
 
@@ -421,7 +418,7 @@ export function App() {
       const payload: { application: ApplicationDetail } = await response.json();
       setSelectedApp(payload.application);
       refreshDashboard();
-      loadApplications({ page: appPage });
+      reloadApplications();
     }
   }
 
@@ -434,6 +431,21 @@ export function App() {
     const payload: { application: ApplicationDetail } = await response.json();
     setSelectedApp(payload.application);
     return true;
+  }
+
+  // Toggle the current member's private star on an applicant. Invokable from the
+  // list, the ranking, or the detail header, so refresh whichever surfaces are live:
+  // the detail from the response, and the list/ranking if they hold star state.
+  async function toggleStar(id: number, starred: boolean) {
+    const response = await api.setStar(id, starred);
+    if (!response.ok) {
+      showError(starred ? "Could not add to favourites." : "Could not remove from favourites.");
+      return;
+    }
+    const payload: { application: ApplicationDetail } = await response.json();
+    if (selectedApp?.id === id) setSelectedApp(payload.application);
+    if (applications.some((a) => a.id === id)) reloadApplications();
+    if (ranking) loadRanking();
   }
 
   const hasGoogleSheetLink = Boolean(saved && resolveSheetId(saved));
@@ -602,6 +614,7 @@ export function App() {
                 onOverrideStatus={overrideStatus}
                 onClearOverride={clearStatusOverride}
                 onSavePrivateNote={savePrivateNote}
+                onToggleStar={toggleStar}
               />
             ) : activeTab === "settings" && draft ? (
               <SettingsPanel
@@ -623,6 +636,7 @@ export function App() {
                 onAddProposal={addProposal}
                 onRemoveProposal={removeProposal}
                 onSelectApplication={viewApplication}
+                onToggleStar={toggleStar}
               />
             ) : activeTab === "insights" ? (
               <InsightsView family="obs" run={rankingRun} onToast={showToast} onError={showError} />
@@ -633,18 +647,13 @@ export function App() {
                 applications={applications}
                 appFilter={appFilter}
                 appFacets={appFacets}
-                dashboardCounts={dashboardCounts}
                 appSearch={appSearch}
                 appSort={appSort}
-                appPage={appPage}
-                appPageSize={appPageSize}
-                appTotal={appTotal}
                 onApplyFilter={applyFilter}
                 onSearch={searchApplications}
                 onToggleSort={toggleSort}
                 onSelectApplication={viewApplication}
-                onChangePageSize={(size) => loadApplications({ page: 1, pageSize: size })}
-                onGoToPage={(page) => loadApplications({ page })}
+                onToggleStar={toggleStar}
               />
             )}
           </section>

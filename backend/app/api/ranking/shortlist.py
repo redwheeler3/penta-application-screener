@@ -40,17 +40,20 @@ from app.services.ranking_run import (
     set_tiers,
 )
 from app.services.ranking_view import candidate_scores
+from app.services.stars import starred_ids
 
 router = APIRouter(prefix="/ranking")
 
 
-def _ranking_payload(db: Session, run) -> RankingResponse:
+def _ranking_payload(db: Session, run, user: User) -> RankingResponse:
     """The ranked-shortlist response for a run. Shared by ``/ranking`` and the
     tier-edit endpoint, so a tier change returns the re-sorted list in one
-    round-trip.
+    round-trip. Stars are per-member, so which candidates read as favourited
+    depends on `user`.
     """
     weights = dimension_weights(run)
     ranked = rank_candidates(candidate_scores(db, run), weights)
+    starred = starred_ids(db, user.id, [c.application_id for c in ranked])
     return RankingResponse(
         run_id=run.id,
         weights=weights,
@@ -66,6 +69,7 @@ def _ranking_payload(db: Session, run) -> RankingResponse:
                     DimensionContributionOut(**asdict(contribution))
                     for contribution in c.contributions
                 ],
+                starred_by_me=c.application_id in starred,
             )
             for c in ranked
         ],
@@ -96,7 +100,7 @@ def ranking(
     report = current_dimension_report(run) if run is not None else None
     if report is None:
         raise Problem("run_required", detail="Discover patterns before ranking.")
-    return _ranking_payload(db, run)
+    return _ranking_payload(db, run, user)
 
 
 # --- Tier-list weighting -----------------------------------------------------
@@ -140,7 +144,7 @@ def update_tiers(
         )
     except ValueError as exc:
         raise Problem("unknown_dimension_key", detail=str(exc)) from exc
-    return _ranking_payload(db, run)
+    return _ranking_payload(db, run, user)
 
 
 # --- Discovery seeds ---------------------------------------------------------

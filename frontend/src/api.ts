@@ -2,11 +2,9 @@
 // own state, toasts, and streaming orchestration.
 import { apiBaseUrl } from "./constants";
 import type {
-  AppFilter,
   AppSettings,
   ApplicationDetail,
   ApplicationSummary,
-  AppFacets,
   ConsolidateAuditResponse,
   CostReport,
   Coverage,
@@ -19,7 +17,6 @@ import type {
   MatchAuditResponse,
   MetricsReport,
   SettingsResponse,
-  SortState,
   Tier,
   WorkflowState,
 } from "./types";
@@ -56,32 +53,11 @@ export function saveSettings(draft: AppSettings): Promise<Response> {
 export const fetchDashboard = () =>
   getJson<{ counts: DashboardCounts; workflow: WorkflowState; coverage: Coverage }>("/dashboard");
 
-export type ApplicationsResponse = {
-  applications: ApplicationSummary[];
-  total: number;
-  page: number;
-  pageSize: number;
-  facets: AppFacets;
-};
-
-export function fetchApplications(args: {
-  filter: AppFilter;
-  page: number;
-  search: string;
-  pageSize: number;
-  sort: SortState;
-}): Promise<ApplicationsResponse> {
-  const params = new URLSearchParams();
-  if (args.filter.status) params.set("status", args.filter.status);
-  if (args.filter.statusSource) params.set("statusSource", args.filter.statusSource);
-  if (args.search) params.set("search", args.search);
-  if (args.sort) {
-    params.set("sort", args.sort.key);
-    params.set("direction", args.sort.direction);
-  }
-  params.set("page", String(args.page));
-  params.set("pageSize", String(args.pageSize));
-  return getJson<ApplicationsResponse>(`/applications?${params}`);
+// The whole pool, unpaginated — the client derives filtering/sorting/facets from it.
+export function fetchApplications(): Promise<ApplicationSummary[]> {
+  return getJson<{ applications: ApplicationSummary[] }>("/applications").then(
+    (p) => p.applications,
+  );
 }
 
 export function fetchApplication(id: number): Promise<ApplicationDetail> {
@@ -182,6 +158,15 @@ export function savePrivateNote(id: number, note: string): Promise<Response> {
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ note }),
+  });
+}
+
+// Toggle the current member's star on an applicant. PUT adds, DELETE removes —
+// the row's existence is the state, so both are idempotent.
+export function setStar(id: number, starred: boolean): Promise<Response> {
+  return fetch(url(`/applications/${id}/star`), {
+    method: starred ? "PUT" : "DELETE",
+    credentials: "include",
   });
 }
 
