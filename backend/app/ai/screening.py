@@ -63,7 +63,7 @@ Do NOT flag (these are normal and must be ignored):
 - A child or co-applicant having a different surname from the applicant. Blended families and differing surnames are common and are NOT suspicious.
 - Missing optional information, or an answer simply being short.
 - Ordinary household context by itself. Only flag a concrete concern; family details are not suspicious on their own.
-- An email or phone that doesn't match a name — the applicant's own, the co-applicant's, or an unrelated person's. This is common and harmless (we can still reach the applicant), so NEVER flag it, no matter how egregious the mismatch. Please reduce noise here — we truly never follow up on this.
+- An email or phone that doesn't MATCH A NAME — the applicant's own, the co-applicant's, or an unrelated person's. A name mismatch is common and harmless (we can still reach the applicant), so NEVER flag it, no matter how egregious the mismatch. Please reduce noise here — we truly never follow up on this. (This is only about names not matching. A gibberish/placeholder value is still junk — flag that, per the rule above.)
 - Anything about pets. Pets are NEVER a flag — they go in the pet inventory instead, no matter how many or how unusual.
 
 ## How to extract pets
