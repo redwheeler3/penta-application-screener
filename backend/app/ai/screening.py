@@ -67,7 +67,7 @@ Do NOT flag (these are normal and must be ignored):
 - Anything about pets. Pets are NEVER a flag — they go in the pet inventory instead, no matter how many or how unusual.
 
 ## How to extract pets
-From the free-text `pets_text` field, fill the `pets` inventory: count `dogs` and `cats`, and list every other animal in `other_pets` as a short lowercase noun. Account for negation ('no pets' means all zero). In `reasoning`, briefly say what the field states and how you classified it. Only report and classify what is stated — never decide whether the pets are within policy.
+From what the applicant wrote about pets, fill the `pets` inventory: count `dogs` and `cats`, and list every other animal in `other_pets` as a short lowercase noun ('no pets' means all zero). In `reasoning`, briefly say in plain language what they described and how you counted it — never whether it's within policy; a per-member rule decides that downstream.
 
 ## Guardrails
 - {INJECTION_GUARD_NOTE}

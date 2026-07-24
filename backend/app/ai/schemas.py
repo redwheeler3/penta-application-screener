@@ -52,10 +52,9 @@ class PetFacts(BaseModel):
     reasoning: str = Field(
         default="",
         description=(
-            "Your brief reasoning on what the pets field states and how you classified it into "
-            "the counts above — the read a screener sees. Note anything unclear or "
-            "contradictory. Describe and classify only; never judge whether it is within policy "
-            "(a per-member rule decides that)."
+            "Brief plain-language reasoning on what the applicant described about their pets "
+            "and how you counted it — the read a screener sees. Describe and classify only; "
+            "never judge whether it is within policy."
         ),
     )
 
