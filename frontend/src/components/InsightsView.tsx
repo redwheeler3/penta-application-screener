@@ -109,8 +109,8 @@ export function InsightsView(props: {
 
       <div className="insights-subtab-body">
         {activeTab === "discovery" && props.run ? (
-          // Key by runId so a run change remounts the panel (its fetch is mount-once).
-          <DiscoveryPanel key={props.run.runId} run={props.run} />
+          // Key by analysisId so an analysis change remounts the panel (its fetch is mount-once).
+          <DiscoveryPanel key={props.run.analysisId} run={props.run} />
         ) : activeTab === "decompose" ? (
           <DecomposeAuditPanel />
         ) : activeTab === "match" ? (

@@ -14,19 +14,19 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_isoformat
-from app.db.models import RankingRun, RunCostLedger
+from app.db.models import Analysis, RunCostLedger
 from app.schemas.insights import MetricsReport, PassTrendPoint, TrendPoint
+from app.services.analysis import current_dimension_report
 from app.services.cost_report import CACHEABLE_PASSES
-from app.services.ranking_run import current_dimension_report
 
 
 def _rank_dimension_counts(db: Session) -> list[int]:
     """Live dimension count per Rank ledger, in ledger order. Rank ledgers and
-    ``RankingRun``s are created 1:1 in the same request, so the Nth rank ledger pairs
-    with the Nth ranking run — correlate by creation order (no FK between them)."""
+    ``Analysis`` rows are created 1:1 in the same request, so the Nth rank ledger pairs
+    with the Nth analysis — correlate by creation order (no FK between them)."""
     counts: list[int] = []
-    for run in db.scalars(select(RankingRun).order_by(RankingRun.id.asc())):
-        report = current_dimension_report(run)
+    for analysis in db.scalars(select(Analysis).order_by(Analysis.id.asc())):
+        report = current_dimension_report(analysis)
         counts.append(len(report.dimensions) if report else 0)
     return counts
 

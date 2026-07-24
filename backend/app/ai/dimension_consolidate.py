@@ -14,7 +14,7 @@ things"): (1) NOMINATE — deterministic, free: flag pairs at r ≥ threshold, c
 run's keys against all known keys' cached vectors; (2) CONFIRM — one cheap LLM call that
 judges the flagged pairs by their DEFINITIONS and merges only true duplicates. Merging
 aliases the newer key to the older/canonical one (see ``dimension_alias`` + the merge
-mechanic in ``ranking_run``), so scores and tier placement follow the survivor and the
+mechanic in ``analysis``), so scores and tier placement follow the survivor and the
 match pass adopts the canonical key on future runs.
 """
 

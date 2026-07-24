@@ -306,48 +306,72 @@ class RunPassCost(TimestampMixin, Base):
     run: Mapped[RunCostLedger] = relationship(back_populates="passes")
 
 
-class RankingRun(TimestampMixin, Base):
-    """One Rank: the discovered dimensions (``dimension_report``), the committee's mutable
-    view of them (``run_state`` = tiers + new/proposed-dimension flags), and the pool+prompt
-    fingerprint that flags the run out-of-date. Tier weights are always DERIVED from
-    ``run_state.tiers`` (see ``dimension_weights``), never stored. The AI-legibility audits
-    (discovery narrative + the four pass audits) are large and read one-at-a-time, so they
-    live in a 1:1 ``RankingRunAudit`` child rather than bloating this row.
+class Analysis(TimestampMixin, Base):
+    """One Rank's shared AI output: the discovered dimensions (``dimension_report``) and the
+    pool+prompt fingerprint that flags it out-of-date. This is the compute-once substrate —
+    shared across all committee members (M15). Each member's *view* of these dimensions
+    (tiers, badges, proposals) lives in a per-member ``MemberRanking`` child, NOT here, so one
+    member's tiering never becomes everyone's. The AI-legibility audits (discovery narrative +
+    the four pass audits) are large and read one-at-a-time, so they live in a 1:1
+    ``AnalysisAudit`` child rather than bloating this row. "The current analysis" is the most
+    recent one.
     """
 
-    __tablename__ = "ranking_runs"
+    __tablename__ = "analyses"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     source_sync_run_id: Mapped[int | None] = mapped_column(ForeignKey("sync_runs.id"))
-    # The run's discovered dimensions (a serialized PoolDimensionReport).
+    # The analysis's discovered dimensions (a serialized PoolDimensionReport).
     dimension_report: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    # Everything the run's ranking depends on — pool + each rank-chain prompt/model — hashed.
-    # The next Rank compares it to flag the run "out of date". Indexed: read on every estimate.
+    # Everything the ranking depends on — pool + each rank-chain prompt/model — hashed.
+    # The next Rank compares it to flag the analysis "out of date". Indexed: read on every estimate.
     rank_inputs_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
-    # The committee's mutable view: {tiers, new_dimension_keys, proposed_dimensions}. Kept
-    # together as one blob — all written together, and tiers is a nested list-of-dicts.
-    run_state: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
 
     source_sync_run: Mapped[SyncRun | None] = relationship()
-    audit: Mapped[RankingRunAudit | None] = relationship(
-        back_populates="run", cascade="all, delete-orphan", uselist=False
+    audit: Mapped[AnalysisAudit | None] = relationship(
+        back_populates="analysis", cascade="all, delete-orphan", uselist=False
     )
 
 
-class RankingRunAudit(TimestampMixin, Base):
-    """The AI-legibility trail for one Rank (M13), split from ``RankingRun`` so the hot read
-    path (dimensions + tiers) never pulls these large blobs. One row per run, populated as the
-    chain runs; each field is null on runs that predate its capture. The ``/ranking/current/
+class MemberRanking(TimestampMixin, Base):
+    """One committee member's private view of an ``Analysis`` (M15): their importance tiers,
+    new/revived-dimension flags, proposals, and requested-pill dismissals — all in ``run_state``.
+    Tier weights are always DERIVED from ``run_state.tiers`` (see ``dimension_weights``), never
+    stored. Keyed per (analysis, member): a re-rank creates a new Analysis and seeds each
+    member a fresh MemberRanking by carrying their prior tiers forward, so each member's tiering
+    is independent and versioned with the analysis.
+    """
+
+    __tablename__ = "member_rankings"
+    __table_args__ = (UniqueConstraint("analysis_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    analysis_id: Mapped[int] = mapped_column(
+        ForeignKey("analyses.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    # The member's mutable view: {tiers, new_dimension_keys, proposed_dimensions,
+    # acknowledged_requested_keys}. One blob — all written together, tiers is nested.
+    run_state: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+
+    analysis: Mapped[Analysis] = relationship()
+    user: Mapped[User] = relationship()
+
+
+class AnalysisAudit(TimestampMixin, Base):
+    """The AI-legibility trail for one Analysis (M13), split off so the hot read path
+    (dimensions + tiers) never pulls these large blobs. One row per analysis, populated as the
+    chain runs; each field is null on analyses that predate its capture. The ``/ranking/current/
     *-audit`` endpoints are the only readers. ``consolidate`` carries the pass's per-pair
     reasoning (definitions + narrative) — the *merge map* is NOT duplicated here, it lives once
     in ``dimension_aliases`` (the sole merge-truth).
     """
 
-    __tablename__ = "ranking_run_audit"
+    __tablename__ = "analysis_audit"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    run_id: Mapped[int] = mapped_column(
-        ForeignKey("ranking_runs.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
+    analysis_id: Mapped[int] = mapped_column(
+        ForeignKey("analyses.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
     )
     discovery_narrative: Mapped[str | None] = mapped_column(Text)
     match: Mapped[dict[str, Any] | None] = mapped_column(JSON)
@@ -355,7 +379,7 @@ class RankingRunAudit(TimestampMixin, Base):
     decompose: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     consolidate: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
-    run: Mapped[RankingRun] = relationship(back_populates="audit")
+    analysis: Mapped[Analysis] = relationship(back_populates="audit")
 
 
 class DimensionAlias(TimestampMixin, Base):

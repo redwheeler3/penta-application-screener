@@ -23,8 +23,8 @@ from app.ai.pricing import cost_usd
 from app.ai.provider import Usage
 from app.ai.schemas import PoolDimensionReport
 from app.schemas.settings import AppSettings
+from app.services.analysis import current_dimension_report, get_current_analysis
 from app.services.cost_report import recent_pass_fresh_usd
-from app.services.ranking_run import current_dimension_report, get_current_run
 
 # Per-DIMENSION output tokens — used to price the estimate. Output is genuinely
 # per-dimension (each dimension emits its own score + rationale + evidence), so the
@@ -125,8 +125,8 @@ def estimate_dimension_scoring(
     """
     model_id = settings.ai.dimension_scoring_model
     candidates = applications_to_score(db)
-    run = get_current_run(db)
-    report = current_dimension_report(run) if run is not None else None
+    analysis = get_current_analysis(db)
+    report = current_dimension_report(analysis) if analysis is not None else None
 
     # The full-discovery estimate needs only the measured scoring cost, not the
     # current cache counts. Skip N×dimension cache lookups when history already gives

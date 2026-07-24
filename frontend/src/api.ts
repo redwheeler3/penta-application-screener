@@ -136,7 +136,10 @@ export function fetchTiers(): Promise<Response> {
   return fetch(url("/ranking/tiers"), { credentials: "include" });
 }
 
+// analysisId is the analysis the client is viewing; the server rejects a save against a
+// superseded one (409 stale_analysis) so a member's edit never lands on the wrong board.
 export function saveTiers(
+  analysisId: number,
   next: Tier[],
   acknowledgedKeys: string[],
   acknowledgedRequestedKeys: string[] = [],
@@ -145,19 +148,22 @@ export function saveTiers(
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tiers: next, acknowledgedKeys, acknowledgedRequestedKeys }),
+    body: JSON.stringify({ analysisId, tiers: next, acknowledgedKeys, acknowledgedRequestedKeys }),
   });
 }
 
-// Persist pending free-text proposals for the current run. The next Rank reads these
-// from the run, so they take effect on its discovery pass. (Keeping an existing axis
-// across re-runs is tier placement — see saveTiers — not a seed.)
-export function saveSeeds(seeds: { proposedDimensions?: string[] }): Promise<Response> {
+// Persist pending free-text proposals for the current analysis. The next Rank reads these,
+// so they take effect on its discovery pass. (Keeping an existing axis across re-runs is
+// tier placement — see saveTiers — not a seed.) analysisId guards against a stale save.
+export function saveSeeds(
+  analysisId: number,
+  seeds: { proposedDimensions?: string[] },
+): Promise<Response> {
   return fetch(url("/ranking/seeds"), {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(seeds),
+    body: JSON.stringify({ analysisId, ...seeds }),
   });
 }
 

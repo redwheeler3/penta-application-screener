@@ -6,11 +6,11 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies import require_current_user
 from app.db.models import (
+    Analysis,
     Application,
     ApplicationAIResult,
     ApplicationStatus,
     Base,
-    RankingRun,
     User,
     UserRole,
 )
@@ -87,10 +87,10 @@ async def test_workflow_flags_track_progress() -> None:
         assert workflow["candidatesScored"] is False
 
         # A screening run exists -> patterns discovered (it's a run, not a result).
-        db.add(RankingRun(dimension_report={"dimensions": [
+        db.add(Analysis(dimension_report={"dimensions": [
             {"key": "community", "name": "Community", "definition": "d",
              "high_end": "hi", "low_end": "lo", "why_it_differentiates": "w"},
-        ]}, run_state={}))
+        ]}))
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow["patternsDiscovered"] is True
@@ -115,7 +115,7 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
     or has every eligible applicant scored against the existing set.
     """
     from app.schemas.settings import AppSettings
-    from app.services.ranking_run import rank_inputs_fingerprint
+    from app.services.analysis import rank_inputs_fingerprint
 
     app, db = _logged_in_app()
     settings = AppSettings()
@@ -128,8 +128,8 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
         db.commit()
 
         # A run whose fingerprint matches the current pool + prompts + models -> current.
-        run = RankingRun(
-            dimension_report={}, run_state={},
+        run = Analysis(
+            dimension_report={},
             rank_inputs_fingerprint=rank_inputs_fingerprint(db, settings),
         )
         db.add(run)
@@ -298,7 +298,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     )
     db.add(a)
     # A run with two dimensions.
-    db.add(RankingRun(run_state={}, dimension_report={
+    db.add(Analysis(dimension_report={
         "summary": "s",
         "dimensions": [
             {"key": "community", "name": "Community", "definition": "d",

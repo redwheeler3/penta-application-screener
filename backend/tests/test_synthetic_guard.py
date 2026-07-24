@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.db.base import Base
-from app.db.models import RankingRun, SyncRun
+from app.db.models import Analysis, SyncRun
 from app.evals.synthetic_guard import (
     SYNTHETIC_SHEET_IDS,
     NonSyntheticPoolError,
@@ -29,8 +29,8 @@ def db():
         yield session
 
 
-def _run_from_sheet(db: Session, sheet_id: str | None) -> RankingRun:
-    """A RankingRun whose pool traces to a SyncRun with the given sheet id (or no source
+def _run_from_sheet(db: Session, sheet_id: str | None) -> Analysis:
+    """An Analysis whose pool traces to a SyncRun with the given sheet id (or no source
     at all when sheet_id is None)."""
     source_id = None
     if sheet_id is not None:
@@ -38,7 +38,7 @@ def _run_from_sheet(db: Session, sheet_id: str | None) -> RankingRun:
         db.add(sync)
         db.flush()
         source_id = sync.id
-    run = RankingRun(dimension_report={}, run_state={}, source_sync_run_id=source_id)
+    run = Analysis(dimension_report={}, source_sync_run_id=source_id)
     db.add(run)
     db.flush()
     return run
@@ -66,7 +66,7 @@ def test_missing_source_is_refused(db) -> None:
 
 def test_dangling_source_sync_run_is_refused(db) -> None:
     # source_sync_run_id points at a SyncRun that doesn't exist — treat as unprovable.
-    run = RankingRun(dimension_report={}, run_state={}, source_sync_run_id=999)
+    run = Analysis(dimension_report={}, source_sync_run_id=999)
     db.add(run)
     db.flush()
     assert is_synthetic_pool(db, run) is False

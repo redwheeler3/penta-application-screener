@@ -65,7 +65,7 @@ from app.ai.provider import AIProvider
 from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.api.dependencies import get_ai_provider, require_current_user
 from app.api.problems import Problem
-from app.db.models import RankingRun, User
+from app.db.models import Analysis, MemberRanking, User
 from app.db.session import get_db
 from app.schemas.events import ErrorEvent as StreamErrorEvent
 from app.schemas.events import (
@@ -84,25 +84,26 @@ from app.schemas.ranking import (
     ScoreCurrentEstimateResponse,
 )
 from app.schemas.settings import AppSettings
-from app.services.cost_report import (
-    SCORE_CURRENT_KIND,
-    recent_pass_fresh_usd,
-    record_run_cost,
-)
-from app.services.ranking_run import (
+from app.services.analysis import (
     adopt_matched_keys,
     all_known_dimensions,
     apply_consolidation,
     carry_forward_layout,
-    create_run,
+    create_analysis,
     current_dimension_report,
-    get_current_run,
+    get_current_analysis,
+    get_or_create_member_ranking,
     kept_keys,
     key_history,
     mark_ranking_current,
     proposed_dimensions,
     ranking_is_current,
     tier_history,
+)
+from app.services.cost_report import (
+    SCORE_CURRENT_KIND,
+    recent_pass_fresh_usd,
+    record_run_cost,
 )
 from app.services.settings import get_app_settings
 
@@ -234,7 +235,7 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     # A match pass runs only when there is a prior run to match against. Measured from
     # history when we have it (same principle as the other passes); the flat-token
     # estimate_match is the seed for the first re-run before any match cost is recorded.
-    has_prior = get_current_run(db) is not None
+    has_prior = get_current_analysis(db) is not None
     if not has_prior:
         match_usd = 0.0
     else:
@@ -290,7 +291,7 @@ def rank_estimate(
         within_cap=result["estimated_usd"] <= cap,
         # When the pool is unchanged, the ranking is already current; the UI uses
         # this to say "up to date" instead of offering to spend.
-        ranking_current=ranking_is_current(db, get_current_run(db), settings),
+        ranking_current=ranking_is_current(db, get_current_analysis(db), settings),
     )
 
 
@@ -299,11 +300,11 @@ def _current_scoring_estimate(
 ) -> tuple[PoolDimensionReport, dict[str, object]]:
     """Return the current criteria and an exact cache-aware scoring estimate.
 
-    Unlike a full Rank, this path never discovers, matches, consolidates, or creates a
-    run. It only fills cache misses for the current run's dimensions.
+    Unlike a full Rank, this path never discovers, matches, consolidates, or creates an
+    analysis. It only fills cache misses for the current analysis's dimensions.
     """
-    run = get_current_run(db)
-    report = current_dimension_report(run) if run is not None else None
+    analysis = get_current_analysis(db)
+    report = current_dimension_report(analysis) if analysis is not None else None
     if report is None:
         raise Problem(
             "run_required",
@@ -378,9 +379,9 @@ def score_current(
             # Choosing the score-only path is an explicit committee decision to retain
             # these criteria for the changed pool. Re-stamp only after complete success;
             # a partial score run must stay amber and invite a retry.
-            run = get_current_run(db)
-            if run is not None:
-                mark_ranking_current(db, run, settings)
+            analysis = get_current_analysis(db)
+            if analysis is not None:
+                mark_ranking_current(db, analysis, settings)
         record_run_cost(
             db,
             kind=SCORE_CURRENT_KIND,
@@ -428,10 +429,12 @@ class _CriteriaWork:
 
 @dataclass
 class _CriteriaResult:
-    """What the criteria phase hands the rest of the chain: the created run, its dimension
-    report, the three sub-pass costs (for the ledger), and their wall-clocks."""
+    """What the criteria phase hands the rest of the chain: the created shared analysis and the
+    triggering member's ranking of it (consolidation transfers that member's tiers), the
+    dimension report, the three sub-pass costs (for the ledger), and their wall-clocks."""
 
-    run: RankingRun
+    analysis: Analysis
+    member_ranking: MemberRanking
     report: PoolDimensionReport
     discovery_cost: PassCost
     decompose_cost: PassCost
@@ -440,22 +443,27 @@ class _CriteriaResult:
 
 
 def _stream_criteria(
-    db: Session, provider: AIProvider, settings: AppSettings
+    db: Session, provider: AIProvider, settings: AppSettings, user: User
 ) -> Generator[str, None, _CriteriaResult | None]:
     """Phase 1 — find criteria: K-parallel discovery → decomposition → identity-match onto
-    prior dimensions → adopt matched keys → carry tiers forward → create the run. The
-    sub-passes are opaque multi-minute model calls, so their reasoning streams live via a
-    worker thread that pushes deltas onto a queue this generator drains into
-    ``thinking``/``stage`` events. Returns the run + per-pass costs, or ``None`` after
-    emitting a fatal ``error`` (the caller then aborts the whole stream)."""
-    # Capture prior state before discovery. Matching and tier carry-forward both
-    # look across ALL prior runs, not just the last: a concept that fell out and
-    # re-surfaces should re-adopt its existing key (reusing its cached scores) and
-    # restore the committee's last tier placement for it. See SPEC "Matching scope".
-    prior_run = get_current_run(db)
-    prior_report = current_dimension_report(prior_run) if prior_run else None
+    prior dimensions → adopt matched keys → carry the triggering member's tiers forward →
+    create the shared analysis + that member's ranking. The sub-passes are opaque multi-minute
+    model calls, so their reasoning streams live via a worker thread that pushes deltas onto a
+    queue this generator drains into ``thinking``/``stage`` events. Returns the analysis +
+    member ranking + per-pass costs, or ``None`` after emitting a fatal ``error`` (the caller
+    then aborts the whole stream)."""
+    # Capture prior state before discovery. Matching looks across ALL prior analyses (shared
+    # dimension history); tier carry-forward looks across the TRIGGERING member's prior
+    # rankings — a concept that fell out and re-surfaces should re-adopt its existing key
+    # (reusing its cached scores) and restore THAT member's last tier placement. See SPEC
+    # "Matching scope".
+    prior_analysis = get_current_analysis(db)
+    prior_report = current_dimension_report(prior_analysis) if prior_analysis else None
+    prior_ranking = (
+        get_or_create_member_ranking(db, prior_analysis, user) if prior_analysis else None
+    )
     match_history = all_known_dimensions(db)  # every dimension ever, one per key
-    scaffold_tiers, tier_by_key = tier_history(db)
+    scaffold_tiers, tier_by_key = tier_history(db, user)
     # The immediately-prior run's keys: a dimension present here is continuous in
     # the committee's view (never flagged); one absent-then-present is a presence
     # gap to flag (new or revived). See carry_forward_layout.
@@ -467,14 +475,14 @@ def _stream_criteria(
     # grounded + scored → injected at DECOMPOSITION, not discovery, so all K
     # discoverers stay blind (seeding them would correlate the samples and cost
     # coverage). An empty set leaves discovery fully blind (first-run).
-    prior_kept = kept_keys(prior_run) if prior_run else []
+    prior_kept = kept_keys(prior_ranking) if prior_ranking else []
     kept_dims = [
         d
         for d in (prior_report.dimensions if prior_report else [])
         if d.key in set(prior_kept)
     ]
     seeds = DiscoverySeeds(
-        proposed=proposed_dimensions(prior_run) if prior_run else [],
+        proposed=proposed_dimensions(prior_ranking) if prior_ranking else [],
     )
 
     # Carry K (the fan-out width) on the criteria phase event's `total` so the UI can
@@ -681,16 +689,18 @@ def _stream_criteria(
         most_recent_tier_by_key=tier_by_key,
         immediately_prior_keys=immediately_prior_keys,
     )
-    run = create_run(
-        db, report=report, settings=settings,
+    # Create the shared analysis and seed THIS member's ranking of it (tier placements
+    # carried forward above ARE their kept set — no separate field to thread through;
+    # create_analysis clears the consumed proposals on the new ranking).
+    analysis = create_analysis(
+        db, user=user, report=report, settings=settings,
         narrative=work.narrative,
-        # Tier placements (carried forward above) ARE the kept set — no separate
-        # field to thread through; create_run clears the consumed proposals.
         tier_layout=layout, new_dimension_keys=new_dimension_keys,
         match_audit=match_audit,
         fan_out_audit=work.fan_out_audit,
         decompose_audit=decompose_audit,
     )
+    member_ranking = get_or_create_member_ranking(db, analysis, user)
     yield emit(
         NoticeEvent(
             phase=CRITERIA,
@@ -704,8 +714,9 @@ def _stream_criteria(
         )
     )
     return _CriteriaResult(
-        run=run, report=report, discovery_cost=work.discovery_cost,
-        decompose_cost=work.decompose_cost, match_cost=work.match_cost, durations=durations,
+        analysis=analysis, member_ranking=member_ranking, report=report,
+        discovery_cost=work.discovery_cost, decompose_cost=work.decompose_cost,
+        match_cost=work.match_cost, durations=durations,
     )
 
 
@@ -732,15 +743,17 @@ def _stream_scoring(
 
 def _stream_consolidate(
     db: Session, provider: AIProvider, settings: AppSettings,
-    run: RankingRun, report: PoolDimensionReport,
+    analysis: Analysis, member_ranking: MemberRanking, report: PoolDimensionReport,
 ) -> Generator[str, None, tuple[Consolidation, int]]:
     """Phase 2b — consolidate duplicate dimensions (SPEC "Post-score consolidation").
     Now that every dimension is scored, score-vector correlation can nominate duplicates
     the definition-only match pass missed; one LLM call confirms by definition and merges
     genuine duplicates (loser aliased to the older key, which heals the fork on future
-    matches too). Runs post-score because it needs the vectors; re-writes the just-created
-    run in place (collapse merged keys) and writes the alias rows. Usually a no-op
-    (correlation nominates nothing → $0). Returns the consolidation + its wall-clock (ms)."""
+    matches too). Runs post-score because it needs the vectors. The model call runs ONCE over
+    the shared pool; ``apply_consolidation`` then rewrites the shared analysis (collapse merged
+    keys, write aliases) and transfers the triggering member's tiers to the survivor (other
+    members heal via carry-forward on next open). Usually a no-op (correlation nominates
+    nothing → $0). Returns the consolidation + its wall-clock (ms)."""
     from app.ai.score_vectors import load_score_vectors
 
     # One opaque model call (only when correlation nominates a pair) → an
@@ -803,7 +816,7 @@ def _stream_consolidate(
         merges={}, narrative=None, audit=[], cost=PassCost()
     )
     apply_consolidation(
-        db, run,
+        db, analysis, member_ranking,
         merges=consolidation.merges,
         audit=consolidation.audit,
         narrative=consolidation.narrative,
@@ -845,9 +858,9 @@ def rank_run(
         ) from exc
 
     def stream() -> Iterator[str]:
-        # Phase 1: find criteria (starts a fresh run). A fatal failure emits its own error
-        # line and returns None — abort the whole stream, nothing was scored.
-        criteria = yield from _stream_criteria(db, provider, settings)
+        # Phase 1: find criteria (creates the shared analysis + this member's ranking). A
+        # fatal failure emits its own error line and returns None — abort, nothing scored.
+        criteria = yield from _stream_criteria(db, provider, settings, user)
         if criteria is None:
             return
         total_cost = (
@@ -862,7 +875,7 @@ def rank_run(
 
         # Phase 2b: consolidate duplicate dimensions (post-score, usually a no-op).
         consolidation, consolidate_ms = yield from _stream_consolidate(
-            db, provider, settings, criteria.run, criteria.report
+            db, provider, settings, criteria.analysis, criteria.member_ranking, criteria.report
         )
         total_cost += consolidation.cost.cost_usd
 

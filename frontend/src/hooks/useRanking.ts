@@ -65,8 +65,12 @@ export function useRanking(onError: (message: string) => void): RankingState {
     acknowledgedKeys: string[] = [],
     acknowledgedRequestedKeys: string[] = [],
   ) {
+    // Tie the save to the analysis we're viewing so the server rejects it (409) if
+    // another member re-ranked since. No analysis loaded → nothing to save against.
+    const analysisId = ranking?.analysisId ?? rankingRun?.analysisId;
+    if (analysisId === undefined) return;
     setTiers(next);
-    const response = await api.saveTiers(next, acknowledgedKeys, acknowledgedRequestedKeys);
+    const response = await api.saveTiers(analysisId, next, acknowledgedKeys, acknowledgedRequestedKeys);
     if (response.ok) {
       const updated: RankingResponse = await response.json();
       setRanking(updated);
@@ -104,7 +108,9 @@ export function useRanking(onError: (message: string) => void): RankingState {
       ...(next.proposedDimensions !== undefined ? { proposedDimensions: next.proposedDimensions } : {}),
     };
     setRankingRun(optimistic);
-    const response = await api.saveSeeds({ proposedDimensions: next.proposedDimensions });
+    const response = await api.saveSeeds(rankingRun.analysisId, {
+      proposedDimensions: next.proposedDimensions,
+    });
     if (response.ok) {
       const echoed: { proposedDimensions: string[] } = await response.json();
       setRankingRun((run) =>

@@ -25,7 +25,7 @@ def main() -> None:
     from sqlalchemy import select
 
     from app.db.models import Application, ApplicationAIResult
-    from app.services.ranking_run import current_dimension_report
+    from app.services.analysis import current_dimension_report
 
     db, run, sheet_id = open_synthetic_run()
     try:

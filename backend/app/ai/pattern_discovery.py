@@ -93,7 +93,7 @@ For each dimension provide:
 # Prompt identity, derived from the static prompt text. This pass is UNCACHED (it
 # calls provider.structured_output directly, so nothing gates a per-application
 # cache), but it still has a version: it is folded into the run's rank-inputs
-# fingerprint (see rank_inputs_fingerprint in services/ranking_run.py) so editing
+# fingerprint (see rank_inputs_fingerprint in services/analysis.py) so editing
 # this prompt makes Rank show "out of date".
 PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 

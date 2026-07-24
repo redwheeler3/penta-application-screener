@@ -8,13 +8,13 @@ absent-from-the-immediately-prior-run — a genuine gap, not merely "seen before
 
 from __future__ import annotations
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.ai.schemas import PoolDimension, PoolDimensionReport
-from app.db.models import Base, RankingRun
-from app.services.ranking_run import revived_flag_keys
+from app.db.models import Analysis, Base, MemberRanking, User, UserRole
+from app.services.analysis import revived_flag_keys
 
 
 def make_db() -> Session:
@@ -24,24 +24,35 @@ def make_db() -> Session:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    return sessionmaker(bind=engine, autoflush=False, autocommit=False)()
+    db = sessionmaker(bind=engine, autoflush=False, autocommit=False)()
+    db.add(User(email="m@x.com", display_name="M", role=UserRole.MEMBER, is_active=True))
+    db.commit()
+    return db
 
 
-def _run_with(db: Session, *, dim_keys: list[str], flagged: list[str] | None = None) -> RankingRun:
-    """A minimal RankingRun carrying just a dimension report + flagged set — enough
-    for the read-time label derivation, no full rank chain."""
-    run = RankingRun(
+def _run_with(db: Session, *, dim_keys: list[str], flagged: list[str] | None = None) -> MemberRanking:
+    """A minimal shared Analysis carrying just a dimension report, plus this member's
+    MemberRanking with its flagged set — enough for the read-time label derivation, no
+    full rank chain. Returns the member's ranking (what revived_flag_keys reads)."""
+    user = db.scalar(select(User))
+    analysis = Analysis(
         dimension_report=PoolDimensionReport(
             dimensions=[
                 PoolDimension(key=k, name=k, definition="d", high_end="high", low_end="low", why_it_differentiates="w")
                 for k in dim_keys
             ],
         ).model_dump(mode="json"),
+    )
+    db.add(analysis)
+    db.flush()
+    ranking = MemberRanking(
+        analysis_id=analysis.id,
+        user_id=user.id,
         run_state={"new_dimension_keys": flagged or []},
     )
-    db.add(run)
+    db.add(ranking)
     db.commit()
-    return run
+    return ranking
 
 
 def test_revived_label_needs_a_gap() -> None:

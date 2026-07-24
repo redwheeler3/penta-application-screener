@@ -15,16 +15,16 @@ Run by hand from ``backend/``: ``python -m scripts.harvest_scoring_cases`` /
 
 from __future__ import annotations
 
-from app.db.models import RankingRun
+from app.db.models import Analysis
 from app.db.session import SessionLocal
 from app.evals.synthetic_guard import require_synthetic_pool
 
 
-def latest_run(db) -> RankingRun | None:
-    """The newest ranking run (harvest reads the most recent run's cached output)."""
+def latest_analysis(db) -> Analysis | None:
+    """The newest analysis (harvest reads the most recent analysis's cached output)."""
     from sqlalchemy import select
 
-    return db.scalars(select(RankingRun).order_by(RankingRun.id.desc())).first()
+    return db.scalars(select(Analysis).order_by(Analysis.id.desc())).first()
 
 
 def opaque_index(application_ids: list[int]) -> dict[int, int]:
@@ -34,13 +34,13 @@ def opaque_index(application_ids: list[int]) -> dict[int, int]:
 
 
 def open_synthetic_run():
-    """Open a session + resolve the newest run, GATED on the synthetic-pool guard. Returns
-    ``(db, run, sheet_id)``; the caller closes ``db``. Raises via ``require_synthetic_pool`` if
-    the run's pool isn't allowlisted-synthetic — the fail-safe that keeps real applicant
-    evidence out of committed fixtures. Returns ``(db, None, "")`` if there is no run yet."""
+    """Open a session + resolve the newest analysis, GATED on the synthetic-pool guard. Returns
+    ``(db, analysis, sheet_id)``; the caller closes ``db``. Raises via ``require_synthetic_pool``
+    if the pool isn't allowlisted-synthetic — the fail-safe that keeps real applicant evidence
+    out of committed fixtures. Returns ``(db, None, "")`` if there is no analysis yet."""
     db = SessionLocal()
-    run = latest_run(db)
-    if run is None:
+    analysis = latest_analysis(db)
+    if analysis is None:
         return db, None, ""
-    sheet_id = require_synthetic_pool(db, run)  # raises on a non-synthetic pool
-    return db, run, sheet_id
+    sheet_id = require_synthetic_pool(db, analysis)  # raises on a non-synthetic pool
+    return db, analysis, sheet_id
