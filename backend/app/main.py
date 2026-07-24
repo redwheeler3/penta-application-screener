@@ -1,3 +1,6 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -5,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.api.allowlist import router as allowlist_router
 from app.api.applications import router as applications_router
 from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
@@ -51,9 +55,25 @@ def register_error_handlers(app: FastAPI) -> None:
         return _problem_response(problem.to_dict(instance=request.url.path), problem.status)
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """On startup, ensure the bootstrap admins are on the allowlist. Done here (not at
+    import) so tests with their own DB aren't seeded from the real file; idempotent, so
+    repeated starts are harmless."""
+    from app.db.session import SessionLocal
+    from app.services.allowlist import seed_initial_admins
+
+    db = SessionLocal()
+    try:
+        seed_initial_admins(db)
+    finally:
+        db.close()
+    yield
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="Penta Application Screener API")
+    app = FastAPI(title="Penta Application Screener API", lifespan=lifespan)
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.session_secret,
@@ -70,6 +90,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     register_error_handlers(app)
+    app.include_router(allowlist_router)
     app.include_router(applications_router)
     app.include_router(auth_router)
     app.include_router(dashboard_router)

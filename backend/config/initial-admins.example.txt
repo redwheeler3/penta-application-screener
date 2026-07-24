@@ -1,0 +1,7 @@
+# Bootstrap admins — seeded onto the access allowlist as admins at startup.
+# Copy this to initial-admins.txt (gitignored) and list the founding admin
+# email(s), one per line. Blank lines and '#' comments are ignored.
+#
+# Bootstrap-only: after seeding, admins manage the live allowlist in-app; removing
+# an email here does NOT revoke access (do that in-app).
+admin@example.com

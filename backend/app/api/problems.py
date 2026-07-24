@@ -24,6 +24,7 @@ from typing import Any
 # contract the frontend switches on; titles are the default human summary.
 PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     "unauthorized": (401, "Authentication required"),
+    "forbidden": (403, "Admin access required"),
     "not_found": (404, "Resource not found"),
     "validation_error": (422, "Request validation failed"),
     "invalid_settings": (422, "Invalid settings"),

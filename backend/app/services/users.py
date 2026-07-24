@@ -11,13 +11,16 @@ def upsert_google_user(
     email: str,
     display_name: str,
     avatar_url: str | None,
+    role: UserRole,
 ) -> User:
+    """Create or update the User for a signed-in Google account. ``role`` comes from
+    the caller's allowlist lookup (the allowlist is the source of truth for who may
+    sign in and with what role), so an existing user's role is re-synced on each login
+    — an admin flipping someone's allowlist role takes effect on their next sign-in."""
     normalized_email = email.strip().lower()
     user = db.scalar(select(User).where(User.email == normalized_email))
 
     if user is None:
-        user_count = db.scalar(select(User.id).limit(1))
-        role = UserRole.ADMIN if user_count is None else UserRole.MEMBER
         user = User(
             google_subject=google_subject,
             email=normalized_email,
@@ -30,8 +33,8 @@ def upsert_google_user(
         user.google_subject = google_subject
         user.display_name = display_name
         user.avatar_url = avatar_url
+        user.role = role
 
     db.commit()
     db.refresh(user)
     return user
-

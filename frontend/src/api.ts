@@ -2,6 +2,7 @@
 // own state, toasts, and streaming orchestration.
 import { apiBaseUrl } from "./constants";
 import type {
+  AllowlistEntry,
   AppSettings,
   ApplicationDetail,
   ApplicationSummary,
@@ -40,6 +41,27 @@ export function logout(): Promise<Response> {
 }
 
 export const fetchSettings = () => getJson<SettingsResponse>("/settings");
+
+// --- Access allowlist (admin only) -----------------------------------------
+
+export const fetchAllowlist = () =>
+  getJson<{ entries: AllowlistEntry[] }>("/allowlist").then((p) => p.entries);
+
+export function upsertAllowlistEntry(email: string, role: "admin" | "member"): Promise<Response> {
+  return fetch(url("/allowlist"), {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, role }),
+  });
+}
+
+export function removeAllowlistEntry(email: string): Promise<Response> {
+  return fetch(url(`/allowlist/${encodeURIComponent(email)}`), {
+    method: "DELETE",
+    credentials: "include",
+  });
+}
 
 export function saveSettings(draft: AppSettings): Promise<Response> {
   return fetch(url("/settings"), {

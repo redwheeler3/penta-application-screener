@@ -12,6 +12,8 @@ __pycache__/
 .env
 .env.*
 backend/secrets/
+# Bootstrap admin allowlist holds real committee emails; keep the .example only.
+backend/config/initial-admins.txt
 
 # Databases and applicant data (incl. backend/data/backups/ — PII-bearing DB snapshots)
 *.db
