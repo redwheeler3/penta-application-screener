@@ -93,8 +93,6 @@ def add_eligible(db: Session, *, email: str, raw_hash: str) -> Application:
         raw_row={"Why a co-op": "We want community and will pitch in."},
         raw_row_hash=raw_hash,
         normalized={},
-       
-        hard_filter_reasons=[],
     )
     db.add(app)
     db.commit()

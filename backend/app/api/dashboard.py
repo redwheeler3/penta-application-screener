@@ -36,6 +36,11 @@ from app.services.analysis import (
 )
 from app.services.application_import import settings_fingerprint
 from app.services.eligibility import machine_flags_by_app, overrides_by_app
+from app.services.rules import (
+    committee_default_rules,
+    hard_filter_reasons_for,
+    rules_config_for,
+)
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -107,7 +112,9 @@ def _import_is_current(db: Session, settings) -> bool:
     latest = db.scalar(select(SyncRun).order_by(SyncRun.id.desc()).limit(1))
     if latest is None:
         return True
-    return latest.settings_fingerprint == settings_fingerprint(settings)
+    return latest.settings_fingerprint == settings_fingerprint(
+        settings, committee_default_rules(db)
+    )
 
 
 def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
@@ -206,13 +213,15 @@ def _member_status_counts(
     ids = [app.id for app in applications]
     flags_by_app = machine_flags_by_app(db, ids)
     overrides = overrides_by_app(db, user_id, ids)
+    rules_config = rules_config_for(db, user_id)
 
     by_status: dict[ApplicationStatus, int] = {}
     by_source: dict[StatusSource, int] = {}
     for app in applications:
+        reasons = hard_filter_reasons_for(rules_config, app)
         status, source = effective_status(
             overrides.get(app.id),
-            has_reasons=bool(app.hard_filter_reasons),
+            has_reasons=bool(reasons),
             has_ai_flags=bool(flags_by_app.get(app.id)),
         )
         by_status[status] = by_status.get(status, 0) + 1

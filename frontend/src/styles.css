@@ -360,6 +360,22 @@ h1 {
   padding: 20px;
 }
 
+/* Sub-tab bar inside the Admin Settings panel (Configuration / Access). Sits at the
+   top of the panel, above the active section. Reuses the .tab-button pill look; a
+   simple bottom rule separates the bar from the content below it. */
+/* Admin Settings' sub-tabs reuse .insights-subtabs (see Observability/Evals). They sit at
+   the panel's top edge (no insights-header above them), so pad them off it. */
+.admin-settings-subtabs {
+  padding: 1rem 1.25rem 0;
+}
+
+/* A saving-forks-the-default note above the eligibility form; spans both form columns
+   so it reads as a full-width banner rather than a field label. */
+.eligibility-default-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
 .settings-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -371,7 +387,9 @@ h1 {
   gap: 6px;
 }
 
-.settings-form > label:first-child {
+/* The Google Sheet link spans both columns (long URLs). Scoped to the field, not
+   ":first-child" — the eligibility form's first field is a normal half-width number. */
+.settings-form label.settings-field-wide {
   grid-column: 1 / -1;
 }
 

@@ -19,6 +19,7 @@ from app.api.problems import Problem
 from app.api.ranking import router as ranking_router
 from app.api.screening import router as screening_router
 from app.api.settings import router as settings_router
+from app.api.settings import rules_router as eligibility_rules_router
 from app.api.sync import router as sync_router
 from app.core.config import get_settings
 
@@ -100,6 +101,7 @@ def create_app() -> FastAPI:
     app.include_router(screening_router)
     app.include_router(ranking_router)
     app.include_router(settings_router)
+    app.include_router(eligibility_rules_router)
     app.include_router(sync_router)
     return app
 

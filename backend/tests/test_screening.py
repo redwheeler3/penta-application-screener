@@ -27,20 +27,23 @@ def add_application(
     *,
     email: str,
     raw_hash: str,
-    hard_filter_reasons: list[dict] | None = None,
+    rules_ineligible: bool = False,
     raw_row: dict | None = None,
     normalized: dict | None = None,
 ) -> Application:
-    """An applicant on the machine baseline. Eligibility is computed on read from
-    ``hard_filter_reasons`` (+ cached AI flags), so a rules-ineligible applicant is one
-    with a reason; everything else is machine-eligible."""
+    """An applicant on the machine baseline. Reasons are no longer stored — they are
+    computed on read from ``normalized`` + the committee-default ruleset, so a
+    rules-ineligible applicant is one whose ``normalized`` trips a hard filter (here,
+    owning real estate); everything else is machine-eligible."""
+    normalized = dict(normalized or {})
+    if rules_ineligible:
+        normalized["has_real_estate"] = True
     app = Application(
         primary_email=email,
         applicant_name="Test Applicant",
         raw_row=raw_row or {},
         raw_row_hash=raw_hash,
-        normalized=normalized or {},
-        hard_filter_reasons=hard_filter_reasons or [],
+        normalized=normalized,
     )
     db.add(app)
     db.commit()
@@ -72,12 +75,7 @@ def test_applications_for_screening_scope() -> None:
     db = make_session()
     add_application(db, email="clean@x.com", raw_hash="h1")
     add_application(db, email="clean-2@x.com", raw_hash="h2")
-    add_application(
-        db,
-        email="rules-no@x.com",
-        raw_hash="h3",
-        hard_filter_reasons=[{"code": "owns_real_estate", "message": "x", "details": {}}],
-    )
+    add_application(db, email="rules-no@x.com", raw_hash="h3", rules_ineligible=True)
 
     emails = {a.primary_email for a in applications_for_screening(db)}
     assert emails == {"clean@x.com", "clean-2@x.com"}
@@ -222,13 +220,8 @@ def test_estimate_counts_analyzable_excluding_rules_ineligible() -> None:
     add_application(db, email="b@x.com", raw_hash="h2")
     # No hard-filter reason: analyzed (a re-run may add or clear AI flags).
     add_application(db, email="c@x.com", raw_hash="h3")
-    # Rules-ineligible (a hard-filter reason present): excluded, verdict is deterministic.
-    add_application(
-        db,
-        email="d@x.com",
-        raw_hash="h4",
-        hard_filter_reasons=[{"code": "owns_real_estate", "message": "x", "details": {}}],
-    )
+    # Rules-ineligible (a hard filter trips on read): excluded, verdict is deterministic.
+    add_application(db, email="d@x.com", raw_hash="h4", rules_ineligible=True)
 
     est = estimate_screening(db, AppSettings())
     assert est["total"] == 3

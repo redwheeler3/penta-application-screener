@@ -9,8 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Application, SyncRun
-from app.domain.hard_filters import FilterReason, RulesConfig, evaluate_hard_filters
-from app.schemas.settings import AppSettings
+from app.domain.hard_filters import evaluate_hard_filters
+from app.schemas.settings import AppSettings, EligibilityRules
+from app.services.rules import committee_default_rules, rules_config_from
 
 EMAIL_ALIASES = ["email address", "applicant email", "email"]
 APPLICANT_NAME_ALIASES = ["applicant name", "name", "applicant full name"]
@@ -77,26 +78,28 @@ def extract_essays(row: dict[str, Any]) -> list[dict[str, str]]:
     return essays
 
 
-def settings_fingerprint(settings: AppSettings) -> str:
+def settings_fingerprint(settings: AppSettings, rules: EligibilityRules) -> str:
     """Stable hash of the settings that determine import eligibility.
 
-    Covers the sheet id and every hard-filter input (the thresholds + disabled
-    rules) — exactly the settings whose change would reclassify who is eligible
-    on a re-import. Deliberately EXCLUDES pet limits and the AI spending cap:
-    pets are an AI screening concern (the Screen step), not a hard filter, and
-    the cap never affects import. Stamped on each SyncRun so the dashboard can
+    Covers the sheet id and every hard-filter input (the COMMITTEE-DEFAULT thresholds +
+    disabled rules) — exactly the settings whose change would reclassify who is eligible on
+    a re-import. Per-member rule divergence is deliberately NOT hashed: import is pre-any-
+    member-view and its eligible/filtered counts describe the shared committee-default
+    baseline, so only the default reclassifies the import. Deliberately EXCLUDES pet limits
+    and the AI spending cap: pets are an AI screening concern (the Screen step), not a hard
+    filter, and the cap never affects import. Stamped on each SyncRun so the dashboard can
     flag Import as out of date when the live settings no longer match.
     """
     basis = json.dumps(
         {
             "google_sheet_id": settings.google_sheet_id,
-            "income_min": settings.income_min,
-            "income_max": settings.income_max,
-            "min_adult_age": settings.min_adult_age,
-            "max_child_age": settings.max_child_age,
-            "min_children": settings.min_children,
-            "max_children": settings.max_children,
-            "disabled_rules": sorted(settings.disabled_rules),
+            "income_min": rules.income_min,
+            "income_max": rules.income_max,
+            "min_adult_age": rules.min_adult_age,
+            "max_child_age": rules.max_child_age,
+            "min_children": rules.min_children,
+            "max_children": rules.max_children,
+            "disabled_rules": sorted(rules.disabled_rules),
         },
         sort_keys=True,
     )
@@ -126,28 +129,24 @@ def import_applications_from_rows(
     updated_count = 0
     unchanged_count = 0
     # The machine baseline at import time: an applicant is filtered out iff the rules gave
-    # a reason. Eligibility is per-member and computed on read (a member may later override
-    # the machine verdict), but import is pre-any-member-view, so these counts describe the
-    # shared rules baseline — the only eligibility fact that exists at import.
+    # a reason. Eligibility is now per-member and computed on read (a member's rules and any
+    # override apply on top), but import is pre-any-member-view, so these counts describe the
+    # shared COMMITTEE-DEFAULT baseline — the only eligibility fact that exists at import.
     eligible_count = 0
     filtered_out_count = 0
 
-    rules = RulesConfig(
-        min_income=settings.income_min,
-        max_income=settings.income_max,
-        min_adult_age=settings.min_adult_age,
-        max_child_age=settings.max_child_age,
-        min_children=settings.min_children,
-        max_children=settings.max_children,
-        disabled_rules=tuple(settings.disabled_rules),
-    )
+    # Import no longer stores per-applicant reasons (the column is gone); it only syncs +
+    # normalizes + upserts. The eligible/filtered summary is evaluated against the shared
+    # committee-default ruleset — a single ruleset eval per app — so the sync counts still
+    # mean something even though eligibility itself is per-member on read.
+    default_rules = committee_default_rules(db)
+    rules = rules_config_from(default_rules)
 
     for email, row in latest_by_email.items():
         raw_hash = hash_row(row)
         normalized = normalize_application(row)
-        result = evaluate_hard_filters(normalized, rules)
         normalized = _make_json_safe(normalized)
-        reason_payload = [reason_to_payload(reason) for reason in result.reasons]
+        result = evaluate_hard_filters(normalized, rules)
 
         application = db.scalar(select(Application).where(Application.primary_email == email))
         if application is None:
@@ -159,19 +158,14 @@ def import_applications_from_rows(
                 raw_row=row,
                 raw_row_hash=raw_hash,
                 normalized=normalized,
-                hard_filter_reasons=reason_payload,
             )
             db.add(application)
         else:
-            # "Unchanged" means the source row is byte-identical AND the rules
-            # produce the same reasons (so a settings change that flips
-            # eligibility still counts as a real update). Skip the write entirely
-            # so updated_at is untouched for genuinely unchanged rows.
-            unchanged = (
-                application.raw_row_hash == raw_hash
-                and application.hard_filter_reasons == reason_payload
-            )
-            if unchanged:
+            # "Unchanged" means the source row is byte-identical. Reasons are no longer
+            # stored (they're computed per-member on read), so the row hash alone decides
+            # unchanged vs. updated. Skip the write entirely so updated_at is untouched for
+            # genuinely unchanged rows.
+            if application.raw_row_hash == raw_hash:
                 unchanged_count += 1
             else:
                 updated_count += 1
@@ -180,9 +174,8 @@ def import_applications_from_rows(
                 application.raw_row = row
                 application.raw_row_hash = raw_hash
                 application.normalized = normalized
-                application.hard_filter_reasons = reason_payload
 
-        if reason_payload:
+        if result.reasons:
             filtered_out_count += 1
         else:
             eligible_count += 1
@@ -196,7 +189,7 @@ def import_applications_from_rows(
         unchanged_count=unchanged_count,
         eligible_count=eligible_count,
         filtered_out_count=filtered_out_count,
-        settings_fingerprint=settings_fingerprint(settings),
+        settings_fingerprint=settings_fingerprint(settings, default_rules),
     )
     db.add(sync_run)
     db.commit()
@@ -380,9 +373,3 @@ def _make_json_safe(data: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def reason_to_payload(reason: FilterReason) -> dict[str, Any]:
-    return {
-        "code": reason.code,
-        "message": reason.message,
-        "details": reason.details,
-    }

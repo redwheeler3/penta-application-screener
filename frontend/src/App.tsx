@@ -1,4 +1,4 @@
-import { LogIn, LogOut, Settings, ShieldCheck } from "lucide-react";
+import { Filter, LogIn, LogOut, Settings } from "lucide-react";
 import { type SyntheticEvent, useEffect, useLayoutEffect, useState } from "react";
 import { HouseIcon } from "./HouseIcon";
 import * as api from "./api";
@@ -17,12 +17,12 @@ import type {
   SettingsResponse,
   WorkflowState,
 } from "./types";
-import { AccessPanel } from "./components/AccessPanel";
+import { AdminSettingsPanel } from "./components/AdminSettingsPanel";
 import { ApplicationsList } from "./components/ApplicationsList";
 import { CandidateDetail } from "./components/CandidateDetail";
+import { EligibilitySettingsPanel } from "./components/EligibilitySettingsPanel";
 import { InsightsView } from "./components/InsightsView";
 import { RankingView } from "./components/RankingView";
-import { SettingsPanel } from "./components/SettingsPanel";
 import { Toasts } from "./components/Toasts";
 import { WorkflowBar } from "./components/WorkflowBar";
 import { useApplications } from "./hooks/useApplications";
@@ -148,7 +148,7 @@ export function App() {
   // ranking — with `activeTab` choosing which is shown (a candidate detail drills in
   // over either). The Ranking tab only appears once a run exists (see the tab strip).
   const [activeTab, setActiveTab] = useState<
-    "applications" | "ranking" | "insights" | "evals" | "settings" | "access"
+    "applications" | "ranking" | "insights" | "evals" | "eligibilitySettings" | "adminSettings"
   >("applications");
   const isAdmin = user?.role === "admin";
 
@@ -179,9 +179,10 @@ export function App() {
     const sheetId = resolveSheetId(payload);
     setSaved(payload);
     setDraft({ ...payload.settings, googleSheetId: sheetId });
-    // First-run setup: land on the Settings tab when there's no sheet configured
-    // yet, so setup is front-and-centre.
-    if (!sheetId) setActiveTab("settings");
+    // First-run setup: land on Admin Settings when there's no sheet configured yet, so
+    // setup is front-and-centre. Only admins can set the sheet, so only redirect them —
+    // a member stays on Applications.
+    if (!sheetId && isAdmin) setActiveTab("adminSettings");
   }
 
   function refreshDashboard() {
@@ -562,8 +563,8 @@ export function App() {
             }}
           />
 
-          {/* Tab row: the two data views on the left, Settings set apart on the
-              right (config, not a third data view). */}
+          {/* Tab row: the data views on the left, the config tabs (Eligibility Settings
+              and, for admins, Admin Settings) set apart on the right. */}
           <div className="view-tabs no-print" role="tablist" aria-label="Views">
             <button
               type="button"
@@ -592,62 +593,67 @@ export function App() {
             ) : null}
             {/* The AI developer/operator surface, split by purpose: Observability (what the
                 AI did + cost, per-run traces once a run exists) and Evals (invariants / live
-                per-pass / judge — need no run, work before any Rank). */}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "insights" && !selectedApp}
-              className={`tab-button${activeTab === "insights" && !selectedApp ? " active" : ""}`}
-              onClick={() => {
-                setSelectedApp(null);
-                setActiveTab("insights");
-              }}
-            >
-              Observability
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "evals" && !selectedApp}
-              className={`tab-button${activeTab === "evals" && !selectedApp ? " active" : ""}`}
-              onClick={() => {
-                setSelectedApp(null);
-                setActiveTab("evals");
-              }}
-            >
-              Evals
-            </button>
-            {/* Admin-only: manage who can sign in. The full Settings→Admin Settings
-                split (and gating Observability/Evals) lands with slice 1d; for now
-                only the access allowlist is admin-gated. */}
+                per-pass / judge — need no run, work before any Rank). Admin-only: a member
+                sees only Applications, Ranking, and Eligibility Settings. */}
             {isAdmin ? (
               <button
                 type="button"
                 role="tab"
-                aria-selected={activeTab === "access" && !selectedApp}
-                className={`tab-button${activeTab === "access" && !selectedApp ? " active" : ""}`}
+                aria-selected={activeTab === "insights" && !selectedApp}
+                className={`tab-button${activeTab === "insights" && !selectedApp ? " active" : ""}`}
                 onClick={() => {
                   setSelectedApp(null);
-                  setActiveTab("access");
+                  setActiveTab("insights");
                 }}
               >
-                <ShieldCheck size={14} />
-                <span>Access</span>
+                Observability
               </button>
             ) : null}
+            {isAdmin ? (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "evals" && !selectedApp}
+                className={`tab-button${activeTab === "evals" && !selectedApp ? " active" : ""}`}
+                onClick={() => {
+                  setSelectedApp(null);
+                  setActiveTab("evals");
+                }}
+              >
+                Evals
+              </button>
+            ) : null}
+            {/* Config tabs, set apart on the right: Eligibility Settings (every member
+                tunes their own screening rules) and Admin Settings (admin-only: data
+                source, pets, AI knobs, and the access allowlist). */}
             <button
               type="button"
               role="tab"
-              aria-selected={activeTab === "settings" && !selectedApp}
-              className={`tab-button tab-button-settings${activeTab === "settings" && !selectedApp ? " active" : ""}`}
+              aria-selected={activeTab === "eligibilitySettings" && !selectedApp}
+              className={`tab-button tab-button-settings${activeTab === "eligibilitySettings" && !selectedApp ? " active" : ""}`}
               onClick={() => {
                 setSelectedApp(null);
-                setActiveTab("settings");
+                setActiveTab("eligibilitySettings");
               }}
             >
-              <Settings size={14} />
-              <span>Settings</span>
+              <Filter size={14} />
+              <span>Eligibility Settings</span>
             </button>
+            {isAdmin ? (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "adminSettings" && !selectedApp}
+                className={`tab-button${activeTab === "adminSettings" && !selectedApp ? " active" : ""}`}
+                onClick={() => {
+                  setSelectedApp(null);
+                  setActiveTab("adminSettings");
+                }}
+              >
+                <Settings size={14} />
+                <span>Admin Settings</span>
+              </button>
+            ) : null}
           </div>
 
           <section className="panel">
@@ -660,13 +666,16 @@ export function App() {
                 onSavePrivateNote={savePrivateNote}
                 onToggleStar={toggleStar}
               />
-            ) : activeTab === "settings" && draft ? (
-              <SettingsPanel
+            ) : activeTab === "eligibilitySettings" ? (
+              <EligibilitySettingsPanel onError={showError} />
+            ) : activeTab === "adminSettings" && isAdmin && draft ? (
+              <AdminSettingsPanel
                 draft={draft}
                 setDraft={setDraft}
                 saved={saved}
                 isSaving={isSavingSettings}
                 onSubmit={saveSettings}
+                onError={showError}
               />
             ) : activeTab === "ranking" && ranking ? (
               <RankingView
@@ -682,8 +691,6 @@ export function App() {
                 onSelectApplication={viewApplication}
                 onToggleStar={toggleStar}
               />
-            ) : activeTab === "access" && isAdmin ? (
-              <AccessPanel onError={showError} />
             ) : activeTab === "insights" ? (
               <InsightsView family="obs" run={rankingRun} onToast={showToast} onError={showError} />
             ) : activeTab === "evals" ? (

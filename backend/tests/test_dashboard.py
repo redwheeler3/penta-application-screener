@@ -66,7 +66,7 @@ async def test_workflow_flags_track_progress() -> None:
         # An application exists -> synced.
         application = Application(
             primary_email="a@x.com", applicant_name="A", raw_row={}, raw_row_hash="h1",
-            normalized={}, hard_filter_reasons=[],
+            normalized={},
         )
         db.add(application)
         db.commit()
@@ -122,7 +122,7 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         db.add(Application(
             primary_email="a@x.com", applicant_name="A", raw_row={}, raw_row_hash="h1",
-            normalized={}, hard_filter_reasons=[],
+            normalized={},
         ))
         db.commit()
 
@@ -140,7 +140,7 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
         # even though we added no scores and removed nothing.
         db.add(Application(
             primary_email="b@x.com", applicant_name="B", raw_row={}, raw_row_hash="h2",
-            normalized={}, hard_filter_reasons=[],
+            normalized={},
         ))
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
@@ -171,26 +171,28 @@ async def test_import_current_tracks_settings_fingerprint() -> None:
     reclassify eligibility.
     """
     from app.db.models import SyncRun
-    from app.schemas.settings import AppSettings
+    from app.schemas.settings import AppSettings, EligibilityRules
     from app.services.application_import import settings_fingerprint
+    from app.services.rules import committee_default_rules, save_committee_default_rules
     from app.services.settings import save_app_settings
 
     app, db = _logged_in_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        settings = AppSettings(google_sheet_id="sheet-1", min_children=1)
+        settings = AppSettings(google_sheet_id="sheet-1")
         save_app_settings(db, settings)
+        save_committee_default_rules(db, EligibilityRules(min_children=1))
         db.add(SyncRun(
             source_sheet_id="sheet-1",
-            settings_fingerprint=settings_fingerprint(settings),
+            settings_fingerprint=settings_fingerprint(settings, committee_default_rules(db)),
         ))
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow["importCurrent"] is True
 
-        # Change a hard-filter setting -> the latest sync's fingerprint no longer
-        # matches -> Import is out of date.
-        save_app_settings(db, AppSettings(google_sheet_id="sheet-1", min_children=2))
+        # Change a hard-filter setting (the committee-default rules) -> the latest sync's
+        # fingerprint no longer matches -> Import is out of date.
+        save_committee_default_rules(db, EligibilityRules(min_children=2))
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow["importCurrent"] is False
 
@@ -202,6 +204,7 @@ async def test_import_current_ignores_non_filter_settings() -> None:
     from app.db.models import SyncRun
     from app.schemas.settings import AppSettings
     from app.services.application_import import settings_fingerprint
+    from app.services.rules import committee_default_rules
     from app.services.settings import save_app_settings
 
     app, db = _logged_in_app()
@@ -211,7 +214,7 @@ async def test_import_current_ignores_non_filter_settings() -> None:
         save_app_settings(db, settings)
         db.add(SyncRun(
             source_sheet_id="sheet-1",
-            settings_fingerprint=settings_fingerprint(settings),
+            settings_fingerprint=settings_fingerprint(settings, committee_default_rules(db)),
         ))
         db.commit()
 
@@ -245,11 +248,11 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
     # Two eligible applicants in screening scope.
     a = Application(
         primary_email="a@x.com", applicant_name="A", raw_row={"q": "1"}, raw_row_hash="ha",
-        normalized={}, hard_filter_reasons=[],
+        normalized={},
     )
     b = Application(
         primary_email="b@x.com", applicant_name="B", raw_row={"q": "2"}, raw_row_hash="hb",
-        normalized={}, hard_filter_reasons=[],
+        normalized={},
     )
     db.add_all([a, b])
     db.commit()
@@ -293,7 +296,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
 
     a = Application(
         primary_email="a@x.com", applicant_name="A", raw_row={"q": "1"}, raw_row_hash="ha",
-        normalized={}, hard_filter_reasons=[],
+        normalized={},
     )
     db.add(a)
     # A run with two dimensions.

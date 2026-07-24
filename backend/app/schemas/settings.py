@@ -91,18 +91,35 @@ class AISettings(BridgeModel):
     max_workers: int = Field(default=50, ge=1, le=100)
 
 
-class AppSettings(BridgeModel):
-    google_sheet_id: str = Field(default="", max_length=2000)
+class EligibilityRules(BridgeModel):
+    """The deterministic hard-filter thresholds — per-member as of M15 1d.
+
+    Each member screens against their own thresholds; a member who hasn't diverged reads the
+    shared committee default. The numeric rules are pure math (evaluated on read via
+    ``evaluate_hard_filters``), so they live here, separate from the shared infra config in
+    ``AppSettings``. Pet limits are NOT here: they are judged inside the shared screening
+    prompt, so they stay on ``AppSettings`` (committee-wide) until slice 1e moves pet judgment
+    to a deterministic per-member filter.
+    """
+
     income_min: int = Field(default=DEFAULT_MIN_INCOME, ge=0)
     income_max: int = Field(default=DEFAULT_MAX_INCOME, ge=0)
     min_adult_age: int = Field(default=DEFAULT_MIN_ADULT_AGE, ge=1, le=100)
     max_child_age: int = Field(default=DEFAULT_MAX_CHILD_AGE, ge=0, le=100)
     min_children: int = Field(default=DEFAULT_MIN_CHILDREN, ge=0, le=20)
     max_children: int = Field(default=DEFAULT_MAX_CHILDREN, ge=0, le=20)
+    disabled_rules: list[str] = Field(default_factory=list)
+
+
+class AppSettings(BridgeModel):
+    """Shared, committee-wide infra config: the source sheet, AI provider settings, and the
+    pet-policy limits (still shared — see ``EligibilityRules``). The per-member numeric
+    eligibility thresholds live in ``EligibilityRules``, not here (M15 1d)."""
+
+    google_sheet_id: str = Field(default="", max_length=2000)
     max_dogs: int = Field(default=1, ge=0, le=10)
     max_cats: int = Field(default=1, ge=0, le=10)
     allow_other_pets: bool = False
-    disabled_rules: list[str] = Field(default_factory=list)
     ai: AISettings = Field(default_factory=AISettings)
 
     @field_validator("google_sheet_id")
@@ -124,3 +141,11 @@ class SettingsResponse(ResponseModel):
     settings: AppSettings
     google_sheet_url: str = ""
     google_sheet_title: str | None = None
+
+
+class EligibilityRulesResponse(ResponseModel):
+    """GET /eligibility-rules — the signed-in member's effective rules + whether they are the
+    shared committee default (no personal divergence yet) or the member's own."""
+
+    rules: EligibilityRules
+    is_default: bool
