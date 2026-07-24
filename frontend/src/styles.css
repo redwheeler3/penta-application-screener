@@ -354,6 +354,20 @@ h1 {
    padding lives on the header and body sections. */
 /* Settings is now the content of the Settings tab; the surrounding .panel supplies
    the card, so this is just a body wrapper. */
+/* Tab title at the top of each settings tab, matching the Observability/Evals heading
+   (.insights-header) so every tab opens with its name. Left-padded to align with the
+   settings body content (20px). */
+.settings-header {
+  padding: 20px 20px 0;
+  /* Breathing room before the subtabs/form below — matches .insights-header's 1rem gap
+     so the heading doesn't sit flush against what follows. */
+  margin-bottom: 1rem;
+}
+
+.settings-header h3 {
+  margin: 0;
+}
+
 .settings-panel-body {
   display: grid;
   gap: 18px;
@@ -363,10 +377,10 @@ h1 {
 /* Sub-tab bar inside the Admin Settings panel (Configuration / Access). Sits at the
    top of the panel, above the active section. Reuses the .tab-button pill look; a
    simple bottom rule separates the bar from the content below it. */
-/* Admin Settings' sub-tabs reuse .insights-subtabs (see Observability/Evals). They sit at
-   the panel's top edge (no insights-header above them), so pad them off it. */
+/* Admin Settings' sub-tabs reuse .insights-subtabs (see Observability/Evals). The tab
+   heading sits above them; this just aligns them horizontally with the body content. */
 .admin-settings-subtabs {
-  padding: 1rem 1.25rem 0;
+  padding: 0 1.25rem;
 }
 
 /* A saving-forks-the-default note above the eligibility form; spans both form columns

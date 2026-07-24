@@ -504,3 +504,7 @@ The mock suite proves plumbing, not judgment. Still owed on real data (parked so
 
 1. **Reconcile-era behavior is moot** (that subsystem was deleted; see ADR 0007). No action.
 2. **Carry-forward cost win in the wild** — per-dimension score reuse + the ceiling estimate are built and unit-tested; a real-Bedrock re-rank to confirm the actual run comes in under the ceiling is the remaining validation.
+
+### UI Consistency Walkthrough (owed)
+
+A systematic tab-by-tab, panel-by-panel walkthrough of the whole UI to find and fix cross-surface divergences — the kind that accrete when tabs/panels are built at different times. Prompted by the settings tabs shipping without the title heading every other tab (Observability/Evals) has (fixed 2026-07-24, but found by eye, not systematically). Check each surface against shared conventions: title heading present; sub-navigation style (`.insights-subtab` underline tabs); heading levels; spacing/padding; empty/loading/error states; button placement + labels; `no-print` on interactive chrome; icon sizing. Produce a checklist of divergences, then fix in one consistency pass.
