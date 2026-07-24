@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Application, ApplicationStatus, Base, StatusSource
+from app.db.models import Application, Base
 from app.schemas.settings import AppSettings
 from app.services.application_import import (
     extract_essays,
@@ -132,9 +132,11 @@ def test_import_applications_dedupes_by_latest_email_and_applies_filters() -> No
     assert sync_run.imported_count == 1
     assert application is not None
     assert application.applicant_name == "New"
-    # This fixture row owns real estate, so the rules actor sets it ineligible.
-    assert application.status == ApplicationStatus.INELIGIBLE
-    assert application.status_source == StatusSource.RULES
+    # This fixture row owns real estate, so the rules record a hard-filter reason — the
+    # machine baseline that makes it ineligible on read, and counts it filtered-out.
+    assert application.hard_filter_reasons
+    assert sync_run.filtered_out_count == 1
+    assert sync_run.eligible_count == 0
 
 
 def test_reimport_of_identical_rows_counts_unchanged_not_updated() -> None:

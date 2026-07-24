@@ -1,24 +1,21 @@
-from app.db.models import Application, ApplicationStatus, StatusSource
+from app.db.models import ApplicationStatus, MemberEligibility, StatusSource
 from app.domain.status import (
-    apply_machine_status,
+    effective_status,
     findings_fingerprint,
-    is_stale,
+    override_is_stale,
     resolve_machine_status,
 )
 
 
-def make_app(**kwargs) -> Application:
+def make_override(**kwargs) -> MemberEligibility:
     defaults = {
-        "primary_email": "a@x.com",
-        "raw_row": {},
-        "raw_row_hash": "h",
-        "normalized": {},
+        "application_id": 1,
+        "user_id": 1,
         "status": ApplicationStatus.ELIGIBLE,
-        "status_source": StatusSource.UNTOUCHED,
-        "hard_filter_reasons": [],
+        "reviewed_fingerprint": None,
     }
     defaults.update(kwargs)
-    return Application(**defaults)
+    return MemberEligibility(**defaults)
 
 
 def test_resolve_rules_take_precedence_over_ai() -> None:
@@ -42,33 +39,32 @@ def test_resolve_clean_is_untouched() -> None:
     )
 
 
-def test_apply_machine_status_does_not_override_human() -> None:
-    app = make_app(status=ApplicationStatus.ELIGIBLE, status_source=StatusSource.HUMAN)
-    apply_machine_status(app, has_reasons=True, has_ai_flags=False)
-    # Human decision is sticky.
-    assert app.status == ApplicationStatus.ELIGIBLE
-    assert app.status_source == StatusSource.HUMAN
-
-
-def test_apply_machine_status_sets_rules() -> None:
-    app = make_app()
-    apply_machine_status(app, has_reasons=True, has_ai_flags=False)
-    assert app.status == ApplicationStatus.INELIGIBLE
-    assert app.status_source == StatusSource.RULES
-
-
-def test_staleness_only_for_human_and_changed_findings() -> None:
-    flags = [{"category": "pet_policy"}]
-    app = make_app(
-        status_source=StatusSource.HUMAN,
-        reviewed_fingerprint=findings_fingerprint([], flags),
+def test_effective_status_uses_override_when_present() -> None:
+    # A member's override wins over the machine verdict (here: rules-ineligible), and its
+    # source is always HUMAN.
+    override = make_override(status=ApplicationStatus.ELIGIBLE)
+    assert effective_status(override, has_reasons=True, has_ai_flags=False) == (
+        ApplicationStatus.ELIGIBLE,
+        StatusSource.HUMAN,
     )
+
+
+def test_effective_status_falls_back_to_machine_without_override() -> None:
+    assert effective_status(None, has_reasons=True, has_ai_flags=False) == (
+        ApplicationStatus.INELIGIBLE,
+        StatusSource.RULES,
+    )
+
+
+def test_staleness_only_for_changed_findings() -> None:
+    flags = [{"category": "pet_policy"}]
+    override = make_override(reviewed_fingerprint=findings_fingerprint([], flags))
     # Same findings -> not stale.
-    assert is_stale(app, flags) is False
+    assert override_is_stale(override, [], flags) is False
     # New finding -> stale.
-    assert is_stale(app, [*flags, {"category": "fake_contact"}]) is True
+    assert override_is_stale(override, [], [*flags, {"category": "fake_contact"}]) is True
 
 
-def test_machine_owned_status_is_never_stale() -> None:
-    app = make_app(status_source=StatusSource.AI, reviewed_fingerprint=None)
-    assert is_stale(app, [{"category": "pet_policy"}]) is False
+def test_no_override_is_never_stale() -> None:
+    # An absent override (machine-owned view) always reflects the current findings.
+    assert override_is_stale(None, [], [{"category": "pet_policy"}]) is False

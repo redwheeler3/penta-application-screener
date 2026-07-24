@@ -22,6 +22,7 @@ from app.db.models import (
     User,
 )
 from app.db.session import get_db
+from app.domain.status import effective_status
 from app.schemas.dashboard import (
     CoverageEntry,
     DashboardCounts,
@@ -34,6 +35,7 @@ from app.services.analysis import (
     ranking_is_current,
 )
 from app.services.application_import import settings_fingerprint
+from app.services.eligibility import machine_flags_by_app, overrides_by_app
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -41,15 +43,15 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 @router.get("", response_model=DashboardResponse)
 def read_dashboard(
-    _: User = Depends(require_current_user),
+    user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> DashboardResponse:
     settings = get_app_settings(db)
     total = db.scalar(select(func.count()).select_from(Application)) or 0
 
-    # Counts keyed by the real columns; named views are composed client-side.
-    by_status = _count_by(db, Application.status)
-    by_source = _count_by(db, Application.status_source)
+    # Counts are this member's effective view: their overrides applied over the shared
+    # machine verdict, computed on read. Named views are composed client-side.
+    by_status, by_source = _member_status_counts(db, user.id)
     coverage = _coverage(db, settings)
     scoring_coverage = coverage.get("candidatesScored")
     # A completed score-only run is the committee's deliberate choice to retain the
@@ -194,6 +196,25 @@ def _run_exists(db: Session) -> bool:
     return db.scalar(select(Analysis.id).limit(1)) is not None
 
 
-def _count_by(db: Session, column) -> dict:
-    rows = db.execute(select(column, func.count()).group_by(column)).all()
-    return dict(rows)
+def _member_status_counts(
+    db: Session, user_id: int
+) -> tuple[dict[ApplicationStatus, int], dict[StatusSource, int]]:
+    """This member's effective (status, source) tallies over every application — their
+    overrides applied over the shared machine verdict. Computed on read (status is no
+    longer stored), so it mirrors exactly what the applications list shows the member."""
+    applications = db.scalars(select(Application)).all()
+    ids = [app.id for app in applications]
+    flags_by_app = machine_flags_by_app(db, ids)
+    overrides = overrides_by_app(db, user_id, ids)
+
+    by_status: dict[ApplicationStatus, int] = {}
+    by_source: dict[StatusSource, int] = {}
+    for app in applications:
+        status, source = effective_status(
+            overrides.get(app.id),
+            has_reasons=bool(app.hard_filter_reasons),
+            has_ai_flags=bool(flags_by_app.get(app.id)),
+        )
+        by_status[status] = by_status.get(status, 0) + 1
+        by_source[source] = by_source.get(source, 0) + 1
+    return by_status, by_source

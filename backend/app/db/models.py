@@ -123,24 +123,43 @@ class Application(TimestampMixin, Base):
     raw_row: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     raw_row_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     normalized: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    status: Mapped[ApplicationStatus] = mapped_column(
-        Enum(ApplicationStatus, values_callable=enum_values),
-        default=ApplicationStatus.ELIGIBLE,
-        nullable=False,
-        index=True,
-    )
-    status_source: Mapped[StatusSource] = mapped_column(
-        Enum(StatusSource, values_callable=enum_values),
-        default=StatusSource.UNTOUCHED,
-        nullable=False,
-        index=True,
-    )
-    # Immutable record of why the deterministic rules excluded the applicant.
+    # Immutable record of why the deterministic rules excluded the applicant — the shared
+    # machine baseline. Eligibility status is NOT stored here: it is a pure derivation
+    # (``resolve_machine_status`` over these reasons + the cached screening flags), computed
+    # on read per member. A member's *human override* of that verdict lives in
+    # ``MemberEligibility``; absent an override, every member sees the same computed machine
+    # status. (M15 1c: status/status_source/reviewed_fingerprint left this row — they were
+    # stored derivations that became per-member.)
     hard_filter_reasons: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
-    # Hash of the machine findings (reasons + AI flags) when a human last set the
-    # status. Null unless status_source == human. A differing current hash means
-    # there are new findings since the human's review (staleness).
+
+
+class MemberEligibility(TimestampMixin, Base):
+    """One member's human override of an applicant's eligibility (M15 1c).
+
+    Sparse by design: a row exists ONLY where a member has overridden the computed machine
+    verdict — there is no per-member machine row, because the machine status is derived on read
+    from the applicant's shared ``hard_filter_reasons`` + cached screening flags. Effective
+    eligibility for (member, applicant) = this override if present, else the machine verdict.
+    ``status_source`` is not stored: a row's existence IS the human override (source = human).
+    """
+
+    __tablename__ = "member_eligibility"
+    __table_args__ = (UniqueConstraint("application_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id"), index=True, nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    status: Mapped[ApplicationStatus] = mapped_column(
+        Enum(ApplicationStatus, values_callable=enum_values), nullable=False
+    )
+    # Hash of the machine findings (reasons + AI flags) when this member set the override.
+    # A differing current hash means new findings since their review — the override is stale.
     reviewed_fingerprint: Mapped[str | None] = mapped_column(String(64))
+
+    application: Mapped[Application] = relationship()
+    user: Mapped[User] = relationship()
 
 
 class ApplicationNote(TimestampMixin, Base):

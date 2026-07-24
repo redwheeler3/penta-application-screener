@@ -14,7 +14,6 @@ from app.db.models import (
     Application,
     ApplicationNote,
     ApplicationStar,
-    ApplicationStatus,
     Base,
     User,
     UserRole,
@@ -79,7 +78,7 @@ def add_eligible(
         # route a specific verdict to this application regardless of the order
         # concurrent screening calls complete in.
         normalized={"applicant_name": name},
-        status=ApplicationStatus.ELIGIBLE,
+       
         hard_filter_reasons=[],
     )
     db.add(app)

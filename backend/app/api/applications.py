@@ -14,12 +14,17 @@ from app.db.models import (
     ApplicationNote,
     ApplicationStar,
     ApplicationStatus,
-    StatusSource,
+    MemberEligibility,
     User,
 )
 from app.db.session import get_db
 from app.domain.ranking import rank_candidates
-from app.domain.status import findings_fingerprint, is_stale, resolve_machine_status
+from app.domain.status import (
+    effective_status,
+    findings_fingerprint,
+    override_is_stale,
+    resolve_machine_status,
+)
 from app.schemas.applications import (
     AIResultTraceOut,
     ApplicationDetail,
@@ -41,6 +46,7 @@ from app.services.analysis import (
     stored_tiers,
 )
 from app.services.application_import import extract_essays
+from app.services.eligibility import overrides_by_app
 from app.services.ranking_view import candidate_scores
 from app.services.stars import is_starred, starred_ids
 
@@ -58,9 +64,15 @@ def list_applications(
     ids = [app.id for app in applications]
     flags_by_app = _latest_flags(db, ids)
     starred = starred_ids(db, user.id, ids)
+    overrides = overrides_by_app(db, user.id, ids)
     return ApplicationListResponse(
         applications=[
-            _serialize_summary(app, flags=flags_by_app.get(app.id), starred=app.id in starred)
+            _serialize_summary(
+                app,
+                override=overrides.get(app.id),
+                flags=flags_by_app.get(app.id),
+                starred=app.id in starred,
+            )
             for app in applications
         ],
     )
@@ -90,24 +102,38 @@ def override_status(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> ApplicationEnvelope:
-    """Human override of an application's status.
+    """This member's human override of an application's eligibility.
 
-    Any committee member may set status. Sets status_source to human (sticky against
-    future machine runs) and snapshots the current findings fingerprint, so later
-    runs that change the findings mark it stale. Machine records are never altered.
+    Any committee member may set their own status. Upserts a ``MemberEligibility`` row
+    (the row's existence IS the human override) and snapshots the current findings
+    fingerprint, so later runs that change the findings mark the override stale. The
+    override is per-member — it never changes the shared machine baseline or anyone
+    else's view.
     """
     application = db.get(Application, application_id)
     if application is None:
         raise Problem("not_found", detail="Application not found.")
 
     flags = _latest_flags(db, [application_id]).get(application_id)
-    application.status = body.status
-    application.status_source = StatusSource.HUMAN
-    application.reviewed_fingerprint = findings_fingerprint(
-        application.hard_filter_reasons, flags
+    fingerprint = findings_fingerprint(application.hard_filter_reasons, flags)
+    override = db.scalar(
+        select(MemberEligibility).where(
+            MemberEligibility.application_id == application_id,
+            MemberEligibility.user_id == user.id,
+        )
     )
+    if override is None:
+        override = MemberEligibility(
+            application_id=application_id,
+            user_id=user.id,
+            status=body.status,
+            reviewed_fingerprint=fingerprint,
+        )
+        db.add(override)
+    else:
+        override.status = body.status
+        override.reviewed_fingerprint = fingerprint
     db.commit()
-    db.refresh(application)
 
     return ApplicationEnvelope(application=_serialize_detail(application, db, user))
 
@@ -118,27 +144,25 @@ def clear_status_override(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> ApplicationEnvelope:
-    """Remove a human override, handing the decision back to the machine.
+    """Remove this member's override, reverting their view to the machine verdict.
 
-    Recomputes status from the *current* findings (rules then AI), so the result can
-    differ from the pre-override value — which is the point of reverting to
-    automatic. No-op if no human override is set.
+    The machine verdict is recomputed on read from the *current* findings (rules then
+    AI), so the result can differ from the overridden value — which is the point of
+    reverting to automatic. No-op if this member has no override.
     """
     application = db.get(Application, application_id)
     if application is None:
         raise Problem("not_found", detail="Application not found.")
 
-    if application.status_source == StatusSource.HUMAN:
-        flags = _latest_flags(db, [application_id]).get(application_id)
-        status, source = resolve_machine_status(
-            has_reasons=bool(application.hard_filter_reasons),
-            has_ai_flags=bool(flags),
+    override = db.scalar(
+        select(MemberEligibility).where(
+            MemberEligibility.application_id == application_id,
+            MemberEligibility.user_id == user.id,
         )
-        application.status = status
-        application.status_source = source
-        application.reviewed_fingerprint = None
+    )
+    if override is not None:
+        db.delete(override)
         db.commit()
-        db.refresh(application)
 
     return ApplicationEnvelope(application=_serialize_detail(application, db, user))
 
@@ -217,18 +241,27 @@ def remove_star(
 
 def _serialize_summary(
     app: Application,
+    override: MemberEligibility | None = None,
     flags: list[dict[str, Any]] | None = None,
     starred: bool = False,
 ) -> ApplicationSummary:
+    """One application as the signed-in member sees it. ``status``/``status_source``/``stale``
+    are that member's effective view: their override if present, else the shared machine
+    verdict computed from the current findings."""
     normalized = app.normalized or {}
+    status, source = effective_status(
+        override,
+        has_reasons=bool(app.hard_filter_reasons),
+        has_ai_flags=bool(flags),
+    )
     return ApplicationSummary(
         id=app.id,
         primary_email=app.primary_email,
         applicant_name=app.applicant_name,
         co_applicant_name=app.co_applicant_name,
-        status=app.status.value,
-        status_source=app.status_source.value,
-        stale=is_stale(app, flags),
+        status=status.value,
+        status_source=source.value,
+        stale=override_is_stale(override, app.hard_filter_reasons, flags),
         hard_filter_reasons=app.hard_filter_reasons,
         child_count=normalized.get("child_count"),
         household_income=normalized.get("household_income"),
@@ -288,10 +321,13 @@ def _serialize_detail(app: Application, db: Session, user: User) -> ApplicationD
     # trusted screeners, and these just back the data the member already sees.
     flag_result = _latest_results(db, "screening", [app.id]).get(app.id)
     flags = (flag_result.output or {}).get("flags", []) if flag_result else None
-    summary = _serialize_summary(app, flags=flags, starred=is_starred(db, app.id, user.id))
-    # What the machine would decide from the current findings, whoever owns status
-    # now — lets the UI show the live automatic verdict (the result of clearing an
-    # override) without re-deriving the rules client-side.
+    override = overrides_by_app(db, user.id, [app.id]).get(app.id)
+    summary = _serialize_summary(
+        app, override=override, flags=flags, starred=is_starred(db, app.id, user.id)
+    )
+    # What the machine would decide from the current findings, independent of this
+    # member's override — lets the UI show the live automatic verdict (the result of
+    # clearing the override) without re-deriving the rules client-side.
     auto_status, auto_source = resolve_machine_status(
         has_reasons=bool(app.hard_filter_reasons), has_ai_flags=bool(flags)
     )

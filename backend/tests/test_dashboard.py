@@ -9,7 +9,6 @@ from app.db.models import (
     Analysis,
     Application,
     ApplicationAIResult,
-    ApplicationStatus,
     Base,
     User,
     UserRole,
@@ -67,7 +66,7 @@ async def test_workflow_flags_track_progress() -> None:
         # An application exists -> synced.
         application = Application(
             primary_email="a@x.com", applicant_name="A", raw_row={}, raw_row_hash="h1",
-            normalized={}, status=ApplicationStatus.ELIGIBLE, hard_filter_reasons=[],
+            normalized={}, hard_filter_reasons=[],
         )
         db.add(application)
         db.commit()
@@ -123,7 +122,7 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         db.add(Application(
             primary_email="a@x.com", applicant_name="A", raw_row={}, raw_row_hash="h1",
-            normalized={}, status=ApplicationStatus.ELIGIBLE, hard_filter_reasons=[],
+            normalized={}, hard_filter_reasons=[],
         ))
         db.commit()
 
@@ -141,7 +140,7 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
         # even though we added no scores and removed nothing.
         db.add(Application(
             primary_email="b@x.com", applicant_name="B", raw_row={}, raw_row_hash="h2",
-            normalized={}, status=ApplicationStatus.ELIGIBLE, hard_filter_reasons=[],
+            normalized={}, hard_filter_reasons=[],
         ))
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
@@ -246,11 +245,11 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
     # Two eligible applicants in screening scope.
     a = Application(
         primary_email="a@x.com", applicant_name="A", raw_row={"q": "1"}, raw_row_hash="ha",
-        normalized={}, status=ApplicationStatus.ELIGIBLE, hard_filter_reasons=[],
+        normalized={}, hard_filter_reasons=[],
     )
     b = Application(
         primary_email="b@x.com", applicant_name="B", raw_row={"q": "2"}, raw_row_hash="hb",
-        normalized={}, status=ApplicationStatus.ELIGIBLE, hard_filter_reasons=[],
+        normalized={}, hard_filter_reasons=[],
     )
     db.add_all([a, b])
     db.commit()
@@ -294,7 +293,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
 
     a = Application(
         primary_email="a@x.com", applicant_name="A", raw_row={"q": "1"}, raw_row_hash="ha",
-        normalized={}, status=ApplicationStatus.ELIGIBLE, hard_filter_reasons=[],
+        normalized={}, hard_filter_reasons=[],
     )
     db.add(a)
     # A run with two dimensions.

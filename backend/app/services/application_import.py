@@ -8,9 +8,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Application, ApplicationAIResult, ApplicationStatus, SyncRun
+from app.db.models import Application, SyncRun
 from app.domain.hard_filters import FilterReason, RulesConfig, evaluate_hard_filters
-from app.domain.status import apply_machine_status
 from app.schemas.settings import AppSettings
 
 EMAIL_ALIASES = ["email address", "applicant email", "email"]
@@ -126,10 +125,12 @@ def import_applications_from_rows(
     imported_count = 0
     updated_count = 0
     unchanged_count = 0
-    counts = {
-        ApplicationStatus.ELIGIBLE: 0,
-        ApplicationStatus.INELIGIBLE: 0,
-    }
+    # The machine baseline at import time: an applicant is filtered out iff the rules gave
+    # a reason. Eligibility is per-member and computed on read (a member may later override
+    # the machine verdict), but import is pre-any-member-view, so these counts describe the
+    # shared rules baseline — the only eligibility fact that exists at import.
+    eligible_count = 0
+    filtered_out_count = 0
 
     rules = RulesConfig(
         min_income=settings.income_min,
@@ -165,32 +166,26 @@ def import_applications_from_rows(
             # "Unchanged" means the source row is byte-identical AND the rules
             # produce the same reasons (so a settings change that flips
             # eligibility still counts as a real update). Skip the write entirely
-            # so updated_at and status are untouched for genuinely unchanged rows.
+            # so updated_at is untouched for genuinely unchanged rows.
             unchanged = (
                 application.raw_row_hash == raw_hash
                 and application.hard_filter_reasons == reason_payload
             )
             if unchanged:
                 unchanged_count += 1
-                counts[application.status] += 1
-                continue
+            else:
+                updated_count += 1
+                application.applicant_name = normalized.get("applicant_name")
+                application.co_applicant_name = normalized.get("co_applicant_name")
+                application.raw_row = row
+                application.raw_row_hash = raw_hash
+                application.normalized = normalized
+                application.hard_filter_reasons = reason_payload
 
-            updated_count += 1
-            application.applicant_name = normalized.get("applicant_name")
-            application.co_applicant_name = normalized.get("co_applicant_name")
-            application.raw_row = row
-            application.raw_row_hash = raw_hash
-            application.normalized = normalized
-            application.hard_filter_reasons = reason_payload
-
-        # The rules actor preserves any prior AI flags' effect, and never
-        # overrides a human-set status.
-        apply_machine_status(
-            application,
-            has_reasons=bool(reason_payload),
-            has_ai_flags=_has_ai_flags(db, application),
-        )
-        counts[application.status] += 1
+        if reason_payload:
+            filtered_out_count += 1
+        else:
+            eligible_count += 1
 
     sync_run = SyncRun(
         source_sheet_id=source_sheet_id,
@@ -199,8 +194,8 @@ def import_applications_from_rows(
         imported_count=imported_count,
         updated_count=updated_count,
         unchanged_count=unchanged_count,
-        eligible_count=counts[ApplicationStatus.ELIGIBLE],
-        filtered_out_count=counts[ApplicationStatus.INELIGIBLE],
+        eligible_count=eligible_count,
+        filtered_out_count=filtered_out_count,
         settings_fingerprint=settings_fingerprint(settings),
     )
     db.add(sync_run)
@@ -391,21 +386,3 @@ def reason_to_payload(reason: FilterReason) -> dict[str, Any]:
         "message": reason.message,
         "details": reason.details,
     }
-
-
-def _has_ai_flags(db: Session, application: Application) -> bool:
-    """Whether the application's most recent screening pass found any flags.
-
-    A new application (no id yet) cannot have prior AI results.
-    """
-    if application.id is None:
-        return False
-    result = db.scalar(
-        select(ApplicationAIResult)
-        .where(
-            ApplicationAIResult.application_id == application.id,
-            ApplicationAIResult.kind == "screening",
-        )
-        .order_by(ApplicationAIResult.created_at.desc())
-    )
-    return bool(result and (result.output or {}).get("flags"))
