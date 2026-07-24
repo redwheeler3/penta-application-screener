@@ -9,9 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Application, SyncRun
-from app.domain.hard_filters import evaluate_hard_filters
 from app.schemas.settings import AppSettings, EligibilityRules
-from app.services.rules import committee_default_rules, rules_config_from
+from app.services.rules import committee_default_rules
 
 EMAIL_ALIASES = ["email address", "applicant email", "email"]
 APPLICANT_NAME_ALIASES = ["applicant name", "name", "applicant full name"]
@@ -134,25 +133,17 @@ def import_applications_from_rows(
     imported_count = 0
     updated_count = 0
     unchanged_count = 0
-    # The machine baseline at import time: an applicant is filtered out iff the rules gave
-    # a reason. Eligibility is now per-member and computed on read (a member's rules and any
-    # override apply on top), but import is pre-any-member-view, so these counts describe the
-    # shared COMMITTEE-DEFAULT baseline — the only eligibility fact that exists at import.
-    eligible_count = 0
-    filtered_out_count = 0
 
-    # Import no longer stores per-applicant reasons (the column is gone); it only syncs +
-    # normalizes + upserts. The eligible/filtered summary is evaluated against the shared
-    # committee-default ruleset — a single ruleset eval per app — so the sync counts still
-    # mean something even though eligibility itself is per-member on read.
+    # Import only syncs + normalizes + upserts — it does NOT evaluate eligibility. Eligibility
+    # is per-member and computed on read (a member's rules + overrides + AI flags), so there is
+    # no eligible/filtered count to compute here that would mean anything for a member's view.
+    # The committee default is still loaded, but only to stamp the import-staleness fingerprint.
     default_rules = committee_default_rules(db)
-    rules = rules_config_from(default_rules)
 
     for email, row in latest_by_email.items():
         raw_hash = hash_row(row)
         normalized = normalize_application(row)
         normalized = _make_json_safe(normalized)
-        result = evaluate_hard_filters(normalized, rules)
 
         application = db.scalar(select(Application).where(Application.primary_email == email))
         if application is None:
@@ -167,10 +158,9 @@ def import_applications_from_rows(
             )
             db.add(application)
         else:
-            # "Unchanged" means the source row is byte-identical. Reasons are no longer
-            # stored (they're computed per-member on read), so the row hash alone decides
-            # unchanged vs. updated. Skip the write entirely so updated_at is untouched for
-            # genuinely unchanged rows.
+            # "Unchanged" means the source row is byte-identical. Reasons are computed
+            # per-member on read, so the row hash alone decides unchanged vs. updated. Skip
+            # the write entirely so updated_at is untouched for genuinely unchanged rows.
             if application.raw_row_hash == raw_hash:
                 unchanged_count += 1
             else:
@@ -181,11 +171,6 @@ def import_applications_from_rows(
                 application.raw_row_hash = raw_hash
                 application.normalized = normalized
 
-        if result.reasons:
-            filtered_out_count += 1
-        else:
-            eligible_count += 1
-
     sync_run = SyncRun(
         source_sheet_id=source_sheet_id,
         row_count=len(rows),
@@ -193,8 +178,6 @@ def import_applications_from_rows(
         imported_count=imported_count,
         updated_count=updated_count,
         unchanged_count=unchanged_count,
-        eligible_count=eligible_count,
-        filtered_out_count=filtered_out_count,
         settings_fingerprint=settings_fingerprint(settings, default_rules),
     )
     db.add(sync_run)

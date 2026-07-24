@@ -73,8 +73,6 @@ def sync_applications(
         imported_count=sync_run.imported_count,
         updated_count=sync_run.updated_count,
         unchanged_count=sync_run.unchanged_count,
-        eligible_count=sync_run.eligible_count,
-        filtered_out_count=sync_run.filtered_out_count,
     )
 
 

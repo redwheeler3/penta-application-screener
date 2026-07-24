@@ -18,5 +18,3 @@ class SyncResponse(ResponseModel):
     imported_count: int
     updated_count: int
     unchanged_count: int
-    eligible_count: int
-    filtered_out_count: int

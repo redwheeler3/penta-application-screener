@@ -100,7 +100,7 @@ def test_normalize_application_extracts_real_form_fields() -> None:
     assert normalized["pets_text"] == "one dog and one cat"
 
 
-def test_import_applications_dedupes_by_latest_email_and_applies_filters() -> None:
+def test_import_applications_dedupes_by_latest_email_and_upserts() -> None:
     db = make_session()
     rows = [
         {
@@ -131,12 +131,11 @@ def test_import_applications_dedupes_by_latest_email_and_applies_filters() -> No
     assert sync_run.duplicate_count == 1
     assert sync_run.imported_count == 1
     assert application is not None
+    # Last row wins the dedupe (by email), and its normalized data is what's stored. Import
+    # does not evaluate eligibility — that's per-member, computed on read — so there is no
+    # eligible/filtered count to assert here.
     assert application.applicant_name == "New"
-    # This fixture row owns real estate, so under the committee-default ruleset it trips a
-    # hard filter — the import summary counts it filtered-out (reasons themselves are no
-    # longer stored; they're computed on read per member).
-    assert sync_run.filtered_out_count == 1
-    assert sync_run.eligible_count == 0
+    assert application.normalized["has_real_estate"] is True
 
 
 def test_reimport_of_identical_rows_counts_unchanged_not_updated() -> None:
