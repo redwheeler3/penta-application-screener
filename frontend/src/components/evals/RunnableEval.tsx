@@ -352,6 +352,16 @@ function dotFor(mode: EvalRunMode, result: EvalCaseResult): "ok" | "fail" | "con
   if (CATEGORICAL.has(mode) && result.contested) {
     return result.verdict === result.expected ? "ok" : "contested";  // agree = green, diverge = amber
   }
+  // Screening: for a case that names a contested category, mirror consolidation's contested
+  // dot — green when the model stayed on the safe side (the contested flag did NOT fire),
+  // amber only when it took the debatable flag (fired it). Both pass; a contested flag never
+  // reds. A real failure elsewhere (over-reach or missed required flag) still wins as red.
+  if (mode === "screening" && result.contestedCategories?.length && resultOk(mode, result)) {
+    const firedContested = (result.categories ?? []).some((c) =>
+      result.contestedCategories?.includes(c),
+    );
+    return firedContested ? "contested" : "ok";
+  }
   return resultOk(mode, result) ? "ok" : "fail";
 }
 
@@ -626,6 +636,9 @@ function CaseResult(props: { evalKey: EvalRunMode; result: EvalCaseResult }): Re
           flags: <span className="eval-mono">{r.categories?.length ? r.categories.join(", ") : "none"}</span>
           {r.fires?.length ? <span className="eval-verdict">{" · "}expect: {r.fires.join(", ")}</span> : null}
           {r.absent?.length ? <span className="eval-verdict">{" · "}guard: no {r.absent.join(", ")}</span> : null}
+          {r.contestedCategories?.length ? (
+            <span className="eval-verdict">{" · "}contested: {r.contestedCategories.join(", ")}</span>
+          ) : null}
           {r.failures?.map((f: string) => (
             <div key={f} className="eval-check-detail">
               {f}

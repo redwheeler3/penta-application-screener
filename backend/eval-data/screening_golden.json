@@ -327,13 +327,16 @@
     {
       "key": "modesty_essay_contested_axis",
       "metadata": {
-        "note": "EXTRACTION anchor (two cats -> dogs=0, cats=2, no others) keeps this case non-clean, while internal_inconsistency on the skills essay is a CONTESTED axis, deliberately left out of BOTH fires and absent so it's ungraded either way: the same essay ('we don't really have any handy skills… that said, I'm a certified electrician') was read by one production run as self-deprecating modesty (don't flag) and by another — after the prompt broadened contradictions to cover within-essay — as a direct self-contradiction (flag). Both are defensible tone-vs-fact calls; stability on that flag is the signal, not its direction. Because the case sets a pets expectation, an incidental flag doesn't fail it (it isn't a 'clean' case), so only the pet extraction is graded and the contested axis stays ungraded. (Pre-1e the anchor was a pet_policy flag; the two cats are now an extraction fact.)",
+        "note": "internal_inconsistency on the skills essay is a CONTESTED axis, named in expected.contested so the eval displays it and a run-to-run flip reads [contested-split], not [UNSTABLE]: the same essay ('we don't really have any handy skills… that said, I'm a certified electrician') was read by one production run as self-deprecating modesty (don't flag) and by another — after the prompt broadened contradictions to cover within-essay — as a direct self-contradiction (flag). Both are defensible tone-vs-fact calls; stability on that flag is the signal, not its direction. Because the case sets a pets expectation, an incidental flag doesn't fail it (it isn't a 'clean' case), so only the pet extraction is graded and the contested axis stays ungraded. (Pre-1e the anchor was a pet_policy flag; the two cats are now an extraction fact.)",
         "pass": "screening",
         "source": "synthetic pool, application id 12 (Riley Singh) — an exact slice of a real synthetic record.",
         "label_rationale": "The two cats are extracted as facts (dogs=0, cats=2); the per-member cat limit is judged downstream, not here. internal_inconsistency is genuinely contested (modesty-self-corrected vs. factual self-contradiction), so it is neither required nor forbidden; the case grades only the pet extraction.",
         "expected": {
           "fires": [],
           "absent": [],
+          "contested": [
+            "internal_inconsistency"
+          ],
           "pets": {
             "dogs": 0,
             "cats": 2,
@@ -596,6 +599,11 @@
           "fires": [],
           "absent": [
             "fake_contact"
+          ],
+          "contested": [
+            "spam_essay",
+            "minimal_essay",
+            "ai_generated_essay"
           ],
           "pets": {
             "dogs": 1,

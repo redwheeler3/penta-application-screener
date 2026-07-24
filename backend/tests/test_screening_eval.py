@@ -88,6 +88,39 @@ def test_pet_extraction_case_grades_facts_not_flags() -> None:
     assert any("dogs" in f for f in wrong.failures)
 
 
+def test_contested_category_passes_whether_it_fires_or_not() -> None:
+    """A contested category (named in expected.contested) is neither required nor forbidden:
+    the case passes whether the model fires it or not — both are defensible."""
+    from app.ai.schemas import FlagCategory
+
+    case = next(c for c in load_cases() if c.contested)
+    contested_cat = FlagCategory(case.contested[0])
+    pets = PetFacts(**case.expected_pets) if case.expected_pets else None
+
+    fired = run_case(_mock(flags=(contested_cat,), pets=pets), case, screening_model="m")
+    not_fired = run_case(_mock(pets=pets), case, screening_model="m")
+    assert fired.passed is True, "contested category firing must not fail the case"
+    assert not_fired.passed is True, "contested category not firing must not fail the case"
+
+
+def test_contested_stability_flip_reads_contested_split_not_unstable() -> None:
+    """A run-to-run flip on a contested category is expected (both defensible), so it reads
+    [contested-split], not [UNSTABLE] — the screening analogue of the categorical contested."""
+    from app.ai.schemas import FlagCategory
+
+    case = next(c for c in load_cases() if c.contested)
+    contested_cat = FlagCategory(case.contested[0])
+    pets = PetFacts(**case.expected_pets) if case.expected_pets else None
+    provider = MockProvider()
+    for fire in (True, False, True, False):
+        provider.queue(ScreeningReport(
+            flags=[ScreeningFlag(category=contested_cat, summary="s", evidence="e")] if fire else [],
+            pets=pets or PetFacts(),
+        ))
+    rep = stability_run(provider, case, screening_model="m", k=4)
+    assert rep.marker == "[contested-split]"
+
+
 def test_stability_flags_a_changing_flag_set() -> None:
     """The flag SET changing run-to-run is the instability signal: no flags one run,
     an OTHER flag the next → flipped, [UNSTABLE]. Uses a clean case so the flag alone drives

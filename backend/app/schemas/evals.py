@@ -209,6 +209,7 @@ class ScreeningCaseOut(ResponseModel):
     categories: list[str] = []  # the flag categories the model produced
     fires: list[str] = []  # categories that were expected to fire
     absent: list[str] = []  # categories guarded against (over-reach)
+    contested_categories: list[str] = []  # categories that could defensibly fire or not (both pass)
     reason: str = ""  # the model's reasoning + per-flag evidence (explains a fire or a miss)
     failures: list[str] = []
 
