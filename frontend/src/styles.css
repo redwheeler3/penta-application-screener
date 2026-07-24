@@ -390,6 +390,12 @@ h1 {
   margin: 0;
 }
 
+/* Intro paragraph at the top of the Committee Defaults subtab — above the form, so it
+   reads as a section lede rather than landing in a form column. */
+.committee-defaults-intro {
+  margin: 0 0 1rem;
+}
+
 /* The "compared to committee default" divergence panel (M15 1f), full-width above the
    member's own rule fields. Shows only the fields that differ + a Reset action. */
 .divergence-panel {

@@ -204,42 +204,44 @@ function CommitteeDefaultsPanel(props: { onError: (message: string) => void }): 
       {!draft ? (
         <p className="panel-hint">Loading…</p>
       ) : (
-        <form className="settings-form" onSubmit={save}>
-          <p className="panel-hint">
+        <>
+          <p className="panel-hint committee-defaults-intro">
             The shared baseline every member follows until they personalize their own rules.
             Changing it does not affect members who've already diverged.
           </p>
-          {NUMERIC_FIELDS.map((f) => (
-            <label key={f.key}>
-              <span>{f.label}</span>
-              <NumberInput
-                min={f.min}
-                max={f.max}
-                value={draft[f.key] as number}
-                onChange={(v) => set({ [f.key]: v ?? 0 } as Partial<EligibilityRules>)}
+          <form className="settings-form" onSubmit={save}>
+            {NUMERIC_FIELDS.map((f) => (
+              <label key={f.key}>
+                <span>{f.label}</span>
+                <NumberInput
+                  min={f.min}
+                  max={f.max}
+                  value={draft[f.key] as number}
+                  onChange={(v) => set({ [f.key]: v ?? 0 } as Partial<EligibilityRules>)}
+                />
+              </label>
+            ))}
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={draft.allowOtherPets}
+                onChange={(event) => set({ allowOtherPets: event.target.checked })}
               />
+              <span>Allow other pets</span>
             </label>
-          ))}
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={draft.allowOtherPets}
-              onChange={(event) => set({ allowOtherPets: event.target.checked })}
-            />
-            <span>Allow other pets</span>
-          </label>
-          <div className="rules-section">
-            <h3>Screening checks</h3>
-            <p className="rules-hint">Unchecked checks are off in the committee default.</p>
-            <DefaultCheckGroup title="Deterministic rules" checks={DETERMINISTIC_CHECKS} draft={draft} toggle={toggle} />
-            <DefaultCheckGroup title="AI screening checks" checks={AI_CHECKS} draft={draft} toggle={toggle} />
-          </div>
-          <div className="settings-actions">
-            <button className="primary-button" type="submit" disabled={saving}>
-              {saving ? "Saving" : savedTick ? "Saved" : "Save committee defaults"}
-            </button>
-          </div>
-        </form>
+            <div className="rules-section">
+              <h3>Screening checks</h3>
+              <p className="rules-hint">Unchecked checks are off in the committee default.</p>
+              <DefaultCheckGroup title="Deterministic rules" checks={DETERMINISTIC_CHECKS} draft={draft} toggle={toggle} />
+              <DefaultCheckGroup title="AI screening checks" checks={AI_CHECKS} draft={draft} toggle={toggle} />
+            </div>
+            <div className="settings-actions">
+              <button className="primary-button" type="submit" disabled={saving}>
+                {saving ? "Saving" : savedTick ? "Saved" : "Save committee defaults"}
+              </button>
+            </div>
+          </form>
+        </>
       )}
     </div>
   );
