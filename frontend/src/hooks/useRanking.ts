@@ -31,11 +31,16 @@ export interface RankingState {
    * them, so App clears them optimistically when the run starts and restores on failure.
    * The server is the source of truth; this only steers what the UI shows meanwhile. */
   setDisplayedProposals: (proposed: string[]) => void;
-  /** True once a tier/seed save was rejected because another member re-ranked since this
-   * member loaded the board (409 stale_analysis). Drives a "reload" banner; the member's
-   * rejected edit is not applied. Cleared by ``reloadStaleRanking``. */
+  /** True once we've detected the loaded ranking is no longer current — either a tier/seed
+   * save was rejected (409 stale_analysis) or a focus-time check saw the current analysis id
+   * drift. Drives a global "reload" toast; cleared by ``reloadStaleRanking``. */
   staleAnalysis: boolean;
-  /** Re-fetch the current analysis + ranking + tiers and clear the stale flag — the banner's
+  /** Cheaply check whether the loaded ranking is still current (compares the server's current
+   * analysis id to the loaded one) and set ``staleAnalysis`` on drift. Called on tab focus /
+   * visibility so a passively-viewing member learns another member re-ranked without a manual
+   * refresh. No-op when nothing is loaded yet. */
+  checkForStaleRanking: () => Promise<void>;
+  /** Re-fetch the current analysis + ranking + tiers and clear the stale flag — the toast's
    * Reload action. Returns whether the reload succeeded. */
   reloadStaleRanking: () => Promise<boolean>;
 }
@@ -64,13 +69,31 @@ export function useRanking(onError: (message: string) => void): RankingState {
     return false;
   }
 
-  // The banner's Reload action: pull the new current analysis + ranking + tiers, then clear
+  // The toast's Reload action: pull the new current analysis + ranking + tiers, then clear
   // the flag. Everything the member sees is replaced with the up-to-date board.
   async function reloadStaleRanking(): Promise<boolean> {
     await refreshRankingRun();
     const ok = await loadRanking();
     if (ok) setStaleAnalysis(false);
     return ok;
+  }
+
+  // Passive staleness check (tab focus / visibility). Compares the server's current analysis
+  // id to the one this browser has loaded; if they differ, another member re-ranked and this
+  // view is stale. One cheap GET; no-op if nothing is loaded, already flagged stale, or the
+  // fetch fails (a transient error shouldn't nag). The reload itself stays a deliberate action
+  // (the toast), so a member mid-tiering isn't yanked.
+  async function checkForStaleRanking(): Promise<void> {
+    const loadedId = ranking?.analysisId ?? rankingRun?.analysisId;
+    if (loadedId === undefined || loadedId === null || staleAnalysis) return;
+    try {
+      const response = await api.fetchRankingCurrent();
+      if (!response.ok) return;
+      const current: CurrentRunResponse | null = await response.json();
+      if (current && current.analysisId !== loadedId) setStaleAnalysis(true);
+    } catch {
+      /* transient — try again on the next focus */
+    }
   }
 
   function refreshRankingRun() {
@@ -116,9 +139,10 @@ export function useRanking(onError: (message: string) => void): RankingState {
         );
       }
     } else if (!(await handleSaveFailure(response))) {
-      // Not a stale-analysis rejection — a genuine failure. Reconcile to the server's truth.
-      // (A stale save is handled by the banner; don't reload underneath the member.)
-      onError("Could not update the tiers.");
+      // Not a stale-analysis rejection — a genuine failure (e.g. a rank in progress blocked
+      // the save so a late edit can't vanish). Surface the server's reason and reconcile to
+      // its truth, which reverts the optimistic setTiers above — the edit didn't persist.
+      onError((await readProblem(response)) ?? "Could not update the tiers.");
       loadRanking();
     }
   }
@@ -152,8 +176,8 @@ export function useRanking(onError: (message: string) => void): RankingState {
         run ? { ...run, proposedDimensions: echoed.proposedDimensions } : run,
       );
     } else if (!(await handleSaveFailure(response))) {
-      onError("Could not save the suggested criteria.");
-      refreshRankingRun(); // reconcile back to server truth
+      onError((await readProblem(response)) ?? "Could not save the suggested criteria.");
+      refreshRankingRun(); // reconcile back to server truth (reverts the optimistic set)
     }
   }
 
@@ -185,6 +209,7 @@ export function useRanking(onError: (message: string) => void): RankingState {
     removeProposal,
     setDisplayedProposals,
     staleAnalysis,
+    checkForStaleRanking,
     reloadStaleRanking,
   };
 }

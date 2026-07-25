@@ -27,6 +27,17 @@ export function Toasts(props: { toasts: Toast[]; onDismiss: (id: number) => void
           >
             <div className="toast-message">{toast.message}</div>
             <div className="toast-actions">
+              {toast.action ? (
+                <button
+                  className="toast-action-button"
+                  onClick={() => {
+                    toast.action?.onClick();
+                    props.onDismiss(toast.id);
+                  }}
+                >
+                  {toast.action.label}
+                </button>
+              ) : null}
               {persists ? (
                 <button
                   className="toast-button"

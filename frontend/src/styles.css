@@ -568,6 +568,25 @@ h1 {
   background: rgba(255, 255, 255, 0.2);
 }
 
+/* A labeled recovery action on a toast (e.g. "Reload"). Wider than the icon buttons; same
+   translucent-on-toast treatment so it reads as part of the toast, not a page button. */
+.toast-action-button {
+  padding: 0 0.7rem;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.16);
+  color: currentColor;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.toast-action-button:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -2389,28 +2408,6 @@ input[type="radio"] {
   padding: 1.25rem;
 }
 
-/* Another member re-ranked and this member's save was rejected (409 stale_analysis).
-   Amber — attention needed, non-fatal — matching the workflow's stale semantics. */
-.stale-analysis-banner {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 1rem;
-  padding: 0.65rem 0.85rem;
-  border-radius: 8px;
-  background: #fef3c7;
-  color: #92400e;
-  font-size: 0.85rem;
-  line-height: 1.4;
-}
-
-.stale-analysis-banner span {
-  flex: 1;
-}
-
-.stale-analysis-banner .primary-button {
-  flex-shrink: 0;
-}
 
 .ranking-header {
   display: flex;

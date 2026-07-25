@@ -506,7 +506,15 @@ export type FanOutAuditResponse = {
 
 // A notification toast. Success toasts auto-dismiss; error toasts persist until
 // dismissed (and offer a copy button), so a failure can't scroll away unread.
-export type Toast = { id: number; message: string; variant: "success" | "error" | "warning" };
+// An optional recovery button on a toast (e.g. "Reload" on the stale-ranking notice).
+// Clicking it runs onClick, then the toast dismisses itself.
+export type ToastAction = { label: string; onClick: () => void };
+export type Toast = {
+  id: number;
+  message: string;
+  variant: "success" | "error" | "warning";
+  action?: ToastAction;
+};
 
 export type ScreeningEstimateResponse = {
   total: number;

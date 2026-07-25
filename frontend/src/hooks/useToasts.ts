@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import type { Toast } from "../types";
+import type { Toast, ToastAction } from "../types";
 
 const TOAST_DURATION_MS = 10000;
 
@@ -9,8 +9,10 @@ export interface ToastControls {
   showToast: (message: string) => void;
   /** An error toast — persists until the user dismisses it. */
   showError: (message: string) => void;
-  /** A degraded-run warning — like an error, stays until acknowledged. */
-  showWarning: (message: string) => void;
+  /** A degraded-run warning — like an error, stays until acknowledged. An optional action
+   * adds a recovery button (e.g. "Reload" on the stale-ranking notice); returns the toast id
+   * so a caller can dismiss/de-dupe it. */
+  showWarning: (message: string, action?: ToastAction) => number;
   dismissToast: (id: number) => void;
 }
 
@@ -35,11 +37,12 @@ export function useToasts(): ToastControls {
     // No auto-dismiss: errors stay until the user reads and dismisses them.
   }
 
-  function showWarning(message: string) {
+  function showWarning(message: string, action?: ToastAction): number {
     const id = (toastSeq.current += 1);
-    setToasts((current) => [...current, { id, message, variant: "warning" }]);
+    setToasts((current) => [...current, { id, message, variant: "warning", action }]);
     // No auto-dismiss: a degraded-run warning should stay until the user reads it,
     // like an error — it's non-fatal but worth a deliberate acknowledgement.
+    return id;
   }
 
   function dismissToast(id: number) {

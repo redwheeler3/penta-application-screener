@@ -154,6 +154,7 @@ export function App() {
     removeProposal,
     setDisplayedProposals,
     staleAnalysis,
+    checkForStaleRanking,
     reloadStaleRanking,
   } = useRanking(showError);
 
@@ -197,6 +198,40 @@ export function App() {
     reloadApplications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  // A ranking became stale (another member re-ranked) — surface it as a global toast with a
+  // Reload action, so it reaches the member wherever they are on the page (not only on the
+  // Ranking tab). Fired once per stale transition; the ref de-dupes re-renders while stale.
+  const staleToastShown = useRef(false);
+  useEffect(() => {
+    if (staleAnalysis && !staleToastShown.current) {
+      staleToastShown.current = true;
+      showWarning(
+        "This ranking was refreshed by another member. Reload to see the current criteria.",
+        { label: "Reload", onClick: () => void reloadStaleRanking() },
+      );
+    } else if (!staleAnalysis) {
+      staleToastShown.current = false; // reset once reloaded, so a later drift toasts again
+    }
+  }, [staleAnalysis, showWarning, reloadStaleRanking]);
+
+  // Detect staleness passively: when the member returns to the tab/window, cheaply re-check
+  // whether the loaded ranking is still current. There's no server push, so this catches the
+  // "switched away, another member re-ranked, came back" case without a manual refresh (and
+  // without a standing background poll). A save onto a stale board is already caught by the
+  // 409 path; this covers passive viewing.
+  useEffect(() => {
+    if (!user) return;
+    const onFocus = () => {
+      if (document.visibilityState === "visible") void checkForStaleRanking();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [user, checkForStaleRanking]);
 
   function applySettingsResponse(payload: SettingsResponse) {
     const sheetId = resolveSheetId(payload);
@@ -750,8 +785,6 @@ export function App() {
                 onRemoveProposal={removeProposal}
                 onSelectApplication={viewApplication}
                 onToggleStar={toggleStar}
-                staleAnalysis={staleAnalysis}
-                onReloadStale={reloadStaleRanking}
               />
             ) : activeTab === "observability" ? (
               <AIQualityView family="obs" run={rankingRun} onToast={showToast} onError={showError} />
