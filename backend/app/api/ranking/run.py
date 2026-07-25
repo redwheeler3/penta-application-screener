@@ -89,14 +89,14 @@ from app.services.analysis import (
     all_known_dimensions,
     apply_consolidation,
     carry_forward_layout,
+    committee_kept_keys,
+    committee_proposed_dimensions,
     create_analysis,
     current_dimension_report,
     get_current_analysis,
     get_or_create_member_ranking,
-    kept_keys,
     key_history,
     mark_ranking_current,
-    proposed_dimensions,
     ranking_is_current,
     tier_history,
 )
@@ -459,9 +459,6 @@ def _stream_criteria(
     # "Matching scope".
     prior_analysis = get_current_analysis(db)
     prior_report = current_dimension_report(prior_analysis) if prior_analysis else None
-    prior_ranking = (
-        get_or_create_member_ranking(db, prior_analysis, user) if prior_analysis else None
-    )
     match_history = all_known_dimensions(db)  # every dimension ever, one per key
     scaffold_tiers, tier_by_key = tier_history(db, user)
     # The immediately-prior run's keys: a dimension present here is continuous in
@@ -475,14 +472,19 @@ def _stream_criteria(
     # grounded + scored → injected at DECOMPOSITION, not discovery, so all K
     # discoverers stay blind (seeding them would correlate the samples and cost
     # coverage). An empty set leaves discovery fully blind (first-run).
-    prior_kept = kept_keys(prior_ranking) if prior_ranking else []
+    #
+    # Both are the COMMITTEE union, not just the triggering member (M15 Phase 2; ADR 0011): an
+    # axis survives if ANY member tiered it, and every member's proposals steer the one shared
+    # discovery — so one member's re-rank can't drop another's kept axis or ignore their ask.
+    # Tier carry-forward below stays per-member (the triggering member's own placements).
+    committee_kept = committee_kept_keys(db, prior_report)
     kept_dims = [
         d
         for d in (prior_report.dimensions if prior_report else [])
-        if d.key in set(prior_kept)
+        if d.key in committee_kept
     ]
     seeds = DiscoverySeeds(
-        proposed=proposed_dimensions(prior_ranking) if prior_ranking else [],
+        proposed=committee_proposed_dimensions(db, prior_analysis),
     )
 
     # Carry K (the fan-out width) on the criteria phase event's `total` so the UI can

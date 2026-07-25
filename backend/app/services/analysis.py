@@ -661,6 +661,61 @@ def proposed_dimensions(member_ranking: MemberRanking) -> list[str]:
     return list((member_ranking.run_state or {}).get("proposed_dimensions", []))
 
 
+def committee_kept_keys(db: Session, report: PoolDimensionReport | None) -> set[str]:
+    """The union of every member's KEPT axes — a dimension survives a re-rank if ANY member
+    placed it in a working tier (M15 Phase 2, "keep-if-any-member-tiered"; ADR 0011). This is
+    what the decomposition MUST-survive set is built from, replacing the single triggering
+    member's ``kept_keys``: one member's re-rank must not drop an axis another member relies on.
+
+    Each member's kept set is their MOST-RECENT working-tier placement across all their
+    rankings (via ``tier_history``), not just their view of the immediately-prior analysis — so
+    a member who skipped the last run still protects the axes they tiered. Ignore maps to a
+    non-working id, so an Ignored key is correctly excluded. Restricted to keys still present in
+    ``report`` (the prior analysis's dimensions — the only axes a re-rank could carry), so a
+    stale placement naming a dropped dimension can't resurrect it. Empty on a first run.
+    """
+    if report is None:
+        return set()
+    valid = {d.key for d in report.dimensions}
+    kept: set[str] = set()
+    for user in db.scalars(select(User)):
+        _, most_recent_tier_by_key = tier_history(db, user)
+        kept.update(
+            key
+            for key, tier_id in most_recent_tier_by_key.items()
+            if tier_id != IGNORE_TIER_ID and key in valid
+        )
+    return kept
+
+
+def committee_proposed_dimensions(db: Session, analysis: Analysis | None) -> list[str]:
+    """The union of every member's pending free-text proposals on ``analysis`` — the axes the
+    committee wants the next Rank's discovery to ground (M15 Phase 2, "shared-union discovery
+    merge"; ADR 0011). Replaces the single triggering member's ``proposed_dimensions``: a
+    proposal steers the shared discovery regardless of who triggers the run.
+
+    Deduped case-insensitively, first-seen wording kept, stable order (members oldest-first,
+    then each member's own order) so the discovery prompt reads deterministically. Proposals are
+    per-analysis, so a new analysis consumes everyone's (each member's fresh ranking starts
+    empty) — no clearing needed here. Empty on a first run (no prior analysis)."""
+    if analysis is None:
+        return []
+    seen: set[str] = set()
+    union: list[str] = []
+    rankings = db.scalars(
+        select(MemberRanking)
+        .where(MemberRanking.analysis_id == analysis.id)
+        .order_by(MemberRanking.user_id)
+    ).all()
+    for ranking in rankings:
+        for text in proposed_dimensions(ranking):
+            fold = text.strip().casefold()
+            if fold and fold not in seen:
+                seen.add(fold)
+                union.append(text)
+    return union
+
+
 def _audit_field(analysis: Analysis, name: str) -> dict | None:
     """One field off the analysis's 1:1 audit row (``match``/``decompose``/``consolidate``/
     ``fan_out``), or None when it has no audit row (predates the split) — so the audit-view
