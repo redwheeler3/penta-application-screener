@@ -456,17 +456,18 @@ Two things were intentionally **not** built: per-*requester* proposal attributio
 
 ### Concurrency & Correctness (M16) — software, not infra
 
-Multi-member introduces real concurrent writes. This is a **software** concern (guards, leases, atomic accounting) that stands on its own regardless of where the DB lives — distinct from hosting (M17), which is infra. A multi-member concurrency audit (2026-07-24) classified the hazards; the first hardening slice is done, the rest is scoped here.
+Multi-member introduces real concurrent writes. This is a **software** concern (guards, leases, atomic accounting) that stands on its own regardless of where the DB lives — distinct from hosting (M17), which is infra. A multi-member concurrency audit (2026-07-24) classified the hazards; the load-bearing hardening is **done**, and the residual items are deliberately deferred (rationale below).
 
-**Done (2026-07-24):**
+**Done (2026-07-24 → 25):**
 - **Reads are safe by the shared-union design** — the screening/scoring cache is content-addressed with no member id, so after one member runs Screen/Rank every other member sees the result (their amber turns green) with no action and no re-bill; a no-op run is blocked (`unchanged_pool`). This is ADR 0011 working as intended, not luck.
 - **SQLite `WAL` + `busy_timeout=5000`** (`app/db/session.py`) — readers no longer block the writer, and a colliding writer WAITS (up to 5s, retrying) instead of failing instantly with "database is locked". Runs commit per item (short locks), so this covers real overlap. Purely defensive; no behavior change.
 - **A single run lease serializes the expensive runs** (`RunLock` + `services/run_lock`) — Screen / full Rank / score-current claim one DB-backed lease (atomic conditional UPDATE, 15-min TTL steal so a crashed run self-heals) and 409 (`run_in_progress`) if another holds it. This closes the one genuinely destructive overlap — two concurrent full Ranks each creating an `Analysis` and last-writer-wins stranding the loser's `MemberRanking` — and also eliminates concurrent-Screen double-billing. DB-backed (not in-process) so it survives multiple web workers under M17. The frontend surfaces the 409 detail as a toast.
+- **Tier/seed edits are blocked during an in-flight rank** — a full rank snapshots the committee kept-list once at the start of discovery then supersedes the analysis, so an edit made after that snapshot (e.g. dragging an axis out of Ignore) could neither reach the run nor survive it, silently vanishing. `_require_viewed_analysis` rejects the save (`run_in_progress`, holder-agnostic so it covers the initiator's own run) rather than let the edit persist onto a doomed board.
+- **Stale-view detection landed** — the deferred M15 1b "this ranking was refreshed by another member" UX now exists as a global toast with a Reload action, raised both on a `409 stale_analysis` save AND on tab focus/visibility (a cheap current-analysis-id check; no standing poll). Suppressed during the member's own run to avoid a self-inflicted false positive.
 
-**Remaining:**
-1. **Atomic shared spending budget** — the per-run cap is kept; a true committee-wide ceiling that N concurrent runs can't race past needs an atomic accounting store (natural on Postgres). Until then the per-run cap + caching is the control.
-2. **Settings last-write-wins** — two admins saving `app_settings` (or the committee default) concurrently: the whole JSON blob is last-write-wins, no field merge. Acceptable at ~5 trusted members; revisit only if it bites.
-3. **The stale-analysis reload UX** — the `409 stale_analysis` guard on tier/seed saves is correct, but the deferred "this ranking was refreshed — reload" banner + auto-refetch (M15 1b) still wants building once real concurrency exercises it.
+**Deferred (deliberate — recorded so it reads as a decision, not an oversight; Jeff, 2026-07-25):**
+1. **Atomic shared spending budget** — *deferred, not needed yet.* Its original motivation (N concurrent runs racing past the cap) is **already closed by the run lease** — runs can't execute concurrently, so there's no live race on SQLite today. A true committee-wide budget is genuine feature work needing product decisions (scope: per-period vs lifetime? reset cadence? who sets it? remaining-budget UI?) and lands naturally on Postgres's atomic accounting (M17). The per-run cap + near-100% cache hit-rate is the working control; the carry-forward validation (below) confirmed real runs stay well under it.
+2. **Settings last-write-wins** — *accepted.* Two admins saving `app_settings` (or the committee default) at the same instant is last-write-wins on the whole JSON blob, no field merge. Rare and low-consequence at ~5 trusted members; adding optimistic-concurrency here is over-engineering for the actual user count. Revisit only if it bites.
 
 ### Hosting / Go-Live (M17) — infra
 
