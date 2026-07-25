@@ -199,6 +199,48 @@
       }
     },
     {
+      "key": "legal_name_vs_essay_english_name_no_flag",
+      "metadata": {
+        "note": "OVER-REACH GUARD (regression from a real prod false positive, M17): the legal name is on the form (applicant_name) but the essay opens 'My name is <a different English first name>' with NO explicit nickname cue ('call me' / 'go by'). Many applicants — especially those whose legal name is non-English — simply introduce themselves by an anglicized or preferred name. This is normal and must NOT raise internal_inconsistency or any flag. The model previously read the two self-stated names as a factual contradiction.",
+        "pass": "screening",
+        "source": "synthetic — fabricated to reproduce the legal-name-vs-essay-English-name pattern; no real applicant data.",
+        "expected": {
+          "fires": [],
+          "absent": [
+            "internal_inconsistency"
+          ]
+        }
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Kwang su Yun",
+          "co_applicant_name": "Hy-jin Seo",
+          "child_details": [
+            {
+              "first_name": "Grace",
+              "last_name": "Yun",
+              "age": 9
+            },
+            {
+              "first_name": "Daniel",
+              "last_name": "Yun",
+              "age": 6
+            }
+          ],
+          "pets_text": "No pets",
+          "applicant_email": "kwangsu.yun@gmail.com",
+          "co_applicant_email": "hyjin.seo@telus.net",
+          "co_applicant_phone": "604-555-0172"
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "My name is Michael, and I live in Vancouver with my wife and our two children. I work as a project coordinator for a construction firm, managing schedules and documentation for large builds. We value community, hard work, and giving our kids a stable place to grow up. On weekends we're usually at church or out hiking.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "I'm organized and reliable, with strong administrative and coordination skills from my work. I'm comfortable with record keeping, scheduling, and committee work, and I'm happy to pitch in on hands-on maintenance too.",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "I haven't lived in a co-op before, but I've volunteered on organizing committees at our church and coached my daughter's soccer team.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "We want to live somewhere with a real sense of community and shared responsibility. I'd be a dependable member who shows up for meetings and maintenance days and helps keep things running smoothly."
+        }
+      }
+    },
+    {
       "key": "ordinary_applicant_clean",
       "metadata": {
         "note": "A wholly unremarkable applicant — expect ZERO flags. Any flag is a false positive. (No pets expectation: this is the pure zero-flags guard.)",

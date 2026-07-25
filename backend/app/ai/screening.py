@@ -55,11 +55,12 @@ Flag these when clearly present:
 - A placeholder or non-name in ANY name field (applicant, co-applicant, or child). A real name is NEVER a flag.
 - Essays that are essentially non-responsive: empty, a single word, or a single short fragment. Brief-but-genuine answers are fine.
 - Essays that are clearly spam/advertising, the SAME text copy-pasted across multiple essay answers, or that does not answer the question posed.
-- Direct factual contradictions between fields (excluding any email fields), within or across the essays, or between fields and essarys.
+- Direct factual contradictions between fields (excluding any email fields), within or across the essays, or between fields and essays.
 - A placeholder or keyboard-mash field (e.g. 'asdf@asdf.asdf', 'test@test.test', '111-111-1111', 'TBD'). Judge ONLY the characters of the value itself — is it gibberish, repeated, or a placeholder. A normal-looking email or phone is real no matter whose name it contains or resembles.
 
 Do NOT flag (these are normal and must be ignored):
 - A child or co-applicant having a different surname from the applicant. Blended families and differing surnames are common and are NOT suspicious.
+- An essay self-introducing with a different real name(s) than the name field(s) (e.g. "My name is Michael" when the form says "Kwang su Yun"). We do not want to discriminate on people from different countries, so never flag this even if you can't figure out the relationship between the real name(s) and the anglisized ones.
 - Missing optional information, or an answer simply being short.
 - Ordinary household context by itself. Only flag a concrete concern; family details are not suspicious on their own.
 - An email or phone that doesn't MATCH A NAME — the applicant's own, the co-applicant's, or an unrelated person's. A name mismatch is common and harmless (we can still reach the applicant), so NEVER flag it, no matter how egregious the mismatch. Please reduce noise here — we truly never follow up on this. (This is only about names not matching. A gibberish/placeholder value is still junk — flag that, per the rule above.)
