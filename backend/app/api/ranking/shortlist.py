@@ -74,8 +74,8 @@ def _require_viewed_analysis(db: Session, analysis_id: int, user: User) -> Membe
     if rank_run_in_progress(db):
         raise Problem(
             "run_in_progress",
-            detail="A ranking is in progress. Wait for it to finish, then make your changes on "
-            "the refreshed criteria.",
+            detail="A ranking is in progress. Try again in about 10 minutes, then make your "
+            "changes on the refreshed criteria.",
         )
     current = get_current_analysis(db)
     if current is None or current_dimension_report(current) is None:
