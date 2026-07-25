@@ -4,7 +4,7 @@
 #
 # First-time setup (run once, from the repo root):
 #   fly launch --no-deploy --copy-config     # or `fly apps create penta-application-screener`
-#   fly volumes create screener_data --region sea --size 1
+#   fly volumes create screener_data --region sjc --size 1
 #   fly secrets set SESSION_SECRET=$(openssl rand -hex 32) \
 #       GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... \
 #       AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
@@ -12,7 +12,7 @@
 #   fly certs add screener.jeffo.net    # then add the CNAME it prints
 
 app = "penta-application-screener"
-primary_region = "sea"   # Seattle — close to the committee and to Bedrock in us-west-2.
+primary_region = "sjc"   # San Jose — Fly's closest US-West region to Bedrock in us-west-2.
 
 [build]
   dockerfile = "Dockerfile"
