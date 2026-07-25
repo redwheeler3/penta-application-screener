@@ -1,6 +1,6 @@
 import { useState } from "react";
 import * as api from "../api";
-import { readProblem } from "../format";
+import { readProblem, readProblemCode } from "../format";
 import type { CurrentRunResponse, RankingResponse, Tier } from "../types";
 
 export interface RankingState {
@@ -27,6 +27,13 @@ export interface RankingState {
   dismissRequested: (keys: string[]) => Promise<void>;
   addProposal: (text: string) => void;
   removeProposal: (text: string) => void;
+  /** True once a tier/seed save was rejected because another member re-ranked since this
+   * member loaded the board (409 stale_analysis). Drives a "reload" banner; the member's
+   * rejected edit is not applied. Cleared by ``reloadStaleRanking``. */
+  staleAnalysis: boolean;
+  /** Re-fetch the current analysis + ranking + tiers and clear the stale flag — the banner's
+   * Reload action. Returns whether the reload succeeded. */
+  reloadStaleRanking: () => Promise<boolean>;
 }
 
 /** The ranking cluster: the current run's dimensions, the ranked shortlist, and the
@@ -39,6 +46,28 @@ export function useRanking(onError: (message: string) => void): RankingState {
   const [rankingRun, setRankingRun] = useState<CurrentRunResponse | null>(null);
   const [ranking, setRanking] = useState<RankingResponse | null>(null);
   const [tiers, setTiers] = useState<Tier[] | null>(null);
+  const [staleAnalysis, setStaleAnalysis] = useState(false);
+
+  // A save failed: if it's stale_analysis (another member re-ranked since this member
+  // loaded the board), raise the reload banner instead of a generic error toast — the edit
+  // targeted a superseded analysis, so reloading is the fix, not retrying. Returns whether
+  // the failure was handled as stale, so callers only fall back to their generic path if not.
+  async function handleSaveFailure(response: Response): Promise<boolean> {
+    if (await readProblemCode(response) === "stale_analysis") {
+      setStaleAnalysis(true);
+      return true;
+    }
+    return false;
+  }
+
+  // The banner's Reload action: pull the new current analysis + ranking + tiers, then clear
+  // the flag. Everything the member sees is replaced with the up-to-date board.
+  async function reloadStaleRanking(): Promise<boolean> {
+    await refreshRankingRun();
+    const ok = await loadRanking();
+    if (ok) setStaleAnalysis(false);
+    return ok;
+  }
 
   function refreshRankingRun() {
     return api
@@ -82,9 +111,11 @@ export function useRanking(onError: (message: string) => void): RankingState {
           run ? { ...run, requestedDimensionKeys: updated.requestedDimensionKeys } : run,
         );
       }
-    } else {
+    } else if (!(await handleSaveFailure(response))) {
+      // Not a stale-analysis rejection — a genuine failure. Reconcile to the server's truth.
+      // (A stale save is handled by the banner; don't reload underneath the member.)
       onError("Could not update the tiers.");
-      loadRanking(); // reconcile back to the server's truth on failure
+      loadRanking();
     }
   }
 
@@ -116,7 +147,7 @@ export function useRanking(onError: (message: string) => void): RankingState {
       setRankingRun((run) =>
         run ? { ...run, proposedDimensions: echoed.proposedDimensions } : run,
       );
-    } else {
+    } else if (!(await handleSaveFailure(response))) {
       onError("Could not save the suggested criteria.");
       refreshRankingRun(); // reconcile back to server truth
     }
@@ -144,5 +175,7 @@ export function useRanking(onError: (message: string) => void): RankingState {
     dismissRequested,
     addProposal,
     removeProposal,
+    staleAnalysis,
+    reloadStaleRanking,
   };
 }

@@ -104,3 +104,15 @@ export async function readProblem(response: Response): Promise<string | null> {
     return null;
   }
 }
+
+// The machine-readable problem `code` off a failed Response (e.g. "stale_analysis"), or
+// null if the body isn't a problem. For callers that must branch on the KIND of failure,
+// not just show its message.
+export async function readProblemCode(response: Response): Promise<string | null> {
+  try {
+    const body = (await response.json()) as Partial<Problem>;
+    return body.code ?? null;
+  } catch {
+    return null;
+  }
+}

@@ -1,4 +1,4 @@
-import { Plus, Printer, Star, X } from "lucide-react";
+import { Plus, Printer, RefreshCw, Star, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { bandClass, scoreBand } from "../format";
 import type { RankingResponse, CurrentRunResponse, PoolDimension, Tier } from "../types";
@@ -116,6 +116,11 @@ export function RankingView(props: {
   onRemoveProposal: (text: string) => void;
   onSelectApplication: (id: number) => void;
   onToggleStar: (id: number, starred: boolean) => void;
+  // Another member re-ranked since this member loaded the board, so their last tier/seed
+  // save was rejected (409 stale_analysis). Show a reload banner; onReloadStale swaps in the
+  // new analysis + ranking + tiers.
+  staleAnalysis: boolean;
+  onReloadStale: () => void;
 }): ReactNode {
   const { ranking, rankingRun, tiers, proposedDimensions } = props;
   // "Favourites only" is a local view filter over this member's stars — the ranked
@@ -132,6 +137,18 @@ export function RankingView(props: {
 
   return (
     <div className="ranking-view">
+      {props.staleAnalysis ? (
+        <div className="stale-analysis-banner no-print" role="alert">
+          <RefreshCw size={16} aria-hidden="true" />
+          <span>
+            This ranking was refreshed by another member — your last change wasn't saved.
+            Reload to see the current criteria.
+          </span>
+          <button type="button" className="primary-button" onClick={props.onReloadStale}>
+            Reload
+          </button>
+        </div>
+      ) : null}
       <div className="ranking-header">
         <div>
           <h3>Candidate ranking</h3>

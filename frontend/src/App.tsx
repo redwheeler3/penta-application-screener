@@ -152,6 +152,8 @@ export function App() {
     dismissRequested,
     addProposal,
     removeProposal,
+    staleAnalysis,
+    reloadStaleRanking,
   } = useRanking(showError);
 
   // The full Rank discovers a new criteria set; the safe alternative fills missing
@@ -730,6 +732,8 @@ export function App() {
                 onRemoveProposal={removeProposal}
                 onSelectApplication={viewApplication}
                 onToggleStar={toggleStar}
+                staleAnalysis={staleAnalysis}
+                onReloadStale={reloadStaleRanking}
               />
             ) : activeTab === "observability" ? (
               <AIQualityView family="obs" run={rankingRun} onToast={showToast} onError={showError} />
