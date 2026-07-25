@@ -499,6 +499,54 @@ async def test_member_can_override_status() -> None:
 
 
 @pytest.mark.anyio
+async def test_status_overrides_are_scoped_to_the_current_member() -> None:
+    """One member's status override is invisible to another — the endpoint analogue of the
+    per-member override isolation (M15 1c). A member overriding an applicant ineligible must
+    not change what anyone else sees; the other member still reads the machine verdict and can
+    hold the opposite override on the same applicant at the same time."""
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    application = add_eligible(db, email="split@x.com", raw_hash="h1")
+    first_member = db.scalar(select(User).where(User.email == "admin@x.com"))
+    assert first_member is not None
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        # First member forces it ineligible.
+        first = (
+            await client.patch(
+                f"/applications/{application.id}/status", json={"status": "ineligible"}
+            )
+        ).json()["application"]
+        assert first["status"] == "ineligible"
+        assert first["statusSource"] == "human"
+
+        # A second member sees the untouched machine verdict, not the first's override.
+        other_member = User(email="other@x.com", display_name="Other", role=UserRole.MEMBER, is_active=True)
+        db.add(other_member)
+        db.commit()
+        app.dependency_overrides[require_current_user] = lambda: other_member
+
+        detail = (await client.get(f"/applications/{application.id}")).json()["application"]
+        assert detail["status"] == "eligible"
+        assert detail["statusSource"] == "untouched"
+
+        # The second member holds the OPPOSITE override on the same applicant.
+        second = (
+            await client.patch(
+                f"/applications/{application.id}/status", json={"status": "eligible"}
+            )
+        ).json()["application"]
+        assert second["status"] == "eligible"
+        assert second["statusSource"] == "human"
+
+        # The first member's override is unaffected by the second's — still ineligible.
+        app.dependency_overrides[require_current_user] = lambda: first_member
+        detail = (await client.get(f"/applications/{application.id}")).json()["application"]
+        assert detail["status"] == "ineligible"
+        assert detail["statusSource"] == "human"
+
+
+@pytest.mark.anyio
 async def test_flag_count_null_before_run() -> None:
     app, db, _ = setup_app(role=UserRole.ADMIN)
     add_eligible(db, email="a@x.com", raw_hash="h1")
