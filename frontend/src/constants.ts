@@ -1,6 +1,10 @@
 import type { AppStatus, StatusSource } from "./types";
 
-export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+// Prod is single-origin: FastAPI serves this bundle, so API calls are relative ("").
+// Dev keeps the two-origin split (Vite on :5173, API on :8000), so DEV falls back to the
+// backend's dev URL. An explicit VITE_API_BASE_URL overrides either (e.g. a split deploy).
+export const apiBaseUrl =
+  import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? "http://localhost:8000" : "");
 
 // Committee-facing labels for the normalized field keys. Keys not listed here
 // fall back to a title-cased version of the raw key.

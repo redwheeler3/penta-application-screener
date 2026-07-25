@@ -1,11 +1,13 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.allowlist import router as allowlist_router
@@ -82,11 +84,13 @@ def create_app() -> FastAPI:
         same_site="lax",
         https_only=False,
     )
+    # CORS is only load-bearing in the two-origin DEV setup (Vite :5173 → API :8000).
+    # In the single-origin prod deploy (FastAPI serves the bundle) requests are same-origin,
+    # so this allowance is simply never exercised. Driven off `frontend_url` so it's correct
+    # in both without a hardcoded localhost.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",
-        ],
+        allow_origins=[settings.frontend_url],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -105,6 +109,14 @@ def create_app() -> FastAPI:
     app.include_router(settings_router)
     app.include_router(eligibility_rules_router)
     app.include_router(sync_router)
+    # Serve the built frontend as the single origin (M17): API routers are registered above,
+    # so they always win; this catch-all mount handles everything else — the SPA's assets and
+    # its index.html (html=True serves index.html for "/" and for unknown paths). Mounted only
+    # when a build exists, so tests and a build-less dev backend are unaffected (dev serves the
+    # frontend from Vite on :5173). No client-side routing here, so no SPA-fallback nuance.
+    dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    if dist.is_dir():
+        app.mount("/", StaticFiles(directory=dist, html=True), name="spa")
     return app
 
 
