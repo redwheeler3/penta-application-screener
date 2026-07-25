@@ -38,9 +38,14 @@ SCORING_FALLBACK_OUTPUT_TOKENS = 160
 # per-call constant, not per-dimension — see estimate_dimension_scoring.
 SCORING_FALLBACK_INPUT_TOKENS_PER_CANDIDATE = 2900
 
-# Dimensions assumed per candidate before any discovery, so the first-Rank ceiling
-# estimate has a count to multiply by.
-ASSUMED_DIMENSIONS_FIRST_RUN = 15
+# Dimensions assumed per candidate before any discovery, so the first-Rank estimate has a
+# count to multiply by. Only used for the FIRST-EVER Rank (no history); every later run learns
+# the real count from prior analyses. Set from observed behaviour: since the M15/M16 prompt +
+# fan-out changes, discovery consistently settles on ~30–35 dimensions (was 15 under the older
+# architecture — a stale value that made the first prod Rank under-estimate ~2x, since scoring
+# is priced per-dimension). 35 is the top of the observed range: for a cost estimate, leaning
+# slightly high is better than surprising someone with an under-estimate.
+ASSUMED_DIMENSIONS_FIRST_RUN = 35
 
 # Token approximation for a built prompt when we have one but no tokenizer: ~4 chars
 # per token (matches observed ~2,980 chars/4 vs. ~2,880 real input on this pool).
