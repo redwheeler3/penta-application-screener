@@ -27,6 +27,10 @@ export interface RankingState {
   dismissRequested: (keys: string[]) => Promise<void>;
   addProposal: (text: string) => void;
   removeProposal: (text: string) => void;
+  /** Set the displayed pending proposals directly (no persist) — a discover run consumes
+   * them, so App clears them optimistically when the run starts and restores on failure.
+   * The server is the source of truth; this only steers what the UI shows meanwhile. */
+  setDisplayedProposals: (proposed: string[]) => void;
   /** True once a tier/seed save was rejected because another member re-ranked since this
    * member loaded the board (409 stale_analysis). Drives a "reload" banner; the member's
    * rejected edit is not applied. Cleared by ``reloadStaleRanking``. */
@@ -164,6 +168,10 @@ export function useRanking(onError: (message: string) => void): RankingState {
     saveSeeds({ proposedDimensions: rankingRun.proposedDimensions.filter((t) => t !== text) });
   }
 
+  function setDisplayedProposals(proposed: string[]) {
+    setRankingRun((run) => (run ? { ...run, proposedDimensions: proposed } : run));
+  }
+
   return {
     rankingRun,
     ranking,
@@ -175,6 +183,7 @@ export function useRanking(onError: (message: string) => void): RankingState {
     dismissRequested,
     addProposal,
     removeProposal,
+    setDisplayedProposals,
     staleAnalysis,
     reloadStaleRanking,
   };

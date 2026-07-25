@@ -152,6 +152,7 @@ export function App() {
     dismissRequested,
     addProposal,
     removeProposal,
+    setDisplayedProposals,
     staleAnalysis,
     reloadStaleRanking,
   } = useRanking(showError);
@@ -379,11 +380,24 @@ export function App() {
     setScoreCurrentEstimate(null);
     setRankProgress(null);
     setCriteriaThinking("");
+    // A discover run consumes the pending proposals (they become real dimensions). Clear
+    // them from the UI as soon as the run STARTS — they're in use now — rather than leaving
+    // them visible until the run finishes and the refresh lands. Remember them so a failed
+    // run (nothing consumed) can restore them.
+    const priorProposals = rankingRun?.proposedDimensions ?? [];
+    if (mode === "discover" && priorProposals.length > 0) {
+      setDisplayedProposals([]);
+    }
     try {
       const response = mode === "discover" ? await api.runRank() : await api.scoreCurrent();
       if (!response.ok || !response.body) {
         const problem = await readProblem(response);
         showError(problem ? `Ranking failed: ${problem}` : "Ranking failed.");
+        // The run never consumed the proposals — restore them so the member doesn't lose
+        // what they typed.
+        if (mode === "discover" && priorProposals.length > 0) {
+          setDisplayedProposals(priorProposals);
+        }
       } else {
         await api.streamNdjson(response.body, (event) => {
           if (event.type === "phase") {
@@ -430,6 +444,10 @@ export function App() {
       }
     } catch (error) {
       showError(error instanceof Error ? `Ranking error: ${error.message}` : "Ranking error.");
+      // A mid-stream throw may land either before or after the run consumed the proposals
+      // (create_analysis commits at end of phase 1). Reconcile to server truth rather than
+      // guess — refresh restores them if untouched, or confirms them gone if consumed.
+      if (mode === "discover") refreshRankingRun();
     }
     setRankProgress(null);
     setRankRunning(false);
