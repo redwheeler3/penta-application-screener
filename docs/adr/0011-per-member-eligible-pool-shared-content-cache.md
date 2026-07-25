@@ -1,7 +1,7 @@
 # 11. Per-member eligible pool on a shared content-addressed cache (M15)
 
-- Status: **accepted** (scoping; implementation pending)
-- Date: Milestone 15 scoping (2026-07-23)
+- Status: **accepted** (implemented — M15, 2026-07-24)
+- Date: Milestone 15 scoping (2026-07-23); implemented 2026-07-24
 
 ## Context
 
@@ -68,8 +68,15 @@ existing content-addressed cache, not on a shared pool.**
 - The per-run spending cap is **kept** for M15; a true atomic *shared* budget ceiling needs
   the hosted DB (single-tenant assumption #3) and is deferred to M16 — at ~5 members the
   caching is the practical cost control.
-- Committee-proposed seeds feed the one shared discovery (shared axis); only the requester's
-  "you requested this" provenance badge is per-member.
+- Committee-proposed seeds feed the one shared discovery (shared axis); the "you requested
+  this" provenance badge is committee-wide (every member sees it until they dismiss).
+  **As-built deviation:** per-*requester* attribution (only the proposing member sees the
+  badge) was dropped, not deferred. A member's proposal is free text and the discovery model
+  mints the axis key itself — there is no deterministic proposal→key link to attribute on, and
+  once proposals are unioned into one anonymous discovery seed list the requester identity is
+  gone by the time the model returns. Per-requester attribution would need a prompt-echo or
+  text-similarity heuristic plus new stored member→key state; judged not worth it for a small
+  committee (Jeff, 2026-07-24). The shared badge stands.
 - Observability stays committee-wide (shared spend must be legible to all); runs gain a
   "triggered-by member" stamp so shared cost stays attributable.
 - **Accepted corner case (Jeff, 2026-07-23):** consolidation is shared, because "these two
