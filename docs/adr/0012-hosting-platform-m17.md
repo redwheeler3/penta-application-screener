@@ -1,7 +1,7 @@
 # 12. Hosting platform for go-live (M17)
 
-- Status: **accepted** — Fly.io chosen (Jeff, 2026-07-25)
-- Date: Milestone 17 planning (2026-07-25)
+- Status: **deployed & verified** — live at https://screener.pentacoop.com (Jeff, 2026-07-25)
+- Date: Milestone 17 planning + go-live (2026-07-25)
 
 ## Context
 
@@ -125,5 +125,82 @@ None are blockers; they are the standard localhost→prod checklist plus the one
   Turso, and Hetzner — pricing, request-timeout limits, disk/volume support, GitHub-deploy
   ergonomics, and Bedrock credential story. Source URLs captured in the M17 research
   transcript.
-- This ADR is **proposed**, not accepted: it records the analysis and recommendation so the
-  decision can be made deliberately. Promote to **accepted** once the platform is chosen.
+- The analysis above was written pre-decision. Fly.io was chosen and then deployed & verified
+  end-to-end on 2026-07-25 — see **As-deployed** below for what actually shipped (and the ways
+  reality differed from the plan), and **Teardown** for how to shut it down when the co-op no
+  longer needs it.
+
+## As-deployed (2026-07-25) — what actually shipped, and lessons
+
+Live at **https://screener.pentacoop.com**, verified end-to-end: Google login → allowlist →
+sync real applicants → AI screening on Bedrock. Ways reality differed from the plan above:
+
+- **Region: `sjc` (San Jose), not `sea`.** Fly has no Seattle region; `sjc` is the closest
+  US-West to Bedrock in us-west-2.
+- **Idle behavior: `auto_stop_machines = "suspend"`, not `"stop"`.** Plain `stop` cold-started
+  in ~5s — poor UX for a live app. `suspend` freezes to a RAM snapshot and **resumes
+  sub-second** while keeping near-zero idle cost (verified). `min_machines_running = 0`. If
+  suspend ever proves flaky, fall back to `stop`, or pin `min_machines_running = 1` for a flat
+  ~$3–4/mo always-on (verified pricing: shared-cpu-1x 512MB ≈ $3.19/mo compute + $0.15/GB
+  volume; region-dependent).
+- **Domain on the co-op's `pentacoop.com`, not Jeff's personal `jeffo.net`.** DNS is A + AAAA
+  records (Fly recommended these for this app) on Squarespace/Google Domains, not a CNAME. Free
+  shared IPv4 + IPv6; no dedicated IP needed.
+- **AWS: a dedicated *personal* account (`955722303554`), not corporate.** Local dev had used
+  corporate Bedrock (manager-sanctioned for learning); real users on a third-party host made
+  that inappropriate, so go-live uses a personal account with a least-privilege IAM user scoped
+  to `bedrock:InvokeModel*` (+ streaming) on the Claude inference-profile + foundation-model
+  ARNs. Static key stored as a Fly secret (no IAM role off-AWS).
+- **The biggest surprise — Bedrock model access is a per-model, per-region Marketplace
+  subscription, gated behind a use-case form.** A fresh account can't just invoke Anthropic
+  models. It must (1) submit the **Anthropic use-case details** form and (2) accept a
+  **Marketplace subscription** *per model* — and, because the app uses `us.` **cross-region
+  inference profiles** (Haiku 4.5 + Sonnet 4.6) that route across us-east-1/us-east-2/us-west-2,
+  the subscription must exist in **every** region the profile can route to, or invokes fail
+  intermittently with `AccessDenied` (aws-marketplace:Subscribe) as the load-balancer hits an
+  unsubscribed region. Symptom of the intermediate state: slow runs with **retries but no
+  surfaced error** (silent throttle/subscribe-retry). Subscribing must be done by a principal
+  with Marketplace permissions (we used the account root via the Bedrock Playground), NOT the
+  scoped invoke-only app user. This cost the most time of anything in go-live.
+- **New-account Bedrock quotas are low.** First real screens were slow; the leading hypothesis
+  (not yet confirmed) is new-account per-minute request/token quotas throttling the 50-way
+  `max_workers` fan-out into retry-backoff. Fixes if confirmed: request a Service Quotas
+  increase, or lower `max_workers`. Deferred pending a corp-vs-personal quota comparison.
+- **`DATABASE_URL` in `fly.toml [env]` triggers a Fly "may be sensitive" warning — ignore it.**
+  Ours is a SQLite file path, no credentials.
+- **First-admin seeding:** the bootstrap `initial-admins.txt` is gitignored (not in the image),
+  so the first admin was seeded directly into the DB on the volume via `fly ssh console`
+  (`upsert_entry(db, email=..., role=UserRole.ADMIN)`). The allowlist is managed in-app after.
+
+## Teardown — shutting it down when the co-op no longer needs it
+
+When a candidate is found and the tool is no longer in use, tear it down to stop all charges.
+Order matters (delete the app last, so you can still `fly ssh`/snapshot until then). All from
+the repo root with `flyctl` authed to the personal Fly org:
+
+1. **Save the data first (it's applicant PII — keep or destroy deliberately).**
+   - Pull a final copy: `fly ssh console -C "sh -c 'cd /app/backend && uv run python -c \"import sqlite3; sqlite3.connect(\\\"data/penta_screener.db\\\").execute(\\\"VACUUM INTO \\\\\\\"/tmp/final.db\\\\\\\"\\\")\"'"` then `fly ssh sftp get /tmp/final.db ./penta-final-$(date +%Y%m%d).db`.
+   - Or take a Fly volume snapshot: `fly volumes snapshots create <volume-id>` (`fly volumes list` for the id).
+2. **Destroy the app** (removes machines + config; stops compute billing):
+   `fly apps destroy penta-application-screener`.
+3. **Destroy the volume** (compute stops with the app, but the volume bills until deleted):
+   `fly volumes list` → `fly volumes destroy <volume-id>`. ⚠️ This permanently erases the DB
+   (and its PII) — make sure step 1 is done if you want to keep it.
+4. **Revoke the AWS key** — in the personal account (`955722303554`), IAM → user
+   `penta-screener-bedrock` → deactivate/delete its access key (and optionally the user). This
+   is the one credential that could incur Bedrock charges if it leaked.
+5. **(Optional) Tidy the rest** — remove the `screener.pentacoop.com` A/AAAA records in
+   Squarespace; the Fly cert dies with the app. The Google OAuth client can stay (harmless) or
+   have the prod redirect URI removed. Cancelling the AWS Marketplace model subscriptions is
+   unnecessary — they cost $0 (you only pay per-token on invoke, which stops when the key is
+   revoked).
+6. **Data-retention note:** the co-op's application form states a retention schedule
+   (non-members within 1 year of the application close date). Destroying the hosted DB does not
+   by itself satisfy or violate that — it's about the co-op's records of record, not this
+   tool's working copy — but dispose of any local `penta-final-*.db` copy per the same policy.
+
+Cost while dormant but NOT torn down (if you'd rather pause than destroy): with `suspend` +
+`min_machines_running = 0`, an idle app costs only the volume (~$0.15/mo for 1GB) plus a few
+cents of compute per wake — so leaving it up between search cycles is nearly free and avoids
+re-doing the Bedrock-subscription setup. Full teardown is only worth it to zero the bill
+entirely or to guarantee the PII is gone.
