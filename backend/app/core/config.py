@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     # (one per line, '#' comments). Once seeded, admins manage the list in-app; this
     # file does not revoke. Gitignored — real emails are deployment-specific.
     initial_admins_file: str = "config/initial-admins.txt"
+    # Auto-snapshot the SQLite DB after each Rank (VACUUM INTO, into data/backups/). This
+    # existed for heavy local iteration — a safety net while the schema/data churned. In the
+    # hosted deploy it's redundant (Fly volume snapshots cover durability) and just piles
+    # .db files onto the volume, so prod sets this false via fly.toml. Defaults on so local
+    # dev is unchanged with no config.
+    local_db_backups: bool = True
     # Request the canonical scope URIs for email/profile, not the short aliases.
     # Google grants these but echoes them back as the full userinfo.* URIs, so
     # requesting the aliases makes Authlib's literal scope check report them as

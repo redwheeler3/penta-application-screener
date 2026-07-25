@@ -15,6 +15,16 @@ def test_secure_cookies_on_for_https_prod() -> None:
     assert Settings(frontend_url="https://screener.jeffo.net").secure_cookies is True
 
 
+def test_local_db_backups_default_on_for_dev() -> None:
+    # The post-rank auto-snapshot defaults on, so local dev keeps its safety net with no config.
+    assert Settings().local_db_backups is True
+
+
+def test_local_db_backups_can_be_disabled_for_prod() -> None:
+    # Prod (fly.toml [env]) sets it off — env is parsed to a real bool, not the string "false".
+    assert Settings(local_db_backups=False).local_db_backups is False
+
+
 def test_default_google_oauth_scopes_are_minimal_for_login_and_sheets() -> None:
     scopes = Settings().google_oauth_scopes.split()
 

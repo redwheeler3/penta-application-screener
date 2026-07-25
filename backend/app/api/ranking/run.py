@@ -65,6 +65,7 @@ from app.ai.provider import AIProvider
 from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.api.dependencies import get_ai_provider, require_current_user
 from app.api.problems import Problem
+from app.core.config import get_settings
 from app.db.models import Analysis, Application, MemberRanking, User
 from app.db.session import get_db
 from app.schemas.events import ErrorEvent as StreamErrorEvent
@@ -989,17 +990,19 @@ def rank_run(
             )
 
             # Snapshot the DB now that the run's (expensive, non-deterministic) output is
-            # persisted — this is the only durable record once the live DB moves on, so it is
-            # captured automatically rather than left to someone remembering. Best-effort: a
-            # backup failure must never fail a completed Rank, so it is logged and swallowed.
-            try:
-                from app.services.backup import create_from_session
+            # persisted — a local safety net from the heavy-iteration days. Gated on
+            # local_db_backups: on for local dev, off in the hosted deploy where Fly volume
+            # snapshots cover durability (see config). Best-effort regardless: a backup
+            # failure must never fail a completed Rank, so it is logged and swallowed.
+            if get_settings().local_db_backups:
+                try:
+                    from app.services.backup import create_from_session
 
-                create_from_session(db, tag="rank")
-            except Exception:
-                logging.getLogger("app.api").exception(
-                    "Post-rank DB backup failed (run is saved; backup skipped)"
-                )
+                    create_from_session(db, tag="rank")
+                except Exception:
+                    logging.getLogger("app.api").exception(
+                        "Post-rank DB backup failed (run is saved; backup skipped)"
+                    )
 
             yield emit(
                 RankSummary(

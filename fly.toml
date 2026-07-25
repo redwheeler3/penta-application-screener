@@ -26,6 +26,9 @@ primary_region = "sea"   # Seattle — close to the committee and to Bedrock in 
   GOOGLE_REDIRECT_URI = "https://screener.jeffo.net/auth/google/callback"
   AWS_REGION = "us-west-2"          # Bedrock region (matches settings default)
   AWS_DEFAULT_REGION = "us-west-2"  # botocore reads this one
+  # No post-rank auto-snapshot in prod — that was a local heavy-iteration safety net; Fly
+  # volume snapshots cover durability here (see docs/deploy.md). Defaults on for local dev.
+  LOCAL_DB_BACKUPS = "false"
 
 [[mounts]]
   # Persists the SQLite DB across deploys and auto-stop/start. Create it once (see above);
