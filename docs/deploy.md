@@ -46,7 +46,7 @@ fly launch --no-deploy --copy-config
 ```
 `--copy-config` uses the committed `fly.toml`; `--no-deploy` holds off until the volume and
 secrets exist. If it offers to create a Postgres/Redis, decline — we use SQLite on a volume.
-(If `launch` is fussy, `fly apps create penta-screener` then continue.)
+(If `launch` is fussy, `fly apps create penta-application-screener` then continue.)
 
 ### 2. Create the persistent volume
 
@@ -121,7 +121,7 @@ fly ssh console
 mkdir -p /app/backend/config
 printf 'you@example.com\n' > /app/backend/config/initial-admins.txt
 exit
-fly apps restart penta-screener      # startup seeds the admin
+fly apps restart penta-application-screener      # startup seeds the admin
 ```
 > Put it under `data/` if you want it to survive a machine replacement, and point
 > `INITIAL_ADMINS_FILE` at it via `fly.toml [env]` — `config/` is on the image layer, so a
@@ -182,7 +182,7 @@ snapshots in `data/backups/` work the same in the container as locally.)
 | Tail logs | `fly logs` |
 | App / machine status | `fly status` |
 | Open a shell in the container | `fly ssh console` |
-| Restart | `fly apps restart penta-screener` |
+| Restart | `fly apps restart penta-application-screener` |
 | Run a one-off (e.g. a migration by hand) | `fly ssh console -C "sh -c 'cd /app/backend && alembic upgrade head'"` |
 | Rotate a secret | `fly secrets set KEY=newvalue` (triggers a redeploy) |
 | Scale memory if needed | edit `[[vm]] memory` in `fly.toml`, then `fly deploy` |

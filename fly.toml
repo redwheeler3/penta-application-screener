@@ -3,7 +3,7 @@
 # Secrets (SESSION_SECRET, GOOGLE_CLIENT_*, AWS_*) are set via `fly secrets set`, never here.
 #
 # First-time setup (run once, from the repo root):
-#   fly launch --no-deploy --copy-config     # or `fly apps create penta-screener`
+#   fly launch --no-deploy --copy-config     # or `fly apps create penta-application-screener`
 #   fly volumes create screener_data --region sea --size 1
 #   fly secrets set SESSION_SECRET=$(openssl rand -hex 32) \
 #       GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... \
@@ -11,7 +11,7 @@
 #   fly deploy
 #   fly certs add screener.jeffo.net    # then add the CNAME it prints
 
-app = "penta-screener"
+app = "penta-application-screener"
 primary_region = "sea"   # Seattle — close to the committee and to Bedrock in us-west-2.
 
 [build]
