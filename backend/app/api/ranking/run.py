@@ -367,7 +367,7 @@ def score_current(
     if not acquire_run_lock(db, user_id=user.id, kind=SCORE_CURRENT_KIND):
         raise Problem(
             "run_in_progress",
-            detail="Another screening or ranking run is in progress. Try again once it finishes.",
+            detail="Another screening or ranking run is in progress. Try again in about 10 minutes.",
         )
 
     def stream() -> Iterator[str]:
@@ -878,7 +878,7 @@ def rank_run(
     if not acquire_run_lock(db, user_id=user.id, kind="rank"):
         raise Problem(
             "run_in_progress",
-            detail="Another screening or ranking run is in progress. Try again once it finishes.",
+            detail="Another screening or ranking run is in progress. Try again in about 10 minutes.",
         )
 
     def stream() -> Iterator[str]:

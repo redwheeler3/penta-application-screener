@@ -258,6 +258,7 @@ export function App() {
   function requestImport() {
     setScreeningEstimate(null);
     setRankEstimate(null);
+    refreshDashboard(); // freshen the badge against current shared state (see requestScreeningEstimate)
     setImportConfirm(true);
   }
 
@@ -298,13 +299,17 @@ export function App() {
   async function requestScreeningEstimate() {
     setRankEstimate(null); // only one card shows at a time
     setImportConfirm(false);
+    // Re-pull the dashboard so the workflow badge reflects the current shared state:
+    // another member may have run Screen/Rank since our last fetch, which would leave
+    // our badge amber while the freshly-fetched estimate says "up to date" (M16).
+    refreshDashboard();
     const response = await api.fetchScreeningEstimate();
     if (response.ok) {
       // Always open the card — even a $0 no-op states there's nothing to do and
       // disables Confirm, rather than firing a transient toast.
       setScreeningEstimate(await response.json());
     } else {
-      showError("Could not load the AI cost estimate for flagging submissions.");
+      showError("Could not load the AI cost estimate for screening.");
     }
   }
 
@@ -316,7 +321,7 @@ export function App() {
       const response = await api.runScreening();
       if (!response.ok || !response.body) {
         const problem = await readProblem(response);
-        showError(problem ? `Flagging failed: ${problem}` : "Flagging failed.");
+        showError(problem ? `Screening failed: ${problem}` : "Screening failed.");
       } else {
         await api.streamNdjson(response.body, (event) => {
           if (event.type === "progress") {
@@ -324,7 +329,7 @@ export function App() {
           } else if (event.type === "summary") {
             const failedNote = event.failed ? ` ${event.failed} failed and were skipped.` : "";
             showToast(
-              `Flagging complete: ${event.flagged} flagged of ${event.analyzed + event.cached} analyzed ` +
+              `Screening complete: ${event.flagged} flagged of ${event.analyzed + event.cached} analyzed ` +
                 `(${money(event.totalCostUsd)}).` +
                 failedNote,
             );
@@ -338,7 +343,7 @@ export function App() {
         setActiveTab("applications");
       }
     } catch (error) {
-      showError(error instanceof Error ? `Flagging error: ${error.message}` : "Flagging error.");
+      showError(error instanceof Error ? `Screening error: ${error.message}` : "Screening error.");
     }
     setScreeningProgress(null);
     setScreeningRunning(false);
@@ -348,6 +353,7 @@ export function App() {
     setScreeningEstimate(null); // only one card shows at a time
     setImportConfirm(false);
     setScoreCurrentEstimate(null);
+    refreshDashboard(); // freshen the badge against current shared state (see requestScreeningEstimate)
     const [rankResponse, currentScoreResponse] = await Promise.all([
       api.fetchRankEstimate(),
       rankingRun ? api.fetchScoreCurrentEstimate() : Promise.resolve(null),
