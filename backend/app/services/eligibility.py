@@ -213,6 +213,52 @@ def _ruleset_by_user(db: Session) -> tuple[dict[int, RulesConfig], RulesConfig]:
     return ruleset_by_user, default_config
 
 
+def rules_eligible_application_ids(db: Session) -> set[int]:
+    """Every application that is RULES-clean under at least one member's ruleset — the
+    deterministic hard filters only, ignoring AI flags and pet facts.
+
+    This is the pre-screen scope for the shared screening pass: it must be computable BEFORE
+    any screening result exists, so (unlike ``union_eligible_application_ids``) it cannot fold
+    in flags/pet-facts — those are what screening produces. It widens the old committee-default
+    scope to the UNION of every member's rules, so an applicant a diverged member finds
+    rules-eligible still gets screened even if the committee default would exclude them.
+
+    A slight superset of the post-screen union: it screens a few applicants who will later be
+    flagged out — correct, since screening is exactly how those flags are discovered. Evaluates
+    the hard filters once per distinct ruleset (rules diverge rarely), so non-quadratic.
+
+    It ALSO includes any applicant a member forced ELIGIBLE via an override, even one the rules
+    reject: overriding pulls an applicant into a member's active review pool, and that's exactly
+    where the AI's flags/pet inventory/reasoning matter most. The override fixes their VERDICT,
+    but the reviewer still wants the AI's evidence for fidelity on the application — so we screen
+    them too, rather than leaving a forced-eligible applicant with no AI result behind them.
+    """
+    applications = db.scalars(select(Application)).all()
+    ruleset_by_user, default_config = _ruleset_by_user(db)
+    # Always include the committee default: it's the shared baseline every member reads
+    # unless they diverge, and it keeps the scope well-defined when there are no members
+    # yet (an empty member set must not collapse the scope to nothing).
+    distinct_rulesets = set(ruleset_by_user.values()) | {default_config}
+    eligible: set[int] = set()
+    for app in applications:
+        # Rules-clean under ANY ruleset → in scope. No pet_facts passed: pets can't gate
+        # pre-screen (their facts don't exist yet), same as the per-app screening gate.
+        if any(
+            not hard_filter_reasons_for(rules_config, app)
+            for rules_config in distinct_rulesets
+        ):
+            eligible.add(app.id)
+    # Forced-eligible overrides: screen them for evidence even if the rules reject them.
+    eligible |= set(
+        db.scalars(
+            select(MemberEligibility.application_id).where(
+                MemberEligibility.status == ApplicationStatus.ELIGIBLE
+            )
+        )
+    )
+    return eligible
+
+
 def union_eligible_application_ids(db: Session) -> set[int]:
     """The UNION pool: every application eligible for AT LEAST ONE member.
 

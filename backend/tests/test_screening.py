@@ -81,6 +81,30 @@ def test_applications_for_screening_scope() -> None:
     assert emails == {"clean@x.com", "clean-2@x.com"}
 
 
+def test_forced_eligible_override_is_screened_despite_rules() -> None:
+    """A rules-ineligible applicant a member forced ELIGIBLE is still screened. Overriding
+    pulls them into that member's active review pool, where the AI's flags/pet inventory/
+    reasoning matter most — the override fixes the verdict, but the reviewer still wants the
+    evidence behind the application. So it re-enters scope even though the rules reject it."""
+    from app.db.models import ApplicationStatus, MemberEligibility, User, UserRole
+
+    db = make_session()
+    forced = add_application(db, email="rules-no@x.com", raw_hash="h1", rules_ineligible=True)
+    # A second rules-ineligible applicant with NO override stays excluded (control).
+    add_application(db, email="still-out@x.com", raw_hash="h2", rules_ineligible=True)
+
+    user = User(email="m@x.com", display_name="M", role=UserRole.MEMBER, is_active=True)
+    db.add(user)
+    db.commit()
+    db.add(MemberEligibility(
+        user_id=user.id, application_id=forced.id, status=ApplicationStatus.ELIGIBLE,
+    ))
+    db.commit()
+
+    emails = {a.primary_email for a in applications_for_screening(db)}
+    assert emails == {"rules-no@x.com"}  # forced-eligible in; un-overridden rules-out stays out
+
+
 def test_build_prompt_surfaces_pets_and_essays_and_asks_for_extraction() -> None:
     # M15 1e: the prompt no longer cites a pet POLICY (no threshold interpolated); it
     # surfaces the free-text pets field and asks the model to EXTRACT a neutral inventory.

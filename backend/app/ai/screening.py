@@ -24,10 +24,9 @@ from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider
 from app.ai.schemas import ScreeningReport
 from app.db.models import Application
-from app.domain.hard_filters import evaluate_hard_filters
 from app.schemas.settings import AppSettings
 from app.services.application_import import extract_essays
-from app.services.rules import committee_default_rules_config
+from app.services.eligibility import rules_eligible_application_ids
 
 KIND = "screening"
 
@@ -116,23 +115,23 @@ def build_prompt(application: Application) -> str:
 
 
 def applications_for_screening(db: Session) -> list[Application]:
-    """The applications the screening pass should (re-)analyze: every application the
-    deterministic rules did NOT disqualify under the COMMITTEE-DEFAULT ruleset.
+    """The applications the screening pass should (re-)analyze: every application that is
+    RULES-eligible for AT LEAST ONE member (the union of all members' rulesets).
 
-    Screening is SHARED — it (re)computes the AI flags that feed the shared machine baseline,
-    and eligibility rules are now per-member. So it gates on the committee-default ruleset
-    (the shared substrate), NOT any one member's rules: an applicant a diverged member finds
-    rules-ineligible is still screened for everyone else who reads the default. Screening does
-    not read any member's overrides, because those sit on TOP of the baseline. Rules-ineligible
-    apps (under the default) are excluded: their verdict is deterministic and high-trust, so no
-    AI pass could change it.
+    Screening is SHARED — it (re)computes the AI flags + pet facts that feed the machine
+    baseline once for everyone. Its scope is the rules-only union (``rules_eligible_
+    application_ids``), NOT the committee default alone: an applicant a diverged member finds
+    rules-eligible must still be screened, or that member would see them eligible with no AI
+    result. This matches Rank, which already scopes on the union. Rules-only (no flags/pet
+    facts) because those don't exist pre-screen — screening is what produces them. Rules-
+    ineligible-for-everyone apps are excluded: their verdict is deterministic, so no AI pass
+    could change it. (Member overrides sit on TOP of the baseline and aren't read here.)
     """
-    rules_config = committee_default_rules_config(db)
-    applications = db.scalars(select(Application).order_by(Application.id)).all()
+    scope = rules_eligible_application_ids(db)
     return [
         app
-        for app in applications
-        if not evaluate_hard_filters(app.normalized or {}, rules_config).reasons
+        for app in db.scalars(select(Application).order_by(Application.id))
+        if app.id in scope
     ]
 
 
