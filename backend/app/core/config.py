@@ -33,6 +33,15 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    @property
+    def secure_cookies(self) -> bool:
+        """Mark the session cookie Secure (HTTPS-only) in production. Derived from
+        ``frontend_url`` rather than a separate flag: a prod deploy is served over HTTPS
+        (``https://screener.jeffo.net``) so cookies must be Secure, while local dev over
+        ``http://localhost`` must NOT be (a Secure cookie is dropped on plain HTTP, which
+        would silently break the dev login). One source of truth, no flag to forget."""
+        return self.frontend_url.startswith("https://")
+
 
 @lru_cache
 def get_settings() -> Settings:

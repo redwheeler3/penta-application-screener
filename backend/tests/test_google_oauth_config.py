@@ -4,6 +4,17 @@ from app.core.config import Settings
 from app.core.google_oauth import load_google_client_config
 
 
+def test_secure_cookies_off_for_local_http_dev() -> None:
+    # Default (and any http:// frontend) must NOT set Secure — a Secure cookie is dropped
+    # over plain HTTP, which would silently break the local dev login.
+    assert Settings(frontend_url="http://localhost:5173").secure_cookies is False
+
+
+def test_secure_cookies_on_for_https_prod() -> None:
+    # An https:// frontend (the hosted deploy) flips the session cookie to Secure.
+    assert Settings(frontend_url="https://screener.jeffo.net").secure_cookies is True
+
+
 def test_default_google_oauth_scopes_are_minimal_for_login_and_sheets() -> None:
     scopes = Settings().google_oauth_scopes.split()
 

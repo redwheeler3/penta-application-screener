@@ -1,0 +1,63 @@
+# Fly.io deployment (M17, ADR 0012). Single always-region app that auto-stops to zero when
+# idle and cold-starts on the next request, keeping a persistent volume for the SQLite DB.
+# Secrets (SESSION_SECRET, GOOGLE_CLIENT_*, AWS_*) are set via `fly secrets set`, never here.
+#
+# First-time setup (run once, from the repo root):
+#   fly launch --no-deploy --copy-config     # or `fly apps create penta-screener`
+#   fly volumes create screener_data --region sea --size 1
+#   fly secrets set SESSION_SECRET=$(openssl rand -hex 32) \
+#       GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... \
+#       AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
+#   fly deploy
+#   fly certs add screener.jeffo.net    # then add the CNAME it prints
+
+app = "penta-screener"
+primary_region = "sea"   # Seattle — close to the committee and to Bedrock in us-west-2.
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Non-secret runtime config. The DB path is relative to the backend workdir (/app/backend),
+  # so this file lands on the mounted volume below. FRONTEND_URL / GOOGLE_REDIRECT_URI use the
+  # real hostname — single-origin, so the frontend and API share it.
+  DATABASE_URL = "sqlite:///./data/penta_screener.db"
+  FRONTEND_URL = "https://screener.jeffo.net"
+  GOOGLE_REDIRECT_URI = "https://screener.jeffo.net/auth/google/callback"
+  AWS_REGION = "us-west-2"          # Bedrock region (matches settings default)
+  AWS_DEFAULT_REGION = "us-west-2"  # botocore reads this one
+
+[[mounts]]
+  # Persists the SQLite DB across deploys and auto-stop/start. Create it once (see above);
+  # 1GB is far more than the ~20MB DB needs, at ~$0.15/mo.
+  source = "screener_data"
+  destination = "/app/backend/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true          # redirect http→https at the edge
+  auto_stop_machines = "stop" # scale to zero when idle (compute billing stops)
+  auto_start_machines = true  # cold-start on the next incoming request
+  min_machines_running = 0    # no always-on floor — the volume is what persists, not a machine
+
+  [http_service.concurrency]
+    # A rank holds one long streaming request for minutes; keep the machine awake while any
+    # request is in flight. Low limits suit a ~5-member committee and a single machine.
+    type = "requests"
+    hard_limit = 25
+    soft_limit = 20
+
+  [[http_service.checks]]
+    # Liveness: the /health route (no auth) confirms the app booted and migrations ran.
+    # Grace period covers cold-start + `alembic upgrade head` on a fresh machine.
+    method = "get"
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+
+# One small shared-CPU machine is ample for ~5 users; a rank is I/O-bound on Bedrock calls,
+# not CPU. 512MB gives headroom for the Python process + the SQLite page cache.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

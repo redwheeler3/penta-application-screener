@@ -1,0 +1,29 @@
+# Continuous deployment to Fly.io (M17, ADR 0012). On every push to main, Fly builds the
+# image on its remote builders and deploys it. No local Docker needed.
+#
+# One-time setup: create a deploy token and store it as a repo secret named FLY_API_TOKEN:
+#   fly tokens create deploy -x 999999h
+#   gh secret set FLY_API_TOKEN --body "<token>"
+name: Deploy to Fly.io
+
+on:
+  push:
+    branches: [main]
+  # Allow a manual run from the Actions tab (e.g. to redeploy without a code change).
+  workflow_dispatch:
+
+# One deploy at a time; a newer push supersedes an in-flight run rather than racing it.
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
