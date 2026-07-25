@@ -555,6 +555,7 @@ export function App() {
             hasCurrentCriteria={rankingRun !== null}
             rankProgress={rankProgress}
             criteriaThinking={criteriaThinking}
+            pendingProposals={rankingRun?.proposedDimensions ?? []}
             onRequestRank={requestRankEstimate}
             onRunRank={runRank}
             onCancelRank={() => {

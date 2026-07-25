@@ -153,6 +153,11 @@ export function WorkflowBar(props: {
   // and post-score consolidation. Accumulates across the whole run and persists
   // through scoring once it has any text.
   criteriaThinking: string;
+  // Free-text axes this member proposed since the last Rank. A proposal does nothing
+  // until a discovery run grounds it in the pool, and nothing else about the workflow
+  // changes when one is added — so without this the Rank step looks up to date and the
+  // proposal seems to vanish. It drives the amber nudge + the card's Discover-first copy.
+  pendingProposals: string[];
   onRequestRank: () => void;
   onRunRank: (mode: "discover" | "score-current") => void;
   onCancelRank: () => void;
@@ -167,8 +172,10 @@ export function WorkflowBar(props: {
     scoreCurrentEstimate,
     hasCurrentCriteria,
     rankProgress,
+    pendingProposals,
   } = props;
   const hasMissingScores = (scoreCurrentEstimate?.toAnalyze ?? 0) > 0;
+  const hasPendingProposals = pendingProposals.length > 0;
 
   return (
     <>
@@ -244,9 +251,17 @@ export function WorkflowBar(props: {
             onClick={props.onRequestRank}
             coverage={coverage.candidatesScored}
             // Rank's currency is the pool fingerprint, not score coverage: a pool
-            // change makes ranking out of date even with full coverage.
-            outOfDate={workflow.candidatesScored && !workflow.rankingCurrent}
-            staleTitle="The applicant pool changed — score missing applicants or discover fresh criteria."
+            // change makes ranking out of date even with full coverage. A pending
+            // proposal also ambers it — the proposed axis stays inert until a discovery
+            // run grounds it, so the step is genuinely out of date until then.
+            outOfDate={
+              workflow.candidatesScored && (!workflow.rankingCurrent || hasPendingProposals)
+            }
+            staleTitle={
+              hasPendingProposals
+                ? "You proposed new criteria — run Rank to discover and apply them."
+                : "The applicant pool changed — score missing applicants or discover fresh criteria."
+            }
             // Only scoring has a candidate count. Criteria's total is the discovery
             // fan-out width, not "candidates processed", and consolidation is one
             // opaque call, so neither should render a misleading 0/5-style fraction.
@@ -347,12 +362,29 @@ export function WorkflowBar(props: {
         <div className="run-confirm">
           <div className="run-confirm-body">
             <strong>
-              {scoreCurrentEstimate?.toAnalyze === 0
-                ? "Ranking is up to date."
-                : scoreCurrentEstimate
-                  ? "Update the ranking?"
-                  : "Rank the candidates?"}
+              {hasPendingProposals
+                ? pendingProposals.length === 1
+                  ? "Apply your proposed criterion?"
+                  : "Apply your proposed criteria?"
+                : scoreCurrentEstimate?.toAnalyze === 0
+                  ? "Ranking is up to date."
+                  : scoreCurrentEstimate
+                    ? "Update the ranking?"
+                    : "Rank the candidates?"}
             </strong>
+            {hasPendingProposals ? (
+              <p>
+                You proposed{" "}
+                {pendingProposals.map((text, i) => (
+                  <span key={text}>
+                    {i > 0 ? ", " : ""}
+                    <strong>{text}</strong>
+                  </span>
+                ))}
+                . A proposal stays inactive until a discovery run grounds it in the pool — run{" "}
+                <strong>Discover new criteria</strong> below to fold it in.
+              </p>
+            ) : null}
             {scoreCurrentEstimate && hasMissingScores ? (
               <>
                 <p>
@@ -378,7 +410,10 @@ export function WorkflowBar(props: {
                 {rankEstimate.capUsd.toFixed(2)}).
               </p>
               {hasCurrentCriteria ? (
-                <p className="run-confirm-warn">Any current criteria that are not rediscovered will be lost.</p>
+                <p>
+                  Criteria you've tiered are kept and re-scored; only ignored criteria may be
+                  dropped or re-carved.
+                </p>
               ) : null}
               {!rankEstimate.withinCap ? (
                 <p className="run-confirm-warn">
@@ -388,9 +423,12 @@ export function WorkflowBar(props: {
             </div>
           </div>
           <div className="run-confirm-actions">
+            {/* A pending proposal makes Discover the primary action — it's the only run
+                that grounds the proposed axis — so score-missing is demoted even when
+                scores are short. */}
             {scoreCurrentEstimate && hasMissingScores ? (
               <button
-                className="primary-button"
+                className={hasPendingProposals ? "secondary-button" : "primary-button"}
                 type="button"
                 onClick={() => props.onRunRank("score-current")}
                 disabled={props.rankRunning || !scoreCurrentEstimate.withinCap}
@@ -399,7 +437,7 @@ export function WorkflowBar(props: {
               </button>
             ) : null}
             <button
-              className={hasMissingScores ? "secondary-button" : "primary-button"}
+              className={hasMissingScores && !hasPendingProposals ? "secondary-button" : "primary-button"}
               type="button"
               onClick={() => props.onRunRank("discover")}
               disabled={props.rankRunning || !rankEstimate.withinCap}
