@@ -10,7 +10,7 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.db.models import Feedback
+from app.db.models import Application, Feedback
 
 
 def create_feedback(
@@ -22,6 +22,7 @@ def create_feedback(
     route: str | None,
     active_tab: str | None,
     analysis_id: int | None,
+    applicant_id: int | None,
 ) -> Feedback:
     """Persist one feedback item. Identity, version, and context come from the router
     (identity/version stamped server-side; context is what the client reported)."""
@@ -32,6 +33,7 @@ def create_feedback(
         route=route,
         active_tab=active_tab,
         analysis_id=analysis_id,
+        applicant_id=applicant_id,
     )
     db.add(feedback)
     db.commit()
@@ -46,6 +48,19 @@ def list_feedback(db: Session, *, include_resolved: bool) -> list[Feedback]:
     if not include_resolved:
         query = query.where(Feedback.resolved_at.is_(None))
     return list(db.scalars(query).all())
+
+
+def applicant_names_for(db: Session, items: list[Feedback]) -> dict[int, str]:
+    """Current applicant names for the items that carry an ``applicant_id``, batch-loaded
+    in one query — ``{applicant_id: name}``. An id whose applicant was since removed is
+    simply absent (the caller reads it as "no name"). Off the N+1 path for the list view."""
+    ids = {f.applicant_id for f in items if f.applicant_id is not None}
+    if not ids:
+        return {}
+    rows = db.execute(
+        select(Application.id, Application.applicant_name).where(Application.id.in_(ids))
+    )
+    return {app_id: name for app_id, name in rows if name is not None}
 
 
 def resolve_feedback(db: Session, feedback_id: int) -> Feedback | None:

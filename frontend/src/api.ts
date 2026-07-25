@@ -73,6 +73,7 @@ export function submitFeedback(payload: {
   route: string | null;
   activeTab: string | null;
   analysisId: number | null;
+  applicantId: number | null;
 }): Promise<Response> {
   return fetch(url("/feedback"), {
     method: "POST",

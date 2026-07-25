@@ -4,7 +4,7 @@ import { readProblem } from "../format";
 import { AI_CHECKS, DETERMINISTIC_CHECKS } from "../constants";
 import { NumberInput } from "./NumberInput";
 import { AccessPanel } from "./AccessPanel";
-import type { AppSettings, EligibilityRules, FeedbackItem, SettingsResponse } from "../types";
+import type { AppSettings, EligibilityRules, FeedbackItem, SettingsResponse, ViewTab } from "../types";
 
 // The admin-only config surface, organized as sub-views:
 //   Configuration      — the data source (Google Sheet) and AI screening knobs.
@@ -22,6 +22,9 @@ export function AdminSettingsPanel(props: {
   isSaving: boolean;
   onSubmit: (event: SyntheticEvent<HTMLFormElement>) => void;
   onError: (message: string) => void;
+  // Jump to an applicant's detail / a top-level view from a feedback item's context link.
+  onOpenApplicant: (id: number) => void;
+  onOpenView: (tab: ViewTab) => void;
 }): ReactNode {
   const { draft, setDraft, saved } = props;
   const [subtab, setSubtab] = useState<AdminSubtab>("configuration");
@@ -73,7 +76,11 @@ export function AdminSettingsPanel(props: {
       </div>
 
       {subtab === "feedback" ? (
-        <FeedbackPanel onError={props.onError} />
+        <FeedbackPanel
+          onError={props.onError}
+          onOpenApplicant={props.onOpenApplicant}
+          onOpenView={props.onOpenView}
+        />
       ) : subtab === "access" ? (
         <AccessPanel onError={props.onError} />
       ) : subtab === "defaults" ? (
@@ -285,12 +292,37 @@ function DefaultCheckGroup(props: {
   );
 }
 
+// Friendly labels for the navigable top-level views captured on feedback (App's activeTab
+// values). These are exactly the ViewTab keys, so a label's presence here also marks the
+// key as navigable — an admin can click through to it.
+const VIEW_LABELS: Record<ViewTab, string> = {
+  applications: "Applications",
+  ranking: "Ranking",
+  observability: "Observability",
+  evals: "Evals",
+  eligibilitySettings: "Eligibility Settings",
+  adminSettings: "Admin Settings",
+};
+
+function isViewTab(tab: string): tab is ViewTab {
+  return tab in VIEW_LABELS;
+}
+
+function viewLabel(tab: string | null): string {
+  if (!tab) return "unknown view";
+  return isViewTab(tab) ? VIEW_LABELS[tab] : tab;
+}
+
 // Admin reader for member feedback (M15 "Future UX Enhancements" #2). Self-contained, like
 // AccessPanel: fetches its own list. Open items by default; a toggle reveals resolved ones
 // (retained, not deleted, so the friction history survives). Resolving an item drops it from
 // the open list; reopening restores it. Each item shows who sent it and the context they were
 // in, so the admin can act without a back-and-forth.
-function FeedbackPanel(props: { onError: (message: string) => void }): ReactNode {
+function FeedbackPanel(props: {
+  onError: (message: string) => void;
+  onOpenApplicant: (id: number) => void;
+  onOpenView: (tab: ViewTab) => void;
+}): ReactNode {
   const [items, setItems] = useState<FeedbackItem[] | null>(null);
   const [showResolved, setShowResolved] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -351,7 +383,28 @@ function FeedbackPanel(props: { onError: (message: string) => void }): ReactNode
                 <span>{item.userName}</span>
                 <span>{item.userEmail}</span>
                 <span>{new Date(item.createdAt).toLocaleString()}</span>
-                {item.activeTab ? <span>tab: {item.activeTab}</span> : null}
+                {/* Where they were. An applicant-detail item links to that applicant;
+                    everything else names the view. Applicant takes precedence — it's the
+                    most specific "jump here" the admin can act on. */}
+                {item.applicantId !== null ? (
+                  <button
+                    type="button"
+                    className="feedback-context-link"
+                    onClick={() => props.onOpenApplicant(item.applicantId as number)}
+                  >
+                    {item.applicantName ?? `applicant #${item.applicantId}`}
+                  </button>
+                ) : item.activeTab && isViewTab(item.activeTab) ? (
+                  <button
+                    type="button"
+                    className="feedback-context-link"
+                    onClick={() => props.onOpenView(item.activeTab as ViewTab)}
+                  >
+                    {viewLabel(item.activeTab)}
+                  </button>
+                ) : (
+                  <span>{viewLabel(item.activeTab)}</span>
+                )}
                 {item.analysisId !== null ? <span>ranking #{item.analysisId}</span> : null}
                 <span>v{item.appVersion}</span>
               </div>

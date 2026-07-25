@@ -1,6 +1,16 @@
 // Shared types for the screener UI. Most mirror a backend schema; the comment on
 // each says which and any non-obvious semantics (null vs [] etc.).
 
+// The top-level views selectable in the tab strip (App's activeTab). Shared so a
+// navigation callback (e.g. a feedback context link) and the state stay in lockstep.
+export type ViewTab =
+  | "applications"
+  | "ranking"
+  | "observability"
+  | "evals"
+  | "eligibilitySettings"
+  | "adminSettings";
+
 export type CurrentUser = {
   id: number;
   email: string;
@@ -26,6 +36,10 @@ export type FeedbackItem = {
   route: string | null;
   activeTab: string | null;
   analysisId: number | null;
+  applicantId: number | null;
+  // The applicant's current name, resolved on read; null if no applicant context or the
+  // applicant was since removed.
+  applicantName: string | null;
   appVersion: string;
   createdAt: string;
   resolvedAt: string | null;

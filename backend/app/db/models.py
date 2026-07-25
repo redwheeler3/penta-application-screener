@@ -129,6 +129,11 @@ class Feedback(TimestampMixin, Base):
     # No FK: an analysis can be superseded, and we want the id preserved for context even
     # if that row is later gone, rather than blocking the delete or nulling on cascade.
     analysis_id: Mapped[int | None] = mapped_column()
+    # The applicant whose detail page they were on, if any — nullable (most feedback is
+    # from a list/ranking, not a drill-in). No FK, same reasoning as analysis_id: keep the
+    # id for context even if the applicant is later removed; the admin view resolves the
+    # current name on read (blank if gone).
+    applicant_id: Mapped[int | None] = mapped_column()
     # The build the feedback came from, stamped server-side (see app.version).
     app_version: Mapped[str] = mapped_column(String(50), nullable=False)
     # Set when an admin marks the item handled; null = still open. Resolved items are

@@ -21,7 +21,7 @@ from app.version import app_version
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
 
-def _to_out(feedback: Feedback) -> FeedbackOut:
+def _to_out(feedback: Feedback, applicant_names: dict[int, str]) -> FeedbackOut:
     return FeedbackOut(
         id=feedback.id,
         body=feedback.body,
@@ -30,6 +30,12 @@ def _to_out(feedback: Feedback) -> FeedbackOut:
         route=feedback.route,
         active_tab=feedback.active_tab,
         analysis_id=feedback.analysis_id,
+        applicant_id=feedback.applicant_id,
+        applicant_name=(
+            applicant_names.get(feedback.applicant_id)
+            if feedback.applicant_id is not None
+            else None
+        ),
         app_version=feedback.app_version,
         created_at=feedback.created_at,
         resolved_at=feedback.resolved_at,
@@ -52,9 +58,10 @@ def submit_feedback(
         route=body.route,
         active_tab=body.active_tab,
         analysis_id=body.analysis_id,
+        applicant_id=body.applicant_id,
     )
     # Eager-load isn't needed: the submitting user is already in the session identity map.
-    return _to_out(feedback)
+    return _to_out(feedback, feedback_service.applicant_names_for(db, [feedback]))
 
 
 @router.get("", response_model=FeedbackListResponse)
@@ -67,7 +74,8 @@ def list_feedback(
     """List feedback newest-first. Open items only by default; ``includeResolved=true``
     widens to the full history."""
     items = feedback_service.list_feedback(db, include_resolved=include_resolved)
-    return FeedbackListResponse(items=[_to_out(f) for f in items])
+    names = feedback_service.applicant_names_for(db, items)
+    return FeedbackListResponse(items=[_to_out(f, names) for f in items])
 
 
 @router.post("/{feedback_id}/resolve", response_model=FeedbackOut)
@@ -80,7 +88,7 @@ def resolve_feedback(
     feedback = feedback_service.resolve_feedback(db, feedback_id)
     if feedback is None:
         raise Problem("not_found", detail="Feedback not found.")
-    return _to_out(feedback)
+    return _to_out(feedback, feedback_service.applicant_names_for(db, [feedback]))
 
 
 @router.post("/{feedback_id}/reopen", response_model=FeedbackOut)
@@ -93,4 +101,4 @@ def reopen_feedback(
     feedback = feedback_service.reopen_feedback(db, feedback_id)
     if feedback is None:
         raise Problem("not_found", detail="Feedback not found.")
-    return _to_out(feedback)
+    return _to_out(feedback, feedback_service.applicant_names_for(db, [feedback]))

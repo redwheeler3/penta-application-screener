@@ -10,9 +10,12 @@ import { readProblem } from "../format";
 // along invisibly (silent capture); identity, app version, and time are stamped
 // server-side. On success a toast confirms and the composer closes.
 export function FeedbackButton(props: {
-  // The context attached to the submission, read from the app's live state.
+  // The context attached to the submission, read from the app's live state. `activeTab`
+  // is the accurate view label — when a candidate detail is open it names the detail, not
+  // the tab behind it. `applicantId` is set only while that detail is open.
   activeTab: string;
   analysisId: number | null;
+  applicantId: number | null;
   onToast: (message: string) => void;
   onError: (message: string) => void;
 }): ReactNode {
@@ -36,6 +39,7 @@ export function FeedbackButton(props: {
       route: window.location.pathname,
       activeTab: props.activeTab,
       analysisId: props.analysisId,
+      applicantId: props.applicantId,
     });
     setSubmitting(false);
     if (response.ok) {

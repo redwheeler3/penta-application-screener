@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies import require_current_user
-from app.db.models import Base, Feedback, User, UserRole
+from app.db.models import Application, Base, Feedback, User, UserRole
 from app.db.session import get_db
 from app.main import create_app
 
@@ -32,24 +32,34 @@ def setup_app(role: UserRole) -> tuple:
 @pytest.mark.anyio
 async def test_member_can_submit_feedback_with_context() -> None:
     """Any member can POST; identity + app version are stamped server-side, and the
-    context the client reports (route/tab/analysis) is preserved."""
+    context the client reports (route/tab/analysis/applicant) is preserved. When an
+    applicant is named, its current name is resolved on read."""
     app, db, user = setup_app(UserRole.MEMBER)
+    applicant = Application(
+        primary_email="a@x.com", applicant_name="Dana Applicant", raw_row={},
+        raw_row_hash="h1", normalized={},
+    )
+    db.add(applicant)
+    db.commit()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         resp = await client.post(
             "/feedback",
             json={
-                "body": "The Rank button confused me.",
+                "body": "This applicant's pet count looks wrong.",
                 "route": "/",
                 "activeTab": "ranking",
                 "analysisId": 42,
+                "applicantId": applicant.id,
             },
         )
         assert resp.status_code == 201
         payload = resp.json()
-        assert payload["body"] == "The Rank button confused me."
+        assert payload["body"] == "This applicant's pet count looks wrong."
         assert payload["activeTab"] == "ranking"
         assert payload["analysisId"] == 42
+        assert payload["applicantId"] == applicant.id
+        assert payload["applicantName"] == "Dana Applicant"  # resolved on read
         # Server-stamped, not taken from the body.
         assert payload["userEmail"] == "me@x.com"
         assert payload["userName"] == "Me"
@@ -59,6 +69,30 @@ async def test_member_can_submit_feedback_with_context() -> None:
     # Persisted with the real user id.
     stored = db.query(Feedback).one()
     assert stored.user_id == user.id
+    assert stored.applicant_id == applicant.id
+
+
+@pytest.mark.anyio
+async def test_removed_applicant_resolves_to_no_name() -> None:
+    """An applicant_id whose applicant was since removed reads as no name (nothing to
+    show), rather than erroring — the id is retained but the join finds nothing."""
+    app, db, _ = setup_app(UserRole.ADMIN)
+    applicant = Application(
+        primary_email="a@x.com", applicant_name="Gone Soon", raw_row={},
+        raw_row_hash="h1", normalized={},
+    )
+    db.add(applicant)
+    db.commit()
+    applicant_id = applicant.id
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.post("/feedback", json={"body": "x", "applicantId": applicant_id})
+        # Remove the applicant, then read the feedback back.
+        db.delete(db.get(Application, applicant_id))
+        db.commit()
+        item = (await client.get("/feedback")).json()["items"][0]
+        assert item["applicantId"] == applicant_id  # id retained
+        assert item["applicantName"] is None  # but nothing to resolve
 
 
 @pytest.mark.anyio
@@ -82,6 +116,8 @@ async def test_context_is_optional() -> None:
         assert payload["route"] is None
         assert payload["activeTab"] is None
         assert payload["analysisId"] is None
+        assert payload["applicantId"] is None
+        assert payload["applicantName"] is None
 
 
 @pytest.mark.anyio

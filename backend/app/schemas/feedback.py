@@ -16,10 +16,12 @@ class FeedbackCreate(RequestModel):
     # generous enough for a member to describe friction (and paste a little context).
     body: str = Field(min_length=1, max_length=5000)
     # Context the client reports — where the member was. Optional: feedback can come
-    # from a page with no active tab, or before any ranking exists.
+    # from a page with no active tab, before any ranking exists, or outside a drill-in.
     route: str | None = Field(default=None, max_length=500)
     active_tab: str | None = Field(default=None, max_length=100)
     analysis_id: int | None = None
+    # The applicant whose detail page they were on, if any.
+    applicant_id: int | None = None
 
 
 class FeedbackOut(ResponseModel):
@@ -31,6 +33,10 @@ class FeedbackOut(ResponseModel):
     route: str | None
     active_tab: str | None
     analysis_id: int | None
+    applicant_id: int | None
+    # The applicant's current name, resolved on read — None if there was no applicant
+    # context or the applicant has since been removed.
+    applicant_name: str | None
     app_version: str
     created_at: datetime
     resolved_at: datetime | None

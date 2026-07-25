@@ -15,6 +15,7 @@ import type {
   ScoreCurrentEstimateResponse,
   RankProgress,
   SettingsResponse,
+  ViewTab,
   WorkflowState,
 } from "./types";
 import { AdminSettingsPanel } from "./components/AdminSettingsPanel";
@@ -148,9 +149,7 @@ export function App() {
   // The results area is split into two peer tabs — the applications list and the
   // ranking — with `activeTab` choosing which is shown (a candidate detail drills in
   // over either). The Ranking tab only appears once a run exists (see the tab strip).
-  const [activeTab, setActiveTab] = useState<
-    "applications" | "ranking" | "observability" | "evals" | "eligibilitySettings" | "adminSettings"
-  >("applications");
+  const [activeTab, setActiveTab] = useState<ViewTab>("applications");
   const isAdmin = user?.role === "admin";
 
   useEffect(() => {
@@ -418,6 +417,18 @@ export function App() {
     if (await loadRanking()) setActiveTab("ranking");
   }
 
+  // Jump to a top-level view (e.g. from a feedback item's context link). Ranking routes
+  // through its loader so the view isn't empty; every other tab is a plain switch. Clears
+  // any open detail so the target view is what shows.
+  function navigateToView(tab: ViewTab) {
+    if (tab === "ranking") {
+      openRanking();
+      return;
+    }
+    setSelectedApp(null);
+    setActiveTab(tab);
+  }
+
   // Human override of an application's status. The backend marks it human-owned and
   // sticky against future machine runs.
   async function overrideStatus(id: number, status: AppStatus) {
@@ -678,6 +689,8 @@ export function App() {
                 isSaving={isSavingSettings}
                 onSubmit={saveSettings}
                 onError={showError}
+                onOpenApplicant={viewApplication}
+                onOpenView={navigateToView}
               />
             ) : activeTab === "ranking" && ranking ? (
               <RankingView
@@ -715,11 +728,13 @@ export function App() {
         </>
       )}
       {/* The from-any-page feedback channel: only for a signed-in member, and never in
-          print. Context (active tab + current ranking) rides along invisibly. */}
+          print. Context rides along invisibly — the accurate view (an open candidate
+          detail names itself, not the tab behind it) and, in that detail, which applicant. */}
       {user ? (
         <FeedbackButton
-          activeTab={activeTab}
+          activeTab={selectedApp ? "applicant-detail" : activeTab}
           analysisId={rankingRun?.analysisId ?? null}
+          applicantId={selectedApp?.id ?? null}
           onToast={showToast}
           onError={showError}
         />

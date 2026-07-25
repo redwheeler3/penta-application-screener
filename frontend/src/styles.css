@@ -3499,3 +3499,19 @@ h1 {
 .feedback-item-actions {
   margin-top: 0.6rem;
 }
+
+/* A feedback item's context (the applicant they were on) as an inline link-button. */
+.feedback-context-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--penta-green-dark);
+  font: inherit;
+  font-size: 0.75rem;
+  text-decoration: underline;
+}
+
+.feedback-context-link:hover {
+  color: var(--penta-green);
+}
