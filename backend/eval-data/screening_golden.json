@@ -241,6 +241,48 @@
       }
     },
     {
+      "key": "surname_transposition_across_household_no_flag",
+      "metadata": {
+        "note": "OVER-REACH GUARD (regression from a real prod false positive, M17 — applicant Buaman/Bauman). The applicant's surname is a one-character transposition of the co-applicant's and children's shared surname, where BOTH spellings look like plausible real surnames ('Graeber' vs 'Greaber'). The essays hammer that they are a married couple with two shared children ('We're the Greaber family', 'my wife Elena and I', 'married for nine years', 'the four of us') — which is what drives the model to EXPECT a shared surname and flag the transposed applicant spelling as internal_inconsistency. A near-identical surname differing only by an apparent typo/transposition is a data-entry slip, not an integrity concern — must NOT flag. NOTE: this misfire is BORDERLINE/probabilistic (the literal real 'Buaman/Bauman' pair did not reproduce on a fresh call, but 'Graeber/Greaber' does) — so run under stability, and treat it as a case the prompt fix should make reliably green. The applicant's email echoes the co-applicant's spelling, a further one-household tell.",
+        "pass": "screening",
+        "source": "synthetic — fabricated to reproduce the surname-transposition-across-household shape (Buaman/Bauman class); no real applicant data.",
+        "expected": {
+          "fires": [],
+          "absent": [
+            "internal_inconsistency"
+          ]
+        }
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Marcus Graeber",
+          "co_applicant_name": "Elena Greaber",
+          "child_details": [
+            {
+              "first_name": "Otto",
+              "last_name": "Greaber",
+              "age": 5
+            },
+            {
+              "first_name": "Greta",
+              "last_name": "Greaber",
+              "age": 2
+            }
+          ],
+          "pets_text": "No pets",
+          "applicant_email": "marcus.greaber@gmail.com",
+          "co_applicant_email": "elena.greaber@pm.me",
+          "co_applicant_phone": "778-555-0164"
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "We're the Greaber family. My wife Elena and I have been married for nine years, and we have two children together — our son Otto and our daughter Greta, both born here in Vancouver. I'm a millwright and Elena teaches piano from home. As a family we value steady, quiet reliability, and we want the four of us to put down roots among neighbours who look out for one another.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "My wife and I make a good team: I'm mechanically inclined and can handle repairs and preventive maintenance, and Elena is patient and organized and would gladly help coordinate events or keep records. We do everything as a household, so you'd effectively get two committed volunteers.",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "Elena and I haven't been co-op members before, but as a married couple we've helped run a community music program together and understand shared, volunteer-driven work.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "We want a stable home where our two kids grow up knowing their neighbours. My wife Elena and I would contribute as one family — I'd take on the maintenance nobody enjoys, and Elena would bring calm organization to the committees."
+        }
+      }
+    },
+    {
       "key": "ordinary_applicant_clean",
       "metadata": {
         "note": "A wholly unremarkable applicant — expect ZERO flags. Any flag is a false positive. (No pets expectation: this is the pure zero-flags guard.)",
