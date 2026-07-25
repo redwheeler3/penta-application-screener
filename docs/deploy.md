@@ -30,7 +30,7 @@ push, and back up / restore the data.
    app uses a static key. Create an IAM user with an inline policy allowing **only**
    `bedrock:InvokeModel` (and `bedrock:InvokeModelWithResponseStream`) on the Anthropic
    inference-profile ARNs in **us-west-2**, nothing else. Generate an access key for it.
-4. **DNS access** for `jeffo.net` (to add a CNAME).
+4. **DNS access** for `pentacoop.com` (to add a CNAME).
 
 ---
 
@@ -87,7 +87,7 @@ The `/health` check should go green once migrations finish (see the grace period
 ### 5. Custom domain
 
 ```
-fly certs add screener.jeffo.net
+fly certs add screener.pentacoop.com
 ```
 It prints a target hostname. Add a **CNAME** at your DNS provider:
 ```
@@ -95,7 +95,7 @@ screener   CNAME   <your-app>.fly.dev
 ```
 Fly auto-issues and renews a free Let's Encrypt cert. Verify:
 ```
-fly certs check screener.jeffo.net
+fly certs check screener.pentacoop.com
 ```
 This uses Fly's **free shared IPv4 + IPv6** — no dedicated IP ($2/mo) needed for a subdomain.
 
@@ -103,9 +103,9 @@ This uses Fly's **free shared IPv4 + IPv6** — no dedicated IP ($2/mo) needed f
 
 In the Google Cloud console, add the authorized redirect URI:
 ```
-https://screener.jeffo.net/auth/google/callback
+https://screener.pentacoop.com/auth/google/callback
 ```
-(matches `GOOGLE_REDIRECT_URI` in `fly.toml`). Add `https://screener.jeffo.net` to authorized
+(matches `GOOGLE_REDIRECT_URI` in `fly.toml`). Add `https://screener.pentacoop.com` to authorized
 JavaScript origins too.
 
 ### 7. Seed the first admin

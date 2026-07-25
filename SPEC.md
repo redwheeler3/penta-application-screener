@@ -475,7 +475,7 @@ The committee saw a demo and wants it, so hosting is real scheduled work — pur
 
 **Decided (2026-07-25):**
 
-- **Platform: Fly.io**, auto-stop Machines + a persistent volume — cheapest option (~$1–5/mo, near-zero idle) that keeps the DB on a durable disk. Deploys from GitHub via `fly.toml` + a `flyctl-actions` workflow. Custom domain `screener.jeffo.net` via a CNAME + free auto-TLS.
+- **Platform: Fly.io**, auto-stop Machines + a persistent volume — cheapest option (~$1–5/mo, near-zero idle) that keeps the DB on a durable disk. Deploys from GitHub via `fly.toml` + a `flyctl-actions` workflow. Custom domain `screener.pentacoop.com` via a CNAME + free auto-TLS.
 - **Storage: keep SQLite on the volume for launch** (Jeff) — zero data-layer change; fine for ~5 users. Managed Postgres (and M16's atomic-budget store) is a *later* move, only if that feature is built. This retires the earlier "M17 may re-touch the data layer for a hosted DB" tradeoff: at this scale we deliberately do not.
 
 **Open / owed in M17 (see ADR 0012 for the full work list):**

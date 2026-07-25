@@ -9,7 +9,7 @@
 #       GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... \
 #       AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
 #   fly deploy
-#   fly certs add screener.jeffo.net    # then add the CNAME it prints
+#   fly certs add screener.pentacoop.com    # then add the CNAME it prints
 
 app = "penta-application-screener"
 primary_region = "sjc"   # San Jose — Fly's closest US-West region to Bedrock in us-west-2.
@@ -22,8 +22,8 @@ primary_region = "sjc"   # San Jose — Fly's closest US-West region to Bedrock 
   # so this file lands on the mounted volume below. FRONTEND_URL / GOOGLE_REDIRECT_URI use the
   # real hostname — single-origin, so the frontend and API share it.
   DATABASE_URL = "sqlite:///./data/penta_screener.db"
-  FRONTEND_URL = "https://screener.jeffo.net"
-  GOOGLE_REDIRECT_URI = "https://screener.jeffo.net/auth/google/callback"
+  FRONTEND_URL = "https://screener.pentacoop.com"
+  GOOGLE_REDIRECT_URI = "https://screener.pentacoop.com/auth/google/callback"
   AWS_REGION = "us-west-2"          # Bedrock region (matches settings default)
   AWS_DEFAULT_REGION = "us-west-2"  # botocore reads this one
   # No post-rank auto-snapshot in prod — that was a local heavy-iteration safety net; Fly

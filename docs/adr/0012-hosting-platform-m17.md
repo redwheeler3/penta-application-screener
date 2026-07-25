@@ -110,7 +110,7 @@ cost of self-managing the box (mitigated by Coolify/Dokku for git-push deploys) 
 5. **Heartbeat** in the Rank/Screen streams (per the decision above).
 6. **Backup story** — today's local snapshot scripts (`backup-db.sh`) → a scheduled Fly volume
    snapshot + an off-box copy.
-7. **Custom domain** — `screener.jeffo.net` via `fly certs add` + a CNAME to the app's
+7. **Custom domain** — `screener.pentacoop.com` via `fly certs add` + a CNAME to the app's
    `.fly.dev` hostname. Free: Fly auto-issues/renews a Let's Encrypt cert, and the CNAME path
    uses Fly's free shared IPv4 + IPv6 (a *dedicated* IPv4 is a $2/mo add-on we do **not** need
    for a subdomain). Prod `FRONTEND_URL` / `GOOGLE_REDIRECT_URI` and the Google Console
