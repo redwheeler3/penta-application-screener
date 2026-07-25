@@ -788,11 +788,26 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 6px;
   font-size: 0.8rem;
-  /* Fill the space left on the controls row after the (now condensed) filter groups. basis 0
-     + min-width 0 so the input contributes nothing to the wrap calc and grows into the
-     leftover width — which the segmented-control condensing made comfortably large. */
-  flex: 1 1 0;
-  min-width: 0;
+  /* Reset the native search-input chrome: WebKit reserves space on the right for its own
+     search decoration, which narrows the text area and clips the placeholder even when the
+     box looks roomy. appearance:none reclaims that space for the text. */
+  appearance: none;
+  -webkit-appearance: none;
+  /* Fill the space left on the controls row after the (now condensed) filter groups, growing
+     into it. min-width holds the placeholder ("Search by name / email") so it never shrinks to
+     an unusable sliver — because flex-wrap respects min-width, hitting that floor makes the
+     field WRAP to its own full-width line instead of clipping. Best of both: inline+roomy when
+     there's space, a proper full-width bar when there isn't. */
+  flex: 1 1 9rem;
+  min-width: 9rem;
+}
+
+/* Drop WebKit's search decoration/cancel pseudo-elements — they reserve right-side space
+   that clips the placeholder. */
+.app-search::-webkit-search-decoration,
+.app-search::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 /* Application table */
