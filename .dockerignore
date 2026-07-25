@@ -1,12 +1,15 @@
 # Keep the build context lean and never ship secrets or local data into the image.
 # The Dockerfile copies backend/ and frontend/ explicitly; this excludes the cruft.
 
-# Python
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
+# Python. Patterns are matched relative to the build-context root and do NOT recurse for a
+# bare `dir/`, so nested paths (e.g. backend/.venv) must be globbed explicitly — that venv is
+# ~270MB / ~9.8k files and was the entire build-context bloat before these **/ globs.
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+**/.venv/
 .venv/
 
 # Secrets and local env — these are provided as Fly secrets at runtime, never baked in.
@@ -16,12 +19,12 @@ backend/secrets/
 backend/config/initial-admins.txt
 
 # Databases and applicant data (PII) — the volume provides the live DB; never copy snapshots.
-*.db
-*.sqlite
-*.sqlite3
+**/*.db
+**/*.sqlite
+**/*.sqlite3
 backend/data/
-exports/
-ai-traces/
+**/exports/
+**/ai-traces/
 
 # Frontend — node_modules is reinstalled in the build stage; dist is rebuilt there.
 frontend/node_modules/
