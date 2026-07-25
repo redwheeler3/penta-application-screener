@@ -105,7 +105,7 @@ export function AdminSettingsPanel(props: {
                 ) : null}
               </label>
               <div className="rules-section">
-                <h3>AI Screening</h3>
+                <h4>AI Screening</h4>
                 <div className="settings-grid">
                   <label>
                     <span>Spending cap (USD per run)</span>
@@ -152,7 +152,7 @@ export function AdminSettingsPanel(props: {
               </div>
               <div className="settings-actions">
                 <button className="primary-button" type="submit" disabled={props.isSaving}>
-                  {props.isSaving ? "Saving" : "Save settings"}
+                  {props.isSaving ? "Saving…" : "Save settings"}
                 </button>
               </div>
             </form>
@@ -179,6 +179,7 @@ const NUMERIC_FIELDS: { key: keyof EligibilityRules; label: string; min: string;
 
 function CommitteeDefaultsPanel(props: { onError: (message: string) => void }): ReactNode {
   const [draft, setDraft] = useState<EligibilityRules | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedTick, setSavedTick] = useState(false);
 
@@ -187,7 +188,11 @@ function CommitteeDefaultsPanel(props: { onError: (message: string) => void }): 
     api
       .fetchCommitteeDefaultRules()
       .then((rules) => live && setDraft(rules))
-      .catch(() => live && props.onError("Could not load the committee default rules."));
+      .catch(() => {
+        if (!live) return;
+        setLoadError(true); // inline error, not a perpetual "Loading…"
+        props.onError("Could not load the committee default rules.");
+      });
     return () => {
       live = false;
     };
@@ -221,7 +226,9 @@ function CommitteeDefaultsPanel(props: { onError: (message: string) => void }): 
 
   return (
     <div className="settings-panel-body">
-      {!draft ? (
+      {loadError ? (
+        <p className="panel-hint">Couldn't load the committee default rules.</p>
+      ) : !draft ? (
         <p className="panel-hint">Loading…</p>
       ) : (
         <>
@@ -250,7 +257,7 @@ function CommitteeDefaultsPanel(props: { onError: (message: string) => void }): 
               <span>Allow other pets</span>
             </label>
             <div className="rules-section">
-              <h3>Screening checks</h3>
+              <h4>Screening checks</h4>
               <p className="rules-hint">Unchecked checks are off in the committee default.</p>
               <CheckGroup
                 title="Deterministic rules"
@@ -267,7 +274,7 @@ function CommitteeDefaultsPanel(props: { onError: (message: string) => void }): 
             </div>
             <div className="settings-actions">
               <button className="primary-button" type="submit" disabled={saving}>
-                {saving ? "Saving" : savedTick ? "Saved" : "Save committee defaults"}
+                {saving ? "Saving…" : savedTick ? "Saved" : "Save committee defaults"}
               </button>
             </div>
           </form>
@@ -310,15 +317,21 @@ function FeedbackPanel(props: {
   onOpenView: (tab: ViewTab) => void;
 }): ReactNode {
   const [items, setItems] = useState<FeedbackItem[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [showResolved, setShowResolved] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   useEffect(() => {
     let live = true;
+    setLoadError(false); // reset on each (re)fetch — the showResolved toggle re-runs this
     api
       .fetchFeedback(showResolved)
       .then((list) => live && setItems(list))
-      .catch(() => live && props.onError("Could not load feedback."));
+      .catch(() => {
+        if (!live) return;
+        setLoadError(true); // inline error, not a perpetual "Loading…"
+        props.onError("Could not load feedback.");
+      });
     return () => {
       live = false;
     };
@@ -356,7 +369,9 @@ function FeedbackPanel(props: {
           <span>Show resolved</span>
         </label>
       </div>
-      {items === null ? (
+      {loadError ? (
+        <p className="panel-hint">Couldn't load feedback.</p>
+      ) : items === null ? (
         <p className="panel-hint">Loading…</p>
       ) : items.length === 0 ? (
         <p className="panel-hint">{showResolved ? "No feedback yet." : "No open feedback."}</p>

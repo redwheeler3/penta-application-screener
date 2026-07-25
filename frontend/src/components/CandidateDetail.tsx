@@ -252,7 +252,7 @@ export function CandidateDetail(props: {
   return (
     <div className="app-detail">
       <div className="app-detail-actions no-print">
-        <button className="back-button" onClick={props.onBack}>
+        <button type="button" className="secondary-button" onClick={props.onBack}>
           <ChevronLeft size={16} />
           <span>Back to list</span>
         </button>

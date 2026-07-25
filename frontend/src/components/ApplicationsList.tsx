@@ -37,16 +37,23 @@ export function ApplicationsList(props: {
 
   return (
     <>
+      {/* Title heading, matching every other top-level view (Ranking, Observability,
+          Settings) — the global <h1> is the page title, not this view's. */}
+      <div className="applications-header">
+        <h3>Applications</h3>
+      </div>
       <div className="app-controls">
         {/* Each group toggles one axis of the filter, preserving the other, so
             Status and "Decided by" combine (AND). */}
         <div className="filter-group">
           <span className="filter-group-label">Status</span>
-          <div className="app-tabs">
+          <div className="segmented" role="group" aria-label="Filter by status">
             {statusOptions.map((opt) => (
               <button
                 key={opt.label}
-                className={`tab-button ${appFilter.status === opt.value ? "active" : ""}`}
+                type="button"
+                className="segment"
+                aria-pressed={appFilter.status === opt.value}
                 onClick={() => props.onApplyFilter({ ...appFilter, status: opt.value })}
               >
                 {opt.label} ({opt.count})
@@ -56,11 +63,13 @@ export function ApplicationsList(props: {
         </div>
         <div className="filter-group">
           <span className="filter-group-label">Decided by</span>
-          <div className="app-tabs">
+          <div className="segmented" role="group" aria-label="Filter by who decided">
             {sourceOptions.map((opt) => (
               <button
                 key={opt.label}
-                className={`tab-button ${appFilter.statusSource === opt.value ? "active" : ""}`}
+                type="button"
+                className="segment"
+                aria-pressed={appFilter.statusSource === opt.value}
                 onClick={() => props.onApplyFilter({ ...appFilter, statusSource: opt.value })}
               >
                 {opt.label} ({opt.count})
@@ -69,7 +78,8 @@ export function ApplicationsList(props: {
           </div>
         </div>
         <div className="filter-group">
-          <span className="filter-group-label">Show</span>
+          {/* No "Show" label — the star + "Favourites" is self-explanatory, and dropping it
+              reclaims width on this row for the search. */}
           <button
             type="button"
             className={`tab-button favourites-toggle ${appFilter.favourites ? "active" : ""}`}
@@ -84,7 +94,7 @@ export function ApplicationsList(props: {
         <input
           className="app-search"
           type="search"
-          placeholder="Search by name or email"
+          placeholder="Search by name / email"
           value={props.appSearch}
           onChange={(event) => props.onSearch(event.target.value)}
         />

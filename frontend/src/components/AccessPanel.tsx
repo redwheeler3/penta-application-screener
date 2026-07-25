@@ -9,6 +9,7 @@ import type { AllowlistEntry } from "../types";
 // state and replaces it from each response (no separate refetch).
 export function AccessPanel(props: { onError: (message: string) => void }): ReactNode {
   const [entries, setEntries] = useState<AllowlistEntry[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "member">("member");
   const [busy, setBusy] = useState(false);
@@ -18,7 +19,13 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
     api
       .fetchAllowlist()
       .then((list) => live && setEntries(list))
-      .catch(() => live && props.onError("Could not load the access allowlist."));
+      .catch(() => {
+        if (!live) return;
+        // Record the failure so the panel shows an inline error instead of sitting on
+        // "Loading…" forever (the toast is ephemeral; the panel would otherwise mislead).
+        setLoadError(true);
+        props.onError("Could not load the access allowlist.");
+      });
     return () => {
       live = false;
     };
@@ -84,7 +91,9 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
         </button>
       </form>
 
-      {entries === null ? (
+      {loadError ? (
+        <p className="panel-hint">Couldn't load the access allowlist.</p>
+      ) : entries === null ? (
         <p className="panel-hint">Loading…</p>
       ) : (
         <table className="access-table">

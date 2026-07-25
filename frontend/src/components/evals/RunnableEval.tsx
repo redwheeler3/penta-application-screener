@@ -373,7 +373,7 @@ function CaseList(props: {
   onSelect: (key: string) => void;
 }): ReactNode {
   const { cases } = props;
-  if (cases === null) return <p className="eval-hint">Loading cases…</p>;
+  if (cases === null) return <p className="eval-hint">Loading…</p>;
   if (!cases.length) return <p className="eval-hint">No cases yet.</p>;
 
   // The grouping/label fields (pass, expected) live in the harness-only `metadata` block.

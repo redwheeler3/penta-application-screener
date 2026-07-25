@@ -604,7 +604,7 @@ export function App() {
                 <strong>{user.role}</strong>
               </div>
               <button className="icon-button" aria-label="Log out" title="Log out" onClick={logout}>
-                <LogOut size={18} />
+                <LogOut size={16} />
               </button>
             </div>
           ) : null}
@@ -628,7 +628,7 @@ export function App() {
             <p>Use your approved Google account.</p>
           )}
           <button className="primary-button" onClick={login} disabled={isLoadingUser}>
-            <LogIn size={18} />
+            <LogIn size={16} />
             <span>Sign in with Google</span>
           </button>
         </section>

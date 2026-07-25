@@ -14,8 +14,10 @@ import type { EligibilityRules } from "../types";
 // they save; `isDefault` tracks that so we can hint that saving forks off the default.
 export function EligibilitySettingsPanel(props: { onError: (message: string) => void }): ReactNode {
   const [draft, setDraft] = useState<EligibilityRules | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [isDefault, setIsDefault] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savedTick, setSavedTick] = useState(false);
   // The current committee default, for the "compared to committee default" divergence diff
   // (M15 1f). Computed lazily on read (member's blob vs current default) — no stored state.
   const [committeeDefault, setCommitteeDefault] = useState<EligibilityRules | null>(null);
@@ -30,7 +32,11 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
         setIsDefault(mine.isDefault);
         setCommitteeDefault(def);
       })
-      .catch(() => live && props.onError("Could not load your eligibility rules."));
+      .catch(() => {
+        if (!live) return;
+        setLoadError(true); // show an inline error instead of a perpetual "Loading…"
+        props.onError("Could not load your eligibility rules.");
+      });
     return () => {
       live = false;
     };
@@ -52,6 +58,9 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
     const payload: { rules: EligibilityRules; isDefault: boolean } = await response.json();
     setDraft(payload.rules);
     setIsDefault(payload.isDefault);
+    // Transient "Saved" confirmation, matching CommitteeDefaultsPanel.
+    setSavedTick(true);
+    setTimeout(() => setSavedTick(false), 2000);
   }
 
   async function reset() {
@@ -85,7 +94,9 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
         <h3>Eligibility Settings</h3>
       </div>
       <div className="settings-panel-body">
-        {!draft ? (
+        {loadError ? (
+          <p className="panel-hint">Couldn't load your eligibility rules.</p>
+        ) : !draft ? (
           <p className="panel-hint">Loading…</p>
         ) : (
           <form className="settings-form" onSubmit={save}>
@@ -180,7 +191,7 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
               <span>Allow other pets</span>
             </label>
             <div className="rules-section">
-              <h3>Screening checks</h3>
+              <h4>Screening checks</h4>
               <p className="rules-hint">
                 Uncheck a check to disable it for your own list — it won't flag or exclude an
                 applicant for you. Others' lists are unaffected.
@@ -202,7 +213,7 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
             </div>
             <div className="settings-actions">
               <button className="primary-button" type="submit" disabled={saving}>
-                {saving ? "Saving" : "Save eligibility rules"}
+                {saving ? "Saving…" : savedTick ? "Saved" : "Save eligibility rules"}
               </button>
             </div>
           </form>

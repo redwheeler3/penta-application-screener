@@ -187,7 +187,7 @@ export function WorkflowBar(props: {
             icon={<RefreshCw size={16} />}
             done={workflow.synced}
             busy={props.isSyncing}
-            busyLabel="Syncing"
+            busyLabel="Syncing…"
             // Step 1 is always available once a sheet is configured. The caption
             // persists the synced row count (not a fraction).
             disabled={props.isSyncing || props.importConfirm || !props.hasGoogleSheetLink}
@@ -209,7 +209,7 @@ export function WorkflowBar(props: {
             icon={<Sparkles size={16} />}
             done={workflow.screened}
             busy={props.screeningRunning}
-            busyLabel="Screening"
+            busyLabel="Screening…"
             // Needs a sync, applicants in the SHARED screening scope, and no estimate
             // prompt open. Emptiness is the union scope (coverage.screened.inScope), NOT
             // this member's own eligible count — Screen is a shared action over the union
@@ -240,7 +240,7 @@ export function WorkflowBar(props: {
             // coverage tracks so a re-sync correctly shows it stale.
             done={workflow.candidatesScored}
             busy={props.rankRunning}
-            busyLabel="Ranking"
+            busyLabel="Ranking…"
             // Needs a screening run, applicants in the SHARED pool, and no open estimate.
             // Emptiness is the union scope (coverage.screened.inScope — the shared pool Rank
             // scores over), NOT this member's own eligible count: Rank is a shared action, so
@@ -298,7 +298,7 @@ export function WorkflowBar(props: {
           </div>
           <div className="run-confirm-actions">
             <button className="primary-button" type="button" onClick={props.onConfirmImport} disabled={props.isSyncing}>
-              {props.isSyncing ? "Syncing" : "Confirm & sync"}
+              {props.isSyncing ? "Syncing…" : "Confirm & sync"}
             </button>
             <button className="secondary-button" type="button" onClick={props.onCancelImport}>
               Cancel
@@ -339,7 +339,7 @@ export function WorkflowBar(props: {
                 onClick={props.onRunScreening}
                 disabled={props.screeningRunning || !screeningEstimate.withinCap}
               >
-                {props.screeningRunning ? "Running" : "Confirm & run"}
+                {props.screeningRunning ? "Running…" : "Confirm & run"}
               </button>
             ) : null}
             <button className="secondary-button" type="button" onClick={props.onCancelScreening}>
@@ -443,7 +443,7 @@ export function WorkflowBar(props: {
                 onClick={() => props.onRunRank("score-current")}
                 disabled={props.rankRunning || !scoreCurrentEstimate.withinCap}
               >
-                {props.rankRunning ? "Running" : "Score missing applicants"}
+                {props.rankRunning ? "Running…" : "Score missing applicants"}
               </button>
             ) : null}
             <button
@@ -452,7 +452,7 @@ export function WorkflowBar(props: {
               onClick={() => props.onRunRank("discover")}
               disabled={props.rankRunning || !rankEstimate.withinCap}
             >
-              {props.rankRunning ? "Running" : scoreCurrentEstimate ? "Discover new criteria" : "Confirm & run"}
+              {props.rankRunning ? "Running…" : scoreCurrentEstimate ? "Discover new criteria" : "Confirm & run"}
             </button>
             <button className="secondary-button" type="button" onClick={props.onCancelRank}>
               Cancel
