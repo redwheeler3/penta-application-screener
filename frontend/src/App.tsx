@@ -258,8 +258,8 @@ export function App() {
   function requestImport() {
     setScreeningEstimate(null);
     setRankEstimate(null);
+    setImportConfirm(true); // open first; the badge refresh below shouldn't gate the card
     refreshDashboard(); // freshen the badge against current shared state (see requestScreeningEstimate)
-    setImportConfirm(true);
   }
 
   async function syncApplications() {
@@ -299,10 +299,6 @@ export function App() {
   async function requestScreeningEstimate() {
     setRankEstimate(null); // only one card shows at a time
     setImportConfirm(false);
-    // Re-pull the dashboard so the workflow badge reflects the current shared state:
-    // another member may have run Screen/Rank since our last fetch, which would leave
-    // our badge amber while the freshly-fetched estimate says "up to date" (M16).
-    refreshDashboard();
     const response = await api.fetchScreeningEstimate();
     if (response.ok) {
       // Always open the card — even a $0 no-op states there's nothing to do and
@@ -311,6 +307,11 @@ export function App() {
     } else {
       showError("Could not load the AI cost estimate for screening.");
     }
+    // Re-pull the dashboard so the badge reflects current shared state (another member may
+    // have run since our last fetch — M16). AFTER the estimate, not before: the dashboard is
+    // the heaviest call (~120ms) and fired first it competes with the estimate fetch the card
+    // waits on, adding a visible pause before the card appears.
+    refreshDashboard();
   }
 
   async function runScreening() {
@@ -353,7 +354,6 @@ export function App() {
     setScreeningEstimate(null); // only one card shows at a time
     setImportConfirm(false);
     setScoreCurrentEstimate(null);
-    refreshDashboard(); // freshen the badge against current shared state (see requestScreeningEstimate)
     const [rankResponse, currentScoreResponse] = await Promise.all([
       api.fetchRankEstimate(),
       rankingRun ? api.fetchScoreCurrentEstimate() : Promise.resolve(null),
@@ -366,6 +366,9 @@ export function App() {
     } else {
       showError("Could not load the AI cost estimate for ranking.");
     }
+    // Refresh the badge AFTER the estimate (see requestScreeningEstimate): the heavy dashboard
+    // call fired first would compete with the estimate fetches and delay the card.
+    refreshDashboard();
   }
 
   async function runRank(mode: "discover" | "score-current") {
