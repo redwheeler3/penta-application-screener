@@ -200,11 +200,16 @@ def _rank_estimate(
 
     The K parallel discovery calls always re-run (uncached), and the decomposition that
     settles them is one more call — both folded into ``criteria_usd``. The match pass adds
-    a call only when a prior run exists. Scoring is priced as a whole-pool ceiling (every
-    candidate × every dimension) because the estimate runs before discovery, so it can't
-    yet know how many dimensions carry forward. Per-dimension reuse makes the actual run
-    come in under this ceiling, so the total is an upper bound (the confirmation labels it
-    approximate).
+    a call only when a prior run exists. Scoring is priced from HISTORY on a re-rank (the
+    recency-weighted average of recent runs' actual scoring cost — see
+    ``estimate_dimension_scoring`` / ``recent_pass_fresh_usd``); only the first run, with no
+    history, uses the whole-pool ceiling. So the total is a best-effort **expected** cost, NOT
+    a guaranteed upper bound: a real-Bedrock check across 17 runs (2026-07-25) found actual
+    exceeded the estimate ~47% of the time (a full discovery re-mints dimensions whose fresh
+    scoring can outrun the historical mean), always still well under the spending cap. The
+    confirmation labels it approximate; the per-run cap is a soft guard, and the true atomic
+    ceiling is M16/M17 work. Carry-forward reuse itself is validated — recorded cache savings
+    grow run-over-run as the pool stabilizes.
 
     ``pool`` may be passed by a caller that already computed the union scope (the handler's
     guard does), so the ~15ms union isn't recomputed for the confirm card.
