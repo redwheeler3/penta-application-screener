@@ -30,7 +30,7 @@ push, and back up / restore the data.
    app uses a static key. Create an IAM user with an inline policy allowing **only**
    `bedrock:InvokeModel` (and `bedrock:InvokeModelWithResponseStream`) on the Anthropic
    inference-profile ARNs in **us-west-2**, nothing else. Generate an access key for it.
-4. **DNS access** for `pentacoop.com` (to add a CNAME).
+4. **DNS access** for `pentacoop.com` (to add the A/AAAA records `fly certs add` prints).
 
 ---
 
@@ -89,15 +89,21 @@ The `/health` check should go green once migrations finish (see the grace period
 ```
 fly certs add screener.pentacoop.com
 ```
-It prints a target hostname. Add a **CNAME** at your DNS provider:
+It prints the DNS records to create. We used **A + AAAA** records (Fly recommended these for
+this app) at the DNS provider (Squarespace/Google Domains for pentacoop.com) — host `screener`:
 ```
-screener   CNAME   <your-app>.fly.dev
+A     screener → 66.241.125.99
+AAAA  screener → 2a09:8280:1::154:fc20:0
 ```
-Fly auto-issues and renews a free Let's Encrypt cert. Verify:
+(A CNAME to `<your-app>.fly.dev` also works; A/AAAA is what we used. The **A record alone** is
+enough — AAAA is a bonus. Get the current values from the `fly certs add` output, since the
+app's IPs can change.) Fly auto-issues and renews a free Let's Encrypt cert. Verify:
 ```
 fly certs check screener.pentacoop.com
 ```
 This uses Fly's **free shared IPv4 + IPv6** — no dedicated IP ($2/mo) needed for a subdomain.
+On Cloudflare, set the records to **DNS-only (grey cloud)**, not proxied, or cert validation
+fails.
 
 ### 6. Point Google OAuth at prod
 
@@ -141,6 +147,49 @@ gh secret set FLY_API_TOKEN --body "<token>"
 ```
 After that, merging to `main` ships. A newer push supersedes an in-flight deploy
 (`concurrency` in the workflow).
+
+---
+
+## Deploying from another machine
+
+The "first deploy" above is a **one-time account setup** (app, volume, secrets, domain, OAuth)
+— it lives on Fly + Google + DNS, **not** on any laptop. So a second machine that just needs to
+*deploy* requires almost nothing, because all state already exists remotely. Two paths:
+
+**Path A — just `git push` (simplest, nothing to install).** CD is already wired: any push to
+`main` triggers the GitHub Actions deploy. From a second machine you only need `git` and push
+access to the repo. This is the recommended default — you may never need flyctl on the second
+box at all.
+
+**Path B — deploy directly with flyctl** (for `fly logs`, `fly ssh`, manual `fly deploy`):
+```
+brew install flyctl            # or: curl -L https://fly.io/install.sh | sh
+fly auth login                 # opens a browser; same Fly account
+git clone <this repo> && cd penta-application-screener
+fly deploy --remote-only       # builds on Fly's remote builders — no local Docker/Finch
+```
+That's it. `fly auth login` ties the machine to your Fly account, where the app, volume, and
+**secrets already live** — you do **not** re-enter AWS/Google/session secrets, and you do **not**
+recreate the volume or DNS. `--remote-only` means the build happens on Fly, so **no Docker or
+Finch is needed locally** on either machine.
+
+### What a second machine does NOT need (deploy vs. local dev)
+
+Deploying is not the same as running the app locally. For a *deploy*, skip all of this — it's
+only for **local development** on a machine:
+
+| Item | Needed to deploy? | Needed for local dev? |
+|---|---|---|
+| `flyctl` + `fly auth login` | Only for Path B (not Path A) | No |
+| Repo clone + `git push` access | Yes | Yes |
+| Local Docker / Finch | **No** (Fly builds remotely) | No |
+| `.env.local`, `backend/secrets/*.json` (Google) | **No** (prod uses Fly secrets) | Yes |
+| Local SQLite DB / `uv sync` / `npm install` | **No** | Yes (`./setup.sh`) |
+| AWS keys / IAM user | **No** (already a Fly secret) | Yes (ambient AWS creds) |
+
+So: **new machine, deploy only → install flyctl, `fly auth login`, clone, `fly deploy`** (or just
+push to `main`). New machine for *local dev* → follow the README's Setup + recreate the
+gitignored secrets. The two are independent.
 
 ---
 
