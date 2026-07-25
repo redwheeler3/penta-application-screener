@@ -279,6 +279,9 @@ export type LastRunCost = {
   freshUsd: number;
   cachedSavedUsd: number;
   estimatedUsd: number; // pre-run projection; 0 on runs recorded before capture (show "—")
+  // The member who triggered this shared run (M15 Phase 4). null on pre-Phase-4 runs or a
+  // since-removed member — omit the stamp then.
+  triggeredBy: string | null;
   passes: LastRunPass[];
 };
 

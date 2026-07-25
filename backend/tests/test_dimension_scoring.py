@@ -392,3 +392,56 @@ def test_estimate_defaults_to_zero_when_not_provided() -> None:
     record_run_cost(db, kind="screen", passes={"Screening": PassCost(calls=1, cost_usd=0.05)})
 
     assert last_runs_report(db).screen.estimated_usd == 0.0
+
+
+def test_triggering_member_is_recorded_and_surfaced() -> None:
+    # M15 Phase 4: the member who kicked off a shared run is stamped on the ledger and
+    # surfaces on the last-run report, so Observability can attribute the shared spend.
+    from app.ai.pricing import PassCost
+    from app.services.cost_report import last_runs_report, record_run_cost
+
+    db = make_db()
+    member = db.scalar(select(User))
+    record_run_cost(
+        db, kind="rank",
+        passes={"Dimension scoring": PassCost(calls=1, cost_usd=0.12)},
+        triggered_by_user_id=member.id,
+    )
+
+    assert last_runs_report(db).rank.triggered_by == "M"
+
+
+def test_triggering_member_is_none_when_unattributed() -> None:
+    # Pre-Phase-4 rows (and any run recorded without a user) report None — the UI omits
+    # the stamp rather than showing a placeholder.
+    from app.ai.pricing import PassCost
+    from app.services.cost_report import last_runs_report, record_run_cost
+
+    db = make_db()
+    record_run_cost(db, kind="screen", passes={"Screening": PassCost(calls=1, cost_usd=0.05)})
+
+    assert last_runs_report(db).screen.triggered_by is None
+
+
+def test_run_cost_survives_a_removed_triggering_member() -> None:
+    # A run's cost history must OUTLIVE the member who triggered it (no cascade delete):
+    # the ledger row stays, the stamp just reads blank.
+    from app.ai.pricing import PassCost
+    from app.db.models import RunCostLedger
+    from app.services.cost_report import last_runs_report, record_run_cost
+
+    db = make_db()
+    member = db.scalar(select(User))
+    record_run_cost(
+        db, kind="rank",
+        passes={"Dimension scoring": PassCost(calls=1, cost_usd=0.12)},
+        triggered_by_user_id=member.id,
+    )
+    db.delete(member)
+    db.commit()
+
+    rank = last_runs_report(db).rank
+    assert rank is not None  # run survived the member's removal
+    assert rank.fresh_usd == 0.12
+    assert rank.triggered_by is None  # stamp reads blank
+    assert db.scalar(select(RunCostLedger)) is not None

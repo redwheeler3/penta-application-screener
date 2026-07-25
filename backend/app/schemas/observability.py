@@ -78,6 +78,9 @@ class LastRunCost(ResponseModel):
     # The pre-run projection shown at the confirmation card, for estimate-vs-actual
     # reconciliation. 0.0 on runs recorded before this was captured (renders as "—").
     estimated_usd: float
+    # The member who triggered this shared run (M15 Phase 4). None on pre-Phase-4 runs or a
+    # since-removed member — the UI omits the stamp then. Attribution only; runs stay shared.
+    triggered_by: str | None = None
     passes: list[LastRunPass]
 
 

@@ -2518,6 +2518,12 @@ h1 {
 .cost-recon-over {
   color: #92400e;
 }
+/* "· triggered by <member>" attribution on a shared run (M15 Phase 4). */
+.cost-triggered-by {
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
 
 /* Passes indent under their run group. */
 .cost-pass-name {

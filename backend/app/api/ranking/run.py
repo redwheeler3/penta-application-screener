@@ -388,6 +388,7 @@ def score_current(
             passes={"Dimension scoring": tally.as_pass_cost(settings.ai.dimension_scoring_model)},
             durations_ms={"Dimension scoring": round((time.perf_counter() - started) * 1000)},
             estimated_usd=estimate["estimated_usd"],
+            triggered_by_user_id=user.id,
         )
         yield emit(
             RankSummary(
@@ -905,6 +906,7 @@ def rank_run(
             # The pre-run projection shown at the confirmation card (computed above for the
             # cap check), stored for estimate-vs-actual reconciliation.
             estimated_usd=float(estimate["estimated_usd"]),
+            triggered_by_user_id=user.id,
         )
 
         # Snapshot the DB now that the run's (expensive, non-deterministic) output is

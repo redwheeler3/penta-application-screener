@@ -333,7 +333,16 @@ class RunCostLedger(TimestampMixin, Base):
     # recorded before this column existed (server_default), and on kinds that had no
     # pre-run estimate surface.
     estimated_usd: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
+    # The member who triggered this run (M15 Phase 4; ADR 0011). Runs are SHARED committee
+    # spend, so Observability stays committee-wide — this only makes the shared cost
+    # attributable ("who kicked off this Rank"). Nullable + no cascade: a run's cost history
+    # must outlive a removed member (the stamp just reads blank), and pre-Phase-4 rows are
+    # NULL. Not a per-member scope — purely attributive metadata on a shared run.
+    triggered_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
 
+    triggered_by: Mapped[User | None] = relationship()
     passes: Mapped[list[RunPassCost]] = relationship(
         back_populates="run", cascade="all, delete-orphan", order_by="RunPassCost.id"
     )

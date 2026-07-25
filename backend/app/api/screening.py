@@ -174,6 +174,7 @@ def run(
             passes={"Screening": tally.as_pass_cost(settings.ai.screening_model)},
             durations_ms={"Screening": round((time.perf_counter() - started) * 1000)},
             estimated_usd=float(estimate_result["estimated_usd"]),
+            triggered_by_user_id=user.id,
         )
 
         yield emit(

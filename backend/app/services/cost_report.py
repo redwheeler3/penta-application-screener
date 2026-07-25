@@ -65,6 +65,7 @@ def record_run_cost(
     passes: dict[str, PassCost],
     durations_ms: dict[str, int] | None = None,
     estimated_usd: float = 0.0,
+    triggered_by_user_id: int | None = None,
 ) -> None:
     """Persist a completed run's per-pass cost (``kind`` = "screen" | "rank" |
     "rank_scores"), one
@@ -75,13 +76,16 @@ def record_run_cost(
     pass's wall-clock (measured by the caller, not summed from PassCost — see the model
     docstring); a label absent from it records 0. ``estimated_usd`` is the pre-run cost
     projection the caller showed the committee, stored for estimate-vs-actual
-    reconciliation (0.0 when the kind has no pre-run estimate surface). Commits its own
-    rows so a later failure can't lose them.
+    reconciliation (0.0 when the kind has no pre-run estimate surface).
+    ``triggered_by_user_id`` stamps the member who kicked off this shared run, so
+    Observability can attribute the shared spend (M15 Phase 4); None leaves it unattributed.
+    Commits its own rows so a later failure can't lose them.
     """
     durations_ms = durations_ms or {}
     header = RunCostLedger(
         kind=kind,
         estimated_usd=round(estimated_usd, 6),
+        triggered_by_user_id=triggered_by_user_id,
         passes=[
             RunPassCost(
                 label=label,
@@ -189,6 +193,11 @@ def _last_run(db: Session, kind: str) -> LastRunCost | None:
         fresh_usd=round(sum(p.fresh_usd for p in passes), 6),
         cached_saved_usd=round(sum(p.cached_saved_usd for p in passes), 6),
         estimated_usd=round(row.estimated_usd, 6),
+        # Who kicked off this shared run (M15 Phase 4). None on pre-Phase-4 rows or when the
+        # member was since removed (the relationship resolves to None) — the UI omits the
+        # stamp rather than showing a placeholder. Observability stays committee-wide; this
+        # is attribution, not scoping.
+        triggered_by=row.triggered_by.display_name if row.triggered_by else None,
         passes=passes,
     )
 

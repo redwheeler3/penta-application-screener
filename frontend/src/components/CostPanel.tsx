@@ -37,6 +37,13 @@ function reconciliation(run: LastRunCost): ReactNode {
   );
 }
 
+// Who kicked off this shared run (M15 Phase 4). Omitted when unknown (pre-Phase-4 rows or a
+// since-removed member) — runs stay committee-wide; this only attributes the shared spend.
+function triggeredByStamp(run: LastRunCost): ReactNode {
+  if (!run.triggeredBy) return null;
+  return <span className="cost-triggered-by">{` · triggered by ${run.triggeredBy}`}</span>;
+}
+
 const RUN_LABELS: Record<InsightRunKind, string> = {
   screen: "Screen",
   rank: "Discover criteria & rank",
@@ -92,7 +99,7 @@ export function CostPanel(): ReactNode {
               ) : (
                 <tbody key={i}>
                   <tr className="cost-group-head">
-                    <td>{RUN_LABELS[run.kind]}{reconciliation(run)}</td>
+                    <td>{RUN_LABELS[run.kind]}{triggeredByStamp(run)}{reconciliation(run)}</td>
                     <td className="cost-num" />
                     <td className="cost-num" />
                     <td className="cost-num" />
