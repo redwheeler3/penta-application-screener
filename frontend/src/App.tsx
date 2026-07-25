@@ -22,6 +22,7 @@ import { ApplicationsList } from "./components/ApplicationsList";
 import { CandidateDetail } from "./components/CandidateDetail";
 import { EligibilitySettingsPanel } from "./components/EligibilitySettingsPanel";
 import { AIQualityView } from "./components/AIQualityView";
+import { FeedbackButton } from "./components/FeedbackButton";
 import { RankingView } from "./components/RankingView";
 import { Toasts } from "./components/Toasts";
 import { WorkflowBar } from "./components/WorkflowBar";
@@ -713,6 +714,16 @@ export function App() {
           </section>
         </>
       )}
+      {/* The from-any-page feedback channel: only for a signed-in member, and never in
+          print. Context (active tab + current ranking) rides along invisibly. */}
+      {user ? (
+        <FeedbackButton
+          activeTab={activeTab}
+          analysisId={rankingRun?.analysisId ?? null}
+          onToast={showToast}
+          onError={showError}
+        />
+      ) : null}
       <Toasts toasts={toasts} onDismiss={dismissToast} />
     </main>
   );

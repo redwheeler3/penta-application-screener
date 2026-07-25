@@ -4,15 +4,16 @@ import { readProblem } from "../format";
 import { AI_CHECKS, DETERMINISTIC_CHECKS } from "../constants";
 import { NumberInput } from "./NumberInput";
 import { AccessPanel } from "./AccessPanel";
-import type { AppSettings, EligibilityRules, SettingsResponse } from "../types";
+import type { AppSettings, EligibilityRules, FeedbackItem, SettingsResponse } from "../types";
 
 // The admin-only config surface, organized as sub-views:
 //   Configuration      — the data source (Google Sheet) and AI screening knobs.
 //   Committee Defaults — the shared eligibility-rules baseline every non-diverged member reads.
 //   Access             — the sign-in allowlist (the existing AccessPanel, self-fetching).
+//   Feedback           — member-submitted feedback with the context it came from (self-fetching).
 // A member's OWN eligibility rules live on their Eligibility Settings tab; this edits only the
 // shared committee default (M15 1f). Editing it has zero effect on members who've diverged.
-type AdminSubtab = "configuration" | "defaults" | "access";
+type AdminSubtab = "configuration" | "defaults" | "access" | "feedback";
 
 export function AdminSettingsPanel(props: {
   draft: AppSettings;
@@ -60,9 +61,20 @@ export function AdminSettingsPanel(props: {
         >
           Access
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={subtab === "feedback"}
+          className={`subtab${subtab === "feedback" ? " active" : ""}`}
+          onClick={() => setSubtab("feedback")}
+        >
+          Feedback
+        </button>
       </div>
 
-      {subtab === "access" ? (
+      {subtab === "feedback" ? (
+        <FeedbackPanel onError={props.onError} />
+      ) : subtab === "access" ? (
         <AccessPanel onError={props.onError} />
       ) : subtab === "defaults" ? (
         <CommitteeDefaultsPanel onError={props.onError} />
@@ -269,6 +281,105 @@ function DefaultCheckGroup(props: {
           </label>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Admin reader for member feedback (M15 "Future UX Enhancements" #2). Self-contained, like
+// AccessPanel: fetches its own list. Open items by default; a toggle reveals resolved ones
+// (retained, not deleted, so the friction history survives). Resolving an item drops it from
+// the open list; reopening restores it. Each item shows who sent it and the context they were
+// in, so the admin can act without a back-and-forth.
+function FeedbackPanel(props: { onError: (message: string) => void }): ReactNode {
+  const [items, setItems] = useState<FeedbackItem[] | null>(null);
+  const [showResolved, setShowResolved] = useState(false);
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api
+      .fetchFeedback(showResolved)
+      .then((list) => live && setItems(list))
+      .catch(() => live && props.onError("Could not load feedback."));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showResolved]);
+
+  async function act(id: number, action: "resolve" | "reopen") {
+    setBusyId(id);
+    const response = await (action === "resolve" ? api.resolveFeedback(id) : api.reopenFeedback(id));
+    setBusyId(null);
+    if (!response.ok) {
+      props.onError((await readProblem(response)) ?? `Could not ${action} the feedback item.`);
+      return;
+    }
+    // Re-fetch under the current filter so the item lands in (or leaves) the visible list.
+    api
+      .fetchFeedback(showResolved)
+      .then(setItems)
+      .catch(() => props.onError("Could not refresh feedback."));
+  }
+
+  return (
+    <div className="settings-panel-body">
+      <div className="feedback-admin-header">
+        <p className="panel-hint">
+          Feedback members sent from anywhere in the app, newest first. May contain applicant
+          details — treat it as sensitive.
+        </p>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={showResolved}
+            onChange={(event) => setShowResolved(event.target.checked)}
+          />
+          <span>Show resolved</span>
+        </label>
+      </div>
+      {items === null ? (
+        <p className="panel-hint">Loading…</p>
+      ) : items.length === 0 ? (
+        <p className="panel-hint">{showResolved ? "No feedback yet." : "No open feedback."}</p>
+      ) : (
+        <ul className="feedback-list">
+          {items.map((item) => (
+            <li key={item.id} className={`feedback-item${item.resolvedAt ? " is-resolved" : ""}`}>
+              <p className="feedback-item-body">{item.body}</p>
+              <div className="feedback-item-meta">
+                <span>{item.userName}</span>
+                <span>{item.userEmail}</span>
+                <span>{new Date(item.createdAt).toLocaleString()}</span>
+                {item.activeTab ? <span>tab: {item.activeTab}</span> : null}
+                {item.analysisId !== null ? <span>ranking #{item.analysisId}</span> : null}
+                <span>v{item.appVersion}</span>
+              </div>
+              <div className="feedback-item-actions">
+                {item.resolvedAt ? (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={busyId === item.id}
+                    onClick={() => act(item.id, "reopen")}
+                  >
+                    Reopen
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={busyId === item.id}
+                    onClick={() => act(item.id, "resolve")}
+                  >
+                    Mark resolved
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -3387,3 +3387,115 @@ h1 {
   border: 0; background: none; padding: 0; cursor: pointer;
   color: var(--penta-green-dark); font-size: 0.78rem; text-decoration: underline;
 }
+
+/* --- Feedback: from-any-page composer (member) + admin reader --------------- */
+
+/* A low-key fixed affordance in the bottom-LEFT corner (toasts own bottom-right),
+   present on every page for a signed-in member. */
+.feedback-widget {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 1.5rem;
+  z-index: 900;
+  width: min(360px, calc(100vw - 3rem));
+}
+
+.feedback-fab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(17, 24, 39, 0.12);
+}
+
+.feedback-fab:hover {
+  border-color: var(--penta-green);
+  color: var(--penta-green-dark);
+}
+
+.feedback-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.14);
+}
+
+.feedback-composer-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.feedback-composer-input {
+  resize: vertical;
+  min-height: 4.5rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.feedback-composer-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Admin reader */
+.feedback-admin-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.feedback-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.feedback-item {
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.feedback-item.is-resolved {
+  opacity: 0.6;
+}
+
+.feedback-item-body {
+  margin: 0 0 0.5rem;
+  white-space: pre-wrap;
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.feedback-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.feedback-item-actions {
+  margin-top: 0.6rem;
+}

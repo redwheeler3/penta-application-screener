@@ -16,6 +16,21 @@ export type AllowlistEntry = {
   role: "admin" | "member";
 };
 
+// A member's feedback item. Members submit body + context; identity/version/time are
+// server-stamped. The admin Feedback subtab reads the full shape.
+export type FeedbackItem = {
+  id: number;
+  body: string;
+  userEmail: string;
+  userName: string;
+  route: string | null;
+  activeTab: string | null;
+  analysisId: number | null;
+  appVersion: string;
+  createdAt: string;
+  resolvedAt: string | null;
+};
+
 // Mirrors backend AISettings. The UI edits spendingCapUsd and discoveryFanOut; the
 // rest are round-tripped so a save never resets them.
 export type AISettings = {

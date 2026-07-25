@@ -13,6 +13,7 @@ from app.api.applications import router as applications_router
 from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
 from app.api.evals import router as evals_router
+from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
 from app.api.observability import router as observability_router
 from app.api.problems import Problem
@@ -96,6 +97,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(dashboard_router)
     app.include_router(evals_router)
+    app.include_router(feedback_router)
     app.include_router(health_router)
     app.include_router(observability_router)
     app.include_router(screening_router)

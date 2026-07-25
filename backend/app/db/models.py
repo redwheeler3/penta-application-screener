@@ -105,6 +105,39 @@ class GoogleCredential(TimestampMixin, Base):
     user: Mapped[User] = relationship()
 
 
+class Feedback(TimestampMixin, Base):
+    """A member's free-text feedback, captured from any page and surfaced to admins
+    (M15 "Future UX Enhancements" #2). The point is to let an admin act on real member
+    friction without a back-and-forth, so each row carries the context the member had
+    when they hit it — the route/tab they were on and the ranking they were viewing —
+    stamped server-side alongside identity, app version, and time so it can't be omitted.
+
+    Treated as SENSITIVE: a member may paste applicant specifics into the free text, so
+    reads are admin-only, it never feeds AI, and it's never logged or exported.
+    """
+
+    __tablename__ = "feedback"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    # Where the member was when they submitted — the client sends both; either may be
+    # blank (feedback from a page with no active tab/route). Context, not identity.
+    route: Mapped[str | None] = mapped_column(String(500))
+    active_tab: Mapped[str | None] = mapped_column(String(100))
+    # The ranking they were viewing, if any — nullable (feedback before any Rank runs).
+    # No FK: an analysis can be superseded, and we want the id preserved for context even
+    # if that row is later gone, rather than blocking the delete or nulling on cascade.
+    analysis_id: Mapped[int | None] = mapped_column()
+    # The build the feedback came from, stamped server-side (see app.version).
+    app_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Set when an admin marks the item handled; null = still open. Resolved items are
+    # retained (hidden by default) so the friction history survives for later mining.
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[User] = relationship()
+
+
 class AdminSetting(TimestampMixin, Base):
     __tablename__ = "admin_settings"
 

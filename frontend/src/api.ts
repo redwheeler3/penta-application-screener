@@ -16,6 +16,7 @@ import type {
   EligibilityRulesResponse,
   EvalRunMode,
   FanOutAuditResponse,
+  FeedbackItem,
   LastRunsReport,
   MatchAuditResponse,
   MetricsReport,
@@ -64,6 +65,33 @@ export function removeAllowlistEntry(email: string): Promise<Response> {
     credentials: "include",
   });
 }
+
+// --- Feedback (submit: any member; read/resolve: admin only) ----------------
+
+export function submitFeedback(payload: {
+  body: string;
+  route: string | null;
+  activeTab: string | null;
+  analysisId: number | null;
+}): Promise<Response> {
+  return fetch(url("/feedback"), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export const fetchFeedback = (includeResolved: boolean) =>
+  getJson<{ items: FeedbackItem[] }>(
+    `/feedback${includeResolved ? "?includeResolved=true" : ""}`,
+  ).then((p) => p.items);
+
+export const resolveFeedback = (id: number) =>
+  fetch(url(`/feedback/${id}/resolve`), { method: "POST", credentials: "include" });
+
+export const reopenFeedback = (id: number) =>
+  fetch(url(`/feedback/${id}/reopen`), { method: "POST", credentials: "include" });
 
 export function saveSettings(draft: AppSettings): Promise<Response> {
   return fetch(url("/settings"), {
