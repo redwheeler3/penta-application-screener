@@ -210,15 +210,22 @@ export function WorkflowBar(props: {
             done={workflow.screened}
             busy={props.screeningRunning}
             busyLabel="Screening"
-            // Needs a sync, eligible apps, and no estimate prompt open.
+            // Needs a sync, applicants in the SHARED screening scope, and no estimate
+            // prompt open. Emptiness is the union scope (coverage.screened.inScope), NOT
+            // this member's own eligible count — Screen is a shared action over the union
+            // pool, so gating on a member's personal view would disable it (amber but
+            // unclickable) whenever their view is emptier than the committee's.
             disabled={
-              !workflow.synced || props.screeningRunning || screeningEstimate !== null || dashboardCounts.status.eligible === 0
+              !workflow.synced ||
+              props.screeningRunning ||
+              screeningEstimate !== null ||
+              (coverage.screened?.inScope ?? 0) === 0
             }
             disabledTitle={
               !workflow.synced
                 ? "Import applications first."
-                : dashboardCounts.status.eligible === 0
-                  ? "No eligible applicants to screen."
+                : (coverage.screened?.inScope ?? 0) === 0
+                  ? "No applicants to screen."
                   : undefined
             }
             onClick={props.onRequestScreening}
@@ -234,18 +241,21 @@ export function WorkflowBar(props: {
             done={workflow.candidatesScored}
             busy={props.rankRunning}
             busyLabel="Ranking"
-            // Needs screening run, eligible apps, and no open estimate.
+            // Needs a screening run, applicants in the SHARED pool, and no open estimate.
+            // Emptiness is the union scope (coverage.screened.inScope — the shared pool Rank
+            // scores over), NOT this member's own eligible count: Rank is a shared action, so
+            // a member with an emptier personal view must not see it amber-but-disabled.
             disabled={
               !workflow.screened ||
               props.rankRunning ||
               rankEstimate !== null ||
-              dashboardCounts.status.eligible === 0
+              (coverage.screened?.inScope ?? 0) === 0
             }
             disabledTitle={
               !workflow.screened
                 ? "Run Screen first."
-                : dashboardCounts.status.eligible === 0
-                  ? "No eligible applicants to rank."
+                : (coverage.screened?.inScope ?? 0) === 0
+                  ? "No applicants to rank."
                   : undefined
             }
             onClick={props.onRequestRank}
