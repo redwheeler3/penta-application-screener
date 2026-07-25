@@ -105,6 +105,7 @@ from app.services.cost_report import (
     recent_pass_fresh_usd,
     record_run_cost,
 )
+from app.services.run_lock import acquire_run_lock, release_run_lock
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/ranking")
@@ -362,42 +363,52 @@ def score_current(
         db, report, settings.ai.dimension_scoring_model
     )
 
+    # Serialize against other in-flight runs (M16); released in the stream's finally.
+    if not acquire_run_lock(db, user_id=user.id, kind=SCORE_CURRENT_KIND):
+        raise Problem(
+            "run_in_progress",
+            detail="Another screening or ranking run is in progress. Try again once it finishes.",
+        )
+
     def stream() -> Iterator[str]:
-        yield emit(PhaseEvent(phase=SCORES, total=len(candidates)))
-        tally = ScoreTally()
-        started = time.perf_counter()
-        for processed, result in enumerate(
-            score_dimensions(
-                db, provider, applications=candidates, report=report,
-                settings=settings, max_workers=settings.ai.max_workers,
-            ),
-            start=1,
-        ):
-            tally.add(result)
-            yield emit(ProgressEvent(phase=SCORES, processed=processed, total=len(candidates)))
-        if tally.failed == 0:
-            # Choosing the score-only path is an explicit committee decision to retain
-            # these criteria for the changed pool. Re-stamp only after complete success;
-            # a partial score run must stay amber and invite a retry.
-            analysis = get_current_analysis(db)
-            if analysis is not None:
-                mark_ranking_current(db, analysis, settings)
-        record_run_cost(
-            db,
-            kind=SCORE_CURRENT_KIND,
-            passes={"Dimension scoring": tally.as_pass_cost(settings.ai.dimension_scoring_model)},
-            durations_ms={"Dimension scoring": round((time.perf_counter() - started) * 1000)},
-            estimated_usd=estimate["estimated_usd"],
-            triggered_by_user_id=user.id,
-        )
-        yield emit(
-            RankSummary(
-                dimensions=len(report.dimensions),
-                scored=tally.processed,
-                failed=tally.failed,
-                total_cost_usd=round(tally.cost_usd, 4),
+        try:
+            yield emit(PhaseEvent(phase=SCORES, total=len(candidates)))
+            tally = ScoreTally()
+            started = time.perf_counter()
+            for processed, result in enumerate(
+                score_dimensions(
+                    db, provider, applications=candidates, report=report,
+                    settings=settings, max_workers=settings.ai.max_workers,
+                ),
+                start=1,
+            ):
+                tally.add(result)
+                yield emit(ProgressEvent(phase=SCORES, processed=processed, total=len(candidates)))
+            if tally.failed == 0:
+                # Choosing the score-only path is an explicit committee decision to retain
+                # these criteria for the changed pool. Re-stamp only after complete success;
+                # a partial score run must stay amber and invite a retry.
+                analysis = get_current_analysis(db)
+                if analysis is not None:
+                    mark_ranking_current(db, analysis, settings)
+            record_run_cost(
+                db,
+                kind=SCORE_CURRENT_KIND,
+                passes={"Dimension scoring": tally.as_pass_cost(settings.ai.dimension_scoring_model)},
+                durations_ms={"Dimension scoring": round((time.perf_counter() - started) * 1000)},
+                estimated_usd=estimate["estimated_usd"],
+                triggered_by_user_id=user.id,
             )
-        )
+            yield emit(
+                RankSummary(
+                    dimensions=len(report.dimensions),
+                    scored=tally.processed,
+                    failed=tally.failed,
+                    total_cost_usd=round(tally.cost_usd, 4),
+                )
+            )
+        finally:
+            release_run_lock(db, user_id=user.id)
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")
 
@@ -860,75 +871,88 @@ def rank_run(
             estimated_usd=float(estimate["estimated_usd"]),
         ) from exc
 
+    # Serialize against other in-flight runs (M16). The full Rank is the run whose overlap
+    # is genuinely destructive — two concurrent Ranks each create an Analysis and
+    # last-writer-wins strands the loser's MemberRanking — so this guard is what closes that
+    # hazard. Released in the stream's finally (covers the early return + any pass raising).
+    if not acquire_run_lock(db, user_id=user.id, kind="rank"):
+        raise Problem(
+            "run_in_progress",
+            detail="Another screening or ranking run is in progress. Try again once it finishes.",
+        )
+
     def stream() -> Iterator[str]:
-        # Phase 1: find criteria (creates the shared analysis + this member's ranking). A
-        # fatal failure emits its own error line and returns None — abort, nothing scored.
-        criteria = yield from _stream_criteria(db, provider, settings, user)
-        if criteria is None:
-            return
-        total_cost = (
-            criteria.discovery_cost + criteria.decompose_cost + criteria.match_cost
-        ).cost_usd
-
-        # Phase 2: score every eligible candidate against the new dimensions.
-        score_tally, scoring_ms = yield from _stream_scoring(
-            db, provider, settings, criteria.report
-        )
-        total_cost += score_tally.cost_usd
-
-        # Phase 2b: consolidate duplicate dimensions (post-score, usually a no-op).
-        consolidation, consolidate_ms = yield from _stream_consolidate(
-            db, provider, settings, criteria.analysis, criteria.member_ranking, criteria.report
-        )
-        total_cost += consolidation.cost.cost_usd
-
-        # Persist this run's per-pass cost (the only point the fresh/cached split is
-        # known). Each pass hands over its PassCost — discovery is the summed K fan-out
-        # calls; match/consolidation are zero-cost no-ops when they made no call this run,
-        # still recorded so the pass set always covers RANK_PASS_LABELS. durations carries
-        # each pass's wall-clock (Pillar 3); the criteria dict omits matching on a first run.
-        durations = {
-            **criteria.durations,
-            "Dimension scoring": scoring_ms,
-            "Dimension consolidation": consolidate_ms,
-        }
-        record_run_cost(
-            db,
-            kind="rank",
-            passes={
-                "Pattern discovery": criteria.discovery_cost,
-                "Dimension decomposition": criteria.decompose_cost,
-                "Dimension matching": criteria.match_cost,
-                "Dimension scoring": score_tally.as_pass_cost(settings.ai.dimension_scoring_model),
-                "Dimension consolidation": consolidation.cost,
-            },
-            durations_ms=durations,
-            # The pre-run projection shown at the confirmation card (computed above for the
-            # cap check), stored for estimate-vs-actual reconciliation.
-            estimated_usd=float(estimate["estimated_usd"]),
-            triggered_by_user_id=user.id,
-        )
-
-        # Snapshot the DB now that the run's (expensive, non-deterministic) output is
-        # persisted — this is the only durable record once the live DB moves on, so it is
-        # captured automatically rather than left to someone remembering. Best-effort: a
-        # backup failure must never fail a completed Rank, so it is logged and swallowed.
         try:
-            from app.services.backup import create_from_session
+            # Phase 1: find criteria (creates the shared analysis + this member's ranking). A
+            # fatal failure emits its own error line and returns None — abort, nothing scored.
+            criteria = yield from _stream_criteria(db, provider, settings, user)
+            if criteria is None:
+                return
+            total_cost = (
+                criteria.discovery_cost + criteria.decompose_cost + criteria.match_cost
+            ).cost_usd
 
-            create_from_session(db, tag="rank")
-        except Exception:
-            logging.getLogger("app.api").exception(
-                "Post-rank DB backup failed (run is saved; backup skipped)"
+            # Phase 2: score every eligible candidate against the new dimensions.
+            score_tally, scoring_ms = yield from _stream_scoring(
+                db, provider, settings, criteria.report
+            )
+            total_cost += score_tally.cost_usd
+
+            # Phase 2b: consolidate duplicate dimensions (post-score, usually a no-op).
+            consolidation, consolidate_ms = yield from _stream_consolidate(
+                db, provider, settings, criteria.analysis, criteria.member_ranking, criteria.report
+            )
+            total_cost += consolidation.cost.cost_usd
+
+            # Persist this run's per-pass cost (the only point the fresh/cached split is
+            # known). Each pass hands over its PassCost — discovery is the summed K fan-out
+            # calls; match/consolidation are zero-cost no-ops when they made no call this run,
+            # still recorded so the pass set always covers RANK_PASS_LABELS. durations carries
+            # each pass's wall-clock (Pillar 3); the criteria dict omits matching on a first run.
+            durations = {
+                **criteria.durations,
+                "Dimension scoring": scoring_ms,
+                "Dimension consolidation": consolidate_ms,
+            }
+            record_run_cost(
+                db,
+                kind="rank",
+                passes={
+                    "Pattern discovery": criteria.discovery_cost,
+                    "Dimension decomposition": criteria.decompose_cost,
+                    "Dimension matching": criteria.match_cost,
+                    "Dimension scoring": score_tally.as_pass_cost(settings.ai.dimension_scoring_model),
+                    "Dimension consolidation": consolidation.cost,
+                },
+                durations_ms=durations,
+                # The pre-run projection shown at the confirmation card (computed above for the
+                # cap check), stored for estimate-vs-actual reconciliation.
+                estimated_usd=float(estimate["estimated_usd"]),
+                triggered_by_user_id=user.id,
             )
 
-        yield emit(
-            RankSummary(
-                dimensions=len(criteria.report.dimensions),
-                scored=score_tally.processed,
-                failed=score_tally.failed,
-                total_cost_usd=round(total_cost, 4),
+            # Snapshot the DB now that the run's (expensive, non-deterministic) output is
+            # persisted — this is the only durable record once the live DB moves on, so it is
+            # captured automatically rather than left to someone remembering. Best-effort: a
+            # backup failure must never fail a completed Rank, so it is logged and swallowed.
+            try:
+                from app.services.backup import create_from_session
+
+                create_from_session(db, tag="rank")
+            except Exception:
+                logging.getLogger("app.api").exception(
+                    "Post-rank DB backup failed (run is saved; backup skipped)"
+                )
+
+            yield emit(
+                RankSummary(
+                    dimensions=len(criteria.report.dimensions),
+                    scored=score_tally.processed,
+                    failed=score_tally.failed,
+                    total_cost_usd=round(total_cost, 4),
+                )
             )
-        )
+        finally:
+            release_run_lock(db, user_id=user.id)
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")

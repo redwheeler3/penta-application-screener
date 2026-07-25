@@ -370,7 +370,7 @@ It is acceptable to send full application context, including names/contact conte
 
 **Committee-proposed seeds** feed the one shared discovery (the resulting axis is shared), but the "you requested this" badge shows only for the requesting member (`from_committee_request` provenance is already per-run).
 
-**Out of scope (M15):** merged shortlist, disagreement flags, criteria comparison, cross-member list visibility, and `require_admin` roles (M16). Notes remain private to their author, out of AI inputs and reports, on the author's printed candidate detail only.
+**Out of scope (M15):** merged shortlist, disagreement flags, criteria comparison, and cross-member list visibility. Notes remain private to their author, out of AI inputs and reports, on the author's printed candidate detail only. (`require_admin` + the allowlist landed in M15 1a; broader role exercise is M17.)
 
 *(The per-member-pool / shared-content-cache decision is recorded in [ADR 0011](docs/adr/0011-per-member-eligible-pool-shared-content-cache.md); the sliced build history — allowlist, the `Analysis`/`MemberRanking`/`MemberEligibility` split, per-member rules, pets-as-facts, and the committee-union re-rank — is in [CHANGELOG.md](CHANGELOG.md) M15.)*
 
@@ -393,7 +393,7 @@ Users may create multiple runs for the same pool ("Jeff first pass", "Jeff revis
 
 - Google Sheets is the external source of truth for submitted applications.
 - Application rows import into the app database for screening runs, AI outputs, notes, rankings, and reports.
-- SQLite for the local MVP (simple, inspectable, reliable for one machine); the data layer is kept portable to a hosted database (Postgres) for multi-user use. Expected live committee size ~5 members with light concurrency; a hosted DB is a Milestone 16 concern.
+- SQLite for the local MVP (simple, inspectable, reliable for one machine); the data layer is kept portable to a hosted database (Postgres) for multi-user use. Expected live committee size ~5 members with light concurrency (hardened for concurrent runs in M16 via WAL + a run lease); the move to a hosted DB is a Milestone 17 concern.
 - Spreadsheet access is minimized — import/sync rows, then use the app DB for screening state.
 
 Core data model:
@@ -428,7 +428,7 @@ Implementation defaults:
 - Clean changes over backward compatibility for internal APIs, local schemas, fixtures, and UI shapes; backward compatibility is added only when real users or real applicant data require it.
 - Relational tables for workflow data, JSON columns for raw rows, flexible payloads, AI outputs, and debug traces; the relational model stays portable to Postgres.
 
-**Milestones 1–15 are complete** and proven end-to-end against real Bedrock (sync → screen → discover ~14–16 fact-aware dimensions → score the pool → rank with the tier-list weighting → print a committee-ready PDF), now with per-member independent screening on a shared compute-once substrate. Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md). The one remaining milestone is **16 (hosting / go-live)**.
+**Milestones 1–15 are complete** and proven end-to-end against real Bedrock (sync → screen → discover ~14–16 fact-aware dimensions → score the pool → rank with the tier-list weighting → print a committee-ready PDF), now with per-member independent screening on a shared compute-once substrate. Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md). The remaining milestones are **16 (concurrency & correctness — software; first hardening slice done)** and **17 (hosting / go-live — infra)**.
 
 ## Remaining Open Questions
 
@@ -452,17 +452,30 @@ Two things were intentionally **not** built: per-*requester* proposal attributio
 
 1. **"Current run" was global-latest-wins** — the old `get_current_run` was `SELECT … ORDER BY id DESC LIMIT 1`, so one member's Rank silently became everyone's. **Resolved:** split into a shared `Analysis` (the AI output, one current, via `get_current_analysis()`) + per-member `MemberRanking` (the view).
 2. **Settings was one global row** — `AdminSetting` keyed `"app_settings"`, last-write-wins. **Resolved:** eligibility rules became per-member (shared committee default + copy-on-write `member_rules`); infra config stays one shared row (last-write-wins is acceptable for ~5 trusted members — a concurrency guard is an M16 concern).
-3. **The spending cap is per-request, read-then-act** — `enforce_cap` checks each run's own projection, not a shared budget. **M15 kept the per-run cap**; a true atomic shared-budget ceiling needs the hosted DB and is deferred to M16. At ~5 members the caching (only first-time-eligible applicants cost anything) is the practical cost control.
+3. **The spending cap is per-request, read-then-act** — `enforce_cap` checks each run's own projection, not a shared budget. **M15 kept the per-run cap**; a true atomic shared-budget ceiling is M16 concurrency work (below). At ~5 members the caching (only first-time-eligible applicants cost anything) is the practical cost control.
 
-### Hosting / Go-Live (M16)
+### Concurrency & Correctness (M16) — software, not infra
 
-The committee saw a demo and wants it, so hosting is real scheduled work, sequenced **after M15** as pure deployment. M15 stays on SQLite; M16 owns the move to a hosted, multi-user, concurrent-write footing. Accepted tradeoff (Jeff, 2026-07-16): because M15 builds per-member state on SQLite, M16 may re-touch part of that data layer when it moves to a hosted DB — chosen over a pre-M15 DB spike so M15 stays unblocked and its real shape informs the DB choice. Open decisions:
+Multi-member introduces real concurrent writes. This is a **software** concern (guards, leases, atomic accounting) that stands on its own regardless of where the DB lives — distinct from hosting (M17), which is infra. A multi-member concurrency audit (2026-07-24) classified the hazards; the first hardening slice is done, the rest is scoped here.
 
-1. **Database target** — hosted Postgres or another hosted DB (the load-bearing choice: it drives concurrency, the Alembic target, and the data migration off local SQLite).
-2. **Concurrency** — simultaneous members reading/writing (tiering, notes, per-member rankings); today's single-writer assumptions and the local backup/restore scheme need revisiting.
-3. **Cloud deployment path** — where the FastAPI backend + Vite frontend run, secrets/OAuth in a hosted context.
-4. **Auth/roles** — the `require_admin` gate + email allowlist landed in M15 (1a); M16 is where member-vs-admin roles get exercised under real concurrency (invite/approval flow, more admin-only surfaces as they arise).
-5. **Data protection at rest** — applicant PII in a hosted DB raises retention/access questions the local-first posture sidestepped.
+**Done (2026-07-24):**
+- **Reads are safe by the shared-union design** — the screening/scoring cache is content-addressed with no member id, so after one member runs Screen/Rank every other member sees the result (their amber turns green) with no action and no re-bill; a no-op run is blocked (`unchanged_pool`). This is ADR 0011 working as intended, not luck.
+- **SQLite `WAL` + `busy_timeout=5000`** (`app/db/session.py`) — readers no longer block the writer, and a colliding writer WAITS (up to 5s, retrying) instead of failing instantly with "database is locked". Runs commit per item (short locks), so this covers real overlap. Purely defensive; no behavior change.
+- **A single run lease serializes the expensive runs** (`RunLock` + `services/run_lock`) — Screen / full Rank / score-current claim one DB-backed lease (atomic conditional UPDATE, 15-min TTL steal so a crashed run self-heals) and 409 (`run_in_progress`) if another holds it. This closes the one genuinely destructive overlap — two concurrent full Ranks each creating an `Analysis` and last-writer-wins stranding the loser's `MemberRanking` — and also eliminates concurrent-Screen double-billing. DB-backed (not in-process) so it survives multiple web workers under M17. The frontend surfaces the 409 detail as a toast.
+
+**Remaining:**
+1. **Atomic shared spending budget** — the per-run cap is kept; a true committee-wide ceiling that N concurrent runs can't race past needs an atomic accounting store (natural on Postgres). Until then the per-run cap + caching is the control.
+2. **Settings last-write-wins** — two admins saving `app_settings` (or the committee default) concurrently: the whole JSON blob is last-write-wins, no field merge. Acceptable at ~5 trusted members; revisit only if it bites.
+3. **The stale-analysis reload UX** — the `409 stale_analysis` guard on tier/seed saves is correct, but the deferred "this ranking was refreshed — reload" banner + auto-refetch (M15 1b) still wants building once real concurrency exercises it.
+
+### Hosting / Go-Live (M17) — infra
+
+The committee saw a demo and wants it, so hosting is real scheduled work — pure **infra**, sequenced after the M16 concurrency software lands. M15/M16 run on SQLite; M17 owns the move to a hosted, multi-user footing. Accepted tradeoff (Jeff, 2026-07-16): because M15 builds per-member state on SQLite, M17 may re-touch part of that data layer when it moves to a hosted DB — chosen over a pre-M15 DB spike so M15 stayed unblocked and its real shape informs the DB choice. Open decisions:
+
+1. **Database target** — hosted Postgres or another hosted DB (drives the Alembic target and the data migration off local SQLite; also where M16's atomic-budget store lands naturally).
+2. **Cloud deployment path** — where the FastAPI backend + Vite frontend run, secrets/OAuth in a hosted context, and the backup/restore scheme (today's local snapshot) revisited.
+3. **Auth/roles** — the `require_admin` gate + email allowlist landed in M15 (1a); M17 exercises member-vs-admin roles under real hosted use (invite/approval flow, more admin-only surfaces as they arise).
+4. **Data protection at rest** — applicant PII in a hosted DB raises retention/access questions the local-first posture sidestepped.
 
 ### Validation Experiments Owed On Real Bedrock
 

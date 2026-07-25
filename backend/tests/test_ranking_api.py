@@ -25,6 +25,7 @@ from app.db.models import Application, Base, User, UserRole
 from app.db.session import get_db
 from app.main import create_app
 from app.services.cost_report import RANK_PASS_LABELS
+from app.services.run_lock import ensure_lock_row
 
 
 def _decomposition_of(report: PoolDimensionReport) -> DecompositionReport:
@@ -69,6 +70,7 @@ def setup_app(role: UserRole | None) -> tuple:
     )
     Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine, autoflush=False, autocommit=False)()
+    ensure_lock_row(db)  # migration seeds this in a real DB; create_all doesn't run migrations
 
     user = None
     if role is not None:

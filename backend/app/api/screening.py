@@ -29,6 +29,7 @@ from app.schemas.events import (
 from app.schemas.screening import ScreeningEstimateResponse
 from app.schemas.settings import AppSettings
 from app.services.cost_report import record_run_cost
+from app.services.run_lock import acquire_run_lock, release_run_lock
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/screening", tags=["screening"])
@@ -141,50 +142,64 @@ def run(
 
     applications = applications_for_screening(db)
 
+    # Serialize against other in-flight runs (M16): a concurrent Screen/Rank would waste
+    # shared spend and (for Rank) strand a MemberRanking. Claim the lease before streaming;
+    # 409 if another run holds it. Released in the stream's finally.
+    if not acquire_run_lock(db, user_id=user.id, kind="screen"):
+        raise Problem(
+            "run_in_progress",
+            detail="Another screening or ranking run is in progress. Try again once it finishes.",
+        )
+
     def stream() -> Iterator[str]:
         total = len(applications)
         tally = RunTally()
-        yield emit(PhaseEvent(phase=PHASE, total=total))
-        started = time.perf_counter()
-        results = run_screening(
-            db,
-            provider,
-            applications=applications,
-            settings=settings,
-            max_workers=settings.ai.max_workers,
-        )
-        for processed, result in enumerate(results, start=1):
-            tally.add(result)
-            if result.failed:
-                # Surface the failed application (non-fatal), then keep streaming.
-                yield emit(
-                    ItemErrorEvent(
-                        phase=PHASE,
-                        application_id=result.application.id,
-                        message=result.error,
-                    )
-                )
-            yield emit(ProgressEvent(phase=PHASE, processed=processed, total=total))
-
-        # Persist this run's cost + cache breakdown (the only point the fresh/cached
-        # split is known). Screen is a single pass.
-        record_run_cost(
-            db,
-            kind="screen",
-            passes={"Screening": tally.as_pass_cost(settings.ai.screening_model)},
-            durations_ms={"Screening": round((time.perf_counter() - started) * 1000)},
-            estimated_usd=float(estimate_result["estimated_usd"]),
-            triggered_by_user_id=user.id,
-        )
-
-        yield emit(
-            ScreeningSummary(
-                analyzed=tally.analyzed,
-                cached=tally.cached,
-                flagged=tally.flagged,
-                failed=tally.failed,
-                total_cost_usd=round(tally.cost_usd, 4),
+        try:
+            yield emit(PhaseEvent(phase=PHASE, total=total))
+            started = time.perf_counter()
+            results = run_screening(
+                db,
+                provider,
+                applications=applications,
+                settings=settings,
+                max_workers=settings.ai.max_workers,
             )
-        )
+            for processed, result in enumerate(results, start=1):
+                tally.add(result)
+                if result.failed:
+                    # Surface the failed application (non-fatal), then keep streaming.
+                    yield emit(
+                        ItemErrorEvent(
+                            phase=PHASE,
+                            application_id=result.application.id,
+                            message=result.error,
+                        )
+                    )
+                yield emit(ProgressEvent(phase=PHASE, processed=processed, total=total))
+
+            # Persist this run's cost + cache breakdown (the only point the fresh/cached
+            # split is known). Screen is a single pass.
+            record_run_cost(
+                db,
+                kind="screen",
+                passes={"Screening": tally.as_pass_cost(settings.ai.screening_model)},
+                durations_ms={"Screening": round((time.perf_counter() - started) * 1000)},
+                estimated_usd=float(estimate_result["estimated_usd"]),
+                triggered_by_user_id=user.id,
+            )
+
+            yield emit(
+                ScreeningSummary(
+                    analyzed=tally.analyzed,
+                    cached=tally.cached,
+                    flagged=tally.flagged,
+                    failed=tally.failed,
+                    total_cost_usd=round(tally.cost_usd, 4),
+                )
+            )
+        finally:
+            # Always free the lease — even if the client disconnects mid-stream or a pass
+            # raises — so a run can't wedge the workflow (belt-and-suspenders with the TTL).
+            release_run_lock(db, user_id=user.id)
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")

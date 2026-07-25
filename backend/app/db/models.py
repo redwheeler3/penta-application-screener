@@ -105,6 +105,29 @@ class GoogleCredential(TimestampMixin, Base):
     user: Mapped[User] = relationship()
 
 
+class RunLock(TimestampMixin, Base):
+    """A single-row advisory lease serializing the expensive AI runs across members (M16).
+
+    Screen / full Rank / score-current all write shared state; two overlapping runs waste
+    spend and — for a full Rank — strand a MemberRanking (last-writer-wins on the current
+    ``Analysis``). There is no in-process lock that would survive multiple web workers, so the
+    serialization lives in the DB: one fixed row (``id=1``, seeded by migration), claimed by an
+    atomic conditional UPDATE and released in the run stream's ``finally``. ``held_since`` backs
+    a TTL steal so a crashed run can't wedge the system forever. Portable to Postgres (the M17
+    hosting move can swap the conditional-UPDATE claim for a real advisory lock unchanged in
+    spirit)."""
+
+    __tablename__ = "run_lock"
+
+    id: Mapped[int] = mapped_column(primary_key=True)  # always 1 — the single lease row
+    # Who holds the lease and what they're running; NULL when free.
+    holder_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    kind: Mapped[str | None] = mapped_column(String(20))  # screen | rank | rank_scores
+    # When the current holder claimed it — the TTL-steal reference (a lease older than the TTL
+    # is presumed dead and reclaimable). NULL when free.
+    held_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Feedback(TimestampMixin, Base):
     """A member's free-text feedback, captured from any page and surfaced to admins
     (M15 "Future UX Enhancements" #2). The point is to let an admin act on real member

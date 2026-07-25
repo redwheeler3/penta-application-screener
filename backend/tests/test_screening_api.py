@@ -20,6 +20,7 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.main import create_app
+from app.services.run_lock import ensure_lock_row
 
 
 async def run_and_summarize(client: AsyncClient) -> dict:
@@ -49,6 +50,9 @@ def setup_app(role: UserRole | None) -> tuple:
     Base.metadata.create_all(engine)
     TestSession = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     db = TestSession()
+    # The migration seeds the single run-lock lease row in a real DB; create_all doesn't run
+    # migrations, so seed it here (runs acquire the lease via an UPDATE that needs the row).
+    ensure_lock_row(db)
 
     user = None
     if role is not None:
@@ -91,6 +95,26 @@ async def test_run_requires_login() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.post("/screening/run")
     assert response.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_run_blocked_while_another_run_holds_the_lease() -> None:
+    """A Screen 409s when another member's run already holds the run lease (M16). Simulate
+    the in-flight run by pre-acquiring the lease as a different member."""
+    from app.services.run_lock import acquire_run_lock
+
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    other = User(email="other@x.com", display_name="Other", role=UserRole.MEMBER, is_active=True)
+    db.add(other)
+    db.commit()
+    acquire_run_lock(db, user_id=other.id, kind="rank")  # another run in flight
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post("/screening/run")
+    assert response.status_code == 409
+    assert response.json()["code"] == "run_in_progress"
 
 
 @pytest.mark.anyio
