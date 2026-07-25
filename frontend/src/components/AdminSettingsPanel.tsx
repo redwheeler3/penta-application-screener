@@ -4,6 +4,7 @@ import { readProblem } from "../format";
 import { AI_CHECKS, DETERMINISTIC_CHECKS } from "../constants";
 import { NumberInput } from "./NumberInput";
 import { AccessPanel } from "./AccessPanel";
+import { CheckGroup } from "./CheckToggles";
 import type { AppSettings, EligibilityRules, FeedbackItem, SettingsResponse, ViewTab } from "../types";
 
 // The admin-only config surface, organized as sub-views:
@@ -251,8 +252,18 @@ function CommitteeDefaultsPanel(props: { onError: (message: string) => void }): 
             <div className="rules-section">
               <h3>Screening checks</h3>
               <p className="rules-hint">Unchecked checks are off in the committee default.</p>
-              <DefaultCheckGroup title="Deterministic rules" checks={DETERMINISTIC_CHECKS} draft={draft} toggle={toggle} />
-              <DefaultCheckGroup title="AI screening checks" checks={AI_CHECKS} draft={draft} toggle={toggle} />
+              <CheckGroup
+                title="Deterministic rules"
+                checks={DETERMINISTIC_CHECKS}
+                disabledChecks={draft.disabledChecks}
+                onToggle={toggle}
+              />
+              <CheckGroup
+                title="AI screening checks"
+                checks={AI_CHECKS}
+                disabledChecks={draft.disabledChecks}
+                onToggle={toggle}
+              />
             </div>
             <div className="settings-actions">
               <button className="primary-button" type="submit" disabled={saving}>
@@ -266,31 +277,6 @@ function CommitteeDefaultsPanel(props: { onError: (message: string) => void }): 
   );
 }
 
-function DefaultCheckGroup(props: {
-  title: string;
-  checks: readonly { id: string; label: string }[];
-  draft: EligibilityRules;
-  toggle: (id: string, on: boolean) => void;
-}): ReactNode {
-  const { title, checks, draft, toggle } = props;
-  return (
-    <div className="check-group">
-      <h4>{title}</h4>
-      <div className="rules-grid">
-        {[...checks].sort((a, b) => a.label.localeCompare(b.label)).map((check) => (
-          <label key={check.id} className="checkbox-label rule-toggle">
-            <input
-              type="checkbox"
-              checked={!draft.disabledChecks.includes(check.id)}
-              onChange={(event) => toggle(check.id, event.target.checked)}
-            />
-            <span>{check.label}</span>
-          </label>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // Friendly labels for the navigable top-level views captured on feedback (App's activeTab
 // values). These are exactly the ViewTab keys, so a label's presence here also marks the

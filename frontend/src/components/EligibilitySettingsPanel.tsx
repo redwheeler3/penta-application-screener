@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { AI_CHECKS, DETERMINISTIC_CHECKS } from "../constants";
 import * as api from "../api";
 import { readProblem } from "../format";
+import { CheckGroup } from "./CheckToggles";
 import { NumberInput } from "./NumberInput";
 import type { EligibilityRules } from "../types";
 
@@ -66,6 +67,16 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
     const payload: { rules: EligibilityRules; isDefault: boolean } = await response.json();
     setDraft(payload.rules);
     setIsDefault(payload.isDefault);
+  }
+
+  // Flip a check on/off in this member's own disabled set. Guarded on `draft` (the render
+  // below only calls it inside the non-null branch).
+  function toggleCheck(id: string, on: boolean) {
+    if (!draft) return;
+    const disabledChecks = on
+      ? draft.disabledChecks.filter((c) => c !== id)
+      : [...draft.disabledChecks, id];
+    setDraft({ ...draft, disabledChecks });
   }
 
   return (
@@ -178,15 +189,15 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
                 title="Deterministic rules"
                 hint="Threshold checks decided at Sync from the form data."
                 checks={DETERMINISTIC_CHECKS}
-                draft={draft}
-                setDraft={setDraft}
+                disabledChecks={draft.disabledChecks}
+                onToggle={toggleCheck}
               />
               <CheckGroup
                 title="AI screening checks"
                 hint="Decided at Screen — the AI reads the application (pets are judged from what it extracts)."
                 checks={AI_CHECKS}
-                draft={draft}
-                setDraft={setDraft}
+                disabledChecks={draft.disabledChecks}
+                onToggle={toggleCheck}
               />
             </div>
             <div className="settings-actions">
@@ -292,40 +303,4 @@ function sameChecks(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
   const setB = new Set(b);
   return a.every((x) => setB.has(x));
-}
-
-// One labeled group of check toggles. Both groups edit the SAME flat draft.disabledChecks
-// list — a check is ON when it is NOT in the list; unchecking adds its id. The
-// deterministic/AI split is presentational (see AI_CHECKS / DETERMINISTIC_CHECKS).
-function CheckGroup(props: {
-  title: string;
-  hint: string;
-  checks: readonly { id: string; label: string }[];
-  draft: EligibilityRules;
-  setDraft: (next: EligibilityRules) => void;
-}): ReactNode {
-  const { title, hint, checks, draft, setDraft } = props;
-  return (
-    <div className="check-group">
-      <h4>{title}</h4>
-      <p className="rules-hint">{hint}</p>
-      <div className="rules-grid">
-        {[...checks].sort((a, b) => a.label.localeCompare(b.label)).map((check) => (
-          <label key={check.id} className="checkbox-label rule-toggle">
-            <input
-              type="checkbox"
-              checked={!draft.disabledChecks.includes(check.id)}
-              onChange={(event) => {
-                const disabled = event.target.checked
-                  ? draft.disabledChecks.filter((c) => c !== check.id)
-                  : [...draft.disabledChecks, check.id];
-                setDraft({ ...draft, disabledChecks: disabled });
-              }}
-            />
-            <span>{check.label}</span>
-          </label>
-        ))}
-      </div>
-    </div>
-  );
 }

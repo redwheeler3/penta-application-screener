@@ -1968,6 +1968,13 @@ h1 {
   width: auto;
 }
 
+/* Recolor native checkboxes/radios to the Penta green (browsers default to blue, which
+   isn't in the palette). accent-color keeps the native control — no custom widget needed. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--penta-green);
+}
+
 /* Rules section */
 .rules-section {
   grid-column: 1 / -1;
@@ -2051,6 +2058,60 @@ h1 {
   font-weight: 400;
   color: var(--ink);
   font-size: 0.82rem;
+}
+
+/* The per-check info icon: muted, pushed to the row's right edge, brightens on hover to
+   cue it carries a description. It anchors a CSS tooltip (below). */
+.settings-form .rule-toggle .check-info {
+  position: relative;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  cursor: help;
+}
+
+.settings-form .rule-toggle .check-info:hover,
+.settings-form .rule-toggle .check-info:focus-visible {
+  color: var(--penta-green-dark);
+  outline: none;
+}
+
+/* The tooltip bubble. Hidden by default; revealed on hover/focus after a short delay we
+   control (~200ms — native title sits at a browser-fixed ~1.5s). Positioned above the icon,
+   right-aligned so it doesn't overflow the panel's right edge. Non-interactive. */
+/* Specificity note: scoped under .settings-form .rule-toggle so these beat the panel's
+   `.settings-form .rule-toggle span { color: var(--ink) }` rule — the tooltip is a <span>
+   inside the toggle, so a lower-specificity selector would lose and render dark-on-dark. */
+.settings-form .rule-toggle .check-info .check-info-tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: 260px;
+  padding: 0.4rem 0.55rem;
+  border-radius: 6px;
+  background: var(--penta-green-dark);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 4px 12px rgba(21, 128, 61, 0.28);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease;
+  transition-delay: 0s;
+  pointer-events: none;
+}
+
+.settings-form .rule-toggle .check-info:hover .check-info-tip,
+.settings-form .rule-toggle .check-info:focus-visible .check-info-tip {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0.2s; /* the show delay — sub-second, per spec */
 }
 
 /* Pattern discovery + dimension scoring (milestone 7) */
