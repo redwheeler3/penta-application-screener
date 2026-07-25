@@ -119,62 +119,73 @@ def _import_is_current(db: Session, settings) -> bool:
     return latest.settings_fingerprint == settings_fingerprint(settings)
 
 
+def _present_cache_keys(db: Session, keys: set[str]) -> set[str]:
+    """Which of ``keys`` exist in the AI-result cache — one ``IN`` query, not one probe per
+    key. Coverage counts cache hits over the union pool × dimensions, which was an N+1 loop
+    (e.g. ~40 candidates × ~33 dimensions = 1300+ point selects, ~90ms). Computing the
+    expected keys and asking for the present set once collapses that to a single round-trip."""
+    if not keys:
+        return set()
+    return set(
+        db.scalars(
+            select(ApplicationAIResult.cache_key).where(
+                ApplicationAIResult.cache_key.in_(keys)
+            )
+        )
+    )
+
+
 def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
     # Coverage is a cache-hit count, so each pass must be probed under the model it
     # actually runs on — a cache row's key includes the model. These are separate
     # settings now, so don't share one variable across passes.
-    def covered(
-        applications, kind: str, prompt_version: str, model: str
-    ) -> CoverageEntry:
-        cached = sum(
-            1
-            for app in applications
-            if db.scalar(
-                select(ApplicationAIResult.id).where(
-                    ApplicationAIResult.cache_key
-                    == cache_key(
-                        application=app, kind=kind, model_id=model,
-                        prompt_version=prompt_version,
-                    )
-                )
-            )
-            is not None
-        )
-        return CoverageEntry(cached=cached, in_scope=len(applications))
 
+    # Screening's version is a pure function of the prompt text (M15 1e: pets left the
+    # prompt for a deterministic per-member filter), so pet-limit changes no longer drop
+    # Screen coverage — they're a hard-filter change, judged on read. Only a prompt/model
+    # change shows Screen out of date now.
+    screening_apps = screening_scope(db)
+    screening_keys = {
+        app.id: cache_key(
+            application=app, kind="screening",
+            model_id=settings.ai.screening_model,
+            prompt_version=screening_prompt_version(),
+        )
+        for app in screening_apps
+    }
+    present = _present_cache_keys(db, set(screening_keys.values()))
     result = {
-        # Screening's version is a pure function of the prompt text (M15 1e: pets left the
-        # prompt for a deterministic per-member filter), so pet-limit changes no longer drop
-        # Screen coverage — they're a hard-filter change, judged on read. Only a prompt/model
-        # change shows Screen out of date now.
-        "screened": covered(
-            screening_scope(db), "screening", screening_prompt_version(),
-            settings.ai.screening_model,
+        "screened": CoverageEntry(
+            cached=sum(1 for key in screening_keys.values() if key in present),
+            in_scope=len(screening_apps),
         ),
     }
-    # Scoring coverage is only meaningful against the current run. A candidate
-    # counts as scored once it has a cached row for EVERY dimension key, so partial
-    # coverage reads as not-yet-complete.
+
+    # Scoring coverage is only meaningful against the current run. A candidate counts as
+    # scored once it has a cached row for EVERY dimension key, so partial coverage reads as
+    # not-yet-complete. All expected (candidate × dimension) keys are fetched in one query,
+    # then membership is checked in memory.
     kinds = current_dimension_kinds(db)
     if kinds:
         applications = applications_to_score(db)
+        keys_by_app = {
+            app.id: [
+                cache_key(
+                    application=app, kind=kind,
+                    model_id=settings.ai.dimension_scoring_model,
+                    prompt_version=SCORING_PROMPT_VERSION,
+                )
+                for kind in kinds
+            ]
+            for app in applications
+        }
+        present = _present_cache_keys(
+            db, {key for keys in keys_by_app.values() for key in keys}
+        )
         fully_scored = sum(
             1
-            for app in applications
-            if all(
-                db.scalar(
-                    select(ApplicationAIResult.id).where(
-                        ApplicationAIResult.cache_key
-                        == cache_key(
-                            application=app, kind=kind,
-                            model_id=settings.ai.dimension_scoring_model,
-                            prompt_version=SCORING_PROMPT_VERSION,
-                        )
-                    )
-                )
-                is not None
-                for kind in kinds
-            )
+            for keys in keys_by_app.values()
+            if all(key in present for key in keys)
         )
         result["candidatesScored"] = CoverageEntry(
             cached=fully_scored, in_scope=len(applications)
