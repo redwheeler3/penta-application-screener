@@ -71,6 +71,7 @@ from app.schemas.events import ErrorEvent as StreamErrorEvent
 from app.schemas.events import (
     NoticeEvent,
     PhaseEvent,
+    PingEvent,
     ProgressEvent,
     RankSummary,
     StageEvent,
@@ -135,6 +136,36 @@ class _Stage:
 
     def __init__(self, name: str) -> None:
         self.name = name
+
+
+# Keepalive cadence for the opaque criteria/consolidation passes. Those model calls can go
+# >60s without streaming a token, and a hosting proxy that closes an idle connection (Fly's
+# limit is 60s; ADR 0012) would sever the stream mid-run. 15s is a deliberate 4× margin under
+# that 60s ceiling — cheap insurance (one newline every 15s) against jitter, GC pauses, and a
+# slow proxy hop, rather than running near the edge. See _drain_with_heartbeat.
+HEARTBEAT_SECONDS = 15
+
+
+def _drain_with_heartbeat(
+    q: "queue.Queue[Any]", phase: str
+) -> Iterator[tuple[bool, Any]]:
+    """Drain a worker's delta queue, injecting a keepalive every ``HEARTBEAT_SECONDS`` of
+    silence so an idle-timeout proxy can't sever a long opaque pass (see HEARTBEAT_SECONDS).
+
+    Yields ``(is_ping, item)``: on a real item ``(False, item)`` — the caller interprets it
+    (a str delta, a _Stage, or the None completion sentinel) exactly as before; on a silence
+    timeout ``(True, ping_line)`` — the caller just re-yields the already-serialized ping.
+    Stops after surfacing the None sentinel, so the caller's loop still breaks on it."""
+    ping = emit(PingEvent(phase=phase))
+    while True:
+        try:
+            item = q.get(timeout=HEARTBEAT_SECONDS)
+        except queue.Empty:
+            yield True, ping
+            continue
+        yield False, item
+        if item is None:
+            return
 
 
 @dataclass
@@ -632,10 +663,14 @@ def _stream_criteria(
     worker = threading.Thread(target=run_criteria_passes, daemon=True)
     worker.start()
     # Separate each sub-stage's reasoning with a rule — but not before the first, so
-    # the box doesn't open with a stray divider.
+    # the box doesn't open with a stray divider. The drain injects a keepalive during any
+    # >HEARTBEAT_SECONDS silence (an opaque pass streaming no token) so the stream survives
+    # a proxy idle timeout; the ping line is pre-serialized, so we just re-yield it.
     first_stage = True
-    while True:
-        item = delta_queue.get()
+    for is_ping, item in _drain_with_heartbeat(delta_queue, CRITERIA):
+        if is_ping:
+            yield item
+            continue
         if item is None:
             break
         if isinstance(item, _Stage):
@@ -825,9 +860,12 @@ def _stream_consolidate(
     # Criteria always ran first and left text in the box, so consolidation's reasoning
     # needs a leading rule. Emit it lazily — only once real deltas arrive — so a no-op
     # consolidation (correlation nominated nothing → no call) leaves no stray divider.
+    # Same heartbeat as the criteria drain: keepalive during any long silent stretch.
     first_delta = True
-    while True:
-        item = consolidate_queue.get()
+    for is_ping, item in _drain_with_heartbeat(consolidate_queue, CONSOLIDATE):
+        if is_ping:
+            yield item
+            continue
         if item is None:
             break
         if first_delta:
