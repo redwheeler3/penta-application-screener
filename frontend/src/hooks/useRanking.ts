@@ -1,6 +1,6 @@
 import { useState } from "react";
 import * as api from "../api";
-import { readProblem, readProblemCode } from "../format";
+import { problemMessage, readProblem, readProblemBody } from "../format";
 import type { CurrentRunResponse, RankingResponse, Tier } from "../types";
 
 export interface RankingState {
@@ -57,16 +57,20 @@ export function useRanking(onError: (message: string) => void): RankingState {
   const [tiers, setTiers] = useState<Tier[] | null>(null);
   const [staleAnalysis, setStaleAnalysis] = useState(false);
 
-  // A save failed: if it's stale_analysis (another member re-ranked since this member
-  // loaded the board), raise the reload banner instead of a generic error toast — the edit
-  // targeted a superseded analysis, so reloading is the fix, not retrying. Returns whether
-  // the failure was handled as stale, so callers only fall back to their generic path if not.
-  async function handleSaveFailure(response: Response): Promise<boolean> {
-    if (await readProblemCode(response) === "stale_analysis") {
+  // A save failed. Reads the problem body ONCE (the body is single-use — a caller must not
+  // read it again). stale_analysis routes to the reload toast (the edit targeted a superseded
+  // analysis; reloading is the fix). Returns { handled, message }: handled=true means it was
+  // stale and the caller stays quiet; otherwise the caller shows `message` (the server's
+  // reason, e.g. "a ranking is in progress") — passed back so the caller needn't re-read.
+  async function handleSaveFailure(
+    response: Response,
+  ): Promise<{ handled: boolean; message: string | null }> {
+    const body = await readProblemBody(response);
+    if (body?.code === "stale_analysis") {
       setStaleAnalysis(true);
-      return true;
+      return { handled: true, message: null };
     }
-    return false;
+    return { handled: false, message: problemMessage(body) };
   }
 
   // The toast's Reload action: pull the new current analysis + ranking + tiers, then clear
@@ -138,12 +142,15 @@ export function useRanking(onError: (message: string) => void): RankingState {
           run ? { ...run, requestedDimensionKeys: updated.requestedDimensionKeys } : run,
         );
       }
-    } else if (!(await handleSaveFailure(response))) {
+    } else {
       // Not a stale-analysis rejection — a genuine failure (e.g. a rank in progress blocked
       // the save so a late edit can't vanish). Surface the server's reason and reconcile to
       // its truth, which reverts the optimistic setTiers above — the edit didn't persist.
-      onError((await readProblem(response)) ?? "Could not update the tiers.");
-      loadRanking();
+      const { handled, message } = await handleSaveFailure(response);
+      if (!handled) {
+        onError(message ?? "Could not update the tiers.");
+        loadRanking();
+      }
     }
   }
 
@@ -175,9 +182,12 @@ export function useRanking(onError: (message: string) => void): RankingState {
       setRankingRun((run) =>
         run ? { ...run, proposedDimensions: echoed.proposedDimensions } : run,
       );
-    } else if (!(await handleSaveFailure(response))) {
-      onError((await readProblem(response)) ?? "Could not save the suggested criteria.");
-      refreshRankingRun(); // reconcile back to server truth (reverts the optimistic set)
+    } else {
+      const { handled, message } = await handleSaveFailure(response);
+      if (!handled) {
+        onError(message ?? "Could not save the suggested criteria.");
+        refreshRankingRun(); // reconcile back to server truth (reverts the optimistic set)
+      }
     }
   }
 

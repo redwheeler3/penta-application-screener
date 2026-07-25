@@ -93,26 +93,26 @@ export type Problem = {
   [key: string]: unknown; // extension members, e.g. capUsd
 };
 
-// Read a problem+json error body off a failed Response, returning a human message
-// (detail, falling back to title). Returns null if the body isn't a problem (e.g.
-// a network/HTML error), so callers can fall back to a status-based message.
-export async function readProblem(response: Response): Promise<string | null> {
+// Parse a problem+json error body ONCE. A Response body is a single-use stream, so a caller
+// that needs BOTH the code and the message must read it here once — calling readProblem after
+// readProblemCode (or vice versa) throws on the second read and silently loses the message.
+// Returns null if the body isn't a problem (network/HTML error).
+export async function readProblemBody(response: Response): Promise<Partial<Problem> | null> {
   try {
-    const body = (await response.json()) as Partial<Problem>;
-    return body.detail ?? body.title ?? null;
+    return (await response.json()) as Partial<Problem>;
   } catch {
     return null;
   }
 }
 
-// The machine-readable problem `code` off a failed Response (e.g. "stale_analysis"), or
-// null if the body isn't a problem. For callers that must branch on the KIND of failure,
-// not just show its message.
-export async function readProblemCode(response: Response): Promise<string | null> {
-  try {
-    const body = (await response.json()) as Partial<Problem>;
-    return body.code ?? null;
-  } catch {
-    return null;
-  }
+// The human message from a problem body (detail, falling back to title), or null.
+export function problemMessage(body: Partial<Problem> | null): string | null {
+  return body?.detail ?? body?.title ?? null;
+}
+
+// Read a problem+json error body off a failed Response, returning a human message
+// (detail, falling back to title). Returns null if the body isn't a problem (e.g.
+// a network/HTML error), so callers can fall back to a status-based message.
+export async function readProblem(response: Response): Promise<string | null> {
+  return problemMessage(await readProblemBody(response));
 }
