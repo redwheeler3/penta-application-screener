@@ -220,10 +220,21 @@ export function App() {
   // "switched away, another member re-ranked, came back" case without a manual refresh (and
   // without a standing background poll). A save onto a stale board is already caught by the
   // 409 path; this covers passive viewing.
+  //
+  // Suppressed while THIS member's own rank is in flight: their run creates the new analysis,
+  // so mid-completion the loaded id (old) differs from the server's (new) — a focus event then
+  // would misread that as "another member re-ranked" and fire the stale toast alongside their
+  // own green "complete" toast. runRank updates the loaded id (refreshRankingRun/openRanking)
+  // before it clears rankRunning, so gating here closes that window. A ref so toggling
+  // rankRunning doesn't re-subscribe the listener.
+  const rankRunningRef = useRef(false);
+  rankRunningRef.current = rankRunning;
   useEffect(() => {
     if (!user) return;
     const onFocus = () => {
-      if (document.visibilityState === "visible") void checkForStaleRanking();
+      if (document.visibilityState === "visible" && !rankRunningRef.current) {
+        void checkForStaleRanking();
+      }
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
