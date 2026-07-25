@@ -11,6 +11,7 @@ type DetailField = {
   label: string;
   value: unknown;
   normalizedKey?: string;
+  isLink?: boolean;
 };
 
 type DetailSection = {
@@ -24,6 +25,8 @@ type SourceField = {
   normalizedKey?: string;
   source?: "raw" | "normalized";
   consumesRawKeys?: string[];
+  // Render the value as a clickable link (opens in a new tab) when it looks like a URL.
+  isLink?: boolean;
 };
 
 const MAX_PRIVATE_NOTE_HEIGHT_PX = 192;
@@ -44,6 +47,23 @@ const CHILD_DETAIL_RAW_KEYS = [
 ];
 
 const HIDDEN_RAW_KEYS = new Set(["Declaration"]);
+
+// Render a field's value, rendering it as a new-tab link when the field is marked isLink and
+// the value is an http(s) URL. Anything else (blank, or a non-URL answer someone typed instead
+// of a link) falls back to the normal text formatting, so we never produce a broken anchor.
+function renderFieldValue(field: DetailField): ReactNode {
+  if (field.isLink && typeof field.value === "string") {
+    const url = field.value.trim();
+    if (/^https?:\/\/\S+$/i.test(url)) {
+      return (
+        <a href={url} target="_blank" rel="noreferrer noopener">
+          {url}
+        </a>
+      );
+    }
+  }
+  return formatFieldValue(field.value, field.normalizedKey ?? field.key);
+}
 
 const SOURCE_SECTIONS: Array<{ title: string; fields: SourceField[] }> = [
   {
@@ -86,6 +106,7 @@ const SOURCE_SECTIONS: Array<{ title: string; fields: SourceField[] }> = [
       {
         key: "If you have a link to a photo of yourself and the members of your household, please include it here.",
         label: "Household photo link",
+        isLink: true,
       },
       { key: "If you have any pets, please describe them here.", label: "Pets", normalizedKey: "pets_text" },
     ],
@@ -434,7 +455,7 @@ export function CandidateDetail(props: {
                 return (
                   <div key={field.key} className={flagged ? "field-flagged" : undefined}>
                     <dt>{field.label}</dt>
-                    <dd>{formatFieldValue(field.value, field.normalizedKey ?? field.key)}</dd>
+                    <dd>{renderFieldValue(field)}</dd>
                   </div>
                 );
               })}
@@ -519,6 +540,7 @@ function buildDetailSections(app: ApplicationDetail): DetailSection[] {
           label: field.label ?? fieldLabel(field.key),
           value: isNormalized ? normalized[field.normalizedKey ?? field.key] : rawRow[field.key],
           normalizedKey: field.normalizedKey,
+          isLink: field.isLink,
         };
       });
     return { title: section.title, fields };
@@ -531,6 +553,7 @@ function buildDetailSections(app: ApplicationDetail): DetailSection[] {
       label: fieldLabel(key),
       value,
       normalizedKey: undefined,
+      isLink: undefined,
     }));
 
   if (otherRawFields.length > 0) {
