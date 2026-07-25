@@ -66,3 +66,23 @@ def release_run_lock(db: Session, *, user_id: int) -> None:
         .values(holder_user_id=None, kind=None, held_since=None)
     )
     db.commit()
+
+
+def rank_run_in_progress(db: Session, *, now: datetime | None = None) -> bool:
+    """Whether a full **rank** run currently holds the lease (a live, non-stale lease of kind
+    'rank'). A rank snapshots the committee kept-list once at the start of discovery and then
+    creates a NEW analysis; a member's tier/seed edit made after that snapshot would neither
+    reach this run NOR survive it (the edit targets the old analysis, which the run supersedes),
+    so an axis dragged out of Ignore could silently vanish. Tier/seed saves are blocked while
+    this is true. Only 'rank' — screen/score-current hold the lease too but touch no dimensions,
+    so editing during them is safe. TTL-expired leases are ignored (a crashed run frees it)."""
+    lease = db.scalar(select(RunLock).where(RunLock.id == LOCK_ID))
+    if lease is None or lease.kind != "rank" or lease.held_since is None:
+        return False
+    now = now or datetime.now(UTC)
+    # SQLite's DateTime(timezone=True) round-trips as a naive datetime, so normalize to UTC-
+    # aware before comparing (the acquire path sidesteps this by comparing DB-side in SQL).
+    held_since = lease.held_since
+    if held_since.tzinfo is None:
+        held_since = held_since.replace(tzinfo=UTC)
+    return held_since >= now - LEASE_TTL

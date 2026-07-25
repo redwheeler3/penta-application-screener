@@ -48,6 +48,7 @@ from app.services.analysis import (
 )
 from app.services.eligibility import eligible_application_ids_for
 from app.services.ranking_view import candidate_scores
+from app.services.run_lock import rank_run_in_progress
 from app.services.stars import starred_ids
 
 router = APIRouter(prefix="/ranking")
@@ -63,9 +64,19 @@ def _current_member_view(db: Session, user: User, action: str) -> MemberRanking:
 
 
 def _require_viewed_analysis(db: Session, analysis_id: int, user: User) -> MemberRanking:
-    """The member's view of the analysis they're editing, but only if it's still current.
+    """The member's view of the analysis they're editing, but only if it's safe to save.
     Rejects a save against a superseded analysis (another member re-ranked) with 409
-    stale_analysis, rather than applying the edit to the wrong board."""
+    stale_analysis; and rejects a save WHILE a rank run is in flight, because that run has
+    already snapshotted the committee kept-list and will supersede this analysis — so a tier
+    edit made now (e.g. dragging an axis out of Ignore) would neither reach the run nor survive
+    it, and could vanish. Blocking the save (not just warning) is what prevents the loss: the
+    member re-does the edit against the fresh board once the run lands."""
+    if rank_run_in_progress(db):
+        raise Problem(
+            "run_in_progress",
+            detail="A ranking is in progress. Wait for it to finish, then make your changes on "
+            "the refreshed criteria.",
+        )
     current = get_current_analysis(db)
     if current is None or current_dimension_report(current) is None:
         raise Problem("run_required", detail="Discover patterns before tiering.")

@@ -1726,6 +1726,50 @@ async def test_tiers_reweight_and_resort_the_ranking() -> None:
 
 
 @pytest.mark.anyio
+async def test_tier_save_blocked_while_a_rank_run_is_in_flight() -> None:
+    """A tier save is rejected (409 run_in_progress) while a full rank holds the lease: that
+    run already snapshotted the committee kept-list and will supersede this analysis, so a late
+    edit would neither reach it nor survive it — blocking prevents the silent vanish. Once the
+    run finishes (lease released), the same save succeeds. Screen/score-current don't block."""
+    from app.services.run_lock import acquire_run_lock, release_run_lock
+
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    applicant = add_eligible(db, email="a@x.com", raw_hash="h1")
+    route_criteria(provider, a_pattern_report())
+    provider.route(
+        f'"applicant_id": {applicant.id}', _scoring_report(commitment=0.5, skills=0.5)
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await stream_events(client, "/ranking/run")
+        analysis_id = await current_analysis_id(client)
+        layout = {
+            "analysisId": analysis_id,
+            "tiers": [
+                {"id": "t1", "label": "Top", "dimensionKeys": ["skills_offered"], "ignore": False},
+                {"id": "ignore", "label": "Ignore", "dimensionKeys": [], "ignore": True},
+            ],
+        }
+        member = db.scalar(select(User))
+
+        # A screen run holds the lease but touches no dimensions — the save is allowed.
+        acquire_run_lock(db, user_id=member.id, kind="screen")
+        assert (await client.put("/ranking/tiers", json=layout)).status_code == 200
+        release_run_lock(db, user_id=member.id)
+
+        # A full rank in flight blocks the save.
+        acquire_run_lock(db, user_id=member.id, kind="rank")
+        blocked = await client.put("/ranking/tiers", json=layout)
+        assert blocked.status_code == 409
+        assert blocked.json()["code"] == "run_in_progress"
+
+        # Once the run finishes, the save goes through.
+        release_run_lock(db, user_id=member.id)
+        assert (await client.put("/ranking/tiers", json=layout)).status_code == 200
+
+
+@pytest.mark.anyio
 async def test_tiers_ignore_drops_then_revives_a_dimension() -> None:
     app, db, provider = setup_app(role=UserRole.MEMBER)
     commit_lead = add_eligible(db, email="commit@x.com", raw_hash="h1")

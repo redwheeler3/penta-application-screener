@@ -13,6 +13,7 @@ from app.services.run_lock import (
     LEASE_TTL,
     acquire_run_lock,
     ensure_lock_row,
+    rank_run_in_progress,
     release_run_lock,
 )
 
@@ -68,3 +69,32 @@ def test_fresh_lease_is_not_stealable() -> None:
     just_now = datetime.now(UTC) - timedelta(minutes=1)  # well within the 15m TTL
     assert acquire_run_lock(db, user_id=1, kind="rank", now=just_now) is True
     assert acquire_run_lock(db, user_id=2, kind="screen") is False
+
+
+def test_rank_run_in_progress_only_for_a_live_rank_lease() -> None:
+    """The tier/seed-edit block keys on a LIVE rank lease specifically."""
+    db = make_db()
+    assert rank_run_in_progress(db) is False  # free lease
+
+    # A screen or score-current run holds the lease but touches no dimensions — editing is safe.
+    acquire_run_lock(db, user_id=1, kind="screen")
+    assert rank_run_in_progress(db) is False
+    release_run_lock(db, user_id=1)
+
+    acquire_run_lock(db, user_id=1, kind="rank_scores")
+    assert rank_run_in_progress(db) is False
+    release_run_lock(db, user_id=1)
+
+    # A full rank IS the dangerous case (snapshots kept-list, supersedes the analysis).
+    acquire_run_lock(db, user_id=1, kind="rank")
+    assert rank_run_in_progress(db) is True
+    release_run_lock(db, user_id=1)
+    assert rank_run_in_progress(db) is False
+
+
+def test_stale_rank_lease_does_not_block() -> None:
+    """A crashed rank that never released (lease past the TTL) must not wedge editing forever."""
+    db = make_db()
+    stale = datetime.now(UTC) - LEASE_TTL - timedelta(minutes=1)
+    acquire_run_lock(db, user_id=1, kind="rank", now=stale)
+    assert rank_run_in_progress(db) is False  # TTL-expired → ignored
