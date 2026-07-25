@@ -1,5 +1,5 @@
 import { Filter, LogIn, LogOut, Settings } from "lucide-react";
-import { type SyntheticEvent, useEffect, useLayoutEffect, useState } from "react";
+import { type SyntheticEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { HouseIcon } from "./HouseIcon";
 import * as api from "./api";
 import { money, readProblem, resolveSheetId } from "./format";
@@ -105,6 +105,26 @@ export function App() {
     setPendingScrollId(null);
   }, [pendingScrollId, selectedApp]);
 
+  // The applicant id we last scrolled the detail to the top for. Opening a DIFFERENT
+  // applicant should scroll; re-setting `selectedApp` for the SAME applicant (a note /
+  // status / star save refreshes it) must NOT yank the scroll back up mid-edit.
+  const scrolledDetailId = useRef<number | null>(null);
+
+  // Scroll the detail panel's top (the Back/Print bar) into view on a NEW selection.
+  // A layout effect, not the click handler: scrolling in the handler races React's
+  // commit, so on a first open `.app-detail` isn't mounted yet and the scroll no-ops
+  // (the intermittent "lands halfway down the page" bug). Post-commit the element is
+  // guaranteed present. Runs before paint, so there's no visible jump.
+  useLayoutEffect(() => {
+    if (!selectedApp) {
+      scrolledDetailId.current = null;
+      return;
+    }
+    if (scrolledDetailId.current === selectedApp.id) return; // same applicant refresh
+    scrolledDetailId.current = selectedApp.id;
+    document.querySelector(".app-detail")?.scrollIntoView({ block: "start" });
+  }, [selectedApp]);
+
   // Return from the detail to the list, remembering which row to scroll back to.
   function backToList() {
     if (selectedApp) setPendingScrollId(selectedApp.id);
@@ -196,14 +216,10 @@ export function App() {
   async function viewApplication(id: number) {
     const application = await api.fetchApplication(id);
     setSelectedApp(application);
-    // The clicked row can be far below the detail heading (especially in Ranking),
-    // so reveal the detail panel's top (the Back/Print bar) rather than the whole
-    // page top. Instant (not smooth) so it appears immediately, no scroll animation.
-    requestAnimationFrame(() => {
-      document
-        .querySelector(".app-detail")
-        ?.scrollIntoView({ block: "start", behavior: "instant" });
-    });
+    // The scroll to the detail's top happens in a layout effect keyed on the selected
+    // applicant id (see below) — NOT here: scrolling in this handler races React's commit,
+    // so on a first open `.app-detail` isn't in the DOM yet and the scroll no-ops (the
+    // "lands halfway down the page" bug). Running it post-commit guarantees the element exists.
   }
 
   function login() {
