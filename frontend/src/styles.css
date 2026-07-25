@@ -3179,7 +3179,8 @@ input[type="radio"] {
   .criteria-detail,
   .tier-list,
   .ranking-subhead,
-  .raw-row-section {
+  .raw-row-section,
+  .toast-stack {
     display: none !important;
   }
 

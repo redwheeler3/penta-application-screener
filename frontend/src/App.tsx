@@ -75,6 +75,7 @@ export function App() {
   // See useApplications; the selected candidate detail stays here (cross-cutting).
   const {
     applications,
+    applicationsLoaded,
     appFilter,
     appFacets,
     appSearch,
@@ -804,6 +805,7 @@ export function App() {
             ) : (
               <ApplicationsList
                 applications={applications}
+                applicationsLoaded={applicationsLoaded}
                 appFilter={appFilter}
                 appFacets={appFacets}
                 appSearch={appSearch}

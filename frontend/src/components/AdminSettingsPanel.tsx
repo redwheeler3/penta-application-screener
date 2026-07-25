@@ -152,7 +152,7 @@ export function AdminSettingsPanel(props: {
               </div>
               <div className="settings-actions">
                 <button className="primary-button" type="submit" disabled={props.isSaving}>
-                  {props.isSaving ? "Saving…" : "Save settings"}
+                  {props.isSaving ? "Saving…" : "Save configuration"}
                 </button>
               </div>
             </form>

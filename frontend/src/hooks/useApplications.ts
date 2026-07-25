@@ -11,6 +11,9 @@ import type {
 export interface ApplicationsState {
   /** The filtered + sorted list the UI renders (derived from the full pool). */
   applications: ApplicationSummary[];
+  /** True once the first fetch has resolved. Lets the list distinguish "not loaded
+   * yet" from "loaded, genuinely empty" so it doesn't flash an empty message on mount. */
+  applicationsLoaded: boolean;
   /** Facet counts (status/source/favourites) derived from the full pool, each
    * reflecting the OTHER active filters so the groups stay consistent. */
   appFacets: AppFacets;
@@ -33,12 +36,16 @@ export interface ApplicationsState {
  * save all clear it), so it stays in App. */
 export function useApplications(): ApplicationsState {
   const [allApplications, setAllApplications] = useState<ApplicationSummary[]>([]);
+  const [applicationsLoaded, setApplicationsLoaded] = useState(false);
   const [appFilter, setAppFilter] = useState<AppFilter>({});
   const [appSearch, setAppSearch] = useState("");
   const [appSort, setAppSort] = useState<SortState>(null);
 
   function reloadApplications() {
-    api.fetchApplications().then(setAllApplications);
+    api.fetchApplications().then((rows) => {
+      setAllApplications(rows);
+      setApplicationsLoaded(true);
+    });
   }
 
   // Everything below is derived from the full pool — no fetch on filter/sort/search.
@@ -104,6 +111,7 @@ export function useApplications(): ApplicationsState {
 
   return {
     applications,
+    applicationsLoaded,
     appFacets,
     appFilter,
     appSearch,
