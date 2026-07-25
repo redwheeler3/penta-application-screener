@@ -22,6 +22,7 @@ from app.ai.dimension_scoring import (
 from app.ai.pricing import cost_usd
 from app.ai.provider import Usage
 from app.ai.schemas import PoolDimensionReport
+from app.db.models import Application
 from app.schemas.settings import AppSettings
 from app.services.analysis import current_dimension_report, get_current_analysis
 from app.services.cost_report import recent_pass_fresh_usd
@@ -91,6 +92,7 @@ def estimate_dimension_scoring(
     *,
     prefer_history: bool = True,
     include_coverage: bool = True,
+    candidates: list[Application] | None = None,
 ) -> ScoringEstimate:
     """Pre-run scoring estimate that respects the per-dimension cache.
 
@@ -124,7 +126,9 @@ def estimate_dimension_scoring(
     practice, blend in the cache-aware count then (measure-first).
     """
     model_id = settings.ai.dimension_scoring_model
-    candidates = applications_to_score(db)
+    # Reuse a pool the caller already computed when given — the union scope is ~15ms and a
+    # full-Rank estimate would otherwise recompute it several times per request.
+    candidates = candidates if candidates is not None else applications_to_score(db)
     analysis = get_current_analysis(db)
     report = current_dimension_report(analysis) if analysis is not None else None
 

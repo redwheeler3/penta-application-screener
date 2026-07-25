@@ -65,7 +65,7 @@ from app.ai.provider import AIProvider
 from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.api.dependencies import get_ai_provider, require_current_user
 from app.api.problems import Problem
-from app.db.models import Analysis, MemberRanking, User
+from app.db.models import Analysis, Application, MemberRanking, User
 from app.db.session import get_db
 from app.schemas.events import ErrorEvent as StreamErrorEvent
 from app.schemas.events import (
@@ -192,7 +192,9 @@ class ScoreTally:
         )
 
 
-def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
+def _rank_estimate(
+    db: Session, settings: AppSettings, *, pool: list[Application] | None = None
+) -> dict[str, Any]:
     """Combined projected cost of the Rank passes (K-discovery + decompose → match →
     scoring).
 
@@ -203,8 +205,11 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     yet know how many dimensions carry forward. Per-dimension reuse makes the actual run
     come in under this ceiling, so the total is an upper bound (the confirmation labels it
     approximate).
+
+    ``pool`` may be passed by a caller that already computed the union scope (the handler's
+    guard does), so the ~15ms union isn't recomputed for the confirm card.
     """
-    pool = eligible_applications(db)
+    pool = pool if pool is not None else eligible_applications(db)
     # Fan-out: K parallel discovery calls (SPEC "Fan-Out Redesign", D6), each priced
     # like the single call. Discovery is uncached, so K multiplies straight through —
     # the bigger-than-expected half of the fan-out cost (see the cost-model note).
@@ -242,7 +247,12 @@ def _rank_estimate(db: Session, settings: AppSettings) -> dict[str, Any]:
     else:
         measured_match = recent_pass_fresh_usd(db, "Dimension matching")
         match_usd = measured_match if measured_match is not None else estimate_match(settings)
-    scoring = estimate_dimension_scoring(db, settings, include_coverage=False)
+    # Reuse the pool already computed above — the union scope is ~15ms and both discovery
+    # and scoring range over the SAME union (see applications_to_score), so recomputing it
+    # inside the scoring estimate just duplicated the cost on the confirm-card path.
+    scoring = estimate_dimension_scoring(
+        db, settings, include_coverage=False, candidates=pool
+    )
     scoring_usd = scoring["estimated_usd"]
     # Post-score consolidation: a ceiling — the confirm call fires only when correlation
     # nominates a duplicate pair (often none). Measured from history when available, else
@@ -273,9 +283,13 @@ def rank_estimate(
     db: Session = Depends(get_db),
 ) -> RankEstimateResponse:
     settings: AppSettings = get_app_settings(db)
-    if not eligible_applications(db):
+    # Compute the union pool ONCE and thread it through the estimate — the guard, the rank
+    # estimate, and the scoring estimate all range over the same ~15ms union, so deriving it
+    # once here (instead of each recomputing) is most of the confirm-card latency saved.
+    pool = eligible_applications(db)
+    if not pool:
         raise Problem("no_eligible_applications", detail="No eligible applications to rank.")
-    result = _rank_estimate(db, settings)
+    result = _rank_estimate(db, settings, pool=pool)
     cap = settings.ai.spending_cap_usd
     breakdown = result["breakdown"]
     return RankEstimateResponse(
