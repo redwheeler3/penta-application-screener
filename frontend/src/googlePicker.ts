@@ -160,7 +160,7 @@ export function isPickerConfigured(): boolean {
 /** The whole one-gesture flow: GIS code grant -> backend exchange -> open Picker -> resolve the
  * picked file (or null if cancelled). MUST be called from a user click (GIS opens a popup).
  * Throws on config/auth/load failure. Admin-only. */
-export async function pickResponseSheet(): Promise<{ id: string; name?: string } | null> {
+export async function pickApplicationsSheet(): Promise<{ id: string; name?: string } | null> {
   if (!isPickerConfigured()) {
     throw new Error("Google Picker is not configured (missing API key or client id).");
   }

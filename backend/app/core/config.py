@@ -35,7 +35,7 @@ class Settings(BaseSettings):
         "https://www.googleapis.com/auth/userinfo.profile"
     )
     # SHEET-READER scope — granted SEPARATELY (incremental auth) by the admin who links the
-    # response sheet, never at member login. `drive.file` is the least-privilege choice: it
+    # applications sheet, never at member login. `drive.file` is the least-privilege choice: it
     # grants access ONLY to files the user explicitly picks via the Google Picker, not all
     # spreadsheets or all Drive — the narrowest scope that works, and the friendliest for
     # eventual OAuth verification. Sync reads the sheet with THIS admin's stored token (see

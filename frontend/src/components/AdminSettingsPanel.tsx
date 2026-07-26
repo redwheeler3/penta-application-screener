@@ -1,7 +1,7 @@
 import { type ReactNode, type SyntheticEvent, useEffect, useState } from "react";
 import * as api from "../api";
 import { readProblem } from "../format";
-import { isPickerConfigured, pickResponseSheet } from "../googlePicker";
+import { isPickerConfigured, pickApplicationsSheet } from "../googlePicker";
 import { AI_CHECKS, DETERMINISTIC_CHECKS } from "../constants";
 import { NumberInput } from "./NumberInput";
 import { AccessPanel } from "./AccessPanel";
@@ -25,7 +25,7 @@ export function AdminSettingsPanel(props: {
   onSubmit: (event: SyntheticEvent<HTMLFormElement>) => void;
   onError: (message: string) => void;
   // Lift a fresh SettingsResponse to the app (updates the shared `saved`) so a change made
-  // inside a subtab — e.g. linking the response sheet — survives a tab switch/remount.
+  // inside a subtab — e.g. linking the applications sheet — survives a tab switch/remount.
   onSettingsUpdated: (payload: SettingsResponse) => void;
   // Jump to an applicant's detail / a top-level view from a feedback item's context link.
   onOpenApplicant: (id: number) => void;
@@ -204,7 +204,7 @@ function SheetLinkField(props: {
   async function connectAndPick() {
     setBusy(true);
     try {
-      const picked = await pickResponseSheet();
+      const picked = await pickApplicationsSheet();
       if (!picked) return; // cancelled at the Picker
       const response = await api.linkSheet(picked.id);
       if (!response.ok) {
@@ -215,7 +215,7 @@ function SheetLinkField(props: {
       // what makes it persist across a tab switch (vs. dying with local state on remount).
       props.onSettingsUpdated((await response.json()) as SettingsResponse);
     } catch (err) {
-      props.onError(err instanceof Error ? err.message : "Could not connect the response sheet.");
+      props.onError(err instanceof Error ? err.message : "Could not connect the applications sheet.");
     } finally {
       setBusy(false);
     }
@@ -224,7 +224,7 @@ function SheetLinkField(props: {
   if (!isPickerConfigured()) {
     return (
       <div className="sheet-link-section">
-        <h4>Application responses</h4>
+        <h4>Applications sheet</h4>
         <p className="panel-hint">
           Google Picker isn't configured in this environment (missing API key / client id).
         </p>
@@ -234,28 +234,48 @@ function SheetLinkField(props: {
 
   return (
     <div className="sheet-link-section">
-      <h4>Application responses</h4>
+      <h4>Applications sheet</h4>
       <p className="rules-hint">
-        Connect the Google Sheet of application responses. You'll grant access to just the one
+        Connect the Google Sheet of submitted applications. You'll grant access to just the one
         file you pick — members can sync without any Google Drive access of their own.
       </p>
       {hasLink ? (
-        <p className="sheet-reference-line">
-          Linked:{" "}
-          {linkedUrl ? (
-            <a className="sheet-reference" href={linkedUrl} target="_blank" rel="noreferrer noopener">
-              {linkedTitle ?? "response sheet"}
-            </a>
-          ) : (
-            <strong>{linkedTitle ?? "response sheet"}</strong>
-          )}
-        </p>
+        linkedTitle ? (
+          <p className="sheet-reference-line">
+            Linked:{" "}
+            {linkedUrl ? (
+              <a className="sheet-reference" href={linkedUrl} target="_blank" rel="noreferrer noopener">
+                {linkedTitle}
+              </a>
+            ) : (
+              <strong>{linkedTitle}</strong>
+            )}
+          </p>
+        ) : (
+          // A sheet id is stored but its title couldn't be read — don't invent a name that
+          // reads like the sheet's. This is the tell-tale of a reader token that lost its
+          // Drive scope, so point at the fix (re-link). The link itself is built from the id,
+          // so it still opens the real sheet.
+          <p className="panel-hint">
+            A sheet is linked, but its name couldn't be read
+            {linkedUrl ? (
+              <>
+                {" "}(
+                <a className="sheet-reference" href={linkedUrl} target="_blank" rel="noreferrer noopener">
+                  open it
+                </a>
+                )
+              </>
+            ) : null}
+            . Try re-linking it below so sync can read it.
+          </p>
+        )
       ) : (
         <p className="panel-hint">No sheet linked yet.</p>
       )}
       <div className="settings-actions">
         <button type="button" className="primary-button" onClick={connectAndPick} disabled={busy}>
-          {busy ? "Connecting…" : hasLink ? "Change response sheet" : "Connect response sheet"}
+          {busy ? "Connecting…" : hasLink ? "Change applications sheet" : "Connect applications sheet"}
         </button>
       </div>
     </div>

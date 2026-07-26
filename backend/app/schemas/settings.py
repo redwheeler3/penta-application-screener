@@ -160,7 +160,7 @@ class SheetCodeExchangeRequest(BridgeModel):
 
 
 class SheetLinkRequest(BridgeModel):
-    """Admin links the response sheet via the Google Picker (M18). The Picker only PICKS the
+    """Admin links the applications sheet via the Google Picker (M18). The Picker only PICKS the
     file (returns its id); the sheet is READ during sync with the linking admin's own stored
     LOGIN token — which carries drive.file + a refresh_token (offline access), so it reads
     durably and auto-refreshes. Hence only the file id is sent here, not the Picker's

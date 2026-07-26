@@ -40,7 +40,7 @@ def sync_applications(
             raise Problem(
                 "sheet_reader_unavailable",
                 detail=(
-                    "The Google account linked to the response sheet needs to reconnect it. "
+                    "The Google account linked to the applications sheet needs to reconnect it. "
                     "Ask an admin to re-link the sheet in Settings."
                 ),
             )

@@ -178,7 +178,7 @@ h1 {
   cursor: pointer;
   font-size: 0.85rem;
   font-weight: 500;
-  /* No underline when the class is used on an <a> (e.g. the M18 "Connect response sheet"
+  /* No underline when the class is used on an <a> (e.g. the M18 "Connect applications sheet"
      link-button) — anchors are underlined globally, which fights the button look. */
   text-decoration: none;
   transition: border-color 0.12s, background-color 0.12s, box-shadow 0.12s, transform 0.12s;

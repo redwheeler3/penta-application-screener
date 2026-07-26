@@ -112,7 +112,7 @@ def exchange_sheet_code(
     except Exception as exc:
         raise Problem(
             "sheet_auth_failed",
-            detail="Couldn't complete Google authorization. Try Connect response sheet again.",
+            detail="Couldn't complete Google authorization. Try Connect applications sheet again.",
         ) from exc
 
     access_token = token.get("access_token")
@@ -137,7 +137,7 @@ def link_sheet(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> SettingsResponse:
-    """Link the response sheet the admin picked in the Google Picker (M18). By now the admin
+    """Link the applications sheet the admin picked in the Google Picker (M18). By now the admin
     has run exchange-sheet-code, so their stored token came from the interactive drive.file
     grant and can read the file they picked. We verify by reading the sheet's title with THEIR
     token before saving; on success we record the sheet id and mark this admin the designated
@@ -147,7 +147,7 @@ def link_sheet(
     if token is None:
         raise Problem(
             "sheet_reader_unavailable",
-            detail="Your Google connection is missing. Click Connect response sheet to grant access.",
+            detail="Your Google connection is missing. Click Connect applications sheet to grant access.",
         )
 
     # Verify the picked file is actually reachable with this admin's drive.file token before
@@ -160,13 +160,13 @@ def link_sheet(
             "sheet_read_failed",
             detail=(
                 "Couldn't read that sheet with your Google access. Re-connect via "
-                "Connect response sheet and pick the file again."
+                "Connect applications sheet and pick the file again."
             ),
         ) from exc
     if title is None:
         raise Problem(
             "sheet_read_failed",
-            detail="Couldn't read that sheet. Re-connect and pick the response sheet again.",
+            detail="Couldn't read that sheet. Re-connect and pick the applications sheet again.",
         )
 
     settings = get_app_settings(db)

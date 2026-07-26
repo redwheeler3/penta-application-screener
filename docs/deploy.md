@@ -137,7 +137,7 @@ fly apps restart penta-application-screener      # startup seeds the admin
 
 ### 8. M18: least-privilege Google auth (Picker sheet-linking)
 
-M18 changed how the response sheet is connected: members log in with **identity only** (no
+M18 changed how the applications sheet is connected: members log in with **identity only** (no
 Drive/Sheets scope), and an admin links the sheet via the **Google Picker**, granting only
 `drive.file` (access to the one picked file). The sheet is read during sync with that admin's
 token. Extra prod setup beyond the OAuth steps above:
