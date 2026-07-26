@@ -68,6 +68,9 @@ export type AISettings = {
 // (EligibilityRules).
 export type AppSettings = {
   googleSheetId: string;
+  // The user whose token reads the sheet during sync (set by the Picker link flow, M18).
+  // null until a sheet is linked.
+  googleSheetReaderUserId: number | null;
   ai: AISettings;
 };
 

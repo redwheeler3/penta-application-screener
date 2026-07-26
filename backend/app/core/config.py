@@ -22,20 +22,17 @@ class Settings(BaseSettings):
     # .db files onto the volume, so prod sets this false via fly.toml. Defaults on so local
     # dev is unchanged with no config.
     local_db_backups: bool = True
-    # LOGIN scope — what EVERY member grants at sign-in. M18 GOAL: reduce this to identity
-    # ONLY (drop spreadsheets.readonly) so members see a benign consent screen. But dropping
-    # it is COUPLED to the Picker landing: until a designated drive.file sheet-reader exists,
-    # sync falls back to the clicking user's token, which would then lack Sheets access and
-    # break sync. So this still includes spreadsheets.readonly for now; the scope is dropped
-    # to identity-only in the SAME change that ships the Picker (see google_sheet_reader_scopes
-    # + the Picker admin flow), so the two deploy together and never leave a broken window.
-    # Canonical userinfo.* URIs, not the short aliases: Google echoes the full URIs back, so
-    # requesting aliases makes Authlib's literal scope check report them "missing" when granted.
+    # LOGIN scope — what EVERY member grants at sign-in. Identity ONLY (M18): no Drive/Sheets
+    # access, so a normal member sees a benign "see your email + basic profile" consent screen.
+    # The sheet is read during sync with the designated admin's token, which carries drive.file
+    # from the separate connect-sheet incremental grant (google_sheet_reader_scopes) — members
+    # never need any data scope. Canonical userinfo.* URIs, not the short aliases: Google echoes
+    # the full URIs back, so requesting aliases makes Authlib's literal scope check report them
+    # "missing" even when granted.
     google_oauth_scopes: str = (
         "openid "
         "https://www.googleapis.com/auth/userinfo.email "
-        "https://www.googleapis.com/auth/userinfo.profile "
-        "https://www.googleapis.com/auth/spreadsheets.readonly"
+        "https://www.googleapis.com/auth/userinfo.profile"
     )
     # SHEET-READER scope — granted SEPARATELY (incremental auth) by the admin who links the
     # response sheet, never at member login. `drive.file` is the least-privilege choice: it

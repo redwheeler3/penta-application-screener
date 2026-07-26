@@ -1,6 +1,7 @@
 import { type ReactNode, type SyntheticEvent, useEffect, useState } from "react";
 import * as api from "../api";
 import { readProblem } from "../format";
+import { isPickerConfigured, pickResponseSheet } from "../googlePicker";
 import { AI_CHECKS, DETERMINISTIC_CHECKS } from "../constants";
 import { NumberInput } from "./NumberInput";
 import { AccessPanel } from "./AccessPanel";
@@ -91,19 +92,8 @@ export function AdminSettingsPanel(props: {
           {/* Gate on `saved` so we don't flash the form before GET /settings resolves. */}
           {!saved ? null : (
             <form className="settings-form" onSubmit={props.onSubmit}>
-              <label className="settings-field-wide">
-                <span>Google Sheet link</span>
-                <input
-                  value={draft.googleSheetId}
-                  onChange={(event) => setDraft({ ...draft, googleSheetId: event.target.value })}
-                  placeholder="Paste the response spreadsheet link"
-                />
-                {saved?.googleSheetTitle && saved.googleSheetUrl ? (
-                  <a className="sheet-reference" href={saved.googleSheetUrl} target="_blank" rel="noreferrer">
-                    {saved.googleSheetTitle}
-                  </a>
-                ) : null}
-              </label>
+              <SheetLinkField saved={saved} onError={props.onError} />
+
               <div className="rules-section">
                 <h4>AI Screening</h4>
                 <div className="settings-grid">
@@ -176,6 +166,102 @@ const NUMERIC_FIELDS: { key: keyof EligibilityRules; label: string; min: string;
   { key: "maxDogs", label: "Max dogs", min: "0", max: "10" },
   { key: "maxCats", label: "Max cats", min: "0", max: "10" },
 ];
+
+// The response-sheet linker (M18). Replaces the old paste-a-link field with a least-privilege
+// flow: the admin grants drive.file via the backend connect-sheet redirect, then picks the
+// exact sheet in the Google Picker. Sync then reads with this admin's token, so members need
+// no Drive/Sheets scope. Two entry points into "pick": (1) after the connect redirect returns
+// with ?connect=sheet the Picker opens automatically; (2) the button re-runs the whole flow.
+function SheetLinkField(props: {
+  saved: SettingsResponse | null;
+  onError: (message: string) => void;
+}): ReactNode {
+  const { saved } = props;
+  const [busy, setBusy] = useState(false);
+  const [linkedTitle, setLinkedTitle] = useState<string | null>(saved?.googleSheetTitle ?? null);
+  const [linkedUrl, setLinkedUrl] = useState<string>(saved?.googleSheetUrl ?? "");
+
+  // Open the Picker, then persist the chosen file to the backend as the linked source.
+  async function pickAndLink() {
+    setBusy(true);
+    try {
+      const picked = await pickResponseSheet();
+      if (!picked) return; // cancelled
+      const response = await api.linkSheet(picked.id);
+      if (!response.ok) {
+        props.onError((await readProblem(response)) ?? "Could not link that sheet.");
+        return;
+      }
+      const body = (await response.json()) as SettingsResponse;
+      setLinkedTitle(body.googleSheetTitle ?? picked.name ?? "Linked sheet");
+      setLinkedUrl(body.googleSheetUrl ?? "");
+    } catch (err) {
+      props.onError(err instanceof Error ? err.message : "Could not open the Google Picker.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Coming back from the connect-sheet grant (?connect=sheet): the admin's token now has
+  // drive.file, so open the Picker straight away, then clean the URL so a refresh doesn't
+  // re-trigger it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("connect") === "sheet") {
+      params.delete("connect");
+      const rest = params.toString();
+      window.history.replaceState({}, "", window.location.pathname + (rest ? `?${rest}` : ""));
+      void pickAndLink();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!isPickerConfigured()) {
+    return (
+      <div className="rules-section">
+        <h4>Response sheet</h4>
+        <p className="panel-hint">
+          Google Picker isn't configured in this environment (missing API key / client id).
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rules-section">
+      <h4>Response sheet</h4>
+      <p className="rules-hint">
+        Connect the Google Sheet of application responses. You'll grant access to just the one
+        file you pick — members can sync without any Google Drive access of their own.
+      </p>
+      {linkedTitle ? (
+        <p className="sheet-reference-line">
+          Linked:{" "}
+          {linkedUrl ? (
+            <a className="sheet-reference" href={linkedUrl} target="_blank" rel="noreferrer noopener">
+              {linkedTitle}
+            </a>
+          ) : (
+            <strong>{linkedTitle}</strong>
+          )}
+        </p>
+      ) : (
+        <p className="panel-hint">No sheet linked yet.</p>
+      )}
+      <div className="settings-actions">
+        {/* First grant drive.file (full-page redirect to Google), which returns to Settings
+            and auto-opens the Picker. If the admin already granted it this session, the button
+            can also just re-open the Picker — but the redirect path is the reliable one, so we
+            always route through it. */}
+        <a className="primary-button" href={api.connectSheetUrl()}>
+          {linkedTitle ? "Change response sheet…" : "Connect response sheet…"}
+        </a>
+        {busy ? <span className="panel-hint">Opening Google Picker…</span> : null}
+      </div>
+    </div>
+  );
+}
+
 
 function CommitteeDefaultsPanel(props: { onError: (message: string) => void }): ReactNode {
   const [draft, setDraft] = useState<EligibilityRules | null>(null);

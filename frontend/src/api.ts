@@ -158,6 +158,21 @@ export function syncApplications(): Promise<Response> {
   return fetch(url("/sync/applications"), { method: "POST", credentials: "include" });
 }
 
+// M18: the admin starts the incremental drive.file grant by navigating here (a full-page
+// redirect to Google, back to Settings with ?connect=sheet). Not fetch — it's a browser nav.
+export const connectSheetUrl = () => url("/auth/google/connect-sheet");
+
+// Save the sheet the admin picked in the Google Picker as the linked source (and designate
+// them the reader). Returns the updated SettingsResponse on success.
+export function linkSheet(fileId: string): Promise<Response> {
+  return fetch(url("/settings/link-sheet"), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fileId }),
+  });
+}
+
 export const fetchRankingCurrent = () => fetch(url("/ranking/current"), { credentials: "include" });
 
 // The current run's carry-forward audit (M13 per-run AI legibility). Null when no
