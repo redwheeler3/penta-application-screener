@@ -630,6 +630,14 @@ export function App() {
         <section className="login-panel">
           <span className="panel-kicker">Member access</span>
           <h2>{isLoadingUser ? "Checking session" : "Sign in to continue"}</h2>
+          <p className="login-blurb">
+            This application screener helps the Penta Housing Co-op membership committee review
+            applications: it reads the submissions stored on Google Sheets, applies eligibility
+            rules, and helps the committee construct a ranked shortlist. Signing in uses your Google
+            account for identity only, so it never reaches your files, email, or other Google data.
+            Connecting the applications sheet is a separate admin-only step that grants access to
+            just that one file.
+          </p>
           {accessDenied && !isLoadingUser ? (
             <p className="login-denied" role="alert">
               That Google account isn't approved for this screener. Ask an admin to add your email,
@@ -642,6 +650,17 @@ export function App() {
             <LogIn size={16} />
             <span>Sign in with Google</span>
           </button>
+          <p className="login-legal">
+            By signing in you agree to our{" "}
+            <a href="https://www.pentacoop.com/#/terms" target="_blank" rel="noopener noreferrer">
+              Terms of Service
+            </a>{" "}
+            and{" "}
+            <a href="https://www.pentacoop.com/#/privacy" target="_blank" rel="noopener noreferrer">
+              Privacy Policy
+            </a>
+            .
+          </p>
         </section>
       ) : (
         <>

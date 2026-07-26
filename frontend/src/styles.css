@@ -258,6 +258,15 @@ h1 {
 
 .login-panel p {
   color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.login-blurb {
+  line-height: 1.5;
+}
+
+.login-legal {
+  font-size: 0.82rem;
 }
 
 .login-denied {
