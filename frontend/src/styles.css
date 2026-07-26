@@ -509,6 +509,32 @@ h1 {
   gap: 12px;
 }
 
+/* The M18 response-sheet linker. Like a settings section but WITHOUT the top divider —
+   it's the first block under the subtabs, so a border-top there reads as a stray rule. */
+.sheet-link-section {
+  grid-column: 1 / -1;
+}
+.sheet-link-section > h4 {
+  margin: 0 0 0.35rem;
+}
+/* The "Linked: <sheet>" line + its link: match the surrounding hint text size (the global
+   .sheet-reference rule is scoped to .settings-form label, which this markup isn't inside). */
+.sheet-link-section .sheet-reference-line {
+  font-size: 0.84rem;
+  color: var(--ink);
+  margin: 0.25rem 0 0;
+}
+.sheet-link-section .sheet-reference {
+  color: var(--penta-green-dark);
+  font-size: 0.84rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+/* Breathing room between the Linked line / hint and the Connect button. */
+.sheet-link-section .settings-actions {
+  margin-top: 0.75rem;
+}
+
 .settings-actions span {
   color: var(--muted);
   font-size: 0.92rem;
