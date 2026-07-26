@@ -11,13 +11,20 @@ from app.core.google_oauth import load_google_client_config
 
 def credentials_from_token(token: dict[str, Any], settings: Settings) -> Credentials:
     client_config = load_google_client_config(settings)
+    # Use the scopes the token was ACTUALLY granted (its own 'scope' field), not the app's
+    # login-scope constant. Post-M18 the login scope is identity-only, but a sheet-reader
+    # token also carries drive.file — hardcoding the login scopes here understated the grant
+    # and would make a refresh request the wrong (narrower) scope set. Fall back to the login
+    # scopes only when the token has no scope recorded.
+    granted = token.get("scope")
+    scopes = granted.split() if granted else settings.google_oauth_scopes.split()
     credentials = Credentials(
         token=token.get("access_token"),
         refresh_token=token.get("refresh_token"),
         token_uri=client_config["token_uri"],
         client_id=client_config["client_id"],
         client_secret=client_config["client_secret"],
-        scopes=settings.google_oauth_scopes.split(),
+        scopes=scopes,
     )
 
     if credentials.expired and credentials.refresh_token:
