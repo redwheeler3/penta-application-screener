@@ -46,6 +46,10 @@ export function App() {
   // The last settings persisted on the server. `draft` resets to this on load/save.
   const [saved, setSaved] = useState<SettingsResponse | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  // True once the initial settings load has definitively failed (after retries). Drives the
+  // Admin Settings panel's error+retry state so it never silently falls through to the
+  // Applications view when `draft` never loaded (the cold-start dropped-request bug).
+  const [settingsLoadFailed, setSettingsLoadFailed] = useState(false);
 
   const [dashboardCounts, setDashboardCounts] = useState<DashboardCounts>({
     submitted: 0,
@@ -181,6 +185,10 @@ export function App() {
     api
       .fetchCurrentUser()
       .then(setUser)
+      // A dropped request (cold machine) leaves the user null — the sign-in screen shows,
+      // which is the safe default; a click retries. `getJson` now rejects on non-2xx, so
+      // without this catch the rejection is unhandled and `isLoadingUser` never clears.
+      .catch(() => setUser(null))
       .finally(() => setIsLoadingUser(false));
     // The OAuth callback redirects here with ?access=denied for a non-allowlisted
     // account. Read it once, then strip it from the URL so a later reload is clean.
@@ -193,7 +201,7 @@ export function App() {
 
   useEffect(() => {
     if (!user) return;
-    api.fetchSettings().then(applySettingsResponse);
+    void loadSettings();
     refreshDashboard();
     refreshRankingRun();
     reloadApplications();
@@ -249,10 +257,33 @@ export function App() {
     const sheetId = resolveSheetId(payload);
     setSaved(payload);
     setDraft({ ...payload.settings, googleSheetId: sheetId });
+    setSettingsLoadFailed(false);
     // First-run setup: land on Admin Settings when there's no sheet configured yet, so
     // setup is front-and-centre. Only admins can set the sheet, so only redirect them —
     // a member stays on Applications.
     if (!sheetId && isAdmin) setActiveTab("adminSettings");
+  }
+
+  // Load the shared settings, retrying a few times with backoff. `draft` is set ONLY here, and
+  // nothing re-fetches it on tab switches — so a single dropped request (a cold Fly machine
+  // resuming from suspend, or a deploy restart, cuts the first request) would otherwise leave
+  // `draft` null forever and the Admin Settings tab silently rendering the Applications view.
+  // On definitive failure we flag it so the Admin panel shows an error+retry instead.
+  async function loadSettings(): Promise<void> {
+    const ATTEMPTS = 3;
+    for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+      try {
+        applySettingsResponse(await api.fetchSettings());
+        return;
+      } catch {
+        // Back off briefly before retrying — a resuming machine needs a moment (300ms, 1200ms).
+        // No sleep after the final attempt; we're about to give up.
+        if (attempt < ATTEMPTS - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1) ** 2));
+        }
+      }
+    }
+    setSettingsLoadFailed(true);
   }
 
   // Linking/changing the applications sheet changes the source pool, so the synced data is now
@@ -266,15 +297,27 @@ export function App() {
   }
 
   function refreshDashboard() {
-    api.fetchDashboard().then((payload) => {
-      setDashboardCounts(payload.counts);
-      setWorkflow(payload.workflow);
-      setCoverage(payload.coverage ?? {});
-    });
+    api
+      .fetchDashboard()
+      .then((payload) => {
+        setDashboardCounts(payload.counts);
+        setWorkflow(payload.workflow);
+        setCoverage(payload.coverage ?? {});
+      })
+      // A dropped request (cold machine) shouldn't nag or throw an unhandled rejection — the
+      // counts stay at their last values and the next interaction refreshes them. `getJson`
+      // now rejects on non-2xx, so this catch is required.
+      .catch(() => {});
   }
 
   async function viewApplication(id: number) {
-    const application = await api.fetchApplication(id);
+    let application: ApplicationDetail;
+    try {
+      application = await api.fetchApplication(id);
+    } catch {
+      showError("Couldn't load that applicant. Please try again.");
+      return;
+    }
     setSelectedApp(application);
     // The scroll to the detail's top happens in a layout effect keyed on the selected
     // applicant id (see below) — NOT here: scrolling in this handler races React's commit,
@@ -800,18 +843,44 @@ export function App() {
               />
             ) : activeTab === "eligibilitySettings" ? (
               <EligibilitySettingsPanel onError={showError} />
-            ) : activeTab === "adminSettings" && isAdmin && draft ? (
-              <AdminSettingsPanel
-                draft={draft}
-                setDraft={setDraft}
-                saved={saved}
-                isSaving={isSavingSettings}
-                onSubmit={saveSettings}
-                onError={showError}
-                onSettingsUpdated={applyLinkedSheet}
-                onOpenApplicant={viewApplication}
-                onOpenView={navigateToView}
-              />
+            ) : activeTab === "adminSettings" && isAdmin ? (
+              // Never fall through to the Applications view when the admin tab is selected but
+              // settings haven't loaded — that silent mismatch (selected tab, wrong body) was a
+              // real cold-start bug. Show the panel once `draft` is ready, else a loading/error
+              // state that can retry the settings load in place.
+              draft ? (
+                <AdminSettingsPanel
+                  draft={draft}
+                  setDraft={setDraft}
+                  saved={saved}
+                  isSaving={isSavingSettings}
+                  onSubmit={saveSettings}
+                  onError={showError}
+                  onSettingsUpdated={applyLinkedSheet}
+                  onOpenApplicant={viewApplication}
+                  onOpenView={navigateToView}
+                />
+              ) : (
+                <div className="panel-hint">
+                  {settingsLoadFailed ? (
+                    <>
+                      <p>Couldn't load settings. The server may have been starting up.</p>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => {
+                          setSettingsLoadFailed(false);
+                          void loadSettings();
+                        }}
+                      >
+                        Retry
+                      </button>
+                    </>
+                  ) : (
+                    <p>Loading settings…</p>
+                  )}
+                </div>
+              )
             ) : activeTab === "ranking" && ranking ? (
               <RankingView
                 ranking={ranking}

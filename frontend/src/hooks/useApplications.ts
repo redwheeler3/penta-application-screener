@@ -42,10 +42,16 @@ export function useApplications(): ApplicationsState {
   const [appSort, setAppSort] = useState<SortState>(null);
 
   function reloadApplications() {
-    api.fetchApplications().then((rows) => {
-      setAllApplications(rows);
-      setApplicationsLoaded(true);
-    });
+    api
+      .fetchApplications()
+      .then((rows) => {
+        setAllApplications(rows);
+        setApplicationsLoaded(true);
+      })
+      // A dropped request (cold Fly machine resuming) shouldn't throw an unhandled rejection;
+      // leave applicationsLoaded false so the list shows its loading state and a later
+      // interaction refetches. `getJson` now rejects on non-2xx, so this catch is required.
+      .catch(() => {});
   }
 
   // Everything below is derived from the full pool — no fetch on filter/sort/search.

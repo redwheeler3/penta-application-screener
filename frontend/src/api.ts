@@ -29,8 +29,17 @@ function url(path: string): string {
   return `${apiBaseUrl}${path}`;
 }
 
-function getJson<T>(path: string): Promise<T> {
-  return fetch(url(path), { credentials: "include" }).then((r) => r.json() as Promise<T>);
+async function getJson<T>(path: string): Promise<T> {
+  // Throw on a non-2xx (or dropped) response instead of blindly parsing the body — an error
+  // page or a connection cut mid-flight is NOT valid data, and parsing it as T silently
+  // corrupts caller state. A cold Fly machine (auto-suspend / deploy restart) can drop the
+  // first request, so this rejection is what lets callers retry or surface an error rather
+  // than wedging on half-loaded state.
+  const response = await fetch(url(path), { credentials: "include" });
+  if (!response.ok) {
+    throw new Error(`GET ${path} failed (HTTP ${response.status})`);
+  }
+  return (await response.json()) as T;
 }
 
 export const authLoginUrl = () => url("/auth/google/login");
