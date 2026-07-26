@@ -8,6 +8,7 @@ from app.services.application_import import (
     import_applications_from_rows,
     normalize_application,
     parse_money,
+    parse_timestamp,
 )
 from app.services.google_sheets import make_unique_headers
 
@@ -136,6 +137,63 @@ def test_import_applications_dedupes_by_latest_email_and_upserts() -> None:
     # eligible/filtered count to assert here.
     assert application.applicant_name == "New"
     assert application.normalized["has_real_estate"] is True
+
+
+def test_dedupe_keeps_latest_by_timestamp_even_when_out_of_sheet_order() -> None:
+    # The newer submission appears FIRST in sheet order; only the timestamp says it's newer.
+    # Last-in-sheet-wins would wrongly keep "Old" — timestamp comparison keeps "New".
+    db = make_session()
+    rows = [
+        {
+            "Timestamp": "06/02/2026 09:00:00",
+            "Email Address": "applicant@example.com",
+            "Applicant Name": "New",
+            "Do you own real estate?": "Yes",
+        },
+        {
+            "Timestamp": "06/01/2026 09:00:00",
+            "Email Address": "applicant@example.com",
+            "Applicant Name": "Old",
+            "Do you own real estate?": "No",
+        },
+    ]
+
+    sync_run = import_applications_from_rows(
+        db, rows=rows, source_sheet_id="s", settings=AppSettings(google_sheet_id="s")
+    )
+    application = db.scalar(select(Application))
+
+    assert sync_run.duplicate_count == 1
+    assert application is not None
+    assert application.applicant_name == "New"
+    assert application.normalized["has_real_estate"] is True
+
+
+def test_dedupe_without_timestamps_keeps_last_in_sheet_order() -> None:
+    # No Timestamp column → fall back to the prior behaviour: later-in-sheet row wins.
+    db = make_session()
+    rows = [
+        {"Email Address": "a@example.com", "Applicant Name": "First"},
+        {"Email Address": "a@example.com", "Applicant Name": "Second"},
+    ]
+
+    import_applications_from_rows(
+        db, rows=rows, source_sheet_id="s", settings=AppSettings(google_sheet_id="s")
+    )
+    application = db.scalar(select(Application))
+
+    assert application is not None
+    assert application.applicant_name == "Second"
+
+
+def test_parse_timestamp_handles_google_forms_and_iso() -> None:
+    assert parse_timestamp("06/01/2026 09:00:00") is not None
+    assert parse_timestamp("06/01/2026 09:00") is not None
+    assert parse_timestamp("2026-06-01 09:00:00") is not None
+    assert parse_timestamp("") is None
+    assert parse_timestamp("not a date") is None
+    # A later timestamp compares greater — the property dedup relies on.
+    assert parse_timestamp("06/02/2026 09:00:00") > parse_timestamp("06/01/2026 09:00:00")
 
 
 def test_reimport_of_identical_rows_counts_unchanged_not_updated() -> None:

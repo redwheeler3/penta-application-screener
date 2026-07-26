@@ -330,13 +330,19 @@ export function App() {
       if (response.ok) {
         const payload: {
           rowCount: number;
+          duplicateCount: number;
           importedCount: number;
           updatedCount: number;
           unchangedCount: number;
         } = await response.json();
-        const { rowCount, importedCount, updatedCount, unchangedCount } = payload;
+        const { rowCount, duplicateCount, importedCount, updatedCount, unchangedCount } = payload;
+        // rowCount is every raw sheet row; imported/updated/unchanged count only the
+        // deduplicated applications. Surface the duplicates that account for the gap (a
+        // repeat submission keeps the latest), so the numbers reconcile — but only mention
+        // them when there are any, to keep the common clean-sync message short.
+        const dupeNote = duplicateCount > 0 ? `, ${duplicateCount} duplicate` : "";
         showToast(
-          `Synced ${rowCount} rows: ${importedCount} imported, ${updatedCount} updated, ${unchangedCount} unchanged.`,
+          `Synced ${rowCount} rows: ${importedCount} imported, ${updatedCount} updated, ${unchangedCount} unchanged${dupeNote}.`,
         );
         refreshDashboard();
         reloadApplications();

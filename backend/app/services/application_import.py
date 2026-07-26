@@ -3,6 +3,7 @@ import json
 import re
 from collections import OrderedDict
 from datetime import date as date_type
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -12,6 +13,7 @@ from app.db.models import Application, SyncRun
 from app.schemas.settings import AppSettings
 
 EMAIL_ALIASES = ["email address", "applicant email", "email"]
+TIMESTAMP_ALIASES = ["timestamp", "submitted at", "submission time"]
 APPLICANT_NAME_ALIASES = ["applicant name", "name", "applicant full name"]
 CO_APPLICANT_NAME_ALIASES = ["co-applicant name", "co applicant name"]
 ADULT_COUNT_ALIASES = ["adult_count", "adult count", "number of adults"]
@@ -103,12 +105,24 @@ def import_applications_from_rows(
     latest_by_email: OrderedDict[str, dict[str, Any]] = OrderedDict()
     duplicate_count = 0
 
+    # Collapse multiple submissions from the same email to the one the applicant submitted
+    # LAST. We compare the form Timestamp rather than trusting sheet row order: Google Forms
+    # appends chronologically, so order usually agrees, but a sorted or hand-edited sheet can
+    # reorder rows — the timestamp is the real "which is newest". When a row has no parseable
+    # timestamp, it sorts oldest, so a row that DOES have one always wins; ties (or no
+    # timestamps at all) fall back to later-in-sheet-wins, the prior behaviour.
     for row in rows:
         email = normalize_email(_first_value(row, EMAIL_ALIASES))
         if not email:
             continue
+        incoming_ts = parse_timestamp(_first_value(row, TIMESTAMP_ALIASES))
         if email in latest_by_email:
             duplicate_count += 1
+            kept_ts = parse_timestamp(_first_value(latest_by_email[email], TIMESTAMP_ALIASES))
+            # Keep the existing row only if it is STRICTLY newer; otherwise the incoming row
+            # wins (equal timestamps → later-in-sheet, matching the old last-wins default).
+            if kept_ts is not None and (incoming_ts is None or kept_ts > incoming_ts):
+                continue
             del latest_by_email[email]
         latest_by_email[email] = row
 
@@ -285,6 +299,27 @@ def parse_date(value: Any) -> date_type | None:
     return None
 
 
+
+
+def parse_timestamp(value: Any) -> datetime | None:
+    """Parse a form-submission Timestamp for duplicate ordering. Handles the Google Forms
+    default (``MM/DD/YYYY HH:MM:SS``, with or without seconds) and ISO 8601. Returns None for
+    anything unrecognized — callers treat a missing timestamp as oldest, so a bad parse never
+    lets an undated row beat a dated one."""
+    if isinstance(value, datetime):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return None
+    for fmt in ("%m/%d/%Y %H:%M:%S", "%m/%d/%Y %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
 
 
 def parse_child_count(value: Any) -> int | None:
