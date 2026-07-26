@@ -1,10 +1,10 @@
 # Penta Application Screener
 
-Local-first tool that turns 300+ housing co-op applications into a committee-ready, weighted shortlist — with a human in the loop at every stage and every AI-influenced number traceable back to its evidence.
+A production tool that turns 300+ housing co-op applications into a committee-ready, weighted shortlist — with a human in the loop at every stage and every AI-influenced number traceable back to its evidence. **In real use by the Penta Housing Co-op membership committee**, hosted at `screener.pentacoop.com`.
 
 It imports Google Sheets responses, applies deterministic eligibility filters, runs cached AI passes over the eligible pool, and produces a ranked list with per-candidate rationale. Reviewers get a searchable table, candidate detail pages, audit-friendly flags, human overrides, and an interactive tier-list for weighting what matters.
 
-It's both a working MVP for a real co-op screening workflow and a portfolio project exploring the craft of AI product design: human-in-the-loop review, cost-aware model use, and the judgment of which decisions to keep deterministic and which to hand to an LLM.
+It's both a live application backing a real co-op screening workflow and a portfolio project exploring the craft of AI product design: human-in-the-loop review, cost-aware model use, and the judgment of which decisions to keep deterministic and which to hand to an LLM.
 
 ## Design Highlights
 
@@ -24,8 +24,8 @@ A few decisions I'm particularly happy with — the ideas that make this more th
 
 The workflow is three single-verb steps — **Import → Screen → Rank** — each gated behind a confirmation card with an up-front cost estimate, plus a "View ranking" action.
 
-- Google OAuth login with signed server-side sessions.
-- Read-only Google Sheets sync into a local SQLite database.
+- Google OAuth login with signed server-side sessions, **least-privilege by design**: members sign in with identity only (no Drive/Sheets scope). An admin links the one response sheet via the Google Picker, granting `drive.file` access to that single file — so the app never asks a member for broad Drive access.
+- Google Sheets sync into a SQLite database, read with the linking admin's designated token.
 - Configurable application settings for unit size, move-in date, income range, household rules, pets, and disabled deterministic rules.
 - Deterministic hard filters for clear eligibility issues, applied at import.
 - Application dashboard, searchable/sortable table, facets, pagination, and candidate detail pages.
@@ -69,8 +69,9 @@ The sample CSV in [test-data](test-data) is synthetic and intentionally realisti
 - Python tooling: `uv`, project-local virtual environment, `pytest`
 - Frontend: Vite, React, TypeScript, npm
 - Authentication: Google OAuth with signed server-side session cookies
-- Google integration: read-only Google Sheets import/sync
+- Google integration: Google Sheets import/sync via the Picker (`drive.file`, least-privilege)
 - AI integration: provider-agnostic interface; Strands + Amazon Bedrock provider; mock provider for tests
+- Hosting: Fly.io (single instance, auto-suspend, persistent-volume SQLite); single-origin — FastAPI serves the built SPA; GitHub Actions deploy on push to `main`
 
 ## Setup
 
@@ -195,7 +196,9 @@ Growing the golden case sets from a real Rank is done with the harvest scripts u
 
 ## Status
 
-This is an active MVP. It is useful today for local screening workflows, but it is not yet a hosted multi-user production system.
+**Live in production.** The app is deployed on [Fly.io](https://fly.io) at `screener.pentacoop.com` and used by the Penta Housing Co-op membership committee (a small, trusted group of screeners) to review real application cycles. It runs as a single instance with SQLite on a persistent volume — deliberately right-sized for a ~5-member committee rather than built for scale it doesn't need. Hosting decisions and the platform tradeoff analysis are in [docs/adr/0012-hosting-platform-m17.md](docs/adr/0012-hosting-platform-m17.md); the deploy/runbook is [docs/deploy.md](docs/deploy.md).
+
+It remains an actively developed project, and everything below still works for fully local screening workflows — the same codebase runs on a laptop with no hosting at all.
 
 ## License
 
