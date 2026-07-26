@@ -255,6 +255,16 @@ export function App() {
     if (!sheetId && isAdmin) setActiveTab("adminSettings");
   }
 
+  // Linking/changing the response sheet changes the source pool, so the synced data is now
+  // stale relative to it — the workflow bar should go amber (re-sync needed). Apply the new
+  // settings AND refresh the dashboard + applications so that shows immediately, rather than
+  // only after a manual page refresh.
+  function applyLinkedSheet(payload: SettingsResponse) {
+    applySettingsResponse(payload);
+    refreshDashboard();
+    reloadApplications();
+  }
+
   function refreshDashboard() {
     api.fetchDashboard().then((payload) => {
       setDashboardCounts(payload.counts);
@@ -781,6 +791,7 @@ export function App() {
                 isSaving={isSavingSettings}
                 onSubmit={saveSettings}
                 onError={showError}
+                onSettingsUpdated={applyLinkedSheet}
                 onOpenApplicant={viewApplication}
                 onOpenView={navigateToView}
               />

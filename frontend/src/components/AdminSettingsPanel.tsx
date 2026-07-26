@@ -24,6 +24,9 @@ export function AdminSettingsPanel(props: {
   isSaving: boolean;
   onSubmit: (event: SyntheticEvent<HTMLFormElement>) => void;
   onError: (message: string) => void;
+  // Lift a fresh SettingsResponse to the app (updates the shared `saved`) so a change made
+  // inside a subtab — e.g. linking the response sheet — survives a tab switch/remount.
+  onSettingsUpdated: (payload: SettingsResponse) => void;
   // Jump to an applicant's detail / a top-level view from a feedback item's context link.
   onOpenApplicant: (id: number) => void;
   onOpenView: (tab: ViewTab) => void;
@@ -99,7 +102,11 @@ export function AdminSettingsPanel(props: {
           {/* Gate on `saved` so we don't flash the form before GET /settings resolves. */}
           {!saved ? null : (
             <form className="settings-form" onSubmit={props.onSubmit}>
-              <SheetLinkField saved={saved} onError={props.onError} />
+              <SheetLinkField
+                saved={saved}
+                onError={props.onError}
+                onSettingsUpdated={props.onSettingsUpdated}
+              />
 
               <div className="rules-section">
                 <h4>AI Screening</h4>
@@ -175,21 +182,25 @@ const NUMERIC_FIELDS: { key: keyof EligibilityRules; label: string; min: string;
 ];
 
 // The response-sheet linker (M18). Replaces the old paste-a-link field with a least-privilege
-// flow: the admin grants drive.file via the backend connect-sheet redirect, then picks the
-// exact sheet in the Google Picker. Sync then reads with this admin's token, so members need
-// no Drive/Sheets scope. Two entry points into "pick": (1) after the connect redirect returns
-// with ?connect=sheet the Picker opens automatically; (2) the button re-runs the whole flow.
+// one-click flow (a user gesture, so GIS's consent popup isn't blocked): GIS code grant ->
+// backend exchange (stores the reader token) -> Picker -> persist the picked file. Sync then
+// reads with this admin's token, so members need no Drive/Sheets scope.
+//
+// The linked-sheet display is driven off `saved` (the app-wide settings), NOT local state:
+// after linking we lift the fresh SettingsResponse to the app via onSettingsUpdated, so the
+// link survives a tab switch/remount. (Local state here would go stale on remount — the
+// component re-reads `saved`, which the parent must have refreshed.)
 function SheetLinkField(props: {
   saved: SettingsResponse | null;
   onError: (message: string) => void;
+  onSettingsUpdated: (payload: SettingsResponse) => void;
 }): ReactNode {
   const { saved } = props;
   const [busy, setBusy] = useState(false);
-  const [linkedTitle, setLinkedTitle] = useState<string | null>(saved?.googleSheetTitle ?? null);
-  const [linkedUrl, setLinkedUrl] = useState<string>(saved?.googleSheetUrl ?? "");
+  const linkedTitle = saved?.googleSheetTitle ?? null;
+  const linkedUrl = saved?.googleSheetUrl ?? "";
+  const hasLink = Boolean(saved?.settings.googleSheetId);
 
-  // The whole one-click flow, fired from the button (a user gesture, so GIS's consent popup
-  // isn't blocked): GIS code grant -> backend exchange -> Picker -> persist the picked file.
   async function connectAndPick() {
     setBusy(true);
     try {
@@ -200,9 +211,9 @@ function SheetLinkField(props: {
         props.onError((await readProblem(response)) ?? "Could not link that sheet.");
         return;
       }
-      const body = (await response.json()) as SettingsResponse;
-      setLinkedTitle(body.googleSheetTitle ?? picked.name ?? "Linked sheet");
-      setLinkedUrl(body.googleSheetUrl ?? "");
+      // Lift the new settings to the app so the shared `saved` reflects the link — this is
+      // what makes it persist across a tab switch (vs. dying with local state on remount).
+      props.onSettingsUpdated((await response.json()) as SettingsResponse);
     } catch (err) {
       props.onError(err instanceof Error ? err.message : "Could not connect the response sheet.");
     } finally {
@@ -228,15 +239,15 @@ function SheetLinkField(props: {
         Connect the Google Sheet of application responses. You'll grant access to just the one
         file you pick — members can sync without any Google Drive access of their own.
       </p>
-      {linkedTitle ? (
+      {hasLink ? (
         <p className="sheet-reference-line">
           Linked:{" "}
           {linkedUrl ? (
             <a className="sheet-reference" href={linkedUrl} target="_blank" rel="noreferrer noopener">
-              {linkedTitle}
+              {linkedTitle ?? "response sheet"}
             </a>
           ) : (
-            <strong>{linkedTitle}</strong>
+            <strong>{linkedTitle ?? "response sheet"}</strong>
           )}
         </p>
       ) : (
@@ -244,11 +255,7 @@ function SheetLinkField(props: {
       )}
       <div className="settings-actions">
         <button type="button" className="primary-button" onClick={connectAndPick} disabled={busy}>
-          {busy
-            ? "Connecting…"
-            : linkedTitle
-              ? "Change response sheet"
-              : "Connect response sheet"}
+          {busy ? "Connecting…" : hasLink ? "Change response sheet" : "Connect response sheet"}
         </button>
       </div>
     </div>
