@@ -116,7 +116,8 @@ export function ApplicationsList(props: {
           </p>
         </div>
       ) : (
-        <table className="app-table">
+        <div className="app-table-scroll" role="region" aria-label="Applications table">
+          <table className="app-table">
           <thead>
             <tr>
               <th className="star-col" aria-label="Favourite" />
@@ -201,7 +202,8 @@ export function ApplicationsList(props: {
               );
             })}
           </tbody>
-        </table>
+          </table>
+        </div>
       )}
     </>
   );

@@ -96,7 +96,8 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
       ) : entries === null ? (
         <p className="panel-hint">Loading…</p>
       ) : (
-        <table className="access-table">
+        <div className="access-table-scroll" role="region" aria-label="Access allowlist">
+          <table className="access-table">
           <thead>
             <tr>
               <th>Email</th>
@@ -133,7 +134,8 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
               );
             })}
           </tbody>
-        </table>
+          </table>
+        </div>
       )}
     </section>
   );

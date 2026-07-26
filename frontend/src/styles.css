@@ -318,6 +318,11 @@ h1 {
   font-size: 0.9rem;
 }
 
+.access-table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
 .access-table th {
   text-align: left;
   padding: 0.5rem 0.6rem;
@@ -696,9 +701,86 @@ h1 {
     margin: 20px 0 18px;
   }
 
+  .topnav-inner {
+    width: calc(100vw - 24px);
+    height: 56px;
+    gap: 12px;
+  }
+
+  .brand-lockup {
+    gap: 7px;
+  }
+
+  .brand-mark svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .brand-name {
+    font-size: 0.95rem;
+  }
+
+  /* The role still identifies the active account; dropping the duplicate name keeps the
+     brand and sign-out control on one useful row instead of clipping either. */
+  .user-chip span {
+    display: none;
+  }
+
+  .user-chip {
+    padding-right: 0;
+  }
+
+  .workflow-bar {
+    padding: 12px;
+  }
+
+  .workflow-steps {
+    gap: 0.35rem;
+  }
+
+  .workflow-step {
+    gap: 0.15rem;
+  }
+
+  .workflow-step-arrow {
+    width: 14px;
+  }
+
+  /* Keep the folder-tab affordance intact; sideways scrolling is clearer than a second
+     wrapped row that no longer visually joins the panel beneath it. */
+  .view-tabs {
+    overflow-x: auto;
+    padding: 0;
+    scrollbar-width: thin;
+  }
+
+  .view-tabs .tab-button {
+    flex: 0 0 auto;
+    padding: 0.5rem 0.8rem;
+  }
+
+  .tab-button-settings {
+    margin-left: 0;
+  }
+
   .settings-form,
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .settings-header,
+  .settings-panel-body,
+  .applications-header,
+  .app-controls,
+  .ranking-view,
+  .observability-view,
+  .app-detail {
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
+  }
+
+  .app-table {
+    min-width: 680px;
   }
 
   .toast {
@@ -850,6 +932,11 @@ h1 {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
+}
+
+.app-table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 
 .app-table thead {
@@ -3010,6 +3097,8 @@ input[type="radio"] {
    shows the grab cursor across its full area. */
 .tier-chip-draggable {
   cursor: grab;
+  /* Let dnd-kit receive touch drags while keeping the rest of the page scrollable. */
+  touch-action: none;
 }
 
 .tier-chip-draggable:active {
@@ -3668,4 +3757,114 @@ input[type="radio"] {
 
 .feedback-context-link:hover {
   color: var(--penta-green);
+}
+
+/* The app's less-frequent reviewer surfaces still need to stay legible on a phone. Keep
+   their desktop information hierarchy, but let dense controls wrap or scroll deliberately
+   instead of squeezing labels and tables into unreadable fragments. */
+@media (max-width: 760px) {
+  .access-panel {
+    padding: 0.9rem;
+  }
+
+  .access-add input[type="email"] {
+    flex-basis: 100%;
+  }
+
+  .access-table {
+    min-width: 400px;
+  }
+
+  .admin-settings-subtabs {
+    padding: 0 0.9rem;
+  }
+
+  .subtabs {
+    gap: 0.9rem;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    white-space: nowrap;
+  }
+
+  .subtab {
+    flex: 0 0 auto;
+  }
+
+  .divergence-head,
+  .cost-block-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .divergence-diff {
+    display: block;
+    overflow-x: auto;
+  }
+
+  .run-confirm-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .app-detail-header {
+    align-items: flex-start;
+  }
+
+  .app-detail-actions {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .app-detail-fields dl {
+    grid-template-columns: 1fr;
+  }
+
+  .app-detail-field-group {
+    padding: 0.75rem;
+  }
+
+  .criteria-composer-row {
+    flex-wrap: wrap;
+  }
+
+  .criteria-composer-row input {
+    flex-basis: 100%;
+  }
+
+  .tier-list-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .tier-list-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .ranking-list-toolbar {
+    justify-content: flex-start;
+  }
+
+  .ranking-row {
+    gap: 0.6rem;
+    padding: 0.75rem;
+  }
+
+  .cost-section {
+    overflow-x: auto;
+  }
+
+  .cost-table {
+    min-width: 640px;
+  }
+
+  .eval-detail-actions .eval-detail-edit {
+    margin-left: 0;
+  }
+
+  .eval-editor {
+    padding: 0.75rem;
+  }
 }
