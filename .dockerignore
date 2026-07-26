@@ -12,7 +12,12 @@
 **/.venv/
 .venv/
 
-# Secrets and local env — these are provided as Fly secrets at runtime, never baked in.
+# Secrets and local env — provided as Fly secrets/build-args, never baked in. MUST use **/
+# so NESTED env files are excluded too: a root-anchored `.env.*` does NOT match
+# frontend/.env.local, which leaked VITE_API_BASE_URL=http://localhost:8000 into the prod
+# bundle and sent prod's API calls (incl. login) to localhost. (Same nested-path trap as .venv.)
+**/.env
+**/.env.*
 .env
 .env.*
 backend/secrets/
