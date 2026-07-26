@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from google.auth.exceptions import RefreshError
 from googleapiclient.errors import HttpError
 from sqlalchemy.orm import Session
 
@@ -41,7 +42,13 @@ rules_router = APIRouter(prefix="/eligibility-rules", tags=["eligibility-rules"]
 def build_settings_response(db: Session, user: User, settings: AppSettings) -> SettingsResponse:
     sheet_title: str | None = None
     if settings.google_sheet_id:
-        token = get_google_token(db, user_id=user.id)
+        # Read the title with the DESIGNATED reader's token (it's the one that can access the
+        # linked file post-M18), falling back to the viewing user's own token. The title is a
+        # nice-to-have label, so ANY failure just drops it — a revoked/expired token raises
+        # RefreshError (during refresh, before any HTTP call), which must be caught alongside
+        # HttpError or loading Settings 500s (seen right after an M18 deploy, pre-relink).
+        reader_id = settings.google_sheet_reader_user_id or user.id
+        token = get_google_token(db, user_id=reader_id)
         if token is not None:
             try:
                 sheet_title = fetch_sheet_title(
@@ -49,7 +56,7 @@ def build_settings_response(db: Session, user: User, settings: AppSettings) -> S
                     token=token,
                     settings=get_settings(),
                 )
-            except HttpError:
+            except (HttpError, RefreshError):
                 sheet_title = None
 
     return SettingsResponse(
