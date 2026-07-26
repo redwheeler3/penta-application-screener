@@ -652,11 +652,11 @@ export function App() {
           </button>
           <p className="login-legal">
             By signing in you agree to our{" "}
-            <a href="https://www.pentacoop.com/#/terms" target="_blank" rel="noopener noreferrer">
+            <a href="https://www.pentacoop.com/terms.html" target="_blank" rel="noopener noreferrer">
               Terms of Service
             </a>{" "}
             and{" "}
-            <a href="https://www.pentacoop.com/#/privacy" target="_blank" rel="noopener noreferrer">
+            <a href="https://www.pentacoop.com/privacy.html" target="_blank" rel="noopener noreferrer">
               Privacy Policy
             </a>
             .
