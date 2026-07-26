@@ -280,6 +280,22 @@ h1 {
   margin: 0 0 0.25rem;
 }
 
+/* Consistent header block for every Admin Settings subtab (Configuration, Committee Defaults,
+   Access, Feedback): an <h3> title with a hint beneath, and clear spacing so the hint/body
+   isn't crammed under the heading. Access already used this shape; the others now match. */
+.settings-subtab-head {
+  /* Span the full width when it's a child of the .settings-form 2-col grid (Configuration
+     tab); harmless in the non-grid panel bodies (Committee Defaults / Feedback). */
+  grid-column: 1 / -1;
+  margin-bottom: 1.1rem;
+}
+.settings-subtab-head h3 {
+  margin: 0 0 0.35rem;
+}
+.settings-subtab-head .panel-hint {
+  margin: 0;
+}
+
 .access-add {
   display: flex;
   gap: 0.5rem;
@@ -395,10 +411,6 @@ h1 {
 
 /* Intro paragraph at the top of the Committee Defaults subtab — above the form, so it
    reads as a section lede rather than landing in a form column. */
-.committee-defaults-intro {
-  margin: 0 0 1rem;
-}
-
 /* The "compared to committee default" divergence panel (M15 1f), full-width above the
    member's own rule fields. Shows only the fields that differ + a Reset action. */
 .divergence-panel {
@@ -515,7 +527,7 @@ h1 {
   grid-column: 1 / -1;
 }
 .sheet-link-section > h4 {
-  margin: 0 0 0.25rem;
+  margin: 0 0 0.6rem;
   font-size: 0.9rem; /* match .rules-section > h4 so the two section headings are equal */
 }
 /* The "Linked: <sheet>" line + its link: match the surrounding hint text size (the global
@@ -2062,7 +2074,7 @@ input[type="radio"] {
    sits UNDER the panel-title h3 rather than colliding with it (matches CandidateDetail's
    title-h3 → section-h4 nesting). */
 .rules-section > h4 {
-  margin: 0 0 0.25rem;
+  margin: 0 0 0.6rem;
   font-size: 0.9rem;
 }
 

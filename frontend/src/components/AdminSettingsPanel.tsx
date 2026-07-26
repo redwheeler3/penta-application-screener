@@ -89,6 +89,13 @@ export function AdminSettingsPanel(props: {
         <CommitteeDefaultsPanel onError={props.onError} />
       ) : (
         <div className="settings-panel-body">
+          <div className="settings-subtab-head">
+            <h3>Configuration</h3>
+            <p className="panel-hint">
+              The application-responses source and the AI screening knobs shared by the whole
+              committee.
+            </p>
+          </div>
           {/* Gate on `saved` so we don't flash the form before GET /settings resolves. */}
           {!saved ? null : (
             <form className="settings-form" onSubmit={props.onSubmit}>
@@ -312,16 +319,19 @@ function CommitteeDefaultsPanel(props: { onError: (message: string) => void }): 
 
   return (
     <div className="settings-panel-body">
+      <div className="settings-subtab-head">
+        <h3>Committee Defaults</h3>
+        <p className="panel-hint">
+          The shared eligibility baseline every member follows until they personalize their own
+          rules. Changing it does not affect members who've already diverged.
+        </p>
+      </div>
       {loadError ? (
         <p className="panel-hint">Couldn't load the committee default rules.</p>
       ) : !draft ? (
         <p className="panel-hint">Loading…</p>
       ) : (
         <>
-          <p className="panel-hint committee-defaults-intro">
-            The shared baseline every member follows until they personalize their own rules.
-            Changing it does not affect members who've already diverged.
-          </p>
           <form className="settings-form" onSubmit={save}>
             {NUMERIC_FIELDS.map((f) => (
               <label key={f.key}>
@@ -441,11 +451,14 @@ function FeedbackPanel(props: {
 
   return (
     <div className="settings-panel-body">
-      <div className="feedback-admin-header">
+      <div className="settings-subtab-head">
+        <h3>Feedback</h3>
         <p className="panel-hint">
           Feedback members sent from anywhere in the app, newest first. May contain applicant
           details — treat it as sensitive.
         </p>
+      </div>
+      <div className="feedback-admin-header">
         <label className="checkbox-label">
           <input
             type="checkbox"
