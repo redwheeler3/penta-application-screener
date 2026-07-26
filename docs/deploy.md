@@ -135,6 +135,38 @@ fly apps restart penta-application-screener      # startup seeds the admin
 > above is fine (the admin entry itself lives in the DB on the volume, so it persists even
 > after the file is gone). After the first admin exists, manage the allowlist in-app.
 
+### 8. M18: least-privilege Google auth (Picker sheet-linking)
+
+M18 changed how the response sheet is connected: members log in with **identity only** (no
+Drive/Sheets scope), and an admin links the sheet via the **Google Picker**, granting only
+`drive.file` (access to the one picked file). The sheet is read during sync with that admin's
+token. Extra prod setup beyond the OAuth steps above:
+
+1. **Enable the Google Picker API** in the prod project (APIs & Services → Library).
+2. **Browser API key for the Picker** — the key is committed in `fly.toml [build.args]`
+   (`VITE_GOOGLE_PICKER_API_KEY`) and baked into the frontend at build time (it's a browser
+   key — public by design). **Restrict it** in Google Cloud: Application restrictions →
+   HTTP referrers → add `https://screener.pentacoop.com/*`; API restrictions → Google Picker
+   API only. (`VITE_GOOGLE_CLIENT_ID` + `VITE_GOOGLE_PROJECT_NUMBER` are also build args — the
+   project number is **required** by the Picker's `setAppId` for `drive.file` to authorize a
+   picked file; without it, linking silently fails.)
+3. **Consent screen scopes** — add `.../auth/drive.file`. Once M18 is fully live you can
+   **remove** `spreadsheets.readonly` and `documents` (the sensitive scopes) so the app's
+   footprint is entirely non-sensitive — but only after confirming login + linking work.
+4. **OAuth client `postmessage`** — the Picker uses the GIS code model (`ux_mode: popup`),
+   whose code exchange posts `redirect_uri=postmessage`. This works as long as
+   `https://screener.pentacoop.com` is an **Authorized JavaScript origin** on the OAuth client
+   (add it alongside the redirect URI in step 6). No literal `postmessage` entry is needed.
+5. **Re-link the sheet after deploy (one-time).** The prod DB's existing sheet link predates
+   M18, so its stored reader token lacks `drive.file` — sync will fail until you re-link.
+   After deploying: sign in as admin → **Admin Settings → Configuration → Change response
+   sheet** → grant → pick the sheet in the Picker. That stores a fresh `drive.file` reader
+   token, and sync works again. (Trivial here — Jeff is the only admin.)
+
+> Deploy ordering note: because login drops to identity-only in the same release, sync is
+> broken between deploy and re-link. Since the committee isn't actively using it mid-deploy,
+> just re-link promptly after the deploy completes.
+
 ---
 
 ## Continuous deployment
