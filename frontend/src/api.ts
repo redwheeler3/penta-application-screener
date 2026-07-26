@@ -158,12 +158,9 @@ export function syncApplications(): Promise<Response> {
   return fetch(url("/sync/applications"), { method: "POST", credentials: "include" });
 }
 
-// M18: the admin starts the incremental drive.file grant by navigating here (a full-page
-// redirect to Google, back to Settings with ?connect=sheet). Not fetch — it's a browser nav.
-export const connectSheetUrl = () => url("/auth/google/connect-sheet");
-
 // Save the sheet the admin picked in the Google Picker as the linked source (and designate
-// them the reader). Returns the updated SettingsResponse on success.
+// them the reader). Returns the updated SettingsResponse on success. The drive.file grant +
+// token exchange happen in googlePicker.ts (GIS code model) before this is called.
 export function linkSheet(fileId: string): Promise<Response> {
   return fetch(url("/settings/link-sheet"), {
     method: "POST",

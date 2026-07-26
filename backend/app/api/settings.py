@@ -12,10 +12,15 @@ from app.schemas.settings import (
     EligibilityRules,
     EligibilityRulesResponse,
     SettingsResponse,
+    SheetCodeExchangeRequest,
     SheetLinkRequest,
     google_sheet_url_from_id,
 )
-from app.services.google_credentials import get_google_token
+from app.services.google_credentials import (
+    exchange_auth_code,
+    get_google_token,
+    save_google_token,
+)
 from app.services.google_sheets import fetch_sheet_title
 from app.services.rules import (
     committee_default_rules,
@@ -75,15 +80,50 @@ def update_settings(
     return build_settings_response(db, user, save_app_settings(db, settings))
 
 
+@router.post("/exchange-sheet-code")
+def exchange_sheet_code(
+    body: SheetCodeExchangeRequest,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Exchange the GIS code-model auth code for tokens (M18). Stores the resulting token
+    (with refresh, for durable sync) as the admin's credential, and returns the access token
+    for the browser to open the Picker with. Because this token comes from the INTERACTIVE
+    auth-code grant, a file picked with it is properly drive.file-authorized — which a
+    server-refreshed token is not. Admin-only."""
+    try:
+        token = exchange_auth_code(code=body.code, settings=get_settings())
+    except Exception as exc:
+        raise Problem(
+            "sheet_auth_failed",
+            detail="Couldn't complete Google authorization. Try Connect response sheet again.",
+        ) from exc
+
+    access_token = token.get("access_token")
+    if not access_token:
+        raise Problem(
+            "sheet_auth_failed",
+            detail="Google authorization returned no access token. Try again.",
+        )
+    # Re-consent may omit refresh_token; preserve the admin's existing one so durable sync
+    # keeps working. Then store as this admin's credential (they become the designated reader
+    # when they finish linking a sheet).
+    existing = get_google_token(db, user_id=admin.id) or {}
+    if not token.get("refresh_token") and existing.get("refresh_token"):
+        token["refresh_token"] = existing["refresh_token"]
+    save_google_token(db, user_id=admin.id, token=token)
+    return {"accessToken": access_token}
+
+
 @router.post("/link-sheet", response_model=SettingsResponse)
 def link_sheet(
     body: SheetLinkRequest,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> SettingsResponse:
-    """Link the response sheet the admin picked in the Google Picker (M18). The admin has
-    already granted drive.file via the connect-sheet incremental auth, so their stored token
-    can read files they've picked. We verify that by reading the sheet's title with THEIR
+    """Link the response sheet the admin picked in the Google Picker (M18). By now the admin
+    has run exchange-sheet-code, so their stored token came from the interactive drive.file
+    grant and can read the file they picked. We verify by reading the sheet's title with THEIR
     token before saving; on success we record the sheet id and mark this admin the designated
     reader, so all future syncs read with their (offline, refreshing) token — members never
     need a Drive/Sheets scope."""

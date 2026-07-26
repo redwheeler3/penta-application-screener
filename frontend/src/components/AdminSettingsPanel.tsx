@@ -188,12 +188,13 @@ function SheetLinkField(props: {
   const [linkedTitle, setLinkedTitle] = useState<string | null>(saved?.googleSheetTitle ?? null);
   const [linkedUrl, setLinkedUrl] = useState<string>(saved?.googleSheetUrl ?? "");
 
-  // Open the Picker, then persist the chosen file to the backend as the linked source.
-  async function pickAndLink() {
+  // The whole one-click flow, fired from the button (a user gesture, so GIS's consent popup
+  // isn't blocked): GIS code grant -> backend exchange -> Picker -> persist the picked file.
+  async function connectAndPick() {
     setBusy(true);
     try {
       const picked = await pickResponseSheet();
-      if (!picked) return; // cancelled
+      if (!picked) return; // cancelled at the Picker
       const response = await api.linkSheet(picked.id);
       if (!response.ok) {
         props.onError((await readProblem(response)) ?? "Could not link that sheet.");
@@ -203,25 +204,11 @@ function SheetLinkField(props: {
       setLinkedTitle(body.googleSheetTitle ?? picked.name ?? "Linked sheet");
       setLinkedUrl(body.googleSheetUrl ?? "");
     } catch (err) {
-      props.onError(err instanceof Error ? err.message : "Could not open the Google Picker.");
+      props.onError(err instanceof Error ? err.message : "Could not connect the response sheet.");
     } finally {
       setBusy(false);
     }
   }
-
-  // Coming back from the connect-sheet grant (?connect=sheet): the admin's token now has
-  // drive.file, so open the Picker straight away, then clean the URL so a refresh doesn't
-  // re-trigger it.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("connect") === "sheet") {
-      params.delete("connect");
-      const rest = params.toString();
-      window.history.replaceState({}, "", window.location.pathname + (rest ? `?${rest}` : ""));
-      void pickAndLink();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   if (!isPickerConfigured()) {
     return (
@@ -256,14 +243,13 @@ function SheetLinkField(props: {
         <p className="panel-hint">No sheet linked yet.</p>
       )}
       <div className="settings-actions">
-        {/* First grant drive.file (full-page redirect to Google), which returns to Settings
-            and auto-opens the Picker. If the admin already granted it this session, the button
-            can also just re-open the Picker — but the redirect path is the reliable one, so we
-            always route through it. */}
-        <a className="primary-button" href={api.connectSheetUrl()}>
-          {linkedTitle ? "Change response sheet" : "Connect response sheet"}
-        </a>
-        {busy ? <span className="panel-hint">Opening Google Picker…</span> : null}
+        <button type="button" className="primary-button" onClick={connectAndPick} disabled={busy}>
+          {busy
+            ? "Connecting…"
+            : linkedTitle
+              ? "Change response sheet"
+              : "Connect response sheet"}
+        </button>
       </div>
     </div>
   );

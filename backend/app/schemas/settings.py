@@ -152,6 +152,13 @@ class AppSettings(BridgeModel):
         return spreadsheet_reference
 
 
+class SheetCodeExchangeRequest(BridgeModel):
+    """The GIS code-model authorization code from the admin's one-click grant (M18), POSTed so
+    the backend can exchange it for a refresh+access token."""
+
+    code: str = Field(min_length=1)
+
+
 class SheetLinkRequest(BridgeModel):
     """Admin links the response sheet via the Google Picker (M18). The Picker only PICKS the
     file (returns its id); the sheet is READ during sync with the linking admin's own stored
