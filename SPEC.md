@@ -312,7 +312,7 @@ Then the ranked list is **pure deterministic math** (`app/domain/ranking.py`): f
 
 The primary output is a ranked list. It is explainable and preserves evidence behind each recommendation. AI produces qualitative labels for user-facing screening; hidden internal scores support ranking, but the UI explains rankings in plain language rather than centering numeric scores. AI summaries use a neutral committee tone and stay transparent enough to detect bias or unsupported claims. Direct essay excerpts are used sparingly; entire essays are never reproduced in summaries or reports.
 
-For debugging and learning, raw AI analysis, traces, prompts, and intermediate outputs are accessible to any logged-in member (the Observability tab + candidate detail pages). The app provides `why not selected` explanations for candidates below a member's shortlist (internal only). Each screening run is saved with its criteria, prompts, model outputs, ranking outputs, and shortlist. AI output schemas are defined in `app/ai/schemas.py`, shared by prompt, storage, API, UI, and evals.
+For debugging and learning, raw AI analysis, traces, prompts, and intermediate outputs are accessible to any logged-in member (the Observability tab + candidate detail pages). Each screening run is saved with its criteria, prompts, model outputs, ranking outputs, and shortlist. AI output schemas are defined in `app/ai/schemas.py`, shared by prompt, storage, API, UI, and evals.
 
 ### Essay Judgment
 
@@ -428,25 +428,21 @@ Implementation defaults:
 - Clean changes over backward compatibility for internal APIs, local schemas, fixtures, and UI shapes; backward compatibility is added only when real users or real applicant data require it.
 - Relational tables for workflow data, JSON columns for raw rows, flexible payloads, AI outputs, and debug traces; the relational model stays portable to Postgres.
 
-**Milestones 1–15 are complete** and proven end-to-end against real Bedrock (sync → screen → discover ~14–16 fact-aware dimensions → score the pool → rank with the tier-list weighting → print a committee-ready PDF), now with per-member independent screening on a shared compute-once substrate. Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md). The remaining milestones are **16 (concurrency & correctness — software; first hardening slice done)** and **17 (hosting / go-live — infra)**.
+**Milestones 1–18 are complete** and proven end-to-end against real Bedrock (sync → screen → discover ~30–35 fact-aware dimensions → score the pool → rank with the tier-list weighting → print a committee-ready PDF), now with per-member independent screening on a shared compute-once substrate, **hosted live at [screener.pentacoop.com](https://screener.pentacoop.com)** for the real committee. Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md). The last milestones landed as: **16 (concurrency & correctness — software: run lease, WAL, stale-view detection)**, **17 (hosting / go-live on Fly.io — see [ADR 0012](docs/adr/0012-hosting-platform-m17.md))**, and **18 (least-privilege Google auth — members log in identity-only; an admin links the response sheet via the Google Picker with `drive.file`)**.
 
 ## Remaining Open Questions
 
 Decisions that still need making, or can wait until their implementation milestone.
 
-### Reporting (M10 shipped; refinements open)
+### Reporting (M10 shipped) — ✅ closed, demand-driven from here
 
-The report is the browser print of the ranked view, so the format question is resolved. Open refinements if a committee wants more than the live render:
-
-1. Whether the print should include near-misses, filtered-out counts, or filtered-out details (currently the ranked eligible pool only).
-2. The amount of applicant personal/contact detail appropriate for MOMI reports.
-3. The tone/format of an explicit recommendation and `why not selected` explanation, if wanted beyond the per-candidate rationale lines.
+The report is the browser print of the ranked view. Three speculative refinements were considered and **deliberately not built** (Jeff, 2026-07-26): near-misses / filtered-out counts / filtered-out details in the print (today it's the ranked eligible pool only); report-specific applicant personal/contact-detail handling for MOMI reports; and an explicit recommendation + `why not selected` surface beyond the per-candidate rationale lines. Rationale: building report features nobody has asked for is speculative scope. The committee now has the app and an in-app **feedback mechanism** — real requests, not guesses, will drive any future reporting work.
 
 ### Multi-Member V2 (M15) — ✅ complete
 
 M15 shipped: per-member independent screening on a shared compute-once substrate — no merge/disagreement/comparison surface (the earlier open questions on merge formula, disagreement flags, and criteria-comparison layout were dissolved, not answered). The current-state design is in "Multi-Member MOMI Workflow" above; the decision record is [ADR 0011](docs/adr/0011-per-member-eligible-pool-shared-content-cache.md); the full sliced build history (access allowlist + `require_admin`; the `RankingRun` → shared `Analysis` + per-member `MemberRanking`/`MemberEligibility` split; per-member eligibility rules over a committee default; pets-as-deterministic-facts; committee-editable defaults + member reset; the two-phase-mental-model restoration; committee-union re-rank; and the observability triggered-by stamp) is in [CHANGELOG.md](CHANGELOG.md) M15.
 
-Two things were intentionally **not** built: per-*requester* proposal attribution (no deterministic proposal→axis-key link exists to attribute on — the shared "Requested" badge stands; see ADR 0011), and a committee-default-version "your default changed" nudge (the live divergence diff already shows current default values). Parked for a future pass: per-screening-check descriptions as info-icon tooltips.
+Two things were intentionally **not** built: per-*requester* proposal attribution (no deterministic proposal→axis-key link exists to attribute on — the shared "Requested" badge stands; see ADR 0011), and a committee-default-version "your default changed" nudge (the live divergence diff already shows current default values). Per-screening-check descriptions ship as info-icon tooltips (`CheckInfo` in `CheckToggles.tsx`, on both the member Eligibility Settings and admin Committee Defaults surfaces).
 
 **How M15 resolved the single-tenant assumptions** (the load-bearing global singletons, now discharged):
 
@@ -469,26 +465,30 @@ Multi-member introduces real concurrent writes. This is a **software** concern (
 1. **Atomic shared spending budget** — *deferred, not needed yet.* Its original motivation (N concurrent runs racing past the cap) is **already closed by the run lease** — runs can't execute concurrently, so there's no live race on SQLite today. A true committee-wide budget is genuine feature work needing product decisions (scope: per-period vs lifetime? reset cadence? who sets it? remaining-budget UI?). Since M17 keeps SQLite (ADR 0012), this no longer rides a Postgres move; if built, its atomic accounting would be the trigger to reconsider Postgres, not the reverse. The per-run cap + near-100% cache hit-rate is the working control; the carry-forward validation (below) confirmed real runs stay well under it.
 2. **Settings last-write-wins** — *accepted.* Two admins saving `app_settings` (or the committee default) at the same instant is last-write-wins on the whole JSON blob, no field merge. Rare and low-consequence at ~5 trusted members; adding optimistic-concurrency here is over-engineering for the actual user count. Revisit only if it bites.
 
-### Hosting / Go-Live (M17) — infra
+### Hosting / Go-Live (M17) — infra — ✅ complete
 
-The committee saw a demo and wants it, so hosting is real scheduled work — pure **infra**, sequenced after the M16 concurrency software lands. M15/M16 run on SQLite; M17 puts the app in front of the real ~5-member committee. The platform decision and its full verified tradeoff analysis (9 platforms priced and timeout-checked, 2026-07-25) live in [ADR 0012](docs/adr/0012-hosting-platform-m17.md).
+The committee saw a demo and wanted it, so hosting was real scheduled work — pure **infra**, sequenced after the M16 concurrency software landed. The app is now **live at [screener.pentacoop.com](https://screener.pentacoop.com)** for the real ~5-member committee. The platform decision and its full verified tradeoff analysis (9 platforms priced and timeout-checked, 2026-07-25) live in [ADR 0012](docs/adr/0012-hosting-platform-m17.md); the operational runbook is [docs/deploy.md](docs/deploy.md).
 
 **Decided (2026-07-25):**
 
-- **Platform: Fly.io**, auto-stop Machines + a persistent volume — cheapest option (~$1–5/mo, near-zero idle) that keeps the DB on a durable disk. Deploys from GitHub via `fly.toml` + a `flyctl-actions` workflow. Custom domain `screener.pentacoop.com` via a CNAME + free auto-TLS.
+- **Platform: Fly.io**, auto-stop Machines (`suspend`, sub-second resume) + a persistent volume — cheapest option (~$1–5/mo, near-zero idle) that keeps the DB on a durable disk. Deploys from GitHub via `fly.toml` + a `.github/workflows/fly-deploy.yml` workflow (push to `main` ships). Custom domain `screener.pentacoop.com` via A/AAAA records + free auto-TLS.
 - **Storage: keep SQLite on the volume for launch** (Jeff) — zero data-layer change; fine for ~5 users. Managed Postgres (and M16's atomic-budget store) is a *later* move, only if that feature is built. This retires the earlier "M17 may re-touch the data layer for a hosted DB" tradeoff: at this scale we deliberately do not.
 
-**Open / owed in M17 (see ADR 0012 for the full work list):**
+**Shipped (all verified against the deployed app, 2026-07-26):**
 
-1. **Single-origin refactor** — serve the Vite bundle from FastAPI (`StaticFiles`), removing CORS and simplifying the session cookie.
-2. **Prod-harden auth/session** — `https_only=True` cookie, real `SESSION_SECRET`, prod `FRONTEND_URL` / `GOOGLE_REDIRECT_URI` + Google Console redirect URI; a dedicated IAM user scoped to `bedrock:InvokeModel` (us-west-2) stored as a Fly secret (no IAM role off-AWS).
-3. **Stream heartbeat** — a keepalive line every ~30–50s during the silent Sonnet passes, to beat Fly's 60s idle timeout on the multi-minute Rank stream (small-to-moderate: the blocking pass must run off the generator thread).
-4. **Auth/roles** — the `require_admin` gate + email allowlist landed in M15 (1a); M17 exercises member-vs-admin roles under real hosted use (invite/approval flow, more admin-only surfaces as they arise).
-5. **Data protection at rest** — applicant PII on a hosted disk raises retention/access questions the local-first posture sidestepped; and the backup/restore scheme (today's local snapshot) moves to a scheduled Fly volume snapshot + an off-box copy.
+1. **Single-origin** — FastAPI serves the built Vite bundle via `StaticFiles` (`app/main.py`), so one origin, no CORS in prod (the frontend calls the API with relative URLs); a two-stage Dockerfile builds the bundle.
+2. **Prod-hardened auth/session** — `https_only` cookie (derived from `frontend_url` scheme), real `SESSION_SECRET` + Google client + AWS keys as Fly secrets (never in the image), prod `FRONTEND_URL` / `GOOGLE_REDIRECT_URI` in `fly.toml`. Bedrock uses a static IAM key scoped to `bedrock:InvokeModel` in us-west-2 (no IAM role off-AWS).
+3. **Stream heartbeat** — `HEARTBEAT_SECONDS = 15` in `app/api/ranking/run.py` emits a keepalive during the silent Sonnet passes, a 4× margin under Fly's 60s idle timeout on the multi-minute Rank stream.
+4. **Auth/roles** — `require_admin` gate + email allowlist (from M15 1a), now exercised under real hosted use across the admin surfaces (settings, allowlist, feedback).
+5. **Data protection at rest** — prod backup is scheduled Fly volume snapshots + an on-demand off-box `VACUUM INTO` copy (see deploy.md); the local post-rank auto-snapshot is disabled in prod (`LOCAL_DB_BACKUPS = "false"`).
 
-### Validation Experiments Owed On Real Bedrock
+### Least-Privilege Google Auth (M18) — ✅ complete
 
-The mock suite proves plumbing, not judgment. Still owed on real data (parked so they aren't forgotten; the concluded ones — K sensitivity, prompt-output trimming, the convergence experiment — are in CHANGELOG / `docs/case-studies/dimension-convergence.md`):
+For eventual Google app verification and to stop showing members a scary Drive/Sheets consent, M18 split the OAuth footprint: **members log in identity-only** (openid/email/profile — no Drive or Sheets scope), and **an admin links the response sheet via the Google Picker**, granting only `drive.file` (access to the one picked file). Sync reads the sheet with that admin's designated-reader token, so members never need a Drive/Sheets scope. The Picker uses the GIS code model (`ux_mode: popup`) exchanged server-side for a refresh token; `setAppId(<project number>)` is required for `drive.file` to authorize the picked file. Prod setup steps are in [docs/deploy.md](docs/deploy.md) §8.
+
+### Validation Experiments On Real Bedrock — ✅ all closed
+
+The mock suite proves plumbing, not judgment, so these judgment-dependent claims were owed on real data. **All are now resolved** (2026-07-26 audit); the earlier-concluded ones — K sensitivity, prompt-output trimming, the convergence experiment — are in CHANGELOG / `docs/case-studies/dimension-convergence.md`. Kept here as the closed record:
 
 1. **Reconcile-era behavior is moot** (that subsystem was deleted; see ADR 0007). No action.
 2. **Carry-forward cost win in the wild — ✅ validated (2026-07-25), with a caveat.** Across 17 real rank runs the recorded cache savings grow run-over-run as the pool stabilizes ($0 → ~$1.25/run), confirming per-dimension score reuse works in practice — the core claim. **Caveat found:** the re-rank cost *estimate* is NOT a guaranteed upper bound. It's a recency-weighted **average** of recent runs' actual scoring cost (`recent_pass_fresh_usd`), so by construction it's exceeded roughly half the time (8/17 runs came in over, up to ~142%) — a full discovery re-mints dimensions whose fresh scoring can outrun the historical mean. All runs stayed well under the spending cap regardless. Deliberately kept as an *expected*-cost estimate (the honest number to show at the confirm card) rather than padded into a false ceiling; the true atomic budget guard is M16/M17. Docstrings + this item corrected to say "expected cost," not "upper bound."
