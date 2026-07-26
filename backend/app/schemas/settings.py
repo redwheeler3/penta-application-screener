@@ -130,6 +130,11 @@ class AppSettings(BridgeModel):
     ``EligibilityRules``, not here."""
 
     google_sheet_id: str = Field(default="", max_length=2000)
+    # The user whose stored Google token reads the sheet during sync — the admin who linked
+    # it via the Picker (M18). Sync uses THIS token regardless of who clicks Sync, so members
+    # never need a Drive/Sheets scope. None until an admin links a sheet (falls back to the
+    # syncing user's own token — the pre-M18 behaviour — so nothing breaks in the interim).
+    google_sheet_reader_user_id: int | None = Field(default=None)
     ai: AISettings = Field(default_factory=AISettings)
 
     @field_validator("google_sheet_id")

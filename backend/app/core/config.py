@@ -22,15 +22,32 @@ class Settings(BaseSettings):
     # .db files onto the volume, so prod sets this false via fly.toml. Defaults on so local
     # dev is unchanged with no config.
     local_db_backups: bool = True
-    # Request the canonical scope URIs for email/profile, not the short aliases.
-    # Google grants these but echoes them back as the full userinfo.* URIs, so
-    # requesting the aliases makes Authlib's literal scope check report them as
-    # "missing" even though they were granted.
+    # LOGIN scope — what EVERY member grants at sign-in. M18 GOAL: reduce this to identity
+    # ONLY (drop spreadsheets.readonly) so members see a benign consent screen. But dropping
+    # it is COUPLED to the Picker landing: until a designated drive.file sheet-reader exists,
+    # sync falls back to the clicking user's token, which would then lack Sheets access and
+    # break sync. So this still includes spreadsheets.readonly for now; the scope is dropped
+    # to identity-only in the SAME change that ships the Picker (see google_sheet_reader_scopes
+    # + the Picker admin flow), so the two deploy together and never leave a broken window.
+    # Canonical userinfo.* URIs, not the short aliases: Google echoes the full URIs back, so
+    # requesting aliases makes Authlib's literal scope check report them "missing" when granted.
     google_oauth_scopes: str = (
         "openid "
         "https://www.googleapis.com/auth/userinfo.email "
         "https://www.googleapis.com/auth/userinfo.profile "
         "https://www.googleapis.com/auth/spreadsheets.readonly"
+    )
+    # SHEET-READER scope — granted SEPARATELY (incremental auth) by the admin who links the
+    # response sheet, never at member login. `drive.file` is the least-privilege choice: it
+    # grants access ONLY to files the user explicitly picks via the Google Picker, not all
+    # spreadsheets or all Drive — the narrowest scope that works, and the friendliest for
+    # eventual OAuth verification. Sync reads the sheet with THIS admin's stored token (see
+    # the designated-reader logic), so members never need it.
+    google_sheet_reader_scopes: str = (
+        "openid "
+        "https://www.googleapis.com/auth/userinfo.email "
+        "https://www.googleapis.com/auth/userinfo.profile "
+        "https://www.googleapis.com/auth/drive.file"
     )
 
     model_config = SettingsConfigDict(

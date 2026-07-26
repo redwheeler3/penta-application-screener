@@ -25,15 +25,37 @@ def test_local_db_backups_can_be_disabled_for_prod() -> None:
     assert Settings(local_db_backups=False).local_db_backups is False
 
 
-def test_default_google_oauth_scopes_are_minimal_for_login_and_sheets() -> None:
+def test_login_scopes_current_still_include_sheets_until_picker_lands() -> None:
+    # M18 is landing in two coupled steps. Step 1 (this commit) adds the designated-reader
+    # plumbing + the drive.file reader scope constant, but LEAVES login scope unchanged —
+    # dropping spreadsheets.readonly now would break sync's fallback until the Picker
+    # establishes a designated reader. Step 2 (the Picker) drops login to identity-only in
+    # the same change. This test guards that coupling: login still carries sheets FOR NOW.
     scopes = Settings().google_oauth_scopes.split()
-
     assert scopes == [
         "openid",
         "https://www.googleapis.com/auth/userinfo.email",
         "https://www.googleapis.com/auth/userinfo.profile",
         "https://www.googleapis.com/auth/spreadsheets.readonly",
     ]
+
+
+def test_sheet_reader_scopes_add_only_drive_file() -> None:
+    # The admin who links the sheet grants this incrementally: identity + drive.file (the
+    # least-privilege, Picker-only scope). Never spreadsheets.readonly (all-spreadsheets) or
+    # broader drive scopes.
+    scopes = Settings().google_sheet_reader_scopes.split()
+
+    assert "https://www.googleapis.com/auth/drive.file" in scopes
+    assert "https://www.googleapis.com/auth/spreadsheets.readonly" not in scopes
+    assert "https://www.googleapis.com/auth/drive.readonly" not in scopes
+    # Still carries identity (the reader is also a logged-in user).
+    for identity in (
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+    ):
+        assert identity in scopes
 
 
 def test_load_google_client_config_from_env_values() -> None:

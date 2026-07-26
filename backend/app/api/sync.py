@@ -29,8 +29,21 @@ def sync_applications(
             detail="No Google Sheet configured. Go to Settings and add a Google Sheet link.",
         )
 
-    token = get_google_token(db, user_id=user.id)
+    # Sync reads the sheet with the DESIGNATED sheet-reader's token (the admin who linked the
+    # sheet via the Picker, M18) — NOT the clicking user's — so members can trigger a sync
+    # without ever holding a Drive/Sheets scope. Falls back to the clicking user's own token
+    # when no reader is designated yet (pre-M18 behaviour), so nothing breaks in the interim.
+    reader_user_id = app_settings.google_sheet_reader_user_id or user.id
+    token = get_google_token(db, user_id=reader_user_id)
     if token is None:
+        if reader_user_id != user.id:
+            raise Problem(
+                "sheet_reader_unavailable",
+                detail=(
+                    "The Google account linked to the response sheet needs to reconnect it. "
+                    "Ask an admin to re-link the sheet in Settings."
+                ),
+            )
         raise Problem(
             "google_credentials_expired",
             detail="Google credentials expired or missing. Please sign out and sign in again.",
