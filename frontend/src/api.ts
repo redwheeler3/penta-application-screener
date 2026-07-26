@@ -29,17 +29,25 @@ function url(path: string): string {
   return `${apiBaseUrl}${path}`;
 }
 
+const GET_TIMEOUT_MS = 15_000;
+
 async function getJson<T>(path: string): Promise<T> {
-  // Throw on a non-2xx (or dropped) response instead of blindly parsing the body — an error
-  // page or a connection cut mid-flight is NOT valid data, and parsing it as T silently
-  // corrupts caller state. A cold Fly machine (auto-suspend / deploy restart) can drop the
-  // first request, so this rejection is what lets callers retry or surface an error rather
-  // than wedging on half-loaded state.
-  const response = await fetch(url(path), { credentials: "include" });
-  if (!response.ok) {
-    throw new Error(`GET ${path} failed (HTTP ${response.status})`);
+  // A browser fetch has no deadline by default. Abort a request that stalls so callers such as
+  // the initial settings load can use their existing retry/error path instead of waiting forever.
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), GET_TIMEOUT_MS);
+  try {
+    const response = await fetch(url(path), {
+      credentials: "include",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`GET ${path} failed (HTTP ${response.status})`);
+    }
+    return (await response.json()) as T;
+  } finally {
+    window.clearTimeout(timeout);
   }
-  return (await response.json()) as T;
 }
 
 export const authLoginUrl = () => url("/auth/google/login");
