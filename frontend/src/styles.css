@@ -515,7 +515,8 @@ h1 {
   grid-column: 1 / -1;
 }
 .sheet-link-section > h4 {
-  margin: 0 0 0.35rem;
+  margin: 0 0 0.25rem;
+  font-size: 0.9rem; /* match .rules-section > h4 so the two section headings are equal */
 }
 /* The "Linked: <sheet>" line + its link: match the surrounding hint text size (the global
    .sheet-reference rule is scoped to .settings-form label, which this markup isn't inside). */

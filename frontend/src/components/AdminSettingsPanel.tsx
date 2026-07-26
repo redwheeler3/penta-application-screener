@@ -219,7 +219,7 @@ function SheetLinkField(props: {
   if (!isPickerConfigured()) {
     return (
       <div className="sheet-link-section">
-        <h4>Response sheet</h4>
+        <h4>Application responses</h4>
         <p className="panel-hint">
           Google Picker isn't configured in this environment (missing API key / client id).
         </p>
@@ -229,7 +229,7 @@ function SheetLinkField(props: {
 
   return (
     <div className="sheet-link-section">
-      <h4>Response sheet</h4>
+      <h4>Application responses</h4>
       <p className="rules-hint">
         Connect the Google Sheet of application responses. You'll grant access to just the one
         file you pick — members can sync without any Google Drive access of their own.
