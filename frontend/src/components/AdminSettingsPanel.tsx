@@ -254,7 +254,7 @@ function SheetLinkField(props: {
             can also just re-open the Picker — but the redirect path is the reliable one, so we
             always route through it. */}
         <a className="primary-button" href={api.connectSheetUrl()}>
-          {linkedTitle ? "Change response sheet…" : "Connect response sheet…"}
+          {linkedTitle ? "Change response sheet" : "Connect response sheet"}
         </a>
         {busy ? <span className="panel-hint">Opening Google Picker…</span> : null}
       </div>
