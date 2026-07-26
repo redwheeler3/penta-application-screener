@@ -152,6 +152,21 @@ class AppSettings(BridgeModel):
         return spreadsheet_reference
 
 
+class SheetLinkRequest(BridgeModel):
+    """Admin links the response sheet via the Google Picker (M18). The Picker only PICKS the
+    file (returns its id); the sheet is READ during sync with the linking admin's own stored
+    LOGIN token — which carries drive.file + a refresh_token (offline access), so it reads
+    durably and auto-refreshes. Hence only the file id is sent here, not the Picker's
+    short-lived (non-refreshable) access token. The endpoint marks the admin the designated
+    reader, so members need no Drive/Sheets scope at all.
+
+    Precondition: the linking admin must have signed in with the reader scopes (drive.file),
+    i.e. their stored token can access files they've picked. The endpoint verifies this by
+    reading the sheet's title before saving, and 409s with a re-connect prompt otherwise."""
+
+    file_id: str = Field(min_length=1, max_length=2000)
+
+
 class SettingsResponse(ResponseModel):
     settings: AppSettings
     google_sheet_url: str = ""

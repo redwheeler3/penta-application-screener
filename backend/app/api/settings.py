@@ -12,6 +12,7 @@ from app.schemas.settings import (
     EligibilityRules,
     EligibilityRulesResponse,
     SettingsResponse,
+    SheetLinkRequest,
     google_sheet_url_from_id,
 )
 from app.services.google_credentials import get_google_token
@@ -69,8 +70,53 @@ def update_settings(
 ) -> SettingsResponse:
     # No income cross-check here: the numeric eligibility thresholds moved to
     # /eligibility-rules (M15 1d; pets joined them in 1e). This surface is shared infra
-    # only (sheet + AI).
+    # only (sheet + AI). NB: google_sheet_id / google_sheet_reader_user_id are set via
+    # /settings/link-sheet (the Picker flow), not by hand-editing this blob.
     return build_settings_response(db, user, save_app_settings(db, settings))
+
+
+@router.post("/link-sheet", response_model=SettingsResponse)
+def link_sheet(
+    body: SheetLinkRequest,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> SettingsResponse:
+    """Link the response sheet the admin picked in the Google Picker (M18). The admin has
+    already granted drive.file via the connect-sheet incremental auth, so their stored token
+    can read files they've picked. We verify that by reading the sheet's title with THEIR
+    token before saving; on success we record the sheet id and mark this admin the designated
+    reader, so all future syncs read with their (offline, refreshing) token — members never
+    need a Drive/Sheets scope."""
+    token = get_google_token(db, user_id=admin.id)
+    if token is None:
+        raise Problem(
+            "sheet_reader_unavailable",
+            detail="Your Google connection is missing. Click Connect response sheet to grant access.",
+        )
+
+    # Verify the picked file is actually reachable with this admin's drive.file token before
+    # committing it as the source — a wrong/unshared file or a token lacking drive.file fails
+    # here rather than silently breaking every future sync.
+    try:
+        title = fetch_sheet_title(sheet_id=body.file_id, token=token, settings=get_settings())
+    except HttpError as exc:
+        raise Problem(
+            "sheet_read_failed",
+            detail=(
+                "Couldn't read that sheet with your Google access. Re-connect via "
+                "Connect response sheet and pick the file again."
+            ),
+        ) from exc
+    if title is None:
+        raise Problem(
+            "sheet_read_failed",
+            detail="Couldn't read that sheet. Re-connect and pick the response sheet again.",
+        )
+
+    settings = get_app_settings(db)
+    settings.google_sheet_id = body.file_id
+    settings.google_sheet_reader_user_id = admin.id
+    return build_settings_response(db, admin, save_app_settings(db, settings))
 
 
 def _validate_rules(rules: EligibilityRules) -> None:
