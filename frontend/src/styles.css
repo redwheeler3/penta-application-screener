@@ -67,18 +67,6 @@ button {
   min-width: 0;
 }
 
-.brand-button {
-  padding: 0;
-  border: 0;
-  background: none;
-  cursor: pointer;
-}
-
-.brand-button:hover .brand-name,
-.brand-button:hover .brand-mark {
-  color: var(--penta-green-dark);
-}
-
 .brand-mark {
   display: grid;
   flex: 0 0 auto;

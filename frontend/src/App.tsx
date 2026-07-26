@@ -666,26 +666,12 @@ export function App() {
     <main className="app-shell">
       <header className="topnav">
         <div className="topnav-inner">
-          {user ? (
-            <button
-              className="brand-lockup brand-button"
-              type="button"
-              onClick={() => setSelectedApp(null)}
-              title="Back to applications"
-            >
-              <span className="brand-mark" aria-hidden="true">
-                <HouseIcon size={30} />
-              </span>
-              <span className="brand-name">Penta Housing Co-Op</span>
-            </button>
-          ) : (
-            <div className="brand-lockup">
-              <span className="brand-mark" aria-hidden="true">
-                <HouseIcon size={30} />
-              </span>
-              <span className="brand-name">Penta Housing Co-Op</span>
-            </div>
-          )}
+          <div className="brand-lockup">
+            <span className="brand-mark" aria-hidden="true">
+              <HouseIcon size={30} />
+            </span>
+            <span className="brand-name">Penta Housing Co-Op</span>
+          </div>
           {user ? (
             <div className="toolbar">
               <div className="user-chip">
