@@ -82,8 +82,17 @@ def update_settings(
 ) -> SettingsResponse:
     # No income cross-check here: the numeric eligibility thresholds moved to
     # /eligibility-rules (M15 1d; pets joined them in 1e). This surface is shared infra
-    # only (sheet + AI). NB: google_sheet_id / google_sheet_reader_user_id are set via
-    # /settings/link-sheet (the Picker flow), not by hand-editing this blob.
+    # only (sheet + AI).
+    #
+    # The sheet-link fields (google_sheet_id, google_sheet_reader_user_id) are owned by the
+    # Picker flow (/settings/link-sheet), NOT this blob — so we always keep the server's
+    # current values and ignore whatever the client sent for them. Without this, a stale form
+    # (e.g. a second tab open from before a sheet was linked) saving AI settings would clobber
+    # the reader id back to null and silently break sync. This makes the PUT touch only the
+    # AI settings it's actually for.
+    current = get_app_settings(db)
+    settings.google_sheet_id = current.google_sheet_id
+    settings.google_sheet_reader_user_id = current.google_sheet_reader_user_id
     return build_settings_response(db, user, save_app_settings(db, settings))
 
 

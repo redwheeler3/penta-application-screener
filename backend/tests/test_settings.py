@@ -107,6 +107,36 @@ async def test_read_settings_requires_login() -> None:
     assert response.status_code == 401
 
 
+@pytest.mark.anyio
+async def test_put_settings_preserves_server_owned_sheet_link() -> None:
+    """PUT /settings must NOT let a (possibly stale) client blob clobber the sheet-link
+    fields — those are owned by the Picker flow (/settings/link-sheet), not this form. The
+    footgun: a second tab open from before a sheet was linked saves AI settings and nulls the
+    reader id, silently breaking sync. The server keeps its own sheet id + reader id and
+    applies only the AI settings the PUT is actually for."""
+    app, db = _rules_client(role="admin")
+    # Simulate a sheet already linked via the Picker flow.
+    save_app_settings(
+        db, AppSettings(google_sheet_id="linked-sheet", google_sheet_reader_user_id=1)
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        # A stale client PUTs settings with the sheet fields cleared (as a pre-link tab would).
+        resp = await client.put(
+            "/settings",
+            json={"googleSheetId": "", "googleSheetReaderUserId": None,
+                  "ai": {"spendingCapUsd": 3.0}},
+        )
+        assert resp.status_code == 200
+
+    # The server-owned link survived; the AI edit still applied.
+    loaded = get_app_settings(db)
+    assert loaded.google_sheet_id == "linked-sheet"
+    assert loaded.google_sheet_reader_user_id == 1
+    assert loaded.ai.spending_cap_usd == 3.0
+
+
 # --- Per-member eligibility rules (M15 1d) --------------------------------------------
 
 
