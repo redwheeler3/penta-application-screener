@@ -63,6 +63,20 @@ function requestAccessToken(): Promise<string> {
   });
 }
 
+// The Picker doesn't clean up its own DOM: after close it leaves orphan .picker-dialog and
+// .picker-dialog-bg overlay nodes behind, which sit over the page as invisible full-viewport
+// layers and warp spacing/scroll. dispose() + sweeping any stragglers keeps the page intact.
+function disposePicker(picker: { dispose?: () => void }): void {
+  try {
+    picker.dispose?.();
+  } catch {
+    /* dispose is best-effort */
+  }
+  document
+    .querySelectorAll(".picker-dialog, .picker-dialog-bg")
+    .forEach((node) => node.remove());
+}
+
 function openPicker(accessToken: string): Promise<{ id: string; name?: string } | null> {
   return new Promise((resolve) => {
     const google = window.google;
@@ -77,8 +91,10 @@ function openPicker(accessToken: string): Promise<{ id: string; name?: string } 
       .setCallback((data: PickerResult) => {
         const g = window.google.picker;
         if (data.action === g.Action.PICKED && data.docs?.length) {
+          disposePicker(picker);
           resolve({ id: data.docs[0].id, name: data.docs[0].name });
         } else if (data.action === g.Action.CANCEL) {
+          disposePicker(picker);
           resolve(null);
         }
       })

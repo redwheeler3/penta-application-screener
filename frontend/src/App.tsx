@@ -189,6 +189,12 @@ export function App() {
       setAccessDenied(true);
       window.history.replaceState({}, "", window.location.pathname);
     }
+    // Returning from the admin connect-sheet grant (M18): land on Admin Settings so the
+    // SheetLinkField mounts and auto-opens the Picker. We do NOT strip ?connect=sheet here —
+    // that field consumes and clears it once the Picker opens (App just routes the tab).
+    if (params.get("connect") === "sheet") {
+      setActiveTab("adminSettings");
+    }
   }, []);
 
   useEffect(() => {
