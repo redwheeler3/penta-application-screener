@@ -12,7 +12,10 @@ import type { EligibilityRules } from "../types";
 //
 // A member starts on the shared committee default and only gets their own rules once
 // they save; `isDefault` tracks that so we can hint that saving forks off the default.
-export function EligibilitySettingsPanel(props: { onError: (message: string) => void }): ReactNode {
+export function EligibilitySettingsPanel(props: {
+  onError: (message: string) => void;
+  onRulesUpdated: () => void;
+}): ReactNode {
   const [draft, setDraft] = useState<EligibilityRules | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [isDefault, setIsDefault] = useState(true);
@@ -58,6 +61,7 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
     const payload: { rules: EligibilityRules; isDefault: boolean } = await response.json();
     setDraft(payload.rules);
     setIsDefault(payload.isDefault);
+    props.onRulesUpdated();
     // Transient "Saved" confirmation, matching CommitteeDefaultsPanel.
     setSavedTick(true);
     setTimeout(() => setSavedTick(false), 2000);
@@ -76,6 +80,7 @@ export function EligibilitySettingsPanel(props: { onError: (message: string) => 
     const payload: { rules: EligibilityRules; isDefault: boolean } = await response.json();
     setDraft(payload.rules);
     setIsDefault(payload.isDefault);
+    props.onRulesUpdated();
   }
 
   // Flip a check on/off in this member's own disabled set. Guarded on `draft` (the render

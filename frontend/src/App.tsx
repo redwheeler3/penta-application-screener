@@ -871,7 +871,7 @@ export function App() {
                 onToggleStar={toggleStar}
               />
             ) : activeTab === "eligibilitySettings" ? (
-              <EligibilitySettingsPanel onError={showError} />
+              <EligibilitySettingsPanel onError={showError} onRulesUpdated={refreshDashboard} />
             ) : activeTab === "adminSettings" && isAdmin ? (
               // Never fall through to the Applications view when the admin tab is selected but
               // settings haven't loaded — that silent mismatch (selected tab, wrong body) was a
