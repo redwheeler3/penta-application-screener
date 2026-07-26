@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
-from google.auth.exceptions import RefreshError
+from google.auth.exceptions import RefreshError, TransportError
 from googleapiclient.errors import HttpError
+from httplib2 import HttpLib2Error
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin, require_current_user
@@ -56,7 +57,7 @@ def build_settings_response(db: Session, user: User, settings: AppSettings) -> S
                     token=token,
                     settings=get_settings(),
                 )
-            except (HttpError, RefreshError):
+            except (HttpError, RefreshError, TransportError, HttpLib2Error, TimeoutError):
                 sheet_title = None
 
     return SettingsResponse(

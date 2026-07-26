@@ -264,6 +264,35 @@ export function App() {
     if (!sheetId && isAdmin) setActiveTab("adminSettings");
   }
 
+  // A Sheets title is a convenience label, not part of the editable settings. If Google was
+  // unavailable during the initial load, retry only that label when the member returns to the
+  // tab. Updating `saved` alone leaves any in-progress `draft` edits untouched.
+  const linkedSheetId = saved?.settings.googleSheetId ?? "";
+  const linkedSheetTitle = saved?.googleSheetTitle ?? null;
+  useEffect(() => {
+    if (!user || !linkedSheetId || linkedSheetTitle) return;
+
+    const retrySheetTitle = () => {
+      if (document.visibilityState !== "visible") return;
+      void api
+        .fetchSettings()
+        .then((payload) => {
+          if (!payload.googleSheetTitle) return;
+          setSaved((current) =>
+            current && current.settings.googleSheetId === payload.settings.googleSheetId
+              ? { ...current, googleSheetTitle: payload.googleSheetTitle }
+              : current,
+          );
+        })
+        // The title remains optional: another transient Google failure should be silent and
+        // is retried the next time the member returns to the tab.
+        .catch(() => {});
+    };
+
+    document.addEventListener("visibilitychange", retrySheetTitle);
+    return () => document.removeEventListener("visibilitychange", retrySheetTitle);
+  }, [user, linkedSheetId, linkedSheetTitle]);
+
   // Load the shared settings, retrying a few times with backoff. `draft` is set ONLY here, and
   // nothing re-fetches it on tab switches — so a single dropped request (a cold Fly machine
   // resuming from suspend, or a deploy restart, cuts the first request) would otherwise leave

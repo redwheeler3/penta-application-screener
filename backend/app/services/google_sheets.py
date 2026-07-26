@@ -1,12 +1,31 @@
 from collections.abc import Iterable
 from typing import Any
 
+import httplib2
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2.credentials import Credentials
+from google_auth_httplib2 import AuthorizedHttp
 from googleapiclient.discovery import build
 
 from app.core.config import Settings
 from app.core.google_oauth import load_google_client_config
+
+GOOGLE_HTTP_TIMEOUT_SECONDS = 10
+
+
+def google_auth_request_with_timeout(*args, **kwargs):
+    """Make an OAuth request without letting an unavailable Google endpoint hang a web request."""
+    kwargs["timeout"] = GOOGLE_HTTP_TIMEOUT_SECONDS
+    return GoogleAuthRequest()(*args, **kwargs)
+
+
+def sheets_service(credentials: Credentials):
+    """Build a Sheets client whose network calls have a firm deadline."""
+    http = AuthorizedHttp(
+        credentials,
+        http=httplib2.Http(timeout=GOOGLE_HTTP_TIMEOUT_SECONDS),
+    )
+    return build("sheets", "v4", http=http, cache_discovery=False)
 
 
 def credentials_from_token(token: dict[str, Any], settings: Settings) -> Credentials:
@@ -28,14 +47,14 @@ def credentials_from_token(token: dict[str, Any], settings: Settings) -> Credent
     )
 
     if credentials.expired and credentials.refresh_token:
-        credentials.refresh(GoogleAuthRequest())
+        credentials.refresh(google_auth_request_with_timeout)
 
     return credentials
 
 
 def fetch_sheet_rows(*, sheet_id: str, token: dict[str, Any], settings: Settings) -> list[dict[str, Any]]:
     credentials = credentials_from_token(token, settings)
-    service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+    service = sheets_service(credentials)
     metadata = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
     sheets = metadata.get("sheets", [])
     if not sheets:
@@ -64,7 +83,7 @@ def fetch_sheet_rows(*, sheet_id: str, token: dict[str, Any], settings: Settings
 
 def fetch_sheet_title(*, sheet_id: str, token: dict[str, Any], settings: Settings) -> str | None:
     credentials = credentials_from_token(token, settings)
-    service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+    service = sheets_service(credentials)
     metadata = service.spreadsheets().get(spreadsheetId=sheet_id, fields="properties/title").execute()
     title = metadata.get("properties", {}).get("title")
     if not title:

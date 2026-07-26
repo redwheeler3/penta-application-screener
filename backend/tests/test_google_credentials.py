@@ -3,6 +3,10 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Base
 from app.services.google_credentials import get_google_token, save_google_token
+from app.services.google_sheets import (
+    GOOGLE_HTTP_TIMEOUT_SECONDS,
+    google_auth_request_with_timeout,
+)
 
 IDENTITY = "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
 READER = IDENTITY + " https://www.googleapis.com/auth/drive.file"
@@ -67,3 +71,18 @@ def test_first_token_is_stored() -> None:
     stored = get_google_token(db, user_id=1)
     assert stored is not None
     assert stored["access_token"] == "first"
+
+
+def test_google_auth_request_has_a_short_timeout(monkeypatch) -> None:
+    seen: dict[str, object] = {}
+
+    class Request:
+        def __call__(self, *args, **kwargs):
+            seen["args"] = args
+            seen["kwargs"] = kwargs
+            return "response"
+
+    monkeypatch.setattr("app.services.google_sheets.GoogleAuthRequest", Request)
+
+    assert google_auth_request_with_timeout("https://oauth.example", timeout=120) == "response"
+    assert seen["kwargs"] == {"timeout": GOOGLE_HTTP_TIMEOUT_SECONDS}
