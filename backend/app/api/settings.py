@@ -20,6 +20,7 @@ from app.schemas.settings import (
 )
 from app.services.google_credentials import (
     exchange_auth_code,
+    get_google_sheet_credentials,
     get_google_token,
     save_google_token,
 )
@@ -49,13 +50,17 @@ def build_settings_response(db: Session, user: User, settings: AppSettings) -> S
         # RefreshError (during refresh, before any HTTP call), which must be caught alongside
         # HttpError or loading Settings 500s (seen right after an M18 deploy, pre-relink).
         reader_id = settings.google_sheet_reader_user_id or user.id
-        token = get_google_token(db, user_id=reader_id)
-        if token is not None:
+        try:
+            credentials = get_google_sheet_credentials(
+                db, user_id=reader_id, settings=get_settings()
+            )
+        except (RefreshError, TransportError, TimeoutError):
+            credentials = None
+        if credentials is not None:
             try:
                 sheet_title = fetch_sheet_title(
                     sheet_id=settings.google_sheet_id,
-                    token=token,
-                    settings=get_settings(),
+                    credentials=credentials,
                 )
             except (HttpError, RefreshError, TransportError, HttpLib2Error, TimeoutError):
                 sheet_title = None
@@ -144,19 +149,18 @@ def link_sheet(
     token before saving; on success we record the sheet id and mark this admin the designated
     reader, so all future syncs read with their (offline, refreshing) token — members never
     need a Drive/Sheets scope."""
-    token = get_google_token(db, user_id=admin.id)
-    if token is None:
-        raise Problem(
-            "sheet_reader_unavailable",
-            detail="Your Google connection is missing. Click Connect applications sheet to grant access.",
-        )
-
     # Verify the picked file is actually reachable with this admin's drive.file token before
     # committing it as the source — a wrong/unshared file or a token lacking drive.file fails
     # here rather than silently breaking every future sync.
     try:
-        title = fetch_sheet_title(sheet_id=body.file_id, token=token, settings=get_settings())
-    except HttpError as exc:
+        credentials = get_google_sheet_credentials(db, user_id=admin.id, settings=get_settings())
+        if credentials is None:
+            raise Problem(
+                "sheet_reader_unavailable",
+                detail="Your Google connection is missing. Click Connect applications sheet to grant access.",
+            )
+        title = fetch_sheet_title(sheet_id=body.file_id, credentials=credentials)
+    except (HttpError, RefreshError, TransportError, TimeoutError) as exc:
         raise Problem(
             "sheet_read_failed",
             detail=(

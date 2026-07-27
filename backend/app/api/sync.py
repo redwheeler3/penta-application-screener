@@ -1,6 +1,7 @@
 import re
 
 from fastapi import APIRouter, Depends
+from google.auth.exceptions import RefreshError, TransportError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_current_user
@@ -10,7 +11,7 @@ from app.db.models import ApplicationStatus, User
 from app.db.session import get_db
 from app.schemas.sync import SyncResponse
 from app.services.application_import import import_applications_from_rows
-from app.services.google_credentials import get_google_token
+from app.services.google_credentials import get_google_sheet_credentials
 from app.services.google_sheets import fetch_sheet_rows
 from app.services.settings import get_app_settings
 
@@ -34,8 +35,24 @@ def sync_applications(
     # without ever holding a Drive/Sheets scope. Falls back to the clicking user's own token
     # when no reader is designated yet (pre-M18 behaviour), so nothing breaks in the interim.
     reader_user_id = app_settings.google_sheet_reader_user_id or user.id
-    token = get_google_token(db, user_id=reader_user_id)
-    if token is None:
+    try:
+        credentials = get_google_sheet_credentials(
+            db, user_id=reader_user_id, settings=get_settings()
+        )
+    except RefreshError as exc:
+        raise Problem(
+            "google_sheet_reconnect_required",
+            detail=(
+                "The Google account linked to the applications sheet needs to reconnect it. "
+                "Ask an admin to re-link the sheet in Settings."
+            ),
+        ) from exc
+    except (TransportError, TimeoutError) as exc:
+        raise Problem(
+            "google_sheet_read_failed",
+            detail=f"Failed to refresh Google access: {type(exc).__name__}: {exc}",
+        ) from exc
+    if credentials is None:
         if reader_user_id != user.id:
             raise Problem(
                 "sheet_reader_unavailable",
@@ -50,7 +67,7 @@ def sync_applications(
         )
 
     try:
-        rows = fetch_sheet_rows(sheet_id=app_settings.google_sheet_id, token=token, settings=get_settings())
+        rows = fetch_sheet_rows(sheet_id=app_settings.google_sheet_id, credentials=credentials)
     except Exception as e:
         raise Problem(
             "google_sheet_read_failed",

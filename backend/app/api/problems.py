@@ -40,6 +40,7 @@ PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     # Sync / Google Sheets.
     "google_sheet_not_configured": (400, "No Google Sheet configured"),
     "google_credentials_expired": (401, "Google credentials expired"),
+    "google_sheet_reconnect_required": (409, "Applications sheet needs reconnection"),
     "google_sheet_empty": (400, "Google Sheet returned no data"),
     "google_sheet_read_failed": (502, "Failed to read Google Sheet"),
     "import_failed": (500, "Application import failed"),

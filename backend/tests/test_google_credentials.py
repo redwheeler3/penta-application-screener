@@ -1,11 +1,17 @@
+from datetime import UTC, datetime
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.db.models import Base
-from app.services.google_credentials import get_google_token, save_google_token
-from app.services.google_sheets import (
+from app.services.google_credentials import (
     GOOGLE_HTTP_TIMEOUT_SECONDS,
+    credentials_from_token,
+    get_google_sheet_credentials,
+    get_google_token,
     google_auth_request_with_timeout,
+    save_google_token,
 )
 
 IDENTITY = "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
@@ -73,6 +79,50 @@ def test_first_token_is_stored() -> None:
     assert stored["access_token"] == "first"
 
 
+def test_save_google_token_converts_relative_expiry_to_absolute(monkeypatch) -> None:
+    db = make_session()
+    monkeypatch.setattr("app.services.google_credentials.time.time", lambda: 1_000.0)
+
+    save_google_token(db, user_id=1, token={"access_token": "first", "expires_in": 3_600})
+
+    stored = get_google_token(db, user_id=1)
+    assert stored is not None
+    assert stored["expires_at"] == 4_600.0
+
+
+def test_credentials_from_token_honours_the_stored_expiry() -> None:
+    credentials = credentials_from_token(
+        {"access_token": "expired", "expires_at": 1, "refresh_token": "refresh"},
+        Settings(google_client_id="client", google_client_secret="secret"),
+    )
+
+    assert credentials.expired is True
+
+
+def test_get_google_sheet_credentials_refreshes_a_legacy_token(monkeypatch) -> None:
+    class FakeCredentials:
+        expiry = None
+        expired = False
+        refresh_token = "refresh"
+        token = "old"
+
+        def refresh(self, _request) -> None:
+            self.token = "fresh"
+            self.expiry = datetime.fromtimestamp(2_000_000_000, tz=UTC).replace(tzinfo=None)
+
+    db = make_session()
+    save_google_token(db, user_id=1, token={"access_token": "old", "refresh_token": "refresh"})
+    monkeypatch.setattr("app.services.google_credentials.credentials_from_token", lambda *_: FakeCredentials())
+
+    credentials = get_google_sheet_credentials(db, user_id=1, settings=Settings())
+
+    assert credentials is not None
+    stored = get_google_token(db, user_id=1)
+    assert stored is not None
+    assert stored["access_token"] == "fresh"
+    assert stored["expires_at"] == 2_000_000_000.0
+
+
 def test_google_auth_request_has_a_short_timeout(monkeypatch) -> None:
     seen: dict[str, object] = {}
 
@@ -82,7 +132,7 @@ def test_google_auth_request_has_a_short_timeout(monkeypatch) -> None:
             seen["kwargs"] = kwargs
             return "response"
 
-    monkeypatch.setattr("app.services.google_sheets.GoogleAuthRequest", Request)
+    monkeypatch.setattr("app.services.google_credentials.GoogleAuthRequest", Request)
 
     assert google_auth_request_with_timeout("https://oauth.example", timeout=120) == "response"
     assert seen["kwargs"] == {"timeout": GOOGLE_HTTP_TIMEOUT_SECONDS}
