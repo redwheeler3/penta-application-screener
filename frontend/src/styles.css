@@ -2368,6 +2368,7 @@ input[type="radio"] {
 @media (max-width: 720px) {
   .criteria-layout {
     flex-direction: column;
+    margin-bottom: 0.75rem;
   }
   .criteria-detail {
     flex-basis: auto;
