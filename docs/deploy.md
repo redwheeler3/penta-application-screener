@@ -170,16 +170,17 @@ token. Extra prod setup beyond the OAuth steps above:
 
 ---
 
-## Continuous deployment
+## Deploying
 
-`.github/workflows/fly-deploy.yml` deploys on every push to `main` (and on manual dispatch),
-via `flyctl deploy --remote-only`. Set the deploy token once:
+Deploys are **manual and deliberate** — there is no push-triggered CD. Pushing to `main`
+records code; it does not ship. To release, run:
 ```
-fly tokens create deploy -x 999999h
-gh secret set FLY_API_TOKEN --body "<token>"
+fly deploy --remote-only
 ```
-After that, merging to `main` ships. A newer push supersedes an in-flight deploy
-(`concurrency` in the workflow).
+This keeps "commit/push" and "deploy to the live committee app" as separate decisions: the
+tree can be green and pushed without a half-finished change reaching real users, and a deploy
+happens only when you choose to run the command. The build runs on Fly's remote builders, so no
+local Docker/Finch is needed.
 
 ---
 
@@ -187,14 +188,7 @@ After that, merging to `main` ships. A newer push supersedes an in-flight deploy
 
 The "first deploy" above is a **one-time account setup** (app, volume, secrets, domain, OAuth)
 — it lives on Fly + Google + DNS, **not** on any laptop. So a second machine that just needs to
-*deploy* requires almost nothing, because all state already exists remotely. Two paths:
-
-**Path A — just `git push` (simplest, nothing to install).** CD is already wired: any push to
-`main` triggers the GitHub Actions deploy. From a second machine you only need `git` and push
-access to the repo. This is the recommended default — you may never need flyctl on the second
-box at all.
-
-**Path B — deploy directly with flyctl** (for `fly logs`, `fly ssh`, manual `fly deploy`):
+*deploy* requires almost nothing, because all state already exists remotely — just flyctl:
 ```
 brew install flyctl            # or: curl -L https://fly.io/install.sh | sh
 fly auth login                 # opens a browser; same Fly account
