@@ -51,7 +51,7 @@ secrets exist. If it offers to create a Postgres/Redis, decline — we use SQLit
 ### 2. Create the persistent volume
 
 ```
-fly volumes create screener_data --region sjc --size 1
+fly volumes create screener_data --region iad --size 1
 ```
 Matches `[[mounts]] source = "screener_data"` in `fly.toml`, mounted at
 `/app/backend/data`. 1 GB is far more than the ~20 MB DB needs (~$0.15/mo).
@@ -242,7 +242,7 @@ fly volumes snapshots create <volume-id>    # on-demand, e.g. before a big chang
 ```
 Restore by creating a new volume from a snapshot, then attaching it:
 ```
-fly volumes create screener_data --snapshot-id <snap-id> --region sjc --size 1
+fly volumes create screener_data --snapshot-id <snap-id> --region iad --size 1
 ```
 For a true off-Fly copy (belt and suspenders), pull a consistent snapshot down on demand —
 `VACUUM INTO` gives a clean copy even while the app is live:

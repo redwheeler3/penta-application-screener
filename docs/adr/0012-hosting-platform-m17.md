@@ -135,8 +135,8 @@ None are blockers; they are the standard localhost→prod checklist plus the one
 Live at **https://screener.pentacoop.com**, verified end-to-end: Google login → allowlist →
 sync real applicants → AI screening on Bedrock. Ways reality differed from the plan above:
 
-- **Region: `sjc` (San Jose), not `sea`.** Fly has no Seattle region; `sjc` is the closest
-  US-West to Bedrock in us-west-2.
+- **Region: `iad` (Ashburn).** The small latency increase to Bedrock in us-west-2 is acceptable
+  for the lower compute price; the application still invokes Bedrock in us-west-2.
 - **Idle behavior: `auto_stop_machines = "suspend"`, not `"stop"`.** Plain `stop` cold-started
   in ~5s — poor UX for a live app. `suspend` freezes to a RAM snapshot and **resumes
   sub-second** while keeping near-zero idle cost (verified). `min_machines_running = 0`. If
