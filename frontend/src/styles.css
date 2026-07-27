@@ -1029,8 +1029,8 @@ h1 {
   outline-offset: 1px;
 }
 
-/* The "Favourites" filter/view toggle (list controls + ranking header). Reuses the
-   tab-button shell; this just aligns its leading star icon with the label. */
+/* The "Favourites" filter/view toggle matches the other secondary actions while
+   aligning its leading star icon with the label. */
 .favourites-toggle {
   display: inline-flex;
   align-items: center;
@@ -1649,7 +1649,12 @@ h1 {
   }
 }
 
-.app-detail-fields h4 {
+.application-answers-section > h4 {
+  margin: 1.25rem 0 0.75rem;
+  font-size: 0.95rem;
+}
+
+.app-detail-fields h5 {
   font-size: 0.85rem;
   margin: 1rem 0 0.5rem;
   color: var(--muted);
@@ -1666,7 +1671,7 @@ h1 {
   background: #f8fafc;
 }
 
-.app-detail-field-group h5 {
+.app-detail-field-group h6 {
   margin: 0 0 0.65rem;
   font-size: 0.82rem;
   font-weight: 700;
@@ -1731,7 +1736,7 @@ h1 {
   margin-bottom: 1.5rem;
 }
 
-.app-detail-essays h4 {
+.app-detail-essays h5 {
   font-size: 0.85rem;
   margin: 1rem 0 0.75rem;
   color: var(--muted);
@@ -1748,7 +1753,7 @@ h1 {
   background: #f8fafc;
 }
 
-.essay-block h5 {
+.essay-block h6 {
   margin: 0 0 0.35rem;
   font-size: 0.82rem;
   font-weight: 700;
@@ -2451,6 +2456,24 @@ input[type="radio"] {
   margin-bottom: 1.25rem;
 }
 
+.dimension-scores-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.dimension-scores-heading h4 {
+  margin: 0;
+}
+
+.dimension-scores-answers-link {
+  padding: 0.35rem 0.55rem;
+  font-size: 0.78rem;
+}
+
 .dimension-scores ul {
   list-style: none;
   margin: 0;
@@ -2594,7 +2617,13 @@ input[type="radio"] {
 .ranking-list-toolbar {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-bottom: 0.6rem;
+}
+
+.showing-favourites-only .not-favourite {
+  display: none;
 }
 
 /* The star sits just left of the name; nudge it a hair so its optical centre lines

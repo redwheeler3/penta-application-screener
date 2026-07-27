@@ -1,4 +1,4 @@
-import { ChevronLeft, Printer } from "lucide-react";
+import { ArrowDown, ChevronLeft, Printer } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { FLAG_FIELDS, REASON_FIELDS, SOURCE_DESCRIPTIONS, SOURCE_LABELS, STATUS_LABELS } from "../constants";
@@ -193,6 +193,7 @@ export function CandidateDetail(props: {
   const [privateNote, setPrivateNote] = useState(app.privateNote);
   const [noteStatus, setNoteStatus] = useState<"saved" | "saving" | "error">("saved");
   const privateNoteRef = useRef<HTMLTextAreaElement>(null);
+  const applicationAnswersRef = useRef<HTMLElement>(null);
   const pendingNoteSave = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noteRevision = useRef(0);
   const savedNote = useRef(app.privateNote);
@@ -269,6 +270,14 @@ export function CandidateDetail(props: {
   const isHuman = app.statusSource === "human";
   const autoLabel = STATUS_LABELS[app.autoStatus];
   const detailSections = buildDetailSections(app);
+  const hasEssayResponses = app.essays?.some((essay) => essay.answer);
+
+  function scrollToApplicationAnswers() {
+    const applicationAnswers = applicationAnswersRef.current;
+    if (!applicationAnswers) return;
+    applicationAnswers.scrollIntoView({ behavior: "smooth", block: "start" });
+    applicationAnswers.focus({ preventScroll: true });
+  }
 
   return (
     <div className="app-detail">
@@ -409,7 +418,13 @@ export function CandidateDetail(props: {
       ) : null}
       {app.dimensionScores && app.dimensionScores.length > 0 ? (
         <div className="dimension-scores">
-          <h4>Fit dimensions</h4>
+          <div className="dimension-scores-heading">
+            <h4>AI scoring</h4>
+            <button type="button" className="secondary-button dimension-scores-answers-link no-print" onClick={scrollToApplicationAnswers}>
+              Read their application answers
+              <ArrowDown size={15} aria-hidden="true" />
+            </button>
+          </div>
           <ul>
             {app.dimensionScores.map((s) => {
               const sb = scoreBand(s.score);
@@ -431,38 +446,41 @@ export function CandidateDetail(props: {
           </ul>
         </div>
       ) : null}
-      {app.essays?.some((essay) => essay.answer) ? (
-        <div className="app-detail-essays">
-          <h4>Essay responses</h4>
-          {app.essays.map((essay) => (
-            <div key={essay.question} className="essay-block">
-              <h5>{essay.label}</h5>
-              {essay.answer ? <p>{essay.answer}</p> : <p className="essay-empty">No response provided.</p>}
-            </div>
+      <section ref={applicationAnswersRef} className="application-answers-section" tabIndex={-1}>
+        <h4>Application answers</h4>
+        {hasEssayResponses ? (
+          <div className="app-detail-essays">
+            <h5>Essay responses</h5>
+            {app.essays.map((essay) => (
+              <div key={essay.question} className="essay-block">
+                <h6>{essay.label}</h6>
+                {essay.answer ? <p>{essay.answer}</p> : <p className="essay-empty">No response provided.</p>}
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <div className="app-detail-fields">
+          <h5>Applicant data</h5>
+          {detailSections.map((section) => (
+            <section key={section.title} className="app-detail-field-group">
+              <h6>{section.title}</h6>
+              <dl>
+                {section.fields.map((field) => {
+                  const flagged = field.normalizedKey
+                    ? flaggedFields.has(field.normalizedKey)
+                    : flaggedFields.has(field.key);
+                  return (
+                    <div key={field.key} className={flagged ? "field-flagged" : undefined}>
+                      <dt>{field.label}</dt>
+                      <dd>{renderFieldValue(field)}</dd>
+                    </div>
+                  );
+                })}
+              </dl>
+            </section>
           ))}
         </div>
-      ) : null}
-      <div className="app-detail-fields">
-        <h4>Applicant data</h4>
-        {detailSections.map((section) => (
-          <section key={section.title} className="app-detail-field-group">
-            <h5>{section.title}</h5>
-            <dl>
-              {section.fields.map((field) => {
-                const flagged = field.normalizedKey
-                  ? flaggedFields.has(field.normalizedKey)
-                  : flaggedFields.has(field.key);
-                return (
-                  <div key={field.key} className={flagged ? "field-flagged" : undefined}>
-                    <dt>{field.label}</dt>
-                    <dd>{renderFieldValue(field)}</dd>
-                  </div>
-                );
-              })}
-            </dl>
-          </section>
-        ))}
-      </div>
+      </section>
       {app.aiNarrative ? (
         <details className="raw-row-section">
           <summary>Raw AI narrative (screening)</summary>

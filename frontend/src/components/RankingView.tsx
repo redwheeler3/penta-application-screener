@@ -122,6 +122,10 @@ export function RankingView(props: {
   // list is one short page, so it filters client-side (no refetch, no pagination).
   const [favouritesOnly, setFavouritesOnly] = useState(false);
   const starredCount = ranking.candidates.filter((c) => c.starredByMe).length;
+  const favouritesLabel = favouritesOnly
+    ? `Showing favourites (${starredCount})`
+    : `Show favourites (${starredCount})`;
+  const printTitle = favouritesOnly ? "Prints favourite applicants" : "Prints the full ranking";
   const labelFor = (key: string) => rankingRun?.dimensions.find((d) => d.key === key)?.name ?? key;
   // Which criterion's description is open (one at a time, shown below the tiers), and
   // whether the "add your own" composer is revealed. The criteria live as the tier
@@ -140,7 +144,7 @@ export function RankingView(props: {
             in a tier is kept when you re-rank — only those left in Ignore can be dropped or re-carved.
           </p>
         </div>
-        <button type="button" className="secondary-button no-print" onClick={() => window.print()}>
+        <button type="button" className="secondary-button no-print" title={printTitle} onClick={() => window.print()}>
           <Printer size={16} />
           Print
         </button>
@@ -206,18 +210,26 @@ export function RankingView(props: {
         <div className="ranking-list-toolbar no-print">
           <button
             type="button"
-            className={`tab-button favourites-toggle ${favouritesOnly ? "active" : ""}`}
+            className={`secondary-button favourites-toggle ${favouritesOnly ? "active" : ""}`}
             aria-pressed={favouritesOnly}
             disabled={starredCount === 0 && !favouritesOnly}
             onClick={() => setFavouritesOnly((v) => !v)}
           >
             <Star size={13} fill={favouritesOnly ? "currentColor" : "none"} strokeWidth={2} />
-            <span>Favourites{starredCount > 0 ? ` (${starredCount})` : ""}</span>
+            <span>{favouritesLabel}</span>
+          </button>
+          <button
+            type="button"
+            className="secondary-button ranking-print-button"
+            title={printTitle}
+            onClick={() => window.print()}
+          >
+            <Printer size={16} />
+            Print ranking
           </button>
         </div>
-        <ol className="ranking-list">
+        <ol className={`ranking-list${favouritesOnly ? " showing-favourites-only" : ""}`}>
           {ranking.candidates
-            .filter((candidate) => !favouritesOnly || candidate.starredByMe)
             .map((candidate) => {
             // Lead with what most moved this candidate's rank — by |impact|, not raw
             // weight×score — so a heavy strike surfaces as readily as a strength.
@@ -227,7 +239,11 @@ export function RankingView(props: {
               .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
               .slice(0, 3);
             return (
-              <li key={candidate.applicationId} data-app-id={candidate.applicationId}>
+              <li
+                key={candidate.applicationId}
+                className={candidate.starredByMe ? undefined : "not-favourite"}
+                data-app-id={candidate.applicationId}
+              >
                 <div className="ranking-row" onClick={() => props.onSelectApplication(candidate.applicationId)}>
                   <span className="ranking-rank">#{candidate.rank}</span>
                   <div className="ranking-main">
