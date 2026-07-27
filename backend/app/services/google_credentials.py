@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.google_oauth import load_google_client_config
 from app.db.models import GoogleCredential
+from app.services.google_retry import retry_google_request
 
 GOOGLE_HTTP_TIMEOUT_SECONDS = 10
 
@@ -154,7 +155,7 @@ def get_google_sheet_credentials(
     if not credentials.refresh_token:
         return credentials
 
-    credentials.refresh(google_auth_request_with_timeout)
+    retry_google_request(lambda: credentials.refresh(google_auth_request_with_timeout))
     refreshed_token = {
         **token,
         "access_token": credentials.token,

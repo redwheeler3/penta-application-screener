@@ -7,6 +7,7 @@ from google_auth_httplib2 import AuthorizedHttp
 from googleapiclient.discovery import build
 
 from app.services.google_credentials import GOOGLE_HTTP_TIMEOUT_SECONDS
+from app.services.google_retry import retry_google_request
 
 
 def sheets_service(credentials: Credentials):
@@ -20,19 +21,21 @@ def sheets_service(credentials: Credentials):
 
 def fetch_sheet_rows(*, sheet_id: str, credentials: Credentials) -> list[dict[str, Any]]:
     service = sheets_service(credentials)
-    metadata = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
+    metadata = retry_google_request(
+        lambda: service.spreadsheets().get(spreadsheetId=sheet_id).execute()
+    )
     sheets = metadata.get("sheets", [])
     if not sheets:
         return []
 
     first_sheet_title = sheets[0]["properties"]["title"]
-    values = (
-        service.spreadsheets()
+    values_response = retry_google_request(
+        lambda: service.spreadsheets()
         .values()
         .get(spreadsheetId=sheet_id, range=first_sheet_title)
         .execute()
-        .get("values", [])
     )
+    values = values_response.get("values", [])
     if not values:
         return []
 
@@ -48,7 +51,11 @@ def fetch_sheet_rows(*, sheet_id: str, credentials: Credentials) -> list[dict[st
 
 def fetch_sheet_title(*, sheet_id: str, credentials: Credentials) -> str | None:
     service = sheets_service(credentials)
-    metadata = service.spreadsheets().get(spreadsheetId=sheet_id, fields="properties/title").execute()
+    metadata = retry_google_request(
+        lambda: service.spreadsheets()
+        .get(spreadsheetId=sheet_id, fields="properties/title")
+        .execute()
+    )
     title = metadata.get("properties", {}).get("title")
     if not title:
         return None
