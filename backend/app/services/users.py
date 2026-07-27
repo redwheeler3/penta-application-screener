@@ -1,7 +1,7 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import User, UserRole
+from app.db.models import User, UserRole, UserSignIn
 
 
 def upsert_google_user(
@@ -38,3 +38,10 @@ def upsert_google_user(
     db.commit()
     db.refresh(user)
     return user
+
+
+def record_successful_sign_in(db: Session, *, user: User) -> None:
+    """Record one completed, allowlisted Google login and its latest timestamp."""
+    user.last_signed_in_at = func.now()
+    db.add(UserSignIn(user_id=user.id))
+    db.commit()

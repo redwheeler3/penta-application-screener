@@ -3,6 +3,7 @@
 import { apiBaseUrl } from "./constants";
 import type {
   AllowlistEntry,
+  DeniedSignInAttempt,
   AppSettings,
   ApplicationDetail,
   ApplicationSummary,
@@ -67,6 +68,9 @@ export const fetchSettings = () => getJson<SettingsResponse>("/settings");
 
 export const fetchAllowlist = () =>
   getJson<{ entries: AllowlistEntry[] }>("/allowlist").then((p) => p.entries);
+
+export const fetchDeniedSignInAttempts = () =>
+  getJson<{ attempts: DeniedSignInAttempt[] }>("/allowlist/denied-attempts").then((p) => p.attempts);
 
 export function upsertAllowlistEntry(email: string, role: "admin" | "member"): Promise<Response> {
   return fetch(url("/allowlist"), {

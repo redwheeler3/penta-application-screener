@@ -9,8 +9,9 @@ from app.db.models import User
 from app.db.session import get_db
 from app.schemas.auth import CurrentUser, LogoutResponse, MeResponse
 from app.services.allowlist import get_entry
+from app.services.denied_sign_ins import record_denied_sign_in
 from app.services.google_credentials import save_google_token
-from app.services.users import upsert_google_user
+from app.services.users import record_successful_sign_in, upsert_google_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -61,6 +62,12 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     # flag (an OAuth redirect can't carry a problem+json body) rather than admitted.
     entry = get_entry(db, str(email))
     if entry is None:
+        record_denied_sign_in(
+            db,
+            google_subject=str(google_subject),
+            email=str(email),
+            display_name=str(display_name),
+        )
         return RedirectResponse(f"{get_settings().frontend_url}?access=denied")
 
     user = upsert_google_user(
@@ -72,6 +79,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         role=entry.role,
     )
     save_google_token(db, user_id=user.id, token=dict(token))
+    record_successful_sign_in(db, user=user)
     request.session["user_id"] = user.id
     return RedirectResponse(get_settings().frontend_url)
 

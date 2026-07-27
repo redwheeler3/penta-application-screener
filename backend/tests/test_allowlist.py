@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, select
@@ -5,11 +7,19 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies import require_current_user
-from app.db.models import AccessAllowlistEntry, Base, User, UserRole
+from app.db.models import (
+    AccessAllowlistEntry,
+    Base,
+    DeniedSignInAttempt,
+    User,
+    UserRole,
+    UserSignIn,
+)
 from app.db.session import get_db
 from app.main import create_app
 from app.services import allowlist
-from app.services.users import upsert_google_user
+from app.services.denied_sign_ins import list_denied_sign_ins, record_denied_sign_in
+from app.services.users import record_successful_sign_in, upsert_google_user
 
 
 def setup_app(role: UserRole | None) -> tuple:
@@ -69,6 +79,22 @@ def test_upsert_google_user_resyncs_role_on_return_login() -> None:
     assert db.scalar(select(User).where(User.email == "u@x.com")).role == UserRole.ADMIN
 
 
+def test_successful_sign_in_records_an_event_and_latest_timestamp() -> None:
+    _, db = setup_app(role=None)
+    user = upsert_google_user(
+        db, google_subject="s", email="u@x.com", display_name="U", avatar_url=None,
+        role=UserRole.MEMBER,
+    )
+
+    record_successful_sign_in(db, user=user)
+    record_successful_sign_in(db, user=user)
+    db.refresh(user)
+
+    assert user.last_signed_in_at is not None
+    assert db.scalar(select(UserSignIn).where(UserSignIn.user_id == user.id)) is not None
+    assert len(db.scalars(select(UserSignIn).where(UserSignIn.user_id == user.id)).all()) == 2
+
+
 def test_seed_initial_admins_is_idempotent_and_additive(monkeypatch) -> None:
     _, db = setup_app(role=None)
     monkeypatch.setattr(allowlist, "_read_bootstrap_emails", lambda: ["boss@x.com"])
@@ -109,6 +135,65 @@ async def test_admin_can_add_and_remove_entries() -> None:
         removed = await client.delete("/allowlist/bob@x.com")
         assert removed.status_code == 200
         assert "bob@x.com" not in {e["email"] for e in removed.json()["entries"]}
+
+
+@pytest.mark.anyio
+async def test_allowlist_includes_a_signed_in_members_audit_summary() -> None:
+    app, db = setup_app(role=UserRole.ADMIN)
+    admin = db.scalar(select(User).where(User.email == "me@x.com"))
+    assert admin is not None
+    allowlist.upsert_entry(db, email="me@x.com", role=UserRole.ADMIN)
+    record_successful_sign_in(db, user=admin)
+    record_successful_sign_in(db, user=admin)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/allowlist")
+
+    assert response.status_code == 200
+    entry = response.json()["entries"][0]
+    assert entry["displayName"] == "Me"
+    assert entry["firstSignedInAt"] is not None
+    assert entry["lastSignedInAt"] is not None
+    assert entry["signInCount"] == 2
+
+
+@pytest.mark.anyio
+async def test_admin_can_read_aggregated_denied_sign_in_attempts() -> None:
+    app, db = setup_app(role=UserRole.ADMIN)
+    record_denied_sign_in(
+        db, google_subject="denied-sub", email="visitor@example.com", display_name="Visitor"
+    )
+    record_denied_sign_in(
+        db, google_subject="denied-sub", email="visitor@example.com", display_name="Visitor"
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/allowlist/denied-attempts")
+
+    assert response.status_code == 200
+    attempt = response.json()["attempts"][0]
+    assert attempt["displayName"] == "Visitor"
+    assert attempt["email"] == "visitor@example.com"
+    assert attempt["count"] == 2
+    assert attempt["firstDeniedAt"] is not None
+    assert attempt["lastDeniedAt"] is not None
+
+
+def test_denied_sign_in_list_discards_attempts_older_than_one_year() -> None:
+    _, db = setup_app(role=None)
+    db.add(
+        DeniedSignInAttempt(
+            google_subject="expired-sub",
+            email="expired@example.com",
+            display_name="Expired",
+            created_at=datetime(2020, 1, 1, tzinfo=UTC),
+        )
+    )
+    db.commit()
+
+    assert list_denied_sign_ins(db) == []
 
 
 @pytest.mark.anyio

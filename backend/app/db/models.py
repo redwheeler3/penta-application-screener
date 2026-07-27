@@ -72,6 +72,48 @@ class User(TimestampMixin, Base):
         nullable=False,
     )
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    # Explicitly login-only. ``updated_at`` is a generic row timestamp and must not
+    # be presented as audit data.
+    last_signed_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class UserSignIn(Base):
+    """One successful allowlisted Google sign-in.
+
+    This is intentionally an authentication audit, not a browser-activity log:
+    a persistent session cookie, page views, IP addresses, and device details are
+    not captured here.
+    """
+
+    __tablename__ = "user_sign_ins"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    user: Mapped[User] = relationship()
+
+
+class DeniedSignInAttempt(Base):
+    """A Google login rejected because its email was not allowlisted.
+
+    The row retains only identity and time needed for access administration. It
+    deliberately excludes OAuth tokens, IP addresses, devices, and page activity.
+    """
+
+    __tablename__ = "denied_sign_in_attempts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    google_subject: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(320), index=True, nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class AccessAllowlistEntry(TimestampMixin, Base):

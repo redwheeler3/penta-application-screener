@@ -5,30 +5,93 @@ The first genuinely admin-only surface (M15), so every route here is gated by
 can neither be removed nor demoted to member.
 """
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin
 from app.api.problems import Problem
-from app.db.models import User, UserRole
+from app.db.models import User, UserRole, UserSignIn
 from app.db.session import get_db
-from app.schemas.allowlist import AllowlistEntryOut, AllowlistResponse, AllowlistUpsert
+from app.schemas.allowlist import (
+    AllowlistEntryOut,
+    AllowlistResponse,
+    AllowlistUpsert,
+    DeniedSignInAttemptOut,
+    DeniedSignInAttemptsResponse,
+)
 from app.services import allowlist
+from app.services.denied_sign_ins import list_denied_sign_ins
 
 router = APIRouter(prefix="/allowlist", tags=["allowlist"])
 
 
+def _as_utc(timestamp: datetime | None) -> datetime | None:
+    """Give SQLite's timezone-naive UTC timestamps an unambiguous API offset."""
+    if timestamp is None:
+        return None
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=UTC)
+    return timestamp.astimezone(UTC)
+
+
 def _response(db: Session) -> AllowlistResponse:
-    return AllowlistResponse(
-        entries=[
-            AllowlistEntryOut(email=e.email, role=e.role.value)
-            for e in allowlist.list_entries(db)
-        ]
+    entries = allowlist.list_entries(db)
+    emails = [entry.email for entry in entries]
+    users_by_email = {
+        user.email: user
+        for user in db.scalars(select(User).where(User.email.in_(emails))).all()
+    } if emails else {}
+    sign_in_counts = dict(
+        db.execute(
+            select(UserSignIn.user_id, func.count(UserSignIn.id))
+            .group_by(UserSignIn.user_id)
+        ).all()
     )
+    response_entries: list[AllowlistEntryOut] = []
+    for entry in entries:
+        user = users_by_email.get(entry.email)
+        response_entries.append(
+            AllowlistEntryOut(
+                email=entry.email,
+                role=entry.role.value,
+                display_name=user.display_name if user else None,
+                first_signed_in_at=_as_utc(user.created_at) if user else None,
+                last_signed_in_at=_as_utc(user.last_signed_in_at) if user else None,
+                sign_in_count=sign_in_counts.get(user.id, 0) if user else 0,
+            )
+        )
+    return AllowlistResponse(entries=response_entries)
 
 
 def _admin_count(db: Session) -> int:
     return sum(1 for e in allowlist.list_entries(db) if e.role == UserRole.ADMIN)
+
+
+@router.get("/denied-attempts", response_model=DeniedSignInAttemptsResponse)
+def read_denied_sign_in_attempts(
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> DeniedSignInAttemptsResponse:
+    attempts_by_subject: dict[str, DeniedSignInAttemptOut] = {}
+    for attempt in list_denied_sign_ins(db):
+        summary = attempts_by_subject.get(attempt.google_subject)
+        if summary is None:
+            attempts_by_subject[attempt.google_subject] = DeniedSignInAttemptOut(
+                display_name=attempt.display_name,
+                email=attempt.email,
+                first_denied_at=_as_utc(attempt.created_at),
+                last_denied_at=_as_utc(attempt.created_at),
+                count=1,
+            )
+            continue
+        first_denied_at = _as_utc(attempt.created_at)
+        summary.first_denied_at = min(summary.first_denied_at, first_denied_at)
+        summary.count += 1
+
+    return DeniedSignInAttemptsResponse(attempts=list(attempts_by_subject.values()))
 
 
 @router.get("", response_model=AllowlistResponse)

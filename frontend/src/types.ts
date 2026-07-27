@@ -19,11 +19,22 @@ export type CurrentUser = {
   role: "admin" | "member";
 };
 
-// Mirrors backend AccessAllowlistEntry — one approved email + the role it's admitted
-// with. Admin-only surface (the access allowlist).
+// One approved Google account and its sign-in audit summary. Admin-only surface.
 export type AllowlistEntry = {
   email: string;
   role: "admin" | "member";
+  displayName: string | null;
+  firstSignedInAt: string | null;
+  lastSignedInAt: string | null;
+  signInCount: number;
+};
+
+export type DeniedSignInAttempt = {
+  displayName: string;
+  email: string;
+  firstDeniedAt: string;
+  lastDeniedAt: string;
+  count: number;
 };
 
 // A member's feedback item. Members submit body + context; identity/version/time are
