@@ -733,7 +733,7 @@ async def test_post_score_consolidation_merges_correlated_duplicate() -> None:
     assert keys == {"financial_literacy"}
 
     # merges isn't stored on the audit; the view derives it from the merged pairs.
-    from app.services.analysis import consolidate_audit_view
+    from app.services.analysis_audit import consolidate_audit_view
     view = consolidate_audit_view(db, run)
     assert view["merges"] == {"financial_stewardship": "financial_literacy"}
 
@@ -1029,7 +1029,8 @@ def test_consolidate_audit_view_resolves_pair_names() -> None:
     # and a key minted-and-retired within this run (never in any report) resolves via the
     # run's own decompose artifacts. Only a truly traceless key stays a bare key.
     from app.schemas.settings import AppSettings
-    from app.services.analysis import consolidate_audit_view, create_analysis
+    from app.services.analysis import create_analysis
+    from app.services.analysis_audit import consolidate_audit_view
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
 
@@ -1074,7 +1075,8 @@ def test_consolidate_audit_view_prefers_the_snapshotted_name() -> None:
     # When a pair DOES carry a snapshotted name (the current write path), the view uses it
     # verbatim — the snapshot is the frozen mint name and must win over any later re-name.
     from app.schemas.settings import AppSettings
-    from app.services.analysis import consolidate_audit_view, create_analysis
+    from app.services.analysis import create_analysis
+    from app.services.analysis_audit import consolidate_audit_view
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
     run = create_analysis(

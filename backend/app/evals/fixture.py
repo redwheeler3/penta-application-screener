@@ -34,10 +34,12 @@ from app.evals.paths import (
     FIXTURE_PATH,
 )
 from app.services.analysis import (
-    consolidate_audit_view,
     current_dimension_report,
-    decompose_audit_view,
     get_current_analysis,
+)
+from app.services.analysis_audit import (
+    consolidate_audit_view,
+    decompose_audit_view,
     match_audit_view,
 )
 
