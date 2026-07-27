@@ -30,6 +30,7 @@ function url(path: string): string {
 }
 
 const GET_TIMEOUT_MS = 15_000;
+const SYNC_RETRY_DELAY_MS = 500;
 
 async function getJson<T>(path: string): Promise<T> {
   // A browser fetch has no deadline by default. Abort a request that stalls so callers such as
@@ -172,7 +173,31 @@ export function fetchApplication(id: number): Promise<ApplicationDetail> {
 }
 
 export function syncApplications(): Promise<Response> {
-  return fetch(url("/sync/applications"), { method: "POST", credentials: "include" });
+  return retrySyncRequest();
+}
+
+async function retrySyncRequest(): Promise<Response> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetch(url("/sync/applications"), {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!isRetryableSyncResponse(response) || attempt === 1) return response;
+    } catch (error) {
+      if (attempt === 1) throw error;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, SYNC_RETRY_DELAY_MS));
+  }
+
+  throw new Error("Sync retry loop exhausted without returning a response.");
+}
+
+function isRetryableSyncResponse(response: Response): boolean {
+  // Import upserts applications and leaves byte-identical rows untouched, so retrying after a
+  // lost response is safe. Do not retry configuration or permission responses: the member
+  // needs the error message those carry.
+  return response.status === 408 || response.status === 429 || response.status >= 500;
 }
 
 // Save the sheet the admin picked in the Google Picker as the linked source (and designate
