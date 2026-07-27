@@ -155,7 +155,6 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
           </table>
         </div>
       )}
-      <p className="panel-hint">Sign-in counts begin when this feature is deployed.</p>
       <section className="denied-sign-ins" aria-label="Denied sign-in attempts">
         <div className="access-panel-head">
           <h3>Denied sign-in attempts</h3>
