@@ -13,6 +13,25 @@ export function money(usd: number): string {
   return `$${usd.toFixed(4)}`;
 }
 
+const PACIFIC_TIME_ZONE = "America/Vancouver";
+
+// All app-generated timestamps are stored and returned as UTC. Render them in the
+// co-op's local time rather than inheriting the browser's time zone.
+export function formatPacificDateTime(value: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: PACIFIC_TIME_ZONE,
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+export function formatPacificDate(value: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: PACIFIC_TIME_ZONE,
+    dateStyle: "medium",
+  }).format(new Date(value));
+}
+
 export function flagCategoryLabel(category: string): string {
   return FLAG_CATEGORY_LABELS[category] ?? category;
 }

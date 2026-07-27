@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { fetchEvalCases, fetchLastEvalRun, runEval, saveEvalCase, streamNdjson } from "../../api";
+import { formatPacificDate } from "../../format";
 import type { EvalCaseResult, EvalFixtureKey, EvalRunMode, EvalRunResult, LastEvalRun } from "../../types";
 import { EvalCaseDetail } from "./EvalCaseDetail";
 import { EvalCaseEditor } from "./EvalCaseEditor";
@@ -563,7 +564,7 @@ function relativeTime(iso: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.round(hrs / 24);
   if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return formatPacificDate(iso);
 }
 
 // Model-produced prose (evidence, reasons, per-run detail) is markdown — the AI writes it

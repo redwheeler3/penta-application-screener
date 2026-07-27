@@ -1,6 +1,6 @@
 import { type ReactNode, type SyntheticEvent, useEffect, useState } from "react";
 import * as api from "../api";
-import { readProblem } from "../format";
+import { formatPacificDateTime, readProblem } from "../format";
 import { isPickerConfigured, pickApplicationsSheet } from "../googlePicker";
 import { AI_CHECKS, DETERMINISTIC_CHECKS } from "../constants";
 import { NumberInput } from "./NumberInput";
@@ -495,7 +495,7 @@ function FeedbackPanel(props: {
               <div className="feedback-item-meta">
                 <span>{item.userName}</span>
                 <span>{item.userEmail}</span>
-                <span>{new Date(item.createdAt).toLocaleString()}</span>
+                <span>{formatPacificDateTime(item.createdAt)}</span>
                 {/* Where they were. An applicant-detail item links to that applicant;
                     everything else names the view. Applicant takes precedence — it's the
                     most specific "jump here" the admin can act on. */}

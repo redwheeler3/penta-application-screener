@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 import { fetchMetrics } from "../api";
-import { money } from "../format";
+import { formatPacificDateTime, money } from "../format";
 import { useFetchOnce } from "../hooks/useFetchOnce";
 import type { MetricsReport, TrendPoint } from "../types";
 
@@ -12,8 +12,6 @@ import type { MetricsReport, TrendPoint } from "../types";
 // score-current updates are split because their work and cadence differ.
 const secs = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`);
 const pct = (r: number | null) => (r === null ? "—" : `${Math.round(r * 100)}%`);
-const shortAt = (iso: string) => iso.slice(0, 16).replace("T", " ");
-
 // A minimal inline bar: value relative to the max in its column, so a column reads as a
 // crude sparkline down the rows. Purely decorative scale, never a precise axis.
 function Bar(props: { value: number; max: number }): ReactNode {
@@ -79,7 +77,7 @@ function RunTable(props: { title: string; runs: TrendPoint[] }): ReactNode {
         <tbody>
           {runs.map((r, i) => (
             <tr key={i}>
-              <td className="cost-pass-name">{shortAt(r.at)}</td>
+              <td className="cost-pass-name">{formatPacificDateTime(r.at)}</td>
               <td className="cost-pass-name">{r.triggeredBy ?? "—"}</td>
               <td className="cost-num">
                 <Bar value={r.costUsd} max={maxCost} />

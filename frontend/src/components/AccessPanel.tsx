@@ -1,7 +1,7 @@
 import { Trash2, UserPlus } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import * as api from "../api";
-import { readProblem } from "../format";
+import { formatPacificDateTime, readProblem } from "../format";
 import type { AllowlistEntry, DeniedSignInAttempt } from "../types";
 
 // Admin-only management of the access allowlist: who may sign in, and with what role.
@@ -199,9 +199,5 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
 
 function formatSignInTime(value: string | null): string {
   if (!value) return "Not yet signed in";
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Vancouver",
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
+  return formatPacificDateTime(value);
 }
