@@ -168,6 +168,12 @@ sync real applicants → AI screening on Bedrock. Ways reality differed from the
   increase, or lower `max_workers`. Deferred pending a corp-vs-personal quota comparison.
 - **`DATABASE_URL` in `fly.toml [env]` triggers a Fly "may be sensitive" warning — ignore it.**
   Ours is a SQLite file path, no credentials.
+- **No push-triggered CD — deploys are manual (`fly deploy --remote-only`).** The plan above
+  wired a `superfly/flyctl-actions` workflow to ship on every push to `main`. In practice that
+  coupled two decisions that should stay separate: pushing code and releasing to the live
+  committee app. A push (or an unwanted commit) shouldn't reach real users, and the "green
+  before commit" discipline isn't a substitute for choosing when to deploy. So the workflow was
+  dropped; releases are the explicit `fly deploy --remote-only` command. See `docs/deploy.md`.
 - **First-admin seeding:** the bootstrap `initial-admins.txt` is gitignored (not in the image),
   so the first admin was seeded directly into the DB on the volume via `fly ssh console`
   (`upsert_entry(db, email=..., role=UserRole.ADMIN)`). The allowlist is managed in-app after.

@@ -24,17 +24,19 @@ from app.schemas.ranking import (
     PoolDimensionOut,
 )
 from app.services.analysis import (
-    consolidate_audit_view,
     current_dimension_report,
-    decompose_audit_view,
-    fan_out_audit_view,
     get_current_analysis,
     get_or_create_member_ranking,
     kept_keys,
-    match_audit_view,
     proposed_dimensions,
     requested_flag_keys,
     revived_flag_keys,
+)
+from app.services.analysis_audit import (
+    consolidate_audit_view,
+    decompose_audit_view,
+    fan_out_audit_view,
+    match_audit_view,
 )
 
 router = APIRouter(prefix="/ranking")

@@ -23,10 +23,10 @@ from sqlalchemy.orm import Session
 
 from app.db.session import engine as default_engine
 
-# Keep this many most-recent backups; older ones are pruned. Generous — a snapshot is a
-# few MB and these are the only durable record of a run's (expensive, non-deterministic)
-# output once the live DB moves on.
-DEFAULT_KEEP = 50
+# Keep this many most-recent backups; older ones are pruned. A snapshot is a few MB and
+# these are the only durable record of a run's (expensive, non-deterministic) output once
+# the live DB moves on — 20 is plenty of recent history without the pile creeping toward a GB.
+DEFAULT_KEEP = 20
 
 _TS_FMT = "%Y%m%d_%H%M%S"
 # tag is a short human label ("rank", "manual", "pre-restore"); constrained so it can't

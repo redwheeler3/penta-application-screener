@@ -71,7 +71,7 @@ The sample CSV in [test-data](test-data) is synthetic and intentionally realisti
 - Authentication: Google OAuth with signed server-side session cookies
 - Google integration: Google Sheets import/sync via the Picker (`drive.file`, least-privilege)
 - AI integration: provider-agnostic interface; Strands + Amazon Bedrock provider; mock provider for tests
-- Hosting: Fly.io (single instance, auto-suspend, persistent-volume SQLite); single-origin — FastAPI serves the built SPA; GitHub Actions deploy on push to `main`
+- Hosting: Fly.io (single instance, auto-suspend, persistent-volume SQLite); single-origin — FastAPI serves the built SPA; deployed manually with `fly deploy --remote-only`
 
 ## Setup
 
