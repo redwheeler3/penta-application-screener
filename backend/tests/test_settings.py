@@ -22,7 +22,7 @@ def test_get_app_settings_returns_defaults_when_none_saved() -> None:
 
     assert settings.google_sheet_id == ""
     # AppSettings is pure infra now (sheet + AI); pet limits moved to EligibilityRules in 1e.
-    assert settings.ai.region == "us-west-2"
+    assert settings.ai.region == "us-east-1"
 
 
 def test_get_app_settings_ignores_pre_split_rule_keys() -> None:
@@ -76,7 +76,7 @@ def test_save_app_settings_round_trips_ai_block() -> None:
     assert loaded.ai.spending_cap_usd == 2.5
     # The unedited ai fields keep their defaults, not get dropped.
     assert loaded.ai.max_workers == 50
-    assert loaded.ai.region == "us-west-2"
+    assert loaded.ai.region == "us-east-1"
 
 
 def test_app_settings_accepts_google_sheet_url() -> None:

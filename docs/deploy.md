@@ -29,7 +29,8 @@ push, and back up / restore the data.
 3. **A scoped AWS IAM user for Bedrock.** Because Fly is not on AWS, there's no IAM role — the
    app uses a static key. Create an IAM user with an inline policy allowing **only**
    `bedrock:InvokeModel` (and `bedrock:InvokeModelWithResponseStream`) on the Anthropic
-   inference-profile ARNs in **us-west-2**, nothing else. Generate an access key for it.
+   inference-profile ARNs in **us-east-1** and their permitted cross-region destinations,
+   nothing else. Generate an access key for it.
 4. **DNS access** for `pentacoop.com` (to add the A/AAAA records `fly certs add` prints).
 
 ---

@@ -1,7 +1,7 @@
 """Bedrock token pricing for cost estimates and spending-cap enforcement.
 
-Prices are USD per 1,000,000 tokens, from AWS Bedrock on-demand pricing for the
-Anthropic Claude models (us-west-2), recorded 2026-06-18. Update by hand if AWS
+Prices are USD per 1,000,000 tokens, from AWS Bedrock US on-demand pricing for the
+Anthropic Claude models, recorded 2026-06-18. Update by hand if AWS
 pricing changes.
 
 Why hardcoded: the AWS Price List API (boto3 "pricing", ServiceCode

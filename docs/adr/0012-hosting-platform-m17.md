@@ -23,7 +23,7 @@ later move, and only if the deferred atomic-shared-budget feature (M16 residual)
 |---|---|---|
 | **Requests run for *minutes*** | Rank streams 5 sequential AI passes over the pool (`api/ranking/run.py` `_stream_criteria`) as NDJSON | Rules out short request-timeout hosts: Vercel/Netlify functions, Heroku's 30s router, **AWS App Runner's 120s cap**. |
 | **Durable local disk** | 20MB SQLite (`backend/data/penta_screener.db`); WAL + busy_timeout set in `db/session.py` | Needs a real persistent volume that survives across requests/restarts. **This is the constraint that kills true scale-to-zero serverless** (see below). |
-| **Bedrock coupling** | `StrandsProvider(region="us-west-2")` needs AWS creds at runtime | Off-AWS hosts need a static AWS access key stored as a secret (no IAM role). |
+| **Bedrock coupling** | `StrandsProvider(region="us-east-1")` needs AWS creds at runtime | Off-AWS hosts need a static AWS access key stored as a secret (no IAM role). |
 | **Two artifacts** | Vite bundle (~550KB) + FastAPI; wired cross-origin today via `VITE_API_BASE_URL` + CORS | Motivates the single-origin refactor (below). |
 | **Tiny, bursty scale** | ~5 members, light concurrency (SPEC) | Smallest tier is fine; the cost *floor* dominates, which is why scale-to-zero is attractive. |
 
@@ -103,7 +103,7 @@ cost of self-managing the box (mitigated by Coolify/Dokku for git-push deploys) 
    `False` today), real `SESSION_SECRET`, prod `FRONTEND_URL` / `GOOGLE_REDIRECT_URI`, and a
    new authorized redirect URI in Google Cloud Console.
 3. **Bedrock creds** — a dedicated IAM user scoped to *only* `bedrock:InvokeModel` in
-   `us-west-2`, its key stored as a Fly secret (`fly secrets set`). Small, well-understood
+   `us-east-1`, its key stored as a Fly secret (`fly secrets set`). Small, well-understood
    surface — no IAM role available off-AWS.
 4. **Deploy config** — `fly.toml` (auto-stop, `min_machines_running=0`, volume mount),
    auto-generated Dockerfile, `alembic upgrade head` on boot, GH Actions workflow.
@@ -135,8 +135,8 @@ None are blockers; they are the standard localhost→prod checklist plus the one
 Live at **https://screener.pentacoop.com**, verified end-to-end: Google login → allowlist →
 sync real applicants → AI screening on Bedrock. Ways reality differed from the plan above:
 
-- **Region: `iad` (Ashburn).** The small latency increase to Bedrock in us-west-2 is acceptable
-  for the lower compute price; the application still invokes Bedrock in us-west-2.
+- **Regions: `iad` (Ashburn) + `us-east-1` (Bedrock).** The machine and Bedrock client run in
+  nearby East Coast regions, while retaining Fly's lower compute price.
 - **Idle behavior: `auto_stop_machines = "suspend"`, not `"stop"`.** Plain `stop` cold-started
   in ~5s — poor UX for a live app. `suspend` freezes to a RAM snapshot and **resumes
   sub-second** while keeping near-zero idle cost (verified). `min_machines_running = 0`. If

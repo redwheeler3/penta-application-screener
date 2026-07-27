@@ -191,7 +191,7 @@ Three constraints govern how many workers are safe:
 
 | Constraint | At ~300 applicants |
 | --- | --- |
-| Bedrock quota (us-west-2: ~10k requests/min, ~5M tokens/min for Haiku 4.5) | Far above any setting here; not binding. |
+| Bedrock quota (account and region) | Far above any setting here; not binding. |
 | Cost | Per-token, so concurrency-independent. The cap guards it regardless. |
 | Connection pool | Sized to match the worker count (`max_pool_connections == max_workers`), so workers don't queue on sockets. |
 
@@ -226,7 +226,7 @@ The frontend surfaces this as a **separate ranked view**, not a re-sort of the b
 
 AI settings live under `ai` in the admin settings (`app/schemas/settings.py`):
 
-- `region` — Bedrock region (default `us-west-2`).
+- `region` — Bedrock region (default `us-east-1`).
 - One model per AI pass, named by the job (all Bedrock inference-profile IDs, `us.anthropic...`, which these models require):
   - `screening_model`, `dimension_scoring_model` — the high-volume per-applicant passes. Default Claude Haiku 4.5: call *count* drives their cost (scoring is candidates × dimensions), so cheap-and-fast wins.
   - `discovery_model` — the pool-level pattern-discovery call. Default Claude Sonnet 4.6 (cross-document judgment).

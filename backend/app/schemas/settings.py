@@ -60,7 +60,7 @@ class AISettings(BridgeModel):
     merge is unrecoverable), so it wants the stronger model, not cheap Haiku.
     """
 
-    region: str = Field(default="us-west-2")
+    region: str = Field(default="us-east-1")
     _HAIKU = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
     _SONNET = "us.anthropic.claude-sonnet-4-6"
     screening_model: str = Field(default=_HAIKU)
