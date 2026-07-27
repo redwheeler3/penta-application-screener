@@ -99,10 +99,7 @@ export function CostPanel(): ReactNode {
               ) : (
                 <tbody key={i}>
                   <tr className="cost-group-head">
-                    <td>{RUN_LABELS[run.kind]}{triggeredByStamp(run)}{reconciliation(run)}</td>
-                    <td className="cost-num" />
-                    <td className="cost-num" />
-                    <td className="cost-num" />
+                    <td colSpan={4}>{RUN_LABELS[run.kind]}{triggeredByStamp(run)}{reconciliation(run)}</td>
                     <td className="cost-num">{run.cachedSavedUsd > 0 ? money(run.cachedSavedUsd) : "—"}</td>
                     <td className="cost-num">{money(run.freshUsd)}</td>
                   </tr>
@@ -137,10 +134,7 @@ export function CostPanel(): ReactNode {
           {cost.groups.map((g) => (
             <tbody key={g.runLabel}>
               <tr className="cost-group-head">
-                <td>{g.runLabel}</td>
-                <td className="cost-num" />
-                <td className="cost-num" />
-                <td className="cost-num" />
+                <td colSpan={4}>{g.runLabel}</td>
                 <td className="cost-num">{g.subtotalSavedUsd > 0 ? money(g.subtotalSavedUsd) : "—"}</td>
                 <td className="cost-num">{money(g.subtotalUsd)}</td>
               </tr>
@@ -166,10 +160,7 @@ function renderEmptyRun(kind: InsightRunKind): ReactNode {
   return (
     <>
       <tr className="cost-group-head">
-        <td>{RUN_LABELS[kind]}</td>
-        <td className="cost-num" />
-        <td className="cost-num" />
-        <td className="cost-num" />
+        <td colSpan={4}>{RUN_LABELS[kind]}</td>
         <td className="cost-num">—</td>
         <td className="cost-num">{money(0)}</td>
       </tr>

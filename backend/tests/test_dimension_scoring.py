@@ -408,7 +408,7 @@ def test_triggering_member_is_recorded_and_surfaced() -> None:
         triggered_by_user_id=member.id,
     )
 
-    assert last_runs_report(db).rank.triggered_by == "M"
+    assert last_runs_report(db).rank.triggered_by == "m@x.com"
 
 
 def test_triggering_member_is_none_when_unattributed() -> None:

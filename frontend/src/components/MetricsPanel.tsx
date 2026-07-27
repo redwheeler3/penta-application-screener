@@ -68,6 +68,7 @@ function RunTable(props: { title: string; runs: TrendPoint[] }): ReactNode {
         <thead>
           <tr>
             <th className="cost-col-label">when</th>
+            <th className="cost-col-label">by</th>
             <th className="cost-col-money">cost</th>
             <th className="cost-col-latency">latency</th>
             <th className="cost-col-count">cache hit</th>
@@ -79,6 +80,7 @@ function RunTable(props: { title: string; runs: TrendPoint[] }): ReactNode {
           {runs.map((r, i) => (
             <tr key={i}>
               <td className="cost-pass-name">{shortAt(r.at)}</td>
+              <td className="cost-pass-name">{r.triggeredBy ?? "—"}</td>
               <td className="cost-num">
                 <Bar value={r.costUsd} max={maxCost} />
                 {money(r.costUsd)}

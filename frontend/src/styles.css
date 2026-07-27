@@ -2740,6 +2740,12 @@ input[type="radio"] {
   padding-top: 0.75rem;
 }
 
+.cost-group-head td:first-child {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 /* Estimate-vs-actual reconciliation note, inline after the run label. Muted normal
    weight so it reads as secondary to the run name; amber only when actual > estimate. */
 .cost-recon {
@@ -3858,6 +3864,10 @@ input[type="radio"] {
 
   .cost-table {
     min-width: 640px;
+  }
+
+  .metrics-table {
+    min-width: 740px;
   }
 
   .eval-detail-actions .eval-detail-edit {

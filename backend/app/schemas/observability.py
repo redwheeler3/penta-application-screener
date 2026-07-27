@@ -113,6 +113,8 @@ class TrendPoint(ResponseModel):
     cache_hit_rate: float | None = None
     # Live dimension count for a full Rank (post-consolidation); null otherwise.
     dimensions: int | None = None
+    # The triggering member's email; null for older or unattributed history.
+    triggered_by: str | None = None
 
 
 class PassTrendPoint(ResponseModel):

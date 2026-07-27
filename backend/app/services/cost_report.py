@@ -193,11 +193,11 @@ def _last_run(db: Session, kind: str) -> LastRunCost | None:
         fresh_usd=round(sum(p.fresh_usd for p in passes), 6),
         cached_saved_usd=round(sum(p.cached_saved_usd for p in passes), 6),
         estimated_usd=round(row.estimated_usd, 6),
-        # Who kicked off this shared run (M15 Phase 4). None on pre-Phase-4 rows or when the
-        # member was since removed (the relationship resolves to None) — the UI omits the
-        # stamp rather than showing a placeholder. Observability stays committee-wide; this
+        # The email of the member who kicked off this shared run. None on pre-Phase-4 rows or
+        # when the member was since removed (the relationship resolves to None) — the UI omits
+        # the stamp rather than showing a placeholder. Observability stays committee-wide; this
         # is attribution, not scoping.
-        triggered_by=row.triggered_by.display_name if row.triggered_by else None,
+        triggered_by=row.triggered_by.email if row.triggered_by else None,
         passes=passes,
     )
 

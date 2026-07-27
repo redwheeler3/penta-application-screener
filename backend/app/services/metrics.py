@@ -66,6 +66,7 @@ def metrics_report(db: Session) -> MetricsReport:
                 failed_calls=sum(r.failed_calls for r in rows),
                 cache_hit_rate=hit_rate,
                 dimensions=dimensions,
+                triggered_by=ledger.triggered_by.email if ledger.triggered_by else None,
             )
         )
         passes.extend(
