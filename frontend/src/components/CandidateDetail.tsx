@@ -193,7 +193,7 @@ export function CandidateDetail(props: {
   const [privateNote, setPrivateNote] = useState(app.privateNote);
   const [noteStatus, setNoteStatus] = useState<"saved" | "saving" | "error">("saved");
   const privateNoteRef = useRef<HTMLTextAreaElement>(null);
-  const applicationAnswersRef = useRef<HTMLElement>(null);
+  const aiScoringRef = useRef<HTMLElement>(null);
   const pendingNoteSave = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noteRevision = useRef(0);
   const savedNote = useRef(app.privateNote);
@@ -272,11 +272,11 @@ export function CandidateDetail(props: {
   const detailSections = buildDetailSections(app);
   const hasEssayResponses = app.essays?.some((essay) => essay.answer);
 
-  function scrollToApplicationAnswers() {
-    const applicationAnswers = applicationAnswersRef.current;
-    if (!applicationAnswers) return;
-    applicationAnswers.scrollIntoView({ behavior: "smooth", block: "start" });
-    applicationAnswers.focus({ preventScroll: true });
+  function scrollToAiScoring() {
+    const aiScoring = aiScoringRef.current;
+    if (!aiScoring) return;
+    aiScoring.scrollIntoView({ behavior: "smooth", block: "start" });
+    aiScoring.focus({ preventScroll: true });
   }
 
   return (
@@ -416,38 +416,16 @@ export function CandidateDetail(props: {
           </ul>
         </div>
       ) : null}
-      {app.dimensionScores && app.dimensionScores.length > 0 ? (
-        <div className="dimension-scores">
-          <div className="dimension-scores-heading">
-            <h4>AI scoring</h4>
-            <button type="button" className="secondary-button dimension-scores-answers-link no-print" onClick={scrollToApplicationAnswers}>
-              Read their application answers
+      <section className="application-answers-section">
+        <div className="detail-section-heading">
+          <h4>Application answers</h4>
+          {app.dimensionScores && app.dimensionScores.length > 0 ? (
+            <button type="button" className="secondary-button detail-section-scroll-link no-print" onClick={scrollToAiScoring}>
+              View AI scoring
               <ArrowDown size={15} aria-hidden="true" />
             </button>
-          </div>
-          <ul>
-            {app.dimensionScores.map((s) => {
-              const sb = scoreBand(s.score);
-              return (
-                <li key={s.dimensionKey} className="dimension-score">
-                  <div className="dimension-score-head">
-                    <span className="dimension-score-name">{s.name}</span>
-                    <span className="dimension-score-bar" aria-hidden="true">
-                      <span className={`dimension-score-fill ${sb.cls}${s.score === 0 ? " is-zero" : ""}`} style={{ width: `${Math.round(((s.score + 1) / 2) * 100)}%` }} />
-                    </span>
-                    <span className={`dimension-score-band ${sb.cls}`}>{sb.label}</span>
-                    <span className="dimension-score-confidence">{s.confidence} confidence</span>
-                  </div>
-                  <p className="dimension-score-rationale">{s.rationale}</p>
-                  {s.evidence ? <p className="dimension-score-evidence">{s.evidence}</p> : null}
-                </li>
-              );
-            })}
-          </ul>
+          ) : null}
         </div>
-      ) : null}
-      <section ref={applicationAnswersRef} className="application-answers-section" tabIndex={-1}>
-        <h4>Application answers</h4>
         {hasEssayResponses ? (
           <div className="app-detail-essays">
             <h5>Essay responses</h5>
@@ -481,6 +459,32 @@ export function CandidateDetail(props: {
           ))}
         </div>
       </section>
+      {app.dimensionScores && app.dimensionScores.length > 0 ? (
+        <section ref={aiScoringRef} className="dimension-scores" tabIndex={-1}>
+          <div className="detail-section-heading">
+            <h4>AI scoring</h4>
+          </div>
+          <ul>
+            {app.dimensionScores.map((s) => {
+              const sb = scoreBand(s.score);
+              return (
+                <li key={s.dimensionKey} className="dimension-score">
+                  <div className="dimension-score-head">
+                    <span className="dimension-score-name">{s.name}</span>
+                    <span className="dimension-score-bar" aria-hidden="true">
+                      <span className={`dimension-score-fill ${sb.cls}${s.score === 0 ? " is-zero" : ""}`} style={{ width: `${Math.round(((s.score + 1) / 2) * 100)}%` }} />
+                    </span>
+                    <span className={`dimension-score-band ${sb.cls}`}>{sb.label}</span>
+                    <span className="dimension-score-confidence">{s.confidence} confidence</span>
+                  </div>
+                  <p className="dimension-score-rationale">{s.rationale}</p>
+                  {s.evidence ? <p className="dimension-score-evidence">{s.evidence}</p> : null}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
       {app.aiNarrative ? (
         <details className="raw-row-section">
           <summary>Raw AI narrative (screening)</summary>
