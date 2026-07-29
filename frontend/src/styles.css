@@ -789,21 +789,6 @@ h1 {
     width: calc(100vw - 1.5rem);
   }
 
-  /* The Applications table begins with its primary row action on the left. Keep the
-     persistent feedback control on the opposite edge so it never covers applicant
-     names; notifications rise above it while they are present. */
-  .feedback-widget {
-    right: 0.75rem;
-    bottom: 0.75rem;
-    left: auto;
-    width: auto;
-  }
-
-  .toast-stack {
-    right: 0.75rem;
-    bottom: 4rem;
-    width: calc(100vw - 1.5rem);
-  }
 }
 
 /* Application controls */
@@ -3818,6 +3803,22 @@ input[type="radio"] {
    their desktop information hierarchy, but let dense controls wrap or scroll deliberately
    instead of squeezing labels and tables into unreadable fragments. */
 @media (max-width: 760px) {
+  /* The Applications table begins with its primary row action on the left. Keep the
+     persistent feedback control on the opposite edge so it never covers applicant
+     names; notifications rise above it while they are present. */
+  .feedback-widget {
+    right: 0.75rem;
+    bottom: 0.75rem;
+    left: auto;
+    width: auto;
+  }
+
+  .toast-stack {
+    right: 0.75rem;
+    bottom: 4rem;
+    width: calc(100vw - 1.5rem);
+  }
+
   .access-panel {
     padding: 0.9rem;
   }
