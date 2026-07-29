@@ -483,6 +483,31 @@ The committee saw a demo and wanted it, so hosting was real scheduled work — p
 4. **Auth/roles** — `require_admin` gate + email allowlist (from M15 1a), now exercised under real hosted use across the admin surfaces (settings, allowlist, feedback).
 5. **Data protection at rest** — prod backup is scheduled Fly volume snapshots + an on-demand off-box `VACUUM INTO` copy (see deploy.md); the local post-rank auto-snapshot is disabled in prod (`LOCAL_DB_BACKUPS = "false"`).
 
+### Scale-to-Zero Recovery (M19) — planned
+
+**Goal:** return the single production Machine to Fly suspend-to-zero while bounding recovery from a resumed Machine that is running but failing its service health check. Normal suspend/resume remains sub-second; the 5–7-second clean startup applies to a stopped Machine, not a suspended one.
+
+**Why:** on 2026-07-29, Fly resumed the single Machine but it did not become reachable. Fly correctly marked its `/health` check unhealthy and stopped routing requests, but does not restart a Machine merely because a service check fails. The immediate mitigation is one warm Machine; M19 replaces that recurring compute cost with targeted recovery while keeping the fast normal resume path.
+
+**Design:**
+
+1. Production temporarily uses `auto_stop_machines = "suspend"` and `min_machines_running = 0` while M19 is pending; deploy and verify the watchdog before treating this configuration as recovered reliability.
+2. Keep Fly's `/health` service check at its existing 30-second interval. Run a small scheduled external watchdog once per minute. It calls Fly's Machines API for this app's current `app` Machine and its service-check state; it must not make an HTTP request to the application, which would wake a suspended Machine.
+3. Ignore Machines in `suspended`, `stopped`, or startup states. A `started` Machine with a failed service check is restarted on the watchdog's first observation, then the watchdog reports the recovery attempt. The normal startup grace period and the one-minute watchdog cadence keep a brief clean start from being mistaken for a persistent failure.
+4. Store a narrowly scoped Fly deploy token as the watchdog's secret. Derive the target from the app's Machine list rather than hard-coding a Machine ID; never log tokens, application data, or full API responses.
+5. Prefer a free Cloudflare Worker Cron Trigger for the watchdog. Its expected workload is 43,200 lightweight checks per month, below the current free allowance; re-confirm provider limits and pricing when implementing.
+
+**Validation and success criteria:**
+
+- Test the watchdog decision table against recorded Machine API responses: suspended → ignored; starting → ignored; healthy started → ignored; unhealthy started → one restart.
+- Exercise a controlled restart on an isolated/staging Machine with a persistent volume and prove it returns to a passing service check without data loss.
+- Verify a real production suspend/resume remains sub-second under normal conditions, and that a failed health check is detected, restarted, and alerted within one 30-second service-check interval plus one watchdog interval.
+- Confirm the watchdog's API polling leaves an idle production Machine suspended; it must not create ongoing Fly compute charges.
+
+**Non-goals:** high availability across two Machines, replicated SQLite, an HTTP uptime probe that keeps the app awake, or hiding a cold start after an intentional full stop. Those are separate availability/cost decisions.
+
+The production Machine currently suspends to zero while M19 is pending. A watchdog bounds the rare bad-resume outage; it does not make a single Machine highly available.
+
 ### Least-Privilege Google Auth (M18) — ✅ complete
 
 For eventual Google app verification and to stop showing members a scary Drive/Sheets consent, M18 split the OAuth footprint: **members log in identity-only** (openid/email/profile — no Drive or Sheets scope), and **an admin links the response sheet via the Google Picker**, granting only `drive.file` (access to the one picked file). Sync reads the sheet with that admin's designated-reader token, so members never need a Drive/Sheets scope. The Picker uses the GIS code model (`ux_mode: popup`) exchanged server-side for a refresh token; `setAppId(<project number>)` is required for `drive.file` to authorize the picked file. Prod setup steps are in [docs/deploy.md](docs/deploy.md) §8.

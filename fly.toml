@@ -1,5 +1,5 @@
-# Fly.io deployment (M17, ADR 0012). Single-region app that SUSPENDS to zero when idle (freezes
-# to a RAM snapshot, resumes in <1s) and keeps a persistent volume for the SQLite DB.
+# Fly.io deployment (M17, ADR 0012). Single-region app that suspends to zero when idle and
+# keeps a persistent volume for the SQLite DB.
 # Secrets (SESSION_SECRET, GOOGLE_CLIENT_*, AWS_*) are set via `fly secrets set`, never here.
 #
 # First-time setup (run once, from the repo root):
@@ -49,11 +49,9 @@ primary_region = "iad"   # Ashburn — lower-cost region; Bedrock runs in nearby
 [http_service]
   internal_port = 8080
   force_https = true          # redirect http→https at the edge
-  auto_stop_machines = "suspend" # suspend when idle: freezes to a RAM snapshot, compute
-                                 # billing stops, but the next request RESUMES in <1s instead
-                                 # of a ~5s cold boot (better UX than "stop" for a live app).
-  auto_start_machines = true     # resume on the next incoming request
-  min_machines_running = 0       # no always-on floor — the volume + the suspended snapshot persist
+  auto_stop_machines = "suspend" # preserve process memory for a sub-second resume.
+  auto_start_machines = true
+  min_machines_running = 0
 
   [http_service.concurrency]
     # A rank holds one long streaming request for minutes; keep the machine awake while any

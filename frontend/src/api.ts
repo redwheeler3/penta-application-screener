@@ -31,6 +31,7 @@ function url(path: string): string {
 }
 
 const GET_TIMEOUT_MS = 15_000;
+const SYNC_REQUEST_TIMEOUT_MS = 30_000;
 const SYNC_RETRY_DELAY_MS = 500;
 
 async function getJson<T>(path: string): Promise<T> {
@@ -183,10 +184,7 @@ export function syncApplications(): Promise<Response> {
 async function retrySyncRequest(): Promise<Response> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const response = await fetch(url("/sync/applications"), {
-        method: "POST",
-        credentials: "include",
-      });
+      const response = await syncRequest();
       if (!isRetryableSyncResponse(response) || attempt === 1) return response;
     } catch (error) {
       if (attempt === 1) throw error;
@@ -195,6 +193,24 @@ async function retrySyncRequest(): Promise<Response> {
   }
 
   throw new Error("Sync retry loop exhausted without returning a response.");
+}
+
+async function syncRequest(): Promise<Response> {
+  // Unlike GETs, this request may spend time reading the source sheet. It still needs a
+  // finite deadline: browser fetch otherwise leaves the Sync dialog running forever when
+  // the production edge or an upstream dependency is unavailable. The import is idempotent,
+  // so retrySyncRequest can safely retry a timed-out attempt once.
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), SYNC_REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url("/sync/applications"), {
+      method: "POST",
+      credentials: "include",
+      signal: controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 function isRetryableSyncResponse(response: Response): boolean {
