@@ -60,6 +60,13 @@ npx wrangler secret put WATCHDOG_ENABLED
 The next minute's Cron activation restores the 30-second alarm. Deleting this secret also
 restores the default enabled state.
 
+### Observability
+
+Workers Logs are enabled at 100% sampling for this Worker, including Durable Object requests,
+alarms, errors, and recovery messages. In Cloudflare, open **Workers & Pages →
+`penta-fly-watchdog` → Logs** for the combined stream, or **Durable Objects → `FlyWatchdog` →
+Logs** to focus on its scheduler. Logs are retained according to the Cloudflare account plan.
+
 To investigate a recovery, inspect Cloudflare Worker logs and compare them with:
 
 ```powershell
