@@ -483,7 +483,7 @@ The committee saw a demo and wanted it, so hosting was real scheduled work — p
 4. **Auth/roles** — `require_admin` gate + email allowlist (from M15 1a), now exercised under real hosted use across the admin surfaces (settings, allowlist, feedback).
 5. **Data protection at rest** — prod backup is scheduled Fly volume snapshots + an on-demand off-box `VACUUM INTO` copy (see deploy.md); the local post-rank auto-snapshot is disabled in prod (`LOCAL_DB_BACKUPS = "false"`).
 
-### Scale-to-Zero Recovery (M19) — planned
+### Scale-to-Zero Recovery (M19) — deployed 2026-07-29
 
 **Goal:** return the single production Machine to Fly suspend-to-zero while bounding recovery from a resumed Machine that is running but failing its service health check. Normal suspend/resume remains sub-second; the 5–7-second clean startup applies to a stopped Machine, not a suspended one.
 
@@ -491,22 +491,24 @@ The committee saw a demo and wanted it, so hosting was real scheduled work — p
 
 **Design:**
 
-1. Production temporarily uses `auto_stop_machines = "suspend"` and `min_machines_running = 0` while M19 is pending; deploy and verify the watchdog before treating this configuration as recovered reliability.
-2. Keep Fly's `/health` service check at its existing 30-second interval. Run a small scheduled external watchdog once per minute. It calls Fly's Machines API for this app's current `app` Machine and its service-check state; it must not make an HTTP request to the application, which would wake a suspended Machine.
-3. Ignore Machines in `suspended`, `stopped`, or startup states. A `started` Machine with a failed service check is restarted on the watchdog's first observation, then the watchdog reports the recovery attempt. The normal startup grace period and the one-minute watchdog cadence keep a brief clean start from being mistaken for a persistent failure.
-4. Store a narrowly scoped Fly deploy token as the watchdog's secret. Derive the target from the app's Machine list rather than hard-coding a Machine ID; never log tokens, application data, or full API responses.
-5. Prefer a free Cloudflare Worker Cron Trigger for the watchdog. Its expected workload is 43,200 lightweight checks per month, below the current free allowance; re-confirm provider limits and pricing when implementing.
+1. Production uses `auto_stop_machines = "suspend"` and `min_machines_running = 0`; the watchdog is deployed and verified before treating this configuration as recovered reliability.
+2. Keep Fly's `/health` service check at its existing 30-second interval. Run a small Cloudflare Worker backed by one Durable Object/Agent, using its persisted 30-second interval scheduler. It calls Fly's Machines API for this app's current `app` Machine and its service-check state; it must not make an HTTP request to the application, which would wake a suspended Machine.
+3. Ignore Machines in `suspended`, `stopped`, or startup states. A `started` Machine with a failed service check is restarted on the watchdog's first observation, then the watchdog reports the recovery attempt. The normal startup grace period keeps a brief clean start from being mistaken for a persistent failure.
+4. Store a narrowly scoped Fly deploy token as the watchdog's secret. Bound each Fly API call with a short client deadline, derive the target from the app's Machine list rather than hard-coding a Machine ID, and never log tokens, application data, or full API responses.
+5. Use Cloudflare's free Durable Object/Agent offering rather than a one-minute Cron Trigger. Its expected workload is 86,400 lightweight checks per month, below the current free allowance; ensure the object hibernates between polls, and re-confirm provider limits and pricing when implementing.
 
 **Validation and success criteria:**
 
 - Test the watchdog decision table against recorded Machine API responses: suspended → ignored; starting → ignored; healthy started → ignored; unhealthy started → one restart.
 - Exercise a controlled restart on an isolated/staging Machine with a persistent volume and prove it returns to a passing service check without data loss.
-- Verify a real production suspend/resume remains sub-second under normal conditions, and that a failed health check is detected, restarted, and alerted within one 30-second service-check interval plus one watchdog interval.
+- Verify a real production suspend/resume remains sub-second under normal conditions, and that a failed health check is detected, restarted, and alerted within one 30-second service-check interval plus one 30-second watchdog interval, plus restart time.
 - Confirm the watchdog's API polling leaves an idle production Machine suspended; it must not create ongoing Fly compute charges.
 
 **Non-goals:** high availability across two Machines, replicated SQLite, an HTTP uptime probe that keeps the app awake, or hiding a cold start after an intentional full stop. Those are separate availability/cost decisions.
 
-The production Machine currently suspends to zero while M19 is pending. A watchdog bounds the rare bad-resume outage; it does not make a single Machine highly available.
+**Deployment evidence:** A disposable Fly app with an isolated encrypted 1 GB volume was given an intentional failing service check while its Machine remained `started`. The disposable Durable Object watchdog restarted it; after restoring `/health`, it returned to `1/1` passing and a marker file remained on the volume. The disposable Fly app, volume, token, and Cloudflare Worker were then deleted. Production was deployed with its existing app-scoped token and remained suspended after deployment.
+
+The production Machine currently suspends to zero. The watchdog bounds the rare bad-resume outage; it does not make a single Machine highly available.
 
 ### Least-Privilege Google Auth (M18) — ✅ complete
 

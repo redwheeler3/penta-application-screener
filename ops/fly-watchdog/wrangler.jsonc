@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "penta-fly-watchdog",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-29",
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "FLY_APP_NAME": "penta-application-screener"
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "WATCHDOG",
+        "class_name": "FlyWatchdog"
+      }
+    ]
+  },
+  "exports": {
+    "FlyWatchdog": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
+}
