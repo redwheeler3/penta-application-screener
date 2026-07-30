@@ -182,6 +182,30 @@ tree can be green and pushed without a half-finished change reaching real users,
 happens only when you choose to run the command. The build runs on Fly's remote builders, so no
 local Docker/Finch is needed.
 
+The Docker context is intentionally allowlisted by `.dockerignore` to only `Dockerfile`,
+`backend/`, and `frontend/`; local caches, documentation, and operational tooling never upload
+to Fly. If the Dockerfile later copies another path, add it to that allowlist. Do **not** use
+`flyctl deploy --build-only` as a harmless context check: the Fly CLI used for this app created
+a production release when it was used. Use `flyctl deploy --remote-only` only when a release is
+intended.
+
+### Scale-to-zero watchdog (M19)
+
+The Cloudflare Durable Object watchdog is maintained separately in
+[`ops/fly-watchdog/`](../ops/fly-watchdog/). It polls Fly's Machines API every 30 seconds without
+making an HTTP request to Penta, so an idle Machine remains suspended. Its once-per-minute Cron
+only restores the persisted alarm if needed.
+
+To temporarily pause recovery, from `ops/fly-watchdog/` run:
+
+```powershell
+npx wrangler secret put WATCHDOG_ENABLED
+```
+
+Enter `false`. To resume, run it again and enter `true`. While paused, the watchdog makes no
+Fly API calls; the Cron remains only as a negligible-cost resume mechanism. See the
+[watchdog README](../ops/fly-watchdog/README.md) for validation, alerts, and token rotation.
+
 ---
 
 ## Deploying from another machine

@@ -496,6 +496,7 @@ The committee saw a demo and wanted it, so hosting was real scheduled work — p
 3. Ignore Machines in `suspended`, `stopped`, or startup states. A `started` Machine with a failed service check is restarted on the watchdog's first observation, then the watchdog reports the recovery attempt. The normal startup grace period keeps a brief clean start from being mistaken for a persistent failure.
 4. Store a narrowly scoped Fly deploy token as the watchdog's secret. Bound each Fly API call with a short client deadline, derive the target from the app's Machine list rather than hard-coding a Machine ID, and never log tokens, application data, or full API responses.
 5. Use Cloudflare's free Durable Object/Agent offering rather than a one-minute Cron Trigger. Its expected workload is 86,400 lightweight checks per month, below the current free allowance; ensure the object hibernates between polls, and re-confirm provider limits and pricing when implementing.
+6. Keep an explicit `WATCHDOG_ENABLED` Cloudflare secret, defaulting to enabled. Setting it to `false` clears the persisted 30-second alarm and prevents Fly API calls; setting it to `true` lets the one-minute bootstrap Cron restore the alarm.
 
 **Validation and success criteria:**
 

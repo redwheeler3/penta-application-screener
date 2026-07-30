@@ -196,7 +196,7 @@ Growing the golden case sets from a real Rank is done with the harvest scripts u
 
 ## Status
 
-**Live in production.** The app is deployed on [Fly.io](https://fly.io) at `screener.pentacoop.com` and used by the Penta Housing Co-op membership committee (a small, trusted group of screeners) to review real application cycles. It runs as a single instance with SQLite on a persistent volume — deliberately right-sized for a ~5-member committee rather than built for scale it doesn't need. Hosting decisions and the platform tradeoff analysis are in [docs/adr/0012-hosting-platform-m17.md](docs/adr/0012-hosting-platform-m17.md); the deploy/runbook is [docs/deploy.md](docs/deploy.md).
+**Live in production.** The app is deployed on [Fly.io](https://fly.io) at `screener.pentacoop.com` and used by the Penta Housing Co-op membership committee (a small, trusted group of screeners) to review real application cycles. It runs as a single instance with SQLite on a persistent volume — deliberately right-sized for a ~5-member committee rather than built for scale it doesn't need. Hosting decisions and the platform tradeoff analysis are in [docs/adr/0012-hosting-platform-m17.md](docs/adr/0012-hosting-platform-m17.md); the deploy/runbook is [docs/deploy.md](docs/deploy.md), and suspend-to-zero recovery controls are in [ops/fly-watchdog/README.md](ops/fly-watchdog/README.md).
 
 It remains an actively developed project, and everything below still works for fully local screening workflows — the same codebase runs on a laptop with no hosting at all.
 

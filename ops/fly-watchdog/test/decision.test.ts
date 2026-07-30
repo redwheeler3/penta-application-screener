@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { appMachine, needsRestart, RESTART_COOLDOWN_MS, type FlyMachine } from "../src/decision";
+import {
+  appMachine,
+  needsRestart,
+  RESTART_COOLDOWN_MS,
+  type FlyMachine,
+  watchdogEnabled,
+} from "../src/decision";
 
 const healthy: FlyMachine = {
   id: "machine-id",
@@ -24,5 +30,11 @@ describe("watchdog decisions", () => {
     const unhealthy = { ...healthy, checks: [{ status: "critical" }] };
     expect(needsRestart(unhealthy, RESTART_COOLDOWN_MS, null)).toBe(true);
     expect(needsRestart(unhealthy, RESTART_COOLDOWN_MS, 1)).toBe(false);
+  });
+
+  it("is enabled by default and pauses only when explicitly disabled", () => {
+    expect(watchdogEnabled(undefined)).toBe(true);
+    expect(watchdogEnabled("true")).toBe(true);
+    expect(watchdogEnabled("false")).toBe(false);
   });
 });

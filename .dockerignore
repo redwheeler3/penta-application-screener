@@ -1,50 +1,8 @@
-# Keep the build context lean and never ship secrets or local data into the image.
-# The Dockerfile copies backend/ and frontend/ explicitly; this excludes the cruft.
-
-# Python. Patterns are matched relative to the build-context root and do NOT recurse for a
-# bare `dir/`, so nested paths (e.g. backend/.venv) must be globbed explicitly — that venv is
-# ~270MB / ~9.8k files and was the entire build-context bloat before these **/ globs.
-**/__pycache__/
-**/*.py[cod]
-**/.pytest_cache/
-**/.pytest-cache/
-**/.pytest-run-cache/
-**/.pytest-tmp/
-**/.ruff_cache/
-**/.mypy_cache/
-**/.venv/
-.venv/
-
-# Secrets and local env — provided as Fly secrets/build-args, never baked in. MUST use **/
-# so NESTED env files are excluded too: a root-anchored `.env.*` does NOT match
-# frontend/.env.local, which leaked VITE_API_BASE_URL=http://localhost:8000 into the prod
-# bundle and sent prod's API calls (incl. login) to localhost. (Same nested-path trap as .venv.)
-**/.env
-**/.env.*
-.env
-.env.*
-backend/secrets/
-backend/config/initial-admins.txt
-
-# Databases and applicant data (PII) — the volume provides the live DB; never copy snapshots.
-**/*.db
-**/*.sqlite
-**/*.sqlite3
-backend/data/
-**/exports/
-**/ai-traces/
-
-# Frontend — node_modules is reinstalled in the build stage; dist is rebuilt there.
-frontend/node_modules/
-frontend/dist/
-*.tsbuildinfo
-
-# VCS, tooling, docs not needed at runtime
-.git/
-.github/
-docs/
-test-data/
-*.md
-.DS_Store
-.vscode/
-.claude/
+# The Dockerfile copies only these paths. Keep the remote Fly build context deliberately
+# allowlisted so local tooling, caches, data, and future top-level directories never bloat it.
+*
+!Dockerfile
+!backend/
+!backend/**
+!frontend/
+!frontend/**

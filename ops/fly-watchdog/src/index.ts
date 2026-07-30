@@ -1,12 +1,19 @@
 import { DurableObject } from "cloudflare:workers";
 
-import { appMachine, needsRestart, POLL_INTERVAL_MS, type FlyMachine } from "./decision";
+import {
+  appMachine,
+  needsRestart,
+  POLL_INTERVAL_MS,
+  type FlyMachine,
+  watchdogEnabled,
+} from "./decision";
 
 export interface Env {
   WATCHDOG: DurableObjectNamespace;
   FLY_API_TOKEN: string;
   FLY_APP_NAME: string;
   ALERT_WEBHOOK_URL?: string;
+  WATCHDOG_ENABLED?: string;
 }
 
 const LAST_RESTART_AT_KEY = "last_restart_at";
@@ -26,18 +33,30 @@ function flyRequest(url: string, token: string, init?: RequestInit): Promise<Res
 
 export class FlyWatchdog extends DurableObject<Env> {
   async fetch(): Promise<Response> {
+    if (!watchdogEnabled(this.env.WATCHDOG_ENABLED)) {
+      await this.ctx.storage.deleteAlarm();
+      return new Response(null, { status: 204 });
+    }
+
     await this.ensurePolling();
     return new Response(null, { status: 204 });
   }
 
   async alarm(): Promise<void> {
+    if (!watchdogEnabled(this.env.WATCHDOG_ENABLED)) {
+      await this.ctx.storage.deleteAlarm();
+      return;
+    }
+
     try {
       await this.restartIfUnhealthy();
     } catch (error) {
       await this.notifyError(error);
       throw error;
     } finally {
-      await this.ctx.storage.setAlarm(Date.now() + POLL_INTERVAL_MS);
+      if (watchdogEnabled(this.env.WATCHDOG_ENABLED)) {
+        await this.ctx.storage.setAlarm(Date.now() + POLL_INTERVAL_MS);
+      }
     }
   }
 

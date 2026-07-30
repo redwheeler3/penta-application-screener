@@ -8,6 +8,10 @@ export type FlyMachine = {
   checks?: Array<{ status: string }>;
 };
 
+export function watchdogEnabled(value: string | undefined): boolean {
+  return value !== "false";
+}
+
 export function appMachine(machines: FlyMachine[]): FlyMachine | undefined {
   return machines.find((machine) => machine.config?.metadata?.fly_process_group === "app");
 }
