@@ -20,10 +20,11 @@ describe("watchdog decisions", () => {
     expect(appMachine([{ ...healthy, config: { metadata: { fly_process_group: "worker" } } }, healthy])).toBe(healthy);
   });
 
-  it("ignores suspended, starting, and healthy machines", () => {
+  it("ignores suspended, starting, healthy, and warning machines", () => {
     expect(needsRestart({ ...healthy, state: "suspended" }, 1, null)).toBe(false);
     expect(needsRestart({ ...healthy, state: "starting" }, 1, null)).toBe(false);
     expect(needsRestart(healthy, 1, null)).toBe(false);
+    expect(needsRestart({ ...healthy, checks: [{ status: "warning" }] }, 1, null)).toBe(false);
   });
 
   it("restarts an unhealthy running machine once per cooldown window", () => {

@@ -19,5 +19,7 @@ export function appMachine(machines: FlyMachine[]): FlyMachine | undefined {
 export function needsRestart(machine: FlyMachine | undefined, now: number, lastRestartAt: number | null): boolean {
   if (machine?.state !== "started") return false;
   if (lastRestartAt !== null && now - lastRestartAt < RESTART_COOLDOWN_MS) return false;
-  return Boolean(machine.checks?.some((check) => check.status !== "passing"));
+  // Fly can report a transient `warning` while a healthy Machine is being evaluated.
+  // Only `critical` is an explicit failed service check that warrants a restart.
+  return Boolean(machine.checks?.some((check) => check.status === "critical"));
 }

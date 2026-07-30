@@ -6,8 +6,8 @@ It calls the Fly Machines API only; it never sends an HTTP request to Penta.
 - A Durable Object polls the Machine state every 30 seconds using a persisted alarm.
 - The once-per-minute Cloudflare Cron Trigger only ensures that alarm exists after deployment
   or recovery; it does not determine the health-check cadence.
-- Suspended, stopped, and startup Machines are ignored. A `started` Machine with any
-  non-passing service check is restarted, at most once every two minutes.
+- Suspended, stopped, startup, and `warning` Machines are ignored. A `started` Machine with an
+  explicitly `critical` service check is restarted, at most once every two minutes.
 - Public Worker and preview URLs are disabled. Recovery attempts are recorded in Cloudflare
   Worker logs. `ALERT_WEBHOOK_URL` is optional for a Discord webhook.
 
