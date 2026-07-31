@@ -6,3 +6,32 @@
 !backend/**
 !frontend/
 !frontend/**
+
+# These rules must follow the directory allowlist above: Docker uses the final matching
+# pattern, so without them local dependencies and data under those directories upload too.
+# Both build stages install or generate these paths from the copied source instead.
+backend/.venv/
+frontend/node_modules/
+frontend/dist/
+backend/data/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.pytest-cache/
+**/.pytest-run-cache/
+**/.pytest-tmp/
+**/.ruff_cache/
+**/.mypy_cache/
+**/.uv-cache/
+**/*.tsbuildinfo
+
+# Secrets, local configuration, and applicant data are supplied at runtime or stay local.
+**/.env
+**/.env.*
+backend/secrets/
+backend/config/initial-admins.txt
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/exports/
+**/ai-traces/
