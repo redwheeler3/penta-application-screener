@@ -27,6 +27,9 @@ export function AdminSettingsPanel(props: {
   // Lift a fresh SettingsResponse to the app (updates the shared `saved`) so a change made
   // inside a subtab — e.g. linking the applications sheet — survives a tab switch/remount.
   onSettingsUpdated: (payload: SettingsResponse) => void;
+  // Eligibility is derived on read. Saving the committee baseline can reclassify the admin's
+  // own view immediately, so App refreshes every eligibility-dependent surface.
+  onEligibilityChanged: () => void;
   // Jump to an applicant's detail / a top-level view from a feedback item's context link.
   onOpenApplicant: (id: number) => void;
   onOpenView: (tab: ViewTab) => void;
@@ -89,7 +92,10 @@ export function AdminSettingsPanel(props: {
       ) : subtab === "access" ? (
         <AccessPanel onError={props.onError} />
       ) : subtab === "defaults" ? (
-        <CommitteeDefaultsPanel onError={props.onError} />
+        <CommitteeDefaultsPanel
+          onError={props.onError}
+          onEligibilityChanged={props.onEligibilityChanged}
+        />
       ) : (
         <div className="settings-panel-body">
           <div className="settings-subtab-head">
@@ -283,7 +289,10 @@ function SheetLinkField(props: {
 }
 
 
-function CommitteeDefaultsPanel(props: { onError: (message: string) => void }): ReactNode {
+function CommitteeDefaultsPanel(props: {
+  onError: (message: string) => void;
+  onEligibilityChanged: () => void;
+}): ReactNode {
   const [draft, setDraft] = useState<EligibilityRules | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -316,6 +325,7 @@ function CommitteeDefaultsPanel(props: { onError: (message: string) => void }): 
       return;
     }
     setDraft(await response.json());
+    props.onEligibilityChanged();
     setSavedTick(true);
     setTimeout(() => setSavedTick(false), 2000);
   }

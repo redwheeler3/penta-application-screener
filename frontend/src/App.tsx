@@ -343,6 +343,15 @@ export function App() {
       .catch(() => {});
   }
 
+  // Eligibility is computed from the current member's rules and overrides whenever a view is
+  // read. Every mutation therefore needs to refresh each surface that presents that derived
+  // status: the workflow bar, application rows/facets, and an already-open ranked shortlist.
+  function refreshEligibilityViews() {
+    refreshDashboard();
+    reloadApplications();
+    if (ranking) void loadRanking();
+  }
+
   // A Fly wake or deploy restart can drop the first request from a newly signed-in page.
   // Dashboard data controls every workflow badge and gate, so retry before showing any
   // placeholder state; a later retry button remains available if recovery never succeeds.
@@ -637,9 +646,7 @@ export function App() {
     if (response.ok) {
       const payload: { application: ApplicationDetail } = await response.json();
       setSelectedApp(payload.application);
-      // Refresh dashboard + list/facet counts so the change shows on "Back to list".
-      refreshDashboard();
-      reloadApplications();
+      refreshEligibilityViews();
     }
   }
 
@@ -650,8 +657,7 @@ export function App() {
     if (response.ok) {
       const payload: { application: ApplicationDetail } = await response.json();
       setSelectedApp(payload.application);
-      refreshDashboard();
-      reloadApplications();
+      refreshEligibilityViews();
     }
   }
 
@@ -880,7 +886,7 @@ export function App() {
                 onToggleStar={toggleStar}
               />
             ) : activeTab === "eligibilitySettings" ? (
-              <EligibilitySettingsPanel onError={showError} onRulesUpdated={refreshDashboard} />
+              <EligibilitySettingsPanel onError={showError} onRulesUpdated={refreshEligibilityViews} />
             ) : activeTab === "adminSettings" && isAdmin ? (
               // Never fall through to the Applications view when the admin tab is selected but
               // settings haven't loaded — that silent mismatch (selected tab, wrong body) was a
@@ -895,6 +901,7 @@ export function App() {
                   onSubmit={saveSettings}
                   onError={showError}
                   onSettingsUpdated={applyLinkedSheet}
+                  onEligibilityChanged={refreshEligibilityViews}
                   onOpenApplicant={viewApplication}
                   onOpenView={navigateToView}
                 />
