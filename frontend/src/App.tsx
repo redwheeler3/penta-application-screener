@@ -404,7 +404,6 @@ export function App() {
       setScreeningEstimate(null);
       setRankEstimate(null);
       setSelectedApp(null);
-      setActiveTab("applications");
       refreshDashboard();
       requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
     } else {
@@ -506,7 +505,6 @@ export function App() {
         refreshDashboard();
         reloadApplications();
         setSelectedApp(null);
-        setActiveTab("applications");
       }
     } catch (error) {
       showError(error instanceof Error ? `Screening error: ${error.message}` : "Screening error.");
@@ -594,15 +592,11 @@ export function App() {
             );
           }
         });
-        // The chain replaced the dimensions and scores. Await the run refresh before
-        // opening the ranking, so the tier list's labelFor has the new run's names
-        // before its chips render (else they briefly show raw keys).
+        // The chain replaced the dimensions and scores. Refresh the run and shortlist
+        // so the Ranking tab is current when the member chooses to open it.
         await refreshRankingRun();
         refreshDashboard();
-        // Land the user directly in the ranked view — the ranking is the whole point
-        // of the run, and the "View ranking" button was easy to miss. openRanking
-        // clears any open candidate and loads the ranking + tiers.
-        await openRanking();
+        await loadRanking();
       }
     } catch (error) {
       showError(error instanceof Error ? `Ranking error: ${error.message}` : "Ranking error.");
