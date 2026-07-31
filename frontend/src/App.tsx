@@ -65,6 +65,9 @@ export function App() {
     rankingCurrent: false,
   });
   const [coverage, setCoverage] = useState<Coverage>({});
+  // The workflow's default values are deliberately never shown as a settled state: a
+  // dropped first dashboard request must not make a completed workflow look brand new.
+  const [dashboardLoadState, setDashboardLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [isSyncing, setIsSyncing] = useState(false);
   // Whether the Import confirmation card is open. Import has no cost (a Sheet pull,
   // no model calls), so it's a plain confirm — just friction so a click doesn't
@@ -202,7 +205,7 @@ export function App() {
   useEffect(() => {
     if (!user) return;
     void loadSettings();
-    refreshDashboard();
+    void loadInitialDashboard();
     refreshRankingRun();
     reloadApplications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -332,11 +335,35 @@ export function App() {
         setDashboardCounts(payload.counts);
         setWorkflow(payload.workflow);
         setCoverage(payload.coverage ?? {});
+        setDashboardLoadState("ready");
       })
       // A dropped request (cold machine) shouldn't nag or throw an unhandled rejection — the
       // counts stay at their last values and the next interaction refreshes them. `getJson`
       // now rejects on non-2xx, so this catch is required.
       .catch(() => {});
+  }
+
+  // A Fly wake or deploy restart can drop the first request from a newly signed-in page.
+  // Dashboard data controls every workflow badge and gate, so retry before showing any
+  // placeholder state; a later retry button remains available if recovery never succeeds.
+  async function loadInitialDashboard(): Promise<void> {
+    const ATTEMPTS = 3;
+    setDashboardLoadState("loading");
+    for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+      try {
+        const payload = await api.fetchDashboard();
+        setDashboardCounts(payload.counts);
+        setWorkflow(payload.workflow);
+        setCoverage(payload.coverage ?? {});
+        setDashboardLoadState("ready");
+        return;
+      } catch {
+        if (attempt < ATTEMPTS - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1) ** 2));
+        }
+      }
+    }
+    setDashboardLoadState("error");
   }
 
   async function viewApplication(id: number) {
@@ -726,6 +753,8 @@ export function App() {
             workflow={workflow}
             coverage={coverage}
             dashboardCounts={dashboardCounts}
+            loadState={dashboardLoadState}
+            onRetryLoad={() => void loadInitialDashboard()}
             hasGoogleSheetLink={hasGoogleSheetLink}
             isSyncing={isSyncing}
             importConfirm={importConfirm}

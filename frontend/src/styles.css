@@ -684,6 +684,17 @@ h1 {
   gap: 0.75rem;
 }
 
+/* While the dashboard is recovering, do not render its all-false placeholder as a
+   credible workflow state. The retry stays in the familiar workflow card. */
+.workflow-bar-load-state {
+  justify-content: flex-start;
+}
+
+.workflow-bar-load-state p {
+  margin: 0;
+  color: var(--muted);
+}
+
 .empty-state {
   display: grid;
   min-height: 220px;

@@ -131,6 +131,8 @@ export function WorkflowBar(props: {
   workflow: WorkflowState;
   coverage: Coverage;
   dashboardCounts: DashboardCounts;
+  loadState: "loading" | "ready" | "error";
+  onRetryLoad: () => void;
   hasGoogleSheetLink: boolean;
   isSyncing: boolean;
   importConfirm: boolean;
@@ -166,6 +168,7 @@ export function WorkflowBar(props: {
     workflow,
     coverage,
     dashboardCounts,
+    loadState,
     screeningEstimate,
     screeningProgress,
     rankEstimate,
@@ -176,6 +179,23 @@ export function WorkflowBar(props: {
   } = props;
   const hasMissingScores = (scoreCurrentEstimate?.toAnalyze ?? 0) > 0;
   const hasPendingProposals = pendingProposals.length > 0;
+
+  if (loadState !== "ready") {
+    return (
+      <div className="workflow-bar workflow-bar-load-state" aria-live="polite">
+        {loadState === "loading" ? (
+          <p>Loading workflow…</p>
+        ) : (
+          <>
+            <p>Couldn't load the workflow.</p>
+            <button type="button" className="secondary-button" onClick={props.onRetryLoad}>
+              Retry
+            </button>
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <>
