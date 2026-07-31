@@ -347,7 +347,7 @@ export function App() {
   // Dashboard data controls every workflow badge and gate, so retry before showing any
   // placeholder state; a later retry button remains available if recovery never succeeds.
   async function loadInitialDashboard(): Promise<void> {
-    const ATTEMPTS = 3;
+    const ATTEMPTS = 5;
     setDashboardLoadState("loading");
     for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
       try {
