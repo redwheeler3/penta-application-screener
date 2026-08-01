@@ -43,7 +43,15 @@ Create `.env.local` from `.env.example` or `backend/.env.example` and fill in:
 - `GOOGLE_OAUTH_CLIENT_SECRETS_FILE`
 - `GOOGLE_REDIRECT_URI`
 
-For frontend-only values, create `frontend/.env.local` from `frontend/.env.example`.
+For frontend-only values, create `frontend/.env.local` from `frontend/.env.example` and set:
+
+- `VITE_GOOGLE_PICKER_API_KEY`
+- `VITE_GOOGLE_CLIENT_ID`
+- `VITE_GOOGLE_PROJECT_NUMBER`
+
+Vite loads these when the frontend starts, so restart the local frontend after changing them.
+The browser API key must allow `http://localhost:5173/*`, and the OAuth client must list
+`http://localhost:5173` as an Authorized JavaScript origin.
 
 For local browser testing, keep the app on one hostname family. The default setup uses `localhost` for both frontend and backend callback URLs so OAuth session cookies are sent back to the callback route.
 

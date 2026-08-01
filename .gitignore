@@ -11,6 +11,7 @@ __pycache__/
 # Local env/secrets
 .env
 .env.*
+!frontend/.env.example
 backend/secrets/
 # Bootstrap admin allowlist holds real committee emails; keep the .example only.
 backend/config/initial-admins.txt
