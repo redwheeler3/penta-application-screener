@@ -152,7 +152,7 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
                   {isMerge ? (
                     <span className="match-audit-new">merged</span>
                   ) : (
-                    <span className="match-audit-key-unnamed">kept as-is</span>
+                    <span className="match-audit-key-unnamed">kept</span>
                   )}
                 </td>
                 <td>{d.decision}</td>
