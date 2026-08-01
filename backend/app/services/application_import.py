@@ -6,10 +6,17 @@ from datetime import date as date_type
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Application, SyncRun
+from app.db.models import (
+    Application,
+    ApplicationAIResult,
+    ApplicationNote,
+    ApplicationStar,
+    MemberEligibility,
+    SyncRun,
+)
 from app.schemas.settings import AppSettings
 
 EMAIL_ALIASES = ["email address", "applicant email", "email"]
@@ -134,7 +141,11 @@ def import_applications_from_rows(
     # is per-member and computed on read (a member's rules + overrides + AI flags), so there is
     # no eligible/filtered count to compute here that would mean anything for a member's view.
 
+    if not latest_by_email:
+        raise ValueError("Google Sheet has no rows with a usable applicant email.")
+
     for email, row in latest_by_email.items():
+        row = _without_source_metadata(row)
         raw_hash = hash_row(row)
         normalized = normalize_application(row)
         normalized = _make_json_safe(normalized)
@@ -155,7 +166,11 @@ def import_applications_from_rows(
             # "Unchanged" means the source row is byte-identical. Reasons are computed
             # per-member on read, so the row hash alone decides unchanged vs. updated. Skip
             # the write entirely so updated_at is untouched for genuinely unchanged rows.
-            if application.raw_row_hash == raw_hash:
+            # Older imports stored the sheet row number with each answer. Deleting a
+            # sheet row shifts every following row number, but does not change an
+            # applicant's submission. Compare canonical content so those legacy rows
+            # stay unchanged and retain the cache key their AI results already use.
+            if hash_row(application.raw_row) == raw_hash:
                 unchanged_count += 1
             else:
                 updated_count += 1
@@ -165,6 +180,20 @@ def import_applications_from_rows(
                 application.raw_row_hash = raw_hash
                 application.normalized = normalized
 
+    deleted_applications = list(
+        db.scalars(
+            select(Application).where(Application.primary_email.not_in(latest_by_email))
+        )
+    )
+    deleted_ids = [application.id for application in deleted_applications]
+    if deleted_ids:
+        # Source removal is a true removal: delete derived/private application data as
+        # well, while Feedback deliberately preserves its contextual applicant id.
+        for model in (ApplicationAIResult, ApplicationNote, ApplicationStar, MemberEligibility):
+            db.execute(delete(model).where(model.application_id.in_(deleted_ids)))
+        for application in deleted_applications:
+            db.delete(application)
+
     sync_run = SyncRun(
         source_sheet_id=source_sheet_id,
         row_count=len(rows),
@@ -172,6 +201,7 @@ def import_applications_from_rows(
         imported_count=imported_count,
         updated_count=updated_count,
         unchanged_count=unchanged_count,
+        deleted_count=len(deleted_ids),
         settings_fingerprint=settings_fingerprint(settings),
     )
     db.add(sync_run)
@@ -259,8 +289,13 @@ def normalize_email(value: Any) -> str:
 
 
 def hash_row(row: dict[str, Any]) -> str:
-    payload = json.dumps(row, sort_keys=True, ensure_ascii=True, default=str)
+    payload = json.dumps(_without_source_metadata(row), sort_keys=True, ensure_ascii=True, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _without_source_metadata(row: dict[str, Any]) -> dict[str, Any]:
+    """Strip transport-only fields before persistence or cache invalidation."""
+    return {key: value for key, value in row.items() if key != "_source_row_number"}
 
 
 def parse_int(value: Any) -> int | None:

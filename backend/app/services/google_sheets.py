@@ -41,9 +41,8 @@ def fetch_sheet_rows(*, sheet_id: str, credentials: Credentials) -> list[dict[st
 
     headers = make_unique_headers(str(header).strip() for header in values[0])
     rows: list[dict[str, Any]] = []
-    for index, row_values in enumerate(values[1:], start=2):
+    for row_values in values[1:]:
         row = {header: row_values[position] if position < len(row_values) else "" for position, header in enumerate(headers)}
-        row["_source_row_number"] = index
         rows.append(row)
 
     return rows

@@ -1,7 +1,16 @@
+import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Application, Base
+from app.db.models import (
+    Application,
+    ApplicationAIResult,
+    ApplicationNote,
+    ApplicationStar,
+    ApplicationStatus,
+    Base,
+    MemberEligibility,
+)
 from app.schemas.settings import AppSettings
 from app.services.application_import import (
     extract_essays,
@@ -243,3 +252,74 @@ def test_reimport_with_changed_content_counts_updated() -> None:
     result = import_applications_from_rows(db, rows=[changed], source_sheet_id="s", settings=settings)
     assert result.updated_count == 1
     assert result.unchanged_count == 0
+
+
+def test_row_deletion_removes_application_and_dependent_data() -> None:
+    db = make_session()
+    settings = AppSettings(google_sheet_id="sheet-123")
+    rows = [
+        {"Email Address": "keep@example.com", "Applicant Name": "Keep"},
+        {"Email Address": "remove@example.com", "Applicant Name": "Remove"},
+    ]
+    import_applications_from_rows(db, rows=rows, source_sheet_id="s", settings=settings)
+    removed = db.scalar(select(Application).where(Application.primary_email == "remove@example.com"))
+    assert removed is not None
+    db.add_all([
+        ApplicationAIResult(
+            application_id=removed.id, kind="screening", cache_key="remove-cache",
+            model_id="m", prompt_version="v", output={}
+        ),
+        ApplicationNote(application_id=removed.id, user_id=1, note="private"),
+        ApplicationStar(application_id=removed.id, user_id=1),
+        MemberEligibility(application_id=removed.id, user_id=1, status=ApplicationStatus.ELIGIBLE),
+    ])
+    db.commit()
+
+    result = import_applications_from_rows(
+        db, rows=[rows[0]], source_sheet_id="s", settings=settings
+    )
+
+    assert result.deleted_count == 1
+    assert db.scalar(select(Application).where(Application.primary_email == "remove@example.com")) is None
+    assert db.scalar(select(ApplicationAIResult).where(ApplicationAIResult.application_id == removed.id)) is None
+    assert db.scalar(select(ApplicationNote).where(ApplicationNote.application_id == removed.id)) is None
+    assert db.scalar(select(ApplicationStar).where(ApplicationStar.application_id == removed.id)) is None
+    assert db.scalar(select(MemberEligibility).where(MemberEligibility.application_id == removed.id)) is None
+
+
+def test_shifted_source_row_number_preserves_a_legacy_cache_key() -> None:
+    db = make_session()
+    settings = AppSettings(google_sheet_id="sheet-123")
+    legacy = Application(
+        primary_email="a@example.com",
+        applicant_name="Avery",
+        raw_row={"Email Address": "a@example.com", "Applicant Name": "Avery", "_source_row_number": 7},
+        raw_row_hash="legacy-row-number-hash",
+        normalized={},
+    )
+    db.add(legacy)
+    db.commit()
+
+    result = import_applications_from_rows(
+        db,
+        rows=[{"Email Address": "a@example.com", "Applicant Name": "Avery", "_source_row_number": 6}],
+        source_sheet_id="s",
+        settings=settings,
+    )
+
+    db.refresh(legacy)
+    assert result.updated_count == 0
+    assert result.unchanged_count == 1
+    assert legacy.raw_row_hash == "legacy-row-number-hash"
+
+
+def test_import_rejects_a_sheet_without_usable_emails() -> None:
+    db = make_session()
+
+    with pytest.raises(ValueError, match="usable applicant email"):
+        import_applications_from_rows(
+            db,
+            rows=[{"Applicant Name": "No Email"}],
+            source_sheet_id="s",
+            settings=AppSettings(google_sheet_id="sheet-123"),
+        )

@@ -441,15 +441,17 @@ export function App() {
           importedCount: number;
           updatedCount: number;
           unchangedCount: number;
+          deletedCount: number;
         } = await response.json();
-        const { rowCount, duplicateCount, importedCount, updatedCount, unchangedCount } = payload;
+        const { rowCount, duplicateCount, importedCount, updatedCount, unchangedCount, deletedCount } = payload;
         // rowCount is every raw sheet row; imported/updated/unchanged count only the
         // deduplicated applications. Surface the duplicates that account for the gap (a
         // repeat submission keeps the latest), so the numbers reconcile — but only mention
         // them when there are any, to keep the common clean-sync message short.
         const dupeNote = duplicateCount > 0 ? `, ${duplicateCount} duplicate` : "";
+        const deletedNote = deletedCount > 0 ? `, ${deletedCount} deleted` : "";
         showToast(
-          `Synced ${rowCount} rows: ${importedCount} imported, ${updatedCount} updated, ${unchangedCount} unchanged${dupeNote}.`,
+          `Synced ${rowCount} rows: ${importedCount} imported, ${updatedCount} updated, ${unchangedCount} unchanged${deletedNote}${dupeNote}.`,
         );
         refreshDashboard();
         reloadApplications();

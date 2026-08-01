@@ -368,6 +368,7 @@ class SyncRun(TimestampMixin, Base):
     imported_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     updated_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     unchanged_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    deleted_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
     # No eligible/filtered count: import doesn't evaluate eligibility (it's per-member,
     # computed on read), so any count here would describe no one's actual view.
     # Hash of the import-relevant settings (sheet id + hard-filter thresholds +

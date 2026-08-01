@@ -18,3 +18,4 @@ class SyncResponse(ResponseModel):
     imported_count: int
     updated_count: int
     unchanged_count: int
+    deleted_count: int

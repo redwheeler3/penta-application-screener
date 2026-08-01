@@ -103,6 +103,7 @@ def sync_applications(
         imported_count=sync_run.imported_count,
         updated_count=sync_run.updated_count,
         unchanged_count=sync_run.unchanged_count,
+        deleted_count=sync_run.deleted_count,
     )
 
 
