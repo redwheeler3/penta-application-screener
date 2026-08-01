@@ -101,10 +101,6 @@ export function AdminSettingsPanel(props: {
         <div className="settings-panel-body">
           <div className="settings-subtab-head">
             <h3>Configuration</h3>
-            <p className="panel-hint">
-              The application-responses source and the AI screening knobs shared by the whole
-              committee.
-            </p>
           </div>
           {/* Gate on `saved` so we don't flash the form before GET /settings resolves. */}
           {!saved ? null : (
@@ -242,10 +238,6 @@ function SheetLinkField(props: {
   return (
     <div className="sheet-link-section">
       <h4>Applications sheet</h4>
-      <p className="rules-hint">
-        Connect the Google Sheet of submitted applications. You'll grant access to just the one
-        file you pick — members can sync without any Google Drive access of their own.
-      </p>
       {hasLink ? (
         linkedTitle ? (
           <p className="sheet-reference-line">

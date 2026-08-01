@@ -725,9 +725,7 @@ export function App() {
             </p>
           ) : userLoadFailed ? (
             <p className="login-denied" role="alert">The server may have been starting up. Try checking your session again.</p>
-          ) : (
-            <p>Use your approved Google account.</p>
-          )}
+          ) : null}
           <button className="primary-button" onClick={login} disabled={isLoadingUser}>
             <LogIn size={16} />
             <span>Sign in with Google</span>

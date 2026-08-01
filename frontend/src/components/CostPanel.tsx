@@ -83,10 +83,6 @@ export function CostPanel(): ReactNode {
           <span className="observability-label">Last runs</span>
           <span className="cost-block-total">{`$${lastSpent.toFixed(2)}`} spent</span>
         </div>
-        <p className="panel-hint">
-          What your most recent Screen, full Rank, and score-current update each spent on Bedrock, and an estimate
-          of what caching saved by reusing unchanged results.
-        </p>
         {runs.length === 0 ? (
           <p className="panel-hint">No runs recorded yet — run Screen or Rank to see per-run cost.</p>
         ) : (
@@ -126,10 +122,6 @@ export function CostPanel(): ReactNode {
           <span className="observability-label">Cumulative spend</span>
           <span className="cost-block-total">{`$${cost.totalCostUsd.toFixed(2)}`} spent</span>
         </div>
-        <p className="panel-hint">
-          What all Screen, full Rank, and score-current update runs have spent on Bedrock, and an estimate of what
-          caching saved by reusing unchanged results.
-        </p>
         <table className="cost-table">
           <CostHead />
           {cost.groups.map((g) => (
