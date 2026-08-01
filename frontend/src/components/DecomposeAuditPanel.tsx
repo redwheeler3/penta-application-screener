@@ -93,9 +93,8 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
             <th>Source axes</th>
             <th aria-label="settles into" />
             <th>Settled dimension</th>
-            {/* Whether this axis folded several re-carvings together (merged) or is one
-                source carried through (distinct) — the decomposition analogue of the
-                Consolidation tab's Verdict column. */}
+            {/* Whether this axis folded several re-carvings together or was retained
+                without a merge. */}
             <th>Verdict</th>
             <th>Why</th>
           </tr>
@@ -107,7 +106,7 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
             return (
               <tr key={d.key}>
                 <td>
-                  {d.sourceKeys.map((k) => {
+                  {isMerge ? d.sourceKeys.map((k) => {
                     // Which discoverer(s) coined this source key — "R0, R3" — so the
                     // committee can see independent re-discovery vs. a single origin.
                     const reports = d.sourceReportMap[k] ?? [];
@@ -128,13 +127,13 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
                         </span>
                       </div>
                     );
-                  })}
+                  }) : "—"}
                 </td>
                 <td className="match-audit-arrow" aria-hidden="true">→</td>
                 <td>
                   {/* Name + key (mirroring the Matching tab), then the request / folded-in
                       attribute tags (each spaced off the name with .decompose-tag). The
-                      merged/distinct verdict lives in its own column. */}
+                      merged/kept verdict lives in its own column. */}
                   {d.name}
                   {d.fromCommitteeRequest ? (
                     <span className="decompose-tag decompose-requested-tag" title="This dimension was requested by the committee">
@@ -153,9 +152,7 @@ function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode
                   {isMerge ? (
                     <span className="match-audit-new">merged</span>
                   ) : (
-                    // One source, nothing to fold — a distinct axis. "distinct" mirrors the
-                    // Consolidation tab's language for its non-merged rows.
-                    <span className="match-audit-key-unnamed">distinct</span>
+                    <span className="match-audit-key-unnamed">kept as-is</span>
                   )}
                 </td>
                 <td>{d.decision}</td>
