@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import * as api from "../api";
 import { formatPacificDateTime, readProblem } from "../format";
 import type { AllowlistEntry, DeniedSignInAttempt } from "../types";
+import { RetryLoadError } from "./RetryLoadError";
 
 // Admin-only management of the access allowlist: who may sign in, and with what role.
 // The mutation endpoints return the full updated list, so this holds the list in local
@@ -12,12 +13,15 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
   const [deniedAttempts, setDeniedAttempts] = useState<DeniedSignInAttempt[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [deniedLoadError, setDeniedLoadError] = useState(false);
+  const [loadVersion, setLoadVersion] = useState(0);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "member">("member");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let live = true;
+    setLoadError(false);
+    setDeniedLoadError(false);
     api
       .fetchAllowlist()
       .then((list) => live && setEntries(list))
@@ -40,7 +44,7 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadVersion]);
 
   async function addEntry(event: React.FormEvent) {
     event.preventDefault();
@@ -102,7 +106,10 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
       </form>
 
       {loadError ? (
-        <p className="panel-hint">Couldn't load the access allowlist.</p>
+        <RetryLoadError
+          message="Couldn't load the access allowlist."
+          onRetry={() => setLoadVersion((version) => version + 1)}
+        />
       ) : entries === null ? (
         <p className="panel-hint">Loading…</p>
       ) : (
@@ -161,7 +168,10 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
           <p className="panel-hint">Accounts rejected by the allowlist in the last year.</p>
         </div>
         {deniedLoadError ? (
-          <p className="panel-hint">Couldn&apos;t load denied sign-in attempts.</p>
+          <RetryLoadError
+            message="Couldn't load denied sign-in attempts."
+            onRetry={() => setLoadVersion((version) => version + 1)}
+          />
         ) : deniedAttempts === null ? (
           <p className="panel-hint">Loading…</p>
         ) : deniedAttempts.length === 0 ? (

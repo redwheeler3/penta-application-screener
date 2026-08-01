@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import * as api from "../api";
+import { retryWithBackoff } from "../retry";
 import type {
   AppFacets,
   AppFilter,
@@ -11,9 +12,9 @@ import type {
 export interface ApplicationsState {
   /** The filtered + sorted list the UI renders (derived from the full pool). */
   applications: ApplicationSummary[];
-  /** True once the first fetch has resolved. Lets the list distinguish "not loaded
-   * yet" from "loaded, genuinely empty" so it doesn't flash an empty message on mount. */
-  applicationsLoaded: boolean;
+  /** Distinguishes initial loading, a settled list (including an empty one), and a
+   * definitively failed initial load. */
+  applicationsLoadState: "loading" | "ready" | "error";
   /** Facet counts (status/source/favourites) derived from the full pool, each
    * reflecting the OTHER active filters so the groups stay consistent. */
   appFacets: AppFacets;
@@ -23,6 +24,8 @@ export interface ApplicationsState {
   /** (Re)fetch the whole pool. Called after sync/screen/override so the list reflects
    * server truth; filtering/sorting then happen client-side with no further fetches. */
   reloadApplications: () => void;
+  /** Recover the initial list load after its automatic retries were exhausted. */
+  loadInitialApplications: () => Promise<void>;
   toggleSort: (key: SortKey) => void;
   applyFilter: (next: AppFilter) => void;
   search: (value: string) => void;
@@ -36,7 +39,7 @@ export interface ApplicationsState {
  * save all clear it), so it stays in App. */
 export function useApplications(): ApplicationsState {
   const [allApplications, setAllApplications] = useState<ApplicationSummary[]>([]);
-  const [applicationsLoaded, setApplicationsLoaded] = useState(false);
+  const [applicationsLoadState, setApplicationsLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [appFilter, setAppFilter] = useState<AppFilter>({});
   const [appSearch, setAppSearch] = useState("");
   const [appSort, setAppSort] = useState<SortState>(null);
@@ -46,12 +49,22 @@ export function useApplications(): ApplicationsState {
       .fetchApplications()
       .then((rows) => {
         setAllApplications(rows);
-        setApplicationsLoaded(true);
+        setApplicationsLoadState("ready");
       })
-      // A dropped request (cold Fly machine resuming) shouldn't throw an unhandled rejection;
-      // leave applicationsLoaded false so the list shows its loading state and a later
-      // interaction refetches. `getJson` now rejects on non-2xx, so this catch is required.
+      // Keep the last successful list visible when a background refresh fails. Initial loading
+      // uses loadInitialApplications so it can recover deliberately instead of spinning forever.
       .catch(() => {});
+  }
+
+  async function loadInitialApplications(): Promise<void> {
+    setApplicationsLoadState("loading");
+    try {
+      const rows = await retryWithBackoff(api.fetchApplications, 5);
+      setAllApplications(rows);
+      setApplicationsLoadState("ready");
+    } catch {
+      setApplicationsLoadState("error");
+    }
   }
 
   // Everything below is derived from the full pool — no fetch on filter/sort/search.
@@ -117,12 +130,13 @@ export function useApplications(): ApplicationsState {
 
   return {
     applications,
-    applicationsLoaded,
+    applicationsLoadState,
     appFacets,
     appFilter,
     appSearch,
     appSort,
     reloadApplications,
+    loadInitialApplications,
     toggleSort,
     applyFilter: setAppFilter,
     search: setAppSearch,

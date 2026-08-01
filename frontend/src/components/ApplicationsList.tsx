@@ -7,7 +7,7 @@ import { StarButton } from "./StarButton";
 
 export function ApplicationsList(props: {
   applications: ApplicationSummary[];
-  applicationsLoaded: boolean;
+  applicationsLoadState: "loading" | "ready" | "error";
   appFilter: AppFilter;
   appFacets: AppFacets;
   appSearch: string;
@@ -17,8 +17,9 @@ export function ApplicationsList(props: {
   onToggleSort: (key: SortKey) => void;
   onSelectApplication: (id: number) => void;
   onToggleStar: (id: number, starred: boolean) => void;
+  onRetryLoad: () => void;
 }): ReactNode {
-  const { applications, applicationsLoaded, appFilter, appFacets, appSort } = props;
+  const { applications, applicationsLoadState, appFilter, appFacets, appSort } = props;
 
   // Counts are faceted: each group reflects the OTHER group's active filter (plus
   // search). "All"/"Any" sums the facet.
@@ -101,10 +102,17 @@ export function ApplicationsList(props: {
         />
       </div>
 
-      {!applicationsLoaded ? (
+      {applicationsLoadState === "loading" ? (
         // Pre-fetch: don't flash an empty message. The pool seeds as [] before the first
         // fetch resolves, which is indistinguishable from a genuinely empty pool here.
         <p className="panel-hint">Loading…</p>
+      ) : applicationsLoadState === "error" ? (
+        <div className="list-load-state" role="alert">
+          <p>Couldn't load applications. The server may have been starting up.</p>
+          <button type="button" className="secondary-button" onClick={props.onRetryLoad}>
+            Retry
+          </button>
+        </div>
       ) : applications.length === 0 ? (
         <div className="empty-state">
           <p>

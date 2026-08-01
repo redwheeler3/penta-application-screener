@@ -1,8 +1,9 @@
 import { type ReactNode } from "react";
 import { fetchCostReport, fetchLastRuns } from "../api";
 import { money } from "../format";
-import { useFetchOnce } from "../hooks/useFetchOnce";
+import { useFetchResource } from "../hooks/useFetchResource";
 import type { CostReport, InsightRunKind, LastRunCost, LastRunsReport } from "../types";
+import { RetryLoadError } from "./RetryLoadError";
 
 // M13 Pillar 1: AI cost, an Observability subtab. Two sections, same column layout so they
 // line up: [ label | tokens (in→out) | uncached | cached | saved by cache | spent ].
@@ -63,13 +64,13 @@ const PASS_LABELS: Record<InsightRunKind, Array<{ label: string; cacheable: bool
 };
 
 export function CostPanel(): ReactNode {
-  const { data, state } = useFetchOnce<[CostReport, LastRunsReport]>(
+  const { data, state, reload } = useFetchResource<[CostReport, LastRunsReport]>(
     () => Promise.all([fetchCostReport(), fetchLastRuns()]),
   );
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;
   if (state === "error" || data === null)
-    return <p className="panel-hint">Couldn’t load AI cost.</p>;
+    return <RetryLoadError message="Couldn’t load AI cost." onRetry={() => void reload()} />;
   const [cost, last] = data;
 
   const runs = [last.screen, last.rank, last.rankScores].filter((r): r is LastRunCost => r !== null);

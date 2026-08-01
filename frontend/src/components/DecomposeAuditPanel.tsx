@@ -1,8 +1,9 @@
 import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { fetchDecomposeAudit } from "../api";
-import { useFetchOnce } from "../hooks/useFetchOnce";
+import { useFetchResource } from "../hooks/useFetchResource";
 import type { DecomposeAuditResponse } from "../types";
+import { RetryLoadError } from "./RetryLoadError";
 
 // Fan-Out Redesign observability: how the K parallel discovery reports were settled
 // into one non-overlapping dimension set for the current run. K fresh-context
@@ -18,10 +19,12 @@ import type { DecomposeAuditResponse } from "../types";
 // Self-fetches on mount. A null audit (a run from before the fan-out redesign) shows an
 // explicit empty state, not a broken panel.
 export function DecomposeAuditPanel(): ReactNode {
-  const { data: audit, state } = useFetchOnce(fetchDecomposeAudit);
+  const { data: audit, state, reload } = useFetchResource(fetchDecomposeAudit);
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;
-  if (state === "error") return <p className="panel-hint">Couldn’t load the decomposition audit.</p>;
+  if (state === "error") {
+    return <RetryLoadError message="Couldn’t load the decomposition audit." onRetry={() => void reload()} />;
+  }
   if (audit === null) {
     return (
       <p className="panel-hint">
@@ -32,6 +35,7 @@ export function DecomposeAuditPanel(): ReactNode {
   }
   return <DecomposeAuditBody audit={audit} />;
 }
+
 
 function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode {
   const { audit } = props;

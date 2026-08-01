@@ -1,8 +1,9 @@
 import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { fetchMatchAudit } from "../api";
-import { useFetchOnce } from "../hooks/useFetchOnce";
+import { useFetchResource } from "../hooks/useFetchResource";
 import type { MatchAuditResponse } from "../types";
+import { RetryLoadError } from "./RetryLoadError";
 
 // M13 per-run AI legibility: the reuse audit for the current run. Surfaces the
 // settled dimensions (post-decomposition, pre key-adoption), how the match pass mapped
@@ -15,10 +16,10 @@ import type { MatchAuditResponse } from "../types";
 // (a first run, or a run from before capture) shows an explicit empty state rather
 // than vanishing — "nothing carried forward" is information, not a broken panel.
 export function MatchAuditPanel(): ReactNode {
-  const { data: audit, state } = useFetchOnce(fetchMatchAudit);
+  const { data: audit, state, reload } = useFetchResource(fetchMatchAudit);
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;
-  if (state === "error") return <p className="panel-hint">Couldn’t load the matching audit.</p>;
+  if (state === "error") return <RetryLoadError message="Couldn’t load the matching audit." onRetry={() => void reload()} />;
   if (audit === null) {
     return (
       <p className="panel-hint">

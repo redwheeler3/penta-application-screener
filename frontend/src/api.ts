@@ -31,26 +31,38 @@ function url(path: string): string {
 }
 
 const GET_TIMEOUT_MS = 15_000;
-const SYNC_REQUEST_TIMEOUT_MS = 30_000;
+const ACTION_REQUEST_TIMEOUT_MS = 30_000;
 const SYNC_RETRY_DELAY_MS = 500;
+
+async function request(path: string, init: RequestInit = {}, timeoutMs = ACTION_REQUEST_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url(path), { ...init, credentials: "include", signal: controller.signal });
+  } catch (error) {
+    // Callers already turn non-OK Responses into inline errors or toasts. Represent an aborted
+    // or dropped request the same way so a timed-out mutation clears its busy state instead of
+    // escaping its handler as an unhandled rejection.
+    const detail = error instanceof DOMException && error.name === "AbortError"
+      ? "Request timed out. Please try again."
+      : "Network request failed. Please try again.";
+    return new Response(JSON.stringify({ detail }), {
+      status: 503,
+      headers: { "Content-Type": "application/problem+json" },
+    });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
 
 async function getJson<T>(path: string): Promise<T> {
   // A browser fetch has no deadline by default. Abort a request that stalls so callers such as
   // the initial settings load can use their existing retry/error path instead of waiting forever.
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), GET_TIMEOUT_MS);
-  try {
-    const response = await fetch(url(path), {
-      credentials: "include",
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      throw new Error(`GET ${path} failed (HTTP ${response.status})`);
-    }
-    return (await response.json()) as T;
-  } finally {
-    window.clearTimeout(timeout);
+  const response = await request(path, {}, GET_TIMEOUT_MS);
+  if (!response.ok) {
+    throw new Error(`GET ${path} failed (HTTP ${response.status})`);
   }
+  return (await response.json()) as T;
 }
 
 export const authLoginUrl = () => url("/auth/google/login");
@@ -60,10 +72,18 @@ export function fetchCurrentUser(): Promise<CurrentUser | null> {
 }
 
 export function logout(): Promise<Response> {
-  return fetch(url("/auth/logout"), { method: "POST", credentials: "include" });
+  return request("/auth/logout", { method: "POST" });
 }
 
 export const fetchSettings = () => getJson<SettingsResponse>("/settings");
+
+export function exchangeSheetCode(code: string): Promise<Response> {
+  return request("/settings/exchange-sheet-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+}
 
 // --- Access allowlist (admin only) -----------------------------------------
 
@@ -74,18 +94,16 @@ export const fetchDeniedSignInAttempts = () =>
   getJson<{ attempts: DeniedSignInAttempt[] }>("/allowlist/denied-attempts").then((p) => p.attempts);
 
 export function upsertAllowlistEntry(email: string, role: "admin" | "member"): Promise<Response> {
-  return fetch(url("/allowlist"), {
+  return request("/allowlist", {
     method: "PUT",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, role }),
   });
 }
 
 export function removeAllowlistEntry(email: string): Promise<Response> {
-  return fetch(url(`/allowlist/${encodeURIComponent(email)}`), {
+  return request(`/allowlist/${encodeURIComponent(email)}`, {
     method: "DELETE",
-    credentials: "include",
   });
 }
 
@@ -98,9 +116,8 @@ export function submitFeedback(payload: {
   analysisId: number | null;
   applicantId: number | null;
 }): Promise<Response> {
-  return fetch(url("/feedback"), {
+  return request("/feedback", {
     method: "POST",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
@@ -112,15 +129,14 @@ export const fetchFeedback = (includeResolved: boolean) =>
   ).then((p) => p.items);
 
 export const resolveFeedback = (id: number) =>
-  fetch(url(`/feedback/${id}/resolve`), { method: "POST", credentials: "include" });
+  request(`/feedback/${id}/resolve`, { method: "POST" });
 
 export const reopenFeedback = (id: number) =>
-  fetch(url(`/feedback/${id}/reopen`), { method: "POST", credentials: "include" });
+  request(`/feedback/${id}/reopen`, { method: "POST" });
 
 export function saveSettings(draft: AppSettings): Promise<Response> {
-  return fetch(url("/settings"), {
+  return request("/settings", {
     method: "PUT",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(draft),
   });
@@ -134,9 +150,8 @@ export const fetchEligibilityRules = () =>
   getJson<EligibilityRulesResponse>("/eligibility-rules");
 
 export function saveEligibilityRules(rules: EligibilityRules): Promise<Response> {
-  return fetch(url("/eligibility-rules"), {
+  return request("/eligibility-rules", {
     method: "PUT",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(rules),
   });
@@ -145,7 +160,7 @@ export function saveEligibilityRules(rules: EligibilityRules): Promise<Response>
 // Reset the member to the committee default — drops their divergence (M15 1f). Returns the
 // now-effective (default) rules.
 export function resetEligibilityRules(): Promise<Response> {
-  return fetch(url("/eligibility-rules"), { method: "DELETE", credentials: "include" });
+  return request("/eligibility-rules", { method: "DELETE" });
 }
 
 // The shared committee default — the baseline a member follows until they diverge, and the
@@ -155,9 +170,8 @@ export const fetchCommitteeDefaultRules = () =>
 
 // Admin-only: edit the committee default (M15 1f). Zero side effects on member rows (Model A).
 export function saveCommitteeDefaultRules(rules: EligibilityRules): Promise<Response> {
-  return fetch(url("/eligibility-rules/committee-default"), {
+  return request("/eligibility-rules/committee-default", {
     method: "PUT",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(rules),
   });
@@ -200,17 +214,7 @@ async function syncRequest(): Promise<Response> {
   // finite deadline: browser fetch otherwise leaves the Sync dialog running forever when
   // the production edge or an upstream dependency is unavailable. The import is idempotent,
   // so retrySyncRequest can safely retry a timed-out attempt once.
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), SYNC_REQUEST_TIMEOUT_MS);
-  try {
-    return await fetch(url("/sync/applications"), {
-      method: "POST",
-      credentials: "include",
-      signal: controller.signal,
-    });
-  } finally {
-    window.clearTimeout(timeout);
-  }
+  return request("/sync/applications", { method: "POST" });
 }
 
 function isRetryableSyncResponse(response: Response): boolean {
@@ -224,15 +228,14 @@ function isRetryableSyncResponse(response: Response): boolean {
 // them the reader). Returns the updated SettingsResponse on success. The drive.file grant +
 // token exchange happen in googlePicker.ts (GIS code model) before this is called.
 export function linkSheet(fileId: string): Promise<Response> {
-  return fetch(url("/settings/link-sheet"), {
+  return request("/settings/link-sheet", {
     method: "POST",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ fileId }),
   });
 }
 
-export const fetchRankingCurrent = () => fetch(url("/ranking/current"), { credentials: "include" });
+export const fetchRankingCurrent = () => request("/ranking/current");
 
 // The current run's carry-forward audit (M13 per-run AI legibility). Null when no
 // run exists or the run predates match-audit capture.
@@ -261,21 +264,28 @@ export const fetchLastRuns = () => getJson<LastRunsReport>("/observability/last-
 // Operational trends across all runs (M13 Pillar 3): cost/tokens/latency/cache/failures.
 export const fetchMetrics = () => getJson<MetricsReport>("/observability/metrics");
 
-export const fetchScreeningEstimate = () => fetch(url("/screening/run/estimate"), { credentials: "include" });
-export const runScreening = () => fetch(url("/screening/run"), { method: "POST", credentials: "include" });
+export const fetchScreeningEstimate = () => request("/screening/run/estimate");
+// Streaming runs carry heartbeats for their multi-minute lifetimes. Bound only the time to
+// receive the Response; fetch resolves at that point, so this deadline never aborts a healthy
+// active stream.
+function streamRequest(path: string): Promise<Response> {
+  return request(path, { method: "POST" });
+}
 
-export const fetchRankEstimate = () => fetch(url("/ranking/run/estimate"), { credentials: "include" });
-export const runRank = () => fetch(url("/ranking/run"), { method: "POST", credentials: "include" });
+export const runScreening = () => streamRequest("/screening/run");
+
+export const fetchRankEstimate = () => request("/ranking/run/estimate");
+export const runRank = () => streamRequest("/ranking/run");
 export const fetchScoreCurrentEstimate = () =>
-  fetch(url("/ranking/score-current/estimate"), { credentials: "include" });
-export const scoreCurrent = () => fetch(url("/ranking/score-current"), { method: "POST", credentials: "include" });
+  request("/ranking/score-current/estimate");
+export const scoreCurrent = () => streamRequest("/ranking/score-current");
 
 export function fetchRanking(): Promise<Response> {
-  return fetch(url("/ranking"), { credentials: "include" });
+  return request("/ranking");
 }
 
 export function fetchTiers(): Promise<Response> {
-  return fetch(url("/ranking/tiers"), { credentials: "include" });
+  return request("/ranking/tiers");
 }
 
 // analysisId is the analysis the client is viewing; the server rejects a save against a
@@ -286,9 +296,8 @@ export function saveTiers(
   acknowledgedKeys: string[],
   acknowledgedRequestedKeys: string[] = [],
 ): Promise<Response> {
-  return fetch(url("/ranking/tiers"), {
+  return request("/ranking/tiers", {
     method: "PUT",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ analysisId, tiers: next, acknowledgedKeys, acknowledgedRequestedKeys }),
   });
@@ -301,31 +310,28 @@ export function saveSeeds(
   analysisId: number,
   seeds: { proposedDimensions?: string[] },
 ): Promise<Response> {
-  return fetch(url("/ranking/seeds"), {
+  return request("/ranking/seeds", {
     method: "PUT",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ analysisId, ...seeds }),
   });
 }
 
 export function overrideStatus(id: number, status: string): Promise<Response> {
-  return fetch(url(`/applications/${id}/status`), {
+  return request(`/applications/${id}/status`, {
     method: "PATCH",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),
   });
 }
 
 export function clearStatusOverride(id: number): Promise<Response> {
-  return fetch(url(`/applications/${id}/status`), { method: "DELETE", credentials: "include" });
+  return request(`/applications/${id}/status`, { method: "DELETE" });
 }
 
 export function savePrivateNote(id: number, note: string): Promise<Response> {
-  return fetch(url(`/applications/${id}/note`), {
+  return request(`/applications/${id}/note`, {
     method: "PUT",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ note }),
   });
@@ -334,9 +340,8 @@ export function savePrivateNote(id: number, note: string): Promise<Response> {
 // Toggle the current member's star on an applicant. PUT adds, DELETE removes —
 // the row's existence is the state, so both are idempotent.
 export function setStar(id: number, starred: boolean): Promise<Response> {
-  return fetch(url(`/applications/${id}/star`), {
+  return request(`/applications/${id}/star`, {
     method: starred ? "PUT" : "DELETE",
-    credentials: "include",
   });
 }
 
@@ -344,36 +349,35 @@ export function setStar(id: number, starred: boolean): Promise<Response> {
 
 // The runnable evals + their spend estimates (free; no model calls).
 export function fetchEvalCatalog(): Promise<Response> {
-  return fetch(url("/evals/catalog"), { credentials: "include" });
+  return request("/evals/catalog");
 }
 
 // Deterministic invariants over the baseline fixture (free).
 export function fetchEvalInvariants(): Promise<Response> {
-  return fetch(url("/evals/invariants"), { credentials: "include" });
+  return request("/evals/invariants");
 }
 
 // Re-record the invariant baseline fixture from the current Rank (writes the committed
 // rank_baseline.json — commit to git afterward). Returns the fresh invariants.
 export function rebaselineEval(): Promise<Response> {
-  return fetch(url("/evals/baseline"), { method: "POST", credentials: "include" });
+  return request("/evals/baseline", { method: "POST" });
 }
 
 // The eval's cases, straight from its committed JSON fixture (free).
 export function fetchEvalCases(evalKey: string): Promise<Response> {
-  return fetch(url(`/evals/cases/${evalKey}`), { credentials: "include" });
+  return request(`/evals/cases/${evalKey}`);
 }
 
 // The per-pass judge_background briefs (what each pass does) the Judge tab lists + edits,
 // with each pass's golden case count. Free (reads the committed golden files).
 export function fetchJudgeBackgrounds(): Promise<Response> {
-  return fetch(url("/evals/judge-backgrounds"), { credentials: "include" });
+  return request("/evals/judge-backgrounds");
 }
 
 // Write one pass's judge_background to its golden file (operator commits deliberately).
 export function saveJudgeBackground(passName: string, background: string): Promise<Response> {
-  return fetch(url(`/evals/judge-backgrounds/${passName}`), {
+  return request(`/evals/judge-backgrounds/${passName}`, {
     method: "PUT",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ background }),
   });
@@ -382,17 +386,14 @@ export function saveJudgeBackground(passName: string, background: string): Promi
 // The most recent persisted run among `keys` (comma-joined), to restore a tab on remount.
 // Result JSON only (no thinking narration); carries a `stale` flag when the prompt changed.
 export function fetchLastEvalRun(keys: string[]): Promise<Response> {
-  return fetch(url(`/evals/last-run?keys=${encodeURIComponent(keys.join(","))}`), {
-    credentials: "include",
-  });
+  return request(`/evals/last-run?keys=${encodeURIComponent(keys.join(","))}`);
 }
 
 // Upsert one case (by its `key`) into the eval's fixture FILE. Validated server-side;
 // the operator commits the changed file to git deliberately.
 export function saveEvalCase(evalKey: string, evalCase: unknown): Promise<Response> {
-  return fetch(url(`/evals/cases/${evalKey}`), {
+  return request(`/evals/cases/${evalKey}`, {
     method: "PUT",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ case: evalCase }),
   });
@@ -417,7 +418,7 @@ export function runEval(
   if (stabilityMode && opts?.k) params.set("k", String(opts.k));
   if (opts?.caseKey) params.set("case", opts.caseKey);
   const q = params.toString() ? `?${params}` : "";
-  return fetch(url(`/evals/${basePass}${q}`), { method: "POST", credentials: "include" });
+  return streamRequest(`/evals/${basePass}${q}`);
 }
 
 // Read an NDJSON stream, invoking `onEvent` for each parsed line. Used by the

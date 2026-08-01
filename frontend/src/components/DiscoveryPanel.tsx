@@ -1,8 +1,9 @@
 import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { fetchFanOutAudit } from "../api";
-import { useFetchOnce } from "../hooks/useFetchOnce";
+import { useFetchResource } from "../hooks/useFetchResource";
 import type { CurrentRunResponse } from "../types";
+import { RetryLoadError } from "./RetryLoadError";
 
 // The discovery half of the run-level axis (M13 + Fan-Out Redesign): what the K
 // parallel discoverers each found and why. Each pass is one fresh-context discovery;
@@ -11,14 +12,14 @@ import type { CurrentRunResponse } from "../types";
 // fan-out — and the merges it feeds — legible.
 //
 // One collapsible per discoverer: its dimensions (the comparison signal — who found
-// what) plus its reasoning. Self-fetches the fan-out audit (mount-once via useFetchOnce;
+// what) plus its reasoning. Self-fetches the fan-out audit via useFetchResource;
 // the caller keys this by analysisId so an analysis change remounts and re-fetches). Falls back to the
 // single run-level narrative for runs that predate the fan-out (no per-pass audit).
 export function DiscoveryPanel(props: { run: CurrentRunResponse }): ReactNode {
-  const { data: audit, state } = useFetchOnce(fetchFanOutAudit);
+  const { data: audit, state, reload } = useFetchResource(fetchFanOutAudit);
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;
-  if (state === "error") return <p className="panel-hint">Couldn’t load discovery.</p>;
+  if (state === "error") return <RetryLoadError message="Couldn’t load discovery." onRetry={() => void reload()} />;
 
   // Legacy runs (pre fan-out) have no per-pass audit — fall back to the single narrative.
   if (audit === null || audit.passes.length === 0) {

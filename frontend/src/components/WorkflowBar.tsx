@@ -133,6 +133,8 @@ export function WorkflowBar(props: {
   dashboardCounts: DashboardCounts;
   loadState: "loading" | "ready" | "error";
   onRetryLoad: () => void;
+  settingsLoadState: "loading" | "ready" | "error";
+  onRetrySettings: () => void;
   hasGoogleSheetLink: boolean;
   isSyncing: boolean;
   importConfirm: boolean;
@@ -179,6 +181,14 @@ export function WorkflowBar(props: {
   } = props;
   const hasMissingScores = (scoreCurrentEstimate?.toAnalyze ?? 0) > 0;
   const hasPendingProposals = pendingProposals.length > 0;
+  const syncDisabled =
+    props.isSyncing || props.importConfirm || !props.hasGoogleSheetLink || props.settingsLoadState !== "ready";
+  const syncDisabledTitle =
+    props.settingsLoadState === "loading"
+      ? "Loading the configuration required to sync."
+      : props.settingsLoadState === "error"
+        ? "Couldn't load the configuration required to sync. Use Retry below."
+        : "Add a Google Sheet link in settings to sync.";
 
   if (loadState !== "ready") {
     return (
@@ -210,8 +220,8 @@ export function WorkflowBar(props: {
             busyLabel="Syncing…"
             // Step 1 is always available once a sheet is configured. The caption
             // persists the synced row count (not a fraction).
-            disabled={props.isSyncing || props.importConfirm || !props.hasGoogleSheetLink}
-            disabledTitle="Add a Google Sheet link in settings to sync."
+            disabled={syncDisabled}
+            disabledTitle={syncDisabledTitle}
             // Amber only when the source SHEET LINK changed since the last sync — the one
             // change a re-sync acts on (it pulls different rows). Eligibility-rule changes do
             // NOT amber Sync: they reclassify on read over the already-normalized data, no
@@ -302,6 +312,15 @@ export function WorkflowBar(props: {
         {/* The ranked shortlist now has its own "Ranking" tab in the panel header,
             so there's no entry-point button here. */}
       </div>
+
+      {props.settingsLoadState === "error" ? (
+        <div className="workflow-settings-error" role="alert">
+          <p>Couldn't load the configuration required to sync.</p>
+          <button type="button" className="secondary-button" onClick={props.onRetrySettings}>
+            Retry configuration
+          </button>
+        </div>
+      ) : null}
 
       {props.importConfirm ? (
         <div className="run-confirm">

@@ -1,8 +1,9 @@
 import { type ReactNode } from "react";
 import { fetchMetrics } from "../api";
 import { formatPacificDateTime, money } from "../format";
-import { useFetchOnce } from "../hooks/useFetchOnce";
+import { useFetchResource } from "../hooks/useFetchResource";
 import type { MetricsReport, TrendPoint } from "../types";
+import { RetryLoadError } from "./RetryLoadError";
 
 // M13 Pillar 3: operational trends across runs, an Observability subtab. Reads the same
 // RunPassCost rows Cost does, but for *behaviour over time* rather than spend: per-run
@@ -24,11 +25,11 @@ function Bar(props: { value: number; max: number }): ReactNode {
 }
 
 export function MetricsPanel(): ReactNode {
-  const { data: report, state } = useFetchOnce(fetchMetrics);
+  const { data: report, state, reload } = useFetchResource(fetchMetrics);
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;
   if (state === "error" || report === null)
-    return <p className="panel-hint">Couldn’t load operational metrics.</p>;
+    return <RetryLoadError message="Couldn’t load operational metrics." onRetry={() => void reload()} />;
   if (report.runs.length === 0)
     return <p className="panel-hint">No runs recorded yet — run Screen or Rank to see trends.</p>;
 

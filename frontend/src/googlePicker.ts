@@ -15,7 +15,7 @@
 //   - a browser API key restricted to the Picker API + our origins  (VITE_GOOGLE_PICKER_API_KEY)
 //   - the OAuth web client id                                        (VITE_GOOGLE_CLIENT_ID)
 
-import { apiBaseUrl } from "./constants";
+import * as api from "./api";
 
 const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const API_KEY = import.meta.env.VITE_GOOGLE_PICKER_API_KEY as string | undefined;
@@ -71,12 +71,7 @@ function requestAuthCode(): Promise<string> {
 // Step 2: hand the code to the backend, which exchanges it (stores the refresh token as the
 // reader) and returns the interactive access token for the Picker.
 async function exchangeCodeForToken(code: string): Promise<string> {
-  const res = await fetch(`${apiBaseUrl}/settings/exchange-sheet-code`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code }),
-  });
+  const res = await api.exchangeSheetCode(code);
   if (!res.ok) throw new Error("Couldn't complete Google authorization. Please try again.");
   const body = (await res.json()) as { accessToken?: string };
   if (!body.accessToken) throw new Error("Google authorization returned no access token.");

@@ -6,6 +6,7 @@ import { AI_CHECKS, DETERMINISTIC_CHECKS } from "../constants";
 import { NumberInput } from "./NumberInput";
 import { AccessPanel } from "./AccessPanel";
 import { CheckGroup } from "./CheckToggles";
+import { RetryLoadError } from "./RetryLoadError";
 import type { AppSettings, EligibilityRules, FeedbackItem, SettingsResponse, ViewTab } from "../types";
 
 // The admin-only config surface, organized as sub-views:
@@ -295,11 +296,13 @@ function CommitteeDefaultsPanel(props: {
 }): ReactNode {
   const [draft, setDraft] = useState<EligibilityRules | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [loadVersion, setLoadVersion] = useState(0);
   const [saving, setSaving] = useState(false);
   const [savedTick, setSavedTick] = useState(false);
 
   useEffect(() => {
     let live = true;
+    setLoadError(false);
     api
       .fetchCommitteeDefaultRules()
       .then((rules) => live && setDraft(rules))
@@ -312,7 +315,7 @@ function CommitteeDefaultsPanel(props: {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadVersion]);
 
   async function save(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -350,7 +353,10 @@ function CommitteeDefaultsPanel(props: {
         </p>
       </div>
       {loadError ? (
-        <p className="panel-hint">Couldn't load the committee default rules.</p>
+        <RetryLoadError
+          message="Couldn't load the committee default rules."
+          onRetry={() => setLoadVersion((version) => version + 1)}
+        />
       ) : !draft ? (
         <p className="panel-hint">Loading…</p>
       ) : (
@@ -437,6 +443,7 @@ function FeedbackPanel(props: {
 }): ReactNode {
   const [items, setItems] = useState<FeedbackItem[] | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [loadVersion, setLoadVersion] = useState(0);
   const [showResolved, setShowResolved] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
 
@@ -455,7 +462,7 @@ function FeedbackPanel(props: {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showResolved]);
+  }, [showResolved, loadVersion]);
 
   async function act(id: number, action: "resolve" | "reopen") {
     setBusyId(id);
@@ -492,7 +499,10 @@ function FeedbackPanel(props: {
         </label>
       </div>
       {loadError ? (
-        <p className="panel-hint">Couldn't load feedback.</p>
+        <RetryLoadError
+          message="Couldn't load feedback."
+          onRetry={() => setLoadVersion((version) => version + 1)}
+        />
       ) : items === null ? (
         <p className="panel-hint">Loading…</p>
       ) : items.length === 0 ? (

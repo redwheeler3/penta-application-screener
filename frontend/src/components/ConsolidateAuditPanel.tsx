@@ -1,8 +1,9 @@
 import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { fetchConsolidateAudit } from "../api";
-import { useFetchOnce } from "../hooks/useFetchOnce";
+import { useFetchResource } from "../hooks/useFetchResource";
 import type { ConsolidateAuditResponse } from "../types";
+import { RetryLoadError } from "./RetryLoadError";
 
 // Post-score consolidation observability: how the run healed duplicate dimensions the
 // pre-score match pass couldn't catch. After scoring, two dimensions whose per-applicant
@@ -15,10 +16,12 @@ import type { ConsolidateAuditResponse } from "../types";
 // and the confirm call's reasoning. A null audit (a run from before the pass) shows an
 // explicit empty state; a run where correlation nominated nothing shows the no-op state.
 export function ConsolidateAuditPanel(): ReactNode {
-  const { data: audit, state } = useFetchOnce(fetchConsolidateAudit);
+  const { data: audit, state, reload } = useFetchResource(fetchConsolidateAudit);
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;
-  if (state === "error") return <p className="panel-hint">Couldn’t load the consolidation audit.</p>;
+  if (state === "error") {
+    return <RetryLoadError message="Couldn’t load the consolidation audit." onRetry={() => void reload()} />;
+  }
   if (audit === null) {
     return (
       <p className="panel-hint">
@@ -37,6 +40,7 @@ export function ConsolidateAuditPanel(): ReactNode {
   }
   return <ConsolidateAuditBody audit={audit} />;
 }
+
 
 function ConsolidateAuditBody(props: { audit: ConsolidateAuditResponse }): ReactNode {
   const { audit } = props;

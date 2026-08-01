@@ -5,6 +5,7 @@ import { readProblem } from "../format";
 import { CheckGroup } from "./CheckToggles";
 import { NumberInput } from "./NumberInput";
 import type { EligibilityRules } from "../types";
+import { RetryLoadError } from "./RetryLoadError";
 
 // A member's own screening rules: the numeric eligibility thresholds plus which rules
 // run. Self-contained — it fetches its rules on mount (like AccessPanel), edits a local
@@ -18,6 +19,7 @@ export function EligibilitySettingsPanel(props: {
 }): ReactNode {
   const [draft, setDraft] = useState<EligibilityRules | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [loadVersion, setLoadVersion] = useState(0);
   const [isDefault, setIsDefault] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedTick, setSavedTick] = useState(false);
@@ -28,6 +30,7 @@ export function EligibilitySettingsPanel(props: {
 
   useEffect(() => {
     let live = true;
+    setLoadError(false);
     Promise.all([api.fetchEligibilityRules(), api.fetchCommitteeDefaultRules()])
       .then(([mine, def]) => {
         if (!live) return;
@@ -44,7 +47,7 @@ export function EligibilitySettingsPanel(props: {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadVersion]);
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -100,7 +103,10 @@ export function EligibilitySettingsPanel(props: {
       </div>
       <div className="settings-panel-body">
         {loadError ? (
-          <p className="panel-hint">Couldn't load your eligibility rules.</p>
+          <RetryLoadError
+            message="Couldn't load your eligibility rules."
+            onRetry={() => setLoadVersion((version) => version + 1)}
+          />
         ) : !draft ? (
           <p className="panel-hint">Loading…</p>
         ) : (

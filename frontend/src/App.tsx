@@ -28,12 +28,14 @@ import { RankingView } from "./components/RankingView";
 import { Toasts } from "./components/Toasts";
 import { WorkflowBar } from "./components/WorkflowBar";
 import { useApplications } from "./hooks/useApplications";
+import { retryWithBackoff } from "./retry";
 import { useRanking } from "./hooks/useRanking";
 import { useToasts } from "./hooks/useToasts";
 
 export function App() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
+  const [userLoadFailed, setUserLoadFailed] = useState(false);
   // Set when the OAuth callback bounced a non-allowlisted account back here
   // (?access=denied). Read once from the URL; the flag is stripped so a reload clears it.
   const [accessDenied, setAccessDenied] = useState(false);
@@ -82,12 +84,13 @@ export function App() {
   // See useApplications; the selected candidate detail stays here (cross-cutting).
   const {
     applications,
-    applicationsLoaded,
+    applicationsLoadState,
     appFilter,
     appFacets,
     appSearch,
     appSort,
     reloadApplications,
+    loadInitialApplications,
     toggleSort,
     applyFilter,
     search: searchApplications,
@@ -185,14 +188,7 @@ export function App() {
   const isAdmin = user?.role === "admin";
 
   useEffect(() => {
-    api
-      .fetchCurrentUser()
-      .then(setUser)
-      // A dropped request (cold machine) leaves the user null — the sign-in screen shows,
-      // which is the safe default; a click retries. `getJson` now rejects on non-2xx, so
-      // without this catch the rejection is unhandled and `isLoadingUser` never clears.
-      .catch(() => setUser(null))
-      .finally(() => setIsLoadingUser(false));
+    void loadCurrentUser();
     // The OAuth callback redirects here with ?access=denied for a non-allowlisted
     // account. Read it once, then strip it from the URL so a later reload is clean.
     const params = new URLSearchParams(window.location.search);
@@ -202,12 +198,26 @@ export function App() {
     }
   }, []);
 
+  async function loadCurrentUser(): Promise<void> {
+    setIsLoadingUser(true);
+    setUserLoadFailed(false);
+    try {
+      setUser(await retryWithBackoff(api.fetchCurrentUser, 3));
+    } catch {
+      // Do not turn an unavailable service into a false signed-out state: the member needs a
+      // retry for the session check, not an unnecessary OAuth round trip.
+      setUserLoadFailed(true);
+    } finally {
+      setIsLoadingUser(false);
+    }
+  }
+
   useEffect(() => {
     if (!user) return;
     void loadSettings();
     void loadInitialDashboard();
     refreshRankingRun();
-    reloadApplications();
+    void loadInitialApplications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
@@ -302,20 +312,11 @@ export function App() {
   // `draft` null forever and the Admin Settings tab silently rendering the Applications view.
   // On definitive failure we flag it so the Admin panel shows an error+retry instead.
   async function loadSettings(): Promise<void> {
-    const ATTEMPTS = 3;
-    for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
-      try {
-        applySettingsResponse(await api.fetchSettings());
-        return;
-      } catch {
-        // Back off briefly before retrying — a resuming machine needs a moment (300ms, 1200ms).
-        // No sleep after the final attempt; we're about to give up.
-        if (attempt < ATTEMPTS - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1) ** 2));
-        }
-      }
+    try {
+      applySettingsResponse(await retryWithBackoff(api.fetchSettings, 3));
+    } catch {
+      setSettingsLoadFailed(true);
     }
-    setSettingsLoadFailed(true);
   }
 
   // Linking/changing the applications sheet changes the source pool, so the synced data is now
@@ -356,23 +357,16 @@ export function App() {
   // Dashboard data controls every workflow badge and gate, so retry before showing any
   // placeholder state; a later retry button remains available if recovery never succeeds.
   async function loadInitialDashboard(): Promise<void> {
-    const ATTEMPTS = 5;
     setDashboardLoadState("loading");
-    for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
-      try {
-        const payload = await api.fetchDashboard();
-        setDashboardCounts(payload.counts);
-        setWorkflow(payload.workflow);
-        setCoverage(payload.coverage ?? {});
-        setDashboardLoadState("ready");
-        return;
-      } catch {
-        if (attempt < ATTEMPTS - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1) ** 2));
-        }
-      }
+    try {
+      const payload = await retryWithBackoff(api.fetchDashboard, 5);
+      setDashboardCounts(payload.counts);
+      setWorkflow(payload.workflow);
+      setCoverage(payload.coverage ?? {});
+      setDashboardLoadState("ready");
+    } catch {
+      setDashboardLoadState("error");
     }
-    setDashboardLoadState("error");
   }
 
   async function viewApplication(id: number) {
@@ -690,6 +684,7 @@ export function App() {
   }
 
   const hasGoogleSheetLink = Boolean(saved && resolveSheetId(saved));
+  const settingsLoadState = saved ? "ready" : settingsLoadFailed ? "error" : "loading";
 
   return (
     <main className="app-shell">
@@ -722,12 +717,14 @@ export function App() {
       {!user ? (
         <section className="login-panel">
           <span className="panel-kicker">Member access</span>
-          <h2>{isLoadingUser ? "Checking session" : "Sign in to continue"}</h2>
+          <h2>{isLoadingUser ? "Checking session" : userLoadFailed ? "Couldn't verify your session" : "Sign in to continue"}</h2>
           {accessDenied && !isLoadingUser ? (
             <p className="login-denied" role="alert">
               That Google account isn't approved for this screener. Ask an admin to add your email,
               then sign in again.
             </p>
+          ) : userLoadFailed ? (
+            <p className="login-denied" role="alert">The server may have been starting up. Try checking your session again.</p>
           ) : (
             <p>Use your approved Google account.</p>
           )}
@@ -735,6 +732,11 @@ export function App() {
             <LogIn size={16} />
             <span>Sign in with Google</span>
           </button>
+          {userLoadFailed ? (
+            <button className="secondary-button" type="button" onClick={() => void loadCurrentUser()}>
+              Retry
+            </button>
+          ) : null}
           <p className="login-legal">
             By signing in you agree to our{" "}
             <a href="https://www.pentacoop.com/terms.html" target="_blank" rel="noopener noreferrer">
@@ -757,6 +759,11 @@ export function App() {
             dashboardCounts={dashboardCounts}
             loadState={dashboardLoadState}
             onRetryLoad={() => void loadInitialDashboard()}
+            settingsLoadState={settingsLoadState}
+            onRetrySettings={() => {
+              setSettingsLoadFailed(false);
+              void loadSettings();
+            }}
             hasGoogleSheetLink={hasGoogleSheetLink}
             isSyncing={isSyncing}
             importConfirm={importConfirm}
@@ -908,7 +915,7 @@ export function App() {
                   onOpenView={navigateToView}
                 />
               ) : (
-                <div className="panel-hint">
+                <div className="settings-load-state" role={settingsLoadFailed ? "alert" : "status"}>
                   {settingsLoadFailed ? (
                     <>
                       <p>Couldn't load settings. The server may have been starting up.</p>
@@ -949,7 +956,7 @@ export function App() {
             ) : (
               <ApplicationsList
                 applications={applications}
-                applicationsLoaded={applicationsLoaded}
+                applicationsLoadState={applicationsLoadState}
                 appFilter={appFilter}
                 appFacets={appFacets}
                 appSearch={appSearch}
@@ -959,6 +966,7 @@ export function App() {
                 onToggleSort={toggleSort}
                 onSelectApplication={viewApplication}
                 onToggleStar={toggleStar}
+                onRetryLoad={() => void loadInitialApplications()}
               />
             )}
           </section>

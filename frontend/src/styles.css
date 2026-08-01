@@ -695,6 +695,57 @@ h1 {
   color: var(--muted);
 }
 
+/* Settings gates Sync, so this recovery action lives beside the workflow for every member,
+   not only in the admin-only Settings tab. */
+.workflow-settings-error,
+.list-load-state,
+.settings-load-state {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.workflow-settings-error {
+  margin-top: 0.75rem;
+  padding: 12px 20px;
+  border: 1px solid #fbbf24;
+  border-radius: 8px;
+  background: #fffbeb;
+}
+
+.workflow-settings-error p,
+.list-load-state p,
+.settings-load-state p {
+  margin: 0;
+}
+
+.workflow-settings-error p,
+.list-load-state p {
+  color: var(--muted);
+}
+
+.list-load-state {
+  min-height: 220px;
+  justify-content: center;
+}
+
+.settings-load-state {
+  padding: 20px;
+  color: var(--muted);
+}
+
+.inline-load-error {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.inline-load-error .panel-hint {
+  margin: 0;
+}
+
 .empty-state {
   display: grid;
   min-height: 220px;
