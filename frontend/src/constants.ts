@@ -1,4 +1,4 @@
-import type { AppStatus, StatusSource } from "./types";
+import type { AppStatus, EligibilityRules, StatusSource } from "./types";
 
 // Prod is single-origin: FastAPI serves this bundle, so API calls are relative ("").
 // Dev keeps the two-origin split (Vite on :5173, API on :8000), so DEV falls back to the
@@ -90,6 +90,26 @@ export const SOURCE_DESCRIPTIONS: Record<StatusSource, string> = {
   ai: "Set ineligible by the AI screening pass — a flag it raised or the pet count it read.",
   human: "Set by a reviewer.",
 };
+
+// The numeric eligibility thresholds, in display order, with member-facing labels and input
+// bounds. Single source of truth for the three surfaces that render them: the member's
+// EligibilitySettingsPanel form, the admin CommitteeDefaultsPanel form, and the divergence
+// diff (which needs key+label only). `allowOtherPets` is boolean, rendered separately.
+export const ELIGIBILITY_NUMERIC_FIELDS: {
+  key: keyof EligibilityRules;
+  label: string;
+  min: string;
+  max?: string;
+}[] = [
+  { key: "incomeMin", label: "Income minimum", min: "0" },
+  { key: "incomeMax", label: "Income maximum", min: "0" },
+  { key: "minAdultAge", label: "Min adult age", min: "1", max: "100" },
+  { key: "maxChildAge", label: "Max child age", min: "0", max: "100" },
+  { key: "minChildren", label: "Min children per unit", min: "0", max: "20" },
+  { key: "maxChildren", label: "Max children per unit", min: "0", max: "20" },
+  { key: "maxDogs", label: "Max dogs", min: "0", max: "10" },
+  { key: "maxCats", label: "Max cats", min: "0", max: "10" },
+];
 
 // The two groups of toggleable checks a member can switch off (M15 1g Move 2). Both feed the
 // SAME flat `disabledChecks` list on EligibilityRules — the split is presentation only, so a

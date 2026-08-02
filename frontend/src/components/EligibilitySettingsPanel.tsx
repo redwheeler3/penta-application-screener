@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useState } from "react";
-import { AI_CHECKS, DETERMINISTIC_CHECKS } from "../constants";
+import { AI_CHECKS, DETERMINISTIC_CHECKS, ELIGIBILITY_NUMERIC_FIELDS } from "../constants";
 import * as api from "../api";
 import { readProblem } from "../format";
 import { CheckGroup } from "./CheckToggles";
@@ -123,76 +123,17 @@ export function EligibilitySettingsPanel(props: {
                 resetting={resetting}
               />
             )}
-            <label>
-              <span>Income minimum</span>
-              <NumberInput
-                min="0"
-                value={draft.incomeMin}
-                onChange={(v) => setDraft({ ...draft, incomeMin: v ?? 0 })}
-              />
-            </label>
-            <label>
-              <span>Income maximum</span>
-              <NumberInput
-                min="0"
-                value={draft.incomeMax}
-                onChange={(v) => setDraft({ ...draft, incomeMax: v ?? 0 })}
-              />
-            </label>
-            <label>
-              <span>Min adult age</span>
-              <NumberInput
-                min="1"
-                max="100"
-                value={draft.minAdultAge}
-                onChange={(v) => setDraft({ ...draft, minAdultAge: v ?? 0 })}
-              />
-            </label>
-            <label>
-              <span>Max child age</span>
-              <NumberInput
-                min="0"
-                max="100"
-                value={draft.maxChildAge}
-                onChange={(v) => setDraft({ ...draft, maxChildAge: v ?? 0 })}
-              />
-            </label>
-            <label>
-              <span>Min children per unit</span>
-              <NumberInput
-                min="0"
-                max="20"
-                value={draft.minChildren}
-                onChange={(v) => setDraft({ ...draft, minChildren: v ?? 0 })}
-              />
-            </label>
-            <label>
-              <span>Max children per unit</span>
-              <NumberInput
-                min="0"
-                max="20"
-                value={draft.maxChildren}
-                onChange={(v) => setDraft({ ...draft, maxChildren: v ?? 0 })}
-              />
-            </label>
-            <label>
-              <span>Max dogs</span>
-              <NumberInput
-                min="0"
-                max="10"
-                value={draft.maxDogs}
-                onChange={(v) => setDraft({ ...draft, maxDogs: v ?? 0 })}
-              />
-            </label>
-            <label>
-              <span>Max cats</span>
-              <NumberInput
-                min="0"
-                max="10"
-                value={draft.maxCats}
-                onChange={(v) => setDraft({ ...draft, maxCats: v ?? 0 })}
-              />
-            </label>
+            {ELIGIBILITY_NUMERIC_FIELDS.map((f) => (
+              <label key={f.key}>
+                <span>{f.label}</span>
+                <NumberInput
+                  min={f.min}
+                  max={f.max}
+                  value={draft[f.key] as number}
+                  onChange={(v) => setDraft({ ...draft, [f.key]: v ?? 0 })}
+                />
+              </label>
+            ))}
             <label className="checkbox-label">
               <input
                 type="checkbox"
@@ -234,16 +175,11 @@ export function EligibilitySettingsPanel(props: {
   );
 }
 
-// The numeric/boolean rule fields, with member-facing labels, for the divergence diff.
+// The numeric/boolean rule fields, with member-facing labels, for the divergence diff:
+// the shared numeric thresholds plus the one boolean (allowOtherPets), which the form
+// renders as a checkbox but the diff still compares.
 const RULE_FIELDS: { key: keyof EligibilityRules; label: string }[] = [
-  { key: "incomeMin", label: "Income minimum" },
-  { key: "incomeMax", label: "Income maximum" },
-  { key: "minAdultAge", label: "Min adult age" },
-  { key: "maxChildAge", label: "Max child age" },
-  { key: "minChildren", label: "Min children per unit" },
-  { key: "maxChildren", label: "Max children per unit" },
-  { key: "maxDogs", label: "Max dogs" },
-  { key: "maxCats", label: "Max cats" },
+  ...ELIGIBILITY_NUMERIC_FIELDS.map(({ key, label }) => ({ key, label })),
   { key: "allowOtherPets", label: "Allow other pets" },
 ];
 

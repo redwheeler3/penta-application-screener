@@ -2,7 +2,7 @@ import { type ReactNode, type SyntheticEvent, useEffect, useState } from "react"
 import * as api from "../api";
 import { formatPacificDateTime, readProblem } from "../format";
 import { isPickerConfigured, pickApplicationsSheet } from "../googlePicker";
-import { AI_CHECKS, DETERMINISTIC_CHECKS } from "../constants";
+import { AI_CHECKS, DETERMINISTIC_CHECKS, ELIGIBILITY_NUMERIC_FIELDS } from "../constants";
 import { NumberInput } from "./NumberInput";
 import { AccessPanel } from "./AccessPanel";
 import { CheckGroup } from "./CheckToggles";
@@ -169,20 +169,6 @@ export function AdminSettingsPanel(props: {
     </section>
   );
 }
-
-// Admin editor for the shared committee-default eligibility rules (M15 1f). Self-contained
-// (fetches + saves its own resource, like AccessPanel) — it edits the committee baseline, not
-// this admin's personal rules, and saving has zero effect on members who've already diverged.
-const NUMERIC_FIELDS: { key: keyof EligibilityRules; label: string; min: string; max?: string }[] = [
-  { key: "incomeMin", label: "Income minimum", min: "0" },
-  { key: "incomeMax", label: "Income maximum", min: "0" },
-  { key: "minAdultAge", label: "Min adult age", min: "1", max: "100" },
-  { key: "maxChildAge", label: "Max child age", min: "0", max: "100" },
-  { key: "minChildren", label: "Min children per unit", min: "0", max: "20" },
-  { key: "maxChildren", label: "Max children per unit", min: "0", max: "20" },
-  { key: "maxDogs", label: "Max dogs", min: "0", max: "10" },
-  { key: "maxCats", label: "Max cats", min: "0", max: "10" },
-];
 
 // The response-sheet linker (M18). Replaces the old paste-a-link field with a least-privilege
 // one-click flow (a user gesture, so GIS's consent popup isn't blocked): GIS code grant ->
@@ -354,7 +340,7 @@ function CommitteeDefaultsPanel(props: {
       ) : (
         <>
           <form className="settings-form" onSubmit={save}>
-            {NUMERIC_FIELDS.map((f) => (
+            {ELIGIBILITY_NUMERIC_FIELDS.map((f) => (
               <label key={f.key}>
                 <span>{f.label}</span>
                 <NumberInput
