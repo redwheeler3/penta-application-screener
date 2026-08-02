@@ -89,11 +89,11 @@ def read_dashboard(
             # reclassify eligibility). We can't detect a changed spreadsheet, so this
             # is "probably fresh," not a guarantee.
             import_current=_import_is_current(db, settings),
-            screened=_kind_exists(db, "screening"),
+            screened=_result_exists(db, kind="screening"),
             # Pattern discovery is a ranking run, not a per-application result.
             patterns_discovered=_run_exists(db),
             # Scoring kinds are per-dimension, so match by prefix.
-            candidates_scored=_kind_prefix_exists(db, "dimension_scoring:"),
+            candidates_scored=_result_exists(db, prefix="dimension_scoring:"),
             # A full discovery run is fresh when its inputs match; alternatively,
             # complete current-criteria coverage records the score-only path.
             ranking_current=(
@@ -193,24 +193,11 @@ def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
     return result
 
 
-def _kind_exists(db: Session, kind: str) -> bool:
-    return (
-        db.scalar(
-            select(ApplicationAIResult.id).where(ApplicationAIResult.kind == kind).limit(1)
-        )
-        is not None
-    )
-
-
-def _kind_prefix_exists(db: Session, prefix: str) -> bool:
-    return (
-        db.scalar(
-            select(ApplicationAIResult.id)
-            .where(ApplicationAIResult.kind.startswith(prefix))
-            .limit(1)
-        )
-        is not None
-    )
+def _result_exists(db: Session, *, kind: str | None = None, prefix: str | None = None) -> bool:
+    """Whether any ``ApplicationAIResult`` matches — exact ``kind`` or a ``prefix`` of it
+    (e.g. ``dimension_scoring:`` matches the per-dimension scoring rows)."""
+    match = ApplicationAIResult.kind == kind if prefix is None else ApplicationAIResult.kind.startswith(prefix)
+    return db.scalar(select(ApplicationAIResult.id).where(match).limit(1)) is not None
 
 
 def _run_exists(db: Session) -> bool:

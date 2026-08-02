@@ -61,8 +61,6 @@ class PetFacts:
     other_pets: tuple[str, ...] = ()
 
 
-
-
 @dataclass(frozen=True)
 class FilterReason:
     code: str
@@ -74,8 +72,6 @@ class FilterReason:
 class FilterResult:
     status: FilterStatus
     reasons: list[FilterReason]
-
-
 
 
 def evaluate_hard_filters(
@@ -116,15 +112,8 @@ def evaluate_hard_filters(
     if rules.disabled_checks:
         reasons = [r for r in reasons if r.code not in rules.disabled_checks]
 
-    if reasons:
-        return FilterResult(FilterStatus.FILTERED_OUT, reasons)
-    return FilterResult(FilterStatus.ELIGIBLE, [])
-
-
-
-
-
-
+    status = FilterStatus.FILTERED_OUT if reasons else FilterStatus.ELIGIBLE
+    return FilterResult(status, reasons)
 
 
 def _child_count_mismatch(application: dict[str, Any]) -> list[FilterReason]:
@@ -263,8 +252,6 @@ def _child_age_exceeds_parent(application: dict[str, Any]) -> list[FilterReason]
     return reasons
 
 
-
-
 def _income_below_range(
     application: dict[str, Any], rules: RulesConfig
 ) -> list[FilterReason]:
@@ -380,8 +367,6 @@ def _owns_real_estate(application: dict[str, Any]) -> list[FilterReason]:
     return []
 
 
-
-
 def _negative_number(application: dict[str, Any]) -> list[FilterReason]:
     checks = [
         ("applicant_age", application.get("applicant_age")),
@@ -408,8 +393,6 @@ def _negative_number(application: dict[str, Any]) -> list[FilterReason]:
             )
 
     return reasons
-
-
 
 
 def _future_employment_start(

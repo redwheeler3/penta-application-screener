@@ -23,26 +23,28 @@ export function useToasts(): ToastControls {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastSeq = useRef(0);
 
-  function showToast(message: string) {
+  // Append a toast with a fresh monotonic id and return the id for later dismissal.
+  function push(variant: Toast["variant"], message: string, action?: ToastAction): number {
     const id = (toastSeq.current += 1);
-    setToasts((current) => [...current, { id, message, variant: "success" }]);
+    setToasts((current) => [...current, { id, message, variant, action }]);
+    return id;
+  }
+
+  function showToast(message: string) {
+    const id = push("success", message);
     setTimeout(() => {
       setToasts((current) => current.filter((t) => t.id !== id));
     }, TOAST_DURATION_MS);
   }
 
+  // No auto-dismiss on error/warning: both stay until the user reads and dismisses
+  // them — non-fatal, but worth a deliberate acknowledgement.
   function showError(message: string) {
-    const id = (toastSeq.current += 1);
-    setToasts((current) => [...current, { id, message, variant: "error" }]);
-    // No auto-dismiss: errors stay until the user reads and dismisses them.
+    push("error", message);
   }
 
   function showWarning(message: string, action?: ToastAction): number {
-    const id = (toastSeq.current += 1);
-    setToasts((current) => [...current, { id, message, variant: "warning", action }]);
-    // No auto-dismiss: a degraded-run warning should stay until the user reads it,
-    // like an error — it's non-fatal but worth a deliberate acknowledgement.
-    return id;
+    return push("warning", message, action);
   }
 
   function dismissToast(id: number) {

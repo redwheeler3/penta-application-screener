@@ -30,9 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.score_vectors import load_score_vectors
 from app.db.models import Analysis, RunCostLedger
-from app.evals.paths import (
-    FIXTURE_PATH,
-)
+from app.evals.paths import FIXTURE_PATH
 from app.services.analysis import (
     current_dimension_report,
     get_current_analysis,

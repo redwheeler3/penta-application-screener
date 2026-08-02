@@ -169,15 +169,7 @@ def eligible_application_ids_for(db: Session, user_id: int) -> set[int]:
     flags_by_app = machine_flags_by_app(db, ids)
     facts_by_app = pet_facts_by_app(db, ids)
     rules_config = rules_config_for(db, user_id)
-    overrides = {
-        override.application_id: override
-        for override in db.scalars(
-            select(MemberEligibility).where(
-                MemberEligibility.user_id == user_id,
-                MemberEligibility.application_id.in_(ids),
-            )
-        )
-    }
+    overrides = overrides_by_app(db, user_id, ids)
     eligible: set[int] = set()
     for app in applications:
         reasons = hard_filter_reasons_for(rules_config, app, pet_facts=facts_by_app.get(app.id))

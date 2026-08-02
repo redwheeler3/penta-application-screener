@@ -41,16 +41,11 @@ class AgreementReport:
     failure_total: int     # human-labelled problems
     failure_caught: int    # ...the judge also flagged a problem (true positives)
     judge_problem_calls: int  # how many problems the judge called on scored cases (TP+FP)
+    kappa: float | None = None  # chance-corrected agreement (Cohen's κ); None if degenerate
 
     @property
     def agreement(self) -> float:
         return self.n_agree / self.n_scored if self.n_scored else 0.0
-
-    @property
-    def kappa(self) -> float | None:
-        return self._kappa
-
-    _kappa: float | None = None
 
     @property
     def failure_recall(self) -> float | None:
@@ -112,7 +107,7 @@ def score_agreement(results: list[JudgeResult]) -> AgreementReport:
     # κ over the compact label tokens the judge and human carry (verdict / band / flag-set).
     pairs = [(r.reproduced.human_label, r.reproduced.judge_label) for r in scored]
 
-    report = AgreementReport(
+    return AgreementReport(
         n_total=len(results),
         n_scored=len(scored),
         n_contested=len(contested),
@@ -121,6 +116,5 @@ def score_agreement(results: list[JudgeResult]) -> AgreementReport:
         failure_total=failure_total,
         failure_caught=failure_caught,
         judge_problem_calls=judge_problem_calls,
+        kappa=_cohens_kappa(pairs),
     )
-    object.__setattr__(report, "_kappa", _cohens_kappa(pairs))
-    return report

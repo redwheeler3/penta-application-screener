@@ -216,7 +216,7 @@ def stability_run(provider, case: JudgeCase, *, k: int = 5, model_id: str = DEFA
     # run_in_pool yields as-completed; sort by submitted index for stable, deterministic run
     # numbering (inputs are identical, so the order is only for legible narration).
     packed = sorted(
-        (t for t in run_in_pool(list(range(k)), call=lambda _i: judge_case(provider, case, model_id=model_id), max_workers=k)),
+        run_in_pool(list(range(k)), call=lambda _i: judge_case(provider, case, model_id=model_id), max_workers=k),
         key=lambda t: t[0],
     )
     results = [r for _i, r, err in packed if not err and r is not None]

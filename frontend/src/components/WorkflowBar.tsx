@@ -1,7 +1,7 @@
 import { AlertTriangle, Check, ChevronRight, RefreshCw, Sparkles } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
-import { screeningPercent } from "../format";
+import { money, screeningPercent } from "../format";
 import type {
   Coverage,
   CriteriaStage,
@@ -181,6 +181,9 @@ export function WorkflowBar(props: {
   } = props;
   const hasMissingScores = (scoreCurrentEstimate?.toAnalyze ?? 0) > 0;
   const hasPendingProposals = pendingProposals.length > 0;
+  // Screen and Rank are shared actions over the union scope, so both gate on the shared
+  // pool being empty — not on this member's personal eligible count.
+  const noApplicantsInScope = (coverage.screened?.inScope ?? 0) === 0;
   const syncDisabled =
     props.isSyncing || props.importConfirm || !props.hasGoogleSheetLink || props.settingsLoadState !== "ready";
   const syncDisabledTitle =
@@ -249,12 +252,12 @@ export function WorkflowBar(props: {
               !workflow.synced ||
               props.screeningRunning ||
               screeningEstimate !== null ||
-              (coverage.screened?.inScope ?? 0) === 0
+              noApplicantsInScope
             }
             disabledTitle={
               !workflow.synced
                 ? "Import applications first."
-                : (coverage.screened?.inScope ?? 0) === 0
+                : noApplicantsInScope
                   ? "No applicants to screen."
                   : undefined
             }
@@ -279,12 +282,12 @@ export function WorkflowBar(props: {
               !workflow.screened ||
               props.rankRunning ||
               rankEstimate !== null ||
-              (coverage.screened?.inScope ?? 0) === 0
+              noApplicantsInScope
             }
             disabledTitle={
               !workflow.screened
                 ? "Run Screen first."
-                : (coverage.screened?.inScope ?? 0) === 0
+                : noApplicantsInScope
                   ? "No applicants to rank."
                   : undefined
             }
@@ -360,7 +363,7 @@ export function WorkflowBar(props: {
               <p>
                 Analyze {screeningEstimate.toAnalyze} eligible applicant{screeningEstimate.toAnalyze === 1 ? "" : "s"}
                 {screeningEstimate.cached > 0 ? ` (${screeningEstimate.cached} already cached)` : ""}. Estimated cost{" "}
-                <strong>${screeningEstimate.estimatedUsd.toFixed(4)}</strong> (cap ${screeningEstimate.capUsd.toFixed(2)}).
+                <strong>{money(screeningEstimate.estimatedUsd)}</strong> (cap ${screeningEstimate.capUsd.toFixed(2)}).
               </p>
             )}
             {screeningEstimate.toAnalyze > 0 && !screeningEstimate.withinCap ? (
@@ -439,7 +442,7 @@ export function WorkflowBar(props: {
                 <p>
                   <strong>Score missing applicants</strong> against the current {scoreCurrentEstimate.dimensions} criteria.
                   The criteria and your tier layout stay unchanged. Estimated cost{" "}
-                  <strong>~${scoreCurrentEstimate.estimatedUsd.toFixed(4)}</strong> (cap ${scoreCurrentEstimate.capUsd.toFixed(2)}).
+                  <strong>~{money(scoreCurrentEstimate.estimatedUsd)}</strong> (cap ${scoreCurrentEstimate.capUsd.toFixed(2)}).
                 </p>
                 {!scoreCurrentEstimate.withinCap ? (
                   <p className="run-confirm-warn">
@@ -455,7 +458,7 @@ export function WorkflowBar(props: {
               <p>
                 {hasMissingScores ? "Or, " : ""}<strong>Discover new criteria</strong> that distinguish this pool and score all{" "}
                 {rankEstimate.eligible} eligible applicant{rankEstimate.eligible === 1 ? "" : "s"} against them.
-                Estimated cost <strong>~${rankEstimate.estimatedUsd.toFixed(4)}</strong> (cap $
+                Estimated cost <strong>~{money(rankEstimate.estimatedUsd)}</strong> (cap $
                 {rankEstimate.capUsd.toFixed(2)}).
               </p>
               {hasCurrentCriteria ? (

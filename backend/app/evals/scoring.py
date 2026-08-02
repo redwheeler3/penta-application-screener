@@ -32,9 +32,7 @@ from app.ai.schemas import (
     DimensionScoringReport,
     PoolDimension,
 )
-from app.evals.paths import (
-    GOLDEN_PATH,
-)
+from app.evals.paths import GOLDEN_PATH
 from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
 
 

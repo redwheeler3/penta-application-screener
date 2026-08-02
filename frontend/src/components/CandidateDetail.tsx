@@ -1,7 +1,7 @@
 import { ArrowDown, ChevronLeft, Printer } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { FLAG_FIELDS, REASON_FIELDS, SOURCE_DESCRIPTIONS, SOURCE_LABELS, STATUS_LABELS } from "../constants";
+import { REASON_FIELDS, SOURCE_DESCRIPTIONS, SOURCE_LABELS, STATUS_LABELS } from "../constants";
 import { fieldLabel, flagCategoryLabel, formatFieldValue, money, scoreBand } from "../format";
 import type { AIResultTrace, ApplicationDetail, AppStatus, DimensionScoringTrace } from "../types";
 import { StarButton } from "./StarButton";
@@ -254,10 +254,9 @@ export function CandidateDetail(props: {
     persistPrivateNote(privateNote, noteRevision.current);
   }
 
-  const flaggedFields = new Set([
-    ...app.hardFilterReasons.flatMap((reason) => REASON_FIELDS[reason.code] ?? []),
-    ...(app.flags ?? []).flatMap((flag) => FLAG_FIELDS[flag.category] ?? []),
-  ]);
+  const flaggedFields = new Set(
+    app.hardFilterReasons.flatMap((reason) => REASON_FIELDS[reason.code] ?? []),
+  );
   // Findings are grouped by SOURCE to match the status badge (M15 1g): the deterministic
   // rules (Sync-knowable threshold reasons) vs. the AI screening pass. Pets are a hard-filter
   // reason but attribute to AI (the model extracts the pet counts), so they render in the AI

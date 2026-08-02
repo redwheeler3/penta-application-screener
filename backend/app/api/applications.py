@@ -58,6 +58,14 @@ from app.services.stars import is_starred, starred_ids
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
+
+def _get_application_or_404(db: Session, application_id: int) -> Application:
+    application = db.get(Application, application_id)
+    if application is None:
+        raise Problem("not_found", detail="Application not found.")
+    return application
+
+
 @router.get("", response_model=ApplicationListResponse)
 def list_applications(
     user: User = Depends(require_current_user),
@@ -99,10 +107,7 @@ def get_application(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> ApplicationEnvelope:
-    application = db.get(Application, application_id)
-    if application is None:
-        raise Problem("not_found", detail="Application not found.")
-
+    application = _get_application_or_404(db, application_id)
     return ApplicationEnvelope(application=_serialize_detail(application, db, user))
 
 
@@ -125,10 +130,7 @@ def override_status(
     override is per-member — it never changes the shared machine baseline or anyone
     else's view.
     """
-    application = db.get(Application, application_id)
-    if application is None:
-        raise Problem("not_found", detail="Application not found.")
-
+    application = _get_application_or_404(db, application_id)
     rules_config = rules_config_for(db, user.id)
     flags = active_flags(_latest_flags(db, [application_id]).get(application_id), rules_config.disabled_checks)
     pet_facts = _latest_pet_facts(db, [application_id]).get(application_id)
@@ -168,10 +170,7 @@ def clear_status_override(
     AI), so the result can differ from the overridden value — which is the point of
     reverting to automatic. No-op if this member has no override.
     """
-    application = db.get(Application, application_id)
-    if application is None:
-        raise Problem("not_found", detail="Application not found.")
-
+    application = _get_application_or_404(db, application_id)
     override = db.scalar(
         select(MemberEligibility).where(
             MemberEligibility.application_id == application_id,
@@ -193,10 +192,7 @@ def save_private_note(
     db: Session = Depends(get_db),
 ) -> ApplicationEnvelope:
     """Create or replace the current member's private application note."""
-    application = db.get(Application, application_id)
-    if application is None:
-        raise Problem("not_found", detail="Application not found.")
-
+    application = _get_application_or_404(db, application_id)
     note = db.scalar(
         select(ApplicationNote).where(
             ApplicationNote.application_id == application_id,
@@ -222,10 +218,7 @@ def add_star(
     """Star (favourite) this applicant for the current member. Idempotent: the row's
     existence is the state, so re-starring is a no-op guarded by the unique
     constraint. A personal working aid — no effect on ranking, eligibility, or reports."""
-    application = db.get(Application, application_id)
-    if application is None:
-        raise Problem("not_found", detail="Application not found.")
-
+    application = _get_application_or_404(db, application_id)
     if not is_starred(db, application_id, user.id):
         db.add(ApplicationStar(application_id=application_id, user_id=user.id))
         db.commit()
@@ -240,10 +233,7 @@ def remove_star(
     db: Session = Depends(get_db),
 ) -> ApplicationEnvelope:
     """Unstar this applicant for the current member. No-op if not starred."""
-    application = db.get(Application, application_id)
-    if application is None:
-        raise Problem("not_found", detail="Application not found.")
-
+    application = _get_application_or_404(db, application_id)
     star = db.scalar(
         select(ApplicationStar).where(
             ApplicationStar.application_id == application_id,

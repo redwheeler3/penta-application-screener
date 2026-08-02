@@ -42,7 +42,7 @@ _PRICES: dict[str, ModelPrice] = {
 
 # Used when a model ID is not in the table, so a missing entry never silently
 # under-estimates cost: fall back to the most expensive known rate (Opus-tier).
-_FALLBACK = ModelPrice(input_per_mtok=15.00, output_per_mtok=75.00)
+_FALLBACK = _PRICES["opus-4"]
 
 
 def price_for_model(model_id: str) -> ModelPrice:

@@ -1,5 +1,5 @@
 import { Filter, LogIn, LogOut, Settings } from "lucide-react";
-import { type SyntheticEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, type SyntheticEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { HouseIcon } from "./HouseIcon";
 import * as api from "./api";
 import { money, readProblem, resolveSheetId } from "./format";
@@ -329,15 +329,17 @@ export function App() {
     reloadApplications();
   }
 
+  function applyDashboard(payload: { counts: DashboardCounts; workflow: WorkflowState; coverage?: Coverage }) {
+    setDashboardCounts(payload.counts);
+    setWorkflow(payload.workflow);
+    setCoverage(payload.coverage ?? {});
+    setDashboardLoadState("ready");
+  }
+
   function refreshDashboard() {
     api
       .fetchDashboard()
-      .then((payload) => {
-        setDashboardCounts(payload.counts);
-        setWorkflow(payload.workflow);
-        setCoverage(payload.coverage ?? {});
-        setDashboardLoadState("ready");
-      })
+      .then(applyDashboard)
       // A dropped request (cold machine) shouldn't nag or throw an unhandled rejection — the
       // counts stay at their last values and the next interaction refreshes them. `getJson`
       // now rejects on non-2xx, so this catch is required.
@@ -359,11 +361,7 @@ export function App() {
   async function loadInitialDashboard(): Promise<void> {
     setDashboardLoadState("loading");
     try {
-      const payload = await retryWithBackoff(api.fetchDashboard, 5);
-      setDashboardCounts(payload.counts);
-      setWorkflow(payload.workflow);
-      setCoverage(payload.coverage ?? {});
-      setDashboardLoadState("ready");
+      applyDashboard(await retryWithBackoff(api.fetchDashboard, 5));
     } catch {
       setDashboardLoadState("error");
     }
@@ -635,10 +633,28 @@ export function App() {
     setActiveTab(tab);
   }
 
-  // Human override of an application's status. The backend marks it human-owned and
-  // sticky against future machine runs.
-  async function overrideStatus(id: number, status: AppStatus) {
-    const response = await api.overrideStatus(id, status);
+  // One tab in the view-tab row. A tab is "active" only when it's selected AND no
+  // applicant detail is open (opening a detail deselects every tab). `extraClass`
+  // carries the right-aligned settings-tab modifier; `icon` the optional leading glyph.
+  function tabButton(tab: ViewTab, label: string, icon?: ReactNode, extraClass = "") {
+    const active = activeTab === tab && !selectedApp;
+    return (
+      <button
+        type="button"
+        role="tab"
+        aria-selected={active}
+        className={`tab-button${extraClass ? ` ${extraClass}` : ""}${active ? " active" : ""}`}
+        onClick={() => navigateToView(tab)}
+      >
+        {icon}
+        {icon ? <span>{label}</span> : label}
+      </button>
+    );
+  }
+
+  // Apply a status-mutation response: show the updated applicant and refresh the
+  // derived eligibility surfaces. No-op on a failed response.
+  async function applyStatusResponse(response: Response) {
     if (response.ok) {
       const payload: { application: ApplicationDetail } = await response.json();
       setSelectedApp(payload.application);
@@ -646,15 +662,16 @@ export function App() {
     }
   }
 
+  // Human override of an application's status. The backend marks it human-owned and
+  // sticky against future machine runs.
+  async function overrideStatus(id: number, status: AppStatus) {
+    await applyStatusResponse(await api.overrideStatus(id, status));
+  }
+
   // Remove a human override, handing the decision back to the machine. The backend
   // recomputes status from the current findings (see DELETE handler).
   async function clearStatusOverride(id: number) {
-    const response = await api.clearStatusOverride(id);
-    if (response.ok) {
-      const payload: { application: ApplicationDetail } = await response.json();
-      setSelectedApp(payload.application);
-      refreshEligibilityViews();
-    }
+    await applyStatusResponse(await api.clearStatusOverride(id));
   }
 
   async function savePrivateNote(id: number, note: string): Promise<boolean> {
@@ -792,94 +809,21 @@ export function App() {
           {/* Tab row: the data views on the left, the config tabs (Eligibility Settings
               and, for admins, Admin Settings) set apart on the right. */}
           <div className="view-tabs no-print" role="tablist" aria-label="Views">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "applications" && !selectedApp}
-              className={`tab-button${activeTab === "applications" && !selectedApp ? " active" : ""}`}
-              onClick={() => {
-                setSelectedApp(null);
-                setActiveTab("applications");
-              }}
-            >
-              Applications
-            </button>
+            {tabButton("applications", "Applications")}
             {/* The Ranking tab only appears once a run exists. Clicking it loads/
                 reconciles the ranking + tiers from the server (pure math, no cost). */}
-            {rankingRun ? (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "ranking" && !selectedApp}
-                className={`tab-button${activeTab === "ranking" && !selectedApp ? " active" : ""}`}
-                onClick={openRanking}
-              >
-                Ranking
-              </button>
-            ) : null}
+            {rankingRun ? tabButton("ranking", "Ranking") : null}
             {/* The AI developer/operator surface, split by purpose: Observability (what the
                 AI did + cost, per-run traces once a run exists) and Evals (invariants / live
                 per-pass / judge — need no run, work before any Rank). Admin-only: a member
                 sees only Applications, Ranking, and Eligibility Settings. */}
-            {isAdmin ? (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "observability" && !selectedApp}
-                className={`tab-button${activeTab === "observability" && !selectedApp ? " active" : ""}`}
-                onClick={() => {
-                  setSelectedApp(null);
-                  setActiveTab("observability");
-                }}
-              >
-                Observability
-              </button>
-            ) : null}
-            {isAdmin ? (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "evals" && !selectedApp}
-                className={`tab-button${activeTab === "evals" && !selectedApp ? " active" : ""}`}
-                onClick={() => {
-                  setSelectedApp(null);
-                  setActiveTab("evals");
-                }}
-              >
-                Evals
-              </button>
-            ) : null}
+            {isAdmin ? tabButton("observability", "Observability") : null}
+            {isAdmin ? tabButton("evals", "Evals") : null}
             {/* Config tabs, set apart on the right: Eligibility Settings (every member
                 tunes their own screening rules) and Admin Settings (admin-only: data
                 source, pets, AI knobs, and the access allowlist). */}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "eligibilitySettings" && !selectedApp}
-              className={`tab-button tab-button-settings${activeTab === "eligibilitySettings" && !selectedApp ? " active" : ""}`}
-              onClick={() => {
-                setSelectedApp(null);
-                setActiveTab("eligibilitySettings");
-              }}
-            >
-              <Filter size={14} />
-              <span>Eligibility Settings</span>
-            </button>
-            {isAdmin ? (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "adminSettings" && !selectedApp}
-                className={`tab-button${activeTab === "adminSettings" && !selectedApp ? " active" : ""}`}
-                onClick={() => {
-                  setSelectedApp(null);
-                  setActiveTab("adminSettings");
-                }}
-              >
-                <Settings size={14} />
-                <span>Admin Settings</span>
-              </button>
-            ) : null}
+            {tabButton("eligibilitySettings", "Eligibility Settings", <Filter size={14} />, "tab-button-settings")}
+            {isAdmin ? tabButton("adminSettings", "Admin Settings", <Settings size={14} />) : null}
           </div>
 
           <section className="panel">
