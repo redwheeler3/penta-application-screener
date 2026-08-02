@@ -73,16 +73,7 @@ class RunTally:
 
     def as_pass_cost(self, model_id: str) -> PassCost:
         """The screening pass's spend in the shared shape (fresh tokens + cost, cache side)."""
-        return PassCost(
-            calls=self.analyzed,
-            input_tokens=self.input_tokens,
-            output_tokens=self.output_tokens,
-            cost_usd=self.cost_usd,
-            cached_count=self.cached,
-            cached_saved_usd=self.cached_saved_usd,
-            failed_calls=self.failed,
-            model_id=model_id if self.analyzed else "",
-        )
+        return PassCost.from_tally(self, model_id)
 
 
 @router.get("/run/estimate", response_model=ScreeningEstimateResponse)

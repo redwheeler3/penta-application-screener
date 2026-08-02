@@ -1,6 +1,7 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.text import normalize_email
 from app.db.models import User, UserRole, UserSignIn
 
 
@@ -17,7 +18,7 @@ def upsert_google_user(
     the caller's allowlist lookup (the allowlist is the source of truth for who may
     sign in and with what role), so an existing user's role is re-synced on each login
     — an admin flipping someone's allowlist role takes effect on their next sign-in."""
-    normalized_email = email.strip().lower()
+    normalized_email = normalize_email(email)
     user = db.scalar(select(User).where(User.email == normalized_email))
 
     if user is None:

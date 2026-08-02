@@ -19,8 +19,24 @@ entries.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
 from app.ai.provider import Usage
+
+
+class Tally(Protocol):
+    """The running totals a per-application pass accumulates as it processes results
+    (screening's ``RunTally``, ranking's ``ScoreTally``). ``PassCost.from_tally`` reads
+    these to shape the pass's spend once, so the two tallies can't drift on how a tally
+    becomes a cost."""
+
+    analyzed: int
+    cached: int
+    failed: int
+    cost_usd: float
+    input_tokens: int
+    output_tokens: int
+    cached_saved_usd: float
 
 
 @dataclass(frozen=True)
@@ -103,6 +119,22 @@ class PassCost:
             output_tokens=usage.output_tokens,
             cost_usd=cost_usd(model_id, usage),
             model_id=model_id,
+        )
+
+    @classmethod
+    def from_tally(cls, tally: Tally, model_id: str) -> PassCost:
+        """A per-application pass's accumulated ``tally`` as one ``PassCost`` (fresh tokens +
+        cost, cache side). ``model_id`` is blank when the pass made no fresh call this run
+        (an all-cached run), so a skipped pass doesn't claim a model."""
+        return cls(
+            calls=tally.analyzed,
+            input_tokens=tally.input_tokens,
+            output_tokens=tally.output_tokens,
+            cost_usd=tally.cost_usd,
+            cached_count=tally.cached,
+            cached_saved_usd=tally.cached_saved_usd,
+            failed_calls=tally.failed,
+            model_id=model_id if tally.analyzed else "",
         )
 
     def __add__(self, other: PassCost) -> PassCost:

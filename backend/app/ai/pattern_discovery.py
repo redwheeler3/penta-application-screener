@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import derive_prompt_version, run_in_pool
@@ -26,7 +25,7 @@ from app.ai.provider import AIProvider, DeltaSink, Usage
 from app.ai.schemas import PoolDimensionReport
 from app.db.models import Application
 from app.schemas.settings import AppSettings
-from app.services.eligibility import union_eligible_application_ids
+from app.services.eligibility import union_eligible_applications
 
 
 @dataclass(frozen=True)
@@ -132,14 +131,7 @@ The committee has asked you to STRONGLY CONSIDER the axes in the `<requested_axe
 def eligible_applications(db: Session) -> list[Application]:
     """The pool pattern discovery reasons over: the UNION-eligible applications — every
     applicant eligible in at least one member's view."""
-    eligible_ids = union_eligible_application_ids(db)
-    return list(
-        db.scalars(
-            select(Application)
-            .where(Application.id.in_(eligible_ids))
-            .order_by(Application.id)
-        ).all()
-    )
+    return union_eligible_applications(db)
 
 
 # --- Cost estimation (non-prompt) ---

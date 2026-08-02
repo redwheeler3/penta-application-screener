@@ -47,7 +47,12 @@ from app.services.analysis import (
     stored_tiers,
 )
 from app.services.application_import import extract_essays
-from app.services.eligibility import active_flags, overrides_by_app
+from app.services.eligibility import (
+    active_flags,
+    machine_flags_by_app,
+    overrides_by_app,
+    pet_facts_by_app,
+)
 from app.services.ranking_view import candidate_scores
 from app.services.rules import (
     hard_filter_reasons_for,
@@ -76,8 +81,8 @@ def list_applications(
     favourites view — no server-side paging to keep consistent."""
     applications = db.scalars(select(Application).order_by(Application.id)).all()
     ids = [app.id for app in applications]
-    flags_by_app = _latest_flags(db, ids)
-    pet_facts_by_app = _latest_pet_facts(db, ids)
+    flags = machine_flags_by_app(db, ids)
+    facts = pet_facts_by_app(db, ids)
     starred = starred_ids(db, user.id, ids)
     overrides = overrides_by_app(db, user.id, ids)
     # This member's rules are one ruleset, so resolve once and evaluate the hard filters
@@ -88,12 +93,12 @@ def list_applications(
             _serialize_summary(
                 app,
                 reasons=hard_filter_reasons_for(
-                    rules_config, app, pet_facts=pet_facts_by_app.get(app.id)
+                    rules_config, app, pet_facts=facts.get(app.id)
                 ),
                 override=overrides.get(app.id),
                 # Muted categories are hidden AND non-gating for this member (1g Move 2),
                 # so pass only the active flags — they drive both status and display.
-                flags=active_flags(flags_by_app.get(app.id), rules_config.disabled_checks),
+                flags=active_flags(flags.get(app.id), rules_config.disabled_checks),
                 starred=app.id in starred,
             )
             for app in applications
@@ -132,8 +137,8 @@ def override_status(
     """
     application = _get_application_or_404(db, application_id)
     rules_config = rules_config_for(db, user.id)
-    flags = active_flags(_latest_flags(db, [application_id]).get(application_id), rules_config.disabled_checks)
-    pet_facts = _latest_pet_facts(db, [application_id]).get(application_id)
+    flags = active_flags(machine_flags_by_app(db, [application_id]).get(application_id), rules_config.disabled_checks)
+    pet_facts = pet_facts_by_app(db, [application_id]).get(application_id)
     reasons = hard_filter_reasons_for(rules_config, application, pet_facts=pet_facts)
     fingerprint = findings_fingerprint(reasons, flags)
     override = db.scalar(
@@ -291,36 +296,6 @@ def _distinct_categories(flags: list[dict[str, Any]]) -> list[str]:
         if category and category not in seen:
             seen.append(category)
     return seen
-
-
-def _latest_flags(
-    db: Session, application_ids: list[int] | None = None
-) -> dict[int, list[dict[str, Any]]]:
-    """Flags from each application's most recent screening result, as
-    {application_id: flag_list}. Applications with no result are absent. Pass
-    application_ids to scope the query to one page.
-    """
-    latest = _latest_results(db, "screening", application_ids)
-    return {
-        app_id: (result.output or {}).get("flags", [])
-        for app_id, result in latest.items()
-    }
-
-
-def _latest_pet_facts(
-    db: Session, application_ids: list[int] | None = None
-) -> dict[int, Any]:
-    """Extracted pet facts from each application's most recent screening result, as
-    {application_id: PetFacts} (M15 1e). Sibling to ``_latest_flags`` — same source,
-    the ``pets`` half of the screening report — feeding the per-member pet hard filter on
-    read. Apps with no (or pre-1e) result are absent, so the pet check is skipped for them.
-    """
-    latest = _latest_results(db, "screening", application_ids)
-    facts = {
-        app_id: pet_facts_from_screening(result.output)
-        for app_id, result in latest.items()
-    }
-    return {app_id: f for app_id, f in facts.items() if f is not None}
 
 
 def _pet_facts_out(output: dict[str, Any] | None) -> PetFactsOut | None:

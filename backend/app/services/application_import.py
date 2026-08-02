@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.core.text import normalize_email
 from app.db.models import (
     Application,
     ApplicationAIResult,
@@ -282,10 +283,6 @@ def _first_value(row: dict[str, Any], aliases: list[str]) -> Any:
         if any(alias in key for alias in aliases):
             return value
     return None
-
-
-def normalize_email(value: Any) -> str:
-    return str(value or "").strip().lower()
 
 
 def hash_row(row: dict[str, Any]) -> str:

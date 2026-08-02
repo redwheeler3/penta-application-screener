@@ -13,11 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings, resolve_backend_path
+from app.core.text import normalize_email
 from app.db.models import AccessAllowlistEntry, UserRole
-
-
-def normalize_email(email: str) -> str:
-    return email.strip().lower()
 
 
 def get_entry(db: Session, email: str) -> AccessAllowlistEntry | None:

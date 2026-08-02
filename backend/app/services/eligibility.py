@@ -319,3 +319,15 @@ def union_eligible_application_ids(db: Session) -> set[int]:
                 union.add(app.id)
                 break
     return union
+
+
+def union_eligible_applications(db: Session) -> list[Application]:
+    """The UNION-eligible applications themselves (ordered by id) — the shared pool both
+    pattern discovery and dimension scoring range over. Wraps
+    ``union_eligible_application_ids`` so that "same scope" is one query, not a copy."""
+    eligible_ids = union_eligible_application_ids(db)
+    return list(
+        db.scalars(
+            select(Application).where(Application.id.in_(eligible_ids)).order_by(Application.id)
+        ).all()
+    )

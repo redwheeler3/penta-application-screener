@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.core.text import normalize_email
 from app.db.models import DeniedSignInAttempt
 
 DENIED_SIGN_IN_RETENTION = timedelta(days=365)
@@ -22,7 +23,7 @@ def record_denied_sign_in(
     db.add(
         DeniedSignInAttempt(
             google_subject=google_subject,
-            email=email.strip().lower(),
+            email=normalize_email(email),
             display_name=display_name,
         )
     )
