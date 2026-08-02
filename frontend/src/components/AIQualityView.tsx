@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { fetchEvalCatalog } from "../api";
+import { AI_PASS_PIPELINE_ORDER } from "../constants";
 import type { CurrentRunResponse, EvalDescriptor } from "../types";
 import { ConsolidateAuditPanel } from "./ConsolidateAuditPanel";
 import { CostPanel } from "./CostPanel";
@@ -62,12 +63,14 @@ export function AIQualityView(props: {
   // before Rank, then the Rank chain decompose → match → score → consolidate), then the
   // cross-cutting evals that aren't a single pass — Invariants (whole-rank fixture) and Judge
   // (cross-pass label audit).
+  // The per-pass tabs render in pipeline order from the shared source of truth (so they can't
+  // drift from the judge's grouping); the two cross-cutting evals follow.
   const evalTabs: { id: Tab; label: string; group: string }[] = [
-    { id: "screening", label: "Screening", group: "pass" },
-    { id: "decomposition", label: "Decomposition", group: "pass" },
-    { id: "matching", label: "Matching", group: "pass" },
-    { id: "scoring", label: "Scoring", group: "pass" },
-    { id: "consolidation", label: "Consolidation", group: "pass" },
+    ...AI_PASS_PIPELINE_ORDER.map((id) => ({
+      id: id as Tab,
+      label: id.charAt(0).toUpperCase() + id.slice(1),
+      group: "pass",
+    })),
     { id: "invariants", label: "Invariants", group: "cross" },
     { id: "judge", label: "Judge", group: "cross" },
   ];

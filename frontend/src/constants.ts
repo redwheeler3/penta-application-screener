@@ -111,6 +111,18 @@ export const ELIGIBILITY_NUMERIC_FIELDS: {
   { key: "maxCats", label: "Max cats", min: "0", max: "10" },
 ];
 
+// The five AI passes in PIPELINE order — screening first, then the Rank chain (decompose →
+// match → score → consolidate). Single source of truth for the eval subtab order
+// (AIQualityView) and the judge's per-pass case grouping (RunnableEval), so the two render
+// the way the app runs and can't drift out of order.
+export const AI_PASS_PIPELINE_ORDER = [
+  "screening",
+  "decomposition",
+  "matching",
+  "scoring",
+  "consolidation",
+] as const;
+
 // The two groups of toggleable checks a member can switch off (M15 1g Move 2). Both feed the
 // SAME flat `disabledChecks` list on EligibilityRules — the split is presentation only, so a
 // member sees the trust difference between a deterministic threshold and an AI judgment.

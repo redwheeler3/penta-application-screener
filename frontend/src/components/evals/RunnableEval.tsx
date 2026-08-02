@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { fetchEvalCases, fetchLastEvalRun, runEval, saveEvalCase, streamNdjson } from "../../api";
+import { AI_PASS_PIPELINE_ORDER } from "../../constants";
 import { formatPacificDate } from "../../format";
 import type { EvalCaseResult, EvalFixtureKey, EvalRunMode, EvalRunResult, LastEvalRun } from "../../types";
 import { EvalCaseDetail } from "./EvalCaseDetail";
@@ -335,10 +336,9 @@ export function RunnableEval(props: {
 // expected / contested / reason / judgeVerdict), so every renderer branch treats them alike.
 const CATEGORICAL = new Set(["consolidation", "matching", "decomposition"]);
 
-// The AI passes in PIPELINE order (screening runs first, then the Rank chain). The judge's
-// per-pass case groups render in this order so they read the way the app runs + the eval subtabs
-// list — not alphabetically. Keep in sync with AIQualityView's evalTabs.
-const PASS_PIPELINE_ORDER = ["screening", "decomposition", "matching", "scoring", "consolidation"];
+// The judge's per-pass case groups render in pipeline order (see AI_PASS_PIPELINE_ORDER) so
+// they read the way the app runs and match the eval subtabs — not alphabetically.
+const PASS_PIPELINE_ORDER = AI_PASS_PIPELINE_ORDER;
 
 function dotFor(mode: EvalRunMode, result: EvalCaseResult): "ok" | "fail" | "contested" {
   if (result.marker === "[contested-split]") return "contested";  // stability wobble
@@ -396,7 +396,7 @@ function CaseList(props: {
     // alphabetically — so the judge's per-pass groups read screening → decomposition → matching
     // → scoring → consolidation. Any group not in the list sorts after, alphabetically.
     const order = (h: string) => {
-      const i = PASS_PIPELINE_ORDER.indexOf(h);
+      const i = (PASS_PIPELINE_ORDER as readonly string[]).indexOf(h);
       return i === -1 ? PASS_PIPELINE_ORDER.length : i;
     };
     const sorted = [...byGroup.entries()].sort(([a], [b]) => order(a) - order(b) || a.localeCompare(b));
