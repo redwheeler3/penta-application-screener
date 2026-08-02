@@ -110,6 +110,20 @@ def test_normalize_application_extracts_real_form_fields() -> None:
     assert normalized["pets_text"] == "one dog and one cat"
 
 
+def test_normalize_application_derives_household_income_when_total_column_is_absent() -> None:
+    normalized = normalize_application(
+        {
+            "Email Address": "applicant@example.com",
+            "Total yearly gross income for applicant": "$55,000",
+            "Total yearly gross income for co-applicant": "$45,000",
+        }
+    )
+
+    assert normalized["applicant_income"] == 55_000
+    assert normalized["co_applicant_income"] == 45_000
+    assert normalized["household_income"] == 100_000
+
+
 def test_import_applications_dedupes_by_latest_email_and_upserts() -> None:
     db = make_session()
     rows = [

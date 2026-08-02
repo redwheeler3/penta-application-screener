@@ -223,6 +223,8 @@ def normalize_application(row: dict[str, Any]) -> dict[str, Any]:
     applicant_email = str(row.get("Email address", "") or "").strip()
     if not applicant_email:
         applicant_email = str(_first_value(row, EMAIL_ALIASES) or "").strip()
+    applicant_income = parse_money(_first_value(row, APPLICANT_INCOME_ALIASES))
+    co_applicant_income = parse_money(_first_value(row, CO_APPLICANT_INCOME_ALIASES))
 
     return {
         "applicant_name": applicant_name,
@@ -233,9 +235,9 @@ def normalize_application(row: dict[str, Any]) -> dict[str, Any]:
         or infer_adult_count(applicant_name, co_applicant_name),
         "child_count": parse_child_count(_first_value(row, CHILD_COUNT_ALIASES)),
         "child_details": _extract_child_details(row),
-        "household_income": parse_money(_first_value(row, HOUSEHOLD_INCOME_ALIASES)),
-        "applicant_income": parse_money(_first_value(row, APPLICANT_INCOME_ALIASES)),
-        "co_applicant_income": parse_money(_first_value(row, CO_APPLICANT_INCOME_ALIASES)),
+        "household_income": _household_income(row, applicant_income, co_applicant_income),
+        "applicant_income": applicant_income,
+        "co_applicant_income": co_applicant_income,
         "has_real_estate": parse_bool(_first_value(row, REAL_ESTATE_ALIASES)),
         "pets_text": pets_text or None,
         "co_applicant_phone": str(row.get("Phone number (xxx-xxx-xxxx) [2]", "") or "").strip() or None,
@@ -283,6 +285,22 @@ def _first_value(row: dict[str, Any], aliases: list[str]) -> Any:
         if any(alias in key for alias in aliases):
             return value
     return None
+
+
+def _household_income(
+    row: dict[str, Any], applicant_income: int | None, co_applicant_income: int | None
+) -> int | None:
+    """Use the submitted total when its column exists; otherwise derive it from incomes."""
+    lowered_keys = [key.strip().lower() for key in row]
+    has_household_income_column = any(
+        alias in lowered_keys or any(alias in key for key in lowered_keys)
+        for alias in HOUSEHOLD_INCOME_ALIASES
+    )
+    if has_household_income_column:
+        return parse_money(_first_value(row, HOUSEHOLD_INCOME_ALIASES))
+
+    incomes = [income for income in (applicant_income, co_applicant_income) if income is not None]
+    return sum(incomes) if incomes else None
 
 
 def hash_row(row: dict[str, Any]) -> str:
