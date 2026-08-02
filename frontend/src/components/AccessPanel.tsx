@@ -120,9 +120,8 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
               <th>Name</th>
               <th>Email</th>
               <th>Role</th>
-              <th>First signed in</th>
-              <th>Last signed in</th>
-              <th>Sign-ins</th>
+              <th>First active</th>
+              <th>Last active</th>
               <th aria-label="Remove" />
             </tr>
           </thead>
@@ -140,9 +139,8 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
                   <td>
                     <span className={`role-badge role-${entry.role}`}>{entry.role}</span>
                   </td>
-                  <td>{formatSignInTime(entry.firstSignedInAt)}</td>
-                  <td>{formatSignInTime(entry.lastSignedInAt)}</td>
-                  <td>{entry.signInCount}</td>
+                  <td>{formatActivityTime(entry.firstActiveAt)}</td>
+                  <td>{formatActivityTime(entry.lastActiveAt)}</td>
                   <td className="access-remove-cell">
                     <button
                       type="button"
@@ -193,8 +191,8 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
                   <tr key={attempt.email}>
                     <td>{attempt.displayName}</td>
                     <td>{attempt.email}</td>
-                    <td>{formatSignInTime(attempt.firstDeniedAt)}</td>
-                    <td>{formatSignInTime(attempt.lastDeniedAt)}</td>
+                    <td>{formatActivityTime(attempt.firstDeniedAt)}</td>
+                    <td>{formatActivityTime(attempt.lastDeniedAt)}</td>
                     <td>{attempt.count}</td>
                   </tr>
                 ))}
@@ -207,7 +205,7 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
   );
 }
 
-function formatSignInTime(value: string | null): string {
-  if (!value) return "Not yet signed in";
+function formatActivityTime(value: string | null): string {
+  if (!value) return "Not active yet";
   return formatPacificDateTime(value);
 }

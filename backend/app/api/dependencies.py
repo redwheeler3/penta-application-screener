@@ -7,6 +7,7 @@ from app.api.problems import Problem
 from app.db.models import User, UserRole
 from app.db.session import get_db
 from app.services.settings import get_app_settings
+from app.services.users import record_user_activity
 
 
 def require_current_user(request: Request, db: Session = Depends(get_db)) -> User:
@@ -19,6 +20,7 @@ def require_current_user(request: Request, db: Session = Depends(get_db)) -> Use
         request.session.clear()
         raise Problem("unauthorized", detail="Authentication required.")
 
+    record_user_activity(db, user=user)
     return user
 
 

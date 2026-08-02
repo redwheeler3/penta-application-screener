@@ -72,30 +72,10 @@ class User(TimestampMixin, Base):
         nullable=False,
     )
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
-    # Explicitly login-only. ``updated_at`` is a generic row timestamp and must not
-    # be presented as audit data.
-    last_signed_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-
-class UserSignIn(Base):
-    """One successful allowlisted Google sign-in.
-
-    This is intentionally an authentication audit, not a browser-activity log:
-    a persistent session cookie, page views, IP addresses, and device details are
-    not captured here.
-    """
-
-    __tablename__ = "user_sign_ins"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-
-    user: Mapped[User] = relationship()
+    # Activity is deliberately two timestamps, not an event log. It excludes pages,
+    # IP addresses, and devices.
+    first_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class DeniedSignInAttempt(Base):

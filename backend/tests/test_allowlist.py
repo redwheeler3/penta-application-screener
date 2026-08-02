@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
@@ -13,13 +13,12 @@ from app.db.models import (
     DeniedSignInAttempt,
     User,
     UserRole,
-    UserSignIn,
 )
 from app.db.session import get_db
 from app.main import create_app
 from app.services import allowlist
 from app.services.denied_sign_ins import list_denied_sign_ins, record_denied_sign_in
-from app.services.users import record_successful_sign_in, upsert_google_user
+from app.services.users import record_user_activity, upsert_google_user
 
 
 def setup_app(role: UserRole | None) -> tuple:
@@ -79,20 +78,21 @@ def test_upsert_google_user_resyncs_role_on_return_login() -> None:
     assert db.scalar(select(User).where(User.email == "u@x.com")).role == UserRole.ADMIN
 
 
-def test_successful_sign_in_records_an_event_and_latest_timestamp() -> None:
+def test_user_activity_keeps_only_first_and_latest_timestamps() -> None:
     _, db = setup_app(role=None)
     user = upsert_google_user(
         db, google_subject="s", email="u@x.com", display_name="U", avatar_url=None,
         role=UserRole.MEMBER,
     )
 
-    record_successful_sign_in(db, user=user)
-    record_successful_sign_in(db, user=user)
+    first_activity = datetime(2026, 8, 2, 12, tzinfo=UTC)
+    assert record_user_activity(db, user=user, now=first_activity)
+    assert not record_user_activity(db, user=user, now=first_activity + timedelta(minutes=4))
+    assert record_user_activity(db, user=user, now=first_activity + timedelta(minutes=5))
     db.refresh(user)
 
-    assert user.last_signed_in_at is not None
-    assert db.scalar(select(UserSignIn).where(UserSignIn.user_id == user.id)) is not None
-    assert len(db.scalars(select(UserSignIn).where(UserSignIn.user_id == user.id)).all()) == 2
+    assert user.first_active_at == first_activity.replace(tzinfo=None)
+    assert user.last_active_at == (first_activity + timedelta(minutes=5)).replace(tzinfo=None)
 
 
 def test_seed_initial_admins_is_idempotent_and_additive(monkeypatch) -> None:
@@ -138,13 +138,12 @@ async def test_admin_can_add_and_remove_entries() -> None:
 
 
 @pytest.mark.anyio
-async def test_allowlist_includes_a_signed_in_members_audit_summary() -> None:
+async def test_allowlist_includes_a_members_activity_summary() -> None:
     app, db = setup_app(role=UserRole.ADMIN)
     admin = db.scalar(select(User).where(User.email == "me@x.com"))
     assert admin is not None
     allowlist.upsert_entry(db, email="me@x.com", role=UserRole.ADMIN)
-    record_successful_sign_in(db, user=admin)
-    record_successful_sign_in(db, user=admin)
+    record_user_activity(db, user=admin)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -153,9 +152,8 @@ async def test_allowlist_includes_a_signed_in_members_audit_summary() -> None:
     assert response.status_code == 200
     entry = response.json()["entries"][0]
     assert entry["displayName"] == "Me"
-    assert entry["firstSignedInAt"] is not None
-    assert entry["lastSignedInAt"] is not None
-    assert entry["signInCount"] == 2
+    assert entry["firstActiveAt"] is not None
+    assert entry["lastActiveAt"] is not None
 
 
 @pytest.mark.anyio

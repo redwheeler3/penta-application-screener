@@ -8,12 +8,12 @@ can neither be removed nor demoted to member.
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin
 from app.api.problems import Problem
-from app.db.models import User, UserRole, UserSignIn
+from app.db.models import User, UserRole
 from app.db.session import get_db
 from app.schemas.allowlist import (
     AllowlistEntryOut,
@@ -44,12 +44,6 @@ def _response(db: Session) -> AllowlistResponse:
         user.email: user
         for user in db.scalars(select(User).where(User.email.in_(emails))).all()
     } if emails else {}
-    sign_in_counts = dict(
-        db.execute(
-            select(UserSignIn.user_id, func.count(UserSignIn.id))
-            .group_by(UserSignIn.user_id)
-        ).all()
-    )
     response_entries: list[AllowlistEntryOut] = []
     for entry in entries:
         user = users_by_email.get(entry.email)
@@ -58,9 +52,8 @@ def _response(db: Session) -> AllowlistResponse:
                 email=entry.email,
                 role=entry.role.value,
                 display_name=user.display_name if user else None,
-                first_signed_in_at=_as_utc(user.created_at) if user else None,
-                last_signed_in_at=_as_utc(user.last_signed_in_at) if user else None,
-                sign_in_count=sign_in_counts.get(user.id, 0) if user else 0,
+                first_active_at=_as_utc(user.first_active_at) if user else None,
+                last_active_at=_as_utc(user.last_active_at) if user else None,
             )
         )
     return AllowlistResponse(entries=response_entries)

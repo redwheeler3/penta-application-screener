@@ -12,9 +12,8 @@ class AllowlistEntryOut(ResponseModel):
     email: str
     role: str
     display_name: str | None = None
-    first_signed_in_at: datetime | None = None
-    last_signed_in_at: datetime | None = None
-    sign_in_count: int = 0
+    first_active_at: datetime | None = None
+    last_active_at: datetime | None = None
 
 
 class AllowlistResponse(ResponseModel):

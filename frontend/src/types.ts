@@ -19,14 +19,13 @@ export type CurrentUser = {
   role: "admin" | "member";
 };
 
-// One approved Google account and its sign-in audit summary. Admin-only surface.
+// One approved Google account and its coarse activity summary. Admin-only surface.
 export type AllowlistEntry = {
   email: string;
   role: "admin" | "member";
   displayName: string | null;
-  firstSignedInAt: string | null;
-  lastSignedInAt: string | null;
-  signInCount: number;
+  firstActiveAt: string | null;
+  lastActiveAt: string | null;
 };
 
 export type DeniedSignInAttempt = {
