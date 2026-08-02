@@ -76,6 +76,19 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
     setEntries(body.entries);
   }
 
+  async function changeRole(target: string, nextRole: "admin" | "member") {
+    if (busy) return;
+    setBusy(true);
+    const response = await api.upsertAllowlistEntry(target, nextRole);
+    setBusy(false);
+    if (!response.ok) {
+      props.onError((await readProblem(response)) ?? "Could not change that role.");
+      return;
+    }
+    const body: { entries: AllowlistEntry[] } = await response.json();
+    setEntries(body.entries);
+  }
+
   return (
     <section className="access-panel no-print" aria-label="Access allowlist">
       <div className="access-panel-head">
@@ -137,7 +150,19 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
                   <td>{entry.displayName ?? "—"}</td>
                   <td>{entry.email}</td>
                   <td>
-                    <span className={`role-badge role-${entry.role}`}>{entry.role}</span>
+                    <select
+                      className="access-role-select"
+                      aria-label={`Role for ${entry.email}`}
+                      title={isLastAdmin ? "The last admin can't be demoted" : "Change role"}
+                      value={entry.role}
+                      disabled={busy || isLastAdmin}
+                      onChange={(event) =>
+                        changeRole(entry.email, event.target.value as "admin" | "member")
+                      }
+                    >
+                      <option value="member">Member</option>
+                      <option value="admin">Admin</option>
+                    </select>
                   </td>
                   <td>{formatActivityTime(entry.firstActiveAt)}</td>
                   <td>{formatActivityTime(entry.lastActiveAt)}</td>

@@ -305,7 +305,8 @@ h1 {
   font-size: 0.9rem;
 }
 
-.access-add select {
+.access-add select,
+.access-role-select {
   padding: 0.4rem 0.5rem;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -342,28 +343,6 @@ h1 {
 .access-remove-cell {
   text-align: right;
   width: 48px;
-}
-
-.role-badge {
-  display: inline-block;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-
-.role-admin {
-  background: var(--penta-green-soft);
-  color: var(--penta-green-dark);
-  border: 1px solid #bbf7d0;
-}
-
-.role-member {
-  background: #f3f4f6;
-  color: #374151;
-  border: 1px solid #e5e7eb;
 }
 
 /* Mirror the .panel structure so the header gets the same edge-to-edge green

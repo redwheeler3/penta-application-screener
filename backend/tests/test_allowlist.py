@@ -132,6 +132,11 @@ async def test_admin_can_add_and_remove_entries() -> None:
         emails = {e["email"] for e in added.json()["entries"]}
         assert "bob@x.com" in emails
 
+        promoted = await client.put("/allowlist", json={"email": "bob@x.com", "role": "admin"})
+        assert promoted.status_code == 200
+        bob = next(entry for entry in promoted.json()["entries"] if entry["email"] == "bob@x.com")
+        assert bob["role"] == "admin"
+
         removed = await client.delete("/allowlist/bob@x.com")
         assert removed.status_code == 200
         assert "bob@x.com" not in {e["email"] for e in removed.json()["entries"]}
