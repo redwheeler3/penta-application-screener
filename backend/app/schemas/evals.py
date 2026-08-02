@@ -42,6 +42,61 @@ class StabilityRun(ResponseModel):
     detail: str = ""  # the model's reasoning for this run's outcome
 
 
+# --- shared categorical shapes ----------------------------------------------
+# Consolidation, matching, and decomposition are exact-match categorical passes with an
+# identical result shape; screening shares the run/stability *headers* but has its own
+# per-case fields. These bases hold the common fields so the four passes can't drift; each
+# concrete class below adds only what's specific (its typed `cases`, or nothing).
+
+
+class _CategoricalCaseOut(ResponseModel):
+    """One exact-match categorical case: the model's ``verdict`` vs. the human ``expected``
+    label, with ``contested`` (both directions defensible ⇒ passes either way) and any
+    deterministic ``failures``. The verdict vocabulary is per-pass (see each subclass)."""
+
+    key: str
+    passed: bool
+    verdict: str
+    expected: str
+    contested: bool
+    reason: str
+    failures: list[str] = []
+
+
+class _CategoricalResponse(ResponseModel):
+    """A categorical live run's header: the prompt identity it exercised plus pass/total
+    (a contested case counts as passed by running, not by matching). Subclasses add ``cases``."""
+
+    prompt_version: str
+    model: str
+    passed: int
+    total: int
+
+
+class _CategoricalStabilityCaseOut(ResponseModel):
+    """One case across K stability runs: modal ``majority`` verdict, its ``agreement`` share,
+    whether it ``flipped``, the full ``tally``, and per-run outcome+reasoning. ``marker`` is
+    "[stable]" | "[UNSTABLE]" | "[contested-split]"."""
+
+    key: str
+    marker: str
+    majority: str
+    expected: str
+    contested: bool
+    agreement: float
+    flipped: bool
+    tally: dict[str, int]
+    runs: list[StabilityRun] = []
+
+
+class _CategoricalStabilityResponse(ResponseModel):
+    """A categorical stability run's header (prompt identity + K). Subclasses add ``cases``."""
+
+    prompt_version: str
+    model: str
+    k: int
+
+
 # --- live scoring -----------------------------------------------------------
 
 
@@ -83,120 +138,59 @@ class ScoringStabilityResponse(ResponseModel):
 # --- live consolidation (categorical: exact-match, no judge tier) ------------
 
 
-class ConsolidationCaseOut(ResponseModel):
-    key: str
-    passed: bool
-    verdict: str  # "merge" | "keep" — what the real confirm prompt produced
-    expected: str  # the human label
-    contested: bool  # true ⇒ counts as passed regardless of direction (both verdicts defensible)
-    reason: str
-    failures: list[str] = []
+class ConsolidationCaseOut(_CategoricalCaseOut):
+    """``verdict`` is "merge" | "keep" — what the real confirm prompt produced."""
 
 
-class ConsolidationResponse(ResponseModel):
-    prompt_version: str
-    model: str
-    passed: int  # verdict matched the label, OR contested (a contested case passes either way)
-    total: int  # all cases (contested included — they pass by running, not by matching)
+class ConsolidationResponse(_CategoricalResponse):
     cases: list[ConsolidationCaseOut] = []
 
 
-class ConsolidationStabilityCaseOut(ResponseModel):
-    key: str
-    marker: str  # "[stable]" | "[UNSTABLE]" | "[contested-split]"
-    majority: str  # modal verdict over K
-    expected: str  # the label (for reference)
-    contested: bool
-    agreement: float  # modal verdict's share of K
-    flipped: bool
-    tally: dict[str, int]  # verdict -> count
-    runs: list[StabilityRun] = []  # per-run outcome + the model's reasoning (explains a flip)
+class ConsolidationStabilityCaseOut(_CategoricalStabilityCaseOut):
+    pass
 
 
-class ConsolidationStabilityResponse(ResponseModel):
-    prompt_version: str
-    model: str
-    k: int
+class ConsolidationStabilityResponse(_CategoricalStabilityResponse):
     cases: list[ConsolidationStabilityCaseOut] = []
 
 
 # --- live matching (categorical: exact-match, no judge tier) -----------------
 
 
-class MatchingCaseOut(ResponseModel):
-    key: str
-    passed: bool
-    verdict: str  # "matches" | "mismatches" — what the real match prompt produced
-    expected: str  # the human label
-    contested: bool
-    reason: str  # narration of the mapping the model returned
-    failures: list[str] = []
+class MatchingCaseOut(_CategoricalCaseOut):
+    """``verdict`` is "matches" | "mismatches" — what the real match prompt produced;
+    ``reason`` narrates the mapping the model returned."""
 
 
-class MatchingResponse(ResponseModel):
-    prompt_version: str
-    model: str
-    passed: int
-    total: int
+class MatchingResponse(_CategoricalResponse):
     cases: list[MatchingCaseOut] = []
 
 
-class MatchingStabilityCaseOut(ResponseModel):
-    key: str
-    marker: str  # "[stable]" | "[UNSTABLE]" | "[contested-split]"
-    majority: str  # modal verdict over K
-    expected: str
-    contested: bool
-    agreement: float
-    flipped: bool
-    tally: dict[str, int]
-    runs: list[StabilityRun] = []  # per-run outcome + the model's reasoning (explains a flip)
+class MatchingStabilityCaseOut(_CategoricalStabilityCaseOut):
+    pass
 
 
-class MatchingStabilityResponse(ResponseModel):
-    prompt_version: str
-    model: str
-    k: int
+class MatchingStabilityResponse(_CategoricalStabilityResponse):
     cases: list[MatchingStabilityCaseOut] = []
 
 
 # --- live decomposition (categorical: exact-match, no judge tier) ------------
 
 
-class DecompositionCaseOut(ResponseModel):
-    key: str
-    passed: bool
-    verdict: str  # "merge" | "keep" — derived from the settled set
-    expected: str
-    contested: bool
-    reason: str  # narration of how the source keys settled
-    failures: list[str] = []
+class DecompositionCaseOut(_CategoricalCaseOut):
+    """``verdict`` is "merge" | "keep" — derived from the settled set; ``reason`` narrates
+    how the source keys settled."""
 
 
-class DecompositionResponse(ResponseModel):
-    prompt_version: str
-    model: str
-    passed: int
-    total: int
+class DecompositionResponse(_CategoricalResponse):
     cases: list[DecompositionCaseOut] = []
 
 
-class DecompositionStabilityCaseOut(ResponseModel):
-    key: str
-    marker: str
-    majority: str
-    expected: str
-    contested: bool
-    agreement: float
-    flipped: bool
-    tally: dict[str, int]
-    runs: list[StabilityRun] = []  # per-run outcome + the model's reasoning (explains a flip)
+class DecompositionStabilityCaseOut(_CategoricalStabilityCaseOut):
+    pass
 
 
-class DecompositionStabilityResponse(ResponseModel):
-    prompt_version: str
-    model: str
-    k: int
+class DecompositionStabilityResponse(_CategoricalStabilityResponse):
     cases: list[DecompositionStabilityCaseOut] = []
 
 
@@ -214,11 +208,7 @@ class ScreeningCaseOut(ResponseModel):
     failures: list[str] = []
 
 
-class ScreeningResponse(ResponseModel):
-    prompt_version: str
-    model: str
-    passed: int
-    total: int
+class ScreeningResponse(_CategoricalResponse):
     cases: list[ScreeningCaseOut] = []
 
 
@@ -232,10 +222,7 @@ class ScreeningStabilityCaseOut(ResponseModel):
     runs: list[StabilityRun] = []  # per-run flag-set + the model's reasoning (explains a flip)
 
 
-class ScreeningStabilityResponse(ResponseModel):
-    prompt_version: str
-    model: str
-    k: int
+class ScreeningStabilityResponse(_CategoricalStabilityResponse):
     cases: list[ScreeningStabilityCaseOut] = []
 
 
