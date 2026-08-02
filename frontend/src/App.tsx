@@ -32,6 +32,22 @@ import { retryWithBackoff } from "./retry";
 import { useRanking } from "./hooks/useRanking";
 import { useToasts } from "./hooks/useToasts";
 
+type BrowserLocation = {
+  screenerLocation: true;
+  tab: ViewTab;
+  applicantId?: number;
+};
+
+function isBrowserLocation(value: unknown): value is BrowserLocation {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "screenerLocation" in value &&
+    (value as BrowserLocation).screenerLocation === true &&
+    "tab" in value
+  );
+}
+
 export function App() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
@@ -138,6 +154,10 @@ export function App() {
 
   // Return from the detail to the list, remembering which row to scroll back to.
   function backToList() {
+    if (isBrowserLocation(window.history.state) && window.history.state.applicantId) {
+      window.history.back();
+      return;
+    }
     if (selectedApp) setPendingScrollId(selectedApp.id);
     setSelectedApp(null);
   }
@@ -187,6 +207,14 @@ export function App() {
   const [activeTab, setActiveTab] = useState<ViewTab>("applications");
   const isAdmin = user?.role === "admin";
 
+  function replaceBrowserLocation(location: BrowserLocation) {
+    window.history.replaceState(location, "", window.location.pathname);
+  }
+
+  function pushBrowserLocation(location: BrowserLocation) {
+    window.history.pushState(location, "", window.location.pathname);
+  }
+
   useEffect(() => {
     void loadCurrentUser();
     // The OAuth callback redirects here with ?access=denied for a non-allowlisted
@@ -194,8 +222,11 @@ export function App() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("access") === "denied") {
       setAccessDenied(true);
-      window.history.replaceState({}, "", window.location.pathname);
     }
+    // This is a client-side app rather than a URL-routed one, so seed the initial
+    // browser-history entry with the default view. Later tab/detail transitions add
+    // entries of the same shape for the browser Back button and mobile back swipe.
+    replaceBrowserLocation({ screenerLocation: true, tab: "applications" });
   }, []);
 
   async function loadCurrentUser(): Promise<void> {
@@ -274,7 +305,10 @@ export function App() {
     // First-run setup: land on Admin Settings when there's no sheet configured yet, so
     // setup is front-and-centre. Only admins can set the sheet, so only redirect them —
     // a member stays on Applications.
-    if (!sheetId && isAdmin) setActiveTab("adminSettings");
+    if (!sheetId && isAdmin) {
+      setActiveTab("adminSettings");
+      replaceBrowserLocation({ screenerLocation: true, tab: "adminSettings" });
+    }
   }
 
   // A Sheets title is a convenience label, not part of the editable settings. If Google was
@@ -375,6 +409,7 @@ export function App() {
       showError("Couldn't load that applicant. Please try again.");
       return;
     }
+    pushBrowserLocation({ screenerLocation: true, tab: activeTab, applicantId: id });
     setSelectedApp(application);
     // The scroll to the detail's top happens in a layout effect keyed on the selected
     // applicant id (see below) — NOT here: scrolling in this handler races React's commit,
@@ -613,22 +648,48 @@ export function App() {
     setCriteriaThinking("");
   }
 
-  // Open the ranked view: clear any open candidate, load the shortlist + tiers (via
-  // useRanking), and switch to the tab only if the load succeeded. The detail clear +
-  // tab switch are App-level (view routing), so they stay here around the hook's load.
-  async function openRanking() {
+  // Restore a state recorded in browser history. This path deliberately never writes history:
+  // a Back/Forward gesture must move through the entries the member already created.
+  async function restoreBrowserLocation(location: BrowserLocation) {
+    const priorSelectedApp = selectedApp;
     setSelectedApp(null);
-    if (await loadRanking()) setActiveTab("ranking");
-  }
-
-  // Jump to a top-level view (e.g. from a feedback item's context link). Ranking routes
-  // through its loader so the view isn't empty; every other tab is a plain switch. Clears
-  // any open detail so the target view is what shows.
-  function navigateToView(tab: ViewTab) {
-    if (tab === "ranking") {
-      openRanking();
+    setActiveTab(location.tab);
+    if (!location.applicantId) {
+      if (priorSelectedApp) setPendingScrollId(priorSelectedApp.id);
       return;
     }
+
+    if (location.tab === "ranking" && !(await loadRanking())) return;
+    try {
+      const application = await api.fetchApplication(location.applicantId);
+      setSelectedApp(application);
+    } catch {
+      showError("Couldn't load that applicant. Please try again.");
+    }
+  }
+
+  useEffect(() => {
+    const onPopState = (event: PopStateEvent) => {
+      if (isBrowserLocation(event.state)) void restoreBrowserLocation(event.state);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  });
+
+  // Jump to a top-level view (e.g. from a feedback item's context link). Ranking routes
+  // through its loader so the view isn't empty; every other tab is a plain switch. Each
+  // deliberate navigation records its destination before changing the visible view.
+  async function navigateToView(tab: ViewTab) {
+    if (activeTab === tab && !selectedApp) return;
+    if (tab === "ranking") {
+      if (await loadRanking()) {
+        pushBrowserLocation({ screenerLocation: true, tab });
+        setSelectedApp(null);
+        setActiveTab(tab);
+      }
+      return;
+    }
+    pushBrowserLocation({ screenerLocation: true, tab });
     setSelectedApp(null);
     setActiveTab(tab);
   }
