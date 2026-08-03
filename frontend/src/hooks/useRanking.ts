@@ -9,13 +9,17 @@ export interface RankingState {
   rankingRun: CurrentRunResponse | null;
   /** The deterministic ranked shortlist; null means not yet fetched. */
   ranking: RankingResponse | null;
+  /** Read state for the shortlist's initial load. Existing ranking data remains visible while
+   * a later refresh is in flight. */
+  rankingLoadState: "idle" | "loading" | "ready" | "error";
   /** The committee's importance tiers for the current run. */
   tiers: Tier[] | null;
   /** Re-fetch the current run's dimensions. Returns the promise so callers can await
    * it before rendering anything that resolves dimension keys to names. */
   refreshRankingRun: () => Promise<void>;
   /** Fetch the ranked shortlist + tier layout (pure math, no cost). Returns whether it
-   * loaded — the caller owns the tab switch / detail clear, which aren't ranking state. */
+   * loaded; callers may switch to the Ranking tab immediately and render this hook's load
+   * state while the initial response is in flight. */
   loadRanking: () => Promise<boolean>;
   /** Persist a new tier layout; the PUT returns the re-sorted ranking. Optimistic. */
   saveTiers: (next: Tier[], acknowledgedKeys?: string[]) => Promise<void>;
@@ -55,6 +59,7 @@ export function useRanking(onError: (message: string) => void): RankingState {
   const [rankingRun, setRankingRun] = useState<CurrentRunResponse | null>(null);
   const [ranking, setRanking] = useState<RankingResponse | null>(null);
   const [tiers, setTiers] = useState<Tier[] | null>(null);
+  const [rankingLoadState, setRankingLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [staleAnalysis, setStaleAnalysis] = useState(false);
 
   // A save failed. Reads the problem body ONCE (the body is single-use — a caller must not
@@ -109,14 +114,21 @@ export function useRanking(onError: (message: string) => void): RankingState {
   }
 
   async function loadRanking(): Promise<boolean> {
-    const [rankRes, tiersRes] = await Promise.all([api.fetchRanking(), api.fetchTiers()]);
-    if (rankRes.ok) {
-      setRanking(await rankRes.json());
-      if (tiersRes.ok) setTiers((await tiersRes.json()).tiers);
-      return true;
+    setRankingLoadState("loading");
+    try {
+      const [rankRes, tiersRes] = await Promise.all([api.fetchRanking(), api.fetchTiers()]);
+      if (rankRes.ok) {
+        setRanking(await rankRes.json());
+        if (tiersRes.ok) setTiers((await tiersRes.json()).tiers);
+        setRankingLoadState("ready");
+        return true;
+      }
+      const problem = await readProblem(rankRes);
+      onError(problem ? `Could not load the ranking: ${problem}` : "Could not load the ranking.");
+    } catch {
+      onError("Could not load the ranking. Please try again.");
     }
-    const problem = await readProblem(rankRes);
-    onError(problem ? `Could not load the ranking: ${problem}` : "Could not load the ranking.");
+    setRankingLoadState("error");
     return false;
   }
 
@@ -209,6 +221,7 @@ export function useRanking(onError: (message: string) => void): RankingState {
   return {
     rankingRun,
     ranking,
+    rankingLoadState,
     tiers,
     refreshRankingRun,
     loadRanking,

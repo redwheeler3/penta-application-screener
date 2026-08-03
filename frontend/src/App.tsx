@@ -112,25 +112,6 @@ export function App() {
     search: searchApplications,
   } = useApplications();
   const [selectedApp, setSelectedApp] = useState<ApplicationDetail | null>(null);
-  // The row we drilled in from, so pressing Back in the detail can return the list
-  // to that person instead of the top. Only the detail's Back button arms the scroll
-  // (via `pendingScrollId`); other paths that clear the detail (tab switches, post-run
-  // resets, brand click) leave it null and land at the top as before.
-  const [pendingScrollId, setPendingScrollId] = useState<number | null>(null);
-
-  // After the list re-renders following Back, bring the previously-clicked row into
-  // view. useLayoutEffect so it runs before paint — no flash of the top of the list.
-  useLayoutEffect(() => {
-    if (pendingScrollId == null || selectedApp) return;
-    const row = document.querySelector<HTMLElement>(`[data-app-id="${pendingScrollId}"]`);
-    if (row) {
-      // Align the row near the top of the viewport (not centered). scrollMarginTop
-      // leaves a little breathing room so it sits just below the top edge.
-      row.style.scrollMarginTop = "16px";
-      row.scrollIntoView({ block: "start" });
-    }
-    setPendingScrollId(null);
-  }, [pendingScrollId, selectedApp]);
 
   // The applicant id we last scrolled the detail to the top for. Opening a DIFFERENT
   // applicant should scroll; re-setting `selectedApp` for the SAME applicant (a note /
@@ -152,13 +133,13 @@ export function App() {
     document.querySelector(".app-detail")?.scrollIntoView({ block: "start" });
   }, [selectedApp]);
 
-  // Return from the detail to the list, remembering which row to scroll back to.
+  // Return from the detail through browser history so the list or ranking view preserves
+  // the member's actual reading position.
   function backToList() {
     if (isBrowserLocation(window.history.state) && window.history.state.applicantId) {
       window.history.back();
       return;
     }
-    if (selectedApp) setPendingScrollId(selectedApp.id);
     setSelectedApp(null);
   }
 
@@ -175,6 +156,7 @@ export function App() {
   const {
     rankingRun,
     ranking,
+    rankingLoadState,
     tiers,
     refreshRankingRun,
     loadRanking,
@@ -634,7 +616,7 @@ export function App() {
         // so the Ranking tab is current when the member chooses to open it.
         await refreshRankingRun();
         refreshDashboard();
-        await loadRanking();
+        void loadRanking();
       }
     } catch (error) {
       showError(error instanceof Error ? `Ranking error: ${error.message}` : "Ranking error.");
@@ -651,15 +633,11 @@ export function App() {
   // Restore a state recorded in browser history. This path deliberately never writes history:
   // a Back/Forward gesture must move through the entries the member already created.
   async function restoreBrowserLocation(location: BrowserLocation) {
-    const priorSelectedApp = selectedApp;
     setSelectedApp(null);
     setActiveTab(location.tab);
-    if (!location.applicantId) {
-      if (priorSelectedApp) setPendingScrollId(priorSelectedApp.id);
-      return;
-    }
+    if (location.tab === "ranking") void loadRanking();
+    if (!location.applicantId) return;
 
-    if (location.tab === "ranking" && !(await loadRanking())) return;
     try {
       const application = await api.fetchApplication(location.applicantId);
       setSelectedApp(application);
@@ -676,17 +654,16 @@ export function App() {
     return () => window.removeEventListener("popstate", onPopState);
   });
 
-  // Jump to a top-level view (e.g. from a feedback item's context link). Ranking routes
-  // through its loader so the view isn't empty; every other tab is a plain switch. Each
+  // Jump to a top-level view (e.g. from a feedback item's context link). Ranking switches
+  // immediately; its loader replaces the empty panel with the shortlist when ready. Each
   // deliberate navigation records its destination before changing the visible view.
-  async function navigateToView(tab: ViewTab) {
+  function navigateToView(tab: ViewTab) {
     if (activeTab === tab && !selectedApp) return;
     if (tab === "ranking") {
-      if (await loadRanking()) {
-        pushBrowserLocation({ screenerLocation: true, tab });
-        setSelectedApp(null);
-        setActiveTab(tab);
-      }
+      pushBrowserLocation({ screenerLocation: true, tab });
+      setSelectedApp(null);
+      setActiveTab(tab);
+      void loadRanking();
       return;
     }
     pushBrowserLocation({ screenerLocation: true, tab });
@@ -952,6 +929,19 @@ export function App() {
                 onSelectApplication={viewApplication}
                 onToggleStar={toggleStar}
               />
+            ) : activeTab === "ranking" ? (
+              <div className="list-load-state" role={rankingLoadState === "error" ? "alert" : "status"}>
+                {rankingLoadState === "error" ? (
+                  <>
+                    <p>Couldn&apos;t load the ranking.</p>
+                    <button type="button" className="secondary-button" onClick={() => void loadRanking()}>
+                      Retry
+                    </button>
+                  </>
+                ) : (
+                  <p>Loading ranking…</p>
+                )}
+              </div>
             ) : activeTab === "observability" ? (
               <AIQualityView family="obs" run={rankingRun} onToast={showToast} onError={showError} />
             ) : activeTab === "evals" ? (
