@@ -175,6 +175,9 @@ export function App() {
   // scores against the current set. Both begin with their own capped estimate.
   const [rankEstimate, setRankEstimate] = useState<RankEstimateResponse | null>(null);
   const [scoreCurrentEstimate, setScoreCurrentEstimate] = useState<ScoreCurrentEstimateResponse | null>(null);
+  // A score-current estimate is optional enrichment for the Rank confirmation card. Keep a
+  // generation so a slower response cannot update a card the member dismissed or replaced.
+  const rankEstimateRequestRef = useRef(0);
   const [rankRunning, setRankRunning] = useState(false);
   const [rankProgress, setRankProgress] = useState<RankProgress | null>(null);
   // The model's live reasoning during the run's opaque calls (criteria discovery +
@@ -195,6 +198,12 @@ export function App() {
 
   function pushBrowserLocation(location: BrowserLocation) {
     window.history.pushState(location, "", window.location.pathname);
+  }
+
+  function dismissRankEstimate() {
+    rankEstimateRequestRef.current += 1;
+    setRankEstimate(null);
+    setScoreCurrentEstimate(null);
   }
 
   useEffect(() => {
@@ -420,7 +429,7 @@ export function App() {
       // a cap increase (or any model/cost setting change) cannot leave a stale
       // over-cap warning and disabled confirmation button on screen.
       setScreeningEstimate(null);
-      setRankEstimate(null);
+      dismissRankEstimate();
       setSelectedApp(null);
       refreshDashboard();
       requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
@@ -433,7 +442,7 @@ export function App() {
   // Open the Import confirmation. Close the other cards so only one shows at a time.
   function requestImport() {
     setScreeningEstimate(null);
-    setRankEstimate(null);
+    dismissRankEstimate();
     setImportConfirm(true); // open first; the badge refresh below shouldn't gate the card
     refreshDashboard(); // freshen the badge against current shared state (see requestScreeningEstimate)
   }
@@ -481,7 +490,7 @@ export function App() {
   // Fetch the cost estimate and show the confirmation prompt. AI never runs without
   // the user first seeing the estimate and confirming (SPEC cost control).
   async function requestScreeningEstimate() {
-    setRankEstimate(null); // only one card shows at a time
+    dismissRankEstimate(); // only one card shows at a time
     setImportConfirm(false);
     const response = await api.fetchScreeningEstimate();
     if (response.ok) {
@@ -536,16 +545,37 @@ export function App() {
   async function requestRankEstimate() {
     setScreeningEstimate(null); // only one card shows at a time
     setImportConfirm(false);
+    const requestId = rankEstimateRequestRef.current + 1;
+    rankEstimateRequestRef.current = requestId;
+    setRankEstimate(null);
     setScoreCurrentEstimate(null);
-    const [rankResponse, currentScoreResponse] = await Promise.all([
-      api.fetchRankEstimate(),
-      rankingRun ? api.fetchScoreCurrentEstimate() : Promise.resolve(null),
-    ]);
+    // The full-Rank estimate alone is the confirmation gate. Start the exact
+    // score-current calculation at the same time, but don't make the card wait for its
+    // cache-grid read; it only adds the optional "Score missing applicants" path.
+    const rankPromise = api.fetchRankEstimate();
+    const scoreCurrentPromise = rankingRun ? api.fetchScoreCurrentEstimate() : null;
+    // Attach a rejection handler now: the optional read can fail before the full-Rank
+    // estimate arrives and before we attach its result handler below.
+    if (scoreCurrentPromise) void scoreCurrentPromise.catch(() => undefined);
+    const rankResponse = await rankPromise;
+    if (requestId !== rankEstimateRequestRef.current) return;
     if (rankResponse.ok) {
       // Always open the card, even when unchanged: it explains there's nothing to
       // re-rank and disables Confirm, instead of a transient toast.
-      setRankEstimate(await rankResponse.json());
-      if (currentScoreResponse?.ok) setScoreCurrentEstimate(await currentScoreResponse.json());
+      const estimate = await rankResponse.json();
+      if (requestId !== rankEstimateRequestRef.current) return;
+      setRankEstimate(estimate);
+      if (scoreCurrentPromise) {
+        void scoreCurrentPromise
+          .then(async (response) => {
+            if (!response.ok || requestId !== rankEstimateRequestRef.current) return;
+            const estimate = await response.json();
+            if (requestId === rankEstimateRequestRef.current) setScoreCurrentEstimate(estimate);
+          })
+          // This optional path previously failed silently for non-OK responses. A rejected
+          // request should likewise leave the full-Rank confirmation usable.
+          .catch(() => undefined);
+      }
     } else {
       showError("Could not load the AI cost estimate for ranking.");
     }
@@ -556,8 +586,7 @@ export function App() {
 
   async function runRank(mode: "discover" | "score-current") {
     setRankRunning(true);
-    setRankEstimate(null);
-    setScoreCurrentEstimate(null);
+    dismissRankEstimate();
     setRankProgress(null);
     setCriteriaThinking("");
     // A discover run consumes the pending proposals (they become real dimensions). Clear
@@ -838,10 +867,7 @@ export function App() {
             pendingProposals={rankingRun?.proposedDimensions ?? []}
             onRequestRank={requestRankEstimate}
             onRunRank={runRank}
-            onCancelRank={() => {
-              setRankEstimate(null);
-              setScoreCurrentEstimate(null);
-            }}
+            onCancelRank={dismissRankEstimate}
           />
 
           {/* Tab row: the data views on the left, the config tabs (Eligibility Settings
