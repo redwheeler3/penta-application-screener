@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin
 from app.api.problems import Problem
+from app.core.text import normalize_email
 from app.db.models import User, UserRole
 from app.db.session import get_db
 from app.schemas.allowlist import (
@@ -103,7 +104,19 @@ def upsert_allowlist_entry(
 ) -> AllowlistResponse:
     """Add an allowed email or change its role. Adding an ``admin`` entry grants
     admin — the allowlist is the role-management surface."""
-    existing = allowlist.get_entry(db, str(body.email))
+    target_email = normalize_email(body.email)
+    existing = allowlist.get_entry(db, target_email)
+    demoting_current_admin = (
+        target_email == _admin.email
+        and existing is not None
+        and existing.role == UserRole.ADMIN
+        and body.role != UserRole.ADMIN
+    )
+    if demoting_current_admin:
+        raise Problem(
+            "invalid_settings",
+            detail="You cannot demote your own admin account.",
+        )
     # Guard the lock-out: demoting the sole remaining admin to member would leave the
     # committee with no one able to manage access.
     demoting_last_admin = (
@@ -117,7 +130,7 @@ def upsert_allowlist_entry(
             "invalid_settings",
             detail="Cannot demote the last admin; promote another admin first.",
         )
-    allowlist.upsert_entry(db, email=str(body.email), role=body.role)
+    allowlist.upsert_entry(db, email=target_email, role=body.role)
     return _response(db)
 
 

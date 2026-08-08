@@ -319,6 +319,22 @@ h1 {
   font-size: 0.9rem;
 }
 
+.access-role-select-admin {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.access-role-select-member {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
+.access-role-select:disabled {
+  opacity: 1;
+}
+
 .access-table-scroll {
   overflow-x: auto;
   overscroll-behavior-x: contain;

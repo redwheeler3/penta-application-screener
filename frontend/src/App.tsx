@@ -919,6 +919,7 @@ export function App() {
                   onEligibilityChanged={refreshEligibilityViews}
                   onOpenApplicant={viewApplication}
                   onOpenView={navigateToView}
+                  currentUser={user}
                 />
               ) : (
                 <div className="settings-load-state" role={settingsLoadFailed ? "alert" : "status"}>

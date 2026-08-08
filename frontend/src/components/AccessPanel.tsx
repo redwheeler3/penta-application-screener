@@ -2,13 +2,13 @@ import { Trash2, UserPlus } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import * as api from "../api";
 import { formatPacificDateTime, readProblem } from "../format";
-import type { AllowlistEntry, DeniedSignInAttempt } from "../types";
+import type { AllowlistEntry, CurrentUser, DeniedSignInAttempt } from "../types";
 import { RetryLoadError } from "./RetryLoadError";
 
 // Admin-only management of the access allowlist: who may sign in, and with what role.
 // The mutation endpoints return the full updated list, so this holds the list in local
 // state and replaces it from each response (no separate refetch).
-export function AccessPanel(props: { onError: (message: string) => void }): ReactNode {
+export function AccessPanel(props: { currentUser: CurrentUser; onError: (message: string) => void }): ReactNode {
   const [entries, setEntries] = useState<AllowlistEntry[] | null>(null);
   const [deniedAttempts, setDeniedAttempts] = useState<DeniedSignInAttempt[] | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -108,7 +108,11 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-        <select value={role} onChange={(e) => setRole(e.target.value as "admin" | "member")}>
+        <select
+          className={`access-role-select access-role-select-${role}`}
+          value={role}
+          onChange={(e) => setRole(e.target.value as "admin" | "member")}
+        >
           <option value="member">Member</option>
           <option value="admin">Admin</option>
         </select>
@@ -145,22 +149,31 @@ export function AccessPanel(props: { onError: (message: string) => void }): Reac
               const isLastAdmin =
                 entry.role === "admin" &&
                 entries.filter((e) => e.role === "admin").length === 1;
+              const isCurrentUser = entry.email === props.currentUser.email;
               return (
                 <tr key={entry.email}>
                   <td>{entry.displayName ?? "—"}</td>
                   <td>{entry.email}</td>
                   <td>
                     <select
-                      className="access-role-select"
+                      className={`access-role-select access-role-select-${entry.role}`}
                       aria-label={`Role for ${entry.email}`}
-                      title={isLastAdmin ? "The last admin can't be demoted" : "Change role"}
+                      title={
+                        isLastAdmin
+                          ? "The last admin can't be demoted"
+                          : isCurrentUser
+                            ? "You can't demote your own admin account"
+                            : "Change role"
+                      }
                       value={entry.role}
                       disabled={busy || isLastAdmin}
                       onChange={(event) =>
                         changeRole(entry.email, event.target.value as "admin" | "member")
                       }
                     >
-                      <option value="member">Member</option>
+                      <option value="member" disabled={isCurrentUser && entry.role === "admin"}>
+                        Member
+                      </option>
                       <option value="admin">Admin</option>
                     </select>
                   </td>

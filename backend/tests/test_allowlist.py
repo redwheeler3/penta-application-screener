@@ -211,3 +211,16 @@ async def test_cannot_remove_or_demote_the_last_admin() -> None:
         assert remove.status_code == 422
         # Still an admin after both blocked attempts.
         assert allowlist.get_entry(db, "me@x.com").role == UserRole.ADMIN
+
+
+@pytest.mark.anyio
+async def test_admin_cannot_demote_themself_when_another_admin_exists() -> None:
+    app, db = setup_app(role=UserRole.ADMIN)
+    allowlist.upsert_entry(db, email="me@x.com", role=UserRole.ADMIN)
+    allowlist.upsert_entry(db, email="other-admin@x.com", role=UserRole.ADMIN)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        demote = await client.put("/allowlist", json={"email": "ME@x.com", "role": "member"})
+
+    assert demote.status_code == 422
+    assert allowlist.get_entry(db, "me@x.com").role == UserRole.ADMIN

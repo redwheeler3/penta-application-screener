@@ -7,7 +7,7 @@ import { NumberInput } from "./NumberInput";
 import { AccessPanel } from "./AccessPanel";
 import { CheckGroup } from "./CheckToggles";
 import { RetryLoadError } from "./RetryLoadError";
-import type { AppSettings, EligibilityRules, FeedbackItem, SettingsResponse, ViewTab } from "../types";
+import type { AppSettings, CurrentUser, EligibilityRules, FeedbackItem, SettingsResponse, ViewTab } from "../types";
 
 // The admin-only config surface, organized as sub-views:
 //   Configuration      — the data source (Google Sheet) and AI screening knobs.
@@ -34,6 +34,7 @@ export function AdminSettingsPanel(props: {
   // Jump to an applicant's detail / a top-level view from a feedback item's context link.
   onOpenApplicant: (id: number) => void;
   onOpenView: (tab: ViewTab) => void;
+  currentUser: CurrentUser;
 }): ReactNode {
   const { draft, setDraft, saved } = props;
   const [subtab, setSubtab] = useState<AdminSubtab>("configuration");
@@ -91,7 +92,7 @@ export function AdminSettingsPanel(props: {
           onOpenView={props.onOpenView}
         />
       ) : subtab === "access" ? (
-        <AccessPanel onError={props.onError} />
+        <AccessPanel currentUser={props.currentUser} onError={props.onError} />
       ) : subtab === "defaults" ? (
         <CommitteeDefaultsPanel
           onError={props.onError}
