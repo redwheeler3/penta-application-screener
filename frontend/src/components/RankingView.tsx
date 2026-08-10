@@ -140,8 +140,7 @@ export function RankingView(props: {
         <div>
           <h3>Candidate ranking</h3>
           <p className="ranking-subhead">
-            Drag criteria into importance tiers to re-rank; tap a criterion to read what it measures. Any criterion
-            in a tier is kept when you re-rank — only those left in Ignore can be dropped or re-carved.
+            Drag criteria into importance tiers to re-rank; tap a criterion to read what it measures.
           </p>
         </div>
         <button type="button" className="secondary-button no-print" title={printTitle} onClick={() => window.print()}>
