@@ -243,6 +243,20 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // Auto-recover settings once the dashboard load succeeds. A Fly OOM restart takes ~10s and
+  // can outlast every initial load's backoff window; the workflow bar (dashboard) often recovers
+  // on its own retries while settings ended its own attempts a moment earlier, leaving the
+  // synced Sync button stuck behind a Retry-configuration button on an otherwise healthy page.
+  // If the server is back for /dashboard, it's back for /settings too — retry once automatically
+  // so the whole workflow bar unsticks together. The manual Retry button remains as a fallback.
+  useEffect(() => {
+    if (dashboardLoadState === "ready" && settingsLoadFailed) {
+      setSettingsLoadFailed(false);
+      void loadSettings();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboardLoadState, settingsLoadFailed]);
+
   // A ranking became stale (another member re-ranked) — surface it as a global toast with a
   // Reload action, so it reaches the member wherever they are on the page (not only on the
   // Ranking tab). Fired once per stale transition; the ref de-dupes re-renders while stale.
@@ -336,9 +350,13 @@ export function App() {
   // resuming from suspend, or a deploy restart, cuts the first request) would otherwise leave
   // `draft` null forever and the Admin Settings tab silently rendering the Applications view.
   // On definitive failure we flag it so the Admin panel shows an error+retry instead.
+  // The attempt count matches loadInitialDashboard / loadInitialApplications so all three
+  // surfaces have the same ~9s recovery window — a Fly OOM restart takes ~10s, and previously
+  // the shorter settings window (3 attempts, ~1.5s) meant the workflow bar recovered on its
+  // own while Sync stayed stuck behind a Retry button because settings had already given up.
   async function loadSettings(): Promise<void> {
     try {
-      applySettingsResponse(await retryWithBackoff(api.fetchSettings, 3));
+      applySettingsResponse(await retryWithBackoff(api.fetchSettings, 5));
     } catch {
       setSettingsLoadFailed(true);
     }
