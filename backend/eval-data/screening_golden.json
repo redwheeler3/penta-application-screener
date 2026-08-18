@@ -283,6 +283,48 @@
       }
     },
     {
+      "key": "cut_off_but_substantive_essay_no_flag",
+      "metadata": {
+        "note": "OVER-REACH GUARD (regression from a real production false positive): one answer ends abruptly, but it still names concrete ways the applicant could contribute and the other three essays are substantive. A visible cutoff is not itself a minimal essay; minimal_essay is for an answer with no substantive content.",
+        "pass": "screening",
+        "source": "synthetic — fabricated to reproduce the cut-off-but-substantive essay pattern; no real applicant data.",
+        "expected": {
+          "fires": [],
+          "absent": [
+            "minimal_essay"
+          ]
+        }
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Dana Mercer",
+          "co_applicant_name": null,
+          "child_details": [
+            {
+              "first_name": "Leah",
+              "last_name": "Mercer",
+              "age": 14
+            },
+            {
+              "first_name": "Owen",
+              "last_name": "Mercer",
+              "age": 11
+            }
+          ],
+          "pets_text": "No pets",
+          "applicant_email": "dana.mercer@example.com",
+          "co_applicant_email": null,
+          "co_applicant_phone": null
+        },
+        "essays": {
+          "Please introduce yourself and your family, including your employment background, interests, and values.": "I am a library program coordinator raising two school-aged children. Our family enjoys cycling, cooking together, and helping with neighbourhood events. We value kindness, reliability, and making time for the people around us, and we are looking for a stable home where we can know our neighbours and take part in community life.",
+          "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "I can help organize community events and keep committee records. I",
+          "Please tell us about any previous co-op experience you or the co-applicant may have.": "I have not lived in a housing co-op before, but I served for four years on the board of our neighbourhood community garden. I scheduled volunteer shifts, took meeting notes, and helped the group resolve disagreements about shared plots and tools.",
+          "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "I want to live somewhere neighbours share responsibility instead of only passing one another in the hallway. I would attend meetings, take regular committee shifts, and follow through on the less visible administrative work that keeps a community organized. I would also bring patience from my work with the public and a willingness to listen when members disagree."
+        }
+      }
+    },
+    {
       "key": "ordinary_applicant_clean",
       "metadata": {
         "note": "A wholly unremarkable applicant — expect ZERO flags. Any flag is a false positive. (No pets expectation: this is the pure zero-flags guard.)",

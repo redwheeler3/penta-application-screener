@@ -45,7 +45,8 @@ class PetFacts(BaseModel):
             "Every non-dog, non-cat animal named, each as a short lowercase noun "
             "(e.g. 'rabbit', 'snake'). List each animal AS NAMED, even if it seems fictional, "
             "exotic, or implausible — do NOT decide whether it is a 'real' animal, and do NOT "
-            "judge whether it is allowed. Empty only if none are named."
+            "judge whether it is allowed. Always return an array: use [] when none are named, "
+            "never null."
         ),
     )
     reasoning: str = Field(
