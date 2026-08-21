@@ -130,7 +130,9 @@ a quality result.
 ## Consequences
 
 - OpenAI models are available behind the existing provider-neutral interface with
-  schema-constrained output, streamed audit narratives, cost ledgers, estimates, and spending caps.
+  schema-constrained output, streamed reasoning summaries or user-visible tool preambles, cost
+  ledgers, estimates, and spending caps. These are exposed audit narratives, not raw private chain
+  of thought.
 - The current application remains on Claude and does not depend on Mantle availability.
 - Each pass stores its reasoning effort beside its model. Effective reasoning is part of cache,
   Rank-fingerprint, and eval-run identity; settings for unsupported models are ignored.

@@ -2,7 +2,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { fetchEvalCases, fetchLastEvalRun, runEval, saveEvalCase, streamNdjson } from "../../api";
 import { AI_PASS_PIPELINE_ORDER } from "../../constants";
-import { formatPacificDate } from "../../format";
+import { formatPacificDate, reasoningEffortLabel } from "../../format";
 import type { EvalCaseResult, EvalFixtureKey, EvalRunMode, EvalRunResult, LastEvalRun } from "../../types";
 import { EvalCaseDetail } from "./EvalCaseDetail";
 import { EvalCaseEditor } from "./EvalCaseEditor";
@@ -549,7 +549,7 @@ function RestoredMarker(props: { run: LastEvalRun; totalCases: number }): ReactN
       {restoredLabel(run.evalKey)}
       {summary ? ` · ${summary}` : ""} · last run {relativeTime(run.ranAt)} · prompt {run.promptVersion || "—"}
       {run.modelId ? ` · ${run.modelId}` : ""}
-      {run.reasoningEffort ? ` · reasoning ${run.reasoningEffort}` : ""}
+      {run.modelId ? ` · reasoning ${reasoningEffortLabel(run.modelId, run.reasoningEffort || null)}` : ""}
       {stale ? ` · ${changes} — re-run to refresh` : ""}
     </div>
   );

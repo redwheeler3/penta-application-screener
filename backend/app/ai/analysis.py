@@ -274,6 +274,7 @@ def store_result(
             reasoning_effort=reasoning_effort,
         ),
         model_id=result.model_id,
+        reasoning_effort=reasoning_effort,
         prompt_version=prompt_version,
         output=result.output.model_dump(mode="json"),
         narrative=result.narrative,

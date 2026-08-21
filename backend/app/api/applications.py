@@ -26,6 +26,7 @@ from app.domain.status import (
     resolve_machine_status,
 )
 from app.schemas.applications import (
+    AIModelTraceOut,
     AIResultTraceOut,
     ApplicationDetail,
     ApplicationEnvelope,
@@ -398,6 +399,7 @@ def _result_trace(result: ApplicationAIResult | None) -> AIResultTraceOut | None
         return None
     return AIResultTraceOut(
         model_id=result.model_id,
+        reasoning_effort=result.reasoning_effort,
         prompt_version=result.prompt_version,
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
@@ -426,7 +428,16 @@ def _dimension_scoring_trace(
         return None
     return DimensionScoringTraceOut(
         dimension_count=len(results),
-        model_ids=sorted({result.model_id for result in results}),
+        models=[
+            AIModelTraceOut(model_id=model_id, reasoning_effort=reasoning_effort)
+            for model_id, reasoning_effort in sorted(
+                {
+                    (result.model_id, result.reasoning_effort)
+                    for result in results
+                },
+                key=lambda item: (item[0], item[1] or ""),
+            )
+        ],
         prompt_versions=sorted({result.prompt_version for result in results}),
         input_tokens=sum(result.input_tokens for result in results),
         output_tokens=sum(result.output_tokens for result in results),

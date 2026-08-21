@@ -200,6 +200,7 @@ export type ScreeningFlag = {
 
 export type AIResultTrace = {
   modelId: string;
+  reasoningEffort: ReasoningEffort | null;
   promptVersion: string;
   inputTokens: number;
   outputTokens: number;
@@ -208,7 +209,7 @@ export type AIResultTrace = {
 
 export type DimensionScoringTrace = {
   dimensionCount: number;
-  modelIds: string[];
+  models: Array<{ modelId: string; reasoningEffort: ReasoningEffort | null }>;
   promptVersions: string[];
   inputTokens: number;
   outputTokens: number;

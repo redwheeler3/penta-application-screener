@@ -13,6 +13,11 @@ export function money(usd: number): string {
   return `$${usd.toFixed(4)}`;
 }
 
+export function reasoningEffortLabel(modelId: string, effort: string | null): string {
+  if (effort) return effort;
+  return modelId.startsWith("openai.") ? "not recorded" : "not used";
+}
+
 const PACIFIC_TIME_ZONE = "America/Vancouver";
 
 // All app-generated timestamps are stored and returned as UTC. Render them in the

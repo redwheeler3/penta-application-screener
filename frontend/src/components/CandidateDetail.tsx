@@ -2,7 +2,14 @@ import { ArrowDown, ChevronLeft, Printer } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { REASON_FIELDS, SOURCE_DESCRIPTIONS, SOURCE_LABELS, STATUS_LABELS } from "../constants";
-import { fieldLabel, flagCategoryLabel, formatFieldValue, money, scoreBand } from "../format";
+import {
+  fieldLabel,
+  flagCategoryLabel,
+  formatFieldValue,
+  money,
+  reasoningEffortLabel,
+  scoreBand,
+} from "../format";
 import type { AIResultTrace, ApplicationDetail, AppStatus, DimensionScoringTrace } from "../types";
 import { StarButton } from "./StarButton";
 
@@ -518,6 +525,7 @@ function AITrace(props: { trace: AIResultTrace }): ReactNode {
   return (
     <dl className="ai-trace-meta">
       <div><dt>Model</dt><dd>{trace.modelId}</dd></div>
+      <div><dt>Reasoning</dt><dd>{reasoningEffortLabel(trace.modelId, trace.reasoningEffort)}</dd></div>
       <div><dt>Prompt</dt><dd><code>{trace.promptVersion}</code></dd></div>
       <div><dt>Tokens</dt><dd>{trace.inputTokens.toLocaleString()} in → {trace.outputTokens.toLocaleString()} out</dd></div>
       <div><dt>Attributed cost</dt><dd>{money(trace.costUsd)}</dd></div>
@@ -530,7 +538,8 @@ function DimensionScoringTraceDetails(props: { trace: DimensionScoringTrace }): 
   return (
     <dl className="ai-trace-meta">
       <div><dt>Criteria</dt><dd>{trace.dimensionCount} stored score{trace.dimensionCount === 1 ? "" : "s"}</dd></div>
-      <div><dt>Model</dt><dd>{trace.modelIds.join(", ")}</dd></div>
+      <div><dt>Model</dt><dd>{trace.models.map((model) => model.modelId).join(", ")}</dd></div>
+      <div><dt>Reasoning</dt><dd>{trace.models.map((model) => reasoningEffortLabel(model.modelId, model.reasoningEffort)).join(", ")}</dd></div>
       <div><dt>Prompt</dt><dd>{trace.promptVersions.map((version) => <code key={version}>{version}</code>)}</dd></div>
       <div><dt>Tokens</dt><dd>{trace.inputTokens.toLocaleString()} in → {trace.outputTokens.toLocaleString()} out</dd></div>
       <div><dt>Attributed cost</dt><dd>{money(trace.costUsd)}</dd></div>

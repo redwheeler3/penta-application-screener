@@ -1,5 +1,5 @@
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import (
@@ -51,6 +51,30 @@ def seed_cached(db: Session, provider: MockProvider, app: Application) -> None:
 
 def clean_report() -> ScreeningReport:
     return ScreeningReport(flags=[])
+
+
+def test_store_result_persists_effective_reasoning_effort() -> None:
+    db = make_session()
+    app = make_application(db)
+    provider = MockProvider()
+    provider.queue(clean_report(), model_id="openai.gpt-5.6-luna")
+    result = provider.structured_output(
+        model_id="openai.gpt-5.6-luna", schema=ScreeningReport, prompt="analyze"
+    )
+
+    store_result(
+        db,
+        app,
+        kind=KIND,
+        model_id="openai.gpt-5.6-luna",
+        prompt_version=VERSION,
+        result=result,
+        reasoning_effort="low",
+    )
+
+    stored = db.scalar(select(ApplicationAIResult))
+    assert stored is not None
+    assert stored.reasoning_effort == "low"
 
 
 # --- pricing ---

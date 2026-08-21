@@ -63,10 +63,18 @@ class AIResultTraceOut(ResponseModel):
     its original generation allocation; a later run may reuse that result from cache."""
 
     model_id: str
+    reasoning_effort: str | None
     prompt_version: str
     input_tokens: int
     output_tokens: int
     cost_usd: float
+
+
+class AIModelTraceOut(ResponseModel):
+    """One exact model/reasoning pairing that contributed to a stored result."""
+
+    model_id: str
+    reasoning_effort: str | None
 
 
 class DimensionScoringTraceOut(ResponseModel):
@@ -79,7 +87,7 @@ class DimensionScoringTraceOut(ResponseModel):
     """
 
     dimension_count: int
-    model_ids: list[str]
+    models: list[AIModelTraceOut]
     prompt_versions: list[str]
     input_tokens: int
     output_tokens: int

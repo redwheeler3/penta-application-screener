@@ -324,6 +324,9 @@ class ApplicationAIResult(TimestampMixin, Base):
     kind: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     cache_key: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     model_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Effective invocation value, not merely the current setting. None means the model did
+    # not use reasoning effort or the row predates provenance capture.
+    reasoning_effort: Mapped[str | None] = mapped_column(String(10), nullable=True)
     # The prompt version this result was produced under. Hashed into cache_key, but
     # also stored plainly so cost estimates can prefer current-version usage.
     prompt_version: Mapped[str] = mapped_column(String(20), nullable=False, index=True)

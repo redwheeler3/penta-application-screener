@@ -393,6 +393,7 @@ async def test_raw_row_and_narrative_visible_to_members() -> None:
         )
         trace = member_detail["screeningTrace"]
         assert trace["modelId"] == "mock-model"
+        assert trace["reasoningEffort"] is None
         assert trace["inputTokens"] == 100
         assert trace["outputTokens"] == 50
         assert trace["costUsd"] > 0

@@ -20,6 +20,13 @@ if TYPE_CHECKING:
 
 
 OPENAI_MODEL_PREFIX = "openai."
+OPENAI_PREAMBLE_INSTRUCTION = (
+    "Before calling the structured-output function, send a concise Markdown update "
+    "explaining what you considered and how you reached the result. This update is shown "
+    "live to a human reviewer."
+)
+
+
 class StrandsProvider:
     """Bedrock-backed provider, safe to share across the screening thread pool.
 
@@ -98,7 +105,8 @@ class StrandsProvider:
                 },
                 params={
                     "reasoning": {
-                        "effort": reasoning_effort
+                        "effort": reasoning_effort,
+                        "summary": "auto",
                     }
                 },
                 # The app supplies full history for each short-lived Agent. Do not ask
@@ -150,7 +158,7 @@ class StrandsProvider:
         # echo is just noise.
         agent = Agent(
             model=self._model_for(model_id, read_timeout, reasoning_effort),
-            system_prompt=system_prompt,
+            system_prompt=_system_prompt_for_model(model_id, system_prompt),
             callback_handler=None,
         )
 
@@ -159,9 +167,9 @@ class StrandsProvider:
             async for event in agent.stream_async(prompt, structured_output_model=schema):
                 if not isinstance(event, dict):
                     continue
-                data = event.get("data")
-                if isinstance(data, str) and data:
-                    sink(data)  # a chunk of reasoning text
+                narrative_delta = _event_narrative_delta(event)
+                if narrative_delta:
+                    sink(narrative_delta)
                 if event.get("result") is not None:
                     final = event["result"]  # the terminal AgentResult
             return final
@@ -183,11 +191,11 @@ class StrandsProvider:
 
 
 def _conversation_narrative(messages: object) -> str | None:
-    """Join the model's reasoning text across the whole conversation.
+    """Join the model's exposed reasoning across the whole conversation.
 
     Structured output calls a tool, which splits reasoning across several assistant
     turns. ``result.message`` is only the LAST turn, so we walk every assistant
-    message and concatenate its text blocks (dropping toolUse/toolResult), in order.
+    message and concatenate Claude text or OpenAI reasoning-summary blocks in order.
     """
     if not isinstance(messages, list):
         return None
@@ -196,8 +204,43 @@ def _conversation_narrative(messages: object) -> str | None:
         if not isinstance(message, dict) or message.get("role") != "assistant":
             continue
         for block in message.get("content", []):
-            if isinstance(block, dict) and isinstance(block.get("text"), str):
-                text = block["text"].strip()
-                if text:
-                    parts.append(text)
+            text = _content_block_narrative(block)
+            if text:
+                parts.append(text)
     return "\n\n".join(parts) or None
+
+
+def _event_narrative_delta(event: dict[str, object]) -> str | None:
+    """Return a streamed OpenAI reasoning summary or Claude text delta."""
+    reasoning_text = event.get("reasoningText")
+    if isinstance(reasoning_text, str) and reasoning_text:
+        return reasoning_text
+    data = event.get("data")
+    return data if isinstance(data, str) and data else None
+
+
+def _system_prompt_for_model(model_id: str, system_prompt: str | None) -> str | None:
+    """Ask OpenAI for a user-visible preamble without changing Claude prompts."""
+    if not model_id.startswith(OPENAI_MODEL_PREFIX):
+        return system_prompt
+    if not system_prompt:
+        return OPENAI_PREAMBLE_INSTRUCTION
+    return f"{system_prompt.rstrip()}\n\n{OPENAI_PREAMBLE_INSTRUCTION}"
+
+
+def _content_block_narrative(block: object) -> str | None:
+    """Return narrative text from a Claude or OpenAI Strands content block."""
+    if not isinstance(block, dict):
+        return None
+    text = block.get("text")
+    if not isinstance(text, str):
+        reasoning_content = block.get("reasoningContent")
+        if not isinstance(reasoning_content, dict):
+            return None
+        reasoning_text = reasoning_content.get("reasoningText")
+        if not isinstance(reasoning_text, dict):
+            return None
+        text = reasoning_text.get("text")
+    if not isinstance(text, str):
+        return None
+    return text.strip() or None

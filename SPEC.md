@@ -893,6 +893,17 @@ eval run identity; an inactive reasoning value does not invalidate Claude work. 
 enabled, the switchover needs only the explicit model-setting migration that preserves custom model
 choices.
 
+OpenAI calls request an automatic reasoning summary. Strands streams and persists that exposed
+summary as the audit narrative; the application does not receive or represent it as raw private
+chain of thought. Because Bedrock Mantle may omit the optional summary, OpenAI calls also request a
+concise user-visible preamble before the structured result; that preamble uses the same stream and
+audit path. Claude's existing streamed text narrative remains unchanged.
+
+Cached application-result provenance stores the effective reasoning effort alongside the model and
+shows both in application traces. The migration recovers existing OpenAI effort only when it can
+prove the value against the row's content-addressed cache key; unmatched historical rows are
+labelled as not recorded rather than inferred from the current setting.
+
 ### Built-In Applications And Passwordless Access (M21) — planned
 
 **Goal:** replace the external Google Form/Sheet intake path with a first-party public
