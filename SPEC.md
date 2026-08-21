@@ -28,13 +28,11 @@ The primary user is Jeff. The output audience is MOMI, who need a clear shortlis
   - `Application declined but on file email.docx`
   - `Application deleted email.docx`
 
-
-
 Google Forms definitions were inspected through the authenticated browser/devtools MCP. The response sheets provide the effective column schema.
 
 ## Application Form
 
-The application form is titled `Penta Co-operative Housing: Application For Membership`. 
+The application form is titled `Penta Co-operative Housing: Application For Membership`.
 
 The form introduction includes:
 
