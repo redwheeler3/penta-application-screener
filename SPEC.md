@@ -101,9 +101,325 @@ The final declaration checkbox text is: `I / We have read and agree to be bound 
 
 Current application response columns include applicant/co-applicant identity and contact fields, household children fields, current address + duration, real-estate ownership, current and previous landlord references, the four essay fields, an optional household photo link, pets description, applicant/co-applicant employment fields, applicant/co-applicant/household gross yearly income, and the declaration. (Full column-by-column detail: [docs/form-field-reference.md](docs/form-field-reference.md).)
 
+## Built-In Application Intake (M20 Target)
+
+The application form will move into this product between application cycles. It is a clean
+cutover, not a period of dual Google Form and built-in intake: no Google Sheet transition or
+compatibility path is required. The existing field reference remains the baseline for the
+built-in form, with the product behavior below superseding the Google Form behavior.
+
+### One application, working and submitted copies
+
+Each primary applicant has exactly one application in the system. The application is durable
+across openings: a later opening uses the same application information rather than creating a
+second application for the same person.
+
+An application has at most two copies of its answers:
+
+- The **working copy** is the applicant's private in-progress content. This is either the
+  initial application before its first submission or edits being prepared after submission.
+  Committee members cannot see it.
+- The **submitted copy** is the current committee-facing application. It does not change while
+  the applicant edits the working copy.
+
+The first Submit action publishes the working copy. A later Submit action atomically replaces
+the committee-facing copy with the completed working copy; it does not create another
+application. Until that action, the committee continues to see the prior submitted copy. The
+app clearly and persistently warns an applicant when changes have not been submitted, including
+before they leave the editing flow. Wording must distinguish **saved** changes from
+**submitted** changes so an applicant cannot reasonably believe the committee has received an
+edit that remains private.
+
+Committee members never see an application that has not been submitted at least once. Screening,
+AI analysis, eligibility, notes, and ranking consume only the submitted copy. Publishing changed
+answers changes the application's content hash and makes any derived screening/ranking state
+stale through the existing content-addressed mechanisms.
+
+The application itself is not a revision collection, but a closed application cycle retains the
+final submitted snapshot that its committee actually considered. A later edit to the applicant's
+durable application therefore does not rewrite a prior cycle's historical record.
+
+### Applicant access and draft persistence
+
+Applicants can begin filling out the form as guests without authenticating. Guest answers stay
+in browser storage until the applicant submits or explicitly chooses a server-backed save
+operation. Submission is always an explicit action after reviewing the completed application.
+While an application remains active and within its retention period, its authenticated primary
+applicant may view and edit it even when no opening is active. An edit outside an active opening
+changes only the private working copy; it does not enroll the application in a future opening or
+make the change committee-visible. An applicant-deleted legal-hold record is not active and is not
+available through this flow.
+
+An authenticated applicant can choose **Delete application** without contacting the Privacy
+Officer. After a short confirmation, this immediately retracts every active participation,
+excludes the application from all committee views and future consideration, discards unsubmitted
+changes, revokes applicant sessions and unused links, and removes applicant access. The UI and
+confirmation email simply say that the application has been deleted and will no longer be
+considered, with a link to the privacy policy; they do not expose the internal retention workflow.
+A never-submitted draft is physically purged immediately. Submitted information that must be
+retained becomes a read-only legal-hold record accessible only through an audited administrator
+retention view until its scheduled purge. It cannot be restored into active consideration.
+
+If the same verified address applies again while an older deleted record remains under legal hold,
+the applicant starts a blank current application. The retained record is never returned,
+pre-populated, or exposed as an email collision; it remains linked only as needed to enforce its
+retention and purge date. There is still at most one current application for the address.
+
+The product uses passwordless email access rather than Google sign-in. A secure return flow sends
+a short-lived, single-use link to the primary applicant's email address; consuming it establishes
+an HTTPS-only application session and removes the credential from the browser URL. Tokens are
+stored only as hashes, expire, cannot be reused, and are protected by rate limits and
+non-enumerating responses. Only the primary applicant receives access links and application
+updates; the co-applicant does not have separate editing access.
+
+After each initial or updated submission, the product sends the primary applicant a confirmation
+email with secure return access. There is no opt-in checkbox: the applicant may ignore or delete
+the message, and can request a fresh access email later through the return flow.
+
+Email ownership is verified before the first application is published or a browser-only draft is
+saved to the server. That required verification is separate from the automatic post-submission
+confirmation email. A submission request always gives the same response whether its email is new
+or already known, so it does not reveal which people have applications.
+
+An unauthenticated browser can never overwrite an existing working or submitted copy merely by
+entering the same primary email. The existing submitted application remains committee-visible and
+unchanged while control of the address is verified. After verification, the address owner returns
+to the existing application and may deliberately adopt the browser's answers as its working copy;
+the browser copy is never published automatically. The system therefore does not create two
+committee-facing applications or ask the committee to adjudicate an identity collision. Requests
+are rate-limited and notification emails are coalesced so this protection cannot become an email-
+bombing tool.
+
+An emailed credential is not a permanent bearer link. It is short-lived and single-use, and a new
+request invalidates older unused links for that applicant. Consuming it creates a revocable
+server-side session. Applicants can sign out the current browser and revoke all application
+sessions; an administrator can also revoke them. If the email account itself is compromised,
+recovery is administrator-mediated because another message to the same mailbox would not restore
+identity assurance.
+
+An administrator may initiate a fresh magic-link email to the application's already recorded
+primary address, but cannot see or copy the credential. This invalidates older unused links just
+like an applicant-initiated request. Administrators cannot edit applicant answers.
+
+A dedicated **Save and return later** action deliberately moves the current working copy from
+browser-only storage into private server-side draft storage and emails the primary applicant an
+access link. This is the only way an unauthenticated, unsubmitted draft leaves the browser. It
+lets an applicant preserve unfinished work across browsers or devices without creating a
+password.
+
+Committee members use the same passwordless email-link mechanism as applicants. This deliberately
+trades the higher assurance of Google-backed or passkey authentication for one simple sign-in
+flow that this non-technical committee can use reliably. Committee access remains allowlist-gated
+with the existing admin/member roles: control of an email address does not grant committee access
+unless that address is active on the allowlist. Removing Forms, Sheets, Picker, stored Drive
+credentials, and Google OAuth leaves no Google runtime integration.
+
+### Remembered browser sessions
+
+Using a magic link creates a persistent, revocable server-side session for that browser. The
+browser remains signed in across restarts; committee members are not asked to follow another link
+on every visit. A session expires after 30 days without activity or after 90 days in total,
+whichever comes first. Ordinary activity may extend the idle deadline but never the absolute
+deadline. These are explicit product settings, not framework defaults.
+
+Signing out revokes the current server-side session immediately. **Sign out all devices** revokes
+every session for that identity. Administrators can revoke a committee member's sessions, and
+deactivation, removal from the allowlist, a role change, or a primary-email change invalidates
+affected sessions. Changing committee access or performing another sensitive administrator action
+requires a recently authenticated session rather than trusting a months-old remembered browser.
+
+Session cookies are host-only, `Secure`, `HttpOnly`, and `SameSite=Lax`; raw session credentials are
+not stored in browser-readable storage. The server records only hashed session credentials plus
+creation, last-activity, expiry, and revocation metadata, without IP addresses or device
+fingerprints.
+
+### Transactional email
+
+Amazon Simple Email Service (SES) sends applicant verification, save-and-return, submission,
+update, and security-notification messages. The application calls it through a small
+provider-neutral email-sender interface so authentication and intake behavior do not depend on
+SES-specific response shapes.
+
+SES uses a dedicated least-privilege IAM credential stored as a Fly secret, separate from the
+Bedrock credential. The sending domain is authenticated with DKIM, SPF, and DMARC, and the SES
+account must have production access before applications open. Messages use
+`applications@pentacoop.com` as the recognizable Penta sender, a monitored Membership Committee
+mailbox as Reply-To, and `privacy@pentacoop.com` as the privacy-policy contact; the application
+does not receive email.
+
+Email is a load-bearing part of applicant access. A failed verification or save-and-return send
+leaves the browser draft intact and offers retry or email correction. Confirmation failures are
+recorded for retry and surfaced to administrators. Sending is rate-limited, repeated requests are
+coalesced, and bounce/complaint state is monitored. Operational records contain the provider
+message ID, message kind, recipient identifier, and delivery state, but never a raw access token,
+email body, or applicant answers. Local development and automated tests use a captured fake sender
+and never deliver real email.
+
+Every applicant transactional message clearly says that it was sent because the recipient has or
+requested access to a Penta application, not because they are on the vacancy-notification list. It
+links to the authenticated **Delete application** flow and explains that deletion stops ordinary
+application messages, while a required security or final-deletion confirmation may still be sent.
+The link opens a review/confirmation page and never changes state on its initial `GET`, so an email
+security scanner cannot delete an application by following it.
+
+Committee transactional messages instead explain that they were sent because the address has
+active committee access and direct the recipient to a Penta administrator if that access should be
+removed. They do not show an applicant-removal link.
+
+### Form behavior
+
+- M20 preserves the current field set and required/optional behavior rather than redesigning the
+  application schema. The deliberate exception is that every applicant, co-applicant, and child
+  age field becomes a date of birth so age can be calculated for an opening's target move-in date
+  instead of becoming stale. Committee and AI views receive the calculated age needed for
+  screening, not the raw birth date. Existing submitted integer ages remain unchanged in their
+  historical snapshots; they are never converted into invented birth dates. A returning applicant
+  must provide the missing birth dates in the working copy before submitting for another opening.
+- The introduction explains the current eligibility criteria, but the form has no eligibility
+  hard stops. Every applicant may complete and submit it. Deterministic rules and human overrides
+  remain part of committee screening, not intake gating.
+- Applicant and co-applicant gross yearly income are entered separately. Household income is a
+  read-only calculated value; the form adds the two inputs rather than asking the applicant to
+  repeat the total.
+- The form supports a private household-photo upload rather than only a link. The binary is kept
+  outside SQLite in private object storage; the database stores ownership and file metadata.
+  Uploads are never public, are served only through authorized application/committee access,
+  and require file-type, size, and image-safety validation. A working-copy photo remains private
+  from the committee until the applicant submits it. There is at most one optional household
+  photo. The initial accepted formats are JPEG, PNG, and WebP with a 10 MB upload limit; the server
+  re-encodes accepted images and strips embedded metadata.
+- The primary applicant explicitly accepts the declaration and privacy notice before each
+  Submit action. The product records acceptance and time but does not introduce separately
+  managed declaration or privacy-notice versions.
+- Application-close timing does not prevent an existing application's information from being
+  reused for a later opening. Each opening has a separate participation record that says the
+  applicant affirmatively wants their one application considered for that opening. Participation
+  does not duplicate the application. The application close freezes that cycle's final submitted
+  snapshot while the applicant's durable application remains available for a later opening.
+- An existing applicant enters a later opening by following their access flow, reviewing or
+  updating the retained application, accepting the declaration again, and explicitly submitting
+  it for that opening. An invitation or an existing application alone does not enroll them.
+- Multiple openings may be active at the same time. The applicant chooses which open offerings to
+  enter, and every active participation uses the application's same current submitted copy. A
+  later publication updates what each active opening's committee sees; each opening freezes its
+  own final snapshot when it closes.
+- A withdrawal retracts participation from the active opening but does not delete the durable
+  application: the applicant may continue to view and edit it. The applicant may reactivate it
+  before the deadline; after the deadline only an administrator may do so. Retraction does not
+  alter a snapshot already frozen for a closed cycle.
+- The server's receipt time determines whether a submission met the opening deadline. Having the
+  form open or a draft saved before the deadline does not permit a late submission; an
+  administrator must reopen or explicitly reactivate the opening to accept one.
+
+### Committee intake awareness
+
+The committee dashboard identifies applications submitted or updated since the relevant
+screening work. Applicant edits are already in the database when submitted, so the replacement
+for the Google Sheet **Sync** control does not perform an external data sync. It surfaces new and
+updated applications, their submitted times, and which screening/ranking outputs are stale. Its
+final label must describe that intake/acknowledgement job rather than claim that data is being
+synced.
+
+Routine applicant updates do not email the whole committee. The in-product updated state is the
+default notification mechanism.
+
+### Primary email changes
+
+The primary email is the applicant's contact and access address, not the application's permanent
+database identity. An authenticated applicant may change it only after verifying the new address;
+the prior address is notified. If the applicant cannot authenticate, an administrator must handle
+recovery. Changing email does not create a second application or transfer one merely because an
+unauthenticated form contains the same address.
+
+Email identity prevents an unauthenticated collision on the same address; it does not attempt to
+prove that similarly named people or households using different verified addresses are the same.
+Those records remain separate applications. M20 performs no automatic merge and provides no
+administrator merge operation.
+
+### Intake data boundary
+
+The built-in form writes canonical application fields directly. Google column headings and
+spreadsheet rows cease to define the domain model. The submitted copy retains the exact answers
+needed by the committee and AI passes, while normalized values remain the deterministic screening
+input. Uploaded photos never enter AI prompts.
+
+The implementation must preserve the current privacy boundary: drafts and submitted applicant
+data are sensitive PII; they do not enter logs, source control, fixtures, or general operational
+reports.
+
+A draft expires after 30 days without being saved. For a never-submitted application, expiry
+purges the entire server-backed draft; for an application that already has a submitted copy,
+expiry discards only the unsubmitted working-copy changes and leaves the submitted copy intact.
+Browser-local guest drafts enforce the same 30-day inactivity rule on that device.
+
+Once an applicant affirmatively submits for one or more openings, the application is retained
+until one year after the latest effective move-in date among those participating openings. All
+selection decisions must be complete before the applicable move-in date, and the recorded
+retention anchor is updated if an offering's move-in date changes. A later working-copy edit by
+itself does not extend retention; submitting for an opening with a later move-in date establishes
+a new anchor. Submitted, declined, and retracted applications use this same rule. Accepted-member
+records continue under the existing seven-year policy.
+
+The public privacy policy explains these retention periods and the restricted legal-hold behavior.
+The ordinary applicant interface does not show retention dates or internal storage states after a
+person deletes an application.
+
+There is no advance expiry warning. When a due application is purged, the product emails the
+primary applicant that deletion is complete and invites them to join the separate vacancy
+notification list. The minimum transient delivery record needed to send or retry that notice is
+removed after terminal delivery handling; it does not preserve the application or become a
+mailing-list subscription.
+
+Deletion covers the working and submitted answers, cycle snapshots when their own hold has ended,
+photos and abandoned uploads, application participation, AI outputs and caches, eligibility and
+ranking data tied to the applicant, committee notes, sessions and unused login tokens, and
+applicant-identifying delivery records. Backups expire under a bounded backup-retention policy,
+and restoring a backup reapplies the deletion ledger before the restored service is opened. Only
+a non-identifying audit fact that a record was deleted under a named retention rule may remain.
+
+Retention is enforced opportunistically at application startup and at most once per day when the
+deployed service next receives traffic; M20 does not add an external scheduler solely to wake a
+suspended Fly Machine. A record may therefore remain somewhat past its scheduled date while the
+service is unused, but the first subsequent use performs the due cleanup.
+
 ## Email List Form
 
 The email-list form is titled `Penta Co-operative Housing: Email List`. It explains that applications are not currently being accepted, Penta no longer maintains a wait list, and paper applications are no longer processed. Applicants can provide an email address to receive a one-time notification when applications open (a unit generally becomes available every 2–3 years). One required checkbox question — "Please notify me when a unit of the following size is available" — with the three unit-size options (1 bedroom: 1–2 adults; 2 bedroom: 1–2 adults + 1+ children under 18; 3 bedroom: 1–2 adults + 2+ children under 18). Response columns: Timestamp, Email Address, requested unit sizes, month/year grouping.
+
+## Built-In Vacancy Notification List (M21 Target)
+
+After M20, the separate Google email-list form and response sheet move into the application
+service. This remains a minimal one-time vacancy-notification list, not a wait list, applicant
+account, newsletter, or promise of consideration.
+
+The public form collects only an email address and one or more requested unit sizes, along with
+the consent time needed to operate the list. It does not verify control of the address: the
+requested vacancy notice is the only email the subscription sends. Submission is rate-limited and
+does not reveal whether the address is already present. Applying does not subscribe someone, and
+subscribing does not create or preserve an application.
+
+There is one subscription per normalized email address. A later submission for the same address
+replaces the entire earlier unit-size selection and becomes the current subscription. This is the
+intentional no-verification tradeoff that lets a person update their preferences without receiving
+or following a confirmation email; preferences are never merged.
+
+When any requested unit size becomes available, SES sends one vacancy notice and the entire list
+record is consumed, even if the person selected other unit sizes. Consumption occurs only after
+SES accepts the message for delivery so a transient send failure can be retried without losing the
+recipient. The notice clearly says that the address has been removed from the list and links to
+the public form so the recipient can create a new one-notice subscription if they want future
+notifications. Resubscribing creates a new record; it does not reactivate or retain the consumed
+one. A hard bounce or complaint also terminates and removes the record. The application does not
+keep a permanent unsubscribe/suppression record.
+
+Every vacancy-list message includes a prominent one-click unsubscribe action. It is
+non-enumerating and deletes any vacancy subscription that currently exists for the normalized
+address, even if the record that originally caused the email has already been consumed and the
+person subsequently subscribed again. A link from an older vacancy notice can therefore remove a
+newer vacancy subscription for the same address. The narrowly scoped credential grants no
+application or sign-in access and does not require a permanent suppression record. A vacancy
+notice states that the address has already been removed after this notification and offers the
+fresh sign-up link while retaining the unsubscribe link for this later-resubscription case.
 
 ## Prior Email Templates
 
@@ -428,11 +744,145 @@ Implementation defaults:
 - Clean changes over backward compatibility for internal APIs, local schemas, fixtures, and UI shapes; backward compatibility is added only when real users or real applicant data require it.
 - Relational tables for workflow data, JSON columns for raw rows, flexible payloads, AI outputs, and debug traces; the relational model stays portable to Postgres.
 
-**Milestones 1–18 are complete** and proven end-to-end against real Bedrock (sync → screen → discover ~30–35 fact-aware dimensions → score the pool → rank with the tier-list weighting → print a committee-ready PDF), now with per-member independent screening on a shared compute-once substrate, **hosted live at [screener.pentacoop.com](https://screener.pentacoop.com)** for the real committee. Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md). The last milestones landed as: **16 (concurrency & correctness — software: run lease, WAL, stale-view detection)**, **17 (hosting / go-live on Fly.io — see [ADR 0012](docs/adr/0012-hosting-platform-m17.md))**, and **18 (least-privilege Google auth — members log in identity-only; an admin links the response sheet via the Google Picker with `drive.file`)**.
+**Milestones 1–19 are complete** and proven end-to-end against real Bedrock (sync → screen → discover ~30–35 fact-aware dimensions → score the pool → rank with the tier-list weighting → print a committee-ready PDF), now with per-member independent screening on a shared compute-once substrate, **hosted live at [screener.pentacoop.com](https://screener.pentacoop.com)** for the real committee. Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md). The last milestones landed as: **16 (concurrency & correctness — software: run lease, WAL, stale-view detection)**, **17 (hosting / go-live on Fly.io — see [ADR 0012](docs/adr/0012-hosting-platform-m17.md))**, **18 (least-privilege Google auth — members log in identity-only; an admin links the response sheet via the Google Picker with `drive.file`)**, and **19 (scale-to-zero recovery — health-aware Fly Machine watchdog)**.
 
 ## Remaining Open Questions
 
 Decisions that still need making, or can wait until their implementation milestone.
+
+### Built-In Applications And Passwordless Access (M20) — planned
+
+**Goal:** replace the external Google Form/Sheet intake path with a first-party public
+application experience at a separate applicant-facing hostname, and replace Google OAuth with
+SES-delivered magic links for applicants and committee members. The product contract is
+specified in [Built-In Application Intake](#built-in-application-intake-m20-target); this section
+defines the implementation boundary and sequence.
+
+M20 is one milestone because intake identity, private drafts, publication, email verification,
+and removal of the Google source are one correctness boundary. Splitting them into independently
+shippable production states would either expose unauthenticated PII, permit identity collisions,
+or require the dual Google/built-in transition that the between-cycle cutover deliberately avoids.
+The work is delivered in internal stages and released only when the end-to-end replacement is
+ready.
+
+**Delivery stages:**
+
+1. **Canonical intake model** — make application fields independent of spreadsheet headings;
+   introduce one durable application with private working and committee-facing submitted copies,
+   opening participation, and closed-cycle snapshots. Preserve the existing content hash as the
+   boundary for stale AI results.
+2. **Transactional email and sessions** — add the provider-neutral sender with SES, domain
+   authentication, production access, passwordless email verification, collision-safe account
+   claiming, revocable server-side sessions, allowlist authorization, and delivery observability.
+3. **Applicant form** — build the field-reference sections, browser-local guest draft, explicit
+   Save and return later, validation/review/Submit flow, calculated household income, persistent
+   unsubmitted-change warning, and accessible responsive behavior.
+4. **Private photo storage** — upload, validate, privately serve, replace, and clean up the one
+   working/submitted household photo without putting binary data in SQLite or AI prompts.
+5. **Publication and cycle behavior** — atomically publish initial and updated working copies,
+   keep drafts invisible, retain the prior submitted copy until publication, record participation,
+   and freeze the final submitted snapshot when an opening closes.
+6. **Committee intake workflow** — replace the external-source Sync step with an honestly named
+   new/updated-applications surface; show submission times and stale Screen/Rank state without
+   emailing the committee for routine updates.
+7. **Between-cycle cutover** — configure the applicant hostname, exercise SES and storage in
+   production with synthetic data, retain existing production records as specified below, then
+   remove Google Form/Sheet import, Picker, Drive credentials, Google OAuth, their settings/UI, and
+   their operational documentation completely.
+
+The applicant hostname is `applications.pentacoop.com`. Existing production application records
+and committee history are retained at cutover rather than reset. They are not sent unsolicited
+access messages; a returning applicant may claim the existing record only by verifying its
+recorded primary email. Records with a missing, duplicated, or inaccessible address require
+administrator-mediated recovery and are never guessed or automatically combined.
+
+**Non-goals:** a general-purpose form builder; separate co-applicant access; simultaneous Google
+and built-in intake; multiple applications per primary applicant; committee-visible drafts;
+automatic AI screening on submission; inbound email handling; or shared-database multi-tenancy.
+M20 should leave clean tenant boundaries possible, but onboarding other co-ops is a separate
+milestone with its own storage, hostname, and isolation decisions.
+
+**Definition of done:**
+
+- A guest can complete the entire form without signing in; the browser preserves progress locally,
+  and publication occurs only after verifying control of the primary email.
+- Save and return later preserves a private server-side draft and restores it from a fresh email
+  link on another browser; committee members cannot read it.
+- An unauthenticated submission using an existing email cannot reveal, replace, hide, or publish
+  over that person's application.
+- A submitted edit leaves the previous committee copy visible until the applicant explicitly
+  republishes, then invalidates derived screening/ranking currency by content hash.
+- One application can participate in a later opening while each closed opening retains the final
+  snapshot its committee considered.
+- Committee members sign in through allowlisted magic links, remain signed in under the explicit
+  remembered-browser policy, and can revoke sessions; role/access changes revoke them server-side.
+- Photos are private, authorized, excluded from AI, and covered by deletion and backup/retention
+  behavior.
+- SES send failure, retry, rate-limit, bounce, and complaint paths are observable without logging
+  tokens, email bodies, or applicant content.
+- The production application accepts built-in submissions at the applicant hostname, the screener
+  reflects new/updated submissions, and no Google runtime dependency or dead compatibility path
+  remains.
+- Backend tests, frontend build, database migration against a production-shaped copy, synthetic
+  browser submission/edit/collision checks, email delivery checks, and permission/retention checks
+  pass before the cycle opens.
+
+**Open decisions before implementation:**
+
+- Private object-storage provider, image re-encoding/safety implementation, and deletion mechanics.
+  The user-facing formats and size policy are fixed above.
+- Exact backup lifetime and the implementation mechanics for complete applicant deletion and the
+  opportunistic retention sweep.
+- Exact monitored Membership Committee Reply-To address, SES region, bounce/complaint event
+  plumbing, and administrator delivery-status UI. The sender address is fixed above.
+- The recent-authentication window for sensitive admin actions and whether the proposed 30-day
+  idle / 90-day absolute session limits need adjustment after committee usability testing.
+
+### Built-In Vacancy Notifications (M21) — planned
+
+**Goal:** replace the separate Google email-list form and response sheet with the minimal
+one-notice subscription described in [Built-In Vacancy Notification List](#built-in-vacancy-notification-list-m21-target).
+
+**Delivery stages:**
+
+1. Add the public email-and-unit-size form, rate limiting, non-enumerating duplicate handling, and
+   the minimal consent/subscription record.
+2. Add an administrator view for counts by unit size and a preview of the exact audience for an
+   opening without exposing addresses in routine reports.
+3. Require an administrator to preview the matching audience and exact message, then separately
+   confirm **Send vacancy notification**. Creating or opening an offering never sends email
+   automatically. Send through a retry-safe outbox, consume the whole subscription after provider
+   acceptance or terminal bounce/complaint, and show delivery outcomes to administrators.
+4. Import the existing Google list with its recorded unit preferences and available consent
+   provenance from its form-response timestamp, verify counts, replace the website link, and
+   retire the Google form and sheet.
+
+**Non-goals:** applicant accounts; email-address verification; recurring newsletters; a wait-list
+position or ordering; automatic application creation; multiple notices from one subscription;
+a permanent application-managed suppression list; and retaining a subscription after its first
+matching vacancy notice.
+
+**Definition of done:**
+
+- A visitor can request one notice for one or more unit sizes without creating an application or
+  receiving a confirmation email.
+- A later submission for the same normalized email replaces, rather than merges with, the prior
+  unit-size preferences and does not reveal that a prior record existed.
+- The first matching opening sends one notice and consumes the entire record regardless of how
+  many sizes were selected; a transient SES failure remains retryable and cannot double-send after
+  provider acceptance. The notice explains the removal and offers a link to subscribe again.
+- Application deletion and mailing-list deletion remain independent, and application activity
+  never silently subscribes an address.
+- Every vacancy-list message contains a prominent one-click unsubscribe action. A link from an
+  older vacancy notice removes a current re-subscription for the same address; hard bounces and
+  complaints also remove subscriptions without creating an indefinite suppression record in this
+  product.
+- The production website uses the built-in form and the Google form/sheet and their operational
+  handling are removed after a count-verified migration.
+
+**Open decisions before implementation:** final notification wording and legal review, and whether
+SES account-level suppression must be reconciled separately from the product's
+no-permanent-suppression rule.
 
 ### Reporting (M10 shipped) — ✅ closed, demand-driven from here
 
