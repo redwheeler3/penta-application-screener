@@ -13,7 +13,7 @@ dependencies = [
     "itsdangerous>=2.2.0",
     "pydantic-settings>=2.12.0",
     "sqlalchemy>=2.0.44",
-    "strands-agents>=1.44.0",
+    "strands-agents[openai]>=1.53.0",
 ]
 
 [dependency-groups]
@@ -66,4 +66,3 @@ ignore = [
 # `user: User = Depends(require_current_user)` MUST stay in the signature to enforce
 # auth even when the body doesn't read it — so unused-argument is wrong for the API layer.
 "app/api/*" = ["ARG001"]
-

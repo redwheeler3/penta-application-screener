@@ -384,7 +384,7 @@ export function saveJudgeBackground(passName: string, background: string): Promi
 }
 
 // The most recent persisted run among `keys` (comma-joined), to restore a tab on remount.
-// Result JSON only (no thinking narration); carries a `stale` flag when the prompt changed.
+// Result JSON only (no thinking narration); identifies prompt and model drift separately.
 export function fetchLastEvalRun(keys: string[]): Promise<Response> {
   return request(`/evals/last-run?keys=${encodeURIComponent(keys.join(","))}`);
 }

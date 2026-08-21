@@ -99,7 +99,7 @@ The final declaration checkbox text is: `I / We have read and agree to be bound 
 
 Current application response columns include applicant/co-applicant identity and contact fields, household children fields, current address + duration, real-estate ownership, current and previous landlord references, the four essay fields, an optional household photo link, pets description, applicant/co-applicant employment fields, applicant/co-applicant/household gross yearly income, and the declaration. (Full column-by-column detail: [docs/form-field-reference.md](docs/form-field-reference.md).)
 
-## Built-In Application Intake (M20 Target)
+## Built-In Application Intake (M21 Target)
 
 The application form will move into this product between application cycles. It is a clean
 cutover, not a period of dual Google Form and built-in intake: no Google Sheet transition or
@@ -276,7 +276,7 @@ removed. They do not show an applicant-removal link.
 
 ### Form behavior
 
-- M20 preserves the current field set and required/optional behavior rather than redesigning the
+- M21 preserves the current field set and required/optional behavior rather than redesigning the
   application schema. The deliberate exception is that every applicant, co-applicant, and child
   age field becomes a date of birth so age can be calculated for an opening's target move-in date
   instead of becoming stale. Committee and AI views receive the calculated age needed for
@@ -341,7 +341,7 @@ unauthenticated form contains the same address.
 
 Email identity prevents an unauthenticated collision on the same address; it does not attempt to
 prove that similarly named people or households using different verified addresses are the same.
-Those records remain separate applications. M20 performs no automatic merge and provides no
+Those records remain separate applications. M21 performs no automatic merge and provides no
 administrator merge operation.
 
 ### Intake data boundary
@@ -386,7 +386,7 @@ and restoring a backup reapplies the deletion ledger before the restored service
 a non-identifying audit fact that a record was deleted under a named retention rule may remain.
 
 Retention is enforced opportunistically at application startup and at most once per day when the
-deployed service next receives traffic; M20 does not add an external scheduler solely to wake a
+deployed service next receives traffic; M21 does not add an external scheduler solely to wake a
 suspended Fly Machine. A record may therefore remain somewhat past its scheduled date while the
 service is unused, but the first subsequent use performs the due cleanup.
 
@@ -394,9 +394,9 @@ service is unused, but the first subsequent use performs the due cleanup.
 
 The email-list form is titled `Penta Co-operative Housing: Email List`. It explains that applications are not currently being accepted, Penta no longer maintains a wait list, and paper applications are no longer processed. Applicants can provide an email address to receive a one-time notification when applications open (a unit generally becomes available every 2–3 years). One required checkbox question — "Please notify me when a unit of the following size is available" — with the three unit-size options (1 bedroom: 1–2 adults; 2 bedroom: 1–2 adults + 1+ children under 18; 3 bedroom: 1–2 adults + 2+ children under 18). Response columns: Timestamp, Email Address, requested unit sizes, month/year grouping.
 
-## Built-In Vacancy Notification List (M21 Target)
+## Built-In Vacancy Notification List (M22 Target)
 
-After M20, the separate Google email-list form and response sheet move into the application
+After M21, the separate Google email-list form and response sheet move into the application
 service. This remains a minimal one-time vacancy-notification list, not a wait list, applicant
 account, newsletter, or promise of consideration.
 
@@ -754,19 +754,149 @@ Implementation defaults:
 
 **Milestones 1–19 are complete** and proven end-to-end against real Bedrock (sync → screen → discover ~30–35 fact-aware dimensions → score the pool → rank with the tier-list weighting → print a committee-ready PDF), now with per-member independent screening on a shared compute-once substrate, **hosted live at [screener.pentacoop.com](https://screener.pentacoop.com)** for the real committee. Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md). The last milestones landed as: **16 (concurrency & correctness — software: run lease, WAL, stale-view detection)**, **17 (hosting / go-live on Fly.io — see [ADR 0012](docs/adr/0012-hosting-platform-m17.md))**, **18 (least-privilege Google auth — members log in identity-only; an admin links the response sheet via the Google Picker with `drive.file`)**, and **19 (scale-to-zero recovery — health-aware Fly Machine watchdog)**.
 
-## Remaining Open Questions
+## Milestones And Remaining Open Questions
 
-Decisions that still need making, or can wait until their implementation milestone.
+Delivered and planned milestones, including decisions that can wait until implementation.
 
-### Built-In Applications And Passwordless Access (M20) — planned
+### OpenAI-Versus-Anthropic Model Bake-Off (M20) — implemented; switchover deferred
+
+**Goal:** select the least expensive model that preserves or improves judgment quality for each
+AI pass before the larger intake changes begin. The current controls are Claude Haiku 4.5 for
+Screening and Dimension scoring and Claude Sonnet 4.6 for Pattern discovery, Dimension
+decomposition, Dimension matching, and Dimension consolidation. Their first OpenAI challengers are
+GPT-5.6 Luna and GPT-5.6 Terra respectively.
+
+This is a model-family comparison within Amazon Bedrock, not a wholesale provider migration.
+Bedrock remains the security, credential, billing, and invocation boundary unless the bake-off
+uncovers a concrete limitation that requires a separate decision. The result may be a per-pass
+hybrid; no vendor or tier has to win every job.
+
+The committed synthetic golden fixtures and PII-safe Rank baseline make the judgment comparison
+bounded, but OpenAI on Bedrock is not a model-ID-only swap. The existing Claude path uses Strands'
+`BedrockModel` over Bedrock Runtime, while GPT uses Strands' `OpenAIResponsesModel` over Bedrock's
+OpenAI-compatible Mantle endpoint. M20 keeps Strands, upgrades it to a release with working GPT
+Mantle routing, installs its OpenAI optional dependencies, and verifies the complete provider
+contract before trusting any quality result.
+
+**Delivery stages:**
+
+1. **Strands OpenAI transport spike** — configure `OpenAIResponsesModel` for Luna and Terra through
+   Bedrock Mantle behind the existing `AIProvider` boundary and prove schema-constrained output,
+   streaming progress, concurrency, timeouts/retries, provider-reported usage, and a useful
+   persisted audit narrative. Do not change production settings or deploy the spike.
+2. **Frozen-input comparison** — run the current prompts and human-labelled synthetic golden cases
+   against Haiku versus Luna and Sonnet versus Terra. Start with equivalent low/no-reasoning
+   settings, record every model/configuration exactly, and use repeated runs to expose instability
+   rather than selecting from a lucky sample.
+3. **Production-shaped comparison** — run the complete PII-safe Rank baseline through viable
+   configurations and compare end-to-end dimensions, merges, scores, structured-output failures,
+   wall-clock duration, input/output/reasoning tokens, and actual cost. Human-review meaningful
+   differences rather than treating exact nondeterministic wording or rank order as a golden
+   master.
+4. **Selection and cleanup** — choose the preferred model independently for each pass, document the
+   evidence and privacy tradeoff, update pricing, cache/fingerprint identity, observability, and
+   operational documentation, and verify the production AWS account can invoke every candidate
+   before changing runtime defaults. Production remains unchanged until a later explicit release.
+
+**Non-goals:** changing prompts to favour one model before the frozen-input baseline; accepting a
+cheaper model solely on token price; a general provider-selection UI; direct OpenAI API billing or
+credentials; keeping a speculative second runtime path after it loses; or changing application
+intake behavior.
+
+**Definition of done:**
+
+- Both model pairs run the same committed golden inputs without applicant PII, and each result is
+  attributable to an exact model, reasoning setting, prompt version, and repeat number.
+- A selected model meets or improves the current control on human-labelled correctness and the
+  required repeated-run stability; no material regression is hidden by a lower average cost.
+- Every selected model preserves schema-constrained output, useful audit reasoning, streaming
+  liveness, retries/timeouts, concurrency safety, and the existing human-review boundary.
+- Provider-reported token categories flow into the cost ledger, including billable reasoning
+  tokens, and pre-run estimates are conservative for every selected model.
+- The selection records actual cost and latency from the production-shaped run and explicitly
+  considers Bedrock's model-specific retention/abuse-monitoring behavior for applicant PII.
+- Backend tests and all live golden/baseline comparisons pass, the final per-pass model decision is
+  documented, and the deployed committee application has not changed.
+
+**Acceptance rule:** compare exact frozen prompts, exclude contested cases from verdict-direction
+penalties, require a selected challenger to have no worse per-case majority correctness than its
+control, investigate every grade flip or stable regression, reject any schema/transport failure,
+and let the incumbent win an ambiguous quality tie. A production-shaped run must complete with no
+failed applicants or invariant violations; dimension count and wording are human-reviewed signals,
+not an exact golden master.
+
+**Local evidence (August 21, 2026; synthetic data only):**
+
+- Strands 1.53.0 with its OpenAI extra successfully routed Luna and Terra through Bedrock Mantle.
+  A real Luna screening spike returned the required Pydantic schema, 1,592 input and 101 output
+  tokens, 42 streamed deltas, and a matching 239-character audit narrative. A real Terra
+  decomposition spike also passed. The provider retained the existing Claude `BedrockModel` path,
+  cache-by-model-and-timeout behavior, bounded retries, and per-call Agent isolation.
+- At no reasoning over three repeats, Terra passed all 15/15 decomposition, 15/15 matching, and
+  15/15 consolidation cases. Sonnet passed 13/15, 15/15, and 15/15 respectively; both Sonnet
+  misses were the inverse-poles decomposition guard. Luna at no reasoning was not viable for the
+  high-volume tier: 48/51 screening and 12/15 scoring, including a stable over-score on the modest
+  evidence case.
+- Luna at low reasoning improved to 51/51 screening and 14/15 scoring. In the same run Haiku was
+  51/51 and 14/15; Luna's one scoring miss over-scored modest evidence, while Haiku's one miss kept
+  the correct neutral score but overstated confidence. Luna cost $0.0532 across those two suites
+  versus Haiku's $0.4584.
+- One isolated 42-applicant full Rank on the current Claude configuration completed 25 dimensions
+  in 538 seconds for $1.6182, with 878 cached scoring units. Two isolated Terra plus Luna-low runs
+  completed 36 and 33 dimensions in 108 seconds each for $0.6814 and $0.7564, despite making every
+  scoring call fresh (1,512 and 1,386 calls). All three runs scored every applicant, had zero model
+  failures, and passed every deterministic invariant. The committed baseline has 35 dimensions;
+  the two candidate runs reused 20 and 22 of its keys versus 14 for the control. Human review found
+  broadly defensible candidate axes but also confirmed expected discovery variance, so dimension
+  count alone is not the selection criterion.
+- Terra at low reasoning also passed all 45/45 decomposition, matching, and consolidation cases
+  over three repeats. A production-shaped Terra-low plus Luna-low Rank completed 34 dimensions for
+  $0.6906, reused 21 baseline keys, scored every applicant, and passed every invariant. Its four
+  Terra passes cost $0.5301, within the $0.5150-$0.5996 range from the two Terra-none runs. The
+  172-second wall time was dominated by Luna scoring taking 79 seconds despite its unchanged
+  setting, so it does not isolate a Terra reasoning penalty. Low produced no measured quality gain
+  over none, but also no meaningful cost or output-quality regression in this workload.
+- At medium reasoning, Terra remained 45/45 and Luna scored 50/51 Screening and 14/15 Scoring; the
+  extra reasoning produced no golden-quality gain and introduced one Luna screening miss. A full
+  medium Rank cost $0.9177 versus $0.6906 for low: Luna increased 23.6% overall (20.2% per scoring
+  call) and Terra increased 35.7%. The run completed 36 dimensions, reused 24 baseline keys, and
+  again had no failures or invariant violations. This evidence keeps `low` as the selected setting.
+
+**Preferred future selection:** Terra at reasoning `low` is the evidence-backed candidate to replace
+Sonnet for Pattern discovery, Dimension decomposition, Dimension matching, and Dimension
+consolidation. Luna at reasoning `low` is the candidate to replace Haiku for Screening and Dimension
+scoring. Reasoning is sent explicitly so a provider default cannot silently change the measured
+quality, cost, or latency profile. See
+[ADR 0013](docs/adr/0013-openai-model-selection.md) for the detailed evidence and reproduction
+commands.
+
+The production AWS account rejected both Luna and Terra as unavailable in `us-east-1`, `us-east-2`,
+and `us-west-2` even after its scoped IAM policy successfully authorized Mantle inference. M20
+therefore commits the Mantle transport, pricing, eval tooling, and evidence while retaining Haiku and
+Sonnet as every runtime default. It adds no settings migration. Changing the defaults is a later,
+explicit operation after AWS enables both models and the same synthetic production-credential probes
+pass. This is an availability deferral, not a reversal of the quality and cost findings.
+
+The co-op accepts the Bedrock Mantle privacy tradeoff for applicant-bearing passes. The current
+Bedrock account retention setting is `inherit`; Mantle reports effective `default` mode for both GPT
+models and allows only `default` or `provider_data_share`, not `none`. Under that mode, GPT traffic
+flagged by AWS's automated abuse classifiers may be retained by AWS for up to 30 days, though
+operators cannot access it and it is not shared with OpenAI. Calls continue through AWS Bedrock;
+this selection does not add a direct OpenAI API integration.
+
+The existing runtime and persisted settings remain unchanged, so a future deployment of M20 cannot
+switch the committee application to unavailable models. When access is enabled, the switchover must
+include an explicit settings migration that preserves custom model choices.
+
+### Built-In Applications And Passwordless Access (M21) — planned
 
 **Goal:** replace the external Google Form/Sheet intake path with a first-party public
 application experience at a separate applicant-facing hostname, and replace Google OAuth with
 SES-delivered magic links for applicants and committee members. The product contract is
-specified in [Built-In Application Intake](#built-in-application-intake-m20-target); this section
+specified in [Built-In Application Intake](#built-in-application-intake-m21-target); this section
 defines the implementation boundary and sequence.
 
-M20 is one milestone because intake identity, private drafts, publication, email verification,
+M21 is one milestone because intake identity, private drafts, publication, email verification,
 and removal of the Google source are one correctness boundary. Splitting them into independently
 shippable production states would either expose unauthenticated PII, permit identity collisions,
 or require the dual Google/built-in transition that the between-cycle cutover deliberately avoids.
@@ -807,7 +937,7 @@ administrator-mediated recovery and are never guessed or automatically combined.
 **Non-goals:** a general-purpose form builder; separate co-applicant access; simultaneous Google
 and built-in intake; multiple applications per primary applicant; committee-visible drafts;
 automatic AI screening on submission; inbound email handling; or shared-database multi-tenancy.
-M20 should leave clean tenant boundaries possible, but onboarding other co-ops is a separate
+M21 should leave clean tenant boundaries possible, but onboarding other co-ops is a separate
 milestone with its own storage, hostname, and isolation decisions.
 
 **Definition of done:**
@@ -849,10 +979,10 @@ milestone with its own storage, hostname, and isolation decisions.
 - The recent-authentication window for sensitive admin actions and whether the proposed 30-day
   idle / 90-day absolute session limits need adjustment after committee usability testing.
 
-### Built-In Vacancy Notifications (M21) — planned
+### Built-In Vacancy Notifications (M22) — planned
 
 **Goal:** replace the separate Google email-list form and response sheet with the minimal
-one-notice subscription described in [Built-In Vacancy Notification List](#built-in-vacancy-notification-list-m21-target).
+one-notice subscription described in [Built-In Vacancy Notification List](#built-in-vacancy-notification-list-m22-target).
 
 **Delivery stages:**
 

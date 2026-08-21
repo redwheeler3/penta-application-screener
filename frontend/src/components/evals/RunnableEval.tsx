@@ -63,8 +63,8 @@ export function RunnableEval(props: {
   type ModeResults = Partial<Record<EvalRunMode, EvalCaseResult>>;
   const [caseResults, setCaseResults] = useState<Record<string, ModeResults>>({});
   // Rehydrated past runs (not this session), one per mode that had one — drives the "last
-  // run · prompt" marker so history is never mistaken for fresh. A fresh run of a mode clears
-  // that mode's entry.
+  // run · prompt · model" marker so history is never mistaken for fresh. A fresh run of a
+  // mode clears that mode's entry.
   const [restored, setRestored] = useState<Record<string, LastEvalRun>>({});
   const thinkingRef = useRef<HTMLDivElement>(null);
 
@@ -485,21 +485,16 @@ function resultOk(ranMode: EvalRunMode, r: EvalCaseResult): boolean {
 }
 
 // Marks a REHYDRATED result as history (not a fresh run): which eval, when it ran + which
-// prompt, and an amber warning when that prompt no longer matches the current one (so a stale
-// result is never read as live). A tab with two evals shows one marker each; the label names
-// the pass + mode ("Matching", "Matching stability") so each marker is self-describing.
+// prompt/model identity, and an amber warning when either no longer matches the current
+// configuration (so a stale result is never read as live). A tab with two evals shows one
+// marker each; the label names the pass + mode ("Matching", "Matching stability") so each
+// marker is self-describing.
 function restoredLabel(evalKey: string): string {
   const stability = evalKey.endsWith("_stability");
   const base = evalKey.replace(/_stability$/, "");
   const pass = base === "stability" ? "judge" : base;  // judge's stability key is bare "stability"
   const name = pass.charAt(0).toUpperCase() + pass.slice(1);
   return stability || evalKey === "stability" ? `${name} stability` : name;
-}
-
-// The model a run used, read from whichever field that mode's result shape carries (scoring
-// uses `scoringModel`; the judge uses `judgeModel`; the rest use `model`). Empty if absent.
-function runModel(result: EvalRunResult): string {
-  return result?.model || result?.scoringModel || result?.judgeModel || "";
 }
 
 // The one-line RESULT summary for a run mode. The NUMERATOR counts the run's per-case results
@@ -536,18 +531,22 @@ function runSummary(evalKey: EvalRunMode, result: EvalRunResult, totalCases: num
 }
 
 // One self-contained line per run mode: label, result summary, when it ran, the prompt
-// version, and the model. Turns amber when the run's prompt no longer matches the current one
-// (so a stale result is never read as live). One line carries pass name + prompt + model.
+// version, and the model. Turns amber when either identity no longer matches the current
+// configuration. One line carries pass name + prompt + model.
 function RestoredMarker(props: { run: LastEvalRun; totalCases: number }): ReactNode {
   const { run } = props;
   const summary = runSummary(run.evalKey as EvalRunMode, run.result, props.totalCases);
-  const model = runModel(run.result);
+  const stale = run.promptStale || run.modelStale;
+  const changes = [
+    run.promptStale ? `prompt is now ${run.currentPromptVersion}` : "",
+    run.modelStale ? `model is now ${run.currentModelId}` : "",
+  ].filter(Boolean).join(" · ");
   return (
-    <div className={`eval-restored${run.stale ? " stale" : ""}`}>
+    <div className={`eval-restored${stale ? " stale" : ""}`}>
       {restoredLabel(run.evalKey)}
       {summary ? ` · ${summary}` : ""} · last run {relativeTime(run.ranAt)} · prompt {run.promptVersion || "—"}
-      {model ? ` · ${model}` : ""}
-      {run.stale ? ` · prompt has since changed (now ${run.currentPromptVersion}) — re-run to refresh` : ""}
+      {run.modelId ? ` · ${run.modelId}` : ""}
+      {stale ? ` · ${changes} — re-run to refresh` : ""}
     </div>
   );
 }

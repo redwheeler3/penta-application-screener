@@ -671,7 +671,10 @@ export type LastEvalRun = {
   ranAt: string;
   promptVersion: string;
   currentPromptVersion: string;
-  stale: boolean;
+  modelId: string;
+  currentModelId: string;
+  promptStale: boolean;
+  modelStale: boolean;
   result: EvalRunResult;
 };
 

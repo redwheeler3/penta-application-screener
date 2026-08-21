@@ -23,6 +23,7 @@ record states what replaced it and why.
 | [0010](0010-provider-adaptable-ai-interface-cost-controls.md) | Provider-adaptable AI interface (Bedrock first) + cost controls | accepted |
 | [0011](0011-per-member-eligible-pool-shared-content-cache.md) | Per-member eligible pool on a shared content-addressed cache (M15) | accepted (scoping; implementation pending) |
 | [0012](0012-hosting-platform-m17.md) | Hosting platform for go-live (M17) — Fly.io suspend + volume | deployed & verified |
+| [0013](0013-openai-model-selection.md) | Evaluate Terra/Luna through Bedrock Mantle without switching defaults (M20) | accepted; switchover deferred |
 
 ADRs 0001–0004 capture **superseded/reversed** decisions (the "four superseded strata");
-0005–0011 capture **major decisions that still hold**.
+0005–0013 capture **major decisions that still hold**.

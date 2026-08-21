@@ -1,9 +1,9 @@
 """Strands + Amazon Bedrock implementation of ``AIProvider``.
 
-Bedrock model IDs here must be inference profile IDs (e.g.
-``us.anthropic.claude-haiku-4-5-20251001-v1:0``); the bare on-demand IDs are
-rejected by Bedrock for these models. Only model invocation is performed — no
-AWS resources are created, modified, or deleted.
+Claude model IDs here must be inference profile IDs (e.g.
+``us.anthropic.claude-haiku-4-5-20251001-v1:0``). OpenAI model IDs use
+Bedrock's Mantle names (e.g. ``openai.gpt-5.6-luna``). Only model invocation is
+performed — no AWS resources are created, modified, or deleted.
 """
 
 from __future__ import annotations
@@ -15,25 +15,42 @@ from typing import TYPE_CHECKING
 from app.ai.provider import AIResult, DeltaSink, SchemaT, Usage
 
 if TYPE_CHECKING:
-    from strands.models import BedrockModel
+    from strands.models import Model
+
+
+OPENAI_MODEL_PREFIX = "openai."
+# M20 selected low reasoning for both OpenAI tiers. It restored Luna's small-model
+# quality to the Haiku baseline, while Terra retained perfect golden results without
+# a meaningful cost regression. Keep this explicit: GPT-5.6 otherwise defaults to
+# medium reasoning, which would silently change the measured cost/latency profile.
+OPENAI_REASONING_EFFORT = "low"
 
 
 class StrandsProvider:
     """Bedrock-backed provider, safe to share across the screening thread pool.
 
-    The boto3 Bedrock client (which owns the connection pool) is built once per
-    model id and reused — it's thread-safe, so workers share one pool. The per-call
-    ``Agent`` is NOT shared: it accumulates the conversation in ``agent.messages``
-    (read back for the narrative), so each call gets a fresh one.
+    A Strands model configuration is built once per model id and timeout. Claude's
+    cached ``BedrockModel`` owns a shared, thread-safe boto3 connection pool; the
+    OpenAI Responses adapter mints a fresh Bedrock bearer token and client per call.
+    The per-call ``Agent`` is never shared: it accumulates conversation in
+    ``agent.messages`` (read back for the narrative), so each call gets a fresh one.
     """
 
-    def __init__(self, region: str, max_pool_connections: int = 50) -> None:
+    def __init__(
+        self,
+        region: str,
+        max_pool_connections: int = 50,
+        openai_reasoning_effort: str = OPENAI_REASONING_EFFORT,
+        openai_reasoning_efforts: dict[str, str] | None = None,
+    ) -> None:
         self._region = region
+        self._openai_reasoning_effort = openai_reasoning_effort
+        self._openai_reasoning_efforts = openai_reasoning_efforts or {}
         # Size the pool to the worker count so threads don't queue on sockets.
         self._max_pool_connections = max_pool_connections
         # Keyed by (model_id, read_timeout): a longer-timeout variant of the same model
         # is a distinct cached client (see _model_for / the decomposition call).
-        self._models: dict[tuple[str, int], BedrockModel] = {}
+        self._models: dict[tuple[str, int], Model] = {}
         self._models_lock = threading.Lock()
 
     # Default Bedrock read timeout (s). Right for the per-applicant passes (screening,
@@ -43,31 +60,60 @@ class StrandsProvider:
     # tight default stays put for everything else.
     DEFAULT_READ_TIMEOUT = 120
 
-    def _model_for(self, model_id: str, read_timeout: int | None = None) -> BedrockModel:
+    def _model_for(self, model_id: str, read_timeout: int | None = None) -> Model:
         # Imported lazily so importing this module (and the test suite) does not
         # require the strands/botocore packages or any AWS configuration.
-        from botocore.config import Config
-        from strands.models import BedrockModel
-
         timeout = read_timeout or self.DEFAULT_READ_TIMEOUT
         cache_key = (model_id, timeout)  # a longer-timeout variant is a distinct model
         with self._models_lock:
             model = self._models.get(cache_key)
             if model is None:
-                model = BedrockModel(
-                    model_id=model_id,
-                    region_name=self._region,
-                    boto_client_config=Config(
-                        max_pool_connections=self._max_pool_connections,
-                        # Adaptive mode backs off on throttling and retries
-                        # transient 5xx/timeouts — cheap insurance once parallel.
-                        retries={"max_attempts": 5, "mode": "adaptive"},
-                        connect_timeout=10,
-                        read_timeout=timeout,
-                    ),
-                )
+                model = self._build_model(model_id, timeout)
                 self._models[cache_key] = model
             return model
+
+    def _build_model(self, model_id: str, read_timeout: int) -> Model:
+        if model_id.startswith(OPENAI_MODEL_PREFIX):
+            from openai import Timeout
+            from strands.models.openai_responses import OpenAIResponsesModel
+
+            return OpenAIResponsesModel(
+                model_id=model_id,
+                bedrock_mantle_config={"region": self._region},
+                client_args={
+                    "max_retries": 5,
+                    "timeout": Timeout(
+                        timeout=read_timeout,
+                        connect=10,
+                    ),
+                },
+                params={
+                    "reasoning": {
+                        "effort": self._openai_reasoning_efforts.get(
+                            model_id, self._openai_reasoning_effort
+                        )
+                    }
+                },
+                # The app supplies full history for each short-lived Agent. Do not ask
+                # the upstream service to retain response state between calls.
+                stateful=False,
+            )
+
+        from botocore.config import Config
+        from strands.models import BedrockModel
+
+        return BedrockModel(
+            model_id=model_id,
+            region_name=self._region,
+            boto_client_config=Config(
+                max_pool_connections=self._max_pool_connections,
+                # Adaptive mode backs off on throttling and retries
+                # transient 5xx/timeouts — cheap insurance once parallel.
+                retries={"max_attempts": 5, "mode": "adaptive"},
+                connect_timeout=10,
+                read_timeout=read_timeout,
+            ),
+        )
 
     def structured_output(
         self,

@@ -22,6 +22,7 @@ from app.evals.case_store import UnknownEvalError, list_cases
 from app.schemas.base import ResponseModel
 from app.schemas.evals import StabilityRun
 from app.schemas.events import EvalSummaryEvent, ThinkingEvent, emit
+from app.services.settings import get_app_settings
 
 # Default K for a stability run when the UI doesn't override it (K≥5 to trust a "stable"
 # verdict, per the CLI habit), bounded so the default run's cost is predictable.
@@ -185,6 +186,39 @@ def current_prompt_version(eval_key: str, db: Session) -> str:
 
         return judge_prompt_version()
     return ""
+
+
+def result_model(result: dict | None) -> str:
+    """The model identity persisted inside an eval result's wire payload."""
+    if not result:
+        return ""
+    for field in ("model", "scoringModel", "judgeModel"):
+        value = result.get(field)
+        if isinstance(value, str):
+            return value
+    return ""
+
+
+def current_model(eval_key: str, db: Session) -> str:
+    """The model a fresh run of ``eval_key`` would exercise right now."""
+    base = eval_key.removesuffix("_stability")
+    if base == "stability":
+        base = "judge"
+    if base == "judge":
+        from app.evals.judge import DEFAULT_MODEL as JUDGE_MODEL
+
+        return JUDGE_MODEL
+
+    settings = get_app_settings(db)
+    model_attrs = {
+        "screening": "screening_model",
+        "scoring": "dimension_scoring_model",
+        "consolidation": "consolidate_model",
+        "matching": "match_model",
+        "decomposition": "decompose_model",
+    }
+    attr = model_attrs.get(base)
+    return getattr(settings.ai, attr) if attr else ""
 
 
 def live_case_keys(run_key: str) -> set[str] | None:

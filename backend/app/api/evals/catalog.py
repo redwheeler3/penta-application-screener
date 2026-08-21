@@ -10,8 +10,10 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import require_current_user
 from app.api.evals._shared import (
     DEFAULT_STABILITY_K,
+    current_model,
     current_prompt_version,
     live_case_keys,
+    result_model,
 )
 from app.api.problems import Problem
 from app.core.time import utc_isoformat
@@ -191,7 +193,7 @@ def last_run(
     ``judge,stability``; Live consolidation passes ``consolidation,consolidation_stability``).
     Returns one entry per key that has a run — so a tab running two evals restores BOTH, not
     just whichever ran last. Result JSON as the UI reads it, WITHOUT the thinking narration;
-    each carries a ``stale`` flag when its prompt no longer matches the current one."""
+    each identifies prompt/model drift so an old result is never presented as current."""
     wanted = [k.strip() for k in keys.split(",") if k.strip()]
     runs: list[LastRun] = []
     for key in wanted:
@@ -199,7 +201,7 @@ def last_run(
         # newest row alone would show just one case; we merge recent rows (newest-wins per case
         # key) to reconstruct the accumulated per-case view the tab showed before a refresh —
         # exactly matching the dots. Bounded to a small window; only rows sharing the newest
-        # row's prompt version are merged, so a prompt change starts a fresh accumulation.
+        # row's prompt AND model are merged, so either change starts a fresh accumulation.
         rows = (
             db.query(EvalRun)
             .filter(EvalRun.eval_key == key)
@@ -211,6 +213,7 @@ def last_run(
             continue
         newest = rows[0]
         result = dict(newest.result or {})
+        model = result_model(result)
         # Only merge cases whose key still exists in the pass's current golden set, so a merged
         # historical run can't resurrect a since-renamed/removed case (which would inflate the
         # count past the dots). None ⇒ this key has no editable case set; keep all.
@@ -219,6 +222,8 @@ def last_run(
         for row in rows:
             if (row.prompt_version or "") != (newest.prompt_version or ""):
                 break  # older prompt version — don't mix it into the accumulation
+            if result_model(row.result) != model:
+                break  # older model — its cases did not exercise the same system
             for case in (row.result or {}).get("cases", []):
                 if not (isinstance(case, dict) and "key" in case) or case["key"] in merged:
                     continue
@@ -226,13 +231,21 @@ def last_run(
                     merged[case["key"]] = case  # newest-wins (rows iterate newest→oldest)
         if "cases" in result:
             result["cases"] = list(merged.values())
-        current = current_prompt_version(newest.eval_key, db)
+        current_prompt = current_prompt_version(newest.eval_key, db)
+        current_model_id = current_model(newest.eval_key, db)
         runs.append(LastRun(
             eval_key=newest.eval_key,
             ran_at=utc_isoformat(newest.created_at),
             prompt_version=newest.prompt_version or "",
-            current_prompt_version=current,
-            stale=bool(current and newest.prompt_version and newest.prompt_version != current),
+            current_prompt_version=current_prompt,
+            model_id=model,
+            current_model_id=current_model_id,
+            prompt_stale=bool(
+                current_prompt
+                and newest.prompt_version
+                and newest.prompt_version != current_prompt
+            ),
+            model_stale=bool(model and current_model_id and model != current_model_id),
             result=result,
         ))
     return LastRunResponse(runs=runs)

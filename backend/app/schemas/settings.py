@@ -30,34 +30,32 @@ def google_sheet_url_from_id(sheet_id: str) -> str:
 class AISettings(BridgeModel):
     """Admin-only AI provider configuration.
 
-    Model IDs are Bedrock inference profile IDs (the ``us.`` / ``global.``
-    prefixed form), not bare on-demand model IDs, which Bedrock requires for
-    these models.
+    Claude model IDs are Bedrock inference profile IDs (the ``us.`` / ``global.``
+    prefixed form); OpenAI models use their Bedrock Mantle IDs (``openai.``).
 
     One model per AI pass, named by the JOB rather than a tier ("first pass" /
     "synthesis"), so each pass can be tuned independently and the mapping is
-    self-documenting. Today the high-volume per-applicant passes (screening, dimension
-    scoring) default to cheap-and-fast Haiku because call COUNT is what drives their cost
-    (scoring alone is candidates × dimensions), while the once-per-rank pool-level passes
-    (discovery, matching) default to the stronger Sonnet — cost is trivial there and
-    judgment quality matters.
+    self-documenting. The high-volume per-applicant passes (screening and dimension
+    scoring) default to cheap-and-fast Haiku because call count drives their cost (scoring
+    alone is candidates × dimensions). The higher-judgment discovery, decomposition,
+    matching, and consolidation passes default to Sonnet. M20 also added evaluated Luna and
+    Terra support, but the production AWS account must gain access before those models can
+    become runtime defaults.
 
     ``match_model`` earned its own tier from evidence: on Haiku the identity-match
     pass over-matched genuinely-drifted concepts (freezing the wrong prior
     definition onto a reused score, carrying tier intent onto the wrong axis), so it
-    runs on the model already trusted for the HARDER discovery task. Any of these
-    can move to Opus if a real run shows the current default is too weak for the job.
+    runs on the stronger Sonnet tier rather than the high-volume Haiku tier. Any pass can
+    move if representative evals and production availability justify the change.
 
     ``decompose_model`` (settles the K fan-out reports into one set) gets its own field
-    for consistency and independent tunability — every pass has one — even though it
-    defaults to the same synthesis tier as discovery. It's a genuinely different task
-    (reasoning over K reports vs. reading the pool), so being able to move it — e.g. to
-    Opus if settling proves harder than discovering — without dragging discovery along
-    is worth the one knob.
+    for consistency and independent tunability — every pass has one. It's a genuinely
+    different task (reasoning over K reports vs. reading the pool), so being able to move it
+    without dragging discovery along is worth the one knob.
 
-    ``consolidate_model`` (the post-score duplicate-merge confirm) defaults to the
-    synthesis tier: it's the same high-stakes identity judgment as matching (a wrong
-    merge is unrecoverable), so it wants the stronger model, not cheap Haiku.
+    ``consolidate_model`` (the post-score duplicate-merge confirm) defaults to Sonnet: it's
+    the same high-stakes identity judgment as matching (a wrong merge is unrecoverable), so
+    it wants the stronger model, not cheap Haiku.
     """
 
     region: str = Field(default="us-east-1")

@@ -1,7 +1,7 @@
 """Bedrock token pricing for cost estimates and spending-cap enforcement.
 
 Prices are USD per 1,000,000 tokens, from AWS Bedrock US on-demand pricing for the
-Anthropic Claude models, recorded 2026-06-18. Update by hand if AWS
+models below, last checked 2026-08-21. Update by hand if AWS
 pricing changes.
 
 Why hardcoded: the AWS Price List API (boto3 "pricing", ServiceCode
@@ -49,6 +49,8 @@ class ModelPrice:
 # the broader ones they share a prefix with (e.g. "sonnet-4-6" before
 # "sonnet-4"), since lookup returns the first matching substring.
 _PRICES: dict[str, ModelPrice] = {
+    "gpt-5.6-luna": ModelPrice(input_per_mtok=0.20, output_per_mtok=1.20),
+    "gpt-5.6-terra": ModelPrice(input_per_mtok=2.00, output_per_mtok=12.00),
     "haiku-4-5": ModelPrice(input_per_mtok=1.00, output_per_mtok=5.00),
     "sonnet-4-6": ModelPrice(input_per_mtok=3.00, output_per_mtok=15.00),
     "sonnet-4-5": ModelPrice(input_per_mtok=3.00, output_per_mtok=15.00),

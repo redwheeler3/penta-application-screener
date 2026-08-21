@@ -84,6 +84,21 @@ def test_sonnet_46_not_shadowed_by_sonnet_4() -> None:
     assert price_for_model("us.anthropic.claude-sonnet-4-6").input_per_mtok == 3.0
 
 
+@pytest.mark.parametrize(
+    ("model_id", "input_price", "output_price"),
+    [
+        ("openai.gpt-5.6-luna", 0.20, 1.20),
+        ("openai.gpt-5.6-terra", 2.00, 12.00),
+    ],
+)
+def test_openai_bedrock_models_have_explicit_prices(
+    model_id: str, input_price: float, output_price: float
+) -> None:
+    price = price_for_model(model_id)
+    assert price.input_per_mtok == input_price
+    assert price.output_per_mtok == output_price
+
+
 # --- cache key ---
 
 def test_cache_key_changes_with_model_and_content() -> None:
@@ -201,6 +216,20 @@ def test_default_consolidation_correlation_threshold_is_point_eight() -> None:
     from app.schemas.settings import AISettings
 
     assert AISettings().consolidate_correlation_threshold == 0.8
+
+
+def test_anthropic_models_remain_defaults_until_production_access() -> None:
+    from app.schemas.settings import AISettings
+
+    settings = AISettings()
+    assert settings.decompose_model == "us.anthropic.claude-sonnet-4-6"
+    assert settings.match_model == "us.anthropic.claude-sonnet-4-6"
+    assert settings.consolidate_model == "us.anthropic.claude-sonnet-4-6"
+    assert settings.discovery_model == "us.anthropic.claude-sonnet-4-6"
+    assert settings.screening_model == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    assert settings.dimension_scoring_model == (
+        "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    )
 
 
 def test_prompt_version_is_part_of_key() -> None:

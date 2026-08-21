@@ -317,15 +317,94 @@ async def test_last_run_omits_a_key_with_no_run() -> None:
 async def test_last_run_flags_a_stale_prompt() -> None:
     # A run whose stored prompt no longer matches the current judge prompt is flagged stale,
     # so a rehydrated result can't be mistaken for one produced by the prompt in effect now.
+    from app.evals.judge import DEFAULT_MODEL as JUDGE_MODEL
+
     app, db, _p = setup_app()
-    db.add(EvalRun(eval_key="judge", prompt_version="stale-version", result={}, thinking=None))
+    db.add(EvalRun(
+        eval_key="judge",
+        prompt_version="stale-version",
+        result={"judgeModel": JUDGE_MODEL},
+        thinking=None,
+    ))
     db.commit()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as client:
         body = (await client.get("/evals/last-run?keys=judge")).json()
     run = body["runs"][0]
-    assert run["stale"] is True
+    assert run["promptStale"] is True
+    assert run["modelStale"] is False
     assert run["currentPromptVersion"]  # the real judge prompt version
+
+
+async def test_last_run_flags_model_changes_for_every_eval_family() -> None:
+    from app.api.evals._shared import current_prompt_version
+
+    app, db, _p = setup_app()
+    keys_and_fields = [
+        ("screening", "model"),
+        ("screening_stability", "model"),
+        ("scoring", "scoringModel"),
+        ("scoring_stability", "scoringModel"),
+        ("consolidation", "model"),
+        ("consolidation_stability", "model"),
+        ("matching", "model"),
+        ("matching_stability", "model"),
+        ("decomposition", "model"),
+        ("decomposition_stability", "model"),
+        ("judge", "judgeModel"),
+        ("stability", "judgeModel"),
+    ]
+    for eval_key, model_field in keys_and_fields:
+        db.add(EvalRun(
+            eval_key=eval_key,
+            prompt_version=current_prompt_version(eval_key, db),
+            result={model_field: "retired-model"},
+            thinking=None,
+        ))
+    db.commit()
+
+    keys = ",".join(eval_key for eval_key, _ in keys_and_fields)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        body = (await client.get(f"/evals/last-run?keys={keys}")).json()
+
+    assert len(body["runs"]) == len(keys_and_fields)
+    for run in body["runs"]:
+        assert run["modelId"] == "retired-model"
+        assert run["currentModelId"]
+        assert run["modelStale"] is True
+        assert run["promptStale"] is False
+
+
+async def test_last_run_does_not_merge_cases_across_models() -> None:
+    from app.ai.screening import screening_prompt_version
+    from app.evals.screening import load_cases
+
+    app, db, _p = setup_app()
+    first_key, second_key = [case.key for case in load_cases()[:2]]
+    prompt_version = screening_prompt_version()
+    db.add(EvalRun(
+        eval_key="screening",
+        prompt_version=prompt_version,
+        result={"model": "older-model", "cases": [{"key": first_key}]},
+        thinking=None,
+    ))
+    db.commit()
+    db.add(EvalRun(
+        eval_key="screening",
+        prompt_version=prompt_version,
+        result={"model": "newer-model", "cases": [{"key": second_key}]},
+        thinking=None,
+    ))
+    db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        body = (await client.get("/evals/last-run?keys=screening")).json()
+
+    run = body["runs"][0]
+    assert run["modelId"] == "newer-model"
+    assert [case["key"] for case in run["result"]["cases"]] == [second_key]
 
 
 async def test_get_cases_reads_the_fixture() -> None:

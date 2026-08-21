@@ -347,14 +347,17 @@ class SaveBackgroundRequest(RequestModel):
 class LastRun(ResponseModel):
     """The most recent persisted run for ONE eval key. Carries the result JSON (as the UI
     reads it) but NOT the ``thinking`` narration — the tab shows the outcome + per-case dots,
-    not the replayed reasoning. ``stale`` is True when the run's prompt no longer matches the
-    current one, so a rehydrated result is never mistaken for live."""
+    not the replayed reasoning. Prompt and model drift are reported separately so a
+    rehydrated result is never mistaken for one produced by the current configuration."""
 
     eval_key: str
     ran_at: str  # ISO-8601 timestamp of the run
     prompt_version: str = ""  # the prompt the run exercised
     current_prompt_version: str = ""  # the prompt in effect NOW
-    stale: bool = False  # prompt_version != current_prompt_version
+    model_id: str = ""  # the model the run exercised
+    current_model_id: str = ""  # the model in effect NOW
+    prompt_stale: bool = False
+    model_stale: bool = False
     result: dict = {}
 
 
