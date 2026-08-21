@@ -873,9 +873,11 @@ commands.
 The production AWS account rejected both Luna and Terra as unavailable in `us-east-1`, `us-east-2`,
 and `us-west-2` even after its scoped IAM policy successfully authorized Mantle inference. M20
 therefore commits the Mantle transport, pricing, eval tooling, and evidence while retaining Haiku and
-Sonnet as every runtime default. It adds no settings migration. Changing the defaults is a later,
-explicit operation after AWS enables both models and the same synthetic production-credential probes
-pass. This is an availability deferral, not a reversal of the quality and cost findings.
+Sonnet as every runtime default. A settings migration persists `low` reasoning separately for each
+AI pass, but reasoning is inactive for models that do not support it; it therefore does not alter the
+current Claude calls. Changing the model defaults is a later, explicit operation after AWS enables
+both models and the same synthetic production-credential probes pass. This is an availability
+deferral, not a reversal of the quality and cost findings.
 
 The co-op accepts the Bedrock Mantle privacy tradeoff for applicant-bearing passes. The current
 Bedrock account retention setting is `inherit`; Mantle reports effective `default` mode for both GPT
@@ -884,9 +886,12 @@ flagged by AWS's automated abuse classifiers may be retained by AWS for up to 30
 operators cannot access it and it is not shared with OpenAI. Calls continue through AWS Bedrock;
 this selection does not add a direct OpenAI API integration.
 
-The existing runtime and persisted settings remain unchanged, so a future deployment of M20 cannot
-switch the committee application to unavailable models. When access is enabled, the switchover must
-include an explicit settings migration that preserves custom model choices.
+The existing runtime model choices remain unchanged, so a future deployment of M20 cannot switch
+the committee application to unavailable models. Model and reasoning effort are stored together as
+per-pass configuration. Effective reasoning participates in cached-result keys, Rank freshness, and
+eval run identity; an inactive reasoning value does not invalidate Claude work. When access is
+enabled, the switchover needs only the explicit model-setting migration that preserves custom model
+choices.
 
 ### Built-In Applications And Passwordless Access (M21) — planned
 

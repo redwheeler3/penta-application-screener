@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, Usage
 from app.db.models import Application, ApplicationAIResult
+from app.schemas.settings import ReasoningEffort
 
 # Work item / result types for run_in_pool.
 T = TypeVar("T")
@@ -101,7 +102,8 @@ class AnalysisOutcome:
 
 
 def cache_key(
-    *, application: Application, kind: str, model_id: str, prompt_version: str
+    *, application: Application, kind: str, model_id: str, prompt_version: str,
+    reasoning_effort: ReasoningEffort | None = None,
 ) -> str:
     """Stable key over application content, kind, model, and prompt version. An
     unchanged application reuses its result; a new model or prompt version misses.
@@ -110,15 +112,15 @@ def cache_key(
     in rather than read from a global so each pass's cache turns over independently
     when only its own prompt changed.
     """
-    basis = json.dumps(
-        {
-            "raw_hash": application.raw_row_hash,
-            "kind": kind,
-            "model_id": model_id,
-            "prompt_version": prompt_version,
-        },
-        sort_keys=True,
-    )
+    identity = {
+        "raw_hash": application.raw_row_hash,
+        "kind": kind,
+        "model_id": model_id,
+        "prompt_version": prompt_version,
+    }
+    if reasoning_effort is not None:
+        identity["reasoning_effort"] = reasoning_effort
+    basis = json.dumps(identity, sort_keys=True)
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()
 
 
@@ -136,6 +138,7 @@ def estimate_cost(
     fallback_input_tokens: int,
     fallback_output_tokens: int,
     usage_kind_prefix: str | None = None,
+    reasoning_effort: ReasoningEffort | None = None,
 ) -> CostEstimate:
     """Estimate the cost of analyzing the applications, excluding cached ones.
     Feeds the pre-run confirmation UI.
@@ -151,7 +154,9 @@ def estimate_cost(
     uncached = [
         app
         for app in applications
-        if _cached_result(db, app, kind, model_id, prompt_version) is None
+        if _cached_result(
+            db, app, kind, model_id, prompt_version, reasoning_effort
+        ) is None
     ]
     avg_input_tokens, avg_output_tokens = observed_avg_tokens(
         db, kind=kind, model_id=model_id, prompt_version=prompt_version,
@@ -224,13 +229,16 @@ def cached_outcome(
     schema: type[BaseModel],
     model_id: str,
     prompt_version: str,
+    reasoning_effort: ReasoningEffort | None = None,
 ) -> AnalysisOutcome | None:
     """The stored outcome for this application, or None if not yet analyzed.
 
     Read-only half of analysis; touches the session, so the parallel path calls it
     on the main thread to decide which applications still need a model call.
     """
-    existing = _cached_result(db, application, kind, model_id, prompt_version)
+    existing = _cached_result(
+        db, application, kind, model_id, prompt_version, reasoning_effort
+    )
     if existing is None:
         return None
     return AnalysisOutcome(
@@ -249,6 +257,7 @@ def store_result(
     model_id: str,
     prompt_version: str,
     result: AIResult,
+    reasoning_effort: ReasoningEffort | None = None,
 ) -> AnalysisOutcome:
     """Price a fresh model result, persist it, and return its outcome.
 
@@ -262,6 +271,7 @@ def store_result(
         cache_key=cache_key(
             application=application, kind=kind, model_id=model_id,
             prompt_version=prompt_version,
+            reasoning_effort=reasoning_effort,
         ),
         model_id=result.model_id,
         prompt_version=prompt_version,
@@ -345,6 +355,7 @@ def screen_applications(
     system_prompt: str | None = None,
     max_workers: int,
     on_result: Callable[[Application, AnalysisOutcome], None] | None = None,
+    reasoning_effort: ReasoningEffort | None = None,
 ) -> Iterator[PassResult]:
     """Run a cached AI pass over ``applications``, yielding each result as it
     completes (cached first, then model results in completion order).
@@ -372,6 +383,7 @@ def screen_applications(
         cached = cached_outcome(
             db, application, kind=kind, schema=schema, model_id=model_id,
             prompt_version=prompt_version,
+            reasoning_effort=reasoning_effort,
         )
         if cached is not None:
             yield finish(application, cached)
@@ -385,6 +397,7 @@ def screen_applications(
             schema=schema,
             prompt=item[1],
             system_prompt=system_prompt,
+            reasoning_effort=reasoning_effort,
         )
 
     for (application, _prompt), result, error in run_in_pool(
@@ -404,6 +417,7 @@ def screen_applications(
         outcome = store_result(
             db, application, kind=kind, model_id=model_id,
             prompt_version=prompt_version, result=result,
+            reasoning_effort=reasoning_effort,
         )
         yield finish(application, outcome)
 
@@ -418,11 +432,13 @@ def enforce_cap(estimate: CostEstimate, cap_usd: float) -> None:
 
 
 def _cached_result(
-    db: Session, application: Application, kind: str, model_id: str, prompt_version: str
+    db: Session, application: Application, kind: str, model_id: str, prompt_version: str,
+    reasoning_effort: ReasoningEffort | None = None,
 ) -> ApplicationAIResult | None:
     key = cache_key(
         application=application, kind=kind, model_id=model_id,
         prompt_version=prompt_version,
+        reasoning_effort=reasoning_effort,
     )
     return db.scalar(
         select(ApplicationAIResult).where(ApplicationAIResult.cache_key == key)

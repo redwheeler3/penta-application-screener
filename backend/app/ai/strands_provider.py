@@ -13,19 +13,13 @@ import threading
 from typing import TYPE_CHECKING
 
 from app.ai.provider import AIResult, DeltaSink, SchemaT, Usage
+from app.schemas.settings import ReasoningEffort
 
 if TYPE_CHECKING:
     from strands.models import Model
 
 
 OPENAI_MODEL_PREFIX = "openai."
-# M20 selected low reasoning for both OpenAI tiers. It restored Luna's small-model
-# quality to the Haiku baseline, while Terra retained perfect golden results without
-# a meaningful cost regression. Keep this explicit: GPT-5.6 otherwise defaults to
-# medium reasoning, which would silently change the measured cost/latency profile.
-OPENAI_REASONING_EFFORT = "low"
-
-
 class StrandsProvider:
     """Bedrock-backed provider, safe to share across the screening thread pool.
 
@@ -40,17 +34,16 @@ class StrandsProvider:
         self,
         region: str,
         max_pool_connections: int = 50,
-        openai_reasoning_effort: str = OPENAI_REASONING_EFFORT,
-        openai_reasoning_efforts: dict[str, str] | None = None,
+        openai_reasoning_effort: ReasoningEffort | None = None,
+        openai_reasoning_efforts: dict[str, ReasoningEffort] | None = None,
     ) -> None:
         self._region = region
         self._openai_reasoning_effort = openai_reasoning_effort
         self._openai_reasoning_efforts = openai_reasoning_efforts or {}
         # Size the pool to the worker count so threads don't queue on sockets.
         self._max_pool_connections = max_pool_connections
-        # Keyed by (model_id, read_timeout): a longer-timeout variant of the same model
-        # is a distinct cached client (see _model_for / the decomposition call).
-        self._models: dict[tuple[str, int], Model] = {}
+        # A timeout or reasoning change needs a distinct configured model client.
+        self._models: dict[tuple[str, int, str | None], Model] = {}
         self._models_lock = threading.Lock()
 
     # Default Bedrock read timeout (s). Right for the per-applicant passes (screening,
@@ -60,19 +53,35 @@ class StrandsProvider:
     # tight default stays put for everything else.
     DEFAULT_READ_TIMEOUT = 120
 
-    def _model_for(self, model_id: str, read_timeout: int | None = None) -> Model:
+    def _model_for(
+        self,
+        model_id: str,
+        read_timeout: int | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
+    ) -> Model:
         # Imported lazily so importing this module (and the test suite) does not
         # require the strands/botocore packages or any AWS configuration.
         timeout = read_timeout or self.DEFAULT_READ_TIMEOUT
-        cache_key = (model_id, timeout)  # a longer-timeout variant is a distinct model
+        effective_effort = None
+        if model_id.startswith(OPENAI_MODEL_PREFIX):
+            effective_effort = reasoning_effort or self._openai_reasoning_efforts.get(
+                model_id, self._openai_reasoning_effort
+            )
+            if effective_effort is None:
+                raise ValueError(
+                    f"reasoning_effort is required for OpenAI model {model_id!r}"
+                )
+        cache_key = (model_id, timeout, effective_effort)
         with self._models_lock:
             model = self._models.get(cache_key)
             if model is None:
-                model = self._build_model(model_id, timeout)
+                model = self._build_model(model_id, timeout, effective_effort)
                 self._models[cache_key] = model
             return model
 
-    def _build_model(self, model_id: str, read_timeout: int) -> Model:
+    def _build_model(
+        self, model_id: str, read_timeout: int, reasoning_effort: str | None = None
+    ) -> Model:
         if model_id.startswith(OPENAI_MODEL_PREFIX):
             from openai import Timeout
             from strands.models.openai_responses import OpenAIResponsesModel
@@ -89,9 +98,7 @@ class StrandsProvider:
                 },
                 params={
                     "reasoning": {
-                        "effort": self._openai_reasoning_efforts.get(
-                            model_id, self._openai_reasoning_effort
-                        )
+                        "effort": reasoning_effort
                     }
                 },
                 # The app supplies full history for each short-lived Agent. Do not ask
@@ -124,6 +131,7 @@ class StrandsProvider:
         system_prompt: str | None = None,
         on_delta: DeltaSink | None = None,
         read_timeout: int | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
     ) -> AIResult:
         # One path for every call: drain Strands' (async) streaming API to completion
         # in a private event loop on the calling thread. A spike confirmed this is
@@ -141,7 +149,7 @@ class StrandsProvider:
         # intended surface for that text (via sink -> the NDJSON stream); the terminal
         # echo is just noise.
         agent = Agent(
-            model=self._model_for(model_id, read_timeout),
+            model=self._model_for(model_id, read_timeout, reasoning_effort),
             system_prompt=system_prompt,
             callback_handler=None,
         )

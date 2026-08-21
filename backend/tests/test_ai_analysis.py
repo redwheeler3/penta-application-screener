@@ -105,6 +105,16 @@ def test_cache_key_changes_with_model_and_content() -> None:
     db = make_session()
     app = make_application(db)
     base = cache_key(application=app, kind=KIND, model_id=MODEL, prompt_version=VERSION)
+    low = cache_key(
+        application=app, kind=KIND, model_id=MODEL, prompt_version=VERSION,
+        reasoning_effort="low",
+    )
+    medium = cache_key(
+        application=app, kind=KIND, model_id=MODEL, prompt_version=VERSION,
+        reasoning_effort="medium",
+    )
+    assert low != base
+    assert medium != low
 
     app.raw_row_hash = "different"
     assert cache_key(application=app, kind=KIND, model_id=MODEL, prompt_version=VERSION) != base

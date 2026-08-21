@@ -16,12 +16,14 @@ from typing import Any
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.ai.provider import AIProvider
 from app.api.problems import Problem
 from app.db.models import EvalRun
 from app.evals.case_store import UnknownEvalError, list_cases
 from app.schemas.base import ResponseModel
 from app.schemas.evals import StabilityRun
 from app.schemas.events import EvalSummaryEvent, ThinkingEvent, emit
+from app.schemas.settings import ReasoningEffort, effective_reasoning_effort
 from app.services.settings import get_app_settings
 
 # Default K for a stability run when the UI doesn't override it (K≥5 to trust a "stable"
@@ -197,6 +199,45 @@ def result_model(result: dict | None) -> str:
         if isinstance(value, str):
             return value
     return ""
+
+
+def result_reasoning_effort(result: dict | None) -> str:
+    """The effective reasoning effort persisted inside an eval result payload."""
+    value = (result or {}).get("reasoningEffort")
+    return value if isinstance(value, str) else ""
+
+
+def current_reasoning_effort(eval_key: str, db: Session) -> str:
+    """The effective effort a fresh run would use; blank for unsupported models."""
+    base = eval_key.removesuffix("_stability")
+    if base in ("stability", "judge"):
+        return ""
+    settings = get_app_settings(db)
+    attrs = {
+        "screening": ("screening_model", "screening_reasoning_effort"),
+        "scoring": ("dimension_scoring_model", "dimension_scoring_reasoning_effort"),
+        "consolidation": ("consolidate_model", "consolidate_reasoning_effort"),
+        "matching": ("match_model", "match_reasoning_effort"),
+        "decomposition": ("decompose_model", "decompose_reasoning_effort"),
+    }
+    pair = attrs.get(base)
+    if pair is None:
+        return ""
+    model = getattr(settings.ai, pair[0])
+    effort = getattr(settings.ai, pair[1])
+    return effective_reasoning_effort(model, effort) or ""
+
+
+class ReasoningProvider:
+    """Bind one eval pass's persisted effort to its production-identical calls."""
+
+    def __init__(self, delegate: AIProvider, effort: ReasoningEffort | None) -> None:
+        self._delegate = delegate
+        self._effort = effort
+
+    def structured_output(self, **kwargs):
+        kwargs["reasoning_effort"] = self._effort
+        return self._delegate.structured_output(**kwargs)
 
 
 def current_model(eval_key: str, db: Session) -> str:

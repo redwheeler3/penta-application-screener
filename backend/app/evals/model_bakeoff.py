@@ -25,13 +25,14 @@ from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_PROMPT_VERSION
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, DeltaSink, SchemaT
 from app.ai.screening import screening_prompt_version
-from app.ai.strands_provider import OPENAI_REASONING_EFFORT, StrandsProvider
+from app.ai.strands_provider import StrandsProvider
 from app.evals import consolidate, decompose, matching, scoring, screening
 
 HAIKU = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 SONNET = "us.anthropic.claude-sonnet-4-6"
 LUNA = "openai.gpt-5.6-luna"
 TERRA = "openai.gpt-5.6-terra"
+DEFAULT_OPENAI_REASONING_EFFORT = "low"
 
 
 @dataclass(frozen=True)
@@ -110,7 +111,7 @@ def run_bakeoff(
     pass_names: list[str],
     repeats: int,
     workers: int = 1,
-    openai_reasoning_effort: str = OPENAI_REASONING_EFFORT,
+    openai_reasoning_effort: str = DEFAULT_OPENAI_REASONING_EFFORT,
     include_control: bool = True,
     progress: Callable[[str], None] = print,
 ) -> dict[str, Any]:
@@ -279,7 +280,7 @@ def main() -> None:
     parser.add_argument(
         "--openai-reasoning-effort",
         choices=("none", "low", "medium", "high", "xhigh", "max"),
-        default=OPENAI_REASONING_EFFORT,
+        default=DEFAULT_OPENAI_REASONING_EFFORT,
     )
     parser.add_argument(
         "--passes", nargs="+", choices=tuple(PASS_SPECS), default=list(PASS_SPECS)

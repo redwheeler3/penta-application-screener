@@ -23,7 +23,7 @@ from app.ai.pricing import cost_usd
 from app.ai.provider import Usage
 from app.ai.schemas import PoolDimensionReport
 from app.db.models import Application
-from app.schemas.settings import AppSettings
+from app.schemas.settings import AppSettings, effective_reasoning_effort
 from app.services.analysis import current_dimension_report, get_current_analysis
 from app.services.cost_report import recent_pass_fresh_usd
 
@@ -131,6 +131,9 @@ def estimate_dimension_scoring(
     practice, blend in the cache-aware count then (measure-first).
     """
     model_id = settings.ai.dimension_scoring_model
+    reasoning_effort = effective_reasoning_effort(
+        model_id, settings.ai.dimension_scoring_reasoning_effort
+    )
     # Reuse a pool the caller already computed when given — the union scope is ~15ms and a
     # full-Rank estimate would otherwise recompute it several times per request.
     candidates = candidates if candidates is not None else applications_to_score(db)
@@ -175,7 +178,7 @@ def estimate_dimension_scoring(
     # the honest cached/to_analyze counts the UI shows). A fully-cached candidate makes
     # no call, matching run-time behavior.
     missing_by_application = missing_dimensions_by_application(
-        db, candidates, report, model_id
+        db, candidates, report, model_id, reasoning_effort
     )
     count_based = 0.0
     fully_cached = 0

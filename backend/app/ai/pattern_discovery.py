@@ -24,7 +24,7 @@ from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider, DeltaSink, Usage
 from app.ai.schemas import PoolDimensionReport
 from app.db.models import Application
-from app.schemas.settings import AppSettings
+from app.schemas.settings import AppSettings, effective_reasoning_effort
 from app.services.eligibility import union_eligible_applications
 
 
@@ -181,6 +181,9 @@ def _discover_from_prompt(
         system_prompt=SYSTEM_PROMPT,
         on_delta=on_delta,
         read_timeout=DISCOVERY_READ_TIMEOUT,
+        reasoning_effort=effective_reasoning_effort(
+            settings.ai.discovery_model, settings.ai.discovery_reasoning_effort
+        ),
     )
     return result.output, result.narrative, PassCost.from_usage(result.model_id, result.usage)
 

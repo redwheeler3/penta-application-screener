@@ -21,6 +21,7 @@ from app.ai.provider import AIProvider
 from app.api.dependencies import get_ai_provider, require_current_user
 from app.api.evals._shared import (
     DEFAULT_STABILITY_K,
+    ReasoningProvider,
     case_workers,
     over_cases,
     runs_out,
@@ -29,6 +30,7 @@ from app.api.evals._shared import (
 )
 from app.db.models import User
 from app.db.session import get_db
+from app.schemas.settings import effective_reasoning_effort
 from app.services.settings import get_app_settings
 
 
@@ -43,6 +45,7 @@ class CategoricalPass:
     key: str  # the eval key + route stem, e.g. "consolidation" → POST /consolidation(+ -stability)
     load_cases: Callable[[], object]
     model_attr: str
+    reasoning_attr: str
     prompt_version: Callable[[], str]
     run_case: Callable
     stability_run: Callable
@@ -67,6 +70,10 @@ def register(router, spec: CategoricalPass) -> None:
     ) -> StreamingResponse:
         settings = get_app_settings(db)
         model = getattr(settings.ai, spec.model_attr)
+        reasoning_effort = effective_reasoning_effort(
+            model, getattr(settings.ai, spec.reasoning_attr)
+        )
+        configured_provider = ReasoningProvider(provider, reasoning_effort)
         version = spec.prompt_version()
         cases = select(list(spec.load_cases()), case, lambda c: c.key)
 
@@ -75,7 +82,9 @@ def register(router, spec: CategoricalPass) -> None:
 
             def one(c, case_delta):
                 case_delta(f"\n\n### {c.key} (x{k})\n")
-                rep = spec.stability_run(provider, c, model, k=k, on_delta=case_delta)
+                rep = spec.stability_run(
+                    configured_provider, c, model, k=k, on_delta=case_delta
+                )
                 return spec.stability_out(
                     key=c.key, marker=rep.marker, majority=rep.majority, expected=c.expected,
                     contested=c.contested, agreement=rep.agreement, flipped=rep.flipped,
@@ -84,18 +93,21 @@ def register(router, spec: CategoricalPass) -> None:
 
             def work(on_delta):
                 out = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings, fan_out=k))
-                return spec.stability_response(prompt_version=version, model=model, k=k, cases=out)
+                return spec.stability_response(
+                    prompt_version=version, model=model,
+                    reasoning_effort=reasoning_effort, k=k, cases=out,
+                )
 
             return stream(db, f"{spec.key}_stability", version, work)
 
         def one(c, case_delta):
             case_delta(f"\n\n### {c.key}\n")
-            return spec.run_case(provider, c, model, on_delta=case_delta)
+            return spec.run_case(configured_provider, c, model, on_delta=case_delta)
 
         def work(on_delta):
             results = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings))
             return spec.run_response(
-                prompt_version=version, model=model,
+                prompt_version=version, model=model, reasoning_effort=reasoning_effort,
                 passed=sum(1 for r in results if r.case.contested or r.passed),
                 total=len(results),
                 cases=[

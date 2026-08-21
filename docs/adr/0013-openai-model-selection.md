@@ -35,9 +35,10 @@ meaningful measured cost regression.
 
 The production AWS account rejected both models as unavailable in `us-east-1`, `us-east-2`, and
 `us-west-2` after its IAM policy was updated to authorize Mantle inference. This is an account-level
-availability block, not a model-quality finding. M20 therefore adds no settings migration and does
-not change persisted or default model choices. After AWS enables both models, repeat the synthetic
-production-credential probes before adding an explicit switchover migration.
+availability block, not a model-quality finding. M20 does not change persisted or default model
+choices. It does persist `low` reasoning per pass so the chosen effort travels with the model
+configuration; that value is inactive for Claude. After AWS enables both models, repeat the
+synthetic production-credential probes before adding an explicit model switchover migration.
 
 ## Evidence
 
@@ -131,6 +132,8 @@ a quality result.
 - OpenAI models are available behind the existing provider-neutral interface with
   schema-constrained output, streamed audit narratives, cost ledgers, estimates, and spending caps.
 - The current application remains on Claude and does not depend on Mantle availability.
+- Each pass stores its reasoning effort beside its model. Effective reasoning is part of cache,
+  Rank-fingerprint, and eval-run identity; settings for unsupported models are ignored.
 - A future OpenAI switchover depends on Bedrock Mantle availability, bearer-token authentication,
   and explicit account access to both models in the configured region.
 - That future model change will invalidate the relevant content-addressed caches and Rank-input

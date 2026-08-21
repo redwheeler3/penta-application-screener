@@ -32,7 +32,7 @@ class _FlakyProvider:
         self._lock = threading.Lock()
 
     def structured_output(self, *, model_id, schema, prompt, system_prompt=None,
-                          on_delta=None, read_timeout=None):
+                          on_delta=None, read_timeout=None, reasoning_effort=None):
         with self._lock:
             i = self._seen
             self._seen += 1

@@ -49,7 +49,11 @@ from app.ai.schemas import (
     ScoreConfidence,
 )
 from app.db.models import Application, ApplicationAIResult
-from app.schemas.settings import AppSettings
+from app.schemas.settings import (
+    AppSettings,
+    ReasoningEffort,
+    effective_reasoning_effort,
+)
 from app.services.application_import import extract_essays
 from app.services.eligibility import union_eligible_applications
 
@@ -161,6 +165,7 @@ def _to_score_dimensions(
     application: Application,
     report: PoolDimensionReport,
     model_id: str,
+    reasoning_effort: ReasoningEffort | None = None,
 ) -> tuple[list[PoolDimension], dict[str, DimensionScore], float]:
     """Split a candidate's dimensions into (to-score, cached) by per-key cache hit.
     Returns the dimensions still to score, cached scores keyed by dimension key, and
@@ -177,6 +182,7 @@ def _to_score_dimensions(
             schema=DimensionScore,
             model_id=model_id,
             prompt_version=PROMPT_VERSION,
+            reasoning_effort=reasoning_effort,
         )
         if outcome is None:
             to_score.append(dim)
@@ -191,6 +197,7 @@ def missing_dimensions_by_application(
     applications: list[Application],
     report: PoolDimensionReport,
     model_id: str,
+    reasoning_effort: ReasoningEffort | None = None,
 ) -> dict[int, list[PoolDimension]]:
     """Find cache misses for an applicant × dimension grid in batched queries.
 
@@ -205,6 +212,7 @@ def missing_dimensions_by_application(
                 kind=kind_for_dimension(dimension.key),
                 model_id=model_id,
                 prompt_version=PROMPT_VERSION,
+                reasoning_effort=reasoning_effort,
             )
             for dimension in report.dimensions
         }
@@ -237,12 +245,13 @@ def missing_dimensions_by_application(
 
 
 def applications_needing_scores(
-    db: Session, report: PoolDimensionReport, model_id: str
+    db: Session, report: PoolDimensionReport, model_id: str,
+    reasoning_effort: ReasoningEffort | None = None,
 ) -> list[Application]:
     """Eligible applicants with at least one missing score for ``report``."""
     applications = applications_to_score(db)
     missing_by_application = missing_dimensions_by_application(
-        db, applications, report, model_id
+        db, applications, report, model_id, reasoning_effort
     )
     return [app for app in applications if missing_by_application[app.id]]
 
@@ -300,6 +309,7 @@ def _score_all_dimensions(
     applicant_block: str,
     to_score: list[PoolDimension],
     model_id: str,
+    reasoning_effort: ReasoningEffort | None = None,
 ) -> AIResult:
     """One candidate's uncached dimensions, scored COMPLETELY — the initial call plus
     targeted re-asks for any dimensions the model omitted, merged into one result whose
@@ -319,6 +329,7 @@ def _score_all_dimensions(
             schema=DimensionScoringReport,
             prompt=_build_prompt(applicant_block, remaining),
             system_prompt=SYSTEM_PROMPT,
+            reasoning_effort=reasoning_effort,
         )
         input_tokens += result.usage.input_tokens
         output_tokens += result.usage.output_tokens
@@ -365,13 +376,16 @@ def score_dimensions(
     thread, only the model call in a worker via ``run_in_pool``.
     """
     model_id = settings.ai.dimension_scoring_model
+    reasoning_effort = effective_reasoning_effort(
+        model_id, settings.ai.dimension_scoring_reasoning_effort
+    )
 
     # Plan each candidate on the main thread (cache lookups touch the ORM): which
     # dimensions still need scoring, and the cached ones to merge in.
     plans = []
     for application in applications:
         to_score, cached, cached_saved_usd = _to_score_dimensions(
-            db, application, report, model_id
+            db, application, report, model_id, reasoning_effort
         )
         # Workers must never touch an ORM instance: storing an earlier candidate commits
         # on the main thread and expires session objects while slower workers are still
@@ -387,7 +401,9 @@ def score_dimensions(
         # Score COMPLETELY: initial call + targeted re-asks for any omitted dimension.
         # Raises IncompleteScoringError if the model won't return them all — which
         # run_in_pool surfaces as this candidate's error (fail loud, no partial store).
-        return _score_all_dimensions(provider, applicant_block, to_score, model_id)
+        return _score_all_dimensions(
+            provider, applicant_block, to_score, model_id, reasoning_effort
+        )
 
     for (application, _applicant_block_text, to_score, cached, cached_saved_usd), result, error in run_in_pool(
         plans, call=call, max_workers=max_workers
@@ -426,6 +442,7 @@ def score_dimensions(
             outcome = store_result(
                 db, application, kind=kind_for_dimension(dim.key), model_id=model_id,
                 prompt_version=PROMPT_VERSION,
+                reasoning_effort=reasoning_effort,
                 result=AIResult(
                     output=score, usage=share, model_id=result.model_id,
                     # No narrative: the scoring prompt requests no reasoning preamble

@@ -536,16 +536,20 @@ function runSummary(evalKey: EvalRunMode, result: EvalRunResult, totalCases: num
 function RestoredMarker(props: { run: LastEvalRun; totalCases: number }): ReactNode {
   const { run } = props;
   const summary = runSummary(run.evalKey as EvalRunMode, run.result, props.totalCases);
-  const stale = run.promptStale || run.modelStale;
+  const stale = run.promptStale || run.modelStale || run.reasoningStale;
   const changes = [
     run.promptStale ? `prompt is now ${run.currentPromptVersion}` : "",
     run.modelStale ? `model is now ${run.currentModelId}` : "",
+    run.reasoningStale
+      ? `reasoning is now ${run.currentReasoningEffort || "not applicable"}`
+      : "",
   ].filter(Boolean).join(" · ");
   return (
     <div className={`eval-restored${stale ? " stale" : ""}`}>
       {restoredLabel(run.evalKey)}
       {summary ? ` · ${summary}` : ""} · last run {relativeTime(run.ranAt)} · prompt {run.promptVersion || "—"}
       {run.modelId ? ` · ${run.modelId}` : ""}
+      {run.reasoningEffort ? ` · reasoning ${run.reasoningEffort}` : ""}
       {stale ? ` · ${changes} — re-run to refresh` : ""}
     </div>
   );

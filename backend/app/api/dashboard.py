@@ -29,6 +29,7 @@ from app.schemas.dashboard import (
     DashboardResponse,
     WorkflowState,
 )
+from app.schemas.settings import effective_reasoning_effort
 from app.services.analysis import (
     current_dimension_kinds,
     get_current_analysis,
@@ -150,6 +151,9 @@ def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
             application=app, kind="screening",
             model_id=settings.ai.screening_model,
             prompt_version=screening_prompt_version(),
+            reasoning_effort=effective_reasoning_effort(
+                settings.ai.screening_model, settings.ai.screening_reasoning_effort
+            ),
         )
         for app in screening_apps
     }
@@ -174,6 +178,10 @@ def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
                     application=app, kind=kind,
                     model_id=settings.ai.dimension_scoring_model,
                     prompt_version=SCORING_PROMPT_VERSION,
+                    reasoning_effort=effective_reasoning_effort(
+                        settings.ai.dimension_scoring_model,
+                        settings.ai.dimension_scoring_reasoning_effort,
+                    ),
                 )
                 for kind in kinds
             ]

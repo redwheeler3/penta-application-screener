@@ -29,7 +29,7 @@ from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider, DeltaSink, Usage
 from app.ai.schemas import ConsolidationReport, PoolDimensionReport
 from app.ai.score_vectors import CORRELATION_THRESHOLD, correlation
-from app.schemas.settings import AppSettings
+from app.schemas.settings import AppSettings, effective_reasoning_effort
 
 
 @dataclass(frozen=True)
@@ -196,6 +196,9 @@ def consolidate_dimensions(
         prompt=build_prompt(pairs, definitions),
         system_prompt=SYSTEM_PROMPT,
         on_delta=on_delta,
+        reasoning_effort=effective_reasoning_effort(
+            settings.ai.consolidate_model, settings.ai.consolidate_reasoning_effort
+        ),
     )
     verdicts: ConsolidationReport = result.output
 

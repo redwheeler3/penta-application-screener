@@ -172,7 +172,9 @@ def test_screen_isolates_a_failed_call() -> None:
     )
 
     class FlakyProvider:
-        def structured_output(self, *, model_id, schema, prompt, system_prompt=None):
+        def structured_output(
+            self, *, model_id, schema, prompt, system_prompt=None, reasoning_effort=None
+        ):
             if "Bad One" in prompt:
                 raise RuntimeError("boom")
             return AIResult(
@@ -214,7 +216,9 @@ def test_screen_runs_calls_concurrently() -> None:
     barrier = threading.Barrier(n, timeout=5)
 
     class ConcurrentProvider:
-        def structured_output(self, *, model_id, schema, prompt, system_prompt=None):
+        def structured_output(
+            self, *, model_id, schema, prompt, system_prompt=None, reasoning_effort=None
+        ):
             # Raises BrokenBarrierError on timeout if fewer than n arrive — i.e.
             # if the calls were serialized rather than run together.
             barrier.wait()

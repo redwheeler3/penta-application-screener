@@ -12,8 +12,10 @@ from app.api.evals._shared import (
     DEFAULT_STABILITY_K,
     current_model,
     current_prompt_version,
+    current_reasoning_effort,
     live_case_keys,
     result_model,
+    result_reasoning_effort,
 )
 from app.api.problems import Problem
 from app.core.time import utc_isoformat
@@ -214,6 +216,7 @@ def last_run(
         newest = rows[0]
         result = dict(newest.result or {})
         model = result_model(result)
+        reasoning_effort = result_reasoning_effort(result)
         # Only merge cases whose key still exists in the pass's current golden set, so a merged
         # historical run can't resurrect a since-renamed/removed case (which would inflate the
         # count past the dots). None ⇒ this key has no editable case set; keep all.
@@ -224,6 +227,8 @@ def last_run(
                 break  # older prompt version — don't mix it into the accumulation
             if result_model(row.result) != model:
                 break  # older model — its cases did not exercise the same system
+            if result_reasoning_effort(row.result) != reasoning_effort:
+                break  # older reasoning configuration is a different system
             for case in (row.result or {}).get("cases", []):
                 if not (isinstance(case, dict) and "key" in case) or case["key"] in merged:
                     continue
@@ -233,6 +238,7 @@ def last_run(
             result["cases"] = list(merged.values())
         current_prompt = current_prompt_version(newest.eval_key, db)
         current_model_id = current_model(newest.eval_key, db)
+        current_effort = current_reasoning_effort(newest.eval_key, db)
         runs.append(LastRun(
             eval_key=newest.eval_key,
             ran_at=utc_isoformat(newest.created_at),
@@ -240,12 +246,15 @@ def last_run(
             current_prompt_version=current_prompt,
             model_id=model,
             current_model_id=current_model_id,
+            reasoning_effort=reasoning_effort,
+            current_reasoning_effort=current_effort,
             prompt_stale=bool(
                 current_prompt
                 and newest.prompt_version
                 and newest.prompt_version != current_prompt
             ),
             model_stale=bool(model and current_model_id and model != current_model_id),
+            reasoning_stale=reasoning_effort != current_effort,
             result=result,
         ))
     return LastRunResponse(runs=runs)

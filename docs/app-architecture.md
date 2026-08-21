@@ -541,7 +541,7 @@ Settings are stored in the `admin_settings` table as one JSON value under the ke
 - Household limits: max adults, minimum adult age
 - Pet limits: max dogs, max cats, whether other/exotic pets are allowed
 - `disabled_rules`: which deterministic hard-filter rules are turned off
-- A nested `ai` block (`AISettings`): region, one model per AI pass (`screening_model`, `dimension_scoring_model`, `discovery_model`, `decompose_model`, `match_model`, `consolidate_model`), the consolidation correlation threshold, spending cap (default `$2.00`), and screening concurrency (`max_workers`) — see [ai-screening.md](ai-screening.md). Of these, only the spending cap is editable in the settings form; the rest are config-only but still round-tripped on save.
+- A nested `ai` block (`AISettings`): region, one model and reasoning effort per AI pass (`screening`, `dimension_scoring`, `discovery`, `decompose`, `match`, `consolidate`), the consolidation correlation threshold, spending cap (default `$2.00`), and screening concurrency (`max_workers`) — see [ai-screening.md](ai-screening.md). Models remain config-only; reasoning is editable beside each displayed model and is ignored when that model does not support it.
 
 The defaults match the current planned 2-bedroom opening:
 

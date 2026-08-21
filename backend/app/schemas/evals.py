@@ -69,6 +69,7 @@ class _CategoricalResponse(ResponseModel):
 
     prompt_version: str
     model: str
+    reasoning_effort: str | None = None
     passed: int
     total: int
 
@@ -94,6 +95,7 @@ class _CategoricalStabilityResponse(ResponseModel):
 
     prompt_version: str
     model: str
+    reasoning_effort: str | None = None
     k: int
 
 
@@ -112,6 +114,7 @@ class ScoringCaseOut(ResponseModel):
 class ScoringResponse(ResponseModel):
     scoring_prompt_version: str
     scoring_model: str
+    reasoning_effort: str | None = None
     passed: int
     total: int
     cases: list[ScoringCaseOut] = []
@@ -131,6 +134,7 @@ class ScoringStabilityCaseOut(ResponseModel):
 class ScoringStabilityResponse(ResponseModel):
     scoring_prompt_version: str
     scoring_model: str
+    reasoning_effort: str | None = None
     k: int
     cases: list[ScoringStabilityCaseOut] = []
 
@@ -356,8 +360,11 @@ class LastRun(ResponseModel):
     current_prompt_version: str = ""  # the prompt in effect NOW
     model_id: str = ""  # the model the run exercised
     current_model_id: str = ""  # the model in effect NOW
+    reasoning_effort: str = ""
+    current_reasoning_effort: str = ""
     prompt_stale: bool = False
     model_stale: bool = False
+    reasoning_stale: bool = False
     result: dict = {}
 
 

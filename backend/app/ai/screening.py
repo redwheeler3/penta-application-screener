@@ -24,7 +24,7 @@ from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider
 from app.ai.schemas import ScreeningReport
 from app.db.models import Application
-from app.schemas.settings import AppSettings
+from app.schemas.settings import AppSettings, effective_reasoning_effort
 from app.services.application_import import extract_essays
 from app.services.eligibility import rules_eligible_application_ids
 
@@ -148,6 +148,9 @@ def estimate_screening(db: Session, settings: AppSettings) -> CostEstimate:
         # the prompt asks for a Markdown narrative, so output is several hundred tokens.
         fallback_input_tokens=2800,
         fallback_output_tokens=550,
+        reasoning_effort=effective_reasoning_effort(
+            settings.ai.screening_model, settings.ai.screening_reasoning_effort
+        ),
     )
 
 
@@ -177,4 +180,7 @@ def run_screening(
         build_prompt=build_prompt,
         system_prompt=SYSTEM_PROMPT,
         max_workers=max_workers,
+        reasoning_effort=effective_reasoning_effort(
+            settings.ai.screening_model, settings.ai.screening_reasoning_effort
+        ),
     )

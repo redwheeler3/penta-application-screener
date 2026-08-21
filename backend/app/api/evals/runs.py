@@ -18,6 +18,7 @@ from app.api.dependencies import get_ai_provider, require_current_user
 from app.api.evals._categorical import CategoricalPass, register
 from app.api.evals._shared import (
     DEFAULT_STABILITY_K,
+    ReasoningProvider,
     case_workers,
     over_cases,
     runs_out,
@@ -74,6 +75,7 @@ from app.schemas.evals import (
     StabilityCaseOut,
     StabilityRunResponse,
 )
+from app.schemas.settings import effective_reasoning_effort
 from app.services.settings import get_app_settings
 
 router = APIRouter()
@@ -100,6 +102,10 @@ def run_scoring(
 
     settings = get_app_settings(db)
     scoring_model = settings.ai.dimension_scoring_model
+    reasoning_effort = effective_reasoning_effort(
+        scoring_model, settings.ai.dimension_scoring_reasoning_effort
+    )
+    configured_provider = ReasoningProvider(provider, reasoning_effort)
     golden = select(list(load_golden()), case, lambda c: c.key)
 
     if mode == "stability":
@@ -107,7 +113,10 @@ def run_scoring(
 
         def one_stability(c, case_delta) -> ScoringStabilityCaseOut:
             case_delta(f"\n\n### {c.key} (x{k})\n")
-            res = scoring_stability_run(provider, c, scoring_model=scoring_model, k=k, on_delta=case_delta)
+            res = scoring_stability_run(
+                configured_provider, c, scoring_model=scoring_model, k=k,
+                on_delta=case_delta,
+            )
             lo, hi = res.score_spread
             return ScoringStabilityCaseOut(
                 key=c.key, marker=res.stability.marker, agreement=res.stability.agreement,
@@ -118,20 +127,25 @@ def run_scoring(
         def work_stability(on_delta) -> ScoringStabilityResponse:
             out = over_cases(golden, one_stability, on_delta=on_delta, max_workers=case_workers(settings, fan_out=k))
             return ScoringStabilityResponse(
-                scoring_prompt_version=SCORING_PROMPT_VERSION, scoring_model=scoring_model, k=k, cases=out,
+                scoring_prompt_version=SCORING_PROMPT_VERSION,
+                scoring_model=scoring_model, reasoning_effort=reasoning_effort,
+                k=k, cases=out,
             )
 
         return stream(db, "scoring_stability", SCORING_PROMPT_VERSION, work_stability)
 
     def one(c, case_delta):
         case_delta(f"\n\n### {c.key}\n")
-        return run_case(provider, c, scoring_model=scoring_model, on_delta=case_delta)
+        return run_case(
+            configured_provider, c, scoring_model=scoring_model, on_delta=case_delta
+        )
 
     def work(on_delta) -> ScoringResponse:
         results = over_cases(golden, one, on_delta=on_delta, max_workers=case_workers(settings))
         return ScoringResponse(
             scoring_prompt_version=SCORING_PROMPT_VERSION,
             scoring_model=scoring_model,
+            reasoning_effort=reasoning_effort,
             passed=sum(1 for r in results if r.passed),
             total=len(results),
             cases=[
@@ -153,7 +167,8 @@ def run_scoring(
 # name — consolidate_model etc. — so the runners and their tests stay untouched).
 for _spec in (
     CategoricalPass(
-        key="consolidation", load_cases=load_consolidation_cases, model_attr="consolidate_model",
+        key="consolidation", load_cases=load_consolidation_cases,
+        model_attr="consolidate_model", reasoning_attr="consolidate_reasoning_effort",
         prompt_version=lambda: CONSOLIDATE_PROMPT_VERSION,
         run_case=lambda p, c, m, on_delta: run_consolidation_case(p, c, consolidate_model=m, on_delta=on_delta),
         stability_run=lambda p, c, m, *, k, on_delta: consolidation_stability_run(p, c, consolidate_model=m, k=k, on_delta=on_delta),
@@ -161,7 +176,8 @@ for _spec in (
         stability_out=ConsolidationStabilityCaseOut, stability_response=ConsolidationStabilityResponse,
     ),
     CategoricalPass(
-        key="matching", load_cases=load_matching_cases, model_attr="match_model",
+        key="matching", load_cases=load_matching_cases,
+        model_attr="match_model", reasoning_attr="match_reasoning_effort",
         prompt_version=lambda: MATCH_PROMPT_VERSION,
         run_case=lambda p, c, m, on_delta: run_matching_case(p, c, match_model=m, on_delta=on_delta),
         stability_run=lambda p, c, m, *, k, on_delta: matching_stability_run(p, c, match_model=m, k=k, on_delta=on_delta),
@@ -169,7 +185,8 @@ for _spec in (
         stability_out=MatchingStabilityCaseOut, stability_response=MatchingStabilityResponse,
     ),
     CategoricalPass(
-        key="decomposition", load_cases=load_decomposition_cases, model_attr="decompose_model",
+        key="decomposition", load_cases=load_decomposition_cases,
+        model_attr="decompose_model", reasoning_attr="decompose_reasoning_effort",
         prompt_version=lambda: DECOMPOSE_PROMPT_VERSION,
         run_case=lambda p, c, m, on_delta: run_decomposition_case(p, c, decompose_model=m, on_delta=on_delta),
         stability_run=lambda p, c, m, *, k, on_delta: decomposition_stability_run(p, c, decompose_model=m, k=k, on_delta=on_delta),
@@ -199,6 +216,10 @@ def run_screening(
 
     settings = get_app_settings(db)
     model = settings.ai.screening_model
+    reasoning_effort = effective_reasoning_effort(
+        model, settings.ai.screening_reasoning_effort
+    )
+    configured_provider = ReasoningProvider(provider, reasoning_effort)
     version = screening_prompt_version()
     cases = select(list(load_screening_cases()), case, lambda c: c.key)
 
@@ -207,7 +228,10 @@ def run_screening(
 
         def one_stability(c, case_delta) -> ScreeningStabilityCaseOut:
             case_delta(f"\n\n### {c.key} (x{k})\n")
-            rep = screening_stability_run(provider, c, screening_model=model, k=k, on_delta=case_delta)
+            rep = screening_stability_run(
+                configured_provider, c, screening_model=model, k=k,
+                on_delta=case_delta,
+            )
             return ScreeningStabilityCaseOut(
                 key=c.key, marker=rep.marker, majority=rep.majority,
                 agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
@@ -216,18 +240,23 @@ def run_screening(
 
         def work_stability(on_delta) -> ScreeningStabilityResponse:
             out = over_cases(cases, one_stability, on_delta=on_delta, max_workers=case_workers(settings, fan_out=k))
-            return ScreeningStabilityResponse(prompt_version=version, model=model, k=k, cases=out)
+            return ScreeningStabilityResponse(
+                prompt_version=version, model=model,
+                reasoning_effort=reasoning_effort, k=k, cases=out,
+            )
 
         return stream(db, "screening_stability", version, work_stability)
 
     def one(c, case_delta):
         case_delta(f"\n\n### {c.key}\n")
-        return run_screening_case(provider, c, screening_model=model, on_delta=case_delta)
+        return run_screening_case(
+            configured_provider, c, screening_model=model, on_delta=case_delta
+        )
 
     def work(on_delta) -> ScreeningResponse:
         results = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings))
         return ScreeningResponse(
-            prompt_version=version, model=model,
+            prompt_version=version, model=model, reasoning_effort=reasoning_effort,
             passed=sum(1 for r in results if r.passed), total=len(results),
             cases=[
                 ScreeningCaseOut(

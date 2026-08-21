@@ -679,6 +679,52 @@ h1 {
   gap: 0.75rem;
 }
 
+.ai-pass-settings {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 1rem;
+}
+
+.ai-pass-settings-head,
+.ai-pass-setting {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.7fr) minmax(260px, 2fr) minmax(105px, 0.5fr);
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.ai-pass-settings-head {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.ai-pass-setting code {
+  overflow-wrap: anywhere;
+}
+
+.ai-pass-setting select {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+@media (max-width: 760px) {
+  .ai-pass-settings-head {
+    display: none;
+  }
+
+  .ai-pass-setting {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+    padding-bottom: 0.65rem;
+    border-bottom: 1px solid var(--line);
+  }
+}
+
 /* While the dashboard is recovering, do not render its all-false placeholder as a
    credible workflow state. The retry stays in the familiar workflow card. */
 .workflow-bar-load-state {

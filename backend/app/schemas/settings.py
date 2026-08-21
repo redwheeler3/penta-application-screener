@@ -1,4 +1,5 @@
 import re
+from typing import Literal
 
 from pydantic import Field, field_validator
 
@@ -25,6 +26,18 @@ def google_sheet_url_from_id(sheet_id: str) -> str:
     if not sheet_id:
         return ""
     return f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit"
+
+
+ReasoningEffort = Literal["none", "low", "medium", "high", "xhigh", "max"]
+
+
+def effective_reasoning_effort(model_id: str, effort: ReasoningEffort) -> ReasoningEffort | None:
+    """Return the configured effort only when the selected model supports it.
+
+    Keeping the inactive value in settings lets a pass switch providers without losing
+    its choice, while excluding it from invocation and cache identity for Claude.
+    """
+    return effort if model_id.startswith("openai.") else None
 
 
 class AISettings(BridgeModel):
@@ -62,11 +75,17 @@ class AISettings(BridgeModel):
     _HAIKU = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
     _SONNET = "us.anthropic.claude-sonnet-4-6"
     screening_model: str = Field(default=_HAIKU)
+    screening_reasoning_effort: ReasoningEffort = "low"
     dimension_scoring_model: str = Field(default=_HAIKU)
+    dimension_scoring_reasoning_effort: ReasoningEffort = "low"
     discovery_model: str = Field(default=_SONNET)
+    discovery_reasoning_effort: ReasoningEffort = "low"
     decompose_model: str = Field(default=_SONNET)
+    decompose_reasoning_effort: ReasoningEffort = "low"
     match_model: str = Field(default=_SONNET)
+    match_reasoning_effort: ReasoningEffort = "low"
     consolidate_model: str = Field(default=_SONNET)
+    consolidate_reasoning_effort: ReasoningEffort = "low"
     # Fan-Out Redesign (SPEC "Fan-Out Redesign", D6): how many parallel, fresh-context
     # discovery calls one Rank runs. Their cross-call variation is the diversity a later
     # decomposition step pares to the finest non-overlapping set. Discovery is uncached,

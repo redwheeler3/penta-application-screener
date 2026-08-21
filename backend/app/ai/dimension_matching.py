@@ -19,7 +19,7 @@ from app.ai.pricing import PassCost, cost_usd
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider, DeltaSink
 from app.ai.schemas import DimensionMatchReport, PoolDimensionReport
-from app.schemas.settings import AppSettings
+from app.schemas.settings import AppSettings, effective_reasoning_effort
 
 SYSTEM_PROMPT = """\
 You are reconciling two lists of "dimensions" — axes along which a pool of housing co-op applicants varies. One is from a PRIOR analysis, one freshly discovered from the same (slightly changed) pool; they overlap heavily but wording may differ and some axes may be new or gone.
@@ -125,6 +125,9 @@ def match_dimensions(
         prompt=build_prompt(old, new),
         system_prompt=SYSTEM_PROMPT,
         on_delta=on_delta,
+        reasoning_effort=effective_reasoning_effort(
+            settings.ai.match_model, settings.ai.match_reasoning_effort
+        ),
     )
     report: DimensionMatchReport = result.output
 

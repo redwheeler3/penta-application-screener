@@ -162,6 +162,22 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
         assert workflow["rankingCurrent"] is False
 
 
+def test_rank_fingerprint_tracks_only_effective_reasoning() -> None:
+    from app.schemas.settings import AppSettings
+    from app.services.analysis import rank_inputs_fingerprint
+
+    _app, db = _logged_in_app()
+    settings = AppSettings()
+    anthropic = rank_inputs_fingerprint(db, settings)
+    settings.ai.discovery_reasoning_effort = "medium"
+    assert rank_inputs_fingerprint(db, settings) == anthropic
+
+    settings.ai.discovery_model = "openai.gpt-5.6-terra"
+    low = rank_inputs_fingerprint(db, settings)
+    settings.ai.discovery_reasoning_effort = "high"
+    assert rank_inputs_fingerprint(db, settings) != low
+
+
 @pytest.mark.anyio
 async def test_import_current_tracks_sheet_id() -> None:
     """importCurrent is False once the SOURCE SHEET changes — the only settings change a

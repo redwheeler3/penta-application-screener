@@ -7,7 +7,24 @@ import { NumberInput } from "./NumberInput";
 import { AccessPanel } from "./AccessPanel";
 import { CheckGroup } from "./CheckToggles";
 import { RetryLoadError } from "./RetryLoadError";
-import type { AppSettings, CurrentUser, EligibilityRules, FeedbackItem, SettingsResponse, ViewTab } from "../types";
+import type {
+  AISettings, AppSettings, CurrentUser, EligibilityRules, FeedbackItem,
+  ReasoningEffort, SettingsResponse, ViewTab,
+} from "../types";
+
+const REASONING_EFFORTS: ReasoningEffort[] = ["none", "low", "medium", "high", "xhigh", "max"];
+const AI_PASSES: Array<{
+  label: string;
+  model: keyof AISettings;
+  reasoning: keyof AISettings;
+}> = [
+  { label: "Screening", model: "screeningModel", reasoning: "screeningReasoningEffort" },
+  { label: "Dimension scoring", model: "dimensionScoringModel", reasoning: "dimensionScoringReasoningEffort" },
+  { label: "Discovery", model: "discoveryModel", reasoning: "discoveryReasoningEffort" },
+  { label: "Decomposition", model: "decomposeModel", reasoning: "decomposeReasoningEffort" },
+  { label: "Matching", model: "matchModel", reasoning: "matchReasoningEffort" },
+  { label: "Consolidation", model: "consolidateModel", reasoning: "consolidateReasoningEffort" },
+];
 
 // The admin-only config surface, organized as sub-views:
 //   Configuration      — the data source (Google Sheet) and AI screening knobs.
@@ -156,6 +173,42 @@ export function AdminSettingsPanel(props: {
                       overlaps; higher is stricter. The AI still confirms every merge.
                     </span>
                   </label>
+                </div>
+                <div className="ai-pass-settings">
+                  <div className="ai-pass-settings-head">
+                    <span>Pass</span><span>Model</span><span>Reasoning</span>
+                  </div>
+                  {AI_PASSES.map((pass) => {
+                    const model = draft.ai[pass.model] as string;
+                    const effort = draft.ai[pass.reasoning] as ReasoningEffort;
+                    const supportsReasoning = model.startsWith("openai.");
+                    return (
+                      <div className="ai-pass-setting" key={pass.label}>
+                        <span>{pass.label}</span>
+                        <code>{model}</code>
+                        <select
+                          aria-label={`${pass.label} reasoning effort`}
+                          value={effort}
+                          disabled={!supportsReasoning}
+                          title={supportsReasoning ? undefined : "This model does not use reasoning effort."}
+                          onChange={(event) => setDraft({
+                            ...draft,
+                            ai: {
+                              ...draft.ai,
+                              [pass.reasoning]: event.target.value as ReasoningEffort,
+                            },
+                          })}
+                        >
+                          {REASONING_EFFORTS.map((value) => (
+                            <option value={value} key={value}>{value}</option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })}
+                  <span className="field-hint">
+                    Reasoning is saved per pass and used only by models that support it.
+                  </span>
                 </div>
               </div>
               <div className="settings-actions">

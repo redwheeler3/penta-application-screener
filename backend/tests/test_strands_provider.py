@@ -2,7 +2,9 @@
 
 from unittest.mock import MagicMock, patch
 
-from app.ai.strands_provider import OPENAI_REASONING_EFFORT, StrandsProvider
+import pytest
+
+from app.ai.strands_provider import StrandsProvider
 
 
 def test_claude_uses_bedrock_runtime_model() -> None:
@@ -19,7 +21,7 @@ def test_claude_uses_bedrock_runtime_model() -> None:
 
 
 def test_openai_uses_bedrock_mantle_responses_model() -> None:
-    provider = StrandsProvider(region="us-east-1")
+    provider = StrandsProvider(region="us-east-1", openai_reasoning_effort="low")
 
     with patch("strands.models.openai_responses.OpenAIResponsesModel") as model_class:
         model = provider._model_for("openai.gpt-5.6-luna", read_timeout=321)
@@ -30,7 +32,6 @@ def test_openai_uses_bedrock_mantle_responses_model() -> None:
     assert kwargs["bedrock_mantle_config"] == {"region": "us-east-1"}
     assert kwargs["client_args"]["max_retries"] == 5
     assert kwargs["client_args"]["timeout"].read == 321
-    assert OPENAI_REASONING_EFFORT == "low"
     assert kwargs["params"] == {"reasoning": {"effort": "low"}}
     assert kwargs["stateful"] is False
 
@@ -42,6 +43,13 @@ def test_openai_reasoning_effort_can_be_set_for_bakeoff() -> None:
         provider._model_for("openai.gpt-5.6-luna")
 
     assert model_class.call_args.kwargs["params"] == {"reasoning": {"effort": "low"}}
+
+
+def test_openai_requires_an_explicit_reasoning_configuration() -> None:
+    provider = StrandsProvider(region="us-east-1")
+
+    with pytest.raises(ValueError, match="reasoning_effort is required"):
+        provider._model_for("openai.gpt-5.6-luna")
 
 
 def test_openai_reasoning_effort_can_differ_by_model() -> None:
@@ -59,17 +67,19 @@ def test_openai_reasoning_effort_can_differ_by_model() -> None:
     assert model_class.call_args_list[1].kwargs["params"] == {"reasoning": {"effort": "none"}}
 
 
-def test_models_are_cached_by_model_and_timeout() -> None:
-    provider = StrandsProvider(region="us-east-1")
-    built = MagicMock(side_effect=[MagicMock(), MagicMock(), MagicMock()])
+def test_models_are_cached_by_model_timeout_and_reasoning() -> None:
+    provider = StrandsProvider(region="us-east-1", openai_reasoning_effort="low")
+    built = MagicMock(side_effect=[MagicMock(), MagicMock(), MagicMock(), MagicMock()])
 
     with patch.object(provider, "_build_model", built):
         first = provider._model_for("openai.gpt-5.6-luna")
         same = provider._model_for("openai.gpt-5.6-luna")
         longer = provider._model_for("openai.gpt-5.6-luna", read_timeout=300)
         other = provider._model_for("openai.gpt-5.6-terra")
+        medium = provider._model_for("openai.gpt-5.6-luna", reasoning_effort="medium")
 
     assert same is first
     assert longer is not first
     assert other is not first
-    assert built.call_count == 3
+    assert medium is not first
+    assert built.call_count == 4

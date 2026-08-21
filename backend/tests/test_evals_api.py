@@ -407,6 +407,50 @@ async def test_last_run_does_not_merge_cases_across_models() -> None:
     assert [case["key"] for case in run["result"]["cases"]] == [second_key]
 
 
+async def test_last_run_flags_and_separates_reasoning_changes() -> None:
+    from app.ai.screening import screening_prompt_version
+    from app.schemas.settings import AppSettings
+    from app.services.settings import save_app_settings
+
+    app, db, _p = setup_app()
+    settings = AppSettings()
+    settings.ai.screening_model = "openai.gpt-5.6-luna"
+    settings.ai.screening_reasoning_effort = "medium"
+    save_app_settings(db, settings)
+    version = screening_prompt_version()
+    db.add(EvalRun(
+        eval_key="screening",
+        prompt_version=version,
+        result={
+            "model": settings.ai.screening_model,
+            "reasoningEffort": "low",
+            "cases": [{"key": "older"}],
+        },
+        thinking=None,
+    ))
+    db.commit()
+    db.add(EvalRun(
+        eval_key="screening",
+        prompt_version=version,
+        result={
+            "model": settings.ai.screening_model,
+            "reasoningEffort": "low",
+            "cases": [{"key": "newer"}],
+        },
+        thinking=None,
+    ))
+    db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        body = (await client.get("/evals/last-run?keys=screening")).json()
+
+    run = body["runs"][0]
+    assert run["reasoningEffort"] == "low"
+    assert run["currentReasoningEffort"] == "medium"
+    assert run["reasoningStale"] is True
+
+
 async def test_get_cases_reads_the_fixture() -> None:
     app, _db, _p = setup_app()
     transport = ASGITransport(app=app)

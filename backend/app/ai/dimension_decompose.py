@@ -42,7 +42,7 @@ from app.ai.schemas import (
     PoolDimension,
     PoolDimensionReport,
 )
-from app.schemas.settings import AppSettings
+from app.schemas.settings import AppSettings, effective_reasoning_effort
 
 # Bedrock read timeout (s) for the decomposition call specifically. It streams a large
 # reasoned set (settle ~250 input dims → ~28 axes, each with merge reasoning) that blows
@@ -401,5 +401,8 @@ def decompose_dimensions(
         system_prompt=SYSTEM_PROMPT,
         on_delta=on_delta,
         read_timeout=DECOMPOSE_READ_TIMEOUT,
+        reasoning_effort=effective_reasoning_effort(
+            settings.ai.decompose_model, settings.ai.decompose_reasoning_effort
+        ),
     )
     return result.output, result.narrative, PassCost.from_usage(result.model_id, result.usage)

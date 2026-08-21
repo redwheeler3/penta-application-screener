@@ -57,14 +57,22 @@ export type FeedbackItem = {
 
 // Mirrors backend AISettings. The UI edits spendingCapUsd and discoveryFanOut; the
 // rest are round-tripped so a save never resets them.
+export type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
+
 export type AISettings = {
   region: string;
   screeningModel: string;
+  screeningReasoningEffort: ReasoningEffort;
   dimensionScoringModel: string;
+  dimensionScoringReasoningEffort: ReasoningEffort;
   discoveryModel: string;
+  discoveryReasoningEffort: ReasoningEffort;
   decomposeModel: string;
+  decomposeReasoningEffort: ReasoningEffort;
   matchModel: string;
+  matchReasoningEffort: ReasoningEffort;
   consolidateModel: string;
+  consolidateReasoningEffort: ReasoningEffort;
   // Fan-out width: parallel discovery calls per Rank (SPEC "Fan-Out Redesign", D6).
   discoveryFanOut: number;
   // Pearson r at/above which post-score consolidation nominates a duplicate pair (0–1).
@@ -673,8 +681,11 @@ export type LastEvalRun = {
   currentPromptVersion: string;
   modelId: string;
   currentModelId: string;
+  reasoningEffort: string;
+  currentReasoningEffort: string;
   promptStale: boolean;
   modelStale: boolean;
+  reasoningStale: boolean;
   result: EvalRunResult;
 };
 

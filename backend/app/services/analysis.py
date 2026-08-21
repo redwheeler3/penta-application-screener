@@ -36,7 +36,7 @@ from app.db.models import (
     SyncRun,
     User,
 )
-from app.schemas.settings import AppSettings
+from app.schemas.settings import AppSettings, effective_reasoning_effort
 from app.services.eligibility import union_eligible_application_ids
 
 
@@ -101,6 +101,27 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
         f"scoring_model:{settings.ai.dimension_scoring_model}",
         f"consolidate_model:{settings.ai.consolidate_model}",
     ]
+    # Reasoning changes the output just like a model change. Append only effective
+    # values so adding inactive Claude settings does not invalidate existing runs.
+    reasoning_settings = (
+        ("discovery", settings.ai.discovery_model, settings.ai.discovery_reasoning_effort),
+        ("decompose", settings.ai.decompose_model, settings.ai.decompose_reasoning_effort),
+        ("match", settings.ai.match_model, settings.ai.match_reasoning_effort),
+        (
+            "scoring",
+            settings.ai.dimension_scoring_model,
+            settings.ai.dimension_scoring_reasoning_effort,
+        ),
+        (
+            "consolidate",
+            settings.ai.consolidate_model,
+            settings.ai.consolidate_reasoning_effort,
+        ),
+    )
+    for pass_name, model_id, configured_effort in reasoning_settings:
+        effort = effective_reasoning_effort(model_id, configured_effort)
+        if effort is not None:
+            parts.append(f"{pass_name}_reasoning:{effort}")
     basis = "\n".join(parts)
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
 

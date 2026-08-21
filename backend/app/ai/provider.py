@@ -13,6 +13,8 @@ from typing import Protocol, TypeVar
 
 from pydantic import BaseModel
 
+from app.schemas.settings import ReasoningEffort
+
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
 # Called with each chunk of the model's reasoning text as it streams, for live
@@ -52,6 +54,7 @@ class AIProvider(Protocol):
         system_prompt: str | None = None,
         on_delta: DeltaSink | None = None,
         read_timeout: int | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
     ) -> AIResult:
         """Run ``prompt`` and return its output validated against ``schema`` (plus
         usage for pricing). When ``on_delta`` is given, it is called with each chunk
@@ -59,6 +62,7 @@ class AIProvider(Protocol):
         long single-call passes (discovery, match) where a per-item progress fraction
         is impossible. Most callers omit it; the result is identical either way.
 
+        ``reasoning_effort`` is meaningful only for models that expose that control.
         ``read_timeout`` overrides the Bedrock read timeout (s) for this call only —
         raised for the fan-out decomposition call, whose large reasoned output streams
         past the default. Omit for every other pass.
