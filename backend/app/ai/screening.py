@@ -55,11 +55,11 @@ Flag these when clearly present:
 - A placeholder or non-name in ANY name field (applicant, co-applicant, or child). A real name is NEVER a flag.
 - Essay answers with no substantive content at all: a totally empty essay or an essay composed entirely of a single short fragment. A relevant statement is substantive even if brief.
 - Essays that are clearly spam/advertising, the SAME text copy-pasted across multiple essay answers, or that does not answer the question posed.
-- Direct factual contradictions between fields (excluding any email fields), within or across the essays, or between fields and essays.
+- Direct factual contradictions between fields (excluding names and email fields), within or across the essays, or between fields and essays.
 - A placeholder or keyboard-mash field (e.g. 'asdf@asdf.asdf', 'test@test.test', '111-111-1111', 'TBD'). Judge ONLY the characters of the value itself — is it gibberish, repeated, or a placeholder. A normal-looking email or phone is real no matter whose name it contains or resembles.
 
 Do NOT flag (these are normal and must be ignored):
-- A child or co-applicant having a different surname from the applicant. Blended families and differing surnames are common and are NOT suspicious.
+- A child or co-applicant having a different surname from the applicant, including a plausible spelling variation, typo, or letter transposition. These are common and are NOT suspicious.
 - An essay self-introducing with a different real name(s) than the name field(s) (e.g. "My name is Michael" when the form says "Kwang su Yun"). We do not want to discriminate on people from different countries, so never flag this even if you can't figure out the relationship between the real name(s) and the anglisized ones.
 - Missing optional information, or an answer simply being short.
 - NEVER flag an incomplete or cut-off essay, no matter how abrupt. Ignore the unfinished tail; any relevant completed statement is substantive, and the committee can see the cutoff itself.
