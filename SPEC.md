@@ -250,8 +250,18 @@ leaves the browser draft intact and offers retry or email correction. Confirmati
 recorded for retry and surfaced to administrators. Sending is rate-limited, repeated requests are
 coalesced, and bounce/complaint state is monitored. Operational records contain the provider
 message ID, message kind, recipient identifier, and delivery state, but never a raw access token,
-email body, or applicant answers. Local development and automated tests use a captured fake sender
-and never deliver real email.
+email body, or applicant answers. Automated tests and normal local development use a captured fake
+sender and never deliver real email.
+
+Developers may explicitly enable live SES delivery for end-to-end email testing. This development
+mode uses a separate least-privilege SES credential and a sender and Reply-To address under
+`jeffo.net`; every subject is prefixed with `[Penta development]`. The central email-sender boundary
+normalizes and parses every To, CC, and BCC mailbox and rejects the entire message before calling
+SES unless every domain is exactly `jeffo.net` (not a subdomain or a suffix match). The development
+credential independently restricts `ses:SendEmail` and `ses:SendRawEmail` to the approved sending
+identity and uses the `ses:Recipients` IAM condition to permit only `*@jeffo.net`. There is no
+per-message bypass. Development uses only synthetic applicant data and never copies production
+applicant or vacancy-list records into email tests.
 
 Every applicant transactional message clearly says that it was sent because the recipient has or
 requested access to a Penta application, not because they are on the vacancy-notification list. It
@@ -818,6 +828,9 @@ milestone with its own storage, hostname, and isolation decisions.
   behavior.
 - SES send failure, retry, rate-limit, bounce, and complaint paths are observable without logging
   tokens, email bodies, or applicant content.
+- Automated tests and normal local development capture email without sending it. Explicit live
+  development tests send only synthetic messages to exact `@jeffo.net` recipients, enforced both
+  before the provider call and by a separate least-privilege SES credential.
 - The production application accepts built-in submissions at the applicant hostname, the screener
   reflects new/updated submissions, and no Google runtime dependency or dead compatibility path
   remains.
