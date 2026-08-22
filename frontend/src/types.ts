@@ -81,6 +81,16 @@ export type AISettings = {
   maxWorkers: number;
 };
 
+export type AIModelProvider = "bedrock" | "openai" | "anthropic";
+
+export type AIModelOption = {
+  modelId: string;
+  label: string;
+  provider: AIModelProvider;
+  supportsReasoningEffort: boolean;
+  configured: boolean;
+};
+
 // The shared admin/infra config (GET/PUT /settings): the data source and the AI knobs.
 // The per-member eligibility rules — including pet limits as of M15 1e — live separately
 // (EligibilityRules).
@@ -96,6 +106,7 @@ export type SettingsResponse = {
   settings: AppSettings;
   googleSheetUrl: string;
   googleSheetTitle: string | null;
+  aiModelOptions: AIModelOption[];
 };
 
 // The screening rules each member tunes for themselves (GET/PUT /eligibility-rules):
@@ -200,6 +211,7 @@ export type ScreeningFlag = {
 
 export type AIResultTrace = {
   modelId: string;
+  supportsReasoningEffort: boolean;
   reasoningEffort: ReasoningEffort | null;
   promptVersion: string;
   inputTokens: number;
@@ -209,7 +221,11 @@ export type AIResultTrace = {
 
 export type DimensionScoringTrace = {
   dimensionCount: number;
-  models: Array<{ modelId: string; reasoningEffort: ReasoningEffort | null }>;
+  models: Array<{
+    modelId: string;
+    supportsReasoningEffort: boolean;
+    reasoningEffort: ReasoningEffort | null;
+  }>;
   promptVersions: string[];
   inputTokens: number;
   outputTokens: number;
@@ -682,6 +698,7 @@ export type LastEvalRun = {
   currentPromptVersion: string;
   modelId: string;
   currentModelId: string;
+  supportsReasoningEffort: boolean;
   reasoningEffort: string;
   currentReasoningEffort: string;
   promptStale: boolean;

@@ -27,8 +27,8 @@ POST /screening/run
       for each application:
         check the cache              app/ai/analysis.py  (DB read)
         build the prompt             (reads normalized fields + essays)
-      run the uncached prompts CONCURRENTLY through Bedrock
-        provider.structured_output  app/ai/strands_provider.py  (Strands + Bedrock)
+      run the uncached prompts CONCURRENTLY through the selected provider
+        provider.structured_output  app/ai/strands_provider.py  (Strands routes)
       as each call returns:
         price + store the result     app/ai/analysis.py  (DB write)
         set the application status    app/domain/status.py
@@ -43,12 +43,13 @@ The key idea, expanded in [Concurrency](#concurrency) below: **only the model ca
 The AI code lives in `backend/app/ai/`:
 
 - `provider.py` — the provider-agnostic interface. The rest of the app depends on `AIProvider` (a Protocol), never on a vendor SDK directly. Defines `AIResult` (output + token usage + optional narrative) and `Usage`.
-- `strands_provider.py` — the real implementation, backed by the Strands Agents SDK on Amazon Bedrock.
+- `model_catalog.py` — exact supported model routes and capabilities; the only provider-routing authority.
+- `strands_provider.py` — the real implementation, backed by Strands routes for Bedrock, OpenAI, and Anthropic.
 - `mock_provider.py` — a deterministic in-memory provider for tests and offline development. No AWS access.
 - `analysis.py` — the shared engine: cache key, cache read/write, cost estimate, spending-cap enforcement, and the concurrent `screen_applications` loop both passes run through. Provider-agnostic.
 - `screening.py` — the screening pass: prompt building, which applications to analyze, and status application via the shared engine.
 - `schemas.py` — the structured-output contracts (`ScreeningReport` and the Rank-chain schemas). One definition each, shared by prompt, storage, API, and UI.
-- `pricing.py` — Bedrock token prices, used for cost estimates and the cap.
+- `pricing.py` — supported model token prices, used for cost estimates and the cap.
 
 Plus HTTP route modules and one domain module:
 
@@ -69,7 +70,7 @@ class AIProvider(Protocol):
 
 This matters for two reasons:
 
-1. **Tests run with no AWS.** The route's `get_ai_provider` dependency is overridden with `MockProvider`, which returns pre-queued results. Tests assert on caching, cost, and status without ever calling Bedrock.
+1. **Tests run with no provider credentials.** The route's `get_ai_provider` dependency is overridden with `MockProvider`, which returns pre-queued results. Tests assert on caching, cost, and status without making an external model call.
 2. **The model vendor is swappable.** If the model backend changed, only `strands_provider.py` would change.
 
 `strands_provider.py` imports the SDK lazily (inside the methods, not at module top) so importing the module — which the test suite does transitively — does not require `strands` or AWS configuration to be present.
@@ -159,7 +160,7 @@ This is why re-running the pass is safe and can revise a verdict in *either* dir
 
 ## Concurrency
 
-The model call is the slow part — a blocking, multi-second Bedrock round-trip. Everything else (cache lookup, prompt building, persistence, status) is sub-millisecond. So screening ~300 applications one-at-a-time spent almost all its wall-clock waiting on the network, serially.
+The model call is the slow part — a blocking, multi-second provider round-trip. Everything else (cache lookup, prompt building, persistence, status) is sub-millisecond. So screening ~300 applications one-at-a-time spends almost all its wall-clock waiting on the network, serially.
 
 The shared `screen_applications` loop (in `analysis.py`, used by both passes) runs the model calls concurrently through a `ThreadPoolExecutor` (default 50 workers). The design rule that makes this safe and simple:
 
@@ -183,7 +184,7 @@ A few deliberate choices:
 
 - **`as_completed`, not `map`.** Results are handled in the order calls *finish*, so one slow application never holds back the progress of faster ones. The browser sees progress stream in real time.
 - **Failures are isolated.** A model call that raises yields a `PassResult` with an error (surfaced as an `error` event and a `failed` count) rather than aborting the whole batch. The other applications still complete.
-- **One shared Bedrock client per model.** `StrandsProvider` builds the boto3 Bedrock client once per model id and reuses it across workers — it is stateless and thread-safe, and owns the HTTP connection pool. The per-call `Agent` is *not* shared, because it accumulates the conversation (read back for the narrative); a fresh one is built per call.
+- **One shared model client per configuration.** `StrandsProvider` reuses each configured provider SDK client across workers. The per-call `Agent` is *not* shared, because it accumulates the conversation (read back for the narrative); a fresh one is built per call.
 
 ### Sizing The Pool
 
@@ -191,13 +192,13 @@ Three constraints govern how many workers are safe:
 
 | Constraint | At ~300 applicants |
 | --- | --- |
-| Bedrock quota (account and region) | Far above any setting here; not binding. |
+| Provider quota (account/model/region or tier) | Can bind; tune concurrency from measured throttling. |
 | Cost | Per-token, so concurrency-independent. The cap guards it regardless. |
 | Connection pool | Sized to match the worker count (`max_pool_connections == max_workers`), so workers don't queue on sockets. |
 
-The `ai.max_workers` setting (default **50**, capped 1–100) drives both the worker count and the connection-pool size — one knob, so the two numbers always agree. At ~300 applicants, 50 captures essentially all the available speedup; going higher saves only seconds while saturating the pool harder. If the applicant pool ever grew to thousands, the tokens-per-minute quota and pool sizing would be worth revisiting.
+The `ai.max_workers` setting (default **50**, capped 1–100) drives the worker count and the Bedrock connection-pool size. It is exposed in Admin Settings because direct and Bedrock quotas vary by account; reducing it lowers burst pressure without a deployment. Concurrency is not an RPM limiter, so persistent throttling still requires an appropriate provider quota or a future explicit rate limiter based on measured limits.
 
-The connection client is configured with **adaptive retries** (`mode="adaptive"`), which backs off on throttling and retries transient 5xx/timeout errors at the client layer — cheap insurance once calls run in parallel, even though the quota headroom means throttling is unlikely here.
+Provider clients use bounded retries for throttling and transient failures. Bedrock uses adaptive retry mode; direct SDKs use their native bounded retry behavior.
 
 ## The Streamed Response
 
@@ -226,17 +227,17 @@ The frontend surfaces this as a **separate ranked view**, not a re-sort of the b
 
 AI settings live under `ai` in the admin settings (`app/schemas/settings.py`):
 
-- `region` — Bedrock region (default `us-east-1`).
-- One model per AI pass, named by the job (all Bedrock inference-profile IDs, `us.anthropic...`, which these models require):
+- `region` — region for Bedrock routes (default `us-east-1`; inert for direct routes).
+- One catalogued model route per AI pass, named by the job:
   - `screening_model`, `dimension_scoring_model` — the high-volume per-applicant passes. Default Claude Haiku 4.5: call *count* drives their cost (scoring is candidates × dimensions), so cheap-and-fast wins.
   - `discovery_model` — the pool-level pattern-discovery call. Default Claude Sonnet 4.6 (cross-document judgment).
   - `decompose_model` — the call that settles the K fan-out discovery reports into one non-overlapping set. Default Claude Sonnet 4.6 (cross-report synthesis).
   - `match_model` — the once-per-re-rank dimension identity match. Default Claude Sonnet 4.6; earned its own tier because on Haiku it over-matched drifted concepts. Bump to Opus only if a real run shows Sonnet still over-matching.
   - `consolidate_model` — the post-score duplicate-merge confirm call. Default Claude Sonnet 4.6. (`consolidate_correlation_threshold`, default 0.8, sets the Pearson nomination bar.)
 - `spending_cap_usd` — the per-run cost ceiling (default `$2.00`). Editable from the settings form ("AI Screening" section).
-- `max_workers` — screening concurrency and connection-pool size (default `50`). Config-only; not exposed in the UI.
+- `max_workers` — per-application AI concurrency and Bedrock connection-pool size (default `50`), exposed to admins for quota tuning.
 
-The other `ai` fields (region, model IDs) are config-only too. The frontend still round-trips the whole `ai` block on save, so editing the cap never resets them.
+The admin UI exposes supported routes from the backend catalog and disables direct routes whose deployment credential is absent. Model and reasoning settings are saved per pass; provider credentials never enter the database or browser response.
 
 ## Tests
 

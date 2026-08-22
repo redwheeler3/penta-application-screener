@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_oauth_client_secrets_file: str = ""
     google_redirect_uri: str = "http://localhost:8000/auth/google/callback"
+    # Direct model-provider credentials. Model/provider choices live in the database;
+    # credentials remain deployment secrets and are never returned by the settings API.
+    openai_api_key: str = ""
+    anthropic_api_key: str = ""
     # Bootstrap-only: emails seeded onto the access allowlist as admins at startup
     # (one per line, '#' comments). Once seeded, admins manage the list in-app; this
     # file does not revoke. Gitignored — real emails are deployment-specific.

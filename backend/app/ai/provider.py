@@ -1,8 +1,8 @@
 """Provider-agnostic AI interface.
 
 The rest of the app depends on ``AIProvider`` rather than any vendor SDK. The
-real implementation is backed by Strands + Amazon Bedrock; tests use
-``MockProvider`` so they run deterministically with no AWS access.
+real implementation routes supported models through Strands; tests use
+``MockProvider`` so they run deterministically with no external access.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Protocol, TypeVar
 
 from pydantic import BaseModel
 
-from app.schemas.settings import ReasoningEffort
+from app.ai.model_catalog import ReasoningEffort
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
@@ -63,7 +63,7 @@ class AIProvider(Protocol):
         is impossible. Most callers omit it; the result is identical either way.
 
         ``reasoning_effort`` is meaningful only for models that expose that control.
-        ``read_timeout`` overrides the Bedrock read timeout (s) for this call only —
+        ``read_timeout`` overrides the provider read timeout (s) for this call only —
         raised for the fan-out decomposition call, whose large reasoned output streams
         past the default. Omit for every other pass.
         """

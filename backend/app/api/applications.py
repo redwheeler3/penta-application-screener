@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.model_catalog import supports_reasoning_effort
 from app.api.dependencies import require_current_user
 from app.api.problems import Problem
 from app.core.time import utc_isoformat
@@ -399,6 +400,7 @@ def _result_trace(result: ApplicationAIResult | None) -> AIResultTraceOut | None
         return None
     return AIResultTraceOut(
         model_id=result.model_id,
+        supports_reasoning_effort=supports_reasoning_effort(result.model_id),
         reasoning_effort=result.reasoning_effort,
         prompt_version=result.prompt_version,
         input_tokens=result.input_tokens,
@@ -429,7 +431,11 @@ def _dimension_scoring_trace(
     return DimensionScoringTraceOut(
         dimension_count=len(results),
         models=[
-            AIModelTraceOut(model_id=model_id, reasoning_effort=reasoning_effort)
+            AIModelTraceOut(
+                model_id=model_id,
+                supports_reasoning_effort=supports_reasoning_effort(model_id),
+                reasoning_effort=reasoning_effort,
+            )
             for model_id, reasoning_effort in sorted(
                 {
                     (result.model_id, result.reasoning_effort)

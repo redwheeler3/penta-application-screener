@@ -19,10 +19,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.model_catalog import ReasoningEffort
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, Usage
 from app.db.models import Application, ApplicationAIResult
-from app.schemas.settings import ReasoningEffort
 
 # Work item / result types for run_in_pool.
 T = TypeVar("T")

@@ -701,10 +701,6 @@ h1 {
   text-transform: uppercase;
 }
 
-.ai-pass-setting code {
-  overflow-wrap: anywhere;
-}
-
 .ai-pass-setting select {
   padding: 0.4rem 0.5rem;
   border: 1px solid var(--line);

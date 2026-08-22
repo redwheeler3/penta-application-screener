@@ -63,6 +63,7 @@ class AIResultTraceOut(ResponseModel):
     its original generation allocation; a later run may reuse that result from cache."""
 
     model_id: str
+    supports_reasoning_effort: bool
     reasoning_effort: str | None
     prompt_version: str
     input_tokens: int
@@ -74,6 +75,7 @@ class AIModelTraceOut(ResponseModel):
     """One exact model/reasoning pairing that contributed to a stored result."""
 
     model_id: str
+    supports_reasoning_effort: bool
     reasoning_effort: str | None
 
 

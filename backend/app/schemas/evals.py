@@ -360,6 +360,7 @@ class LastRun(ResponseModel):
     current_prompt_version: str = ""  # the prompt in effect NOW
     model_id: str = ""  # the model the run exercised
     current_model_id: str = ""  # the model in effect NOW
+    supports_reasoning_effort: bool = False
     reasoning_effort: str = ""
     current_reasoning_effort: str = ""
     prompt_stale: bool = False

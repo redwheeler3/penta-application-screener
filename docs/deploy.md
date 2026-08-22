@@ -12,8 +12,8 @@ push, and back up / restore the data.
 - **Fly auto-stop to zero.** The machine stops when idle (compute billing → ~$0) and
   cold-starts on the next request. A **persistent volume** holds the SQLite DB, so the data
   survives stop/start and redeploys. Realistic cost ~$1–5/mo.
-- **Secrets, never baked in.** OAuth client, session secret, and AWS keys are Fly secrets set
-  at runtime; the image contains only code + the built frontend.
+- **Secrets, never baked in.** OAuth client, session secret, and model-provider keys are Fly
+  secrets set at runtime; the image contains only code + the built frontend.
 
 ---
 
@@ -31,6 +31,8 @@ push, and back up / restore the data.
    `bedrock:InvokeModel` (and `bedrock:InvokeModelWithResponseStream`) on the Anthropic
    inference-profile ARNs in **us-east-1** and their permitted cross-region destinations,
    nothing else. Generate an access key for it.
+   Direct routes are optional: obtain an OpenAI and/or Anthropic API key only when that route
+   will be enabled. Their keys never replace or broaden the AWS policy.
 4. **DNS access** for `pentacoop.com` (to add the A/AAAA records `fly certs add` prints).
 
 ---
@@ -67,6 +69,9 @@ fly secrets set \
   AWS_ACCESS_KEY_ID="<bedrock IAM key id>" \
   AWS_SECRET_ACCESS_KEY="<bedrock IAM secret>"
 ```
+Add `OPENAI_API_KEY="<key>"` and/or `ANTHROPIC_API_KEY="<key>"` to the same command when
+enabling a direct route. The Admin Settings catalog disables a direct route when its secret is
+absent; adding a secret does not change any saved model choice.
 `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` take precedence over the secrets *file*, so none
 ships in the image. Non-secret config (`DATABASE_URL`, `FRONTEND_URL`, `GOOGLE_REDIRECT_URI`,
 `AWS_REGION`) is already in `fly.toml [env]`.

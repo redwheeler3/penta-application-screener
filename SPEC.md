@@ -604,7 +604,7 @@ AI review runs only for candidates who pass deterministic hard filters (or are r
 
 ### Provider And Cost Controls
 
-The AI architecture is provider-adaptable behind an internal `AIProvider` interface — Amazon Bedrock (via Strands) is the implemented provider, with a deterministic `MockProvider` backing tests (no AWS). Direct OpenAI/Anthropic providers can be added later without touching callers. Model IDs are Bedrock inference-profile IDs (`us.`/`global.` prefixed). See ADR 0010.
+The AI architecture is provider-adaptable behind an internal `AIProvider` interface, with a deterministic `MockProvider` backing tests. The Strands implementation supports Claude and GPT through Amazon Bedrock plus direct Anthropic and OpenAI routes. One exact model catalog owns routing and capabilities; provider-native model IDs remain the identity in settings, caches, traces, and cost rows. Credentials are deployment secrets, while admins choose configured routes per pass in the UI. Existing defaults remain Claude on Bedrock. See ADRs 0010 and 0014.
 
 Cost control is a core requirement. The app prefers: cached AI analysis per application and per run; smaller/cheaper models for high-volume passes and frontier models only for cross-document synthesis; short structured outputs; a visible AI cost estimate before running; and a configurable per-run spending cap (default `$2.00`, enforced against the estimate before any model call — an over-cap run fails fast with 402). Hard filters run automatically after import/sync; AI review starts only after the user sees the estimate and confirms.
 
@@ -758,7 +758,7 @@ Implementation defaults:
 
 Delivered and planned milestones, including decisions that can wait until implementation.
 
-### OpenAI-Versus-Anthropic Model Bake-Off (M20) — implemented; switchover deferred
+### OpenAI-Versus-Anthropic Model Bake-Off (M20) — implemented; direct switchover prepared
 
 **Goal:** select the least expensive model that preserves or improves judgment quality for each
 AI pass before the larger intake changes begin. The current controls are Claude Haiku 4.5 for
@@ -766,10 +766,11 @@ Screening and Dimension scoring and Claude Sonnet 4.6 for Pattern discovery, Dim
 decomposition, Dimension matching, and Dimension consolidation. Their first OpenAI challengers are
 GPT-5.6 Luna and GPT-5.6 Terra respectively.
 
-This is a model-family comparison within Amazon Bedrock, not a wholesale provider migration.
-Bedrock remains the security, credential, billing, and invocation boundary unless the bake-off
-uncovers a concrete limitation that requires a separate decision. The result may be a per-pass
-hybrid; no vendor or tier has to win every job.
+The quality comparison began within Amazon Bedrock. Production-account Mantle availability and
+Bedrock request-rate constraints later proved that AWS could not remain the only invocation
+boundary. M20 therefore also prepares direct OpenAI and Anthropic routes while keeping every
+existing Bedrock default unchanged. The result may be a per-pass and per-provider hybrid; no vendor,
+tier, or transport has to win every job.
 
 The committed synthetic golden fixtures and PII-safe Rank baseline make the judgment comparison
 bounded, but OpenAI on Bedrock is not a model-ID-only swap. The existing Claude path uses Strands'
@@ -799,9 +800,9 @@ contract before trusting any quality result.
    before changing runtime defaults. Production remains unchanged until a later explicit release.
 
 **Non-goals:** changing prompts to favour one model before the frozen-input baseline; accepting a
-cheaper model solely on token price; a general provider-selection UI; direct OpenAI API billing or
-credentials; keeping a speculative second runtime path after it loses; or changing application
-intake behavior.
+cheaper model solely on token price; accepting free-form provider/model combinations; changing
+application intake behavior; or changing the deployed model defaults without an explicit operator
+decision after direct-route verification.
 
 **Definition of done:**
 
@@ -871,27 +872,29 @@ quality, cost, or latency profile. See
 commands.
 
 The production AWS account rejected both Luna and Terra as unavailable in `us-east-1`, `us-east-2`,
-and `us-west-2` even after its scoped IAM policy successfully authorized Mantle inference. M20
-therefore commits the Mantle transport, pricing, eval tooling, and evidence while retaining Haiku and
-Sonnet as every runtime default. A settings migration persists `low` reasoning separately for each
-AI pass, but reasoning is inactive for models that do not support it; it therefore does not alter the
-current Claude calls. Changing the model defaults is a later, explicit operation after AWS enables
-both models and the same synthetic production-credential probes pass. This is an availability
-deferral, not a reversal of the quality and cost findings.
+and `us-west-2` even after its scoped IAM policy successfully authorized Mantle inference. Bedrock
+request-rate increases for Claude were also difficult to obtain. M20 therefore retains both Bedrock
+routes and adds direct OpenAI and Anthropic routes behind the same provider boundary. Haiku and
+Sonnet remain every runtime default, so deployment alone cannot move the committee workload. A
+settings migration persists `low` reasoning separately for each AI pass, but reasoning is inactive
+for models that do not support it; it therefore does not alter current Claude calls. Changing a pass
+to a direct route is a later, explicit admin operation after its deployment secret and a synthetic
+credential probe are verified. This is an availability response, not a reversal of the quality and
+cost findings.
 
-The co-op accepts the Bedrock Mantle privacy tradeoff for applicant-bearing passes. The current
+The co-op accepts the documented provider privacy tradeoffs for applicant-bearing passes. The current
 Bedrock account retention setting is `inherit`; Mantle reports effective `default` mode for both GPT
 models and allows only `default` or `provider_data_share`, not `none`. Under that mode, GPT traffic
 flagged by AWS's automated abuse classifiers may be retained by AWS for up to 30 days, though
-operators cannot access it and it is not shared with OpenAI. Calls continue through AWS Bedrock;
-this selection does not add a direct OpenAI API integration.
+operators cannot access it and it is not shared with OpenAI. Direct routes instead use the selected
+vendor's API terms and credentials; the admin's model selection makes the active route explicit.
 
-The existing runtime model choices remain unchanged, so a future deployment of M20 cannot switch
-the committee application to unavailable models. Model and reasoning effort are stored together as
+The existing runtime model choices remain unchanged, so deploying M20 cannot switch the committee
+application to a newly configured provider. Model and reasoning effort are stored together as
 per-pass configuration. Effective reasoning participates in cached-result keys, Rank freshness, and
-eval run identity; an inactive reasoning value does not invalidate Claude work. When access is
-enabled, the switchover needs only the explicit model-setting migration that preserves custom model
-choices.
+eval run identity; an inactive reasoning value does not invalidate Claude work. Admins can select an
+available catalog route per pass; credentials remain server-side secrets and unavailable routes
+cannot be saved.
 
 OpenAI calls request an automatic reasoning summary. Strands streams and persists that exposed
 summary as the audit narrative; the application does not receive or represent it as raw private

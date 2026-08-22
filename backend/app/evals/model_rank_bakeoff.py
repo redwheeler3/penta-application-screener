@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy import create_engine, event, func, select
 from sqlalchemy.orm import Session
 
+from app.ai.model_catalog import model_spec
 from app.ai.strands_provider import StrandsProvider
 from app.api.ranking.run import rank_run
 from app.core.config import get_settings
@@ -54,7 +55,7 @@ def _reasoning_for(config: dict[str, Any], override: str | None) -> dict[str, st
     return {
         model: override
         for model in set(config["models"].values())
-        if model.startswith("openai.")
+        if model_spec(model).supports_reasoning_effort
     }
 
 

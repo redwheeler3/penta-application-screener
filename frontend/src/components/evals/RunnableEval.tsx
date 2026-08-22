@@ -549,7 +549,7 @@ function RestoredMarker(props: { run: LastEvalRun; totalCases: number }): ReactN
       {restoredLabel(run.evalKey)}
       {summary ? ` · ${summary}` : ""} · last run {relativeTime(run.ranAt)} · prompt {run.promptVersion || "—"}
       {run.modelId ? ` · ${run.modelId}` : ""}
-      {run.modelId ? ` · reasoning ${reasoningEffortLabel(run.modelId, run.reasoningEffort || null)}` : ""}
+      {run.modelId ? ` · reasoning ${reasoningEffortLabel(run.supportsReasoningEffort, run.reasoningEffort || null)}` : ""}
       {stale ? ` · ${changes} — re-run to refresh` : ""}
     </div>
   );

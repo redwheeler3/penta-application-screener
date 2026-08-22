@@ -22,6 +22,7 @@ from app.ai.dimension_consolidate import PROMPT_VERSION as CONSOLIDATION_PROMPT_
 from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSITION_PROMPT_VERSION
 from app.ai.dimension_matching import PROMPT_VERSION as MATCHING_PROMPT_VERSION
 from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_PROMPT_VERSION
+from app.ai.model_catalog import model_spec
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, DeltaSink, SchemaT
 from app.ai.screening import screening_prompt_version
@@ -181,7 +182,9 @@ def _run_one(
     base = {
         "pass": spec.name,
         "model": model,
-        "reasoning_effort": openai_reasoning_effort if model.startswith("openai.") else None,
+        "reasoning_effort": (
+            openai_reasoning_effort if model_spec(model).supports_reasoning_effort else None
+        ),
         "case": case.key,
         "repeat": repeat,
         "prompt_version": PROMPT_VERSIONS[spec.name],

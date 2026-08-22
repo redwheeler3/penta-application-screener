@@ -231,7 +231,11 @@ async def test_full_flow_rank_then_detail() -> None:
         trace = detail["dimensionScoringTrace"]
         assert trace["dimensionCount"] == 2
         assert trace["models"] == [
-            {"modelId": "mock-model", "reasoningEffort": None}
+            {
+                "modelId": "mock-model",
+                "supportsReasoningEffort": False,
+                "reasoningEffort": None,
+            }
         ]
         assert len(trace["promptVersions"]) == 1
         assert trace["inputTokens"] == 100

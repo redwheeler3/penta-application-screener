@@ -679,7 +679,7 @@ Two things keep this bounded:
 - **Flags never decide eligibility.** The hard filters decide; AI only annotates. A flagged application moves into a "needs review" bucket, not a rejection.
 - **Machines never overwrite humans.** A human-set status is sticky across re-runs.
 
-The AI code lives in `backend/app/ai/` and is built around a provider boundary: the app depends on an `AIProvider` interface, with the real implementation backed by the Strands SDK on Amazon Bedrock (Claude Haiku 4.5) and a `MockProvider` used in tests so they run with no AWS access. Results are cached by a content + model + prompt-version hash, and every run is cost-estimated and capped before it starts.
+The AI code lives in `backend/app/ai/` and is built around a provider boundary: the app depends on an `AIProvider` interface, with a Strands implementation that routes catalogued models through Amazon Bedrock, OpenAI, or Anthropic and a `MockProvider` used in tests with no external access. `model_catalog.py` is the sole authority for provider routing and model capabilities; callers treat model IDs as opaque. Results are cached by a content + model + prompt-version hash, and every run is cost-estimated and capped before it starts.
 
 The pass runs applications **concurrently** through a thread pool (the model call is a slow, blocking network round-trip), streaming progress back to the browser as NDJSON. The design rule: only the model call runs in worker threads; all database access stays on the request thread, so the SQLAlchemy session is never shared.
 

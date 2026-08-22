@@ -33,7 +33,7 @@ The workflow is three single-verb steps — **Import → Screen → Rank** — e
 - **Rank:** one orchestrated AI chain over eligible applicants — parallel pattern discovery → decomposition into one non-overlapping set → identity-match onto prior runs → per-dimension scoring → post-score duplicate consolidation — feeding a weighted ranked list with relative fit bands and per-driver rationale. (Detailed in *The AI Pipeline* below; the ranking math is in *The LLM extracts features; the math does the ranking* above.)
 - **Interactive tier-list weighting:** drag discovered criteria into Critical/Important/Minor/Ignore tiers to instantly re-sort. Re-ranking carries tier placements forward and reuses cached scores (see *Prompt identity as a cache key* above).
 - **Reports:** browser print-to-PDF of the ranked view and candidate detail pages, with an `@media print` stylesheet and a text importance-tiers summary.
-- Provider-agnostic AI interface with Amazon Bedrock/Strands as the concrete provider and a deterministic mock provider for tests.
+- Provider-agnostic AI interface with Strands routes for Bedrock, OpenAI, and Anthropic, plus a deterministic mock provider for tests.
 - Raw source row and raw AI output debug panels, on the candidate detail page (open to any logged-in member — every committee member is a trusted screener).
 - Human status overrides with stale-finding indicators when machine findings change later.
 
@@ -70,7 +70,7 @@ The sample CSV in [test-data](test-data) is synthetic and intentionally realisti
 - Frontend: Vite, React, TypeScript, npm
 - Authentication: Google OAuth with signed server-side session cookies
 - Google integration: Google Sheets import/sync via the Picker (`drive.file`, least-privilege)
-- AI integration: provider-agnostic interface; Strands + Amazon Bedrock provider; mock provider for tests
+- AI integration: provider-agnostic interface; Strands routes through Bedrock or direct OpenAI/Anthropic APIs; mock provider for tests
 - Hosting: Fly.io (single instance, auto-suspend, persistent-volume SQLite); single-origin — FastAPI serves the built SPA; deployed manually with `fly deploy --remote-only`
 
 ## Setup

@@ -8,11 +8,16 @@ import { AccessPanel } from "./AccessPanel";
 import { CheckGroup } from "./CheckToggles";
 import { RetryLoadError } from "./RetryLoadError";
 import type {
-  AISettings, AppSettings, CurrentUser, EligibilityRules, FeedbackItem,
+  AIModelProvider, AISettings, AppSettings, CurrentUser, EligibilityRules, FeedbackItem,
   ReasoningEffort, SettingsResponse, ViewTab,
 } from "../types";
 
 const REASONING_EFFORTS: ReasoningEffort[] = ["none", "low", "medium", "high", "xhigh", "max"];
+const PROVIDER_LABELS: Record<AIModelProvider, string> = {
+  bedrock: "Amazon Bedrock",
+  openai: "OpenAI direct",
+  anthropic: "Anthropic direct",
+};
 const AI_PASSES: Array<{
   label: string;
   model: keyof AISettings;
@@ -159,6 +164,20 @@ export function AdminSettingsPanel(props: {
                     </span>
                   </label>
                   <label>
+                    <span>Maximum concurrent AI calls</span>
+                    <NumberInput
+                      min="1"
+                      max="100"
+                      step="1"
+                      value={draft.ai.maxWorkers}
+                      onChange={(v) => setDraft({ ...draft, ai: { ...draft.ai, maxWorkers: v ?? 0 } })}
+                    />
+                    <span className="field-hint">
+                      Reduce this if the selected provider throttles bursts. Direct providers
+                      have account-specific limits too; switching away from AWS does not remove them.
+                    </span>
+                  </label>
+                  <label>
                     <span>Consolidation correlation threshold</span>
                     <NumberInput
                       step="0.01"
@@ -181,11 +200,30 @@ export function AdminSettingsPanel(props: {
                   {AI_PASSES.map((pass) => {
                     const model = draft.ai[pass.model] as string;
                     const effort = draft.ai[pass.reasoning] as ReasoningEffort;
-                    const supportsReasoning = model.startsWith("openai.");
+                    const selected = saved.aiModelOptions.find((option) => option.modelId === model);
+                    const supportsReasoning = selected?.supportsReasoningEffort ?? false;
                     return (
                       <div className="ai-pass-setting" key={pass.label}>
                         <span>{pass.label}</span>
-                        <code>{model}</code>
+                        <select
+                          aria-label={`${pass.label} model`}
+                          value={model}
+                          onChange={(event) => setDraft({
+                            ...draft,
+                            ai: { ...draft.ai, [pass.model]: event.target.value },
+                          })}
+                        >
+                          {saved.aiModelOptions.map((option) => (
+                            <option
+                              value={option.modelId}
+                              key={option.modelId}
+                              disabled={!option.configured}
+                            >
+                              {option.label} · {PROVIDER_LABELS[option.provider]}
+                              {option.configured ? "" : " (not configured)"}
+                            </option>
+                          ))}
+                        </select>
                         <select
                           aria-label={`${pass.label} reasoning effort`}
                           value={effort}
@@ -207,7 +245,9 @@ export function AdminSettingsPanel(props: {
                     );
                   })}
                   <span className="field-hint">
-                    Reasoning is saved per pass and used only by models that support it.
+                    Provider credentials are deployment secrets. Only configured direct providers
+                    can be selected; Bedrock access is verified when a model is invoked. Reasoning
+                    is saved per pass and used only by models that support it.
                   </span>
                 </div>
               </div>

@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import create_engine
@@ -135,6 +137,62 @@ async def test_put_settings_preserves_server_owned_sheet_link() -> None:
     assert loaded.google_sheet_id == "linked-sheet"
     assert loaded.google_sheet_reader_user_id == 1
     assert loaded.ai.spending_cap_usd == 3.0
+
+
+@pytest.mark.anyio
+async def test_settings_lists_supported_model_routes_without_exposing_secrets(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.settings.get_settings",
+        lambda: SimpleNamespace(openai_api_key="", anthropic_api_key=""),
+    )
+    app, _ = _rules_client(role="admin")
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/settings")
+
+    assert response.status_code == 200
+    options = response.json()["aiModelOptions"]
+    assert len(options) == 8
+    assert {
+        (option["modelId"], option["provider"], option["configured"])
+        for option in options
+    } >= {
+        ("us.anthropic.claude-haiku-4-5-20251001-v1:0", "bedrock", True),
+        ("claude-haiku-4-5-20251001", "anthropic", False),
+        ("openai.gpt-5.6-luna", "bedrock", True),
+        ("gpt-5.6-luna", "openai", False),
+    }
+
+
+@pytest.mark.anyio
+async def test_member_cannot_change_shared_ai_settings() -> None:
+    app, _ = _rules_client(role="member")
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.put("/settings", json={"ai": {"spendingCapUsd": 3.0}})
+
+    assert response.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_unconfigured_direct_provider_cannot_be_saved(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.settings.get_settings",
+        lambda: SimpleNamespace(openai_api_key="", anthropic_api_key=""),
+    )
+    app, _ = _rules_client(role="admin")
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.put(
+            "/settings",
+            json={"ai": {"screeningModel": "gpt-5.6-luna"}},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "ai_provider_not_configured"
 
 
 # --- Per-member eligibility rules (M15 1d) --------------------------------------------

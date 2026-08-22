@@ -1,8 +1,8 @@
-"""Bedrock token pricing for cost estimates and spending-cap enforcement.
+"""AI token pricing for cost estimates and spending-cap enforcement.
 
-Prices are USD per 1,000,000 tokens, from AWS Bedrock US on-demand pricing for the
-models below, last checked 2026-08-21. Update by hand if AWS
-pricing changes.
+Prices are USD per 1,000,000 tokens. The direct-provider and Bedrock on-demand
+prices for the supported models were equivalent when last checked 2026-08-22.
+Update by hand when provider pricing changes.
 
 Why hardcoded: the AWS Price List API (boto3 "pricing", ServiceCode
 "AmazonBedrock") carries recent competitor models (Llama 4, Nova 2.0, Qwen3,
@@ -11,9 +11,8 @@ cannot price Haiku 4.5 / Sonnet 4.6, the models we actually use. A live lookup
 would always fall back, so the table is the source of truth. Revisit if AWS
 adds Claude 4.x to the Price List API.
 
-The lookup matches on a substring of the inference-profile model ID so the
-``us.`` / ``global.`` prefixes and version suffixes do not need separate
-entries.
+The lookup matches on a stable model-family substring so direct and Bedrock IDs
+share one price entry.
 """
 
 from __future__ import annotations

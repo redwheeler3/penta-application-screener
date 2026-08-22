@@ -1,7 +1,13 @@
 import re
-from typing import Literal
 
 from pydantic import Field, field_validator
+
+from app.ai.model_catalog import (
+    ModelProvider,
+    ReasoningEffort,
+    model_spec,
+    supports_reasoning_effort,
+)
 
 # Threshold defaults are owned by the domain layer (the single source of truth);
 # the settings schema references them so a default can't drift between the two.
@@ -28,23 +34,21 @@ def google_sheet_url_from_id(sheet_id: str) -> str:
     return f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit"
 
 
-ReasoningEffort = Literal["none", "low", "medium", "high", "xhigh", "max"]
-
-
 def effective_reasoning_effort(model_id: str, effort: ReasoningEffort) -> ReasoningEffort | None:
     """Return the configured effort only when the selected model supports it.
 
     Keeping the inactive value in settings lets a pass switch providers without losing
     its choice, while excluding it from invocation and cache identity for Claude.
     """
-    return effort if model_id.startswith("openai.") else None
+    return effort if supports_reasoning_effort(model_id) else None
 
 
 class AISettings(BridgeModel):
     """Admin-only AI provider configuration.
 
-    Claude model IDs are Bedrock inference profile IDs (the ``us.`` / ``global.``
-    prefixed form); OpenAI models use their Bedrock Mantle IDs (``openai.``).
+    A provider-native model ID identifies both the model and its route. The exact
+    supported combinations live in ``model_catalog``; defaults remain on Bedrock so
+    adding direct-provider credentials cannot change a deployed workload by itself.
 
     One model per AI pass, named by the JOB rather than a tier ("first pass" /
     "synthesis"), so each pass can be tuned independently and the mapping is
@@ -104,11 +108,33 @@ class AISettings(BridgeModel):
     # gets *considered*, never auto-merges.
     consolidate_correlation_threshold: float = Field(default=0.8)
     spending_cap_usd: float = Field(default=2.0, ge=0)
-    # How many applications to screen concurrently. The model calls are the slow,
-    # blocking part; ~300 applicants finish in seconds at this width. The Bedrock
-    # connection pool is sized to match (see StrandsProvider), so don't raise one
-    # without the other. Bedrock quotas (10k RPM / 5M TPM) are far above this.
+    # How many applications to process concurrently. Provider quotas vary by account,
+    # so this is an operator control as well as a latency control. StrandsProvider sizes
+    # the Bedrock connection pool to match; direct SDK clients manage their own pools.
     max_workers: int = Field(default=50, ge=1, le=100)
+
+    @field_validator(
+        "screening_model",
+        "dimension_scoring_model",
+        "discovery_model",
+        "decompose_model",
+        "match_model",
+        "consolidate_model",
+    )
+    @classmethod
+    def supported_model(cls, value: str) -> str:
+        model_spec(value)
+        return value
+
+    def selected_models(self) -> tuple[str, ...]:
+        return (
+            self.screening_model,
+            self.dimension_scoring_model,
+            self.discovery_model,
+            self.decompose_model,
+            self.match_model,
+            self.consolidate_model,
+        )
 
 
 class EligibilityRules(BridgeModel):
@@ -191,10 +217,19 @@ class SheetLinkRequest(BridgeModel):
     file_id: str = Field(min_length=1, max_length=2000)
 
 
+class AIModelOption(ResponseModel):
+    model_id: str
+    label: str
+    provider: ModelProvider
+    supports_reasoning_effort: bool
+    configured: bool
+
+
 class SettingsResponse(ResponseModel):
     settings: AppSettings
     google_sheet_url: str = ""
     google_sheet_title: str | None = None
+    ai_model_options: list[AIModelOption]
 
 
 class EligibilityRulesResponse(ResponseModel):

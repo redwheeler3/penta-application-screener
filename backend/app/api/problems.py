@@ -28,6 +28,7 @@ PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     "not_found": (404, "Resource not found"),
     "validation_error": (422, "Request validation failed"),
     "invalid_settings": (422, "Invalid settings"),
+    "ai_provider_not_configured": (409, "AI provider not configured"),
     # Screening / ranking preconditions and gates.
     "no_eligible_applications": (409, "No eligible applications"),
     "run_required": (409, "Screening run required"),

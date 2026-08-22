@@ -1,4 +1,4 @@
-"""Provider-selection tests for Claude Runtime and OpenAI Mantle models."""
+"""Provider-selection tests for every supported model route."""
 
 from unittest.mock import MagicMock, patch
 
@@ -43,6 +43,47 @@ def test_openai_uses_bedrock_mantle_responses_model() -> None:
     assert kwargs["stateful"] is False
 
 
+def test_openai_direct_uses_api_key_without_mantle() -> None:
+    provider = StrandsProvider(
+        region="us-east-1", openai_api_key="test-openai-key",
+        openai_reasoning_effort="low",
+    )
+
+    with patch("strands.models.openai_responses.OpenAIResponsesModel") as model_class:
+        provider._model_for("gpt-5.6-luna")
+
+    kwargs = model_class.call_args.kwargs
+    assert kwargs["model_id"] == "gpt-5.6-luna"
+    assert "bedrock_mantle_config" not in kwargs
+    assert kwargs["client_args"]["api_key"] == "test-openai-key"
+
+
+def test_anthropic_direct_uses_api_key() -> None:
+    provider = StrandsProvider(
+        region="us-east-1", anthropic_api_key="test-anthropic-key"
+    )
+
+    with patch("strands.models.anthropic.AnthropicModel") as model_class:
+        provider._model_for("claude-sonnet-4-6", read_timeout=321)
+
+    kwargs = model_class.call_args.kwargs
+    assert kwargs["model_id"] == "claude-sonnet-4-6"
+    assert kwargs["max_tokens"] == 64_000
+    assert kwargs["client_args"] == {
+        "api_key": "test-anthropic-key",
+        "max_retries": 5,
+        "timeout": 321,
+    }
+
+
+@pytest.mark.parametrize("model_id", ["gpt-5.6-luna", "claude-sonnet-4-6"])
+def test_direct_provider_requires_its_api_key(model_id: str) -> None:
+    provider = StrandsProvider(region="us-east-1", openai_reasoning_effort="low")
+
+    with pytest.raises(RuntimeError, match="API_KEY is required"):
+        provider._model_for(model_id)
+
+
 def test_openai_reasoning_effort_can_be_set_for_bakeoff() -> None:
     provider = StrandsProvider(region="us-east-1", openai_reasoning_effort="low")
 
@@ -65,11 +106,12 @@ def test_openai_reasoning_effort_can_differ_by_model() -> None:
     provider = StrandsProvider(
         region="us-east-1",
         openai_reasoning_effort="none",
-        openai_reasoning_efforts={"openai.gpt-5.6-luna": "low"},
+        openai_reasoning_efforts={"gpt-5.6-luna": "low"},
+        openai_api_key="test-key",
     )
 
     with patch("strands.models.openai_responses.OpenAIResponsesModel") as model_class:
-        provider._model_for("openai.gpt-5.6-luna")
+        provider._model_for("gpt-5.6-luna")
         provider._model_for("openai.gpt-5.6-terra")
 
     assert model_class.call_args_list[0].kwargs["params"] == {
@@ -134,7 +176,7 @@ def test_conversation_narrative_supports_openai_and_claude_blocks() -> None:
 
 
 def test_openai_requests_a_user_visible_preamble() -> None:
-    prompt = _system_prompt_for_model("openai.gpt-5.6-terra", "Base instructions\n")
+    prompt = _system_prompt_for_model("gpt-5.6-terra", "Base instructions\n")
 
     assert prompt is not None
     assert prompt.startswith("Base instructions\n\n")

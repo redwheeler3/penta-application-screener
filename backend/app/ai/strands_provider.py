@@ -1,9 +1,8 @@
-"""Strands + Amazon Bedrock implementation of ``AIProvider``.
+"""Strands implementation of ``AIProvider`` across the supported model routes.
 
-Claude model IDs here must be inference profile IDs (e.g.
-``us.anthropic.claude-haiku-4-5-20251001-v1:0``). OpenAI model IDs use
-Bedrock's Mantle names (e.g. ``openai.gpt-5.6-luna``). Only model invocation is
-performed — no AWS resources are created, modified, or deleted.
+The model catalog owns routing. Callers pass an opaque provider-native model ID;
+this module alone decides whether Strands should use Bedrock Runtime, Bedrock
+Mantle, OpenAI's Responses API, or Anthropic's Messages API.
 """
 
 from __future__ import annotations
@@ -12,14 +11,18 @@ import asyncio
 import threading
 from typing import TYPE_CHECKING
 
+from app.ai.model_catalog import (
+    ModelProvider,
+    ModelVendor,
+    ReasoningEffort,
+    model_spec,
+)
 from app.ai.provider import AIResult, DeltaSink, SchemaT, Usage
-from app.schemas.settings import ReasoningEffort
 
 if TYPE_CHECKING:
     from strands.models import Model
 
 
-OPENAI_MODEL_PREFIX = "openai."
 OPENAI_PREAMBLE_INSTRUCTION = (
     "Before calling the structured-output function, send a concise Markdown update "
     "explaining what you considered and how you reached the result. This update is shown "
@@ -28,11 +31,12 @@ OPENAI_PREAMBLE_INSTRUCTION = (
 
 
 class StrandsProvider:
-    """Bedrock-backed provider, safe to share across the screening thread pool.
+    """Multi-provider Strands adapter, safe to share across the worker pool.
 
     A Strands model configuration is built once per model id and timeout. Claude's
-    cached ``BedrockModel`` owns a shared, thread-safe boto3 connection pool; the
-    OpenAI Responses adapter mints a fresh Bedrock bearer token and client per call.
+    cached ``BedrockModel`` owns a shared, thread-safe boto3 connection pool. Direct
+    provider SDK clients manage their own connection pools; Mantle mints a fresh
+    Bedrock bearer token per request.
     The per-call ``Agent`` is never shared: it accumulates conversation in
     ``agent.messages`` (read back for the narrative), so each call gets a fresh one.
     """
@@ -41,10 +45,14 @@ class StrandsProvider:
         self,
         region: str,
         max_pool_connections: int = 50,
+        openai_api_key: str = "",
+        anthropic_api_key: str = "",
         openai_reasoning_effort: ReasoningEffort | None = None,
         openai_reasoning_efforts: dict[str, ReasoningEffort] | None = None,
     ) -> None:
         self._region = region
+        self._openai_api_key = openai_api_key
+        self._anthropic_api_key = anthropic_api_key
         self._openai_reasoning_effort = openai_reasoning_effort
         self._openai_reasoning_efforts = openai_reasoning_efforts or {}
         # Size the pool to the worker count so threads don't queue on sockets.
@@ -70,7 +78,8 @@ class StrandsProvider:
         # require the strands/botocore packages or any AWS configuration.
         timeout = read_timeout or self.DEFAULT_READ_TIMEOUT
         effective_effort = None
-        if model_id.startswith(OPENAI_MODEL_PREFIX):
+        spec = model_spec(model_id)
+        if spec.supports_reasoning_effort:
             effective_effort = reasoning_effort or self._openai_reasoning_efforts.get(
                 model_id, self._openai_reasoning_effort
             )
@@ -89,20 +98,27 @@ class StrandsProvider:
     def _build_model(
         self, model_id: str, read_timeout: int, reasoning_effort: str | None = None
     ) -> Model:
-        if model_id.startswith(OPENAI_MODEL_PREFIX):
+        spec = model_spec(model_id)
+        if spec.vendor is ModelVendor.OPENAI:
             from openai import Timeout
             from strands.models.openai_responses import OpenAIResponsesModel
 
+            client_args = {
+                "max_retries": 5,
+                "timeout": Timeout(timeout=read_timeout, connect=10),
+            }
+            route_args: dict[str, object] = {}
+            if spec.provider is ModelProvider.BEDROCK:
+                route_args["bedrock_mantle_config"] = {"region": self._region}
+            else:
+                if not self._openai_api_key:
+                    raise RuntimeError("OPENAI_API_KEY is required for direct OpenAI models.")
+                client_args["api_key"] = self._openai_api_key
+
             return OpenAIResponsesModel(
                 model_id=model_id,
-                bedrock_mantle_config={"region": self._region},
-                client_args={
-                    "max_retries": 5,
-                    "timeout": Timeout(
-                        timeout=read_timeout,
-                        connect=10,
-                    ),
-                },
+                **route_args,
+                client_args=client_args,
                 params={
                     "reasoning": {
                         "effort": reasoning_effort,
@@ -112,6 +128,21 @@ class StrandsProvider:
                 # The app supplies full history for each short-lived Agent. Do not ask
                 # the upstream service to retain response state between calls.
                 stateful=False,
+            )
+
+        if spec.provider is ModelProvider.ANTHROPIC:
+            if not self._anthropic_api_key:
+                raise RuntimeError("ANTHROPIC_API_KEY is required for direct Anthropic models.")
+            from strands.models.anthropic import AnthropicModel
+
+            return AnthropicModel(
+                model_id=model_id,
+                max_tokens=64_000,
+                client_args={
+                    "api_key": self._anthropic_api_key,
+                    "max_retries": 5,
+                    "timeout": read_timeout,
+                },
             )
 
         from botocore.config import Config
@@ -221,7 +252,7 @@ def _event_narrative_delta(event: dict[str, object]) -> str | None:
 
 def _system_prompt_for_model(model_id: str, system_prompt: str | None) -> str | None:
     """Ask OpenAI for a user-visible preamble without changing Claude prompts."""
-    if not model_id.startswith(OPENAI_MODEL_PREFIX):
+    if model_spec(model_id).vendor is not ModelVendor.OPENAI:
         return system_prompt
     if not system_prompt:
         return OPENAI_PREAMBLE_INSTRUCTION

@@ -7,6 +7,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.ai.model_catalog import supports_reasoning_effort
 from app.api.dependencies import require_current_user
 from app.api.evals._shared import (
     DEFAULT_STABILITY_K,
@@ -246,6 +247,7 @@ def last_run(
             current_prompt_version=current_prompt,
             model_id=model,
             current_model_id=current_model_id,
+            supports_reasoning_effort=supports_reasoning_effort(model),
             reasoning_effort=reasoning_effort,
             current_reasoning_effort=current_effort,
             prompt_stale=bool(

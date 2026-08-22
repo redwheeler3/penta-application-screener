@@ -13,9 +13,12 @@ export function money(usd: number): string {
   return `$${usd.toFixed(4)}`;
 }
 
-export function reasoningEffortLabel(modelId: string, effort: string | null): string {
+export function reasoningEffortLabel(
+  supportsReasoningEffort: boolean,
+  effort: string | null,
+): string {
   if (effort) return effort;
-  return modelId.startsWith("openai.") ? "not recorded" : "not used";
+  return supportsReasoningEffort ? "not recorded" : "not used";
 }
 
 const PACIFIC_TIME_ZONE = "America/Vancouver";

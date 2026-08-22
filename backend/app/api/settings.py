@@ -4,12 +4,14 @@ from googleapiclient.errors import HttpError
 from httplib2 import HttpLib2Error
 from sqlalchemy.orm import Session
 
+from app.ai.model_catalog import MODEL_CATALOG, model_spec, provider_is_configured
 from app.api.dependencies import require_admin, require_current_user
 from app.api.problems import Problem
 from app.core.config import get_settings
 from app.db.models import User
 from app.db.session import get_db
 from app.schemas.settings import (
+    AIModelOption,
     AppSettings,
     EligibilityRules,
     EligibilityRulesResponse,
@@ -42,6 +44,7 @@ rules_router = APIRouter(prefix="/eligibility-rules", tags=["eligibility-rules"]
 
 
 def build_settings_response(db: Session, user: User, settings: AppSettings) -> SettingsResponse:
+    runtime = get_settings()
     sheet_title: str | None = None
     if settings.google_sheet_id:
         # Read the title with the DESIGNATED reader's token (it's the one that can access the
@@ -52,7 +55,7 @@ def build_settings_response(db: Session, user: User, settings: AppSettings) -> S
         reader_id = settings.google_sheet_reader_user_id or user.id
         try:
             credentials = get_google_sheet_credentials(
-                db, user_id=reader_id, settings=get_settings()
+                db, user_id=reader_id, settings=runtime
             )
         except (RefreshError, TransportError, TimeoutError):
             credentials = None
@@ -69,6 +72,20 @@ def build_settings_response(db: Session, user: User, settings: AppSettings) -> S
         settings=settings,
         google_sheet_url=google_sheet_url_from_id(settings.google_sheet_id),
         google_sheet_title=sheet_title,
+        ai_model_options=[
+            AIModelOption(
+                model_id=model.model_id,
+                label=model.label,
+                provider=model.provider,
+                supports_reasoning_effort=model.supports_reasoning_effort,
+                configured=provider_is_configured(
+                    model.provider,
+                    openai_api_key=runtime.openai_api_key,
+                    anthropic_api_key=runtime.anthropic_api_key,
+                ),
+            )
+            for model in MODEL_CATALOG
+        ],
     )
 
 
@@ -83,7 +100,7 @@ def read_settings(
 @router.put("", response_model=SettingsResponse)
 def update_settings(
     settings: AppSettings,
-    user: User = Depends(require_current_user),
+    admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> SettingsResponse:
     # No income cross-check here: the numeric eligibility thresholds moved to
@@ -99,7 +116,22 @@ def update_settings(
     current = get_app_settings(db)
     settings.google_sheet_id = current.google_sheet_id
     settings.google_sheet_reader_user_id = current.google_sheet_reader_user_id
-    return build_settings_response(db, user, save_app_settings(db, settings))
+    runtime = get_settings()
+    unavailable = [
+        model_id
+        for model_id in settings.ai.selected_models()
+        if not provider_is_configured(
+            model_spec(model_id).provider,
+            openai_api_key=runtime.openai_api_key,
+            anthropic_api_key=runtime.anthropic_api_key,
+        )
+    ]
+    if unavailable:
+        raise Problem(
+            "ai_provider_not_configured",
+            detail="The selected model provider is not configured on this server.",
+        )
+    return build_settings_response(db, admin, save_app_settings(db, settings))
 
 
 @router.post("/exchange-sheet-code")

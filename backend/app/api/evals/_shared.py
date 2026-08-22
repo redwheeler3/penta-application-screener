@@ -16,6 +16,7 @@ from typing import Any
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.ai.model_catalog import ReasoningEffort
 from app.ai.provider import AIProvider
 from app.api.problems import Problem
 from app.db.models import EvalRun
@@ -23,7 +24,7 @@ from app.evals.case_store import UnknownEvalError, list_cases
 from app.schemas.base import ResponseModel
 from app.schemas.evals import StabilityRun
 from app.schemas.events import EvalSummaryEvent, ThinkingEvent, emit
-from app.schemas.settings import ReasoningEffort, effective_reasoning_effort
+from app.schemas.settings import effective_reasoning_effort
 from app.services.settings import get_app_settings
 
 # Default K for a stability run when the UI doesn't override it (K≥5 to trust a "stable"

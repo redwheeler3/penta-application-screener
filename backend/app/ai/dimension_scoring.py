@@ -36,6 +36,7 @@ from app.ai.analysis import (
     store_result,
 )
 from app.ai.applicant_facts import applicant_facts
+from app.ai.model_catalog import ReasoningEffort
 from app.ai.prompt_fragments import (
     ENGLISH_POLISH_NOTE,
     INJECTION_GUARD_NOTE,
@@ -51,7 +52,6 @@ from app.ai.schemas import (
 from app.db.models import Application, ApplicationAIResult
 from app.schemas.settings import (
     AppSettings,
-    ReasoningEffort,
     effective_reasoning_effort,
 )
 from app.services.application_import import extract_essays
