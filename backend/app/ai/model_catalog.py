@@ -26,6 +26,22 @@ class ModelVendor(StrEnum):
     ANTHROPIC = "anthropic"
 
 
+MODEL_IDS_BY_ROUTE = {
+    "bedrock": {
+        "haiku": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "sonnet": "us.anthropic.claude-sonnet-4-6",
+        "luna": "openai.gpt-5.6-luna",
+        "terra": "openai.gpt-5.6-terra",
+    },
+    "direct": {
+        "haiku": "claude-haiku-4-5-20251001",
+        "sonnet": "claude-sonnet-4-6",
+        "luna": "gpt-5.6-luna",
+        "terra": "gpt-5.6-terra",
+    },
+}
+
+
 @dataclass(frozen=True)
 class ModelSpec:
     model_id: str
@@ -37,52 +53,52 @@ class ModelSpec:
 
 MODEL_CATALOG: tuple[ModelSpec, ...] = (
     ModelSpec(
-        model_id="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        model_id=MODEL_IDS_BY_ROUTE["bedrock"]["haiku"],
         label="Claude Haiku 4.5",
         provider=ModelProvider.BEDROCK,
         vendor=ModelVendor.ANTHROPIC,
     ),
     ModelSpec(
-        model_id="claude-haiku-4-5-20251001",
+        model_id=MODEL_IDS_BY_ROUTE["direct"]["haiku"],
         label="Claude Haiku 4.5",
         provider=ModelProvider.ANTHROPIC,
         vendor=ModelVendor.ANTHROPIC,
     ),
     ModelSpec(
-        model_id="us.anthropic.claude-sonnet-4-6",
+        model_id=MODEL_IDS_BY_ROUTE["bedrock"]["sonnet"],
         label="Claude Sonnet 4.6",
         provider=ModelProvider.BEDROCK,
         vendor=ModelVendor.ANTHROPIC,
     ),
     ModelSpec(
-        model_id="claude-sonnet-4-6",
+        model_id=MODEL_IDS_BY_ROUTE["direct"]["sonnet"],
         label="Claude Sonnet 4.6",
         provider=ModelProvider.ANTHROPIC,
         vendor=ModelVendor.ANTHROPIC,
     ),
     ModelSpec(
-        model_id="openai.gpt-5.6-luna",
+        model_id=MODEL_IDS_BY_ROUTE["bedrock"]["luna"],
         label="GPT-5.6 Luna",
         provider=ModelProvider.BEDROCK,
         vendor=ModelVendor.OPENAI,
         supports_reasoning_effort=True,
     ),
     ModelSpec(
-        model_id="gpt-5.6-luna",
+        model_id=MODEL_IDS_BY_ROUTE["direct"]["luna"],
         label="GPT-5.6 Luna",
         provider=ModelProvider.OPENAI,
         vendor=ModelVendor.OPENAI,
         supports_reasoning_effort=True,
     ),
     ModelSpec(
-        model_id="openai.gpt-5.6-terra",
+        model_id=MODEL_IDS_BY_ROUTE["bedrock"]["terra"],
         label="GPT-5.6 Terra",
         provider=ModelProvider.BEDROCK,
         vendor=ModelVendor.OPENAI,
         supports_reasoning_effort=True,
     ),
     ModelSpec(
-        model_id="gpt-5.6-terra",
+        model_id=MODEL_IDS_BY_ROUTE["direct"]["terra"],
         label="GPT-5.6 Terra",
         provider=ModelProvider.OPENAI,
         vendor=ModelVendor.OPENAI,

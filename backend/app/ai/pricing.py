@@ -1,8 +1,8 @@
 """AI token pricing for cost estimates and spending-cap enforcement.
 
-Prices are USD per 1,000,000 tokens. The direct-provider and Bedrock on-demand
-prices for the supported models were equivalent when last checked 2026-08-22.
-Update by hand when provider pricing changes.
+Prices are USD per 1,000,000 tokens. Direct OpenAI and Bedrock prices differ;
+the provider-native model ID therefore selects the route-specific price. Update
+by hand when provider pricing changes.
 
 Why hardcoded: the AWS Price List API (boto3 "pricing", ServiceCode
 "AmazonBedrock") carries recent competitor models (Llama 4, Nova 2.0, Qwen3,
@@ -11,8 +11,8 @@ cannot price Haiku 4.5 / Sonnet 4.6, the models we actually use. A live lookup
 would always fall back, so the table is the source of truth. Revisit if AWS
 adds Claude 4.x to the Price List API.
 
-The lookup matches on a stable model-family substring so direct and Bedrock IDs
-share one price entry.
+Current catalog models use exact IDs. Substring prices remain only for historical
+Claude traces and the conservative unknown-model fallback.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from app.ai.model_catalog import MODEL_IDS_BY_ROUTE
 from app.ai.provider import Usage
 
 
@@ -44,12 +45,36 @@ class ModelPrice:
     output_per_mtok: float
 
 
-# Keyed by a stable substring of the model ID. More specific keys must precede
-# the broader ones they share a prefix with (e.g. "sonnet-4-6" before
-# "sonnet-4"), since lookup returns the first matching substring.
-_PRICES: dict[str, ModelPrice] = {
-    "gpt-5.6-luna": ModelPrice(input_per_mtok=0.20, output_per_mtok=1.20),
-    "gpt-5.6-terra": ModelPrice(input_per_mtok=2.00, output_per_mtok=12.00),
+_MODEL_PRICES: dict[str, ModelPrice] = {
+    MODEL_IDS_BY_ROUTE["bedrock"]["luna"]: ModelPrice(
+        input_per_mtok=0.20, output_per_mtok=1.20
+    ),
+    MODEL_IDS_BY_ROUTE["direct"]["luna"]: ModelPrice(
+        input_per_mtok=1.00, output_per_mtok=6.00
+    ),
+    MODEL_IDS_BY_ROUTE["bedrock"]["terra"]: ModelPrice(
+        input_per_mtok=2.00, output_per_mtok=12.00
+    ),
+    MODEL_IDS_BY_ROUTE["direct"]["terra"]: ModelPrice(
+        input_per_mtok=2.50, output_per_mtok=15.00
+    ),
+    MODEL_IDS_BY_ROUTE["bedrock"]["haiku"]: ModelPrice(
+        input_per_mtok=1.00, output_per_mtok=5.00
+    ),
+    MODEL_IDS_BY_ROUTE["direct"]["haiku"]: ModelPrice(
+        input_per_mtok=1.00, output_per_mtok=5.00
+    ),
+    MODEL_IDS_BY_ROUTE["bedrock"]["sonnet"]: ModelPrice(
+        input_per_mtok=3.00, output_per_mtok=15.00
+    ),
+    MODEL_IDS_BY_ROUTE["direct"]["sonnet"]: ModelPrice(
+        input_per_mtok=3.00, output_per_mtok=15.00
+    ),
+}
+
+# Historical Claude IDs use stable family substrings. More specific keys precede
+# broader ones because lookup returns the first match.
+_HISTORICAL_PRICES: dict[str, ModelPrice] = {
     "haiku-4-5": ModelPrice(input_per_mtok=1.00, output_per_mtok=5.00),
     "sonnet-4-6": ModelPrice(input_per_mtok=3.00, output_per_mtok=15.00),
     "sonnet-4-5": ModelPrice(input_per_mtok=3.00, output_per_mtok=15.00),
@@ -59,11 +84,13 @@ _PRICES: dict[str, ModelPrice] = {
 
 # Used when a model ID is not in the table, so a missing entry never silently
 # under-estimates cost: fall back to the most expensive known rate (Opus-tier).
-_FALLBACK = _PRICES["opus-4"]
+_FALLBACK = _HISTORICAL_PRICES["opus-4"]
 
 
 def price_for_model(model_id: str) -> ModelPrice:
-    for key, price in _PRICES.items():
+    if price := _MODEL_PRICES.get(model_id):
+        return price
+    for key, price in _HISTORICAL_PRICES.items():
         if key in model_id:
             return price
     return _FALLBACK

@@ -758,7 +758,7 @@ Implementation defaults:
 
 Delivered and planned milestones, including decisions that can wait until implementation.
 
-### OpenAI-Versus-Anthropic Model Bake-Off (M20) — implemented; direct switchover prepared
+### OpenAI-Versus-Anthropic Model Bake-Off (M20) — complete locally; production switchover deferred
 
 **Goal:** select the least expensive model that preserves or improves judgment quality for each
 AI pass before the larger intake changes begin. The current controls are Claude Haiku 4.5 for
@@ -862,11 +862,41 @@ not an exact golden master.
   medium Rank cost $0.9177 versus $0.6906 for low: Luna increased 23.6% overall (20.2% per scoring
   call) and Terra increased 35.7%. The run completed 36 dimensions, reused 24 baseline keys, and
   again had no failures or invariant violations. This evidence keeps `low` as the selected setting.
+- Direct credential and structured-output probes passed for Luna, Terra, Haiku, and Sonnet. A
+  three-repeat direct OpenAI run had no transport or throttling errors: Luna-low passed 51/51
+  Screening cases, and Terra-low passed all 45/45 decomposition, matching, and consolidation cases.
+  Luna initially passed only 12/15 Scoring cases by repeatedly rating the modest-evidence fixture
+  above its expected middle band. On a focused five-run comparison, direct Haiku stayed in band 4/5
+  times while Luna stayed in band only 1/5, so the regression was not dismissed as noise.
+- One provider-neutral calibration sentence now reserves scores beyond +/-0.7 for substantial
+  evidence close to a dimension pole. With the labelled fixture unchanged, direct Luna-low then
+  passed all 25/25 Scoring judgments over five repeats, including 5/5 on the modest-evidence case.
+  This is the only prompt change made after the frozen comparison.
+- Two production-shaped direct Luna-low plus Terra-low Ranks scored all 40 applicants with zero
+  failed calls and zero invariant violations. They completed in 186.7 and 235.8 seconds, produced
+  35 and 41 final dimensions, and cost $1.5038 and $1.7623 at direct OpenAI rates. The 41-dimension
+  sample contained several borderline overlaps; it is accepted as visible discovery variance, not
+  evidence that a larger dimension set is better. The calibrated run reused 22 baseline keys.
+- Direct OpenAI standard pricing is higher than Bedrock for these models: Luna is $1.00 input / $6.00
+  output and Terra is $2.50 input / $15.00 output per million tokens. Cost accounting now selects
+  exact route-specific prices rather than sharing a model-family substring. Direct OpenAI is the
+  availability choice for the production account, not the cheapest transport in isolation.
+- Direct Anthropic Haiku and Sonnet probes passed. The initial repeat run exposed a client-lifecycle
+  defect rather than a quota problem: Strands retains one async Anthropic client, while the app's
+  synchronous provider boundary creates a private event loop for each call. Reusing that client
+  across loops caused intermittent `APIConnectionError` failures even at one worker. The provider
+  now creates and closes the direct Anthropic client within the same call loop; this transport-only
+  rule does not branch prompts, schemas, results, persistence, or downstream callers.
+- With SDK retries disabled, the corrected direct Anthropic route completed all 111 calls in the
+  three-repeat, 10-worker Haiku and Sonnet control suite with zero transport or schema errors. It
+  passed 108/111 golden judgments: 50/51 Screening, 14/15 Scoring, 15/15 decomposition, 14/15
+  matching, and 15/15 consolidation. The three misses were model-judgment variance, not transport
+  instability, and leave direct Anthropic as a working fallback rather than the selected route.
 
-**Preferred future selection:** Terra at reasoning `low` is the evidence-backed candidate to replace
-Sonnet for Pattern discovery, Dimension decomposition, Dimension matching, and Dimension
-consolidation. Luna at reasoning `low` is the candidate to replace Haiku for Screening and Dimension
-scoring. Reasoning is sent explicitly so a provider default cannot silently change the measured
+**Preferred future selection:** direct Terra at reasoning `low` is the evidence-backed candidate to
+replace Sonnet for Pattern discovery, Dimension decomposition, Dimension matching, and Dimension
+consolidation. Direct Luna at reasoning `low` is the candidate to replace Haiku for Screening and
+Dimension scoring. Reasoning is sent explicitly so a provider default cannot silently change the measured
 quality, cost, or latency profile. See
 [ADR 0013](docs/adr/0013-openai-model-selection.md) for the detailed evidence and reproduction
 commands.
@@ -878,9 +908,10 @@ routes and adds direct OpenAI and Anthropic routes behind the same provider boun
 Sonnet remain every runtime default, so deployment alone cannot move the committee workload. A
 settings migration persists `low` reasoning separately for each AI pass, but reasoning is inactive
 for models that do not support it; it therefore does not alter current Claude calls. Changing a pass
-to a direct route is a later, explicit admin operation after its deployment secret and a synthetic
-credential probe are verified. This is an availability response, not a reversal of the quality and
-cost findings.
+to a direct route is a later, explicit admin operation after its Fly secret and a production-hosted
+credential probe are verified. Local direct credentials, all four route probes, the direct golden
+suites, and production-shaped synthetic Rank are verified. This is an availability response, not
+a claim that direct OpenAI is cheaper than Bedrock.
 
 The co-op accepts the documented provider privacy tradeoffs for applicant-bearing passes. The current
 Bedrock account retention setting is `inherit`; Mantle reports effective `default` mode for both GPT

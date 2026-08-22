@@ -1,6 +1,7 @@
 """Provider-selection tests for every supported model route."""
 
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -74,6 +75,66 @@ def test_anthropic_direct_uses_api_key() -> None:
         "max_retries": 5,
         "timeout": 321,
     }
+
+
+def test_direct_provider_retry_count_is_configurable() -> None:
+    provider = StrandsProvider(
+        region="us-east-1",
+        anthropic_api_key="test-anthropic-key",
+        direct_max_retries=0,
+    )
+
+    with patch("strands.models.anthropic.AnthropicModel") as model_class:
+        provider._model_for("claude-haiku-4-5-20251001")
+
+    assert model_class.call_args.kwargs["client_args"]["max_retries"] == 0
+
+
+def test_anthropic_direct_model_is_not_reused_across_event_loops() -> None:
+    provider = StrandsProvider(
+        region="us-east-1", anthropic_api_key="test-anthropic-key"
+    )
+    built = MagicMock(side_effect=[MagicMock(), MagicMock()])
+
+    with patch.object(provider, "_build_model", built):
+        first = provider._model_for("claude-haiku-4-5-20251001")
+        second = provider._model_for("claude-haiku-4-5-20251001")
+
+    assert second is not first
+    assert built.call_count == 2
+
+
+def test_anthropic_direct_client_is_closed_on_the_call_event_loop() -> None:
+    provider = StrandsProvider(
+        region="us-east-1", anthropic_api_key="test-anthropic-key"
+    )
+    model = MagicMock()
+    model.client.close = AsyncMock()
+    output = MagicMock()
+    result = SimpleNamespace(
+        metrics=SimpleNamespace(
+            accumulated_usage={"inputTokens": 12, "outputTokens": 3}
+        ),
+        structured_output=output,
+    )
+    agent = MagicMock(messages=[])
+
+    async def stream_async(*_args: object, **_kwargs: object):
+        yield {"result": result}
+
+    agent.stream_async = stream_async
+    with (
+        patch.object(provider, "_model_for", return_value=model),
+        patch("strands.Agent", return_value=agent),
+    ):
+        actual = provider.structured_output(
+            model_id="claude-haiku-4-5-20251001",
+            schema=dict,
+            prompt="Synthetic prompt",
+        )
+
+    assert actual.output is output
+    model.client.close.assert_awaited_once_with()
 
 
 @pytest.mark.parametrize("model_id", ["gpt-5.6-luna", "claude-sonnet-4-6"])

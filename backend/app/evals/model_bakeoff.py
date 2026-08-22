@@ -22,48 +22,45 @@ from app.ai.dimension_consolidate import PROMPT_VERSION as CONSOLIDATION_PROMPT_
 from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSITION_PROMPT_VERSION
 from app.ai.dimension_matching import PROMPT_VERSION as MATCHING_PROMPT_VERSION
 from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_PROMPT_VERSION
-from app.ai.model_catalog import model_spec
+from app.ai.model_catalog import MODEL_IDS_BY_ROUTE, model_spec
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, DeltaSink, SchemaT
 from app.ai.screening import screening_prompt_version
 from app.ai.strands_provider import StrandsProvider
+from app.core.config import get_settings
 from app.evals import consolidate, decompose, matching, scoring, screening
 
-HAIKU = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-SONNET = "us.anthropic.claude-sonnet-4-6"
-LUNA = "openai.gpt-5.6-luna"
-TERRA = "openai.gpt-5.6-terra"
 DEFAULT_OPENAI_REASONING_EFFORT = "low"
 
 
 @dataclass(frozen=True)
 class PassSpec:
     name: str
-    control: str
-    challenger: str
+    control_model: str
+    challenger_model: str
     load: Callable[[], tuple[Any, ...]]
     run: Callable[[AIProvider, Any, str], Any]
 
 
 PASS_SPECS = {
     "screening": PassSpec(
-        "screening", HAIKU, LUNA, screening.load_cases,
+        "screening", "haiku", "luna", screening.load_cases,
         lambda provider, case, model: screening.run_case(provider, case, screening_model=model),
     ),
     "scoring": PassSpec(
-        "scoring", HAIKU, LUNA, scoring.load_golden,
+        "scoring", "haiku", "luna", scoring.load_golden,
         lambda provider, case, model: scoring.run_case(provider, case, scoring_model=model),
     ),
     "decomposition": PassSpec(
-        "decomposition", SONNET, TERRA, decompose.load_cases,
+        "decomposition", "sonnet", "terra", decompose.load_cases,
         lambda provider, case, model: decompose.run_case(provider, case, decompose_model=model),
     ),
     "matching": PassSpec(
-        "matching", SONNET, TERRA, matching.load_cases,
+        "matching", "sonnet", "terra", matching.load_cases,
         lambda provider, case, model: matching.run_case(provider, case, match_model=model),
     ),
     "consolidation": PassSpec(
-        "consolidation", SONNET, TERRA, consolidate.load_cases,
+        "consolidation", "sonnet", "terra", consolidate.load_cases,
         lambda provider, case, model: consolidate.run_case(provider, case, consolidate_model=model),
     ),
 }
@@ -108,24 +105,37 @@ class MeasuringProvider:
 
 def run_bakeoff(
     *,
+    route: str,
     region: str,
     pass_names: list[str],
     repeats: int,
     workers: int = 1,
     openai_reasoning_effort: str = DEFAULT_OPENAI_REASONING_EFFORT,
     include_control: bool = True,
+    include_challenger: bool = True,
+    direct_max_retries: int = 5,
     progress: Callable[[str], None] = print,
 ) -> dict[str, Any]:
     """Run selected frozen golden cases and return a JSON-serializable report."""
+    runtime = get_settings()
     provider = StrandsProvider(
-        region=region, openai_reasoning_effort=openai_reasoning_effort
+        region=region,
+        openai_api_key=runtime.openai_api_key,
+        anthropic_api_key=runtime.anthropic_api_key,
+        openai_reasoning_effort=openai_reasoning_effort,
+        direct_max_retries=direct_max_retries,
     )
+    models = MODEL_IDS_BY_ROUTE[route]
     wall_clock_started = time.perf_counter()
     jobs = []
     for pass_name in pass_names:
         spec = PASS_SPECS[pass_name]
-        models = (spec.control, spec.challenger) if include_control else (spec.challenger,)
-        for model in models:
+        pass_models = []
+        if include_control:
+            pass_models.append(models[spec.control_model])
+        if include_challenger:
+            pass_models.append(models[spec.challenger_model])
+        for model in pass_models:
             for case in spec.load():
                 for repeat in range(1, repeats + 1):
                     jobs.append((spec, model, case, repeat))
@@ -144,9 +154,12 @@ def run_bakeoff(
             pass_name, model, case_key, repeat = futures[future]
             row = future.result()
             rows.append(row)
+            error_detail = (
+                f" | {row['failures'][0]}" if row["outcome"] == "error" else ""
+            )
             progress(
                 f"{pass_name} {model} {case_key} repeat {repeat}/{repeats}: "
-                f"{'pass' if row['passed'] else 'FAIL'}"
+                f"{'pass' if row['passed'] else 'FAIL'}{error_detail}"
             )
 
     rows.sort(key=lambda row: (row["pass"], row["model"], row["case"], row["repeat"]))
@@ -154,10 +167,13 @@ def run_bakeoff(
     return {
         "experiment": "M20 OpenAI versus Anthropic frozen golden bake-off",
         "created_at": datetime.now(UTC).isoformat(),
+        "route": route,
         "region": region,
         "repeats": repeats,
         "workers": workers,
+        "direct_max_retries": direct_max_retries,
         "controls_included": include_control,
+        "challengers_included": include_challenger,
         "wall_clock_seconds": time.perf_counter() - wall_clock_started,
         "packages": {
             "strands-agents": version("strands-agents"),
@@ -277,9 +293,17 @@ def _summarize_cases(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--route", choices=tuple(MODEL_IDS_BY_ROUTE), default="bedrock")
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument(
+        "--direct-max-retries",
+        type=int,
+        choices=range(0, 11),
+        default=5,
+        help="Override direct-provider SDK retries; use 0 to expose the first API failure.",
+    )
     parser.add_argument(
         "--openai-reasoning-effort",
         choices=("none", "low", "medium", "high", "xhigh", "max"),
@@ -288,10 +312,16 @@ def main() -> None:
     parser.add_argument(
         "--passes", nargs="+", choices=tuple(PASS_SPECS), default=list(PASS_SPECS)
     )
-    parser.add_argument(
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument(
         "--challenger-only",
         action="store_true",
         help="Run only Luna/Terra when an existing Claude control result is sufficient.",
+    )
+    selection.add_argument(
+        "--control-only",
+        action="store_true",
+        help="Run only Haiku/Sonnet when an existing OpenAI result is sufficient.",
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -301,12 +331,16 @@ def main() -> None:
         parser.error("--workers must be between 1 and 50")
 
     report = run_bakeoff(
+        route=args.route,
         region=args.region,
         pass_names=args.passes,
         repeats=args.repeat,
         workers=args.workers,
         openai_reasoning_effort=args.openai_reasoning_effort,
         include_control=not args.challenger_only,
+        include_challenger=not args.control_only,
+        direct_max_retries=args.direct_max_retries,
+        progress=lambda message: print(message, flush=True),
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

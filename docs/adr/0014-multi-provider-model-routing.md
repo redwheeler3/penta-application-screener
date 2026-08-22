@@ -43,6 +43,11 @@ independently after the direct route is verified in that environment.
 ## Consequences
 
 - Callers, prompts, persistence, cost accounting, and observability do not branch on provider.
+- Transport resource lifecycles remain private to the Strands adapter. Its Bedrock client is safely
+  pooled, its OpenAI adapter already creates a client per request, and its Anthropic adapter retains
+  an async client that cannot cross the provider's per-call event-loop boundary. Direct Anthropic
+  models are therefore created and closed within one call without exposing a second architecture to
+  downstream code.
 - Exact catalog validation rejects unsupported combinations early instead of relying on naming
   conventions or failing during a paid run.
 - OpenAI reasoning effort remains per-pass configuration and only participates when the catalog
@@ -51,9 +56,9 @@ independently after the direct route is verified in that environment.
   The existing maximum-worker setting is exposed to admins so bursts can be tuned without a code
   change; retries remain bounded in each transport.
 - Bedrock region remains relevant to both Bedrock routes and inert for direct routes.
-- Provider prices happen to be equivalent for the supported models as of this decision, but the
-  application's explicit price table remains the spending-cap authority and must be reviewed when
-  providers change pricing.
+- Direct OpenAI and Bedrock prices differ. The application's exact provider-native model IDs select
+  route-specific prices so estimates and spending caps remain conservative; the table must be
+  reviewed when providers change pricing.
 
 ## Alternatives considered
 

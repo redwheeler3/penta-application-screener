@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from app.ai.model_catalog import (
     ModelProvider,
@@ -21,6 +21,7 @@ from app.ai.provider import AIResult, DeltaSink, SchemaT, Usage
 
 if TYPE_CHECKING:
     from strands.models import Model
+    from strands.models.anthropic import AnthropicModel
 
 
 OPENAI_PREAMBLE_INSTRUCTION = (
@@ -33,10 +34,11 @@ OPENAI_PREAMBLE_INSTRUCTION = (
 class StrandsProvider:
     """Multi-provider Strands adapter, safe to share across the worker pool.
 
-    A Strands model configuration is built once per model id and timeout. Claude's
-    cached ``BedrockModel`` owns a shared, thread-safe boto3 connection pool. Direct
-    provider SDK clients manage their own connection pools; Mantle mints a fresh
-    Bedrock bearer token per request.
+    Most Strands model configurations are built once per model id and timeout.
+    ``BedrockModel`` owns a shared, thread-safe boto3 connection pool, while the
+    OpenAI Responses adapter opens and closes its async client per request. Strands'
+    direct Anthropic adapter instead retains an async client, so that model is built
+    per call and closed on the same private event loop that used it.
     The per-call ``Agent`` is never shared: it accumulates conversation in
     ``agent.messages`` (read back for the narrative), so each call gets a fresh one.
     """
@@ -49,12 +51,14 @@ class StrandsProvider:
         anthropic_api_key: str = "",
         openai_reasoning_effort: ReasoningEffort | None = None,
         openai_reasoning_efforts: dict[str, ReasoningEffort] | None = None,
+        direct_max_retries: int = 5,
     ) -> None:
         self._region = region
         self._openai_api_key = openai_api_key
         self._anthropic_api_key = anthropic_api_key
         self._openai_reasoning_effort = openai_reasoning_effort
         self._openai_reasoning_efforts = openai_reasoning_efforts or {}
+        self._direct_max_retries = direct_max_retries
         # Size the pool to the worker count so threads don't queue on sockets.
         self._max_pool_connections = max_pool_connections
         # A timeout or reasoning change needs a distinct configured model client.
@@ -88,6 +92,11 @@ class StrandsProvider:
                     f"reasoning_effort is required for OpenAI model {model_id!r}"
                 )
         cache_key = (model_id, timeout, effective_effort)
+        # AnthropicModel retains one AsyncAnthropic client. This synchronous adapter
+        # uses asyncio.run() per call, so caching that model would reuse its client on
+        # a different event loop and cause intermittent APIConnectionError failures.
+        if spec.provider is ModelProvider.ANTHROPIC:
+            return self._build_model(model_id, timeout, effective_effort)
         with self._models_lock:
             model = self._models.get(cache_key)
             if model is None:
@@ -104,7 +113,7 @@ class StrandsProvider:
             from strands.models.openai_responses import OpenAIResponsesModel
 
             client_args = {
-                "max_retries": 5,
+                "max_retries": self._direct_max_retries,
                 "timeout": Timeout(timeout=read_timeout, connect=10),
             }
             route_args: dict[str, object] = {}
@@ -140,7 +149,7 @@ class StrandsProvider:
                 max_tokens=64_000,
                 client_args={
                     "api_key": self._anthropic_api_key,
-                    "max_retries": 5,
+                    "max_retries": self._direct_max_retries,
                     "timeout": read_timeout,
                 },
             )
@@ -187,23 +196,33 @@ class StrandsProvider:
         # which would otherwise echo streamed reasoning to stdout. The UI is the
         # intended surface for that text (via sink -> the NDJSON stream); the terminal
         # echo is just noise.
+        model = self._model_for(model_id, read_timeout, reasoning_effort)
+        direct_anthropic_model = (
+            cast("AnthropicModel", model)
+            if model_spec(model_id).provider is ModelProvider.ANTHROPIC
+            else None
+        )
         agent = Agent(
-            model=self._model_for(model_id, read_timeout, reasoning_effort),
+            model=model,
             system_prompt=_system_prompt_for_model(model_id, system_prompt),
             callback_handler=None,
         )
 
         async def drain() -> object:
             final = None
-            async for event in agent.stream_async(prompt, structured_output_model=schema):
-                if not isinstance(event, dict):
-                    continue
-                narrative_delta = _event_narrative_delta(event)
-                if narrative_delta:
-                    sink(narrative_delta)
-                if event.get("result") is not None:
-                    final = event["result"]  # the terminal AgentResult
-            return final
+            try:
+                async for event in agent.stream_async(prompt, structured_output_model=schema):
+                    if not isinstance(event, dict):
+                        continue
+                    narrative_delta = _event_narrative_delta(event)
+                    if narrative_delta:
+                        sink(narrative_delta)
+                    if event.get("result") is not None:
+                        final = event["result"]  # the terminal AgentResult
+                return final
+            finally:
+                if direct_anthropic_model is not None:
+                    await direct_anthropic_model.client.close()
 
         result = asyncio.run(drain())
         if result is None:  # no terminal result event — should not happen

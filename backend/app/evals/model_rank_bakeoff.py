@@ -14,37 +14,62 @@ from typing import Any
 from sqlalchemy import create_engine, event, func, select
 from sqlalchemy.orm import Session
 
-from app.ai.model_catalog import model_spec
+from app.ai.model_catalog import MODEL_IDS_BY_ROUTE, model_spec
 from app.ai.strands_provider import StrandsProvider
 from app.api.ranking.run import rank_run
 from app.core.config import get_settings
 from app.db.models import Application, RunCostLedger, User, UserRole
 from app.evals.fixture import _to_json, build_fixture, load
 from app.evals.invariants import run_invariants
-from app.evals.model_bakeoff import HAIKU, LUNA, SONNET, TERRA
 from app.services.analysis import get_current_analysis
 from app.services.settings import get_app_settings, save_app_settings
 
 CONFIGURATIONS = {
-    "control": {
+    "bedrock-control": {
         "models": {
-            "discovery_model": SONNET,
-            "decompose_model": SONNET,
-            "match_model": SONNET,
-            "dimension_scoring_model": HAIKU,
-            "consolidate_model": SONNET,
+            "discovery_model": MODEL_IDS_BY_ROUTE["bedrock"]["sonnet"],
+            "decompose_model": MODEL_IDS_BY_ROUTE["bedrock"]["sonnet"],
+            "match_model": MODEL_IDS_BY_ROUTE["bedrock"]["sonnet"],
+            "dimension_scoring_model": MODEL_IDS_BY_ROUTE["bedrock"]["haiku"],
+            "consolidate_model": MODEL_IDS_BY_ROUTE["bedrock"]["sonnet"],
         },
         "reasoning": {},
     },
-    "candidate": {
+    "bedrock-candidate": {
         "models": {
-            "discovery_model": TERRA,
-            "decompose_model": TERRA,
-            "match_model": TERRA,
-            "dimension_scoring_model": LUNA,
-            "consolidate_model": TERRA,
+            "discovery_model": MODEL_IDS_BY_ROUTE["bedrock"]["terra"],
+            "decompose_model": MODEL_IDS_BY_ROUTE["bedrock"]["terra"],
+            "match_model": MODEL_IDS_BY_ROUTE["bedrock"]["terra"],
+            "dimension_scoring_model": MODEL_IDS_BY_ROUTE["bedrock"]["luna"],
+            "consolidate_model": MODEL_IDS_BY_ROUTE["bedrock"]["terra"],
         },
-        "reasoning": {LUNA: "low", TERRA: "low"},
+        "reasoning": {
+            MODEL_IDS_BY_ROUTE["bedrock"]["luna"]: "low",
+            MODEL_IDS_BY_ROUTE["bedrock"]["terra"]: "low",
+        },
+    },
+    "direct-control": {
+        "models": {
+            "discovery_model": MODEL_IDS_BY_ROUTE["direct"]["sonnet"],
+            "decompose_model": MODEL_IDS_BY_ROUTE["direct"]["sonnet"],
+            "match_model": MODEL_IDS_BY_ROUTE["direct"]["sonnet"],
+            "dimension_scoring_model": MODEL_IDS_BY_ROUTE["direct"]["haiku"],
+            "consolidate_model": MODEL_IDS_BY_ROUTE["direct"]["sonnet"],
+        },
+        "reasoning": {},
+    },
+    "direct-candidate": {
+        "models": {
+            "discovery_model": MODEL_IDS_BY_ROUTE["direct"]["terra"],
+            "decompose_model": MODEL_IDS_BY_ROUTE["direct"]["terra"],
+            "match_model": MODEL_IDS_BY_ROUTE["direct"]["terra"],
+            "dimension_scoring_model": MODEL_IDS_BY_ROUTE["direct"]["luna"],
+            "consolidate_model": MODEL_IDS_BY_ROUTE["direct"]["terra"],
+        },
+        "reasoning": {
+            MODEL_IDS_BY_ROUTE["direct"]["luna"]: "low",
+            MODEL_IDS_BY_ROUTE["direct"]["terra"]: "low",
+        },
     },
 }
 
@@ -75,6 +100,7 @@ def run_rank_copy(
     work_db: Path,
     configuration: str,
     region: str,
+    max_workers: int | None = None,
     openai_reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     """Copy the synthetic DB, run Rank against the copy, and return a PII-free artifact."""
@@ -90,10 +116,14 @@ def run_rank_copy(
         cursor.close()
 
     config = CONFIGURATIONS[configuration]
+    runtime = get_settings()
     reasoning = _reasoning_for(config, openai_reasoning_effort)
     with Session(engine) as db:
         settings = get_app_settings(db)
-        ai = settings.ai.model_copy(update=config["models"] | {"spending_cap_usd": 100.0})
+        ai_updates = config["models"] | {"spending_cap_usd": 100.0}
+        if max_workers is not None:
+            ai_updates["max_workers"] = max_workers
+        ai = settings.ai.model_copy(update=ai_updates)
         settings = settings.model_copy(update={"ai": ai})
         save_app_settings(db, settings)
 
@@ -106,6 +136,8 @@ def run_rank_copy(
         provider = StrandsProvider(
             region=region,
             max_pool_connections=ai.max_workers,
+            openai_api_key=runtime.openai_api_key,
+            anthropic_api_key=runtime.anthropic_api_key,
             openai_reasoning_efforts=reasoning,
         )
         # The endpoint's post-Rank safety copy should follow the isolated DB, but adds no
@@ -185,6 +217,10 @@ def main() -> None:
     parser.add_argument("--configuration", choices=tuple(CONFIGURATIONS), required=True)
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument(
+        "--workers", type=int, choices=range(1, 51),
+        help="Override the copied database's AI worker limit for this isolated run.",
+    )
+    parser.add_argument(
         "--openai-reasoning-effort",
         choices=("none", "low", "medium", "high", "xhigh", "max"),
         help="Override reasoning for every OpenAI model in this isolated run.",
@@ -196,6 +232,7 @@ def main() -> None:
         work_db=args.work_db,
         configuration=args.configuration,
         region=args.region,
+        max_workers=args.workers,
         openai_reasoning_effort=args.openai_reasoning_effort,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)

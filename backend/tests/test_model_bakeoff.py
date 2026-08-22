@@ -1,13 +1,14 @@
 from dataclasses import dataclass
 
 from app.ai.mock_provider import MockProvider
+from app.ai.model_catalog import MODEL_IDS_BY_ROUTE
 from app.evals.model_bakeoff import (
     MeasuringProvider,
     _outcome,
     _summarize,
     _summarize_cases,
 )
-from app.evals.model_rank_bakeoff import CONFIGURATIONS, LUNA, TERRA, _reasoning_for
+from app.evals.model_rank_bakeoff import CONFIGURATIONS, _reasoning_for
 
 
 @dataclass
@@ -16,16 +17,22 @@ class _Result:
 
 
 def test_rank_candidate_matches_selected_models_and_reasoning() -> None:
-    candidate = CONFIGURATIONS["candidate"]
+    candidate = CONFIGURATIONS["direct-candidate"]
+    luna = MODEL_IDS_BY_ROUTE["direct"]["luna"]
+    terra = MODEL_IDS_BY_ROUTE["direct"]["terra"]
 
-    assert set(candidate["models"].values()) == {LUNA, TERRA}
-    assert candidate["reasoning"] == {LUNA: "low", TERRA: "low"}
+    assert set(candidate["models"].values()) == {luna, terra}
+    assert candidate["reasoning"] == {luna: "low", terra: "low"}
 
 
 def test_rank_reasoning_override_applies_to_each_openai_model() -> None:
-    candidate = CONFIGURATIONS["candidate"]
+    candidate = CONFIGURATIONS["direct-candidate"]
+    luna = MODEL_IDS_BY_ROUTE["direct"]["luna"]
+    terra = MODEL_IDS_BY_ROUTE["direct"]["terra"]
 
-    assert _reasoning_for(candidate, "medium") == {LUNA: "medium", TERRA: "medium"}
+    assert _reasoning_for(candidate, "medium") == {
+        luna: "medium", terra: "medium"
+    }
 
 
 def test_outcome_prefers_categorical_verdict() -> None:

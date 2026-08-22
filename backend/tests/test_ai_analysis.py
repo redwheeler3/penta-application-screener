@@ -123,6 +123,21 @@ def test_openai_bedrock_models_have_explicit_prices(
     assert price.output_per_mtok == output_price
 
 
+@pytest.mark.parametrize(
+    ("model_id", "input_price", "output_price"),
+    [
+        ("gpt-5.6-luna", 1.00, 6.00),
+        ("gpt-5.6-terra", 2.50, 15.00),
+    ],
+)
+def test_openai_direct_models_have_route_specific_prices(
+    model_id: str, input_price: float, output_price: float
+) -> None:
+    price = price_for_model(model_id)
+    assert price.input_per_mtok == input_price
+    assert price.output_per_mtok == output_price
+
+
 # --- cache key ---
 
 def test_cache_key_changes_with_model_and_content() -> None:

@@ -1,6 +1,6 @@
-# 13. Evaluate Terra/Luna through Bedrock Mantle without switching defaults
+# 13. Select Luna/Terra and verify the direct OpenAI route
 
-- Status: **accepted** (transport and eval tooling; runtime switchover deferred)
+- Status: **accepted** (direct route locally verified; runtime switchover deferred)
 - Date: 2026-08-21
 
 ## Context
@@ -11,8 +11,8 @@ could reduce cost and latency without weakening the existing frozen prompts, str
 audit narratives, or human-review workflow.
 
 The comparison used only the repository's synthetic local data. It kept Strands as the provider
-abstraction: Claude used `BedrockModel`, while GPT used `OpenAIResponsesModel` through Amazon
-Bedrock Mantle. No direct OpenAI API integration was added.
+abstraction: Claude used `BedrockModel`, while GPT initially used `OpenAIResponsesModel` through
+Amazon Bedrock Mantle. Direct routes were added after the production AWS availability block.
 
 ## Decision
 
@@ -22,12 +22,12 @@ future switchover is:
 
 | Pass | Preferred future model |
 |---|---|
-| Screening | `openai.gpt-5.6-luna` |
-| Dimension scoring | `openai.gpt-5.6-luna` |
-| Pattern discovery | `openai.gpt-5.6-terra` |
-| Dimension decomposition | `openai.gpt-5.6-terra` |
-| Dimension matching | `openai.gpt-5.6-terra` |
-| Dimension consolidation | `openai.gpt-5.6-terra` |
+| Screening | `gpt-5.6-luna` |
+| Dimension scoring | `gpt-5.6-luna` |
+| Pattern discovery | `gpt-5.6-terra` |
+| Dimension decomposition | `gpt-5.6-terra` |
+| Dimension matching | `gpt-5.6-terra` |
+| Dimension consolidation | `gpt-5.6-terra` |
 
 Reasoning is explicit because GPT-5.6 defaults to `medium` when it is omitted. `Low` restored
 Luna's quality to the Haiku baseline and gave Terra additional reasoning headroom without a
@@ -37,8 +37,9 @@ The production AWS account rejected both models as unavailable in `us-east-1`, `
 `us-west-2` after its IAM policy was updated to authorize Mantle inference. This is an account-level
 availability block, not a model-quality finding. M20 does not change persisted or default model
 choices. It does persist `low` reasoning per pass so the chosen effort travels with the model
-configuration; that value is inactive for Claude. After AWS enables both models, repeat the
-synthetic production-credential probes before adding an explicit model switchover migration.
+configuration; that value is inactive for Claude. Direct OpenAI is the selected future route because
+the production AWS account remains blocked. Production defaults still require a later explicit
+operator change after the direct secrets are installed and probed on Fly.
 
 ## Evidence
 
@@ -93,6 +94,26 @@ is not enough to establish a quality gain because discovery is nondeterministic 
 runs already spanned 20-22 keys. With no golden improvement and one Luna regression, medium's
 measured premium is not justified.
 
+### Direct-provider verification
+
+On August 22, 2026, direct structured-output probes passed for Luna, Terra, Haiku, and Sonnet.
+Direct Luna-low passed 51/51 Screening cases and direct Terra-low passed all 45/45 synthesis cases
+over three repeats without transport or throttling errors. Luna initially passed 12/15 Scoring
+cases; a focused comparison confirmed that it over-scored the modest-evidence case more often than
+Haiku. One provider-neutral sentence reserving scores beyond +/-0.7 for substantial pole-level
+evidence corrected that calibration without changing the fixture: Luna then passed 25/25 Scoring
+judgments over five repeats.
+
+Two direct Luna-low plus Terra-low synthetic Ranks completed all 40 applicants with no failed calls
+or invariant violations. They took 186.7 and 235.8 seconds and cost $1.5038 and $1.7623, producing
+35 and 41 final dimensions. Human review found the larger sample over-segmented in places; the two
+runs are evidence of expected discovery variance, not a reason to reward dimension count.
+
+Direct OpenAI uses different [standard prices](https://platform.openai.com/pricing) from Bedrock:
+Luna is $1.00 input / $6.00 output and Terra is $2.50 input / $15.00 output per million tokens as of
+this decision. Exact provider-native IDs now select route-specific prices. Direct OpenAI is
+therefore an availability decision, not an isolated price reduction.
+
 ## Privacy decision
 
 Future use of these models would process applicant text through Bedrock Mantle. The evaluated
@@ -108,17 +129,18 @@ documentation before changing providers or retention settings.
 
 ## Reproduction
 
-Run from `backend` with valid AWS credentials. Reports and copied databases belong under the ignored
-`.pytest-tmp` directory.
+Run from `backend` with the credential for the selected route. Reports and copied databases belong
+under the ignored `.pytest-tmp` directory.
 
 ```powershell
 $env:UV_CACHE_DIR='.uv-cache'
 uv run python -m app.evals.model_bakeoff `
-  --repeat 3 --workers 10 --challenger-only --openai-reasoning-effort low `
+  --route direct --repeat 3 --workers 10 --challenger-only `
+  --openai-reasoning-effort low `
   --output .pytest-tmp/m20-golden-low-repeat-3.json
 
 uv run python -m app.evals.model_rank_bakeoff `
-  --configuration candidate `
+  --configuration direct-candidate --workers 10 `
   --work-db .pytest-tmp/m20-rank-candidate.db `
   --output .pytest-tmp/m20-rank-candidate.json
 ```
@@ -136,7 +158,7 @@ a quality result.
 - The current application remains on Claude and does not depend on Mantle availability.
 - Each pass stores its reasoning effort beside its model. Effective reasoning is part of cache,
   Rank-fingerprint, and eval-run identity; settings for unsupported models are ignored.
-- A future OpenAI switchover depends on Bedrock Mantle availability, bearer-token authentication,
-  and explicit account access to both models in the configured region.
+- A future production switchover depends on installing the direct OpenAI secret on Fly and probing
+  both models there; it no longer depends on Bedrock Mantle availability.
 - That future model change will invalidate the relevant content-addressed caches and Rank-input
   fingerprint, so its first Screen and Rank will perform fresh work.
