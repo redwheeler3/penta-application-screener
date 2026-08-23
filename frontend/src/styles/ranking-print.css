@@ -1,0 +1,822 @@
+/* --- Ranked shortlist --------------------------------------------------- */
+
+.ranking-view {
+  /* The panel itself has no padding — each child supplies its own horizontal
+     inset (header, workflow bar, app-detail all use this), so the ranked view
+     must too or its rows run edge-to-edge. */
+  padding: 1.25rem;
+}
+
+
+.ranking-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.ranking-header h3 {
+  margin: 0;
+}
+
+/* Let the title/subhead block take the remaining width so the Print button stays on
+   the same line, pinned right (space-between) instead of wrapping to the left. Basis
+   0 (not auto) so the long subhead counts as shrinkable for wrap calc — otherwise its
+   content width fills the row and the button drops below. */
+.ranking-header > div:first-child {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* Sits just above the ranked list — the favourites view filter, placed next to the
+   names it filters rather than up in the header. */
+.ranking-list-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.showing-favourites-only .not-favourite {
+  display: none;
+}
+
+/* The star sits just left of the name; nudge it a hair so its optical centre lines
+   up with the text baseline rather than the tallest glyph. */
+.ranking-name-row .star-button {
+  margin-left: -0.15rem;
+}
+
+.ranking-subhead {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.observability-view {
+  /* Like .ranking-view: .panel has no padding, so the view supplies its own inset. */
+  padding: 1.25rem;
+}
+
+.observability-header {
+  margin-bottom: 1rem;
+}
+
+/* Subtabs: a secondary level below the folder tabs, so they use a quieter
+   underline style (not the green folder-tab treatment) to read as subordinate. */
+.subtabs {
+  display: flex;
+  gap: 1.25rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 1.25rem;
+}
+
+.subtab {
+  padding: 0 0 0.5rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px; /* overlap the container border so the active underline sits on it */
+}
+
+.subtab:hover {
+  color: var(--ink);
+}
+
+.subtab.active {
+  color: var(--penta-green-dark);
+  border-bottom-color: var(--penta-green);
+  font-weight: 600;
+}
+
+/* Cost subtab: cumulative and current-run spend, by pass. */
+.cost-report {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.cost-section {
+  display: flex;
+  flex-direction: column;
+}
+
+/* On the Trends tab the two run tables (Rank, Screen) are stacked cost-sections;
+   space the second off the first so they don't read as one table. */
+.metrics-report .cost-section + .cost-section {
+  margin-top: 1.5rem;
+}
+
+.cost-muted {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.cost-block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.cost-block-total {
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Fixed layout + explicit column widths so every table and group lines up: the two
+   money columns are identical width everywhere (Last runs and Total spend both). */
+.cost-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  margin-top: 0.75rem;
+}
+
+.cost-col-count {
+  width: 6rem;
+}
+
+/* Wider than a plain count: holds the "148.0k → 23.2k" in→out token pair. */
+.cost-col-tokens {
+  width: 9rem;
+}
+
+/* Latency carries an inline bar + a time like "210.5s", so it needs the same room as
+   the cost column (a plain count column truncates it). */
+.cost-col-latency {
+  width: 8rem;
+}
+
+.cost-col-money {
+  width: 8rem;
+}
+
+/* Column header row (the labels above the two money columns). */
+.cost-table thead th {
+  text-align: right;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.cost-table thead th.cost-col-label {
+  text-align: left;
+}
+
+.cost-table td {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Run group header row (Screen / Rank) with its subtotals. */
+.cost-group-head td {
+  border-bottom: 2px solid var(--line);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+  padding-top: 0.75rem;
+}
+
+.cost-group-head td:first-child {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+/* Estimate-vs-actual reconciliation note, inline after the run label. Muted normal
+   weight so it reads as secondary to the run name; amber only when actual > estimate. */
+.cost-recon {
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.cost-recon-over {
+  color: #92400e;
+}
+/* "· triggered by <member>" attribution on a shared run. */
+.cost-triggered-by {
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* Passes indent under their run group. */
+.cost-pass-name {
+  padding-left: 1.5rem !important;
+  color: var(--muted);
+}
+
+/* Trends: a crude inline bar before a numeric cell, so a column reads as a
+   rough sparkline down the rows. Decorative scale only, not a precise axis. */
+.metric-bar {
+  display: inline-block;
+  width: 34px;
+  height: 5px;
+  margin-right: 6px;
+  vertical-align: middle;
+  background: var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.metric-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--penta-green);
+}
+
+/* A nonzero failure count is the one number that should catch the eye. */
+.metric-failed {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.cost-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+/* The spent column (last) reads as the hard number; saved (its left) stays muted. */
+.cost-group-head .cost-num {
+  color: var(--ink);
+}
+
+/* "Why it differentiates" line under a criterion's description on the Ranking tab. */
+.dimension-why {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.dimension-why-label {
+  font-weight: 600;
+}
+
+/* The scored poles (High / Low) under a criterion's definition on the Ranking tab —
+   what a 1.0 vs. 0.0 score means, so the axis's direction is explicit. Matches the
+   "Why it differentiates" line: inline bold label, no indent or colour. */
+.dimension-pole {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.dimension-pole-label {
+  font-weight: 600;
+}
+
+.observability-header h3 {
+  margin: 0;
+}
+
+.stepper-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.stepper-button:hover {
+  border-color: var(--penta-green);
+}
+
+.ranking-list {
+  list-style: none;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.ranking-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.ranking-row:hover {
+  border-color: var(--penta-green);
+}
+
+.ranking-rank {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--ink);
+  min-width: 2.5rem;
+}
+
+.ranking-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.ranking-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.ranking-name {
+  font-weight: 600;
+}
+
+.fit-band {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.band-strong-fit {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.band-promising {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.band-mixed {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.band-limited {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+/* Each top contribution reads inline — the chip (dimension + confidence) acts as
+   a label, then its rationale flows on the same line: "Something: blah blah." The
+   chip is a non-shrinking inline element so the sentence wraps around it. */
+.ranking-contributions {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+/* Each contribution reads as a definition line: a bold dimension label (with its
+   confidence in parentheses) leads, then a colon and the rationale sentence. No
+   pill border — the name is the subject of the sentence, not a standalone tag.
+   The label is colored by confidence (matching the high/med/low scheme), so the
+   reader can scan strength down the column. Hanging indent so wrapped lines
+   align under the label rather than the rank gutter. */
+.ranking-contribution {
+  margin: 0;
+  font-size: 0.83rem;
+  line-height: 1.5;
+  color: var(--ink);
+  padding-left: 1rem;
+  text-indent: -1rem;
+}
+
+.ranking-contribution-label {
+  font-weight: 600;
+}
+
+.ranking-contribution-label.score-weak {
+  color: #b91c1c;
+}
+
+.ranking-contribution-label.score-neutral {
+  color: #075985;
+}
+
+.ranking-contribution-label.score-strong {
+  color: #166534;
+}
+
+/* --- Tier-list maker ---------------------------------------------------- */
+
+.tier-list {
+  margin: 0 0 1.25rem;
+  padding: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--page);
+}
+
+.tier-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+
+.tier-list-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+/* The two "+ Add" actions (criterion / tier) grouped at the right of the head. */
+.tier-list-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.tier-add {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.78rem;
+}
+
+/* "Add criterion" while its composer is open: hold the green-tint look so the button
+   reads as active/toggled-on (clicking again closes the composer). */
+.tier-add[aria-expanded="true"] {
+  border-color: var(--penta-green);
+  background: var(--penta-green-soft);
+  color: var(--penta-green-dark);
+}
+
+/* Each tier is a row: a label/controls header on the left of a chip area. Higher
+   rows weigh more; the gradient hints at descending importance. */
+.tier-row {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: 0.6rem;
+  align-items: start;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.tier-row + .tier-row {
+  margin-top: 0.4rem;
+}
+
+/* Drop-target highlight while dragging a chip over a row. Forces a solid border so
+   the highlight looks identical over the Ignore zone (which is dashed by default). */
+.tier-row-over {
+  border-color: var(--penta-green);
+  border-style: solid;
+  box-shadow: 0 0 0 2px var(--penta-green-soft);
+}
+
+.tier-row-ignore {
+  background: #f9fafb;
+  border-style: dashed;
+}
+
+.tier-row-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.tier-label-input {
+  width: 100%;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.tier-label-ignore {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0.25rem 0.4rem;
+}
+
+.tier-controls {
+  display: flex;
+  gap: 0.25rem;
+}
+
+/* The chip area: a min-height drop zone so an empty tier is still a target. */
+.tier-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-height: 2.2rem;
+  padding: 0.3rem;
+  border-radius: 6px;
+}
+
+.tier-empty {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-style: italic;
+  align-self: center;
+}
+
+.tier-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.8rem;
+  font-weight: 500;
+  user-select: none;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.05);
+}
+
+/* The whole chip is the drag handle (and a click opens its description), so it
+   shows the grab cursor across its full area. */
+.tier-chip-draggable {
+  cursor: grab;
+  /* Let dnd-kit receive touch drags while keeping the rest of the page scrollable. */
+  touch-action: none;
+}
+
+.tier-chip-draggable:active {
+  cursor: grabbing;
+}
+
+.tier-chip-draggable:hover {
+  border-color: var(--penta-green);
+}
+
+.tier-chip-label {
+  padding: 0.05rem 0.1rem;
+}
+
+/* The criterion whose description is currently open in the side panel. */
+.tier-chip-open {
+  border-color: var(--penta-green);
+  box-shadow: 0 0 0 1px var(--penta-green);
+}
+
+/* The floating DragOverlay copy: lifted off the page and showing the grabbing
+   cursor while it tracks the pointer across tiers. */
+.tier-chip-overlay {
+  cursor: grabbing;
+  box-shadow: 0 6px 16px rgba(17, 24, 39, 0.18);
+  border-color: var(--penta-green);
+}
+
+.tier-chip-grip {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+/* Chip tints. A chip picks up the tint of its most-urgent badge (see chipTintClass):
+   the amber "new" / blue "revived" triage alarm wins over the green "requested"
+   provenance tint. Each pairs a soft fill with a matching border. */
+.tier-chip-new {
+  /* Newly-discovered, awaiting triage — amber "needs attention", loud to the human
+     though silent to the math (weight 0). */
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.tier-chip-revived {
+  /* Seen in an earlier run, dropped, now back — a softer heads-up than New (the
+     committee saw it before), so the calm blue of the score-band "moderate". */
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.tier-chip-requested {
+  /* A member proposed this axis THIS run — violet provenance, matching the "Add
+     criterion" composer where proposals are entered (#ddd6fe / #f5f3ff / #7c3aed). Only
+     tints when no triage alarm outranks it. */
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+}
+
+/* The three badges share ONE pill shape (base) and differ only by colour. Fixed height
+   + line-height:1 so the box is identical whether or not the chip label wraps; aligned
+   to the chip's first line. */
+.tier-chip-new-badge,
+.tier-chip-revived-badge,
+.tier-chip-requested-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: 0.1rem;
+  padding: 0 0.2rem 0 0.4rem;
+  height: 16px;
+  align-self: flex-start;
+  margin-top: 1px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.tier-chip-new-badge {
+  background: #f59e0b;
+}
+
+.tier-chip-revived-badge {
+  background: #3b82f6;
+}
+
+.tier-chip-requested-badge {
+  /* Violet solid pill — matches the composer accent (#7c3aed) where proposals originate. */
+  background: #7c3aed;
+}
+
+/* The ✕ inside any badge: acknowledge/dismiss this chip's flag in place (keep its
+   placement). One class for all three kinds — a solid white circle so the ✕ stays
+   legible at small size against any badge colour. Its own button so a click doesn't
+   start a drag (pointerdown is stopped in the handler). */
+.tier-chip-badge-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  /* Neutral-dark ✕ reads on white against every badge colour (amber/blue/green). */
+  color: #374151;
+  cursor: pointer;
+}
+
+.tier-chip-badge-dismiss:hover {
+  color: #111827;
+}
+
+/* Tier-agnostic "clear flags" control: lives inline in the tier-list head, before the
+   Add actions. Deliberately QUIET — clearing flags is a minor dismissal, so it's a
+   muted borderless text button, lighter than the neutral Add buttons beside it (never
+   an amber alert, which would overweight a throwaway action). Only shown when flags
+   exist; clears new + revived across ALL tiers. */
+.tier-clear-flags {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tier-clear-flags:hover {
+  background: rgba(17, 24, 39, 0.05);
+  color: var(--ink);
+}
+
+/* Candidate-detail action row: Back on the left, Print pushed to the right. */
+.app-detail-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+/* Print-only text summary of the importance tiers — hidden on screen (the
+   interactive tier-list serves there), shown only when printing. */
+.tier-summary-print {
+  display: none;
+}
+
+.tier-summary-print h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.tier-summary-print dl {
+  margin: 0 0 1rem;
+}
+
+.tier-summary-print .tier-summary-row {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.15rem 0;
+  font-size: 0.85rem;
+  break-inside: avoid;
+}
+
+.tier-summary-print dt {
+  flex: 0 0 6rem;
+  font-weight: 700;
+}
+
+.tier-summary-print dd {
+  margin: 0;
+}
+
+/* --- Print: turn either open view into a clean, shareable sheet -----------
+   The app is the live tool; print is a point-in-time artifact to hand round.
+   We hide interactive chrome (nav, workflow, the drag tier-list, buttons, raw
+   debug panels) and let the active view — the ranked list or the candidate
+   detail — flow onto the page. No separate report to build or keep in sync. */
+@media print {
+  /* Anything explicitly marked transient (Print buttons, the detail action row). */
+  .no-print {
+    display: none !important;
+  }
+
+  /* App chrome that isn't part of the printed substance. */
+  .topnav,
+  .page-heading,
+  .workflow-bar,
+  .run-confirm,
+  .run-progress,
+  .criteria-head-title,
+  .criteria-detail,
+  .tier-list,
+  .ranking-subhead,
+  .raw-row-section,
+  .toast-stack {
+    display: none !important;
+  }
+
+  /* The text tier summary replaces the hidden interactive tier-list in print. */
+  .tier-summary-print {
+    display: block !important;
+  }
+
+  /* Let the page use the full sheet rather than the centered app column, and
+     drop on-screen shadows/wash that waste ink. */
+  :root {
+    background: #fff;
+  }
+  .app-shell {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  .ranking-view {
+    padding: 0;
+  }
+
+  /* Disabled controls normally print in pale gray. The pressed segment is the
+     applicant's recorded decision, so give it an ink-safe selected treatment. */
+  .status-panel .segment {
+    color: #111 !important;
+    opacity: 1 !important;
+  }
+  .status-panel .segment[aria-pressed="true"] {
+    outline: 2px solid #111;
+    outline-offset: -2px;
+    font-weight: 700;
+  }
+  .status-panel .segment[aria-pressed="true"]::after {
+    content: " ✓";
+  }
+  .private-note-panel textarea {
+    display: none;
+  }
+  .private-note-print {
+    display: block;
+    min-height: 2.8rem;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+  }
+
+  /* Keep each candidate row intact across a page break — never split a
+     candidate's rationale from their name. */
+  .ranking-list > li,
+  .dimension-score {
+    break-inside: avoid;
+  }
+}
+
