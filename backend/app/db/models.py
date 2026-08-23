@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
+    CheckConstraint,
+    Date,
     DateTime,
     Enum,
     Float,
@@ -38,6 +40,11 @@ class StatusSource(StrEnum):
     RULES = "rules"  # deterministic filters set it ineligible (high trust)
     AI = "ai"  # AI screening pass set it ineligible (low trust — needs review)
     HUMAN = "human"  # a person set the status, either direction
+
+
+class OpeningStatus(StrEnum):
+    OPEN = "open"
+    CLOSED = "closed"
 
 
 def enum_values(enum_class: type[StrEnum]) -> list[str]:
@@ -206,11 +213,93 @@ class Application(TimestampMixin, Base):
     raw_row: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     raw_row_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     normalized: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    # Private applicant edits. The submitted projection above remains unchanged until an
+    # explicit publication replaces it, so committee reads and AI caches cannot see drafts.
+    working_answers: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    working_content_hash: Mapped[str | None] = mapped_column(String(64))
+    working_saved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Null means a never-submitted draft. Existing Google-sourced rows are backfilled as
+    # submitted by the M21 migration; built-in drafts start null.
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    declaration_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    retention_due_on: Mapped[date | None] = mapped_column(Date)
     # NB: no eligibility columns. Eligibility is a pure derivation computed on read per member
     # (M15 1c–1d): the deterministic hard-filter reasons come from ``evaluate_hard_filters`` over
     # ``normalized`` + the member's rules (per-member as of 1d); the AI half from the cached
     # screening flags; a member's human override from ``MemberEligibility``. Import only syncs
     # + normalizes — it stores no verdict. See ``services/eligibility`` + ``services/rules``.
+
+
+class Opening(TimestampMixin, Base):
+    """One unit offering applicants may affirmatively enter.
+
+    Location is intentionally absent: the public Penta site describes the neighbourhood,
+    while an opening carries only details specific to the available unit.
+    """
+
+    __tablename__ = "openings"
+    __table_args__ = (
+        CheckConstraint("unit_size_bedrooms BETWEEN 1 AND 3", name="ck_opening_unit_size"),
+        CheckConstraint("housing_charge_cents >= 0", name="ck_opening_housing_charge"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    unit_size_bedrooms: Mapped[int] = mapped_column(Integer, nullable=False)
+    housing_charge_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    move_in_date: Mapped[date] = mapped_column(Date, nullable=False)
+    application_deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[OpeningStatus] = mapped_column(
+        Enum(OpeningStatus, values_callable=enum_values),
+        default=OpeningStatus.CLOSED,
+        nullable=False,
+        index=True,
+    )
+
+
+class ApplicationParticipation(TimestampMixin, Base):
+    """An applicant's explicit entry into one opening, separate from their durable answers."""
+
+    __tablename__ = "application_participations"
+    __table_args__ = (UniqueConstraint("application_id", "opening_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id"), index=True, nullable=False
+    )
+    opening_id: Mapped[int] = mapped_column(ForeignKey("openings.id"), index=True, nullable=False)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    declaration_accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    retracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    application: Mapped[Application] = relationship()
+    opening: Mapped[Opening] = relationship()
+
+
+class ApplicationCycleSnapshot(Base):
+    """The final submitted application a closed opening's committee actually considered."""
+
+    __tablename__ = "application_cycle_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    participation_id: Mapped[int] = mapped_column(
+        ForeignKey("application_participations.id"), unique=True, index=True, nullable=False
+    )
+    primary_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    applicant_name: Mapped[str | None] = mapped_column(String(255))
+    co_applicant_name: Mapped[str | None] = mapped_column(String(255))
+    answers: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    normalized: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    declaration_accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    frozen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    participation: Mapped[ApplicationParticipation] = relationship()
 
 
 class MemberEligibility(TimestampMixin, Base):
