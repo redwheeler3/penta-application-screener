@@ -155,13 +155,18 @@ def estimate_cost(
     depends on prompt shape, not which dimension. Cache hits still key on the exact
     ``kind``. Defaults to exact-kind matching.
     """
-    uncached = [
-        app
+    keys = {
+        app.id: cache_key(
+            application=app,
+            kind=kind,
+            model_id=model_id,
+            prompt_version=prompt_version,
+            reasoning_effort=reasoning_effort,
+        )
         for app in applications
-        if _cached_result(
-            db, app, kind, model_id, prompt_version, reasoning_effort
-        ) is None
-    ]
+    }
+    present = present_cache_keys(db, set(keys.values()))
+    uncached_count = sum(1 for key in keys.values() if key not in present)
     avg_input_tokens, avg_output_tokens = observed_avg_tokens(
         db, kind=kind, model_id=model_id, prompt_version=prompt_version,
         kind_prefix=usage_kind_prefix,
@@ -172,10 +177,23 @@ def estimate_cost(
     )
     return {
         "total": len(applications),
-        "to_analyze": len(uncached),
-        "cached": len(applications) - len(uncached),
-        "estimated_usd": round(per_call * len(uncached), 4),
+        "to_analyze": uncached_count,
+        "cached": len(applications) - uncached_count,
+        "estimated_usd": round(per_call * uncached_count, 4),
     }
+
+
+def present_cache_keys(db: Session, keys: set[str]) -> set[str]:
+    """Return the requested cache keys that exist, using one indexed query."""
+    if not keys:
+        return set()
+    return set(
+        db.scalars(
+            select(ApplicationAIResult.cache_key).where(
+                ApplicationAIResult.cache_key.in_(keys)
+            )
+        )
+    )
 
 
 def observed_avg_tokens(

@@ -1,6 +1,6 @@
 import pytest
 from httpx2 import ASGITransport, AsyncClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -176,6 +176,30 @@ def test_rank_fingerprint_tracks_only_effective_reasoning() -> None:
     low = rank_inputs_fingerprint(db, settings)
     settings.ai.discovery_reasoning_effort = "high"
     assert rank_inputs_fingerprint(db, settings) != low
+
+
+def test_rank_fingerprint_can_reuse_an_already_loaded_pool() -> None:
+    from app.schemas.settings import AppSettings
+    from app.services.analysis_freshness import rank_inputs_fingerprint
+
+    _app, db = _logged_in_app()
+    db.add_all([
+        Application(
+            primary_email="a@x.com", applicant_name="A", raw_row={},
+            raw_row_hash="h1", normalized={},
+        ),
+        Application(
+            primary_email="b@x.com", applicant_name="B", raw_row={},
+            raw_row_hash="h2", normalized={},
+        ),
+    ])
+    db.commit()
+    settings = AppSettings()
+    expected = rank_inputs_fingerprint(db, settings)
+    applications = list(db.scalars(select(Application).order_by(Application.id.desc())))
+
+    # Caller-provided order is irrelevant, and avoids recomputing eligibility.
+    assert rank_inputs_fingerprint(db, settings, applications=applications) == expected
 
 
 def test_rank_fingerprint_ignores_provider_but_tracks_the_actual_model() -> None:

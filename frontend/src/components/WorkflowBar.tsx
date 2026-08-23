@@ -143,13 +143,16 @@ export function WorkflowBar(props: {
   onCancelImport: () => void;
   screeningRunning: boolean;
   screeningEstimate: ScreeningEstimateResponse | null;
+  screeningEstimateLoading: boolean;
   screeningProgress: { processed: number; total: number } | null;
   onRequestScreening: () => void;
   onRunScreening: () => void;
   onCancelScreening: () => void;
   rankRunning: boolean;
   rankEstimate: RankEstimateResponse | null;
+  rankEstimateLoading: boolean;
   scoreCurrentEstimate: ScoreCurrentEstimateResponse | null;
+  scoreCurrentEstimateLoading: boolean;
   hasCurrentCriteria: boolean;
   rankProgress: RankProgress | null;
   // The model's live reasoning, streamed and shown as "thinking" for the opaque
@@ -251,6 +254,7 @@ export function WorkflowBar(props: {
             disabled={
               !workflow.synced ||
               props.screeningRunning ||
+              props.screeningEstimateLoading ||
               screeningEstimate !== null ||
               noApplicantsInScope
             }
@@ -281,6 +285,7 @@ export function WorkflowBar(props: {
             disabled={
               !workflow.screened ||
               props.rankRunning ||
+              props.rankEstimateLoading ||
               rankEstimate !== null ||
               noApplicantsInScope
             }
@@ -349,6 +354,19 @@ export function WorkflowBar(props: {
         </div>
       ) : null}
 
+      {props.screeningEstimateLoading ? (
+        <div className="run-confirm" aria-live="polite">
+          <div className="run-confirm-body">
+            <strong>Estimating screening cost…</strong>
+          </div>
+          <div className="run-confirm-actions">
+            <button className="secondary-button" type="button" onClick={props.onCancelScreening}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {screeningEstimate ? (
         <div className="run-confirm">
           <div className="run-confirm-body">
@@ -410,6 +428,19 @@ export function WorkflowBar(props: {
         </div>
       ) : null}
 
+      {props.rankEstimateLoading ? (
+        <div className="run-confirm" aria-live="polite">
+          <div className="run-confirm-body">
+            <strong>Estimating ranking cost…</strong>
+          </div>
+          <div className="run-confirm-actions">
+            <button className="secondary-button" type="button" onClick={props.onCancelRank}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {rankEstimate ? (
         <div className="run-confirm">
           <div className="run-confirm-body">
@@ -436,6 +467,9 @@ export function WorkflowBar(props: {
                 . A proposal stays inactive until a discovery run grounds it in the pool — run{" "}
                 <strong>Discover new criteria</strong> below to fold it in.
               </p>
+            ) : null}
+            {props.scoreCurrentEstimateLoading ? (
+              <p>Checking current score coverage…</p>
             ) : null}
             {scoreCurrentEstimate && hasMissingScores ? (
               <>
@@ -494,7 +528,7 @@ export function WorkflowBar(props: {
               onClick={() => props.onRunRank("discover")}
               disabled={props.rankRunning || !rankEstimate.withinCap}
             >
-              {props.rankRunning ? "Running…" : scoreCurrentEstimate ? "Discover new criteria" : "Confirm & run"}
+              {props.rankRunning ? "Running…" : hasCurrentCriteria ? "Discover new criteria" : "Confirm & run"}
             </button>
             <button className="secondary-button" type="button" onClick={props.onCancelRank}>
               Cancel

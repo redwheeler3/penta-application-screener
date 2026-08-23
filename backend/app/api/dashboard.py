@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 # Scope + cache-key helpers reused from the passes themselves, so "coverage" counts
 # exactly what a re-run would process (never a parallel definition that could drift).
-from app.ai.analysis import cache_key
+from app.ai.analysis import cache_key, present_cache_keys
 from app.ai.dimension_scoring import (
     PROMPT_VERSION as SCORING_PROMPT_VERSION,
 )
@@ -122,22 +122,6 @@ def _import_is_current(db: Session, settings) -> bool:
     return latest.settings_fingerprint == settings_fingerprint(settings)
 
 
-def _present_cache_keys(db: Session, keys: set[str]) -> set[str]:
-    """Which of ``keys`` exist in the AI-result cache — one ``IN`` query, not one probe per
-    key. Coverage counts cache hits over the union pool × dimensions, which was an N+1 loop
-    (e.g. ~40 candidates × ~33 dimensions = 1300+ point selects, ~90ms). Computing the
-    expected keys and asking for the present set once collapses that to a single round-trip."""
-    if not keys:
-        return set()
-    return set(
-        db.scalars(
-            select(ApplicationAIResult.cache_key).where(
-                ApplicationAIResult.cache_key.in_(keys)
-            )
-        )
-    )
-
-
 def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
     # Coverage is a cache-hit count, so each pass must be probed under the model it
     # actually runs on — a cache row's key includes the model. These are separate
@@ -159,7 +143,7 @@ def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
         )
         for app in screening_apps
     }
-    present = _present_cache_keys(db, set(screening_keys.values()))
+    present = present_cache_keys(db, set(screening_keys.values()))
     result = {
         "screened": CoverageEntry(
             cached=sum(1 for key in screening_keys.values() if key in present),
@@ -189,7 +173,7 @@ def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
             ]
             for app in applications
         }
-        present = _present_cache_keys(
+        present = present_cache_keys(
             db, {key for keys in keys_by_app.values() for key in keys}
         )
         fully_scored = sum(

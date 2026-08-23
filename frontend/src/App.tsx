@@ -141,10 +141,13 @@ export function App() {
 
   const {
     screeningEstimate,
+    screeningEstimateLoading,
     screeningRunning,
     screeningProgress,
     rankEstimate,
+    rankEstimateLoading,
     scoreCurrentEstimate,
+    scoreCurrentEstimateLoading,
     rankRunning,
     rankProgress,
     criteriaThinking,
@@ -453,13 +456,16 @@ export function App() {
             onCancelImport={() => setImportConfirm(false)}
             screeningRunning={screeningRunning}
             screeningEstimate={screeningEstimate}
+            screeningEstimateLoading={screeningEstimateLoading}
             screeningProgress={screeningProgress}
             onRequestScreening={requestScreeningEstimate}
             onRunScreening={runScreening}
             onCancelScreening={cancelScreeningEstimate}
             rankRunning={rankRunning}
             rankEstimate={rankEstimate}
+            rankEstimateLoading={rankEstimateLoading}
             scoreCurrentEstimate={scoreCurrentEstimate}
+            scoreCurrentEstimateLoading={scoreCurrentEstimateLoading}
             hasCurrentCriteria={rankingRun !== null}
             rankProgress={rankProgress}
             criteriaThinking={criteriaThinking}

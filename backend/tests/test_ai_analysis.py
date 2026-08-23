@@ -1,5 +1,5 @@
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import (
@@ -265,6 +265,45 @@ def test_estimate_excludes_cached_applications() -> None:
     assert est["total"] == 2
     assert est["cached"] == 1
     assert est["to_analyze"] == 1
+
+
+def test_estimate_reads_cache_coverage_in_one_query() -> None:
+    db = make_session()
+    applications = [
+        make_application(db, email=f"{index}@x.com", raw_hash=f"h{index}")
+        for index in range(20)
+    ]
+    provider = MockProvider()
+    provider.queue(clean_report(), model_id=MODEL)
+    seed_cached(db, provider, applications[0])
+
+    statements: list[str] = []
+
+    def capture(_connection, _cursor, statement, _parameters, _context, _many) -> None:
+        statements.append(statement)
+
+    assert db.bind is not None
+    event.listen(db.bind, "before_cursor_execute", capture)
+    try:
+        estimate_cost(
+            db,
+            applications=applications,
+            kind=KIND,
+            model_id=MODEL,
+            prompt_version=VERSION,
+            fallback_input_tokens=600,
+            fallback_output_tokens=120,
+        )
+    finally:
+        event.remove(db.bind, "before_cursor_execute", capture)
+
+    cache_reads = [
+        statement
+        for statement in statements
+        if "from application_ai_results" in statement.lower()
+    ]
+    # One coverage query plus one observed-usage query, independent of applicant count.
+    assert len(cache_reads) == 2
 
 
 def test_estimate_uses_fallback_with_no_history() -> None:

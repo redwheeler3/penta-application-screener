@@ -301,7 +301,9 @@ def rank_estimate(
         within_cap=result["estimated_usd"] <= cap,
         # When the pool is unchanged, the ranking is already current; the UI uses
         # this to say "up to date" instead of offering to spend.
-        ranking_current=ranking_is_current(db, get_current_analysis(db), settings),
+        ranking_current=ranking_is_current(
+            db, get_current_analysis(db), settings, applications=pool
+        ),
     )
 
 

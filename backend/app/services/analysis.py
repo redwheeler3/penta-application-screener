@@ -28,6 +28,7 @@ from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.db.models import (
     Analysis,
     AnalysisAudit,
+    Application,
     DimensionAlias,
     MemberRanking,
     SyncRun,
@@ -402,7 +403,13 @@ def all_known_dimensions(db: Session) -> PoolDimensionReport | None:
     return PoolDimensionReport(dimensions=list(minted_by_key.values()))
 
 
-def ranking_is_current(db: Session, analysis: Analysis | None, settings: AppSettings) -> bool:
+def ranking_is_current(
+    db: Session,
+    analysis: Analysis | None,
+    settings: AppSettings,
+    *,
+    applications: list[Application] | None = None,
+) -> bool:
     """True when ``analysis``'s stored rank-inputs fingerprint matches the inputs now —
     i.e. the pool, every rank-chain prompt, and both models are unchanged, so a
     re-rank would be a no-op. Drives the "Rank out of date" badge.
@@ -414,7 +421,7 @@ def ranking_is_current(db: Session, analysis: Analysis | None, settings: AppSett
     stored = analysis.rank_inputs_fingerprint
     if not stored:
         return False
-    return stored == rank_inputs_fingerprint(db, settings)
+    return stored == rank_inputs_fingerprint(db, settings, applications=applications)
 
 
 def mark_ranking_current(db: Session, analysis: Analysis, settings: AppSettings) -> None:

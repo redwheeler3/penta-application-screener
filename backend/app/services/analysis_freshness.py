@@ -13,18 +13,26 @@ from app.schemas.settings import AppSettings, effective_reasoning_effort
 from app.services.eligibility import union_eligible_application_ids
 
 
-def pool_fingerprint(db: Session) -> str:
+def pool_fingerprint(
+    db: Session, *, applications: list[Application] | None = None
+) -> str:
     """Hash the source rows in the union-eligible applicant pool."""
-    eligible_ids = union_eligible_application_ids(db)
-    hashes = sorted(
-        db.scalars(
+    if applications is None:
+        eligible_ids = union_eligible_application_ids(db)
+        hashes = db.scalars(
             select(Application.raw_row_hash).where(Application.id.in_(eligible_ids))
         ).all()
-    )
-    return hashlib.sha256("\n".join(hashes).encode("utf-8")).hexdigest()[:16]
+    else:
+        hashes = [application.raw_row_hash for application in applications]
+    return hashlib.sha256("\n".join(sorted(hashes)).encode("utf-8")).hexdigest()[:16]
 
 
-def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
+def rank_inputs_fingerprint(
+    db: Session,
+    settings: AppSettings,
+    *,
+    applications: list[Application] | None = None,
+) -> str:
     """Hash the pool, prompts, models, and active reasoning levels used by Rank."""
     from app.ai.dimension_consolidate import PROMPT_VERSION as CONSOLIDATE_VERSION
     from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSE_VERSION
@@ -49,7 +57,7 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
             settings.ai.consolidate_reasoning_effort,
         ),
     )
-    parts = [pool_fingerprint(db)]
+    parts = [pool_fingerprint(db, applications=applications)]
     for pass_name, prompt_version, model_id, configured_effort in passes:
         parts.extend((f"{pass_name}:{prompt_version}", f"{pass_name}_model:{model_identity(model_id)}"))
         effort = effective_reasoning_effort(model_id, configured_effort)
