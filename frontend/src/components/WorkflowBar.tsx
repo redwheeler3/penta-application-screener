@@ -152,7 +152,6 @@ export function WorkflowBar(props: {
   rankEstimate: RankEstimateResponse | null;
   rankEstimateLoading: boolean;
   scoreCurrentEstimate: ScoreCurrentEstimateResponse | null;
-  scoreCurrentEstimateLoading: boolean;
   hasCurrentCriteria: boolean;
   rankProgress: RankProgress | null;
   // The model's live reasoning, streamed and shown as "thinking" for the opaque
@@ -467,9 +466,6 @@ export function WorkflowBar(props: {
                 . A proposal stays inactive until a discovery run grounds it in the pool — run{" "}
                 <strong>Discover new criteria</strong> below to fold it in.
               </p>
-            ) : null}
-            {props.scoreCurrentEstimateLoading ? (
-              <p>Checking current score coverage…</p>
             ) : null}
             {scoreCurrentEstimate && hasMissingScores ? (
               <>

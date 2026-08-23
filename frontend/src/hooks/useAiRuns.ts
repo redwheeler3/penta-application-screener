@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import * as api from "../api";
 import { money, readProblem } from "../format";
@@ -45,23 +45,32 @@ export function useAiRuns(options: {
   const [rankEstimateLoading, setRankEstimateLoading] = useState(false);
   const [scoreCurrentEstimate, setScoreCurrentEstimate] =
     useState<ScoreCurrentEstimateResponse | null>(null);
-  const [scoreCurrentEstimateLoading, setScoreCurrentEstimateLoading] = useState(false);
   const [rankRunning, setRankRunning] = useState(false);
   const [rankProgress, setRankProgress] = useState<RankProgress | null>(null);
   const [criteriaThinking, setCriteriaThinking] = useState("");
   const screeningEstimateRequest = useRef(0);
   const rankEstimateRequest = useRef(0);
+  const screeningEstimateAbort = useRef<AbortController | null>(null);
+  const rankEstimateAbort = useRef<AbortController | null>(null);
+
+  useEffect(() => () => {
+    screeningEstimateAbort.current?.abort();
+    rankEstimateAbort.current?.abort();
+  }, []);
 
   function cancelScreeningEstimate() {
+    screeningEstimateAbort.current?.abort();
+    screeningEstimateAbort.current = null;
     screeningEstimateRequest.current += 1;
     setScreeningEstimateLoading(false);
     setScreeningEstimate(null);
   }
 
   function cancelRankEstimate() {
+    rankEstimateAbort.current?.abort();
+    rankEstimateAbort.current = null;
     rankEstimateRequest.current += 1;
     setRankEstimateLoading(false);
-    setScoreCurrentEstimateLoading(false);
     setRankEstimate(null);
     setScoreCurrentEstimate(null);
   }
@@ -75,23 +84,27 @@ export function useAiRuns(options: {
     cancelRankEstimate();
     options.closeImportConfirm();
     const requestId = ++screeningEstimateRequest.current;
+    const controller = new AbortController();
+    screeningEstimateAbort.current = controller;
     setScreeningEstimate(null);
     setScreeningEstimateLoading(true);
     try {
-      const estimate = await api.fetchScreeningEstimate();
+      const estimate = await api.fetchScreeningEstimate(controller.signal);
       if (requestId === screeningEstimateRequest.current) {
         setScreeningEstimate(estimate);
       }
     } catch {
-      if (requestId === screeningEstimateRequest.current) {
+      if (!controller.signal.aborted && requestId === screeningEstimateRequest.current) {
         options.notifications.error("Could not load the AI cost estimate for screening.");
       }
     } finally {
+      if (screeningEstimateAbort.current === controller) {
+        screeningEstimateAbort.current = null;
+      }
       if (requestId === screeningEstimateRequest.current) {
         setScreeningEstimateLoading(false);
       }
     }
-    options.refreshDashboard();
   }
 
   async function runScreening() {
@@ -136,44 +149,35 @@ export function useAiRuns(options: {
     cancelScreeningEstimate();
     options.closeImportConfirm();
     const requestId = ++rankEstimateRequest.current;
+    const controller = new AbortController();
+    rankEstimateAbort.current = controller;
     setRankEstimate(null);
     setScoreCurrentEstimate(null);
     setRankEstimateLoading(true);
-    setScoreCurrentEstimateLoading(false);
 
-    let estimate: RankEstimateResponse;
     try {
-      // Give the confirmation-gating estimate uncontested priority. The exact
-      // score-current grid is optional enrichment and starts after the card opens.
-      estimate = await api.fetchRankEstimate();
-    } catch {
+      const [estimate, scoreEstimate] = await Promise.all([
+        api.fetchRankEstimate(controller.signal),
+        options.ranking.currentRun
+          ? api.fetchScoreCurrentEstimate(controller.signal)
+          : Promise.resolve(null),
+      ]);
       if (requestId === rankEstimateRequest.current) {
-        setRankEstimateLoading(false);
+        setRankEstimate(estimate);
+        setScoreCurrentEstimate(scoreEstimate);
+      }
+    } catch {
+      if (!controller.signal.aborted && requestId === rankEstimateRequest.current) {
         options.notifications.error("Could not load the AI cost estimate for ranking.");
       }
-      options.refreshDashboard();
-      return;
+    } finally {
+      if (rankEstimateAbort.current === controller) {
+        rankEstimateAbort.current = null;
+      }
+      if (requestId === rankEstimateRequest.current) {
+        setRankEstimateLoading(false);
+      }
     }
-    if (requestId !== rankEstimateRequest.current) return;
-
-    setRankEstimate(estimate);
-    setRankEstimateLoading(false);
-    if (options.ranking.currentRun) {
-      setScoreCurrentEstimateLoading(true);
-      void api.fetchScoreCurrentEstimate()
-        .then((scoreEstimate) => {
-          if (requestId === rankEstimateRequest.current) {
-            setScoreCurrentEstimate(scoreEstimate);
-          }
-        })
-        .catch(() => undefined)
-        .finally(() => {
-          if (requestId === rankEstimateRequest.current) {
-            setScoreCurrentEstimateLoading(false);
-          }
-        });
-    }
-    options.refreshDashboard();
   }
 
   async function runRank(mode: "discover" | "score-current") {
@@ -254,7 +258,6 @@ export function useAiRuns(options: {
     rankEstimate,
     rankEstimateLoading,
     scoreCurrentEstimate,
-    scoreCurrentEstimateLoading,
     rankRunning,
     rankProgress,
     criteriaThinking,

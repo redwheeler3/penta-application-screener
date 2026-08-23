@@ -147,7 +147,6 @@ export function App() {
     rankEstimate,
     rankEstimateLoading,
     scoreCurrentEstimate,
-    scoreCurrentEstimateLoading,
     rankRunning,
     rankProgress,
     criteriaThinking,
@@ -465,7 +464,6 @@ export function App() {
             rankEstimate={rankEstimate}
             rankEstimateLoading={rankEstimateLoading}
             scoreCurrentEstimate={scoreCurrentEstimate}
-            scoreCurrentEstimateLoading={scoreCurrentEstimateLoading}
             hasCurrentCriteria={rankingRun !== null}
             rankProgress={rankProgress}
             criteriaThinking={criteriaThinking}

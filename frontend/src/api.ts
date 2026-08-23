@@ -49,10 +49,20 @@ const SYNC_RETRY_DELAY_MS = 500;
 
 async function request(path: string, init: RequestInit = {}, timeoutMs = ACTION_REQUEST_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
+  const callerSignal = init.signal;
+  const abortForCaller = () => controller.abort();
+  if (callerSignal?.aborted) {
+    controller.abort();
+  } else {
+    callerSignal?.addEventListener("abort", abortForCaller, { once: true });
+  }
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url(path), { ...init, credentials: "include", signal: controller.signal });
   } catch (error) {
+    // A caller-initiated abort is control flow, not a failed request. Let that caller
+    // suppress its own stale result while preserving the timeout response below.
+    if (callerSignal?.aborted) throw error;
     // Callers already turn non-OK Responses into inline errors or toasts. Represent an aborted
     // or dropped request the same way so a timed-out mutation clears its busy state instead of
     // escaping its handler as an unhandled rejection.
@@ -65,13 +75,14 @@ async function request(path: string, init: RequestInit = {}, timeoutMs = ACTION_
     });
   } finally {
     window.clearTimeout(timeout);
+    callerSignal?.removeEventListener("abort", abortForCaller);
   }
 }
 
-async function getJson<T>(path: string): Promise<T> {
+async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   // A browser fetch has no deadline by default. Abort a request that stalls so callers such as
   // the initial settings load can use their existing retry/error path instead of waiting forever.
-  const response = await request(path, {}, GET_TIMEOUT_MS);
+  const response = await request(path, { signal }, GET_TIMEOUT_MS);
   if (!response.ok) {
     throw new Error(`GET ${path} failed (HTTP ${response.status})`);
   }
@@ -277,8 +288,8 @@ export const fetchLastRuns = () => getJson<LastRunsReport>("/observability/last-
 // Operational trends across all runs: cost, tokens, latency, cache use, and failures.
 export const fetchMetrics = () => getJson<MetricsReport>("/observability/metrics");
 
-export const fetchScreeningEstimate = () =>
-  getJson<ScreeningEstimateResponse>("/screening/run/estimate");
+export const fetchScreeningEstimate = (signal?: AbortSignal) =>
+  getJson<ScreeningEstimateResponse>("/screening/run/estimate", signal);
 // Streaming runs carry heartbeats for their multi-minute lifetimes. Bound only the time to
 // receive the Response; fetch resolves at that point, so this deadline never aborts a healthy
 // active stream.
@@ -288,10 +299,11 @@ function streamRequest(path: string): Promise<Response> {
 
 export const runScreening = () => streamRequest("/screening/run");
 
-export const fetchRankEstimate = () => getJson<RankEstimateResponse>("/ranking/run/estimate");
+export const fetchRankEstimate = (signal?: AbortSignal) =>
+  getJson<RankEstimateResponse>("/ranking/run/estimate", signal);
 export const runRank = () => streamRequest("/ranking/run");
-export const fetchScoreCurrentEstimate = () =>
-  getJson<ScoreCurrentEstimateResponse>("/ranking/score-current/estimate");
+export const fetchScoreCurrentEstimate = (signal?: AbortSignal) =>
+  getJson<ScoreCurrentEstimateResponse>("/ranking/score-current/estimate", signal);
 export const scoreCurrent = () => streamRequest("/ranking/score-current");
 
 export const fetchRanking = () => getJson<RankingResponse>("/ranking");
