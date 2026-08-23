@@ -88,19 +88,23 @@ def test_over_cases_flushes_as_completed_no_interleave() -> None:
 
     from app.api.evals._shared import over_cases
 
-    one_done = threading.Event()
+    case_one_flushed = threading.Event()
 
     def run_case_fn(c, delta):
         if c == 0:
-            one_done.wait(0.5)  # case 0 blocks until case 1 signals it finished
+            assert case_one_flushed.wait(5), "case 1 was not flushed"
         delta(f"case {c} line a\n")
         delta(f"case {c} line b\n")
-        if c == 1:
-            one_done.set()
         return c * 10
 
     emitted: list[str] = []
-    results = over_cases([0, 1], run_case_fn, on_delta=emitted.append, max_workers=2)
+
+    def capture(line: str) -> None:
+        emitted.append(line)
+        if line == "case 1 line b\n":
+            case_one_flushed.set()
+
+    results = over_cases([0, 1], run_case_fn, on_delta=capture, max_workers=2)
 
     assert results == [0, 10]  # results re-sorted to case order regardless of completion order
     # Case 1 finished first, so its block flushes first; each block is contiguous (no interleave).
