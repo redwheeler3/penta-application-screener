@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.model_catalog import ReasoningEffort
+from app.ai.model_catalog import ReasoningEffort, model_identity
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, Usage
 from app.db.models import Application, ApplicationAIResult
@@ -105,8 +105,12 @@ def cache_key(
     *, application: Application, kind: str, model_id: str, prompt_version: str,
     reasoning_effort: ReasoningEffort | None = None,
 ) -> str:
-    """Stable key over application content, kind, model, and prompt version. An
-    unchanged application reuses its result; a new model or prompt version misses.
+    """Stable key over application content, kind, model identity, and prompt version.
+
+    Equivalent provider routes share one model identity, so moving a pinned model
+    between Bedrock and its direct API reuses valid work. A different model, reasoning
+    level, or prompt version misses. The result row separately retains the actual
+    provider-native model ID for provenance and pricing.
 
     ``prompt_version`` is the calling pass's ``derive_prompt_version(...)`` — passed
     in rather than read from a global so each pass's cache turns over independently
@@ -115,7 +119,7 @@ def cache_key(
     identity = {
         "raw_hash": application.raw_row_hash,
         "kind": kind,
-        "model_id": model_id,
+        "model_id": model_identity(model_id),
         "prompt_version": prompt_version,
     }
     if reasoning_effort is not None:
@@ -243,7 +247,16 @@ def cached_outcome(
         return None
     return AnalysisOutcome(
         output=schema.model_validate(existing.output),
-        cost_usd=existing.cost_usd,
+        # A cache hit avoids a call on the route selected NOW. Reprice the stored token
+        # usage on that route instead of reporting the original provider's historical
+        # cost as the saving.
+        cost_usd=cost_usd(
+            model_id,
+            Usage(
+                input_tokens=existing.input_tokens,
+                output_tokens=existing.output_tokens,
+            ),
+        ),
         cached=True,
         narrative=existing.narrative,
     )

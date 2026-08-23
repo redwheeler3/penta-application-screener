@@ -26,6 +26,7 @@ import hashlib
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.model_catalog import model_identity
 from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.db.models import (
     Analysis,
@@ -69,12 +70,13 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
     re-rank would produce something different — which drives the "Rank out of date"
     badge.
 
-    Combines the pool fingerprint with the **prompt identity and model** of every
-    pass the Rank chain runs (discovery + decompose + match → scoring). So a re-rank is
-    flagged current only when the pool, every rank-chain prompt, AND every rank-chain
-    model are unchanged since the run was created — editing any rank-chain prompt or
-    switching a model correctly shows Rank as stale, not just a pool change. (Screening
-    is the separate Screen step, not part of Rank, so it's excluded.)
+    Combines the pool fingerprint with the **prompt identity, model identity, and
+    applicable reasoning level** of every pass the Rank chain runs (discovery +
+    decompose + match → scoring). So a re-rank is flagged current only when those inputs
+    are unchanged since the run was created. Switching only between equivalent provider
+    routes stays current; editing a prompt or changing the actual model or reasoning
+    level correctly shows Rank as stale. (Screening is the separate Screen step, not part
+    of Rank, so it's excluded.)
 
     Prompt versions are imported lazily: the AI passes import this module, so a
     top-level import would be circular (matches the existing local-import pattern in
@@ -93,13 +95,14 @@ def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
         f"match:{MATCH_V}",
         f"scoring:{SCORING_V}",
         f"consolidate:{CONSOLIDATE_V}",
-        # The model of every rank-chain pass — a change to any of them ambers Rank.
-        # Screening's model is deliberately absent: it's the separate Screen step.
-        f"discovery_model:{settings.ai.discovery_model}",
-        f"decompose_model:{settings.ai.decompose_model}",
-        f"match_model:{settings.ai.match_model}",
-        f"scoring_model:{settings.ai.dimension_scoring_model}",
-        f"consolidate_model:{settings.ai.consolidate_model}",
+        # The model identity of every rank-chain pass — changing the actual model
+        # ambers Rank, while moving the same model between routes does not. Screening's
+        # model is deliberately absent: it's the separate Screen step.
+        f"discovery_model:{model_identity(settings.ai.discovery_model)}",
+        f"decompose_model:{model_identity(settings.ai.decompose_model)}",
+        f"match_model:{model_identity(settings.ai.match_model)}",
+        f"scoring_model:{model_identity(settings.ai.dimension_scoring_model)}",
+        f"consolidate_model:{model_identity(settings.ai.consolidate_model)}",
     ]
     # Reasoning changes the output just like a model change. Append only effective
     # values so adding inactive Claude settings does not invalidate existing runs.

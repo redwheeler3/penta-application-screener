@@ -178,6 +178,26 @@ def test_rank_fingerprint_tracks_only_effective_reasoning() -> None:
     assert rank_inputs_fingerprint(db, settings) != low
 
 
+def test_rank_fingerprint_ignores_provider_but_tracks_the_actual_model() -> None:
+    from app.ai.model_catalog import MODEL_IDS_BY_ROUTE
+    from app.schemas.settings import AppSettings
+    from app.services.analysis import rank_inputs_fingerprint
+
+    _app, db = _logged_in_app()
+    settings = AppSettings()
+    bedrock = rank_inputs_fingerprint(db, settings)
+
+    settings.ai.discovery_model = MODEL_IDS_BY_ROUTE["direct"]["sonnet"]
+    settings.ai.decompose_model = MODEL_IDS_BY_ROUTE["direct"]["sonnet"]
+    settings.ai.match_model = MODEL_IDS_BY_ROUTE["direct"]["sonnet"]
+    settings.ai.dimension_scoring_model = MODEL_IDS_BY_ROUTE["direct"]["haiku"]
+    settings.ai.consolidate_model = MODEL_IDS_BY_ROUTE["direct"]["sonnet"]
+    assert rank_inputs_fingerprint(db, settings) == bedrock
+
+    settings.ai.discovery_model = MODEL_IDS_BY_ROUTE["direct"]["terra"]
+    assert rank_inputs_fingerprint(db, settings) != bedrock
+
+
 @pytest.mark.anyio
 async def test_import_current_tracks_sheet_id() -> None:
     """importCurrent is False once the SOURCE SHEET changes — the only settings change a

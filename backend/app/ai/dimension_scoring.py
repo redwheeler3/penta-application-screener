@@ -170,7 +170,7 @@ def _to_score_dimensions(
 ) -> tuple[list[PoolDimension], dict[str, DimensionScore], float]:
     """Split a candidate's dimensions into (to-score, cached) by per-key cache hit.
     Returns the dimensions still to score, cached scores keyed by dimension key, and
-    the cached rows' original cost for cache-savings accounting.
+    the cost of regenerating the cached rows on the currently selected route.
     """
     to_score: list[PoolDimension] = []
     cached: dict[str, DimensionScore] = {}

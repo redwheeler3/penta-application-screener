@@ -26,10 +26,12 @@ Support four invocation routes behind the existing Strands-backed `AIProvider` i
 - Claude through Anthropic's Messages API.
 
 A central, exact model catalog is the only routing authority. Each entry binds one provider-native
-model ID to its provider, vendor, display label, and capabilities. Model IDs remain opaque outside
-the catalog and continue to be the identity stored in settings, cache keys, traces, evals, and cost
-rows. The eight supported routes have distinct provider-native IDs, so a second application model
-identifier would add synchronization work without adding information.
+route ID to its provider, vendor, display label, capabilities, and provider-neutral model identity.
+Route IDs remain opaque outside the catalog and continue to be stored in settings, traces, evals,
+and cost rows for provenance and route-specific pricing. Equivalent Bedrock and direct routes share
+a model identity in cache keys and Rank freshness fingerprints. The neutral identity is never sent
+to a provider. Changing only the route therefore preserves valid work; changing the actual model or
+reasoning level invalidates it.
 
 The admin UI presents catalog entries rather than accepting free-form IDs. Direct-provider entries
 are disabled until the corresponding deployment secret is configured. Saving shared AI settings is
@@ -56,6 +58,8 @@ independently after the direct route is verified in that environment.
   The existing maximum-worker setting is exposed to admins so bursts can be tuned without a code
   change; retries remain bounded in each transport.
 - Bedrock region remains relevant to both Bedrock routes and inert for direct routes.
+- Cached results retain the route that produced the original call. If reused through another route,
+  avoided cost is re-estimated from the stored tokens at the currently selected route's price.
 - Direct OpenAI and Bedrock prices differ. The application's exact provider-native model IDs select
   route-specific prices so estimates and spending caps remain conservative; the table must be
   reviewed when providers change pricing.

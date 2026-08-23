@@ -104,17 +104,18 @@ Alongside the structured flags, the provider also captures the model's free-text
 A full run over ~300 applicants would be wasteful if every run re-analyzed everything. So each result is cached.
 
 ```py
-cache_key = sha256(raw_row_hash + kind + model_id + prompt_version)
+cache_key = sha256(raw_row_hash + kind + model_identity + reasoning + prompt_version)
 ```
 
 The key combines:
 
 - **`raw_row_hash`** — the application content. Edit the application, miss the cache.
 - **`kind`** — the analysis type (`screening`), so different passes don't collide.
-- **`model_id`** — change the model, miss the cache.
+- **`model_identity`** — the catalog's provider-neutral identity for the actual pinned model. Equivalent Bedrock and direct routes share it, so changing only the transport preserves the cache; changing models misses it. It is never sent to a provider.
+- **`reasoning`** — the applicable reasoning level. Changing it misses the cache.
 - **`prompt_version`** — **derived by hashing each pass's static prompt text** (`derive_prompt_version` in `analysis.py`), not bumped by hand: editing the prompt or an embedded fragment re-derives it automatically, so old results are not reused after a prompt change. Screening's `screening_prompt_version()` is a pure function of its prompt text (M15 1e: the prompt no longer cites the pet policy — it extracts neutral facts — so a pet-limit change is a hard-filter change judged on read, not a screening-cache change).
 
-Cached results are stored in the `application_ai_results` table along with token counts, cost, and the narrative — kept for auditability. A cache hit is free and is never blocked by the spending cap.
+Cached results are stored in the `application_ai_results` table along with the actual provider-native route, token counts, cost, and the narrative — kept for auditability. A cache hit is free and is never blocked by the spending cap. When a result is reused through a different route, the displayed avoided cost is re-estimated at the currently selected route's price; the stored result still records where the original call ran.
 
 ## Cost Estimation And The Spending Cap
 
@@ -219,7 +220,7 @@ The ranked shortlist is **not an AI pass** — it is deterministic math over the
 - **Bands are relative to the pool**, not absolute thresholds. A candidate's label ("Strong fit" … "Limited") comes from its rank position, split into even contiguous slices anchored at the top (so rank 1 is always top-band even in a small pool). Equal-fit candidates share a band. This matches the "how does THIS pool vary" framing and keeps numbers as supporting detail.
 - **No fixed cut line.** The list is stack-ranked and the committee reads top-down as far as they like — there is no configurable shortlist line. `GET /ranking` returns the ordered rows + weights.
 
-The frontend surfaces this as a **separate ranked view**, not a re-sort of the browse table: the order is the product, read top-down, and milestone 9's tier-list maker docks above it (drag criteria into importance tiers → `PUT /ranking/tiers` → re-sort, no model call). Re-running the Rank chain finds fresh criteria and re-scores, then refreshes an open ranking. The chain is gated on a **rank-inputs fingerprint** (`RankingRun.rank_inputs_fingerprint`, its own indexed column — a hash of the pool *plus* each rank-chain prompt and model), so re-ranking with unchanged inputs is flagged up-front (`/ranking/run/estimate` returns `ranking_current: true`); a re-run is still allowed (discovery is nondeterministic, so a member may want a fresh criteria set — the confirmation card explains nothing requires it). A new/edited/eligibility-changed application, or an edited prompt, moves the fingerprint.
+The frontend surfaces this as a **separate ranked view**, not a re-sort of the browse table: the order is the product, read top-down, and milestone 9's tier-list maker docks above it (drag criteria into importance tiers → `PUT /ranking/tiers` → re-sort, no model call). Re-running the Rank chain finds fresh criteria and re-scores, then refreshes an open ranking. The chain is gated on a **rank-inputs fingerprint** (`RankingRun.rank_inputs_fingerprint`, its own indexed column — a hash of the pool *plus* each rank-chain prompt, model identity, and applicable reasoning level), so re-ranking with unchanged inputs is flagged up-front (`/ranking/run/estimate` returns `ranking_current: true`); a re-run is still allowed (discovery is nondeterministic, so a member may want a fresh criteria set — the confirmation card explains nothing requires it). A new/edited/eligibility-changed application, edited prompt, model change, or reasoning change moves the fingerprint. Switching only between catalogued Bedrock and direct routes for the same pinned model does not.
 
 **The Rank button (workflow simplification).** The model passes that produce a ranking — pattern discovery, decomposition, identity-match, dimension scoring, and post-score consolidation — are exposed in the UI as a single "Rank" step, because the committee never runs them individually. `POST /ranking/run` orchestrates them back-to-back and streams phase-aware progress (`phase` lines for criteria / scores / consolidate, `progress` lines within the per-candidate phases, a final `summary`). The passes stay separate underneath (distinct schemas, cache kinds, status behavior); only the endpoint and the button are merged. Crucially for the cost rules, the cap is enforced **once over the combined projected cost** (`GET /ranking/run/estimate` sums discovery + decomposition + scoring + consolidation), before any model call — so the single button keeps the same hard pre-run cost gate the individual passes had. The estimate is approximate: scoring scales with the dimensions discovery settles on, which do not exist until the criteria phase runs, so it is labeled as such. The workflow strip is correspondingly three single-verb steps — **Import** (sync + deterministic hard filters), **Screen** (the AI screening pass), **Rank** (this chain).
 

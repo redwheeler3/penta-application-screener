@@ -19,8 +19,9 @@ model selection is never a lock-in.
 
 **Cost controls are first-class**, layered as:
 
-- **Cached AI analysis** per application, keyed by `(raw_row_hash, kind, model,
-  prompt_version)` — repeated work is never re-billed; shared across all committee members.
+- **Cached AI analysis** per application, keyed by `(raw_row_hash, kind, model_identity,
+  reasoning, prompt_version)` — repeated work is never re-billed; shared across all committee
+  members and equivalent provider routes.
 - **Model tiering:** smaller/cheaper models (Haiku) for first-pass extraction and scoring;
   frontier models (Sonnet) only for higher-judgment synthesis (pattern discovery,
   decomposition). Upgrades are decided empirically ("measure first"), never assumed.

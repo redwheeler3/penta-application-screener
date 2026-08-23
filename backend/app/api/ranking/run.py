@@ -180,7 +180,7 @@ class ScoreTally:
     cost_usd: float = 0.0
     input_tokens: int = 0
     output_tokens: int = 0
-    # Sum of reused results' ORIGINAL cost — an estimate of what caching saved this run.
+    # Estimated cost of regenerating reused results on the currently selected route.
     cached_saved_usd: float = 0.0
     # Count of candidates (one PassResult each) that succeeded — distinct from
     # analyzed/cached, which count per-dimension UNITS for scoring (a candidate has
@@ -201,9 +201,9 @@ class ScoreTally:
             self.cost_usd += result.outcome.cost_usd
             return
         if result.outcome.cached:
-            # A cache hit made no model call, so it spent nothing on THIS run; its
-            # stored cost is the original first-run cost, so summing it estimates what
-            # regenerating would have cost (what caching saved).
+            # A cache hit made no model call, so it spent nothing on THIS run. Its
+            # outcome reprices the stored tokens on the selected route to estimate
+            # what regeneration would have cost.
             self.cached += 1
             self.cached_saved_usd += result.outcome.cost_usd
             return

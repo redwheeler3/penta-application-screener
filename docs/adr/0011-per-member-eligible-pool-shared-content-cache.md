@@ -34,8 +34,8 @@ existing content-addressed cache, not on a shared pool.**
   Discovery and scoring ground on this union floor. **Globally ineligible** applicants (no
   member passes them) are never scored, preserving "don't score applicants who won't clear the
   screen."
-- **The score cache stays whole because its key carries no member id** —
-  `(raw_row_hash, dimension_key, model, prompt_version)` (see ADR 0010). An applicant scored
+- **The score cache stays whole because its key carries no member id or provider route** —
+  `(raw_row_hash, dimension_key, model_identity, reasoning, prompt_version)` (see ADR 0010). An applicant scored
   once (because any member ranked them eligible) is free for every other member who later
   includes them. Sharing is at the *applicant* grain, not the *pool* grain.
 - **One shared union dimension set.** Any member's Rank can grow it; the existing match pass +
@@ -60,7 +60,7 @@ existing content-addressed cache, not on a shared pool.**
   identity from the cache key is what makes committee-scale sharing free. This is the payoff
   the observability/eval/cache investment was building toward.
 - The only real AI spend is an applicant entering the union for the first time (or a
-  rank-chain prompt/model change). Committee convergence on a common eligible set drives cache
+  rank-chain prompt, model-identity, or reasoning change). Committee convergence on a common eligible set drives cache
   hit-rate toward 100%.
 - **Not built:** merged shortlist, disagreement flags, criteria comparison, cross-member list
   visibility. Members' views are fully private; debate happens in the meeting. This dissolves

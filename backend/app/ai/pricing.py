@@ -112,8 +112,8 @@ class PassCost:
     ``cost_usd(...)`` and returning a bare float, which would drop the token counts).
     Carries the fresh spend
     (``calls`` model calls, ``input_tokens``/``output_tokens``, ``cost_usd``) plus the
-    cache side (``cached_count`` reused units and ``cached_saved_usd``, their original
-    cost — an estimate of what caching saved). A pass that never caches leaves those 0.
+    cache side (``cached_count`` reused units and ``cached_saved_usd``, the estimated
+    current-route cost avoided by reuse). A pass that never caches leaves those 0.
 
     Additive so a fan-out (K discovery calls) or a per-candidate loop can fold each
     call's cost into one pass total with ``+``/``sum``.

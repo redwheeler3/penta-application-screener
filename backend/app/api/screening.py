@@ -51,7 +51,7 @@ class RunTally:
     cost_usd: float = 0.0
     input_tokens: int = 0
     output_tokens: int = 0
-    # Sum of reused results' ORIGINAL cost — an estimate of what caching saved this run.
+    # Estimated cost of regenerating reused results on the currently selected route.
     cached_saved_usd: float = 0.0
 
     def add(self, result: PassResult) -> None:
@@ -60,8 +60,8 @@ class RunTally:
             return
         if result.outcome.cached:
             self.cached += 1
-            # A cache hit spent nothing now; its stored cost is the original first-run
-            # cost, so summing it estimates what regenerating would have cost.
+            # A cache hit spent nothing now. The cached outcome reprices its stored
+            # tokens on the selected route, estimating what regeneration would cost.
             self.cached_saved_usd += result.outcome.cost_usd
         else:
             self.analyzed += 1

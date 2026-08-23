@@ -288,7 +288,7 @@ async def test_fully_cached_rerun_is_blocked() -> None:
 @pytest.mark.anyio
 async def test_partial_cache_run_counts_only_uncached_cost() -> None:
     # A run with a mix of cached and new applicants must report only the NEW
-    # ones' cost — a cache hit carries its original first-run cost for auditing,
+    # ones' cost. A cache hit estimates avoided cost at the selected route's price,
     # but that is not money spent now. (Regression: the tally summed cached cost.)
     app, db, provider = setup_app(role=UserRole.ADMIN)
     add_eligible(db, email="a@x.com", raw_hash="h1")

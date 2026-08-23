@@ -5,12 +5,14 @@ from sqlalchemy.orm import Session
 from app.ai.analysis import (
     SpendingCapExceeded,
     cache_key,
+    cached_outcome,
     derive_prompt_version,
     enforce_cap,
     estimate_cost,
     store_result,
 )
 from app.ai.mock_provider import MockProvider
+from app.ai.model_catalog import MODEL_IDENTITIES, MODEL_IDS_BY_ROUTE, model_identity
 from app.ai.pricing import cost_usd, price_for_model
 from app.ai.provider import Usage
 from app.ai.schemas import ScreeningReport
@@ -157,6 +159,89 @@ def test_cache_key_changes_with_model_and_content() -> None:
 
     app.raw_row_hash = "different"
     assert cache_key(application=app, kind=KIND, model_id=MODEL, prompt_version=VERSION) != base
+
+
+@pytest.mark.parametrize("tier", ["haiku", "sonnet", "luna", "terra"])
+def test_equivalent_provider_routes_share_neutral_model_identity(tier: str) -> None:
+    bedrock_identity = model_identity(MODEL_IDS_BY_ROUTE["bedrock"][tier])
+    direct_identity = model_identity(MODEL_IDS_BY_ROUTE["direct"][tier])
+
+    assert bedrock_identity == direct_identity == MODEL_IDENTITIES[tier]
+    assert bedrock_identity not in MODEL_IDS_BY_ROUTE["bedrock"].values()
+    assert bedrock_identity not in MODEL_IDS_BY_ROUTE["direct"].values()
+
+
+def test_cache_key_ignores_provider_but_tracks_the_actual_model() -> None:
+    db = make_session()
+    app = make_application(db)
+    bedrock_terra = cache_key(
+        application=app,
+        kind=KIND,
+        model_id=MODEL_IDS_BY_ROUTE["bedrock"]["terra"],
+        prompt_version=VERSION,
+        reasoning_effort="low",
+    )
+    direct_terra = cache_key(
+        application=app,
+        kind=KIND,
+        model_id=MODEL_IDS_BY_ROUTE["direct"]["terra"],
+        prompt_version=VERSION,
+        reasoning_effort="low",
+    )
+    direct_luna = cache_key(
+        application=app,
+        kind=KIND,
+        model_id=MODEL_IDS_BY_ROUTE["direct"]["luna"],
+        prompt_version=VERSION,
+        reasoning_effort="low",
+    )
+
+    assert direct_terra == bedrock_terra
+    assert direct_luna != direct_terra
+
+
+def test_cross_provider_cache_hit_keeps_provenance_and_reprices_the_saving() -> None:
+    db = make_session()
+    app = make_application(db)
+    provider = MockProvider()
+    bedrock_luna = MODEL_IDS_BY_ROUTE["bedrock"]["luna"]
+    direct_luna = MODEL_IDS_BY_ROUTE["direct"]["luna"]
+    usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+    provider.queue(
+        clean_report(),
+        model_id=bedrock_luna,
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+    )
+    result = provider.structured_output(
+        model_id=bedrock_luna, schema=ScreeningReport, prompt="analyze"
+    )
+    store_result(
+        db,
+        app,
+        kind=KIND,
+        model_id=bedrock_luna,
+        prompt_version=VERSION,
+        reasoning_effort="low",
+        result=result,
+    )
+
+    cached = cached_outcome(
+        db,
+        app,
+        kind=KIND,
+        schema=ScreeningReport,
+        model_id=direct_luna,
+        prompt_version=VERSION,
+        reasoning_effort="low",
+    )
+    stored = db.scalar(select(ApplicationAIResult))
+
+    assert cached is not None
+    assert cached.cached is True
+    assert cached.cost_usd == pytest.approx(cost_usd(direct_luna, usage))
+    assert stored is not None
+    assert stored.model_id == bedrock_luna
 
 
 # Cache miss-then-hit is covered end-to-end through the production paths

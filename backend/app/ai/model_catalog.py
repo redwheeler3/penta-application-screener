@@ -1,9 +1,10 @@
 """The AI models the application knows how to invoke.
 
 Model IDs stay provider-native and are treated as opaque everywhere outside this
-catalog.  The IDs happen to be distinct across the four supported routes, so they
-already provide the stable identity used by settings, caches, traces, and cost rows;
-there is no second application-specific model identifier to keep in sync.
+catalog. Each route also maps to the provider-neutral model identity whose
+judgment it represents. Settings, traces, and cost rows retain the actual route ID;
+caches and freshness use the shared model identity so moving the same model between
+certified-equivalent transports does not discard valid work.
 """
 
 from __future__ import annotations
@@ -41,10 +42,21 @@ MODEL_IDS_BY_ROUTE = {
     },
 }
 
+# Provider-neutral identities for the pinned model behind each route. These values are
+# never sent to a provider; cache keys and freshness fingerprints use them solely to
+# recognize equivalent Bedrock and direct routes.
+MODEL_IDENTITIES = {
+    "haiku": "anthropic:claude-haiku-4-5-20251001",
+    "sonnet": "anthropic:claude-sonnet-4-6",
+    "luna": "openai:gpt-5.6-luna",
+    "terra": "openai:gpt-5.6-terra",
+}
+
 
 @dataclass(frozen=True)
 class ModelSpec:
     model_id: str
+    model_identity: str
     label: str
     provider: ModelProvider
     vendor: ModelVendor
@@ -54,30 +66,35 @@ class ModelSpec:
 MODEL_CATALOG: tuple[ModelSpec, ...] = (
     ModelSpec(
         model_id=MODEL_IDS_BY_ROUTE["bedrock"]["haiku"],
+        model_identity=MODEL_IDENTITIES["haiku"],
         label="Claude Haiku 4.5",
         provider=ModelProvider.BEDROCK,
         vendor=ModelVendor.ANTHROPIC,
     ),
     ModelSpec(
         model_id=MODEL_IDS_BY_ROUTE["direct"]["haiku"],
+        model_identity=MODEL_IDENTITIES["haiku"],
         label="Claude Haiku 4.5",
         provider=ModelProvider.ANTHROPIC,
         vendor=ModelVendor.ANTHROPIC,
     ),
     ModelSpec(
         model_id=MODEL_IDS_BY_ROUTE["bedrock"]["sonnet"],
+        model_identity=MODEL_IDENTITIES["sonnet"],
         label="Claude Sonnet 4.6",
         provider=ModelProvider.BEDROCK,
         vendor=ModelVendor.ANTHROPIC,
     ),
     ModelSpec(
         model_id=MODEL_IDS_BY_ROUTE["direct"]["sonnet"],
+        model_identity=MODEL_IDENTITIES["sonnet"],
         label="Claude Sonnet 4.6",
         provider=ModelProvider.ANTHROPIC,
         vendor=ModelVendor.ANTHROPIC,
     ),
     ModelSpec(
         model_id=MODEL_IDS_BY_ROUTE["bedrock"]["luna"],
+        model_identity=MODEL_IDENTITIES["luna"],
         label="GPT-5.6 Luna",
         provider=ModelProvider.BEDROCK,
         vendor=ModelVendor.OPENAI,
@@ -85,6 +102,7 @@ MODEL_CATALOG: tuple[ModelSpec, ...] = (
     ),
     ModelSpec(
         model_id=MODEL_IDS_BY_ROUTE["direct"]["luna"],
+        model_identity=MODEL_IDENTITIES["luna"],
         label="GPT-5.6 Luna",
         provider=ModelProvider.OPENAI,
         vendor=ModelVendor.OPENAI,
@@ -92,6 +110,7 @@ MODEL_CATALOG: tuple[ModelSpec, ...] = (
     ),
     ModelSpec(
         model_id=MODEL_IDS_BY_ROUTE["bedrock"]["terra"],
+        model_identity=MODEL_IDENTITIES["terra"],
         label="GPT-5.6 Terra",
         provider=ModelProvider.BEDROCK,
         vendor=ModelVendor.OPENAI,
@@ -99,6 +118,7 @@ MODEL_CATALOG: tuple[ModelSpec, ...] = (
     ),
     ModelSpec(
         model_id=MODEL_IDS_BY_ROUTE["direct"]["terra"],
+        model_identity=MODEL_IDENTITIES["terra"],
         label="GPT-5.6 Terra",
         provider=ModelProvider.OPENAI,
         vendor=ModelVendor.OPENAI,
@@ -125,6 +145,11 @@ def model_spec(model_id: str) -> ModelSpec:
 def known_model_spec(model_id: str) -> ModelSpec | None:
     """Return catalog metadata when known, including for display-only callers."""
     return _BY_ID.get(model_id)
+
+
+def model_identity(model_id: str) -> str:
+    """Return the provider-neutral identity shared by equivalent model routes."""
+    return model_spec(model_id).model_identity
 
 
 def supports_reasoning_effort(model_id: str) -> bool:

@@ -54,9 +54,8 @@ class CostReport(ResponseModel):
 
 class LastRunPass(ResponseModel):
     """One pass within a single completed run: what it spent fresh vs. reused from cache,
-    plus the fresh token breakdown. ``cached_saved_usd`` is the reused results' original
-    cost — an estimate of what regenerating them would have cost (what caching saved this
-    run)."""
+    plus the fresh token breakdown. ``cached_saved_usd`` estimates what regenerating the
+    reused results on the selected route would have cost."""
 
     label: str
     fresh_usd: float

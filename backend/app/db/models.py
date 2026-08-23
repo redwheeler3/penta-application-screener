@@ -310,9 +310,11 @@ class ApplicationStar(TimestampMixin, Base):
 class ApplicationAIResult(TimestampMixin, Base):
     """Cached AI analysis for one application and analysis kind.
 
-    ``cache_key`` hashes application content + model + prompt version, so an
-    unchanged application reuses the stored result. ``output`` holds the validated
-    structured-output JSON; usage/cost are kept for auditability.
+    ``cache_key`` hashes application content + provider-neutral model identity +
+    reasoning + prompt version, so an unchanged application reuses the stored result
+    across equivalent routes. ``model_id`` retains the route that produced it.
+    ``output`` holds the validated structured-output JSON; usage/cost are kept for
+    auditability.
     """
 
     __tablename__ = "application_ai_results"
@@ -406,10 +408,10 @@ class RunPassCost(TimestampMixin, Base):
 
     ``calls`` is fresh model calls (per-dimension units for scoring); ``input_tokens`` /
     ``output_tokens`` / ``cost_usd`` are that fresh spend. ``cached_count`` /
-    ``cached_saved_usd`` are the cache side — reused units and their original cost (an
-    estimate of what caching saved). A never-cached pass leaves those 0. ``model_id`` is
-    the model the pass ran on ("" when the pass made no call this run, e.g. a skipped
-    match on a first run).
+    ``cached_saved_usd`` are the cache side — reused units and their estimated cost on
+    the selected route (what caching avoided). A never-cached pass leaves those 0.
+    ``model_id`` is the model the pass ran on ("" when the pass made no call this run,
+    e.g. a skipped match on a first run).
 
     ``duration_ms`` is the pass's wall-clock (M13 Pillar 3) — measured at the pass level,
     NOT summed from parallel calls (that would be CPU time). ``failed_calls`` counts model
