@@ -1,15 +1,11 @@
 import { Filter, LogIn, LogOut, Settings } from "lucide-react";
-import { type ReactNode, type SyntheticEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, type SyntheticEvent, useEffect, useRef, useState } from "react";
 import { HouseIcon } from "./HouseIcon";
 import * as api from "./api";
-import { money, readProblem, resolveSheetId } from "./format";
+import { money, readProblem } from "./format";
 import type {
   ApplicationDetail,
-  AppSettings,
   AppStatus,
-  Coverage,
-  CurrentUser,
-  DashboardCounts,
   ScreeningEstimateResponse,
   RankEstimateResponse,
   ScoreCurrentEstimateResponse,
@@ -18,7 +14,6 @@ import type {
   ScreeningStreamEvent,
   SettingsResponse,
   ViewTab,
-  WorkflowState,
 } from "./types";
 import { AdminSettingsPanel } from "./components/AdminSettingsPanel";
 import { ApplicationsList } from "./components/ApplicationsList";
@@ -30,64 +25,33 @@ import { RankingView } from "./components/RankingView";
 import { Toasts } from "./components/Toasts";
 import { WorkflowBar } from "./components/WorkflowBar";
 import { useApplications } from "./hooks/useApplications";
-import { retryWithBackoff } from "./retry";
 import { useRanking } from "./hooks/useRanking";
 import { useToasts } from "./hooks/useToasts";
-
-type BrowserLocation = {
-  screenerLocation: true;
-  tab: ViewTab;
-  applicantId?: number;
-};
-
-function isBrowserLocation(value: unknown): value is BrowserLocation {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "screenerLocation" in value &&
-    (value as BrowserLocation).screenerLocation === true &&
-    "tab" in value
-  );
-}
+import { useSession } from "./hooks/useSession";
+import { useSharedSettings } from "./hooks/useSharedSettings";
+import { useDashboard } from "./hooks/useDashboard";
+import { useNavigation } from "./hooks/useNavigation";
 
 export function App() {
-  const [user, setUser] = useState<CurrentUser | null>(null);
-  const [isLoadingUser, setIsLoadingUser] = useState(true);
-  const [userLoadFailed, setUserLoadFailed] = useState(false);
-  // Set when the OAuth callback bounced a non-allowlisted account back here
-  // (?access=denied). Read once from the URL; the flag is stripped so a reload clears it.
-  const [accessDenied, setAccessDenied] = useState(false);
+  const {
+    user,
+    isAdmin,
+    isLoadingUser,
+    userLoadFailed,
+    accessDenied,
+    loadCurrentUser,
+    login,
+    logout,
+  } = useSession();
 
-  // The form draft the user edits. Separate from `saved` so typing never affects
-  // affordances that gate on persisted state until the change is saved. Null until
-  // GET /settings resolves (there's no client-side default — the backend schema is the
-  // sole source of the settings shape); the Settings tab gates on `saved` before reading it.
-  const [draft, setDraft] = useState<AppSettings | null>(null);
-  // The last settings persisted on the server. `draft` resets to this on load/save.
-  const [saved, setSaved] = useState<SettingsResponse | null>(null);
-  const [isSavingSettings, setIsSavingSettings] = useState(false);
-  // True once the initial settings load has definitively failed (after retries). Drives the
-  // Admin Settings panel's error+retry state so it never silently falls through to the
-  // Applications view when `draft` never loaded (the cold-start dropped-request bug).
-  const [settingsLoadFailed, setSettingsLoadFailed] = useState(false);
-
-  const [dashboardCounts, setDashboardCounts] = useState<DashboardCounts>({
-    submitted: 0,
-    status: { eligible: 0, ineligible: 0 },
-    source: { untouched: 0, rules: 0, ai: 0, human: 0 },
-  });
-  const [workflow, setWorkflow] = useState<WorkflowState>({
-    synced: false,
-    importCurrent: true,
-    screened: false,
-    patternsDiscovered: false,
-    candidatesScored: false,
-    rankingCurrent: false,
-  });
-  const [coverage, setCoverage] = useState<Coverage>({});
-  // The workflow's default values are deliberately never shown as a settled state: a
-  // dropped first dashboard request must not make a completed workflow look brand new.
-  const [dashboardLoadState, setDashboardLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const {
+    counts: dashboardCounts,
+    workflow,
+    coverage,
+    loadState: dashboardLoadState,
+    refresh: refreshDashboard,
+    loadInitial: loadInitialDashboard,
+  } = useDashboard();
   const [isSyncing, setIsSyncing] = useState(false);
   // Whether the Import confirmation card is open. Import has no cost (a Sheet pull,
   // no model calls), so it's a plain confirm — just friction so a click doesn't
@@ -113,38 +77,6 @@ export function App() {
     applyFilter,
     search: searchApplications,
   } = useApplications();
-  const [selectedApp, setSelectedApp] = useState<ApplicationDetail | null>(null);
-
-  // The applicant id we last scrolled the detail to the top for. Opening a DIFFERENT
-  // applicant should scroll; re-setting `selectedApp` for the SAME applicant (a note /
-  // status / star save refreshes it) must NOT yank the scroll back up mid-edit.
-  const scrolledDetailId = useRef<number | null>(null);
-
-  // Scroll the detail panel's top (the Back/Print bar) into view on a NEW selection.
-  // A layout effect, not the click handler: scrolling in the handler races React's
-  // commit, so on a first open `.app-detail` isn't mounted yet and the scroll no-ops
-  // (the intermittent "lands halfway down the page" bug). Post-commit the element is
-  // guaranteed present. Runs before paint, so there's no visible jump.
-  useLayoutEffect(() => {
-    if (!selectedApp) {
-      scrolledDetailId.current = null;
-      return;
-    }
-    if (scrolledDetailId.current === selectedApp.id) return; // same applicant refresh
-    scrolledDetailId.current = selectedApp.id;
-    document.querySelector(".app-detail")?.scrollIntoView({ block: "start" });
-  }, [selectedApp]);
-
-  // Return from the detail through browser history so the list or ranking view preserves
-  // the member's actual reading position.
-  function backToList() {
-    if (isBrowserLocation(window.history.state) && window.history.state.applicantId) {
-      window.history.back();
-      return;
-    }
-    setSelectedApp(null);
-  }
-
   // AI run flows share a shape: estimate (confirmation) -> running -> result.
   // Outcomes surface as toasts, so no per-step message state is kept here.
   const [screeningEstimate, setScreeningEstimate] = useState<ScreeningEstimateResponse | null>(null);
@@ -188,52 +120,39 @@ export function App() {
   // Both phases append here, so the box carries through the whole run.
   const [criteriaThinking, setCriteriaThinking] = useState("");
 
-  // The results area is split into two peer tabs — the applications list and the
-  // ranking — with `activeTab` choosing which is shown (a candidate detail drills in
-  // over either). The Ranking tab only appears once a run exists (see the tab strip).
-  const [activeTab, setActiveTab] = useState<ViewTab>("applications");
-  const isAdmin = user?.role === "admin";
-
-  function replaceBrowserLocation(location: BrowserLocation) {
-    window.history.replaceState(location, "", window.location.pathname);
-  }
-
-  function pushBrowserLocation(location: BrowserLocation) {
-    window.history.pushState(location, "", window.location.pathname);
-  }
+  const {
+    activeTab,
+    selectedApplication: selectedApp,
+    setSelectedApplication: setSelectedApp,
+    viewApplication,
+    backToList,
+    navigateToView,
+    openAdminSetup,
+  } = useNavigation({ loadRanking, onError: showError });
+  const {
+    draft,
+    setDraft,
+    saved,
+    isSaving: isSavingSettings,
+    loadFailed: settingsLoadFailed,
+    load: loadSettings,
+    retry: retrySettings,
+    save: saveSettingsDraft,
+    apply: applySettingsResponse,
+    hasLinkedSheet: hasGoogleSheetLink,
+    loadState: settingsLoadState,
+  } = useSharedSettings({
+    user,
+    dashboardReady: dashboardLoadState === "ready",
+    onMissingSheet: () => {
+      if (isAdmin) openAdminSetup();
+    },
+  });
 
   function dismissRankEstimate() {
     rankEstimateRequestRef.current += 1;
     setRankEstimate(null);
     setScoreCurrentEstimate(null);
-  }
-
-  useEffect(() => {
-    void loadCurrentUser();
-    // The OAuth callback redirects here with ?access=denied for a non-allowlisted
-    // account. Read it once, then strip it from the URL so a later reload is clean.
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("access") === "denied") {
-      setAccessDenied(true);
-    }
-    // This is a client-side app rather than a URL-routed one, so seed the initial
-    // browser-history entry with the default view. Later tab/detail transitions add
-    // entries of the same shape for the browser Back button and mobile back swipe.
-    replaceBrowserLocation({ screenerLocation: true, tab: "applications" });
-  }, []);
-
-  async function loadCurrentUser(): Promise<void> {
-    setIsLoadingUser(true);
-    setUserLoadFailed(false);
-    try {
-      setUser(await retryWithBackoff(api.fetchCurrentUser, 3));
-    } catch {
-      // Do not turn an unavailable service into a false signed-out state: the member needs a
-      // retry for the session check, not an unnecessary OAuth round trip.
-      setUserLoadFailed(true);
-    } finally {
-      setIsLoadingUser(false);
-    }
   }
 
   useEffect(() => {
@@ -244,20 +163,6 @@ export function App() {
     void loadInitialApplications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
-
-  // Auto-recover settings once the dashboard load succeeds. A Fly OOM restart takes ~10s and
-  // can outlast every initial load's backoff window; the workflow bar (dashboard) often recovers
-  // on its own retries while settings ended its own attempts a moment earlier, leaving the
-  // synced Sync button stuck behind a Retry-configuration button on an otherwise healthy page.
-  // If the server is back for /dashboard, it's back for /settings too — retry once automatically
-  // so the whole workflow bar unsticks together. The manual Retry button remains as a fallback.
-  useEffect(() => {
-    if (dashboardLoadState === "ready" && settingsLoadFailed) {
-      setSettingsLoadFailed(false);
-      void loadSettings();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dashboardLoadState, settingsLoadFailed]);
 
   // A ranking became stale (another member re-ranked) — surface it as a global toast with a
   // Reload action, so it reaches the member wherever they are on the page (not only on the
@@ -304,66 +209,6 @@ export function App() {
     };
   }, [user, checkForStaleRanking]);
 
-  function applySettingsResponse(payload: SettingsResponse) {
-    const sheetId = resolveSheetId(payload);
-    setSaved(payload);
-    setDraft({ ...payload.settings, googleSheetId: sheetId });
-    setSettingsLoadFailed(false);
-    // First-run setup: land on Admin Settings when there's no sheet configured yet, so
-    // setup is front-and-centre. Only admins can set the sheet, so only redirect them —
-    // a member stays on Applications.
-    if (!sheetId && isAdmin) {
-      setActiveTab("adminSettings");
-      replaceBrowserLocation({ screenerLocation: true, tab: "adminSettings" });
-    }
-  }
-
-  // A Sheets title is a convenience label, not part of the editable settings. If Google was
-  // unavailable during the initial load, retry only that label when the member returns to the
-  // tab. Updating `saved` alone leaves any in-progress `draft` edits untouched.
-  const linkedSheetId = saved?.settings.googleSheetId ?? "";
-  const linkedSheetTitle = saved?.googleSheetTitle ?? null;
-  useEffect(() => {
-    if (!user || !linkedSheetId || linkedSheetTitle) return;
-
-    const retrySheetTitle = () => {
-      if (document.visibilityState !== "visible") return;
-      void api
-        .fetchSettings()
-        .then((payload) => {
-          if (!payload.googleSheetTitle) return;
-          setSaved((current) =>
-            current && current.settings.googleSheetId === payload.settings.googleSheetId
-              ? { ...current, googleSheetTitle: payload.googleSheetTitle }
-              : current,
-          );
-        })
-        // The title remains optional: another transient Google failure should be silent and
-        // is retried the next time the member returns to the tab.
-        .catch(() => {});
-    };
-
-    document.addEventListener("visibilitychange", retrySheetTitle);
-    return () => document.removeEventListener("visibilitychange", retrySheetTitle);
-  }, [user, linkedSheetId, linkedSheetTitle]);
-
-  // Load the shared settings, retrying a few times with backoff. `draft` is set ONLY here, and
-  // nothing re-fetches it on tab switches — so a single dropped request (a cold Fly machine
-  // resuming from suspend, or a deploy restart, cuts the first request) would otherwise leave
-  // `draft` null forever and the Admin Settings tab silently rendering the Applications view.
-  // On definitive failure we flag it so the Admin panel shows an error+retry instead.
-  // The attempt count matches loadInitialDashboard / loadInitialApplications so all three
-  // surfaces have the same ~9s recovery window — a Fly OOM restart takes ~10s, and previously
-  // the shorter settings window (3 attempts, ~1.5s) meant the workflow bar recovered on its
-  // own while Sync stayed stuck behind a Retry button because settings had already given up.
-  async function loadSettings(): Promise<void> {
-    try {
-      applySettingsResponse(await retryWithBackoff(api.fetchSettings, 5));
-    } catch {
-      setSettingsLoadFailed(true);
-    }
-  }
-
   // Linking/changing the applications sheet changes the source pool, so the synced data is now
   // stale relative to it — the workflow bar should go amber (re-sync needed). Apply the new
   // settings AND refresh the dashboard + applications so that shows immediately, rather than
@@ -372,23 +217,6 @@ export function App() {
     applySettingsResponse(payload);
     refreshDashboard();
     reloadApplications();
-  }
-
-  function applyDashboard(payload: { counts: DashboardCounts; workflow: WorkflowState; coverage?: Coverage }) {
-    setDashboardCounts(payload.counts);
-    setWorkflow(payload.workflow);
-    setCoverage(payload.coverage ?? {});
-    setDashboardLoadState("ready");
-  }
-
-  function refreshDashboard() {
-    api
-      .fetchDashboard()
-      .then(applyDashboard)
-      // A dropped request (cold machine) shouldn't nag or throw an unhandled rejection — the
-      // counts stay at their last values and the next interaction refreshes them. `getJson`
-      // now rejects on non-2xx, so this catch is required.
-      .catch(() => {});
   }
 
   // Eligibility is computed from the current member's rules and overrides whenever a view is
@@ -400,49 +228,9 @@ export function App() {
     if (ranking) void loadRanking();
   }
 
-  // A Fly wake or deploy restart can drop the first request from a newly signed-in page.
-  // Dashboard data controls every workflow badge and gate, so retry before showing any
-  // placeholder state; a later retry button remains available if recovery never succeeds.
-  async function loadInitialDashboard(): Promise<void> {
-    setDashboardLoadState("loading");
-    try {
-      applyDashboard(await retryWithBackoff(api.fetchDashboard, 5));
-    } catch {
-      setDashboardLoadState("error");
-    }
-  }
-
-  async function viewApplication(id: number) {
-    let application: ApplicationDetail;
-    try {
-      application = await api.fetchApplication(id);
-    } catch {
-      showError("Couldn't load that applicant. Please try again.");
-      return;
-    }
-    pushBrowserLocation({ screenerLocation: true, tab: activeTab, applicantId: id });
-    setSelectedApp(application);
-    // The layout effect scrolls after React mounts the detail. Scrolling here can run before
-    // `.app-detail` exists.
-  }
-
-  function login() {
-    window.location.href = api.authLoginUrl();
-  }
-
-  async function logout() {
-    await api.logout();
-    setUser(null);
-  }
-
   async function saveSettings(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draft) return; // form only renders once draft is loaded, so this can't fire
-    setIsSavingSettings(true);
-    const response = await api.saveSettings(draft);
-    if (response.ok) {
-      const payload: SettingsResponse = await response.json();
-      applySettingsResponse(payload);
+    if (await saveSettingsDraft()) {
       // Cost estimates are a snapshot of the saved AI settings. Invalidate them so
       // a cap increase (or any model/cost setting change) cannot leave a stale
       // over-cap warning and disabled confirmation button on screen.
@@ -454,7 +242,6 @@ export function App() {
     } else {
       showError("Settings could not be saved.");
     }
-    setIsSavingSettings(false);
   }
 
   // Open the Import confirmation. Close the other cards so only one shows at a time.
@@ -673,47 +460,6 @@ export function App() {
     setCriteriaThinking("");
   }
 
-  // Restore a state recorded in browser history. This path deliberately never writes history:
-  // a Back/Forward gesture must move through the entries the member already created.
-  async function restoreBrowserLocation(location: BrowserLocation) {
-    setSelectedApp(null);
-    setActiveTab(location.tab);
-    if (location.tab === "ranking") void loadRanking();
-    if (!location.applicantId) return;
-
-    try {
-      const application = await api.fetchApplication(location.applicantId);
-      setSelectedApp(application);
-    } catch {
-      showError("Couldn't load that applicant. Please try again.");
-    }
-  }
-
-  useEffect(() => {
-    const onPopState = (event: PopStateEvent) => {
-      if (isBrowserLocation(event.state)) void restoreBrowserLocation(event.state);
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  });
-
-  // Jump to a top-level view (e.g. from a feedback item's context link). Ranking switches
-  // immediately; its loader replaces the empty panel with the shortlist when ready. Each
-  // deliberate navigation records its destination before changing the visible view.
-  function navigateToView(tab: ViewTab) {
-    if (activeTab === tab && !selectedApp) return;
-    if (tab === "ranking") {
-      pushBrowserLocation({ screenerLocation: true, tab });
-      setSelectedApp(null);
-      setActiveTab(tab);
-      void loadRanking();
-      return;
-    }
-    pushBrowserLocation({ screenerLocation: true, tab });
-    setSelectedApp(null);
-    setActiveTab(tab);
-  }
-
   // One tab in the view-tab row. A tab is "active" only when it's selected AND no
   // applicant detail is open (opening a detail deselects every tab). `extraClass`
   // carries the right-aligned settings-tab modifier; `icon` the optional leading glyph.
@@ -781,8 +527,6 @@ export function App() {
     if (ranking) loadRanking();
   }
 
-  const hasGoogleSheetLink = Boolean(saved && resolveSheetId(saved));
-  const settingsLoadState = saved ? "ready" : settingsLoadFailed ? "error" : "loading";
 
   return (
     <main className="app-shell">
@@ -856,10 +600,7 @@ export function App() {
             loadState={dashboardLoadState}
             onRetryLoad={() => void loadInitialDashboard()}
             settingsLoadState={settingsLoadState}
-            onRetrySettings={() => {
-              setSettingsLoadFailed(false);
-              void loadSettings();
-            }}
+            onRetrySettings={retrySettings}
             hasGoogleSheetLink={hasGoogleSheetLink}
             isSyncing={isSyncing}
             importConfirm={importConfirm}
@@ -943,10 +684,7 @@ export function App() {
                       <button
                         type="button"
                         className="secondary-button"
-                        onClick={() => {
-                          setSettingsLoadFailed(false);
-                          void loadSettings();
-                        }}
+                        onClick={retrySettings}
                       >
                         Retry
                       </button>
