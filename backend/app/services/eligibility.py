@@ -1,4 +1,4 @@
-"""Per-member eligibility, computed on read (M15 1c).
+"""Per-member eligibility, computed on read.
 
 Eligibility is never stored on the applicant. The *machine verdict* is derived from the
 applicant's shared findings (deterministic rule reasons + cached AI flags) and is the same
@@ -45,7 +45,7 @@ def active_flags(
     flags: list[dict[str, Any]] | None, disabled_checks: tuple[str, ...]
 ) -> list[dict[str, Any]] | None:
     """The flags that still count for a member — those whose category is not in the member's
-    ``disabled_checks`` (M15 1g Move 2). The flag analogue of how ``evaluate_hard_filters``
+    ``disabled_checks``. The flag analogue of how ``evaluate_hard_filters``
     drops disabled reason codes: a member can mute a screening check (fake_contact, …) so it
     neither shows nor gates for them. Callers pass a member's ``RulesConfig.disabled_checks``
     (the flat set spanning both reason codes and flag categories; the reason codes here are
@@ -90,8 +90,8 @@ def machine_flags_by_app(
 def pet_facts_by_app(
     db: Session, application_ids: list[int]
 ) -> dict[int, PetFacts]:
-    """The extracted pet inventory per application, as ``{application_id: PetFacts}`` (M15
-    1e). Sibling to ``machine_flags_by_app``: same latest-screening-result source, other
+    """The extracted pet inventory per application, as ``{application_id: PetFacts}``.
+    Sibling to ``machine_flags_by_app``: same latest-screening-result source, other
     half of ``ScreeningReport`` (``pets`` rather than ``flags``). Apps without a screening
     result — or a pre-1e result with no ``pets`` — are absent, so ``.get`` yields None and
     the per-member pet filter is skipped for them. One query, off the N+1 path."""
@@ -211,8 +211,8 @@ def rules_eligible_application_ids(db: Session) -> set[int]:
 
     This is the pre-screen scope for the shared screening pass: it must be computable BEFORE
     any screening result exists, so (unlike ``union_eligible_application_ids``) it cannot fold
-    in flags/pet-facts — those are what screening produces. It widens the old committee-default
-    scope to the UNION of every member's rules, so an applicant a diverged member finds
+    in flags/pet-facts — those are what screening produces. It uses the union of every
+    member's rules, so an applicant a diverged member finds
     rules-eligible still gets screened even if the committee default would exclude them.
 
     A slight superset of the post-screen union: it screens a few applicants who will later be
@@ -297,7 +297,7 @@ def union_eligible_application_ids(db: Session) -> set[int]:
             continue
         # The app is machine-eligible for a member iff, under that member's ruleset, it has no
         # hard-filter reason AND no ACTIVE AI flag (a flag whose category the member hasn't
-        # muted — M15 1g Move 2). Both halves are per-ruleset now: disabled_checks is part of
+        # muted). Both halves are per-ruleset: disabled_checks is part of
         # RulesConfig, so members with different mutes are already distinct rulesets. The app
         # enters the union if any member WITHOUT an override on it uses such a ruleset. (Before
         # 1g, any flag blocked everyone; now a member who muted the flagged category isn't

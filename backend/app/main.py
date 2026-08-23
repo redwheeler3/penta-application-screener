@@ -112,7 +112,7 @@ def create_app() -> FastAPI:
     app.include_router(settings_router)
     app.include_router(eligibility_rules_router)
     app.include_router(sync_router)
-    # Serve the built frontend as the single origin (M17): API routers are registered above,
+    # Serve the built frontend from the API origin. API routers are registered above,
     # so they always win; this catch-all mount handles everything else — the SPA's assets and
     # its index.html (html=True serves index.html for "/" and for unknown paths). Mounted only
     # when a build exists, so tests and a build-less dev backend are unaffected (dev serves the

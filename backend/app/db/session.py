@@ -13,7 +13,7 @@ engine = create_engine(settings.database_url, connect_args=connect_args)
 
 
 if _is_sqlite:
-    # Multi-member concurrency hardening (M16). SQLite serializes writers; without these,
+    # SQLite serializes writers; without these pragmas,
     # two members' runs committing at once can raise "database is locked" immediately. Set
     # per connection (the pool opens several), on connect:
     #   - WAL: readers don't block the writer and vice versa, so a member browsing while
@@ -21,8 +21,8 @@ if _is_sqlite:
     #   - busy_timeout: a writer that finds the lock held WAITS up to 5s (retrying) instead
     #     of failing instantly — turning almost every real collision into a brief wait. Runs
     #     commit per item (short locks), so 5s is ample headroom.
-    # This makes concurrent writes SAFE on SQLite; a true hosted-grade concurrency story
-    # (atomic shared budget, DB advisory locks) rides with the M17 hosting move.
+    # The application run lock prevents overlapping AI runs; these pragmas give other short
+    # writes enough time to complete while SQLite serializes them.
     @event.listens_for(engine, "connect")
     def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
         cursor = dbapi_connection.cursor()

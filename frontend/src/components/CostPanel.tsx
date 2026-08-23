@@ -5,7 +5,7 @@ import { useFetchResource } from "../hooks/useFetchResource";
 import type { CostReport, InsightRunKind, LastRunCost, LastRunsReport } from "../types";
 import { RetryLoadError } from "./RetryLoadError";
 
-// M13 Pillar 1: AI cost, an Observability subtab. Two sections, same column layout so they
+// AI cost, shown in two sections with the same column layout so they
 // line up: [ label | tokens (in→out) | uncached | cached | saved by cache | spent ].
 // Spent is the rightmost hard number; cache savings sit to its left as the softer
 // estimate; tokens sit next to the label as the "why it cost that" breakdown.
@@ -38,7 +38,7 @@ function reconciliation(run: LastRunCost): ReactNode {
   );
 }
 
-// Who kicked off this shared run (M15 Phase 4). Omitted when unknown (pre-Phase-4 rows or a
+// Who kicked off this shared run. Omitted when unknown or when a
 // since-removed member) — runs stay committee-wide; this only attributes the shared spend.
 function triggeredByStamp(run: LastRunCost): ReactNode {
   if (!run.triggeredBy) return null;

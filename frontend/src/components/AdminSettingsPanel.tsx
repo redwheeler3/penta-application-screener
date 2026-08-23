@@ -37,7 +37,7 @@ const AI_PASSES: Array<{
 //   Access             — the sign-in allowlist (the existing AccessPanel, self-fetching).
 //   Feedback           — member-submitted feedback with the context it came from (self-fetching).
 // A member's OWN eligibility rules live on their Eligibility Settings tab; this edits only the
-// shared committee default (M15 1f). Editing it has zero effect on members who've diverged.
+// shared committee default. Editing it does not rewrite member overrides.
 type AdminSubtab = "configuration" | "defaults" | "access" | "feedback";
 
 export function AdminSettingsPanel(props: {
@@ -264,8 +264,8 @@ export function AdminSettingsPanel(props: {
   );
 }
 
-// The response-sheet linker (M18). Replaces the old paste-a-link field with a least-privilege
-// one-click flow (a user gesture, so GIS's consent popup isn't blocked): GIS code grant ->
+// The response-sheet linker uses a user gesture so the GIS consent popup is allowed:
+// GIS code grant ->
 // backend exchange (stores the reader token) -> Picker -> persist the picked file. Sync then
 // reads with this admin's token, so members need no Drive/Sheets scope.
 //
@@ -503,7 +503,7 @@ function viewLabel(tab: string | null): string {
   return isViewTab(tab) ? VIEW_LABELS[tab] : tab;
 }
 
-// Admin reader for member feedback (M15 "Future UX Enhancements" #2). Self-contained, like
+// Admin reader for member feedback. Self-contained, like
 // AccessPanel: fetches its own list. Open items by default; a toggle reveals resolved ones
 // (retained, not deleted, so the friction history survives). Resolving an item drops it from
 // the open list; reopening restores it. Each item shows who sent it and the context they were

@@ -137,14 +137,12 @@ class AISettings(BridgeModel):
 
 
 class EligibilityRules(BridgeModel):
-    """The deterministic hard-filter thresholds — per-member as of M15 1d, including pet
-    limits as of 1e.
+    """The deterministic hard-filter thresholds and disabled checks for one member.
 
     Each member screens against their own thresholds; a member who hasn't diverged reads the
     shared committee default. Every rule here is pure math evaluated on read via
     ``evaluate_hard_filters`` — the numeric thresholds over ``normalized`` fields, plus the
-    pet limits over the pet facts the screening pass extracts (1e moved pets out of the
-    shared screening prompt into this per-member filter). So they live here, separate from the
+    pet limits over the pet facts the screening pass extracts. They live here, separate from the
     shared infra config in ``AppSettings``.
     """
 
@@ -157,8 +155,7 @@ class EligibilityRules(BridgeModel):
     max_dogs: int = Field(default=DEFAULT_MAX_DOGS, ge=0, le=10)
     max_cats: int = Field(default=DEFAULT_MAX_CATS, ge=0, le=10)
     allow_other_pets: bool = Field(default=DEFAULT_ALLOW_OTHER_PETS)
-    # The checks this member has switched off (1g Move 3, renamed from disabled_rules). ONE
-    # flat list spanning BOTH kinds of eligibility check: deterministic hard-filter reason
+    # One flat list spans both kinds of eligibility check: deterministic hard-filter reason
     # codes (income_below_range, pets_over_limit, …) AND AI screening flag categories
     # (fake_contact, internal_inconsistency, …). The two namespaces are disjoint; the hard
     # filter drops matching reason codes and the flag filter drops matching categories, each
@@ -167,15 +164,11 @@ class EligibilityRules(BridgeModel):
 
 
 class AppSettings(BridgeModel):
-    """Shared, committee-wide infra config: the source sheet and AI provider settings. The
-    per-member eligibility thresholds — including pet limits as of M15 1e — live in
-    ``EligibilityRules``, not here."""
+    """Shared source-sheet and AI settings. Eligibility policy is stored separately."""
 
     google_sheet_id: str = Field(default="", max_length=2000)
-    # The user whose stored Google token reads the sheet during sync — the admin who linked
-    # it via the Picker (M18). Sync uses THIS token regardless of who clicks Sync, so members
-    # never need a Drive/Sheets scope. None until an admin links a sheet (falls back to the
-    # syncing user's own token — the pre-M18 behaviour — so nothing breaks in the interim).
+    # The user whose stored Google token reads the sheet during sync. Sync uses this token
+    # regardless of who clicks Sync, so other members do not need Drive/Sheets access.
     google_sheet_reader_user_id: int | None = Field(default=None)
     ai: AISettings = Field(default_factory=AISettings)
 
@@ -195,22 +188,22 @@ class AppSettings(BridgeModel):
 
 
 class SheetCodeExchangeRequest(BridgeModel):
-    """The GIS code-model authorization code from the admin's one-click grant (M18), POSTed so
+    """The GIS code-model authorization code POSTed so
     the backend can exchange it for a refresh+access token."""
 
     code: str = Field(min_length=1)
 
 
 class SheetLinkRequest(BridgeModel):
-    """Admin links the applications sheet via the Google Picker (M18). The Picker only PICKS the
+    """Admin links the applications sheet via the Google Picker. The Picker only selects the
     file (returns its id); the sheet is READ during sync with the linking admin's own stored
     LOGIN token — which carries drive.file + a refresh_token (offline access), so it reads
     durably and auto-refreshes. Hence only the file id is sent here, not the Picker's
     short-lived (non-refreshable) access token. The endpoint marks the admin the designated
     reader, so members need no Drive/Sheets scope at all.
 
-    Precondition: the linking admin must have signed in with the reader scopes (drive.file),
-    i.e. their stored token can access files they've picked. The endpoint verifies this by
+    The linking admin's stored token must have the ``drive.file`` reader scope. The endpoint
+    verifies this by
     reading the sheet's title before saving, and 409s with a re-connect prompt otherwise."""
 
     file_id: str = Field(min_length=1, max_length=2000)

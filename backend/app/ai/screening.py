@@ -37,10 +37,8 @@ Be conservative: flag only on concrete evidence. When in doubt, do not flag.
 """
 
 # The static instruction template. Held as a module constant so the cache version can be
-# derived from the prompt text — see screening_prompt_version. No per-settings value is
-# interpolated: as of M15 1e the pet POLICY left this prompt (a deterministic per-member
-# hard filter judges pet counts now), so the prompt only EXTRACTS neutral pet facts, which
-# don't depend on any threshold. The version is therefore a pure function of the prompt text.
+# derived from the prompt text. The prompt extracts neutral pet facts; deterministic
+# per-member rules apply the policy, so no settings value belongs in this version.
 # f-string so the shared INJECTION_GUARD_NOTE resolves at import (landing in the hashed
 # text, so guard edits re-run this pass).
 _INSTRUCTIONS_TEMPLATE = f"""\
@@ -78,12 +76,9 @@ From what the applicant wrote about pets, fill the `pets` inventory: count dogs 
 - Before returning the structured result, briefly explain your reasoning as Markdown. Then return the structured flags and pet inventory."""
 
 
-# Cached pass: the version gates this pass's cache (see derive_prompt_version). As of M15
-# 1e it hashes ONLY the prompt text — no settings value folds in, because the prompt no
-# longer cites the pet policy (it extracts neutral facts, which no threshold changes). So a
-# pet-limit change no longer invalidates this cache: it's a hard-filter change judged on
-# read, not a screening change. (Before 1e the filled pet-policy line was hashed here, since
-# the prompt asked the model to JUDGE pets; that judgment moved to the deterministic filter.)
+# Cached pass: the version hashes only the prompt text because the prompt extracts neutral
+# facts rather than applying configurable policy. Pet-limit changes therefore do not
+# invalidate the screening cache.
 def screening_prompt_version() -> str:
     return derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS_TEMPLATE)
 

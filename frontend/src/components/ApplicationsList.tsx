@@ -159,7 +159,7 @@ export function ApplicationsList(props: {
             {applications.map((app) => {
               // Reason cell shows the machine's "why" for an exclusion. Rules: the
               // hard-filter reasons. AI: the flag categories AND any hard-filter reasons
-              // (pets are a deterministic reason but attribute to the AI source — M15 1g —
+              // (pets are deterministic but attribute to the AI source because
               // so an AI row's "why" can live in either list; show both). Human: neither.
               const reason =
                 app.statusSource === "rules"

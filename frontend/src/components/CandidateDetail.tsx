@@ -264,7 +264,7 @@ export function CandidateDetail(props: {
   const flaggedFields = new Set(
     app.hardFilterReasons.flatMap((reason) => REASON_FIELDS[reason.code] ?? []),
   );
-  // Findings are grouped by SOURCE to match the status badge (M15 1g): the deterministic
+  // Findings are grouped by source to match the status badge: the deterministic
   // rules (Sync-knowable threshold reasons) vs. the AI screening pass. Pets are a hard-filter
   // reason but attribute to AI (the model extracts the pet counts), so they render in the AI
   // panel as evidence cards alongside the flags — not in the deterministic panel.

@@ -166,8 +166,7 @@ h1 {
   cursor: pointer;
   font-size: 0.85rem;
   font-weight: 500;
-  /* No underline when the class is used on an <a> (e.g. the M18 "Connect applications sheet"
-     link-button) — anchors are underlined globally, which fights the button look. */
+  /* Anchors are underlined globally; link-buttons retain the button treatment. */
   text-decoration: none;
   transition: border-color 0.12s, background-color 0.12s, box-shadow 0.12s, transform 0.12s;
 }
@@ -404,7 +403,7 @@ h1 {
 
 /* Intro paragraph at the top of the Committee Defaults subtab — above the form, so it
    reads as a section lede rather than landing in a form column. */
-/* The "compared to committee default" divergence panel (M15 1f), full-width above the
+/* The "compared to committee default" divergence panel, full-width above the
    member's own rule fields. Shows only the fields that differ + a Reset action. */
 .divergence-panel {
   grid-column: 1 / -1;
@@ -514,7 +513,7 @@ h1 {
   gap: 12px;
 }
 
-/* The M18 response-sheet linker. Like a settings section but WITHOUT the top divider —
+/* The response-sheet linker has no top divider because
    it's the first block under the subtabs, so a border-top there reads as a stray rule. */
 .sheet-link-section {
   grid-column: 1 / -1;
@@ -1935,7 +1934,7 @@ h1 {
 }
 
 
-/* M13 carry-forward audit (match pass), rendered inside a .raw-row-section
+/* Carry-forward audit, rendered inside a .raw-row-section
    <details>, so it shares the collapsible debug-panel idiom. */
 .match-audit {
   font-size: 0.82rem;
@@ -2405,7 +2404,7 @@ input[type="radio"] {
   transition-delay: 0.2s; /* the show delay — sub-second, per spec */
 }
 
-/* Pattern discovery + dimension scoring (milestone 7) */
+/* Pattern discovery and dimension scoring */
 /* Criteria header above the tier-list: the framing line + the "Add your own"
    toggle. The criteria themselves now live as the tier chips below, so there's no
    separate criteria card — just this slim header introducing them. */
@@ -2677,7 +2676,7 @@ input[type="radio"] {
   font-style: italic;
 }
 
-/* --- Ranked shortlist (milestone 8) ------------------------------------- */
+/* --- Ranked shortlist --------------------------------------------------- */
 
 .ranking-view {
   /* The panel itself has no padding — each child supplies its own horizontal
@@ -2775,7 +2774,7 @@ input[type="radio"] {
   font-weight: 600;
 }
 
-/* Cost subtab (M13 Pillar 1): cumulative + current-run spend, by pass. */
+/* Cost subtab: cumulative and current-run spend, by pass. */
 .cost-report {
   display: flex;
   flex-direction: column;
@@ -2889,7 +2888,7 @@ input[type="radio"] {
 .cost-recon-over {
   color: #92400e;
 }
-/* "· triggered by <member>" attribution on a shared run (M15 Phase 4). */
+/* "· triggered by <member>" attribution on a shared run. */
 .cost-triggered-by {
   font-weight: 400;
   font-size: 0.78rem;
@@ -2902,7 +2901,7 @@ input[type="radio"] {
   color: var(--muted);
 }
 
-/* Trends (Pillar 3): a crude inline bar before a numeric cell, so a column reads as a
+/* Trends: a crude inline bar before a numeric cell, so a column reads as a
    rough sparkline down the rows. Decorative scale only, not a precise axis. */
 .metric-bar {
   display: inline-block;
@@ -3099,7 +3098,7 @@ input[type="radio"] {
   color: #166534;
 }
 
-/* --- M9 tier-list maker -------------------------------------------------- */
+/* --- Tier-list maker ---------------------------------------------------- */
 
 .tier-list {
   margin: 0 0 1.25rem;

@@ -33,7 +33,7 @@ class ScreeningFlagOut(ResponseModel):
 
 
 class PetFactsOut(ResponseModel):
-    """The pet inventory the screening AI extracted from the free-text pets field (M15 1e).
+    """The pet inventory the screening AI extracted from the free-text pets field.
     Surfaced on the detail so the pet card can show the AI's ``reasoning`` — what it saw and
     how it classified it — at the finding, rather than making a member hunt the whole-pass
     narrative for the pet paragraph (extracting that slice would be brittle). The counts are

@@ -420,10 +420,8 @@ export function App() {
     }
     pushBrowserLocation({ screenerLocation: true, tab: activeTab, applicantId: id });
     setSelectedApp(application);
-    // The scroll to the detail's top happens in a layout effect keyed on the selected
-    // applicant id (see below) — NOT here: scrolling in this handler races React's commit,
-    // so on a first open `.app-detail` isn't in the DOM yet and the scroll no-ops (the
-    // "lands halfway down the page" bug). Running it post-commit guarantees the element exists.
+    // The layout effect scrolls after React mounts the detail. Scrolling here can run before
+    // `.app-detail` exists.
   }
 
   function login() {
@@ -518,10 +516,8 @@ export function App() {
     } else {
       showError("Could not load the AI cost estimate for screening.");
     }
-    // Re-pull the dashboard so the badge reflects current shared state (another member may
-    // have run since our last fetch — M16). AFTER the estimate, not before: the dashboard is
-    // the heaviest call (~120ms) and fired first it competes with the estimate fetch the card
-    // waits on, adding a visible pause before the card appears.
+    // Refresh shared workflow state after the estimate so it does not delay the confirmation
+    // card the member is waiting to see.
     refreshDashboard();
   }
 

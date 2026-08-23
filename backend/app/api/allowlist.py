@@ -1,6 +1,6 @@
 """Admin-only management of the access allowlist (who may sign in, with what role).
 
-The first genuinely admin-only surface (M15), so every route here is gated by
+Every route is gated by
 ``require_admin``. Guarded against locking the committee out: the last admin entry
 can neither be removed nor demoted to member.
 """

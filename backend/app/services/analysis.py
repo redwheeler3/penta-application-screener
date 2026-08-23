@@ -1,4 +1,4 @@
-"""Ranking persistence: shared ``Analysis`` + per-member ``MemberRanking`` (M15).
+"""Ranking persistence for shared analyses and per-member ranking state.
 
 An ``Analysis`` holds the discovered ``PoolDimensionReport`` — the shared, compute-once AI
 output. Per-candidate scores are NOT stored here — they live in ``ApplicationAIResult`` rows
@@ -607,9 +607,7 @@ def ranking_is_current(db: Session, analysis: Analysis | None, settings: AppSett
     i.e. the pool, every rank-chain prompt, and both models are unchanged, so a
     re-rank would be a no-op. Drives the "Rank out of date" badge.
 
-    False if there is no analysis, or it predates rank-inputs fingerprinting (older
-    analyses stored only ``pool_fingerprint``; treat them as stale so the first re-rank
-    re-stamps them with the richer fingerprint).
+    False if there is no analysis or no rank-input fingerprint is stored.
     """
     if analysis is None:
         return False
@@ -686,10 +684,10 @@ def proposed_dimensions(member_ranking: MemberRanking) -> list[str]:
 
 
 def committee_kept_keys(db: Session, report: PoolDimensionReport | None) -> set[str]:
-    """The union of every member's KEPT axes — a dimension survives a re-rank if ANY member
-    placed it in a working tier (M15 Phase 2, "keep-if-any-member-tiered"; ADR 0011). This is
-    what the decomposition MUST-survive set is built from, replacing the single triggering
-    member's ``kept_keys``: one member's re-rank must not drop an axis another member relies on.
+    """Return every dimension kept by at least one member.
+
+    The decomposition must preserve this union so one member's re-rank cannot drop an axis
+    another member relies on.
 
     Each member's kept set is their MOST-RECENT working-tier placement across all their
     rankings (via ``tier_history``), not just their view of the immediately-prior analysis — so
@@ -713,10 +711,9 @@ def committee_kept_keys(db: Session, report: PoolDimensionReport | None) -> set[
 
 
 def committee_proposed_dimensions(db: Session, analysis: Analysis | None) -> list[str]:
-    """The union of every member's pending free-text proposals on ``analysis`` — the axes the
-    committee wants the next Rank's discovery to ground (M15 Phase 2, "shared-union discovery
-    merge"; ADR 0011). Replaces the single triggering member's ``proposed_dimensions``: a
-    proposal steers the shared discovery regardless of who triggers the run.
+    """Return the committee's pending free-text proposals for the next Rank.
+
+    Every member's proposal steers shared discovery regardless of who triggers the run.
 
     Deduped case-insensitively, first-seen wording kept, stable order (members oldest-first,
     then each member's own order) so the discovery prompt reads deterministically. Proposals are

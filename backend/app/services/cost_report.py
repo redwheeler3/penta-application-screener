@@ -1,4 +1,4 @@
-"""Cost aggregation for the Observability tab (M13 Pillar 1).
+"""Cost aggregation for the Observability tab.
 
 Every AI pass — pool-level (discovery, decompose, match, consolidate) and per-
 application (screening, scoring) alike — records its spend the same way: a ``PassCost``
@@ -78,7 +78,7 @@ def record_run_cost(
     projection the caller showed the committee, stored for estimate-vs-actual
     reconciliation (0.0 when the kind has no pre-run estimate surface).
     ``triggered_by_user_id`` stamps the member who kicked off this shared run, so
-    Observability can attribute the shared spend (M15 Phase 4); None leaves it unattributed.
+    Observability can attribute the shared spend; None leaves it unattributed.
     Commits its own rows so a later failure can't lose them.
     """
     durations_ms = durations_ms or {}

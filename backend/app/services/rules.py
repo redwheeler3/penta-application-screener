@@ -1,19 +1,7 @@
-"""The per-member eligibility-rules resolver (M15 1d).
+"""Resolve copy-on-write member eligibility rules and deterministic filter reasons.
 
-The deterministic hard-filter thresholds became per-member: each committee member screens
-against their own numeric rules, defaulting to a shared committee baseline until they
-diverge. Two stores back that model:
-
-  - the committee default — a single ``AdminSetting`` row (key ``committee_default_rules``)
-    holding an ``EligibilityRules`` blob, the shared baseline every member reads until they
-    customize;
-  - per-member divergence — a sparse ``MemberRules`` row, written copy-on-write only once a
-    member edits their rules away from the default (most members never diverge, so most have
-    no row).
-
-This module resolves a member's *effective* rules from those two stores, builds the domain
-``RulesConfig`` a member's hard-filter evaluation runs under, and serializes the on-read
-reasons that replace the (now removed) stored ``hard_filter_reasons`` column.
+Members without an override use the committee defaults. Eligibility is computed on read;
+bulk callers should use ``eligibility_snapshot`` to avoid one query per application.
 """
 
 from __future__ import annotations
@@ -83,9 +71,7 @@ def save_member_rules(
 
 
 def reset_member_rules(db: Session, user_id: int) -> None:
-    """Drop this member's copy-on-write ``MemberRules`` row so they follow the committee
-    default again (M15 1f "reset to committee default"). Idempotent: a no-op if the member
-    never diverged. A single-row delete — Model A means there is nothing to reconcile."""
+    """Drop this member's override so they follow the committee default. Idempotent."""
     record = db.scalar(select(MemberRules).where(MemberRules.user_id == user_id))
     if record is not None:
         db.delete(record)
@@ -123,8 +109,7 @@ def committee_default_rules_config(db: Session) -> RulesConfig:
 
 
 def _reason_to_payload(reason: Any) -> dict[str, Any]:
-    """Serialize a ``FilterReason`` to the dict shape the removed stored column carried
-    (code/message/details), so callers that read reasons see the same shape they always did."""
+    """Serialize a ``FilterReason`` for API and eligibility-snapshot consumers."""
     return {"code": reason.code, "message": reason.message, "details": reason.details}
 
 

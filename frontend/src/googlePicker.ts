@@ -1,4 +1,4 @@
-// Google Picker integration (M18). Lets an admin pick the response spreadsheet from their own
+// Google Picker integration. Lets an admin pick the response spreadsheet from their own
 // Drive. Only admins ever load this — members never touch Google JS.
 //
 // Auth uses the GIS CODE MODEL, and this matters: a file picked in the Picker is only

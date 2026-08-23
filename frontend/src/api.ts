@@ -157,18 +157,16 @@ export function saveEligibilityRules(rules: EligibilityRules): Promise<Response>
   });
 }
 
-// Reset the member to the committee default — drops their divergence (M15 1f). Returns the
-// now-effective (default) rules.
+// Remove the member override and return the committee defaults now in effect.
 export function resetEligibilityRules(): Promise<Response> {
   return request("/eligibility-rules", { method: "DELETE" });
 }
 
-// The shared committee default — the baseline a member follows until they diverge, and the
-// reference the Eligibility Settings "compared to default" diff reads (M15 1f).
+// The shared baseline a member follows until they save an override.
 export const fetchCommitteeDefaultRules = () =>
   getJson<EligibilityRules>("/eligibility-rules/committee-default");
 
-// Admin-only: edit the committee default (M15 1f). Zero side effects on member rows (Model A).
+// Editing the committee default does not rewrite member override rows.
 export function saveCommitteeDefaultRules(rules: EligibilityRules): Promise<Response> {
   return request("/eligibility-rules/committee-default", {
     method: "PUT",
@@ -237,13 +235,12 @@ export function linkSheet(fileId: string): Promise<Response> {
 
 export const fetchRankingCurrent = () => request("/ranking/current");
 
-// The current run's carry-forward audit (M13 per-run AI legibility). Null when no
-// run exists or the run predates match-audit capture.
+// The current run's carry-forward audit, or null when none is stored.
 export const fetchMatchAudit = () => getJson<MatchAuditResponse | null>("/ranking/current/match-audit");
 
 // The current run's decomposition audit — how the K fan-out discovery reports were
 // settled into one set (settled axes + merge reasoning + D9 folded-request trail).
-// Null on runs that predate the fan-out redesign.
+// Null when no decomposition audit is stored.
 export const fetchDecomposeAudit = () =>
   getJson<DecomposeAuditResponse | null>("/ranking/current/decompose-audit");
 
@@ -251,17 +248,17 @@ export const fetchConsolidateAudit = () =>
   getJson<ConsolidateAuditResponse | null>("/ranking/current/consolidate-audit");
 
 // The current run's fan-out audit — each of the K parallel discoverers' dimensions +
-// reasoning. Null on runs that predate the fan-out redesign.
+// reasoning. Null when no fan-out audit is stored.
 export const fetchFanOutAudit = () =>
   getJson<FanOutAuditResponse | null>("/ranking/current/fan-out-audit");
 
-// Aggregated AI spend (M13 Pillar 1): cumulative, grouped by run.
+// Aggregated AI spend, grouped by run.
 export const fetchCostReport = () => getJson<CostReport>("/observability/cost");
 
 // The most recent Screen and Rank runs, each with fresh spend + cache savings.
 export const fetchLastRuns = () => getJson<LastRunsReport>("/observability/last-runs");
 
-// Operational trends across all runs (M13 Pillar 3): cost/tokens/latency/cache/failures.
+// Operational trends across all runs: cost, tokens, latency, cache use, and failures.
 export const fetchMetrics = () => getJson<MetricsReport>("/observability/metrics");
 
 export const fetchScreeningEstimate = () => request("/screening/run/estimate");

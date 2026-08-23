@@ -5,7 +5,7 @@ import { useFetchResource } from "../hooks/useFetchResource";
 import type { MetricsReport, TrendPoint } from "../types";
 import { RetryLoadError } from "./RetryLoadError";
 
-// M13 Pillar 3: operational trends across runs, an Observability subtab. Reads the same
+// Operational trends across runs. Reads the same
 // RunPassCost rows Cost does, but for *behaviour over time* rather than spend: per-run
 // cost, latency, cache-hit rate, failures, and dimension count. Deliberately plain —
 // one row per run, newest first, with a tiny inline bar for at-a-glance shape rather

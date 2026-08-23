@@ -24,7 +24,7 @@ export function EligibilitySettingsPanel(props: {
   const [saving, setSaving] = useState(false);
   const [savedTick, setSavedTick] = useState(false);
   // The current committee default, for the "compared to committee default" divergence diff
-  // (M15 1f). Computed lazily on read (member's blob vs current default) — no stored state.
+  // Computed on read from the member override and current default; no diff is stored.
   const [committeeDefault, setCommitteeDefault] = useState<EligibilityRules | null>(null);
   const [resetting, setResetting] = useState(false);
 
@@ -189,7 +189,7 @@ function fmt(v: number | boolean | string[]): string {
   return String(v);
 }
 
-// The lazy "compared to committee default" diff (M15 1f): field-by-field, mine → default,
+// The "compared to committee default" diff: field-by-field, mine → default,
 // ONLY for fields that differ, computed on read from the member's rules vs the CURRENT
 // default. Purely informational, so "Reset" is never scary — it shows exactly what will
 // change. Compares the live draft (not just the saved rules) so it reflects unsaved edits too.

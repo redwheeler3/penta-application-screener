@@ -5,7 +5,7 @@ import * as api from "../api";
 import { readProblem } from "../format";
 
 // A persistent, low-key corner button available on every page: the member's channel to
-// flag friction (M15 "Future UX Enhancements" #2). Clicking opens an inline composer —
+// flag friction. Clicking opens an inline composer —
 // one textarea, submit. The context the member was in (route/tab/current ranking) rides
 // along invisibly (silent capture); identity, app version, and time are stamped
 // server-side. On success a toast confirms and the composer closes.

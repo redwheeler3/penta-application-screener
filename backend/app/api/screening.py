@@ -133,7 +133,7 @@ def run(
 
     applications = applications_for_screening(db)
 
-    # Serialize against other in-flight runs (M16): a concurrent Screen/Rank would waste
+    # Serialize against other in-flight runs: a concurrent Screen or Rank would waste
     # shared spend and (for Rank) strand a MemberRanking. Claim the lease before streaming;
     # 409 if another run holds it. Released in the stream's finally.
     if not acquire_run_lock(db, user_id=user.id, kind="screen"):

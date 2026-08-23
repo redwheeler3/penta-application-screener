@@ -321,7 +321,7 @@ class PassResult:
     error: str | None = None
     # The failed call's exception class (fully-qualified), preserved separately
     # from the ``str()``-flattened ``error`` so failure *modes* stay countable
-    # (M13 operational metrics). None on success.
+    # None on success; failures feed operational metrics.
     error_type: str | None = None
 
     @property

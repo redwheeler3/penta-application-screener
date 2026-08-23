@@ -5,7 +5,7 @@ import { useFetchResource } from "../hooks/useFetchResource";
 import type { MatchAuditResponse } from "../types";
 import { RetryLoadError } from "./RetryLoadError";
 
-// M13 per-run AI legibility: the reuse audit for the current run. Surfaces the
+// The reuse audit for the current run. Surfaces the
 // settled dimensions (post-decomposition, pre key-adoption), how the match pass mapped
 // each onto a prior-run dimension it reuses, and the derived reuse rate. Under the fan-out
 // redesign a high rate is EXPECTED (the dimension set has stabilised); the audit's real

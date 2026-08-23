@@ -91,13 +91,10 @@ export type AIModelOption = {
   configured: boolean;
 };
 
-// The shared admin/infra config (GET/PUT /settings): the data source and the AI knobs.
-// The per-member eligibility rules — including pet limits as of M15 1e — live separately
-// (EligibilityRules).
+// Shared infrastructure settings. Member-specific screening policy lives in EligibilityRules.
 export type AppSettings = {
   googleSheetId: string;
-  // The user whose token reads the sheet during sync (set by the Picker link flow, M18).
-  // null until a sheet is linked.
+  // The user whose token reads the sheet during sync; null until a sheet is linked.
   googleSheetReaderUserId: number | null;
   ai: AISettings;
 };
@@ -109,12 +106,8 @@ export type SettingsResponse = {
   aiModelOptions: AIModelOption[];
 };
 
-// The screening rules each member tunes for themselves (GET/PUT /eligibility-rules):
-// the numeric thresholds plus the pet limits (pets joined here in M15 1e). Members start
-// on the shared committee default and only diverge once they save their own — see
-// EligibilityRulesResponse.isDefault. disabledChecks holds the ids of checks the member has
-// switched off — a flat list spanning BOTH deterministic reason codes (DETERMINISTIC_CHECKS)
-// and AI screening flag categories (AI_CHECKS, incl. pets_over_limit), matching the backend (M15 1g).
+// Members inherit the committee defaults until they save their own screening rules.
+// disabledChecks contains both deterministic reason codes and AI screening categories.
 export type EligibilityRules = {
   incomeMin: number;
   incomeMax: number;
@@ -241,9 +234,7 @@ export type ApplicationDetail = ApplicationSummary & {
   essays: Essay[];
   // null = screening pass not yet run for this application; [] = ran, clean.
   flags: ScreeningFlag[] | null;
-  // The AI's extracted pet inventory (M15 1e). `reasoning` is the AI's read on what the pets
-  // field states and how it classified it — shown at the pet finding on the detail page. null =
-  // not screened (or a pre-reasoning result).
+  // The AI-extracted pet inventory and its interpretation. Null means no extraction is stored.
   petFacts?: { dogs: number; cats: number; otherPets: string[]; reasoning: string } | null;
   rawRow?: Record<string, unknown>;
   // The model's free-text reasoning from the latest screening pass.
@@ -260,7 +251,7 @@ export type ApplicationDetail = ApplicationSummary & {
   privateNote: string;
 };
 
-// GET /ranking/observability/cost — aggregated AI spend for the Observability tab (M13).
+// GET /observability/cost — aggregated AI spend for the Observability tab.
 export type CostPass = {
   passLabel: string;
   // Uncached result units; dimension scoring counts per-dimension rows.
@@ -293,7 +284,7 @@ export type CostReport = {
   totalSavedUsd: number;
 };
 
-// One pass within a single completed run (GET /ranking/observability/last-runs).
+// One pass within a single completed run (GET /observability/last-runs).
 // cachedSavedUsd = reused results' original cost — an estimate of what caching saved.
 export type LastRunPass = {
   label: string;
@@ -323,7 +314,7 @@ export type LastRunCost = {
   passes: LastRunPass[];
 };
 
-// GET /ranking/observability/metrics — operational trends across all runs (M13 Pillar 3).
+// GET /observability/metrics — operational trends across all runs.
 // One point per completed run, oldest→newest.
 export type TrendPoint = {
   at: string;
@@ -453,8 +444,8 @@ export type CurrentRunResponse = {
   proposedDimensions: string[];
 };
 
-// GET /ranking/current/match-audit — the carry-forward trace for the current run
-// (M13 per-run AI legibility). What discovery ACTUALLY emitted before matched keys
+// GET /ranking/current/match-audit — the carry-forward trace for the current run.
+// What discovery emitted before matched keys
 // were rewritten, how the match pass mapped it onto prior dimensions, and the
 // derived carry-forward rate. Null when no run exists or the run predates capture.
 export type MatchAuditResponse = {
@@ -564,7 +555,7 @@ export type ScreeningEstimateResponse = {
   withinCap: boolean;
 };
 
-// Combined cost projection for the Rank chain, from GET /ranking/estimate.
+// Combined cost projection for the Rank chain, from GET /ranking/run/estimate.
 // `approximate` is always true: scoring is priced as a whole-pool ceiling.
 export type RankEstimateResponse = {
   eligible: number;

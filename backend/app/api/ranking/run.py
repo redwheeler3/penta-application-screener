@@ -230,9 +230,8 @@ def _rank_estimate(
     a guaranteed upper bound: a real-Bedrock check across 17 runs (2026-07-25) found actual
     exceeded the estimate ~47% of the time (a full discovery re-mints dimensions whose fresh
     scoring can outrun the historical mean), always still well under the spending cap. The
-    confirmation labels it approximate; the per-run cap is a soft guard, and the true atomic
-    ceiling is M16/M17 work. Carry-forward reuse itself is validated — recorded cache savings
-    grow run-over-run as the pool stabilizes.
+    confirmation labels it approximate; the per-run cap remains a soft guard rather than a
+    reservation. Carry-forward reuse lowers actual spend as the pool stabilizes.
 
     ``pool`` may be passed by a caller that already computed the union scope (the handler's
     guard does), so the ~15ms union isn't recomputed for the confirm card.
@@ -405,7 +404,7 @@ def score_current(
         db, report, settings.ai.dimension_scoring_model
     )
 
-    # Serialize against other in-flight runs (M16); released in the stream's finally.
+    # Serialize against other in-flight runs; released in the stream's finally.
     if not acquire_run_lock(db, user_id=user.id, kind=SCORE_CURRENT_KIND):
         raise Problem(
             "run_in_progress",
@@ -527,7 +526,7 @@ def _stream_criteria(
     # discoverers stay blind (seeding them would correlate the samples and cost
     # coverage). An empty set leaves discovery fully blind (first-run).
     #
-    # Both are the COMMITTEE union, not just the triggering member (M15 Phase 2; ADR 0011): an
+    # Both are the committee union, not just the triggering member: an
     # axis survives if ANY member tiered it, and every member's proposals steer the one shared
     # discovery — so one member's re-rank can't drop another's kept axis or ignore their ask.
     # Tier carry-forward below stays per-member (the triggering member's own placements).
@@ -557,7 +556,7 @@ def _stream_criteria(
     delta_queue: queue.Queue[str | _Stage | None] = queue.Queue()
     criteria_outcome: dict[str, Any] = {}
     # Per-pass wall-clock (ms) for the criteria sub-passes, filled as each runs and
-    # read back after the worker joins (M13 Pillar 3). On this dict, not the result
+    # read back after the worker joins. On this dict, not the result
     # object, since the worker thread fills it while the generator drains.
     durations: dict[str, int] = {}
 
@@ -594,7 +593,7 @@ def _stream_criteria(
             }
             discovery_cost = fan_out.cost
             # Pass 1b: decomposition — settle the K reports into ONE finest,
-            # non-overlapping set (SPEC "Fan-Out Redesign", Phase 3). A single call
+            # non-overlapping set. A single call
             # distils the union to ~one axis per real concept. Its DecompositionReport
             # is projected onto a PoolDimensionReport so the match → adopt → score tail
             # below consumes it unchanged; source_keys + the per-axis merge reasoning
@@ -920,7 +919,7 @@ def rank_run(
             estimated_usd=float(estimate["estimated_usd"]),
         ) from exc
 
-    # Serialize against other in-flight runs (M16). The full Rank is the run whose overlap
+    # Serialize against other in-flight runs. The full Rank is the run whose overlap
     # is genuinely destructive — two concurrent Ranks each create an Analysis and
     # last-writer-wins strands the loser's MemberRanking — so this guard is what closes that
     # hazard. Released in the stream's finally (covers the early return + any pass raising).
@@ -957,7 +956,7 @@ def rank_run(
             # known). Each pass hands over its PassCost — discovery is the summed K fan-out
             # calls; match/consolidation are zero-cost no-ops when they made no call this run,
             # still recorded so the pass set always covers RANK_PASS_LABELS. durations carries
-            # each pass's wall-clock (Pillar 3); the criteria dict omits matching on a first run.
+            # each pass's wall-clock; criteria omits matching when no prior report exists.
             durations = {
                 **criteria.durations,
                 "Dimension scoring": scoring_ms,

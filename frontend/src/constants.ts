@@ -61,7 +61,6 @@ export const REASON_FIELDS: Record<string, string[]> = {
   child_age_exceeds_parent: ["child_details", "applicant_age", "co_applicant_age"],
   co_applicant_incomplete: ["co_applicant_name", "co_applicant_age", "co_applicant_phone", "co_applicant_email"],
   future_employment_start: ["applicant_employment_start", "co_applicant_employment_start"],
-  // Pets became a deterministic per-member reason in M15 1e (was an AI pet_policy flag).
   pets_over_limit: ["pets_text"],
 };
 
@@ -84,9 +83,7 @@ export const SOURCE_LABELS: Record<StatusSource, string> = {
 export const SOURCE_DESCRIPTIONS: Record<StatusSource, string> = {
   untouched: "Passed the deterministic rules; the AI pass raised no flags.",
   rules: "Set ineligible by the deterministic screening rules.",
-  // AI covers both a flag the screening pass raised AND a pet-limit verdict: pets are
-  // deterministic, but the AI must read the pet counts from free text first, so they
-  // land with the AI pass, not the Sync-time rules (M15 1g).
+  // Pet limits are deterministic, but they depend on pet facts extracted during Screen.
   ai: "Set ineligible by the AI screening pass — a flag it raised or the pet count it read.",
   human: "Set by a reviewer.",
 };
@@ -123,8 +120,7 @@ export const AI_PASS_PIPELINE_ORDER = [
   "consolidation",
 ] as const;
 
-// The two groups of toggleable checks a member can switch off (M15 1g Move 2). Both feed the
-// SAME flat `disabledChecks` list on EligibilityRules — the split is presentation only, so a
+// Both groups feed the same flat `disabledChecks` list. The split is presentation only, so a
 // member sees the trust difference between a deterministic threshold and an AI judgment.
 // Kept alphabetical by label; the render sorts defensively too.
 
@@ -209,8 +205,8 @@ export const DETERMINISTIC_CHECKS = [
 ] as const;
 
 // AI screening checks — need the model to run (Screen), so they attribute to the AI source.
-// The 9 flag categories plus the pet check (a deterministic verdict over AI-extracted pet
-// facts — see M15 1g; it groups here because it presents as AI to the member). ids match the
+// The flag categories plus the pet check (a deterministic verdict over AI-extracted pet
+// facts). IDs match the
 // backend: flag categories are the FlagCategory values, pets is the `pets_over_limit` reason.
 export const AI_CHECKS = [
   {

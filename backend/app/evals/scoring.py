@@ -258,6 +258,4 @@ def stability_run(
     return out
 
 
-# NB: no CLI entry point. The live scoring eval runs from the Evals tab
-# (POST /evals/scoring and /evals/scoring-stability, which call
-# load_golden/run_case/stability_run directly).
+# The live scoring eval runs from the Evals tab through POST /evals/scoring.

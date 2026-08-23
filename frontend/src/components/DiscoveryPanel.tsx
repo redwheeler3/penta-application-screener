@@ -5,7 +5,7 @@ import { useFetchResource } from "../hooks/useFetchResource";
 import type { CurrentRunResponse } from "../types";
 import { RetryLoadError } from "./RetryLoadError";
 
-// The discovery half of the run-level axis (M13 + Fan-Out Redesign): what the K
+// The discovery half of the run-level axis: what the K
 // parallel discoverers each found and why. Each pass is one fresh-context discovery;
 // their cross-call variation is the diversity the decomposition step later settles, so
 // seeing all K side by side (not just the one that streamed live) is what makes the
