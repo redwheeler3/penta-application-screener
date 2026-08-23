@@ -296,9 +296,14 @@ removed. They do not show an applicant-removal link.
   from the committee until the applicant submits it. There is at most one optional household
   photo. The initial accepted formats are JPEG, PNG, and WebP with a 10 MB upload limit; the server
   re-encodes accepted images and strips embedded metadata.
-- The primary applicant explicitly accepts the declaration and privacy notice before each
-  Submit action. The product records acceptance and time but does not introduce separately
-  managed declaration or privacy-notice versions.
+- The final **Declaration** section presents the membership declaration and the updated privacy
+  notice together. Its privacy wording reflects the self-service application deletion and
+  retention behavior specified here rather than directing applicants to contact the Privacy
+  Officer for routine changes or deletion. A required, initially unchecked acceptance confirms
+  both the declaration and privacy notice; the introduction explains eligibility but merely
+  continuing or entering an email is not consent. The primary applicant must accept this before
+  every initial or updated Submit action. The product records acceptance and time but does not
+  introduce separately managed declaration or privacy-notice versions.
 - Application-close timing does not prevent an existing application's information from being
   reused for a later opening. Each opening has a separate participation record that says the
   applicant affirmatively wants their one application considered for that opening. Participation
