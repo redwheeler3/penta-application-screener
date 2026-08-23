@@ -114,7 +114,7 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
     or has every eligible applicant scored against the existing set.
     """
     from app.schemas.settings import AppSettings
-    from app.services.analysis import rank_inputs_fingerprint
+    from app.services.analysis_freshness import rank_inputs_fingerprint
 
     app, db = _logged_in_app()
     settings = AppSettings()
@@ -164,7 +164,7 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
 
 def test_rank_fingerprint_tracks_only_effective_reasoning() -> None:
     from app.schemas.settings import AppSettings
-    from app.services.analysis import rank_inputs_fingerprint
+    from app.services.analysis_freshness import rank_inputs_fingerprint
 
     _app, db = _logged_in_app()
     settings = AppSettings()
@@ -181,7 +181,7 @@ def test_rank_fingerprint_tracks_only_effective_reasoning() -> None:
 def test_rank_fingerprint_ignores_provider_but_tracks_the_actual_model() -> None:
     from app.ai.model_catalog import MODEL_IDS_BY_ROUTE
     from app.schemas.settings import AppSettings
-    from app.services.analysis import rank_inputs_fingerprint
+    from app.services.analysis_freshness import rank_inputs_fingerprint
 
     _app, db = _logged_in_app()
     settings = AppSettings()

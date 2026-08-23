@@ -21,174 +21,21 @@ member's.
 
 from __future__ import annotations
 
-import hashlib
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.model_catalog import model_identity
 from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.db.models import (
     Analysis,
     AnalysisAudit,
-    Application,
     DimensionAlias,
     MemberRanking,
     SyncRun,
     User,
 )
-from app.schemas.settings import AppSettings, effective_reasoning_effort
-from app.services.eligibility import union_eligible_application_ids
-
-
-def pool_fingerprint(db: Session) -> str:
-    """A stable hash of the union-eligible pool's inputs.
-
-    Built from the sorted ``raw_row_hash`` of every application eligible for at least one
-    member (the same UNION pool the AI passes discover and score over). It captures the
-    pool changes that should trigger a re-rank: a new applicant, an edited application (its
-    hash changes), and an eligibility flip in ANY member's view — a member overriding an
-    applicant into or out of their eligible set changes the union, so the fingerprint moves
-    and Rank reads as out of date. AI outputs themselves are excluded — they don't change
-    what the pool says.
-
-    This is the *pool* half of the rank-inputs fingerprint; ``rank_inputs_fingerprint``
-    combines it with the prompt + model identity of the passes a Rank runs.
-    """
-    eligible_ids = union_eligible_application_ids(db)
-    hashes = sorted(
-        db.scalars(
-            select(Application.raw_row_hash).where(Application.id.in_(eligible_ids))
-        ).all()
-    )
-    basis = "\n".join(hashes)
-    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
-
-
-def rank_inputs_fingerprint(db: Session, settings: AppSettings) -> str:
-    """A stable hash of everything a Rank's output depends on, used to detect when a
-    re-rank would produce something different — which drives the "Rank out of date"
-    badge.
-
-    Combines the pool fingerprint with the **prompt identity, model identity, and
-    applicable reasoning level** of every pass the Rank chain runs (discovery +
-    decompose + match → scoring). So a re-rank is flagged current only when those inputs
-    are unchanged since the run was created. Switching only between equivalent provider
-    routes stays current; editing a prompt or changing the actual model or reasoning
-    level correctly shows Rank as stale. (Screening is the separate Screen step, not part
-    of Rank, so it's excluded.)
-
-    Prompt versions are imported lazily: the AI passes import this module, so a
-    top-level import would be circular (matches the existing local-import pattern in
-    ``estimate_match``).
-    """
-    from app.ai.dimension_consolidate import PROMPT_VERSION as CONSOLIDATE_V
-    from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSE_V
-    from app.ai.dimension_matching import PROMPT_VERSION as MATCH_V
-    from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_V
-    from app.ai.pattern_discovery import PROMPT_VERSION as DISCOVERY_V
-
-    parts = [
-        pool_fingerprint(db),
-        f"discovery:{DISCOVERY_V}",
-        f"decompose:{DECOMPOSE_V}",
-        f"match:{MATCH_V}",
-        f"scoring:{SCORING_V}",
-        f"consolidate:{CONSOLIDATE_V}",
-        # The model identity of every rank-chain pass — changing the actual model
-        # ambers Rank, while moving the same model between routes does not. Screening's
-        # model is deliberately absent: it's the separate Screen step.
-        f"discovery_model:{model_identity(settings.ai.discovery_model)}",
-        f"decompose_model:{model_identity(settings.ai.decompose_model)}",
-        f"match_model:{model_identity(settings.ai.match_model)}",
-        f"scoring_model:{model_identity(settings.ai.dimension_scoring_model)}",
-        f"consolidate_model:{model_identity(settings.ai.consolidate_model)}",
-    ]
-    # Reasoning changes the output just like a model change. Append only effective
-    # values so adding inactive Claude settings does not invalidate existing runs.
-    reasoning_settings = (
-        ("discovery", settings.ai.discovery_model, settings.ai.discovery_reasoning_effort),
-        ("decompose", settings.ai.decompose_model, settings.ai.decompose_reasoning_effort),
-        ("match", settings.ai.match_model, settings.ai.match_reasoning_effort),
-        (
-            "scoring",
-            settings.ai.dimension_scoring_model,
-            settings.ai.dimension_scoring_reasoning_effort,
-        ),
-        (
-            "consolidate",
-            settings.ai.consolidate_model,
-            settings.ai.consolidate_reasoning_effort,
-        ),
-    )
-    for pass_name, model_id, configured_effort in reasoning_settings:
-        effort = effective_reasoning_effort(model_id, configured_effort)
-        if effort is not None:
-            parts.append(f"{pass_name}_reasoning:{effort}")
-    basis = "\n".join(parts)
-    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
-
-
-def adopt_matched_keys(
-    report: PoolDimensionReport,
-    new_to_old: dict[str, str],
-    prior: PoolDimensionReport | None,
-) -> PoolDimensionReport:
-    """Replace a freshly-discovered dimension that matched a prior one with the prior
-    dimension **wholesale** — prior key AND prior text (name, definition,
-    why_it_differentiates) — discarding the fresh wording.
-
-    A matched dimension reuses its cached score (the score cache is keyed by key), and
-    that score was computed by the model reading the PRIOR definition. So the prior
-    text is the only wording consistent with the reused score: swapping in freshly
-    re-discovered wording would show the committee a number scored against a
-    definition it no longer sees. Score and text must move together, so a match
-    freezes both. (Discovery's fresh re-read is genuinely more current, but that only
-    matters for a dimension we re-score — an unmatched one, below.)
-
-    A genuinely unmatched dimension keeps its fresh key and fresh text (→ cache miss →
-    scored fresh, so text and score are aligned by construction).
-
-    Many-to-one collapse: the match map is a function of new_key, but several new keys
-    MAY point at the SAME prior key — discovery re-carved one prior axis into multiple
-    twins this run (the matcher recognized them all as that one prior concept). They must
-    become ONE dimension, not several: the first adopts the prior key + text, and each
-    later twin of the same prior axis is DROPPED (it is a redundant re-carving of an axis
-    already present, so folding it in reuses the prior cached score rather than
-    double-weighting one concept). Dropping the twin — rather than keeping its fresh key —
-    is the difference between a collapse and a silent double-count.
-
-    Final de-dup: a dimension may also resolve to a key already taken for a reason OTHER
-    than a match — e.g. a kept axis re-added by the D9 guard under its canonical key while
-    a drifted re-discovery of the same concept ALSO matches back to that key. A key must
-    be unique (cache identity rides on it), so any such later collision is dropped too;
-    the matched/adopted dimension (whose prior text pairs with its cached score) wins.
-    """
-    prior_by_key = {d.key: d for d in prior.dimensions} if prior is not None else {}
-    taken: set[str] = set()
-    dims = []
-    for dim in report.dimensions:
-        old_key = new_to_old.get(dim.key)
-        is_match = old_key is not None and old_key in prior_by_key
-        if is_match and old_key in taken:
-            # A re-carved twin of a prior axis already adopted this pass → collapse into
-            # it (the prior cached score is reused; emitting it again would double-count).
-            continue
-        if is_match:
-            # Adopt the prior dimension's key AND text (they pair with the cached
-            # score), but keep the FRESH from_committee_request flag — that is this
-            # run's provenance (did the committee ask for this axis now?), not part of
-            # the scored concept, and it drives the D9 never-vanish guard downstream.
-            adopted = prior_by_key[old_key].model_copy(
-                update={"from_committee_request": dim.from_committee_request}
-            )
-        else:
-            adopted = dim  # genuinely unmatched → keep fresh key + text (scored fresh below)
-        if adopted.key in taken:
-            continue  # duplicate key (see final de-dup above) — first occurrence wins
-        taken.add(adopted.key)
-        dims.append(adopted)
-    return report.model_copy(update={"dimensions": dims})
+from app.schemas.settings import AppSettings
+from app.services.analysis_freshness import rank_inputs_fingerprint
+from app.services.dimension_identity import flatten_merges, transfer_merged_tiers
 
 
 def create_analysis(
@@ -269,28 +116,6 @@ def create_analysis(
     return analysis
 
 
-def _resolve_chains(links: dict[str, str]) -> dict[str, str]:
-    """Resolve every start→target link to its TERMINAL target, collapsing chains.
-
-    ``{C: B, B: A}`` becomes ``{C: A, B: A}``. Both callers (in-run merges and persisted
-    aliases) orient newer→older (canonical rank), so links strictly decrease and can't
-    cycle; the ``seen`` cap is defensive only.
-    """
-    resolved: dict[str, str] = {}
-    for start, target in links.items():
-        seen = {start}
-        while target in links and target not in seen:
-            seen.add(target)
-            target = links[target]
-        resolved[start] = target
-    return resolved
-
-
-def _flatten_merges(merges: dict[str, str]) -> dict[str, str]:
-    """Resolve every drop→keep merge to its terminal survivor (see ``_resolve_chains``)."""
-    return _resolve_chains(merges)
-
-
 def apply_consolidation(
     db: Session,
     analysis: Analysis,
@@ -334,7 +159,7 @@ def apply_consolidation(
     # ({C: A, B: A}) so aliases point straight at the winner and every by-value lookup
     # below (tier-placement transfer especially) lands on a key that still exists, not a
     # mid-chain key that was itself dropped.
-    merges = _flatten_merges(merges)
+    merges = flatten_merges(merges)
 
     if merges:
         # An alias may already exist: matching is high-bar, so a merged key can be
@@ -388,32 +213,7 @@ def apply_consolidation(
         # survivor inherits the HIGHEST-priority working tier among the keys collapsing
         # into it (tier order = priority, top = heaviest); a twin left in Ignore
         # contributes no placement.
-        old_tiers = state.get("tiers") or []
-        placement = {k: i for i, t in enumerate(old_tiers) for k in t.get("dimension_keys", [])}
-        target_index: dict[str, int] = {}
-        for drop_key, keep_key in merges.items():
-            candidates = [placement[k] for k in (drop_key, keep_key) if k in placement]
-            if candidates:
-                best = min(candidates)
-                prior = target_index.get(keep_key, placement.get(keep_key))
-                target_index[keep_key] = best if prior is None else min(prior, best)
-
-        tiers = [
-            {
-                **t,
-                "dimension_keys": [
-                    k
-                    for k in t.get("dimension_keys", [])
-                    # Drop the losers, and pull a survivor out of its old tier if it's
-                    # being promoted into a different one below (avoid a duplicate).
-                    if k not in merges and target_index.get(k, idx) == idx
-                ],
-            }
-            for idx, t in enumerate(old_tiers)
-        ]
-        for keep_key, idx in target_index.items():
-            if idx < len(tiers) and keep_key not in tiers[idx]["dimension_keys"]:
-                tiers[idx]["dimension_keys"].append(keep_key)
+        tiers = transfer_merged_tiers(state.get("tiers") or [], merges)
 
         if resurfaced:
             tier_by_id = {t["id"]: t for t in tiers}
@@ -515,7 +315,7 @@ def alias_map(db: Session) -> dict[str, str]:
     defensively by capping the walk.
     """
     direct = {a.alias_key: a.canonical_key for a in db.scalars(select(DimensionAlias))}
-    return _resolve_chains(direct)
+    return flatten_merges(direct)
 
 
 def key_history(db: Session) -> tuple[dict[str, int], dict[str, str], dict[str, str]]:

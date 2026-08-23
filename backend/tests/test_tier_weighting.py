@@ -9,10 +9,10 @@ absence of a placement, not a stored tier — a dimension in no tier has weight 
 
 from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.services.analysis import (
-    adopt_matched_keys,
     carry_forward_layout,
     weights_from_tiers,
 )
+from app.services.dimension_identity import adopt_matched_keys
 
 KEYS = ["a", "b", "c", "d"]
 

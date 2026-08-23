@@ -17,10 +17,8 @@ spends nothing.
 """
 
 import logging
-import queue
-import threading
 import time
-from collections.abc import Generator, Iterator
+from collections.abc import Callable, Generator, Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -62,7 +60,7 @@ from app.ai.pattern_discovery import (
 )
 from app.ai.pricing import PassCost
 from app.ai.provider import AIProvider
-from app.ai.schemas import PoolDimension, PoolDimensionReport
+from app.ai.schemas import DecompositionReport, PoolDimension, PoolDimensionReport
 from app.api.dependencies import get_ai_provider, require_current_user
 from app.api.problems import Problem
 from app.core.config import get_settings
@@ -72,7 +70,6 @@ from app.schemas.events import ErrorEvent as StreamErrorEvent
 from app.schemas.events import (
     NoticeEvent,
     PhaseEvent,
-    PingEvent,
     ProgressEvent,
     RankSummary,
     StageEvent,
@@ -87,7 +84,6 @@ from app.schemas.ranking import (
 )
 from app.schemas.settings import AppSettings
 from app.services.analysis import (
-    adopt_matched_keys,
     all_known_dimensions,
     apply_consolidation,
     carry_forward_layout,
@@ -107,8 +103,10 @@ from app.services.cost_report import (
     recent_pass_fresh_usd,
     record_run_cost,
 )
+from app.services.dimension_identity import adopt_matched_keys
 from app.services.run_lock import acquire_run_lock, release_run_lock
 from app.services.settings import get_app_settings
+from app.services.stream_worker import StreamWorker
 
 router = APIRouter(prefix="/ranking")
 
@@ -137,36 +135,6 @@ class _Stage:
 
     def __init__(self, name: str) -> None:
         self.name = name
-
-
-# Keepalive cadence for the opaque criteria/consolidation passes. Those model calls can go
-# >60s without streaming a token, and a hosting proxy that closes an idle connection (Fly's
-# limit is 60s; ADR 0012) would sever the stream mid-run. 15s is a deliberate 4× margin under
-# that 60s ceiling — cheap insurance (one newline every 15s) against jitter, GC pauses, and a
-# slow proxy hop, rather than running near the edge. See _drain_with_heartbeat.
-HEARTBEAT_SECONDS = 15
-
-
-def _drain_with_heartbeat(
-    q: "queue.Queue[Any]", phase: str
-) -> Iterator[tuple[bool, Any]]:
-    """Drain a worker's delta queue, injecting a keepalive every ``HEARTBEAT_SECONDS`` of
-    silence so an idle-timeout proxy can't sever a long opaque pass (see HEARTBEAT_SECONDS).
-
-    Yields ``(is_ping, item)``: on a real item ``(False, item)`` — the caller interprets it
-    (a str delta, a _Stage, or the None completion sentinel) exactly as before; on a silence
-    timeout ``(True, ping_line)`` — the caller just re-yields the already-serialized ping.
-    Stops after surfacing the None sentinel, so the caller's loop still breaks on it."""
-    ping = emit(PingEvent(phase=phase))
-    while True:
-        try:
-            item = q.get(timeout=HEARTBEAT_SECONDS)
-        except queue.Empty:
-            yield True, ping
-            continue
-        yield False, item
-        if item is None:
-            return
 
 
 @dataclass
@@ -474,9 +442,9 @@ class _CriteriaWork:
     match_narrative: str | None
     match_cost: PassCost
     fan_out_reports: list[PoolDimensionReport]
-    decomposition: Any
+    decomposition: DecompositionReport
     decompose_cost: PassCost
-    folded_requests: Any
+    folded_requests: list[dict]
     fan_out_audit: dict[str, Any]
 
 
@@ -545,36 +513,23 @@ def _stream_criteria(
     # fraction, so `total` is free to repurpose as this count.
     yield emit(PhaseEvent(phase=CRITERIA, total=settings.ai.discovery_fan_out))
     pool = eligible_applications(db)
-    # Discovery and match are single multi-minute model calls with no per-item
-    # progress, so we STREAM their reasoning text as live "thinking". The
-    # provider invokes on_delta from inside the call; a generator can't yield
-    # from a callback, so the work runs on a worker thread that pushes deltas
-    # onto a queue, and this generator drains the queue into NDJSON lines.
-    # A None sentinel marks the work done; the worker stashes its outcome/error.
-    # Queue items: str = a reasoning-text delta, _Stage = a sub-stage transition,
-    # None = work complete. The drain loop below fans these into the right events.
-    delta_queue: queue.Queue[str | _Stage | None] = queue.Queue()
-    criteria_outcome: dict[str, Any] = {}
+    worker: StreamWorker[str | _Stage, _CriteriaWork] = StreamWorker()
     # Per-pass wall-clock (ms) for the criteria sub-passes, filled as each runs and
     # read back after the worker joins. On this dict, not the result
     # object, since the worker thread fills it while the generator drains.
     durations: dict[str, int] = {}
 
-    def on_delta(text: str) -> None:
-        delta_queue.put(text)
-
-    def run_criteria_passes() -> None:
-        try:
+    def run_criteria_passes(put: Callable[[str | _Stage], None]) -> _CriteriaWork:
             # Pass 1: K-parallel fresh-context re-discovery (SPEC "Fan-Out
             # Redesign", D6), blind except for the committee's seeds. The K reports'
             # cross-call variation is the diversity the decomposition step (pass 1b)
             # settles — measured to buy +36% real coverage vs. a single run (see the
             # coverage gate). All K are persisted as an audit trail.
-            delta_queue.put(_Stage("discovering"))
+            put(_Stage("discovering"))
             _t0 = time.perf_counter()
             fan_out = discover_patterns_fanout(
                 provider, applications=pool, settings=settings,
-                k=settings.ai.discovery_fan_out, seeds=seeds, on_delta=on_delta,
+                k=settings.ai.discovery_fan_out, seeds=seeds, on_delta=put,
             )
             durations["Pattern discovery"] = round((time.perf_counter() - _t0) * 1000)
             fan_out_reports = fan_out.reports
@@ -598,7 +553,7 @@ def _stream_criteria(
             # is projected onto a PoolDimensionReport so the match → adopt → score tail
             # below consumes it unchanged; source_keys + the per-axis merge reasoning
             # are preserved separately in decompose_audit.
-            delta_queue.put(_Stage("settling"))
+            put(_Stage("settling"))
             # Kept axes are injected HERE (not into discovery): the settling call sees
             # every carving at once, so it folds any re-discovered twin into the kept
             # axis (reusing its key → match adopts it → cached scores carry forward)
@@ -606,7 +561,7 @@ def _stream_criteria(
             _t0 = time.perf_counter()
             decomposition, decompose_narrative, decompose_cost = decompose_dimensions(
                 provider, reports=fan_out_reports, settings=settings,
-                kept=kept_dims, on_delta=on_delta,
+                kept=kept_dims, on_delta=put,
             )
             durations["Dimension decomposition"] = round((time.perf_counter() - _t0) * 1000)
             # D9 guard: a committee ask (proposal OR kept axis) must never be silently
@@ -632,33 +587,28 @@ def _stream_criteria(
             match_narrative: str | None = None
             match_cost = PassCost()
             if match_history is not None:
-                delta_queue.put(_Stage("matching"))
+                put(_Stage("matching"))
                 _t0 = time.perf_counter()
                 new_to_old, match_narrative, match_cost = match_dimensions(
                     provider, old=match_history, new=report, settings=settings,
-                    on_delta=on_delta,
+                    on_delta=put,
                 )
                 durations["Dimension matching"] = round((time.perf_counter() - _t0) * 1000)
-            criteria_outcome["ok"] = _CriteriaWork(
+            return _CriteriaWork(
                 report=report, narrative=narrative, discovery_cost=discovery_cost,
                 new_to_old=new_to_old, match_narrative=match_narrative, match_cost=match_cost,
                 fan_out_reports=fan_out_reports, decomposition=decomposition,
                 decompose_cost=decompose_cost, folded_requests=folded_requests,
                 fan_out_audit=fan_out_audit,
             )
-        except Exception as exc:
-            criteria_outcome["error"] = exc
-        finally:
-            delta_queue.put(None)  # signal completion
 
-    worker = threading.Thread(target=run_criteria_passes, daemon=True)
-    worker.start()
+    worker.start(run_criteria_passes)
     # Separate each sub-stage's reasoning with a rule — but not before the first, so
     # the box doesn't open with a stray divider. The drain injects a keepalive during any
     # >HEARTBEAT_SECONDS silence (an opaque pass streaming no token) so the stream survives
     # a proxy idle timeout; the ping line is pre-serialized, so we just re-yield it.
     first_stage = True
-    for is_ping, item in _drain_with_heartbeat(delta_queue, CRITERIA):
+    for is_ping, item in worker.drain(CRITERIA):
         if is_ping:
             yield item
             continue
@@ -673,8 +623,8 @@ def _stream_criteria(
             yield emit(ThinkingEvent(phase=CRITERIA, text=item))
     worker.join()
 
-    if "error" in criteria_outcome:
-        exc = criteria_outcome["error"]
+    if worker.error is not None:
+        exc = worker.error
         log.warning(
             "Rank criteria phase failed: %s",
             exception_type_name(exc), exc_info=exc,
@@ -686,7 +636,7 @@ def _stream_criteria(
             )
         )
         return None
-    work: _CriteriaWork = criteria_outcome["ok"]
+    work = worker.result
     # Some (not all) fan-out discovery workers failed — the run proceeded on the
     # survivors (see discover_patterns_fanout). Warn the committee it ran degraded:
     # amber, non-fatal. All-fail already aborted upstream as a fatal criteria error.
@@ -826,34 +776,27 @@ def _stream_consolidate(
     _t0 = time.perf_counter()
     canonical_rank, known_defs, known_names = key_history(db)
 
-    consolidate_queue: queue.Queue[str | None] = queue.Queue()
-    consolidate_outcome: dict[str, Any] = {}
+    worker: StreamWorker[str, Consolidation] = StreamWorker()
 
-    def run_consolidate_pass() -> None:
-        try:
-            consolidate_outcome["ok"] = consolidate_dimensions(
-                provider,
-                report=report,
-                canonical_rank=canonical_rank,
-                vectors=load_score_vectors(db),
-                definitions=known_defs,
-                names=known_names,
-                settings=settings,
-                on_delta=consolidate_queue.put,
-            )
-        except Exception as exc:
-            consolidate_outcome["error"] = exc
-        finally:
-            consolidate_queue.put(None)  # signal completion
+    def run_consolidate_pass(put: Callable[[str], None]) -> Consolidation:
+        return consolidate_dimensions(
+            provider,
+            report=report,
+            canonical_rank=canonical_rank,
+            vectors=load_score_vectors(db),
+            definitions=known_defs,
+            names=known_names,
+            settings=settings,
+            on_delta=put,
+        )
 
-    worker = threading.Thread(target=run_consolidate_pass, daemon=True)
-    worker.start()
+    worker.start(run_consolidate_pass)
     # Criteria always ran first and left text in the box, so consolidation's reasoning
     # needs a leading rule. Emit it lazily — only once real deltas arrive — so a no-op
     # consolidation (correlation nominated nothing → no call) leaves no stray divider.
     # Same heartbeat as the criteria drain: keepalive during any long silent stretch.
     first_delta = True
-    for is_ping, item in _drain_with_heartbeat(consolidate_queue, CONSOLIDATE):
+    for is_ping, item in worker.drain(CONSOLIDATE):
         if is_ping:
             yield item
             continue
@@ -868,14 +811,16 @@ def _stream_consolidate(
     # A consolidation failure is non-fatal — the run's scores are already saved
     # and the merge cleanup is best-effort. Log it and carry on with no merges,
     # matching the "usually a no-op" contract rather than losing the whole run.
-    if "error" in consolidate_outcome:
-        exc = consolidate_outcome["error"]
+    if worker.error is not None:
+        exc = worker.error
         log.warning(
             "Rank consolidation phase failed: %s",
             exception_type_name(exc), exc_info=exc,
         )
-    consolidation = consolidate_outcome.get("ok") or Consolidation(
-        merges={}, narrative=None, audit=[], cost=PassCost()
+    consolidation = (
+        Consolidation(merges={}, narrative=None, audit=[], cost=PassCost())
+        if worker.error is not None
+        else worker.result
     )
     apply_consolidation(
         db, analysis, member_ranking,
