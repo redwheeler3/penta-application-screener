@@ -2,9 +2,11 @@ from fastapi import APIRouter, Depends
 from google.auth.exceptions import RefreshError, TransportError
 from googleapiclient.errors import HttpError
 from httplib2 import HttpLib2Error
+from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
 
 from app.ai.model_catalog import MODEL_CATALOG, model_spec, provider_is_configured
+from app.ai.pass_catalog import AI_PASS_CATALOG
 from app.api.dependencies import require_admin, require_current_user
 from app.api.problems import Problem
 from app.core.config import get_settings
@@ -12,7 +14,9 @@ from app.db.models import User
 from app.db.session import get_db
 from app.schemas.settings import (
     AIModelOption,
+    AIPassOption,
     AppSettings,
+    EligibilityCheckCatalog,
     EligibilityRules,
     EligibilityRulesResponse,
     SettingsResponse,
@@ -20,6 +24,7 @@ from app.schemas.settings import (
     SheetLinkRequest,
     google_sheet_url_from_id,
 )
+from app.services.eligibility_catalog import ELIGIBILITY_CHECK_CATALOG
 from app.services.google_credentials import (
     exchange_auth_code,
     get_google_sheet_credentials,
@@ -85,6 +90,15 @@ def build_settings_response(db: Session, user: User, settings: AppSettings) -> S
                 ),
             )
             for model in MODEL_CATALOG
+        ],
+        ai_passes=[
+            AIPassOption(
+                key=spec.key,
+                label=spec.label,
+                model_setting=to_camel(spec.model_attr),
+                reasoning_setting=to_camel(spec.reasoning_attr),
+            )
+            for spec in AI_PASS_CATALOG
         ],
     )
 
@@ -218,6 +232,13 @@ def _validate_rules(rules: EligibilityRules) -> None:
             "invalid_settings",
             detail="Income maximum must be greater than or equal to income minimum.",
         )
+
+
+@rules_router.get("/catalog", response_model=EligibilityCheckCatalog)
+def read_eligibility_check_catalog(
+    _user: User = Depends(require_current_user),
+) -> EligibilityCheckCatalog:
+    return ELIGIBILITY_CHECK_CATALOG
 
 
 @rules_router.get("", response_model=EligibilityRulesResponse)

@@ -126,14 +126,9 @@ class AISettings(BridgeModel):
         return value
 
     def selected_models(self) -> tuple[str, ...]:
-        return (
-            self.screening_model,
-            self.dimension_scoring_model,
-            self.discovery_model,
-            self.decompose_model,
-            self.match_model,
-            self.consolidate_model,
-        )
+        from app.ai.pass_catalog import AI_PASS_CATALOG
+
+        return tuple(getattr(self, spec.model_attr) for spec in AI_PASS_CATALOG)
 
 
 class EligibilityRules(BridgeModel):
@@ -217,11 +212,19 @@ class AIModelOption(ResponseModel):
     configured: bool
 
 
+class AIPassOption(ResponseModel):
+    key: str
+    label: str
+    model_setting: str
+    reasoning_setting: str
+
+
 class SettingsResponse(ResponseModel):
     settings: AppSettings
     google_sheet_url: str = ""
     google_sheet_title: str | None = None
     ai_model_options: list[AIModelOption]
+    ai_passes: list[AIPassOption]
 
 
 class EligibilityRulesResponse(ResponseModel):
@@ -230,3 +233,14 @@ class EligibilityRulesResponse(ResponseModel):
 
     rules: EligibilityRules
     is_default: bool
+
+
+class EligibilityCheck(ResponseModel):
+    id: str
+    label: str
+    description: str
+
+
+class EligibilityCheckCatalog(ResponseModel):
+    deterministic: list[EligibilityCheck]
+    ai: list[EligibilityCheck]

@@ -251,16 +251,10 @@ def current_model(eval_key: str, db: Session) -> str:
 
         return JUDGE_MODEL
 
-    settings = get_app_settings(db)
-    model_attrs = {
-        "screening": "screening_model",
-        "scoring": "dimension_scoring_model",
-        "consolidation": "consolidate_model",
-        "matching": "match_model",
-        "decomposition": "decompose_model",
-    }
-    attr = model_attrs.get(base)
-    return getattr(settings.ai, attr) if attr else ""
+    from app.ai.pass_catalog import ai_pass
+
+    spec = ai_pass(base)
+    return getattr(get_app_settings(db).ai, spec.model_attr) if spec else ""
 
 
 def live_case_keys(run_key: str) -> set[str] | None:

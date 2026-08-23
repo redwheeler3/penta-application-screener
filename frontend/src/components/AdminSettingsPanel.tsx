@@ -2,13 +2,14 @@ import { type ReactNode, type SyntheticEvent, useEffect, useState } from "react"
 import * as api from "../api";
 import { formatPacificDateTime, readProblem } from "../format";
 import { isPickerConfigured, pickApplicationsSheet } from "../googlePicker";
-import { AI_CHECKS, DETERMINISTIC_CHECKS, ELIGIBILITY_NUMERIC_FIELDS } from "../constants";
+import { ELIGIBILITY_NUMERIC_FIELDS } from "../constants";
 import { NumberInput } from "./NumberInput";
 import { AccessPanel } from "./AccessPanel";
 import { CheckGroup } from "./CheckToggles";
 import { RetryLoadError } from "./RetryLoadError";
+import { useFetchResource } from "../hooks/useFetchResource";
 import type {
-  AIModelProvider, AISettings, AppSettings, CurrentUser, EligibilityRules, FeedbackItem,
+  AIModelProvider, AppSettings, CurrentUser, EligibilityRules, FeedbackItem,
   ReasoningEffort, SettingsResponse, ViewTab,
 } from "../types";
 
@@ -18,19 +19,6 @@ const PROVIDER_LABELS: Record<AIModelProvider, string> = {
   openai: "OpenAI direct",
   anthropic: "Anthropic direct",
 };
-const AI_PASSES: Array<{
-  label: string;
-  model: keyof AISettings;
-  reasoning: keyof AISettings;
-}> = [
-  { label: "Screening", model: "screeningModel", reasoning: "screeningReasoningEffort" },
-  { label: "Dimension scoring", model: "dimensionScoringModel", reasoning: "dimensionScoringReasoningEffort" },
-  { label: "Discovery", model: "discoveryModel", reasoning: "discoveryReasoningEffort" },
-  { label: "Decomposition", model: "decomposeModel", reasoning: "decomposeReasoningEffort" },
-  { label: "Matching", model: "matchModel", reasoning: "matchReasoningEffort" },
-  { label: "Consolidation", model: "consolidateModel", reasoning: "consolidateReasoningEffort" },
-];
-
 // The admin-only config surface, organized as sub-views:
 //   Configuration      — the data source (Google Sheet) and AI screening knobs.
 //   Committee Defaults — the shared eligibility-rules baseline every non-diverged member reads.
@@ -197,20 +185,20 @@ export function AdminSettingsPanel(props: {
                   <div className="ai-pass-settings-head">
                     <span>Pass</span><span>Model</span><span>Reasoning</span>
                   </div>
-                  {AI_PASSES.map((pass) => {
-                    const model = draft.ai[pass.model] as string;
-                    const effort = draft.ai[pass.reasoning] as ReasoningEffort;
+                  {saved.aiPasses.map((pass) => {
+                    const model = draft.ai[pass.modelSetting] as string;
+                    const effort = draft.ai[pass.reasoningSetting] as ReasoningEffort;
                     const selected = saved.aiModelOptions.find((option) => option.modelId === model);
                     const supportsReasoning = selected?.supportsReasoningEffort ?? false;
                     return (
-                      <div className="ai-pass-setting" key={pass.label}>
+                      <div className="ai-pass-setting" key={pass.key}>
                         <span>{pass.label}</span>
                         <select
                           aria-label={`${pass.label} model`}
                           value={model}
                           onChange={(event) => setDraft({
                             ...draft,
-                            ai: { ...draft.ai, [pass.model]: event.target.value },
+                            ai: { ...draft.ai, [pass.modelSetting]: event.target.value },
                           })}
                         >
                           {saved.aiModelOptions.map((option) => (
@@ -233,7 +221,7 @@ export function AdminSettingsPanel(props: {
                             ...draft,
                             ai: {
                               ...draft.ai,
-                              [pass.reasoning]: event.target.value as ReasoningEffort,
+                              [pass.reasoningSetting]: event.target.value as ReasoningEffort,
                             },
                           })}
                         >
@@ -366,6 +354,7 @@ function CommitteeDefaultsPanel(props: {
   onError: (message: string) => void;
   onEligibilityChanged: () => void;
 }): ReactNode {
+  const checks = useFetchResource(api.fetchEligibilityCheckCatalog);
   const [draft, setDraft] = useState<EligibilityRules | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [loadVersion, setLoadVersion] = useState(0);
@@ -456,18 +445,26 @@ function CommitteeDefaultsPanel(props: {
             <div className="rules-section">
               <h4>Screening checks</h4>
               <p className="rules-hint">Unchecked checks are off in the committee default.</p>
-              <CheckGroup
-                title="Deterministic rules"
-                checks={DETERMINISTIC_CHECKS}
-                disabledChecks={draft.disabledChecks}
-                onToggle={toggle}
-              />
-              <CheckGroup
-                title="AI screening checks"
-                checks={AI_CHECKS}
-                disabledChecks={draft.disabledChecks}
-                onToggle={toggle}
-              />
+              {checks.state === "error" ? (
+                <RetryLoadError message="Couldn't load the screening checks." onRetry={checks.reload} />
+              ) : checks.data ? (
+                <>
+                  <CheckGroup
+                    title="Deterministic rules"
+                    checks={checks.data.deterministic}
+                    disabledChecks={draft.disabledChecks}
+                    onToggle={toggle}
+                  />
+                  <CheckGroup
+                    title="AI screening checks"
+                    checks={checks.data.ai}
+                    disabledChecks={draft.disabledChecks}
+                    onToggle={toggle}
+                  />
+                </>
+              ) : (
+                <p className="rules-hint">Loading screening checks…</p>
+              )}
             </div>
             <div className="settings-actions">
               <button className="primary-button" type="submit" disabled={saving}>

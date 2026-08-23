@@ -1,11 +1,12 @@
 import { type ReactNode, useEffect, useState } from "react";
-import { AI_CHECKS, DETERMINISTIC_CHECKS, ELIGIBILITY_NUMERIC_FIELDS } from "../constants";
+import { ELIGIBILITY_NUMERIC_FIELDS } from "../constants";
 import * as api from "../api";
 import { readProblem } from "../format";
 import { CheckGroup } from "./CheckToggles";
 import { NumberInput } from "./NumberInput";
 import type { EligibilityRules } from "../types";
 import { RetryLoadError } from "./RetryLoadError";
+import { useFetchResource } from "../hooks/useFetchResource";
 
 // A member's own screening rules: the numeric eligibility thresholds plus which rules
 // run. Self-contained — it fetches its rules on mount (like AccessPanel), edits a local
@@ -27,6 +28,7 @@ export function EligibilitySettingsPanel(props: {
   // Computed on read from the member override and current default; no diff is stored.
   const [committeeDefault, setCommitteeDefault] = useState<EligibilityRules | null>(null);
   const [resetting, setResetting] = useState(false);
+  const checks = useFetchResource(api.fetchEligibilityCheckCatalog);
 
   useEffect(() => {
     let live = true;
@@ -148,20 +150,28 @@ export function EligibilitySettingsPanel(props: {
                 Uncheck a check to disable it for your own list — it won't flag or exclude an
                 applicant for you. Others' lists are unaffected.
               </p>
-              <CheckGroup
-                title="Deterministic rules"
-                hint="Threshold checks decided at Sync from the form data."
-                checks={DETERMINISTIC_CHECKS}
-                disabledChecks={draft.disabledChecks}
-                onToggle={toggleCheck}
-              />
-              <CheckGroup
-                title="AI screening checks"
-                hint="Decided at Screen — the AI reads the application (pets are judged from what it extracts)."
-                checks={AI_CHECKS}
-                disabledChecks={draft.disabledChecks}
-                onToggle={toggleCheck}
-              />
+              {checks.state === "error" ? (
+                <RetryLoadError message="Couldn't load the screening checks." onRetry={checks.reload} />
+              ) : checks.data ? (
+                <>
+                  <CheckGroup
+                    title="Deterministic rules"
+                    hint="Threshold checks decided at Sync from the form data."
+                    checks={checks.data.deterministic}
+                    disabledChecks={draft.disabledChecks}
+                    onToggle={toggleCheck}
+                  />
+                  <CheckGroup
+                    title="AI screening checks"
+                    hint="Decided at Screen — the AI reads the application (pets are judged from what it extracts)."
+                    checks={checks.data.ai}
+                    disabledChecks={draft.disabledChecks}
+                    onToggle={toggleCheck}
+                  />
+                </>
+              ) : (
+                <p className="rules-hint">Loading screening checks…</p>
+              )}
             </div>
             <div className="settings-actions">
               <button className="primary-button" type="submit" disabled={saving}>

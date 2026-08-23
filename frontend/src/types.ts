@@ -104,6 +104,14 @@ export type SettingsResponse = {
   googleSheetUrl: string;
   googleSheetTitle: string | null;
   aiModelOptions: AIModelOption[];
+  aiPasses: AIPassOption[];
+};
+
+export type AIPassOption = {
+  key: string;
+  label: string;
+  modelSetting: keyof AISettings;
+  reasoningSetting: keyof AISettings;
 };
 
 // Members inherit the committee defaults until they save their own screening rules.
@@ -327,6 +335,12 @@ export type TrendPoint = {
   cacheHitRate: number | null; // over cacheable units; null when none
   dimensions: number | null; // live dimension count (full rank only)
   triggeredBy: string | null;
+};
+
+export type EligibilityCheck = { id: string; label: string; description: string };
+export type EligibilityCheckCatalog = {
+  deterministic: EligibilityCheck[];
+  ai: EligibilityCheck[];
 };
 
 export type PassTrendPoint = {

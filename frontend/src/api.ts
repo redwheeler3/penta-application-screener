@@ -15,6 +15,7 @@ import type {
   DashboardCounts,
   DecomposeAuditResponse,
   EligibilityRules,
+  EligibilityCheckCatalog,
   EligibilityRulesResponse,
   EvalDescriptor,
   EvalRunMode,
@@ -160,6 +161,9 @@ export function saveSettings(draft: AppSettings): Promise<Response> {
 
 export const fetchEligibilityRules = () =>
   getJson<EligibilityRulesResponse>("/eligibility-rules");
+
+export const fetchEligibilityCheckCatalog = () =>
+  getJson<EligibilityCheckCatalog>("/eligibility-rules/catalog");
 
 export function saveEligibilityRules(rules: EligibilityRules): Promise<Response> {
   return request("/eligibility-rules", {

@@ -366,3 +366,22 @@ async def test_admin_default_edit_does_not_touch_diverged_member() -> None:
         me = (await client.get("/eligibility-rules")).json()
         assert me["isDefault"] is False
         assert me["rules"]["incomeMin"] == 95_000
+
+
+@pytest.mark.anyio
+async def test_eligibility_check_catalog_is_backend_owned() -> None:
+    app, _ = _rules_client()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/eligibility-rules/catalog")
+
+    assert response.status_code == 200
+    catalog = response.json()
+    assert {check["id"] for check in catalog["deterministic"]} >= {
+        "income_below_range",
+        "owns_real_estate",
+    }
+    assert {check["id"] for check in catalog["ai"]} >= {
+        "fake_contact",
+        "pets_over_limit",
+    }
