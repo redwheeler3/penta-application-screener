@@ -1072,6 +1072,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "alembic" },
     { name = "authlib" },
+    { name = "boto3" },
     { name = "fastapi", extra = ["standard"] },
     { name = "google-api-python-client" },
     { name = "google-auth" },
@@ -1092,6 +1093,7 @@ dev = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.17.2" },
     { name = "authlib", specifier = ">=1.7.2" },
+    { name = "boto3", specifier = ">=1.43.33" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.124.0" },
     { name = "google-api-python-client", specifier = ">=2.197.0" },
     { name = "google-auth", specifier = ">=2.53.0" },

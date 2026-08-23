@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.17.2",
     "authlib>=1.7.2",
+    "boto3>=1.43.33",
     "fastapi[standard]>=0.124.0",
     "google-api-python-client>=2.197.0",
     "google-auth>=2.53.0",

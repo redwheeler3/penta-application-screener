@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -16,6 +17,14 @@ class Settings(BaseSettings):
     # credentials remain deployment secrets and are never returned by the settings API.
     openai_api_key: str = ""
     anthropic_api_key: str = ""
+    # Email defaults to capture-only. Live development is an explicit, guarded mode;
+    # production SES uses its own least-privilege credential rather than Bedrock's.
+    email_delivery_mode: Literal["capture", "development_ses", "production_ses"] = "capture"
+    email_sender: str = ""
+    email_reply_to: str = ""
+    ses_region: str = "us-east-1"
+    ses_aws_access_key_id: str = ""
+    ses_aws_secret_access_key: str = ""
     # Bootstrap-only: emails seeded onto the access allowlist as admins at startup
     # (one per line, '#' comments). Once seeded, admins manage the list in-app; this
     # file does not revoke. Gitignored — real emails are deployment-specific.
