@@ -685,6 +685,12 @@ export type EvalKey =
 
 // A run mode is any eval key except "invariants" (which isn't a spend-confirmed model run).
 export type EvalRunMode = Exclude<EvalKey, "invariants">;
+export type EvalRunOption = {
+  evalKey: EvalRunMode;
+  label: string;
+  rowLabel: string;
+  calls: number;
+};
 
 // The fixtures a RunnableEval tab can read/edit cases for (the writable golden sets + the
 // judge tab, which aggregates them). A subset of EvalKey; the stability modes reuse their

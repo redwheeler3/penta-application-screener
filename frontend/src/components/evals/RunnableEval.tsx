@@ -1,20 +1,21 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { fetchEvalCases, fetchLastEvalRun, runEval, saveEvalCase, streamNdjson } from "../../api";
+import { saveEvalCase } from "../../api";
 import { AI_PASS_PIPELINE_ORDER } from "../../constants";
 import { formatPacificDate, reasoningEffortLabel } from "../../format";
 import type {
   EvalCaseResult,
   EvalFixtureKey,
   EvalRunMode,
+  EvalRunOption,
   EvalRunResult,
-  EvalStreamEvent,
   LastEvalRun,
 } from "../../types";
 import { EvalCaseDetail } from "./EvalCaseDetail";
 import { EvalCaseEditor } from "./EvalCaseEditor";
 import { InlineConfirm } from "./InlineConfirm";
 import type { FieldObject } from "./StructuredFields";
+import { useEvalRunner } from "./useEvalRunner";
 
 // A runnable eval subtab (a pass, or Judge). Master-detail: a case LIST on the left
 // (grouped, e.g. judge cases by the production pass they exercise), a full case DETAIL /
@@ -22,9 +23,7 @@ import type { FieldObject } from "./StructuredFields";
 // spend-confirmed inline (the workflow card, not window.confirm). The model's reasoning
 // streams as rendered markdown; results merge back onto each case row + into the detail.
 
-export type RunMode = { evalKey: EvalRunMode; label: string; rowLabel: string; calls: number };
-
-type RunState = { running: boolean; thinking: string; result: EvalRunResult | null; ranMode: EvalRunMode; error: string | null };
+export type RunMode = EvalRunOption;
 type Confirm = { mode: RunMode; caseKey?: string; calls: number } | null;
 
 export function RunnableEval(props: {
@@ -56,116 +55,21 @@ export function RunnableEval(props: {
   const { caseEvalKey, modes } = props;
   const editable = props.editable ?? true;
   const addable = props.addable ?? editable;
-  const [cases, setCases] = useState<Record<string, unknown>[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null); // selected case key
   const [editing, setEditing] = useState<{ existing: Record<string, unknown> | null } | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Confirm>(null);
-  const [run, setRun] = useState<RunState>({ running: false, thinking: "", result: null, ranMode: modes[0].evalKey, error: null });
-  // Per-case results, nested case key → mode → result. Nesting by MODE lets a case hold its
-  // live-run result AND its stability result at once (running stability no longer clobbers
-  // the live dot, and vice versa). A whole-set run replaces every case's entry FOR THAT MODE;
-  // a per-case run merges just its one case+mode — so no run wipes another case's or another
-  // mode's result.
-  type ModeResults = Partial<Record<EvalRunMode, EvalCaseResult>>;
-  const [caseResults, setCaseResults] = useState<Record<string, ModeResults>>({});
-  // Rehydrated past runs (not this session), one per mode that had one — drives the "last
-  // run · prompt · model" marker so history is never mistaken for fresh. A fresh run of a
-  // mode clears that mode's entry.
-  const [restored, setRestored] = useState<Record<string, LastEvalRun>>({});
+  const { cases, setCases, run, caseResults, restored, runMode } = useEvalRunner({
+    caseEvalKey,
+    runKeys: props.runKeys,
+    initialMode: modes[0].evalKey,
+  });
   const thinkingRef = useRef<HTMLDivElement>(null);
 
-  const loadCases = () => {
-    fetchEvalCases(caseEvalKey)
-      .then((data) => setCases(data.cases))
-      .catch(() => setCases([]));
-  };
-  useEffect(loadCases, [caseEvalKey]);
-
-  // Load the last persisted run PER MODE for this tab. Used on mount (so switching subtabs and
-  // coming back shows what you last saw — result + case dots — instead of a blank tab; a tab
-  // with two evals restores BOTH) AND right after a fresh run completes (so its "last run just
-  // now · prompt …" marker reappears without a page reload — the backend persists the row
-  // before it emits the summary, so a re-fetch here always sees the just-finished run). When
-  // ``seedResults`` is true (mount only) it also rehydrates the per-case dots; a post-run
-  // refresh leaves the freshly-merged case results alone. Thinking is never restored (the
-  // outcome-not-replay choice). Returns a promise so callers can await the refresh.
-  const loadLastRuns = (seedResults: boolean) =>
-    fetchLastEvalRun(props.runKeys)
-      .then((d) => {
-        if (!d.runs.length) return;
-        const byMode: Record<string, LastEvalRun> = {};
-        for (const lastRun of d.runs) byMode[lastRun.evalKey as EvalRunMode] = lastRun;
-        setRestored(byMode);
-        if (!seedResults) return;
-        const seeded: Record<string, ModeResults> = {};
-        for (const lastRun of d.runs) {
-          const mode = lastRun.evalKey as EvalRunMode;
-          for (const c of lastRun.result?.cases ?? []) {
-            (seeded[c.key] ??= {})[mode] = c;
-          }
-        }
-        setCaseResults(seeded);
-        // Show the newest restored run's headline (pick the most recent overall).
-        const newest = d.runs.reduce((a, b) => (a.ranAt >= b.ranAt ? a : b));
-        setRun((r) => ({ ...r, result: newest.result, ranMode: newest.evalKey as EvalRunMode }));
-      });
   useEffect(() => {
-    void loadLastRuns(true);
-    // props.runKeys is a stable per-tab literal; joining keeps the dep primitive.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.runKeys.join(",")]);
-  useEffect(() => {
-    // Keep the newest line in view as it streams in (the box is a small capped scroller,
-    // like the Rank reasoning box).
     const el = thinkingRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   });
-
-  async function doRun(mode: RunMode, caseKey?: string) {
-    // A fresh run of a mode supersedes only THAT mode's rehydrated history (the other mode's
-    // restored marker stays).
-    setRestored((prev) => {
-      const { [mode.evalKey]: _drop, ...rest } = prev;
-      return rest;
-    });
-    setRun({ running: true, thinking: "", result: null, ranMode: mode.evalKey, error: null });
-    try {
-      const resp = await runEval(mode.evalKey, { caseKey });
-      if (!resp.ok || !resp.body) {
-        setRun((r) => ({ ...r, running: false, error: `Request failed (${resp.status})` }));
-        return;
-      }
-      await streamNdjson<EvalStreamEvent>(resp.body, (e) => {
-        if (e.type === "thinking") setRun((r) => ({ ...r, thinking: r.thinking + e.text }));
-        else if (e.type === "summary") {
-          const result = e.result;
-          setRun((r) => ({ ...r, running: false, result }));
-          // Merge this run's per-case results under THIS MODE, preserving other modes'
-          // results on each case. A whole-set run replaces every case's entry for this mode
-          // (clear the mode first); a per-case run touches only its one case+mode.
-          const runCases = result.cases ?? [];
-          setCaseResults((prev) => {
-            const next: Record<string, ModeResults> = {};
-            for (const [k, modeMap] of Object.entries(prev)) {
-              // On a whole-set run, drop this mode from every case (a stale case not in the
-              // new results shouldn't keep an old dot); a per-case run keeps everything.
-              next[k] = caseKey ? { ...modeMap } : { ...modeMap, [mode.evalKey]: undefined };
-            }
-            for (const c of runCases) (next[c.key] ??= {})[mode.evalKey] = c;
-            return next;
-          });
-          // Re-fetch the last-run markers so THIS run's "last run just now · prompt …" marker
-          // reappears immediately (it was cleared when the run started). The row is already
-          // persisted by the time the summary arrives, so this always sees the fresh run.
-          void loadLastRuns(false);
-        } else if (e.type === "error") setRun((r) => ({ ...r, running: false, error: e.message }));
-      });
-      setRun((r) => (r.running ? { ...r, running: false } : r));
-    } catch (err) {
-      setRun((r) => ({ ...r, running: false, error: String(err) }));
-    }
-  }
 
   async function persistCase(evalCase: FieldObject) {
     setSaveError(null);
@@ -199,7 +103,7 @@ export function RunnableEval(props: {
       onConfirm={() => {
         const t = confirm!;
         setConfirm(null);
-        void doRun(t.mode, t.caseKey);
+        void runMode(t.mode, t.caseKey);
       }}
       onCancel={() => setConfirm(null)}
     />
