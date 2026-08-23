@@ -698,12 +698,10 @@ export type EvalRunOption = {
 export type EvalFixtureKey =
   | "scoring" | "consolidation" | "matching" | "decomposition" | "screening" | "judge";
 
-// One case's result within a run. Which fields are present depends on the run mode (scoring
-// carries score/confidence; categorical carries verdict/expected; stability carries
-// tally/agreement/runs; judge carries humanLabel/judgeLabel) — the mode is the discriminant
-// and lives OUTSIDE the payload, so every field is optional. `agreement` here is a fraction
-// (0..1) over the K stability runs — distinct from the run-level agreement object below.
-export type EvalCaseResult = {
+// The run mode is the discriminator for case results, but it lives beside the payload rather
+// than inside it. The shared optional fields let generic list/status renderers work across
+// modes; the named result types below make each mode's required wire shape explicit.
+type EvalCaseDisplayFields = {
   key: string;
   marker?: string;
   contested?: boolean;
@@ -727,7 +725,75 @@ export type EvalCaseResult = {
   judgeLabel?: string;
   detail?: string;
   labelRationale?: string;
+  passName?: string;
+  majority?: string;
+  flipped?: boolean;
 };
+
+export type ScoringEvalCaseResult = EvalCaseDisplayFields & {
+  passed: boolean;
+  score: number;
+  confidence: string;
+  evidence: string;
+  failures: string[];
+};
+
+export type CategoricalEvalCaseResult = EvalCaseDisplayFields & {
+  passed: boolean;
+  verdict: string;
+  expected: string;
+  contested: boolean;
+  reason: string;
+  failures: string[];
+};
+
+export type ScreeningEvalCaseResult = EvalCaseDisplayFields & {
+  passed: boolean;
+  categories: string[];
+  fires: string[];
+  absent: string[];
+  contested: boolean;
+  reason: string;
+  failures: string[];
+};
+
+export type StabilityEvalCaseResult = EvalCaseDisplayFields & {
+  marker: string;
+  agreement: number;
+  tally: Record<string, number>;
+  runs: { outcome: string; detail: string }[];
+};
+
+export type ScoringStabilityEvalCaseResult = StabilityEvalCaseResult & {
+  scoreMin: number;
+  scoreMax: number;
+};
+
+export type JudgeEvalCaseResult = EvalCaseDisplayFields & {
+  marker: string;
+  humanLabel: string;
+  judgeLabel: string;
+  contested: boolean;
+  detail: string;
+  labelRationale: string;
+};
+
+export type EvalCaseResultByMode = {
+  scoring: ScoringEvalCaseResult;
+  scoring_stability: ScoringStabilityEvalCaseResult;
+  consolidation: CategoricalEvalCaseResult;
+  consolidation_stability: StabilityEvalCaseResult;
+  matching: CategoricalEvalCaseResult;
+  matching_stability: StabilityEvalCaseResult;
+  decomposition: CategoricalEvalCaseResult;
+  decomposition_stability: StabilityEvalCaseResult;
+  screening: ScreeningEvalCaseResult;
+  screening_stability: StabilityEvalCaseResult;
+  judge: JudgeEvalCaseResult;
+  stability: StabilityEvalCaseResult;
+};
+
+export type EvalCaseResult = EvalCaseResultByMode[EvalRunMode];
 
 // A whole run's summary (the NDJSON `summary` payload, also what LastEvalRun.result carries):
 // the per-case results plus run-level aggregates. `agreement` is the judge's calibration block
