@@ -1,32 +1,19 @@
-import { type ReactNode, type SyntheticEvent, useEffect, useState } from "react";
-import * as api from "../api";
-import { formatPacificDateTime, readProblem } from "../format";
-import { isPickerConfigured, pickApplicationsSheet } from "../googlePicker";
-import { ELIGIBILITY_NUMERIC_FIELDS } from "../constants";
-import { NumberInput } from "./NumberInput";
-import { AccessPanel } from "./AccessPanel";
-import { CheckGroup } from "./CheckToggles";
-import { RetryLoadError } from "./RetryLoadError";
-import { useFetchResource } from "../hooks/useFetchResource";
-import type {
-  AIModelProvider, AppSettings, CurrentUser, EligibilityRules, FeedbackItem,
-  ReasoningEffort, SettingsResponse, ViewTab,
-} from "../types";
+import { type ReactNode, type SyntheticEvent, useState } from "react";
 
-const REASONING_EFFORTS: ReasoningEffort[] = ["none", "low", "medium", "high", "xhigh", "max"];
-const PROVIDER_LABELS: Record<AIModelProvider, string> = {
-  bedrock: "Amazon Bedrock",
-  openai: "OpenAI direct",
-  anthropic: "Anthropic direct",
-};
-// The admin-only config surface, organized as sub-views:
-//   Configuration      — the data source (Google Sheet) and AI screening knobs.
-//   Committee Defaults — the shared eligibility-rules baseline every non-diverged member reads.
-//   Access             — the sign-in allowlist (the existing AccessPanel, self-fetching).
-//   Feedback           — member-submitted feedback with the context it came from (self-fetching).
-// A member's OWN eligibility rules live on their Eligibility Settings tab; this edits only the
-// shared committee default. Editing it does not rewrite member overrides.
+import type { AppSettings, CurrentUser, SettingsResponse, ViewTab } from "../types";
+import { AccessPanel } from "./AccessPanel";
+import { AdminConfigurationPanel } from "./AdminConfigurationPanel";
+import { CommitteeDefaultsPanel } from "./CommitteeDefaultsPanel";
+import { FeedbackPanel } from "./FeedbackPanel";
+
 type AdminSubtab = "configuration" | "defaults" | "access" | "feedback";
+
+const ADMIN_SUBTABS: Array<{ id: AdminSubtab; label: string }> = [
+  { id: "configuration", label: "Configuration" },
+  { id: "defaults", label: "Committee Defaults" },
+  { id: "access", label: "Access" },
+  { id: "feedback", label: "Feedback" },
+];
 
 export function AdminSettingsPanel(props: {
   draft: AppSettings;
@@ -35,18 +22,12 @@ export function AdminSettingsPanel(props: {
   isSaving: boolean;
   onSubmit: (event: SyntheticEvent<HTMLFormElement>) => void;
   onError: (message: string) => void;
-  // Lift a fresh SettingsResponse to the app (updates the shared `saved`) so a change made
-  // inside a subtab — e.g. linking the applications sheet — survives a tab switch/remount.
   onSettingsUpdated: (payload: SettingsResponse) => void;
-  // Eligibility is derived on read. Saving the committee baseline can reclassify the admin's
-  // own view immediately, so App refreshes every eligibility-dependent surface.
   onEligibilityChanged: () => void;
-  // Jump to an applicant's detail / a top-level view from a feedback item's context link.
   onOpenApplicant: (id: number) => void;
   onOpenView: (tab: ViewTab) => void;
   currentUser: CurrentUser;
 }): ReactNode {
-  const { draft, setDraft, saved } = props;
   const [subtab, setSubtab] = useState<AdminSubtab>("configuration");
 
   return (
@@ -54,45 +35,23 @@ export function AdminSettingsPanel(props: {
       <div className="settings-header">
         <h3>Admin Settings</h3>
       </div>
-      {/* Sub-tabs within the admin panel. Reuses the Observability/Evals underline-tab
-          style (.subtabs) so nested navigation reads the same across the app. */}
-      <div className="subtabs admin-settings-subtabs" role="tablist" aria-label="Admin settings sections">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={subtab === "configuration"}
-          className={`subtab${subtab === "configuration" ? " active" : ""}`}
-          onClick={() => setSubtab("configuration")}
-        >
-          Configuration
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={subtab === "defaults"}
-          className={`subtab${subtab === "defaults" ? " active" : ""}`}
-          onClick={() => setSubtab("defaults")}
-        >
-          Committee Defaults
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={subtab === "access"}
-          className={`subtab${subtab === "access" ? " active" : ""}`}
-          onClick={() => setSubtab("access")}
-        >
-          Access
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={subtab === "feedback"}
-          className={`subtab${subtab === "feedback" ? " active" : ""}`}
-          onClick={() => setSubtab("feedback")}
-        >
-          Feedback
-        </button>
+      <div
+        className="subtabs admin-settings-subtabs"
+        role="tablist"
+        aria-label="Admin settings sections"
+      >
+        {ADMIN_SUBTABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={subtab === tab.id}
+            className={`subtab${subtab === tab.id ? " active" : ""}`}
+            onClick={() => setSubtab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {subtab === "feedback" ? (
@@ -109,532 +68,16 @@ export function AdminSettingsPanel(props: {
           onEligibilityChanged={props.onEligibilityChanged}
         />
       ) : (
-        <div className="settings-panel-body">
-          <div className="settings-subtab-head">
-            <h3>Configuration</h3>
-          </div>
-          {/* Gate on `saved` so we don't flash the form before GET /settings resolves. */}
-          {!saved ? null : (
-            <form className="settings-form" onSubmit={props.onSubmit}>
-              <SheetLinkField
-                saved={saved}
-                onError={props.onError}
-                onSettingsUpdated={props.onSettingsUpdated}
-              />
-
-              <div className="rules-section">
-                <h4>AI Screening</h4>
-                <div className="settings-grid">
-                  <label>
-                    <span>Spending cap (USD per run)</span>
-                    <NumberInput
-                      min="0"
-                      step="0.01"
-                      value={draft.ai.spendingCapUsd}
-                      onChange={(v) => setDraft({ ...draft, ai: { ...draft.ai, spendingCapUsd: v ?? 0 } })}
-                    />
-                    <span className="field-hint">
-                      A Rank is blocked before it starts if its estimated cost exceeds this.
-                    </span>
-                  </label>
-                  <label>
-                    <span>Discovery fan-out (parallel passes)</span>
-                    <NumberInput
-                      min="1"
-                      max="10"
-                      step="1"
-                      value={draft.ai.discoveryFanOut}
-                      onChange={(v) => setDraft({ ...draft, ai: { ...draft.ai, discoveryFanOut: v ?? 0 } })}
-                    />
-                    <span className="field-hint">
-                      Discovery passes run in parallel per Rank, then settled into one criteria set.
-                      More passes find more axes but cost more.
-                    </span>
-                  </label>
-                  <label>
-                    <span>Maximum concurrent AI calls</span>
-                    <NumberInput
-                      min="1"
-                      max="100"
-                      step="1"
-                      value={draft.ai.maxWorkers}
-                      onChange={(v) => setDraft({ ...draft, ai: { ...draft.ai, maxWorkers: v ?? 0 } })}
-                    />
-                    <span className="field-hint">
-                      Reduce this if the selected provider throttles bursts. Direct providers
-                      have account-specific limits too; switching away from AWS does not remove them.
-                    </span>
-                  </label>
-                  <label>
-                    <span>Consolidation correlation threshold</span>
-                    <NumberInput
-                      step="0.01"
-                      value={draft.ai.consolidateCorrelationThreshold}
-                      onChange={(v) =>
-                        setDraft({ ...draft, ai: { ...draft.ai, consolidateCorrelationThreshold: v ?? 0 } })
-                      }
-                    />
-                    <span className="field-hint">
-                      After scoring, dimensions whose per-applicant scores correlate at or above this
-                      are flagged as possible duplicates for an AI merge check. Lower catches subtler
-                      overlaps; higher is stricter. The AI still confirms every merge.
-                    </span>
-                  </label>
-                </div>
-                <div className="ai-pass-settings">
-                  <div className="ai-pass-settings-head">
-                    <span>Pass</span><span>Model</span><span>Reasoning</span>
-                  </div>
-                  {saved.aiPasses.map((pass) => {
-                    const model = draft.ai[pass.modelSetting] as string;
-                    const effort = draft.ai[pass.reasoningSetting] as ReasoningEffort;
-                    const selected = saved.aiModelOptions.find((option) => option.modelId === model);
-                    const supportsReasoning = selected?.supportsReasoningEffort ?? false;
-                    return (
-                      <div className="ai-pass-setting" key={pass.key}>
-                        <span>{pass.label}</span>
-                        <select
-                          aria-label={`${pass.label} model`}
-                          value={model}
-                          onChange={(event) => setDraft({
-                            ...draft,
-                            ai: { ...draft.ai, [pass.modelSetting]: event.target.value },
-                          })}
-                        >
-                          {saved.aiModelOptions.map((option) => (
-                            <option
-                              value={option.modelId}
-                              key={option.modelId}
-                              disabled={!option.configured}
-                            >
-                              {option.label} · {PROVIDER_LABELS[option.provider]}
-                              {option.configured ? "" : " (not configured)"}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          aria-label={`${pass.label} reasoning effort`}
-                          value={effort}
-                          disabled={!supportsReasoning}
-                          title={supportsReasoning ? undefined : "This model does not use reasoning effort."}
-                          onChange={(event) => setDraft({
-                            ...draft,
-                            ai: {
-                              ...draft.ai,
-                              [pass.reasoningSetting]: event.target.value as ReasoningEffort,
-                            },
-                          })}
-                        >
-                          {REASONING_EFFORTS.map((value) => (
-                            <option value={value} key={value}>{value}</option>
-                          ))}
-                        </select>
-                      </div>
-                    );
-                  })}
-                  <span className="field-hint">
-                    Provider credentials are deployment secrets. Only configured direct providers
-                    can be selected; Bedrock access is verified when a model is invoked. Reasoning
-                    is saved per pass and used only by models that support it.
-                  </span>
-                </div>
-              </div>
-              <div className="settings-actions">
-                <button className="primary-button" type="submit" disabled={props.isSaving}>
-                  {props.isSaving ? "Saving…" : "Save configuration"}
-                </button>
-              </div>
-            </form>
-          )}
-        </div>
+        <AdminConfigurationPanel
+          draft={props.draft}
+          setDraft={props.setDraft}
+          saved={props.saved}
+          isSaving={props.isSaving}
+          onSubmit={props.onSubmit}
+          onError={props.onError}
+          onSettingsUpdated={props.onSettingsUpdated}
+        />
       )}
     </section>
-  );
-}
-
-// The response-sheet linker uses a user gesture so the GIS consent popup is allowed:
-// GIS code grant ->
-// backend exchange (stores the reader token) -> Picker -> persist the picked file. Sync then
-// reads with this admin's token, so members need no Drive/Sheets scope.
-//
-// The linked-sheet display is driven off `saved` (the app-wide settings), NOT local state:
-// after linking we lift the fresh SettingsResponse to the app via onSettingsUpdated, so the
-// link survives a tab switch/remount. (Local state here would go stale on remount — the
-// component re-reads `saved`, which the parent must have refreshed.)
-function SheetLinkField(props: {
-  saved: SettingsResponse | null;
-  onError: (message: string) => void;
-  onSettingsUpdated: (payload: SettingsResponse) => void;
-}): ReactNode {
-  const { saved } = props;
-  const [busy, setBusy] = useState(false);
-  const linkedTitle = saved?.googleSheetTitle ?? null;
-  const linkedUrl = saved?.googleSheetUrl ?? "";
-  const hasLink = Boolean(saved?.settings.googleSheetId);
-
-  async function connectAndPick() {
-    setBusy(true);
-    try {
-      const picked = await pickApplicationsSheet();
-      if (!picked) return; // cancelled at the Picker
-      const response = await api.linkSheet(picked.id);
-      if (!response.ok) {
-        props.onError((await readProblem(response)) ?? "Could not link that sheet.");
-        return;
-      }
-      // Lift the new settings to the app so the shared `saved` reflects the link — this is
-      // what makes it persist across a tab switch (vs. dying with local state on remount).
-      props.onSettingsUpdated((await response.json()) as SettingsResponse);
-    } catch (err) {
-      props.onError(err instanceof Error ? err.message : "Could not connect the applications sheet.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!isPickerConfigured()) {
-    return (
-      <div className="sheet-link-section">
-        <h4>Applications sheet</h4>
-        <p className="panel-hint">
-          Google Picker isn't configured in this environment (missing API key / client id).
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="sheet-link-section">
-      <h4>Applications sheet</h4>
-      {hasLink ? (
-        linkedTitle ? (
-          <p className="sheet-reference-line">
-            Linked:{" "}
-            {linkedUrl ? (
-              <a className="sheet-reference" href={linkedUrl} target="_blank" rel="noreferrer noopener">
-                {linkedTitle}
-              </a>
-            ) : (
-              <strong>{linkedTitle}</strong>
-            )}
-          </p>
-        ) : (
-          // A sheet id is stored but its title couldn't be read — don't invent a name that
-          // reads like the sheet's. This is the tell-tale of a reader token that lost its
-          // Drive scope, so point at the fix (re-link). The link itself is built from the id,
-          // so it still opens the real sheet.
-          <p className="panel-hint">
-            A sheet is linked, but its name couldn't be read
-            {linkedUrl ? (
-              <>
-                {" "}(
-                <a className="sheet-reference" href={linkedUrl} target="_blank" rel="noreferrer noopener">
-                  open it
-                </a>
-                )
-              </>
-            ) : null}
-            . Try re-linking it below so sync can read it.
-          </p>
-        )
-      ) : (
-        <p className="panel-hint">No sheet linked yet.</p>
-      )}
-      <div className="settings-actions">
-        <button type="button" className="primary-button" onClick={connectAndPick} disabled={busy}>
-          {busy ? "Connecting…" : hasLink ? "Change applications sheet" : "Connect applications sheet"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-
-function CommitteeDefaultsPanel(props: {
-  onError: (message: string) => void;
-  onEligibilityChanged: () => void;
-}): ReactNode {
-  const checks = useFetchResource(api.fetchEligibilityCheckCatalog);
-  const [draft, setDraft] = useState<EligibilityRules | null>(null);
-  const [loadError, setLoadError] = useState(false);
-  const [loadVersion, setLoadVersion] = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [savedTick, setSavedTick] = useState(false);
-
-  useEffect(() => {
-    let live = true;
-    setLoadError(false);
-    api
-      .fetchCommitteeDefaultRules()
-      .then((rules) => live && setDraft(rules))
-      .catch(() => {
-        if (!live) return;
-        setLoadError(true); // inline error, not a perpetual "Loading…"
-        props.onError("Could not load the committee default rules.");
-      });
-    return () => {
-      live = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadVersion]);
-
-  async function save(event: SyntheticEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!draft || saving) return;
-    setSaving(true);
-    const response = await api.saveCommitteeDefaultRules(draft);
-    setSaving(false);
-    if (!response.ok) {
-      props.onError((await readProblem(response)) ?? "The committee default rules could not be saved.");
-      return;
-    }
-    setDraft(await response.json());
-    props.onEligibilityChanged();
-    setSavedTick(true);
-    setTimeout(() => setSavedTick(false), 2000);
-  }
-
-  const set = (patch: Partial<EligibilityRules>) => draft && setDraft({ ...draft, ...patch });
-  const toggle = (id: string, on: boolean) =>
-    draft &&
-    setDraft({
-      ...draft,
-      disabledChecks: on
-        ? draft.disabledChecks.filter((c) => c !== id)
-        : [...draft.disabledChecks, id],
-    });
-
-  return (
-    <div className="settings-panel-body">
-      <div className="settings-subtab-head">
-        <h3>Committee Defaults</h3>
-        <p className="panel-hint">
-          The shared eligibility baseline every member follows until they personalize their own
-          rules. Changing it does not affect members who've already diverged.
-        </p>
-      </div>
-      {loadError ? (
-        <RetryLoadError
-          message="Couldn't load the committee default rules."
-          onRetry={() => setLoadVersion((version) => version + 1)}
-        />
-      ) : !draft ? (
-        <p className="panel-hint">Loading…</p>
-      ) : (
-        <>
-          <form className="settings-form" onSubmit={save}>
-            {ELIGIBILITY_NUMERIC_FIELDS.map((f) => (
-              <label key={f.key}>
-                <span>{f.label}</span>
-                <NumberInput
-                  min={f.min}
-                  max={f.max}
-                  value={draft[f.key] as number}
-                  onChange={(v) => set({ [f.key]: v ?? 0 } as Partial<EligibilityRules>)}
-                />
-              </label>
-            ))}
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={draft.allowOtherPets}
-                onChange={(event) => set({ allowOtherPets: event.target.checked })}
-              />
-              <span>Allow other pets</span>
-            </label>
-            <div className="rules-section">
-              <h4>Screening checks</h4>
-              <p className="rules-hint">Unchecked checks are off in the committee default.</p>
-              {checks.state === "error" ? (
-                <RetryLoadError message="Couldn't load the screening checks." onRetry={checks.reload} />
-              ) : checks.data ? (
-                <>
-                  <CheckGroup
-                    title="Deterministic rules"
-                    checks={checks.data.deterministic}
-                    disabledChecks={draft.disabledChecks}
-                    onToggle={toggle}
-                  />
-                  <CheckGroup
-                    title="AI screening checks"
-                    checks={checks.data.ai}
-                    disabledChecks={draft.disabledChecks}
-                    onToggle={toggle}
-                  />
-                </>
-              ) : (
-                <p className="rules-hint">Loading screening checks…</p>
-              )}
-            </div>
-            <div className="settings-actions">
-              <button className="primary-button" type="submit" disabled={saving}>
-                {saving ? "Saving…" : savedTick ? "Saved" : "Save committee defaults"}
-              </button>
-            </div>
-          </form>
-        </>
-      )}
-    </div>
-  );
-}
-
-
-// Friendly labels for the navigable top-level views captured on feedback (App's activeTab
-// values). These are exactly the ViewTab keys, so a label's presence here also marks the
-// key as navigable — an admin can click through to it.
-const VIEW_LABELS: Record<ViewTab, string> = {
-  applications: "Applications",
-  ranking: "Ranking",
-  observability: "Observability",
-  evals: "Evals",
-  eligibilitySettings: "Eligibility Settings",
-  adminSettings: "Admin Settings",
-};
-
-function isViewTab(tab: string): tab is ViewTab {
-  return tab in VIEW_LABELS;
-}
-
-function viewLabel(tab: string | null): string {
-  if (!tab) return "unknown view";
-  return isViewTab(tab) ? VIEW_LABELS[tab] : tab;
-}
-
-// Admin reader for member feedback. Self-contained, like
-// AccessPanel: fetches its own list. Open items by default; a toggle reveals resolved ones
-// (retained, not deleted, so the friction history survives). Resolving an item drops it from
-// the open list; reopening restores it. Each item shows who sent it and the context they were
-// in, so the admin can act without a back-and-forth.
-function FeedbackPanel(props: {
-  onError: (message: string) => void;
-  onOpenApplicant: (id: number) => void;
-  onOpenView: (tab: ViewTab) => void;
-}): ReactNode {
-  const [items, setItems] = useState<FeedbackItem[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
-  const [loadVersion, setLoadVersion] = useState(0);
-  const [showResolved, setShowResolved] = useState(false);
-  const [busyId, setBusyId] = useState<number | null>(null);
-
-  useEffect(() => {
-    let live = true;
-    setLoadError(false); // reset on each (re)fetch — the showResolved toggle re-runs this
-    api
-      .fetchFeedback(showResolved)
-      .then((list) => live && setItems(list))
-      .catch(() => {
-        if (!live) return;
-        setLoadError(true); // inline error, not a perpetual "Loading…"
-        props.onError("Could not load feedback.");
-      });
-    return () => {
-      live = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showResolved, loadVersion]);
-
-  async function act(id: number, action: "resolve" | "reopen") {
-    setBusyId(id);
-    const response = await (action === "resolve" ? api.resolveFeedback(id) : api.reopenFeedback(id));
-    setBusyId(null);
-    if (!response.ok) {
-      props.onError((await readProblem(response)) ?? `Could not ${action} the feedback item.`);
-      return;
-    }
-    // Re-fetch under the current filter so the item lands in (or leaves) the visible list.
-    api
-      .fetchFeedback(showResolved)
-      .then(setItems)
-      .catch(() => props.onError("Could not refresh feedback."));
-  }
-
-  return (
-    <div className="settings-panel-body">
-      <div className="settings-subtab-head">
-        <h3>Feedback</h3>
-        <p className="panel-hint">
-          Feedback members sent from anywhere in the app, newest first. May contain applicant
-          details — treat it as sensitive.
-        </p>
-      </div>
-      <div className="feedback-admin-header">
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={showResolved}
-            onChange={(event) => setShowResolved(event.target.checked)}
-          />
-          <span>Show resolved</span>
-        </label>
-      </div>
-      {loadError ? (
-        <RetryLoadError
-          message="Couldn't load feedback."
-          onRetry={() => setLoadVersion((version) => version + 1)}
-        />
-      ) : items === null ? (
-        <p className="panel-hint">Loading…</p>
-      ) : items.length === 0 ? (
-        <p className="panel-hint">{showResolved ? "No feedback yet." : "No open feedback."}</p>
-      ) : (
-        <ul className="feedback-list">
-          {items.map((item) => (
-            <li key={item.id} className={`feedback-item${item.resolvedAt ? " is-resolved" : ""}`}>
-              <p className="feedback-item-body">{item.body}</p>
-              <div className="feedback-item-meta">
-                <span>{item.userName}</span>
-                <span>{item.userEmail}</span>
-                <span>{formatPacificDateTime(item.createdAt)}</span>
-                {/* Where they were. An applicant-detail item links to that applicant;
-                    everything else names the view. Applicant takes precedence — it's the
-                    most specific "jump here" the admin can act on. */}
-                {item.applicantId !== null ? (
-                  <button
-                    type="button"
-                    className="feedback-context-link"
-                    onClick={() => props.onOpenApplicant(item.applicantId as number)}
-                  >
-                    {item.applicantName ?? `applicant #${item.applicantId}`}
-                  </button>
-                ) : item.activeTab && isViewTab(item.activeTab) ? (
-                  <button
-                    type="button"
-                    className="feedback-context-link"
-                    onClick={() => props.onOpenView(item.activeTab as ViewTab)}
-                  >
-                    {viewLabel(item.activeTab)}
-                  </button>
-                ) : (
-                  <span>{viewLabel(item.activeTab)}</span>
-                )}
-                {item.analysisId !== null ? <span>ranking #{item.analysisId}</span> : null}
-                <span>v{item.appVersion}</span>
-              </div>
-              <div className="feedback-item-actions">
-                {item.resolvedAt ? (
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    disabled={busyId === item.id}
-                    onClick={() => act(item.id, "reopen")}
-                  >
-                    Reopen
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    disabled={busyId === item.id}
-                    onClick={() => act(item.id, "resolve")}
-                  >
-                    Mark resolved
-                  </button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   );
 }
