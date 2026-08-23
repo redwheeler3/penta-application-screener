@@ -320,15 +320,18 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_VERSION
     from app.ai.dimension_scoring import kind_for_dimension
     from app.schemas.settings import AppSettings
+    from app.services.analysis_freshness import rank_inputs_fingerprint
 
     app, db = _logged_in_app()
-    model = AppSettings().ai.dimension_scoring_model
+    settings = AppSettings()
+    model = settings.ai.dimension_scoring_model
 
     a = Application(
         primary_email="a@x.com", applicant_name="A", raw_row={"q": "1"}, raw_row_hash="ha",
         normalized={},
     )
     db.add(a)
+    db.commit()
     # A run with two dimensions.
     db.add(Analysis(dimension_report={
         "summary": "s",
@@ -338,7 +341,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
             {"key": "skills", "name": "Skills", "definition": "d",
              "high_end": "hi", "low_end": "lo", "why_it_differentiates": "w"},
         ],
-    }))
+    }, rank_inputs_fingerprint=rank_inputs_fingerprint(db, settings)))
     db.commit()
 
     # Score only ONE of the two dimensions -> incomplete.

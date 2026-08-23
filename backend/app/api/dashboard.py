@@ -64,14 +64,16 @@ def read_dashboard(
     by_status, by_source = _member_status_counts(db, user.id)
     coverage = _coverage(db, settings)
     scoring_coverage = coverage.get("candidatesScored")
-    # A completed score-only run is the committee's deliberate choice to retain the
-    # current criteria for this pool. Full coverage therefore clears the Rank stale
-    # state even when the discovery-input fingerprint changed.
+    # A current Rank needs both halves: its criteria fingerprint must still match and
+    # every in-scope candidate must have current scores for every live dimension. A
+    # fingerprint alone cannot make a partial or failed scoring run look complete.
     current_criteria_scored = (
         scoring_coverage is not None
         and scoring_coverage.in_scope > 0
         and scoring_coverage.cached == scoring_coverage.in_scope
     )
+    current_analysis = get_current_analysis(db)
+    current_rank_inputs = ranking_is_current(db, current_analysis, settings)
 
     return DashboardResponse(
         settings_complete=bool(settings.google_sheet_id),
@@ -95,11 +97,11 @@ def read_dashboard(
             patterns_discovered=_run_exists(db),
             # Scoring kinds are per-dimension, so match by prefix.
             candidates_scored=_result_exists(db, prefix="dimension_scoring:"),
-            # A full discovery run is fresh when its inputs match; alternatively,
-            # complete current-criteria coverage records the score-only path.
+            # Analyses without dimensions have no scoring coverage to require. Once
+            # dimensions exist, incomplete coverage always leaves Rank out of date.
             ranking_current=(
-                ranking_is_current(db, get_current_analysis(db), settings)
-                or current_criteria_scored
+                current_rank_inputs
+                and (scoring_coverage is None or current_criteria_scored)
             ),
         ),
         # Per-AI-step coverage of the current scope. A step whose results predate a
