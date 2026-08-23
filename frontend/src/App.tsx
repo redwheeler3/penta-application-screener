@@ -1,5 +1,13 @@
 import { Filter, LogIn, LogOut, Settings } from "lucide-react";
-import { type ReactNode, type SyntheticEvent, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  type ReactNode,
+  Suspense,
+  type SyntheticEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { HouseIcon } from "./HouseIcon";
 import * as api from "./api";
 import { readProblem } from "./format";
@@ -13,7 +21,6 @@ import { AdminSettingsPanel } from "./components/AdminSettingsPanel";
 import { ApplicationsList } from "./components/ApplicationsList";
 import { CandidateDetail } from "./components/CandidateDetail";
 import { EligibilitySettingsPanel } from "./components/EligibilitySettingsPanel";
-import { AIQualityView } from "./components/AIQualityView";
 import { FeedbackButton } from "./components/FeedbackButton";
 import { RankingView } from "./components/RankingView";
 import { Toasts } from "./components/Toasts";
@@ -26,6 +33,16 @@ import { useSharedSettings } from "./hooks/useSharedSettings";
 import { useDashboard } from "./hooks/useDashboard";
 import { useNavigation } from "./hooks/useNavigation";
 import { useAiRuns } from "./hooks/useAiRuns";
+
+const AIQualityView = lazy(() =>
+  import("./components/AIQualityView").then((module) => ({ default: module.AIQualityView })),
+);
+
+const aiQualityLoading = (
+  <div className="observability-view">
+    <p className="panel-hint">Loading…</p>
+  </div>
+);
 
 export function App() {
   const {
@@ -548,10 +565,15 @@ export function App() {
                   <p>Loading ranking…</p>
                 )}
               </div>
-            ) : activeTab === "observability" ? (
-              <AIQualityView family="obs" run={rankingRun} onToast={showToast} onError={showError} />
-            ) : activeTab === "evals" ? (
-              <AIQualityView family="eval" run={rankingRun} onToast={showToast} onError={showError} />
+            ) : activeTab === "observability" || activeTab === "evals" ? (
+              <Suspense fallback={aiQualityLoading}>
+                <AIQualityView
+                  family={activeTab === "observability" ? "obs" : "eval"}
+                  run={rankingRun}
+                  onToast={showToast}
+                  onError={showError}
+                />
+              </Suspense>
             ) : (
               <ApplicationsList
                 applications={applications}
