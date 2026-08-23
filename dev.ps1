@@ -1,8 +1,11 @@
 $ErrorActionPreference = "Stop"
 
 Write-Host "Running migrations..."
-Start-Process -NoNewWindow -Wait -WorkingDirectory "$PSScriptRoot\backend" `
+$migration = Start-Process -PassThru -NoNewWindow -Wait -WorkingDirectory "$PSScriptRoot\backend" `
     -FilePath "uv" -ArgumentList "run", "alembic", "upgrade", "head"
+if ($migration.ExitCode -ne 0) {
+    throw "Database migrations failed with exit code $($migration.ExitCode). Services were not started."
+}
 
 $backend = $null
 $frontend = $null

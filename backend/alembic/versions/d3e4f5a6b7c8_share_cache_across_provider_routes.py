@@ -92,7 +92,7 @@ def _rekey_results(connection: Connection, *, canonical: bool) -> None:
 
 
 def _rank_fingerprint(db: Session, ai: object, *, canonical: bool) -> str:
-    from app.services.analysis import pool_fingerprint
+    from app.services.analysis_freshness import pool_fingerprint
 
     def identity(model_id: str) -> str:
         return _ROUTE_TO_MODEL_IDENTITY[model_id] if canonical else model_id
