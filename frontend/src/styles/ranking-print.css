@@ -208,7 +208,7 @@
   color: var(--muted);
 }
 .cost-recon-over {
-  color: #92400e;
+  color: var(--warning-text-strong);
 }
 /* "· triggered by <member>" attribution on a shared run. */
 .cost-triggered-by {
@@ -361,8 +361,8 @@
 }
 
 .band-strong-fit {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .band-promising {
@@ -417,7 +417,7 @@
 }
 
 .ranking-contribution-label.score-strong {
-  color: #166534;
+  color: var(--success-text);
 }
 
 /* --- Tier-list maker ---------------------------------------------------- */
@@ -598,15 +598,15 @@
 .tier-chip-new {
   /* Newly-discovered, awaiting triage — amber "needs attention", loud to the human
      though silent to the math (weight 0). */
-  border-color: #fcd34d;
-  background: #fffbeb;
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
 }
 
 .tier-chip-revived {
   /* Seen in an earlier run, dropped, now back — a softer heads-up than New (the
      committee saw it before), so the calm blue of the score-band "moderate". */
   border-color: #93c5fd;
-  background: #eff6ff;
+  background: var(--info-bg);
 }
 
 .tier-chip-requested {

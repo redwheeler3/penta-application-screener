@@ -71,9 +71,9 @@
   margin: 0;
 }
 .eval-restored.stale {
-  color: #b45309;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
+  color: var(--warning-text);
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border-soft);
   border-radius: 6px;
   padding: 6px 10px;
 }
@@ -123,7 +123,7 @@
   font-size: 0.82rem;
 }
 .eval-case-item:hover { background: #f3f4f6; }
-.eval-case-item.selected { background: var(--penta-green-soft); border-color: #bbf7d0; }
+.eval-case-item.selected { background: var(--penta-green-soft); border-color: var(--success-border); }
 .eval-case-item-key { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .eval-case-item-expected {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -187,7 +187,7 @@
   border: 1px solid var(--line);
 }
 .eval-detail-badge.neutral { color: var(--muted); background: #f8fafc; }
-.eval-detail-badge.model { color: #1d4ed8; background: #eff6ff; border-color: #bfdbfe; }
+.eval-detail-badge.model { color: #1d4ed8; background: var(--info-bg); border-color: var(--info-border); }
 .eval-detail-badge.judge { color: #7c3aed; background: #f5f3ff; border-color: #ddd6fe; }
 .eval-detail-block-body { font-size: 0.88rem; line-height: 1.5; overflow-wrap: anywhere; }
 
@@ -198,13 +198,13 @@
   margin-bottom: 14px;
   border: 1px solid var(--line);
 }
-.eval-case-result.ok { background: #f0fdf4; border-color: #bbf7d0; }
-.eval-case-result.fail { background: #fef2f2; border-color: #fecaca; }
-.eval-case-result.contested { background: #fffbeb; border-color: #fde68a; }
+.eval-case-result.ok { background: #f0fdf4; border-color: var(--success-border); }
+.eval-case-result.fail { background: var(--danger-bg); border-color: var(--danger-border); }
+.eval-case-result.contested { background: var(--warning-bg); border-color: var(--warning-border-soft); }
 .eval-case-result-head { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-size: 0.82rem; }
-.eval-case-result.ok .eval-case-result-head { color: #166534; }
+.eval-case-result.ok .eval-case-result-head { color: var(--success-text); }
 .eval-case-result.fail .eval-case-result-head { color: #b91c1c; }
-.eval-case-result.contested .eval-case-result-head { color: #b45309; }
+.eval-case-result.contested .eval-case-result-head { color: var(--warning-text); }
 .eval-case-result-body { font-size: 0.82rem; margin-top: 4px; }
 .eval-case-result-ev { color: var(--muted); font-size: 0.8rem; margin-top: 4px; font-style: italic; }
 
@@ -247,7 +247,7 @@
   border: 0; background: none; cursor: pointer; color: var(--muted);
   font-size: 0.8rem; line-height: 1; padding: 2px 4px; border-radius: 4px;
 }
-.eval-field-remove:hover { color: #b91c1c; background: #fef2f2; }
+.eval-field-remove:hover { color: #b91c1c; background: var(--danger-bg); }
 .eval-field-input, .eval-field-textarea {
   width: 100%;
   padding: 7px 10px;
@@ -259,7 +259,7 @@
   font-size: 0.85rem;
 }
 .eval-field-textarea { resize: vertical; font-family: inherit; line-height: 1.45; }
-.eval-field-input:focus, .eval-field-textarea:focus { outline: 2px solid #bbf7d0; outline-offset: 1px; border-color: var(--penta-green); }
+.eval-field-input:focus, .eval-field-textarea:focus { outline: 2px solid var(--success-border); outline-offset: 1px; border-color: var(--penta-green); }
 .eval-field-bool { font-size: 0.85rem; display: inline-flex; gap: 6px; align-items: center; }
 .eval-field-locked { font-size: 0.85rem; color: var(--muted); }
 .eval-field-add { padding-top: 2px; }

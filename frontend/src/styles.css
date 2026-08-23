@@ -7,6 +7,19 @@
   --line: #e5e7eb;
   --surface: #ffffff;
   --page: #f9fafb;
+  --success-text: #166534;
+  --success-bg: #dcfce7;
+  --success-border: #bbf7d0;
+  --warning-text: #b45309;
+  --warning-text-strong: #92400e;
+  --warning-bg: #fffbeb;
+  --warning-border: #fcd34d;
+  --warning-border-soft: #fde68a;
+  --danger-text: #991b1b;
+  --danger-bg: #fef2f2;
+  --danger-border: #fecaca;
+  --info-bg: #eff6ff;
+  --info-border: #bfdbfe;
 
   color: var(--ink);
   /* Warm green page wash. It stays pale (and paler than the panel header
@@ -255,9 +268,9 @@ h1 {
 .login-denied {
   padding: 0.6rem 0.75rem;
   border-radius: 6px;
-  background: #fef2f2; /* red-50 */
-  border: 1px solid #fecaca; /* red-200 */
-  color: #991b1b; /* red-800 */
+  background: var(--danger-bg); /* red-50 */
+  border: 1px solid var(--danger-border); /* red-200 */
+  color: var(--danger-text); /* red-800 */
   font-size: 0.9rem;
 }
 
@@ -319,9 +332,9 @@ h1 {
 }
 
 .access-role-select-admin {
-  background: #dcfce7;
+  background: var(--success-bg);
   border-color: #86efac;
-  color: #166534;
+  color: var(--success-text);
 }
 
 .access-role-select-member {
@@ -501,7 +514,7 @@ h1 {
 
 .settings-form input:not([type="checkbox"]):focus,
 .settings-form select:focus {
-  outline: 2px solid #bbf7d0;
+  outline: 2px solid var(--success-border);
   outline-offset: 1px;
   border-color: var(--penta-green);
 }
@@ -627,18 +640,18 @@ h1 {
 }
 
 .toast-success {
-  background: #166534;
+  background: var(--success-text);
   color: white;
 }
 
 .toast-error {
-  background: #991b1b;
+  background: var(--danger-text);
   color: white;
 }
 
 /* Warning: amber, between success-green and error-red — non-fatal but persists. */
 .toast-warning {
-  background: #92400e;
+  background: var(--warning-text-strong);
   color: white;
 }
 
@@ -747,7 +760,7 @@ h1 {
   padding: 12px 20px;
   border: 1px solid #fbbf24;
   border-radius: 8px;
-  background: #fffbeb;
+  background: var(--warning-bg);
 }
 
 .workflow-settings-error p,
@@ -1190,13 +1203,13 @@ h1 {
 }
 
 .status-eligible {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .status-ineligible {
   background: #fee2e2;
-  color: #991b1b;
+  color: var(--danger-text);
 }
 
 /* "Decided by" source badges — secondary info, lighter than status badges */
@@ -1219,14 +1232,14 @@ h1 {
 
 .source-ai {
   background: #fef3c7;
-  color: #92400e;
-  border-color: #fcd34d;
+  color: var(--warning-text-strong);
+  border-color: var(--warning-border);
 }
 
 .source-human {
   background: #dbeafe;
   color: #1e40af;
-  border-color: #bfdbfe;
+  border-color: var(--info-border);
 }
 
 .stale-badge {
@@ -1234,8 +1247,8 @@ h1 {
   margin-left: 0.4rem;
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
-  background: #fde68a;
-  color: #92400e;
+  background: var(--warning-border-soft);
+  color: var(--warning-text-strong);
   font-size: 0.62rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -1271,8 +1284,8 @@ h1 {
   padding: 0.5rem 0.65rem;
   border-radius: 6px;
   border-left: 3px solid #d97706;
-  background: #fffbeb;
-  color: #92400e;
+  background: var(--warning-bg);
+  color: var(--warning-text-strong);
   font-size: 0.82rem;
 }
 
@@ -1416,7 +1429,7 @@ h1 {
 
 .filter-reasons {
   background: #fef3c7;
-  border: 1px solid #fcd34d;
+  border: 1px solid var(--warning-border);
   border-radius: 8px;
   padding: 0.75rem 1rem;
   margin-bottom: 1.25rem;
@@ -1434,8 +1447,8 @@ h1 {
 
 /* AI screening flags (informational, on candidate detail) */
 .flags-panel {
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+  background: var(--info-bg);
+  border: 1px solid var(--info-border);
   border-radius: 8px;
   padding: 0.75rem 1rem;
   margin-bottom: 1.25rem;
@@ -1528,7 +1541,7 @@ h1 {
 /* A completed step recedes: white button, a green check, green text. It reads
    as quietly done rather than as a primary action competing in the header. */
 .workflow-step-button.is-done {
-  border-color: #bbf7d0;
+  border-color: var(--success-border);
   color: var(--penta-green-dark);
 }
 
@@ -1547,19 +1560,19 @@ h1 {
    a re-sync). Amber so it reads as "needs attention," distinct from done-green
    and from the neutral not-yet-run state. */
 .workflow-step-button.is-stale {
-  border-color: #fcd34d;
-  color: #b45309;
+  border-color: var(--warning-border);
+  color: var(--warning-text);
 }
 
 .workflow-step-button.is-stale:hover:not(:disabled) {
-  background: #fffbeb;
+  background: var(--warning-bg);
   border-color: #f59e0b;
 }
 
 .workflow-step-button.is-stale .workflow-step-badge {
-  background: #fffbeb;
-  border-color: #fcd34d;
-  color: #b45309;
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: var(--warning-text);
 }
 
 /* The label stacks the title over a small coverage fraction, so the count is
@@ -1580,7 +1593,7 @@ h1 {
 
 /* On a stale step the fraction inherits the amber tone for emphasis. */
 .workflow-step-button.is-stale .workflow-step-fraction {
-  color: #b45309;
+  color: var(--warning-text);
 }
 
 /* A fully-covered (done) step's fraction recedes into the done-green. */
@@ -1604,7 +1617,7 @@ h1 {
 /* Done badge: green check on a soft tint, no solid fill — understated. */
 .workflow-step-button.is-done .workflow-step-badge {
   background: var(--penta-green-soft);
-  border-color: #bbf7d0;
+  border-color: var(--success-border);
   color: var(--penta-green-dark);
 }
 
@@ -1621,7 +1634,7 @@ h1 {
   flex-wrap: wrap;
   padding: 0.85rem 1.25rem;
   border-bottom: 1px solid var(--line);
-  background: #eff6ff;
+  background: var(--info-bg);
 }
 
 .run-confirm-body {
@@ -1635,7 +1648,7 @@ h1 {
 }
 
 .run-confirm-warn {
-  color: #991b1b !important;
+  color: var(--danger-text) !important;
 }
 
 .run-confirm-actions {
@@ -1662,7 +1675,7 @@ h1 {
 .run-progress-track {
   height: 8px;
   border-radius: 999px;
-  background: #dcfce7;
+  background: var(--success-bg);
   overflow: hidden;
 }
 
@@ -1826,17 +1839,17 @@ h1 {
   padding: 0.35rem 0.5rem;
   margin: 0 -0.5rem;
   border-radius: 6px;
-  background: #fef2f2;
+  background: var(--danger-bg);
   box-shadow: inset 2px 0 0 #ef4444;
 }
 
 .field-flagged dt {
-  color: #991b1b;
+  color: var(--danger-text);
 }
 
 .field-flagged dd {
   font-weight: 600;
-  color: #991b1b;
+  color: var(--danger-text);
 }
 
 /* Essay responses */
@@ -2015,7 +2028,7 @@ h1 {
 }
 
 .match-audit-new {
-  color: #b45309;
+  color: var(--warning-text);
   font-weight: 600;
 }
 
@@ -2646,7 +2659,7 @@ input[type="radio"] {
 }
 
 .dimension-score-band.score-strong {
-  color: #166534;
+  color: var(--success-text);
 }
 
 .dimension-score-band.score-neutral {
