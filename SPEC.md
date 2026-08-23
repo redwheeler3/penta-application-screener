@@ -752,191 +752,37 @@ Implementation defaults:
 - Clean changes over backward compatibility for internal APIs, local schemas, fixtures, and UI shapes; backward compatibility is added only when real users or real applicant data require it.
 - Relational tables for workflow data, JSON columns for raw rows, flexible payloads, AI outputs, and debug traces; the relational model stays portable to Postgres.
 
-**Milestones 1–19 are complete** and proven end-to-end against real Bedrock (sync → screen → discover ~30–35 fact-aware dimensions → score the pool → rank with the tier-list weighting → print a committee-ready PDF), now with per-member independent screening on a shared compute-once substrate, **hosted live at [screener.pentacoop.com](https://screener.pentacoop.com)** for the real committee. Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md). The last milestones landed as: **16 (concurrency & correctness — software: run lease, WAL, stale-view detection)**, **17 (hosting / go-live on Fly.io — see [ADR 0012](docs/adr/0012-hosting-platform-m17.md))**, **18 (least-privilege Google auth — members log in identity-only; an admin links the response sheet via the Google Picker with `drive.file`)**, and **19 (scale-to-zero recovery — health-aware Fly Machine watchdog)**.
+**Milestones 1–20 are complete** and proven end-to-end against real Bedrock (sync → screen → discover ~30–35 fact-aware dimensions → score the pool → rank with the tier-list weighting → print a committee-ready PDF), now with per-member independent screening on a shared compute-once substrate, **hosted live at [screener.pentacoop.com](https://screener.pentacoop.com)** for the real committee. Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md). The latest milestones landed as: **17 (hosting / go-live on Fly.io — see [ADR 0012](docs/adr/0012-hosting-platform-m17.md))**, **18 (least-privilege Google auth — members log in identity-only; an admin links the response sheet via the Google Picker with `drive.file`)**, **19 (scale-to-zero recovery — health-aware Fly Machine watchdog)**, and **20 (provider-neutral AI routing plus the Luna/Terra bake-off — see [ADR 0013](docs/adr/0013-openai-model-selection.md) and [ADR 0014](docs/adr/0014-multi-provider-model-routing.md))**.
 
 ## Milestones And Remaining Open Questions
 
 Delivered and planned milestones, including decisions that can wait until implementation.
 
-### OpenAI-Versus-Anthropic Model Bake-Off (M20) — complete locally; production switchover deferred
+### OpenAI-Versus-Anthropic Model Bake-Off (M20) — complete; production switch is operator-controlled
 
-**Goal:** select the least expensive model that preserves or improves judgment quality for each
-AI pass before the larger intake changes begin. The current controls are Claude Haiku 4.5 for
-Screening and Dimension scoring and Claude Sonnet 4.6 for Pattern discovery, Dimension
-decomposition, Dimension matching, and Dimension consolidation. Their first OpenAI challengers are
-GPT-5.6 Luna and GPT-5.6 Terra respectively.
+The application supports Claude and GPT through either Bedrock or their direct provider APIs behind
+one provider-neutral boundary. The model catalog is the routing authority; settings store the exact
+route and reasoning effort for each pass, while caches and Rank freshness use a provider-neutral
+model identity. Switching only between certified-equivalent routes preserves valid cached work;
+changing the underlying model or effective reasoning invalidates it.
 
-The quality comparison began within Amazon Bedrock. Production-account Mantle availability and
-Bedrock request-rate constraints later proved that AWS could not remain the only invocation
-boundary. M20 therefore also prepares direct OpenAI and Anthropic routes while keeping every
-existing Bedrock default unchanged. The result may be a per-pass and per-provider hybrid; no vendor,
-tier, or transport has to win every job.
+The evidence-backed OpenAI configuration is direct Luna at reasoning `low` for Screening and
+Dimension scoring, and direct Terra at reasoning `low` for Pattern discovery, Dimension
+decomposition, Dimension matching, and Dimension consolidation. Reasoning is explicit so provider
+defaults cannot silently change quality, latency, or cost. OpenAI audit output is an exposed
+reasoning summary or concise user-visible preamble, not raw private chain of thought.
 
-The committed synthetic golden fixtures and PII-safe Rank baseline make the judgment comparison
-bounded, but OpenAI on Bedrock is not a model-ID-only swap. The existing Claude path uses Strands'
-`BedrockModel` over Bedrock Runtime, while GPT uses Strands' `OpenAIResponsesModel` over Bedrock's
-OpenAI-compatible Mantle endpoint. M20 keeps Strands, upgrades it to a release with working GPT
-Mantle routing, installs its OpenAI optional dependencies, and verifies the complete provider
-contract before trusting any quality result.
+Production continues to use Bedrock Haiku and Sonnet until an admin deliberately changes the
+per-pass settings. Direct Luna-low and Terra-low passed synthetic, schema-constrained probes from
+the production Fly Machine on August 22, 2026, so both direct routes are available for an admin to
+select. Credentials remain server-side secrets, and routes without their required credentials
+cannot be saved. The co-op accepts the documented provider privacy tradeoffs for applicant-bearing
+passes; the selected route determines which provider's current API terms apply.
 
-**Delivery stages:**
-
-1. **Strands OpenAI transport spike** — configure `OpenAIResponsesModel` for Luna and Terra through
-   Bedrock Mantle behind the existing `AIProvider` boundary and prove schema-constrained output,
-   streaming progress, concurrency, timeouts/retries, provider-reported usage, and a useful
-   persisted audit narrative. Do not change production settings or deploy the spike.
-2. **Frozen-input comparison** — run the current prompts and human-labelled synthetic golden cases
-   against Haiku versus Luna and Sonnet versus Terra. Start with equivalent low/no-reasoning
-   settings, record every model/configuration exactly, and use repeated runs to expose instability
-   rather than selecting from a lucky sample.
-3. **Production-shaped comparison** — run the complete PII-safe Rank baseline through viable
-   configurations and compare end-to-end dimensions, merges, scores, structured-output failures,
-   wall-clock duration, input/output/reasoning tokens, and actual cost. Human-review meaningful
-   differences rather than treating exact nondeterministic wording or rank order as a golden
-   master.
-4. **Selection and cleanup** — choose the preferred model independently for each pass, document the
-   evidence and privacy tradeoff, update pricing, cache/fingerprint identity, observability, and
-   operational documentation, and verify the production AWS account can invoke every candidate
-   before changing runtime defaults. Production remains unchanged until a later explicit release.
-
-**Non-goals:** changing prompts to favour one model before the frozen-input baseline; accepting a
-cheaper model solely on token price; accepting free-form provider/model combinations; changing
-application intake behavior; or changing the deployed model defaults without an explicit operator
-decision after direct-route verification.
-
-**Definition of done:**
-
-- Both model pairs run the same committed golden inputs without applicant PII, and each result is
-  attributable to an exact model, reasoning setting, prompt version, and repeat number.
-- A selected model meets or improves the current control on human-labelled correctness and the
-  required repeated-run stability; no material regression is hidden by a lower average cost.
-- Every selected model preserves schema-constrained output, useful audit reasoning, streaming
-  liveness, retries/timeouts, concurrency safety, and the existing human-review boundary.
-- Provider-reported token categories flow into the cost ledger, including billable reasoning
-  tokens, and pre-run estimates are conservative for every selected model.
-- The selection records actual cost and latency from the production-shaped run and explicitly
-  considers Bedrock's model-specific retention/abuse-monitoring behavior for applicant PII.
-- Backend tests and all live golden/baseline comparisons pass, the final per-pass model decision is
-  documented, and the deployed committee application has not changed.
-
-**Acceptance rule:** compare exact frozen prompts, exclude contested cases from verdict-direction
-penalties, require a selected challenger to have no worse per-case majority correctness than its
-control, investigate every grade flip or stable regression, reject any schema/transport failure,
-and let the incumbent win an ambiguous quality tie. A production-shaped run must complete with no
-failed applicants or invariant violations; dimension count and wording are human-reviewed signals,
-not an exact golden master.
-
-**Local evidence (August 21, 2026; synthetic data only):**
-
-- Strands 1.53.0 with its OpenAI extra successfully routed Luna and Terra through Bedrock Mantle.
-  A real Luna screening spike returned the required Pydantic schema, 1,592 input and 101 output
-  tokens, 42 streamed deltas, and a matching 239-character audit narrative. A real Terra
-  decomposition spike also passed. The provider retained the existing Claude `BedrockModel` path,
-  cache-by-model-and-timeout behavior, bounded retries, and per-call Agent isolation.
-- At no reasoning over three repeats, Terra passed all 15/15 decomposition, 15/15 matching, and
-  15/15 consolidation cases. Sonnet passed 13/15, 15/15, and 15/15 respectively; both Sonnet
-  misses were the inverse-poles decomposition guard. Luna at no reasoning was not viable for the
-  high-volume tier: 48/51 screening and 12/15 scoring, including a stable over-score on the modest
-  evidence case.
-- Luna at low reasoning improved to 51/51 screening and 14/15 scoring. In the same run Haiku was
-  51/51 and 14/15; Luna's one scoring miss over-scored modest evidence, while Haiku's one miss kept
-  the correct neutral score but overstated confidence. Luna cost $0.0532 across those two suites
-  versus Haiku's $0.4584.
-- One isolated 42-applicant full Rank on the current Claude configuration completed 25 dimensions
-  in 538 seconds for $1.6182, with 878 cached scoring units. Two isolated Terra plus Luna-low runs
-  completed 36 and 33 dimensions in 108 seconds each for $0.6814 and $0.7564, despite making every
-  scoring call fresh (1,512 and 1,386 calls). All three runs scored every applicant, had zero model
-  failures, and passed every deterministic invariant. The committed baseline has 35 dimensions;
-  the two candidate runs reused 20 and 22 of its keys versus 14 for the control. Human review found
-  broadly defensible candidate axes but also confirmed expected discovery variance, so dimension
-  count alone is not the selection criterion.
-- Terra at low reasoning also passed all 45/45 decomposition, matching, and consolidation cases
-  over three repeats. A production-shaped Terra-low plus Luna-low Rank completed 34 dimensions for
-  $0.6906, reused 21 baseline keys, scored every applicant, and passed every invariant. Its four
-  Terra passes cost $0.5301, within the $0.5150-$0.5996 range from the two Terra-none runs. The
-  172-second wall time was dominated by Luna scoring taking 79 seconds despite its unchanged
-  setting, so it does not isolate a Terra reasoning penalty. Low produced no measured quality gain
-  over none, but also no meaningful cost or output-quality regression in this workload.
-- At medium reasoning, Terra remained 45/45 and Luna scored 50/51 Screening and 14/15 Scoring; the
-  extra reasoning produced no golden-quality gain and introduced one Luna screening miss. A full
-  medium Rank cost $0.9177 versus $0.6906 for low: Luna increased 23.6% overall (20.2% per scoring
-  call) and Terra increased 35.7%. The run completed 36 dimensions, reused 24 baseline keys, and
-  again had no failures or invariant violations. This evidence keeps `low` as the selected setting.
-- Direct credential and structured-output probes passed for Luna, Terra, Haiku, and Sonnet. A
-  three-repeat direct OpenAI run had no transport or throttling errors: Luna-low passed 51/51
-  Screening cases, and Terra-low passed all 45/45 decomposition, matching, and consolidation cases.
-  Luna initially passed only 12/15 Scoring cases by repeatedly rating the modest-evidence fixture
-  above its expected middle band. On a focused five-run comparison, direct Haiku stayed in band 4/5
-  times while Luna stayed in band only 1/5, so the regression was not dismissed as noise.
-- One provider-neutral calibration sentence now reserves scores beyond +/-0.7 for substantial
-  evidence close to a dimension pole. With the labelled fixture unchanged, direct Luna-low then
-  passed all 25/25 Scoring judgments over five repeats, including 5/5 on the modest-evidence case.
-  This is the only prompt change made after the frozen comparison.
-- Two production-shaped direct Luna-low plus Terra-low Ranks scored all 40 applicants with zero
-  failed calls and zero invariant violations. They completed in 186.7 and 235.8 seconds, produced
-  35 and 41 final dimensions, and cost $1.5038 and $1.7623 at direct OpenAI rates. The 41-dimension
-  sample contained several borderline overlaps; it is accepted as visible discovery variance, not
-  evidence that a larger dimension set is better. The calibrated run reused 22 baseline keys.
-- Direct OpenAI standard pricing is higher than Bedrock for these models: Luna is $1.00 input / $6.00
-  output and Terra is $2.50 input / $15.00 output per million tokens. Cost accounting now selects
-  exact route-specific prices rather than sharing a model-family substring. Direct OpenAI is the
-  availability choice for the production account, not the cheapest transport in isolation.
-- Direct Anthropic Haiku and Sonnet probes passed. The initial repeat run exposed a client-lifecycle
-  defect rather than a quota problem: Strands retains one async Anthropic client, while the app's
-  synchronous provider boundary creates a private event loop for each call. Reusing that client
-  across loops caused intermittent `APIConnectionError` failures even at one worker. The provider
-  now creates and closes the direct Anthropic client within the same call loop; this transport-only
-  rule does not branch prompts, schemas, results, persistence, or downstream callers.
-- With SDK retries disabled, the corrected direct Anthropic route completed all 111 calls in the
-  three-repeat, 10-worker Haiku and Sonnet control suite with zero transport or schema errors. It
-  passed 108/111 golden judgments: 50/51 Screening, 14/15 Scoring, 15/15 decomposition, 14/15
-  matching, and 15/15 consolidation. The three misses were model-judgment variance, not transport
-  instability, and leave direct Anthropic as a working fallback rather than the selected route.
-
-**Preferred future selection:** direct Terra at reasoning `low` is the evidence-backed candidate to
-replace Sonnet for Pattern discovery, Dimension decomposition, Dimension matching, and Dimension
-consolidation. Direct Luna at reasoning `low` is the candidate to replace Haiku for Screening and
-Dimension scoring. Reasoning is sent explicitly so a provider default cannot silently change the measured
-quality, cost, or latency profile. See
-[ADR 0013](docs/adr/0013-openai-model-selection.md) for the detailed evidence and reproduction
-commands.
-
-The production AWS account rejected both Luna and Terra as unavailable in `us-east-1`, `us-east-2`,
-and `us-west-2` even after its scoped IAM policy successfully authorized Mantle inference. Bedrock
-request-rate increases for Claude were also difficult to obtain. M20 therefore retains both Bedrock
-routes and adds direct OpenAI and Anthropic routes behind the same provider boundary. Haiku and
-Sonnet remain every runtime default, so deployment alone cannot move the committee workload. A
-settings migration persists `low` reasoning separately for each AI pass, but reasoning is inactive
-for models that do not support it; it therefore does not alter current Claude calls. Changing a pass
-to a direct route is a later, explicit admin operation after its Fly secret and a production-hosted
-credential probe are verified. Local direct credentials, all four route probes, the direct golden
-suites, and production-shaped synthetic Rank are verified. This is an availability response, not
-a claim that direct OpenAI is cheaper than Bedrock.
-
-The co-op accepts the documented provider privacy tradeoffs for applicant-bearing passes. The current
-Bedrock account retention setting is `inherit`; Mantle reports effective `default` mode for both GPT
-models and allows only `default` or `provider_data_share`, not `none`. Under that mode, GPT traffic
-flagged by AWS's automated abuse classifiers may be retained by AWS for up to 30 days, though
-operators cannot access it and it is not shared with OpenAI. Direct routes instead use the selected
-vendor's API terms and credentials; the admin's model selection makes the active route explicit.
-
-The existing runtime model choices remain unchanged, so deploying M20 cannot switch the committee
-application to a newly configured provider. Model and reasoning effort are stored together as
-per-pass configuration. Effective reasoning participates in cached-result keys, Rank freshness, and
-eval run identity; an inactive reasoning value does not invalidate Claude work. Admins can select an
-available catalog route per pass; credentials remain server-side secrets and unavailable routes
-cannot be saved.
-
-OpenAI calls request an automatic reasoning summary. Strands streams and persists that exposed
-summary as the audit narrative; the application does not receive or represent it as raw private
-chain of thought. Because Bedrock Mantle may omit the optional summary, OpenAI calls also request a
-concise user-visible preamble before the structured result; that preamble uses the same stream and
-audit path. Claude's existing streamed text narrative remains unchanged.
-
-Cached application-result provenance stores the effective reasoning effort alongside the model and
-shows both in application traces. The migration recovers existing OpenAI effort only when it can
-prove the value against the row's content-addressed cache key; unmatched historical rows are
-labelled as not recorded rather than inferred from the current setting.
+Detailed implementation history and measured results live in [CHANGELOG.md](CHANGELOG.md). The
+selection evidence and reproduction commands are in
+[ADR 0013](docs/adr/0013-openai-model-selection.md); the routing architecture is in
+[ADR 0014](docs/adr/0014-multi-provider-model-routing.md).
 
 ### Built-In Applications And Passwordless Access (M21) — planned
 

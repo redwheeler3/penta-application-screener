@@ -6,6 +6,45 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/). 
 
 ---
 
+## Milestone 20 — Multi-Provider AI Routing And Model Bake-Off
+
+Evaluated GPT-5.6 Luna and Terra against the existing Claude Haiku and Sonnet controls using
+committed synthetic golden suites and production-shaped Rank runs, then made provider routing an
+admin-controlled runtime choice. The deployed defaults remain Bedrock Haiku/Sonnet; direct
+Luna-low and Terra-low were credential- and schema-verified from the production Fly Machine on
+2026-08-22 without reading application data or changing settings. Detailed measurements and
+reproduction commands are in [ADR 0013](docs/adr/0013-openai-model-selection.md); the routing
+decision is in [ADR 0014](docs/adr/0014-multi-provider-model-routing.md).
+
+- **3caba5a / aa32f1d — evaluate GPT through Bedrock and persist effort per pass.** Added Luna and
+  Terra to the provider boundary, made reasoning explicit, and stored the selected effort beside
+  each pass's model so provider defaults cannot silently change a measured configuration.
+- **Quality selection.** Luna-low matched Haiku on the repeated Screening suite (51/51) and, after
+  one provider-neutral scoring-calibration sentence, passed all 25/25 scoring judgments over five
+  repeats. Terra-low passed all 45/45 decomposition, matching, and consolidation judgments over
+  three repeats. Medium reasoning added no golden-quality gain and increased one production-shaped
+  run from $0.6906 to $0.9177, so `low` remains the selected effort.
+- **Production-shaped evidence.** Direct Luna-low/Terra-low completed two full synthetic Ranks with
+  all 40 applicants scored, no failed calls, and no invariant violations. Discovery varied as
+  expected, so dimension count and baseline overlap remained human-review signals rather than
+  automatic quality scores.
+- **f45abcd / c5c7e51 — add and validate direct OpenAI and Anthropic routes.** The same prompts,
+  schemas, persistence, cost ledger, and observability path now work through Bedrock Claude,
+  Bedrock GPT, direct OpenAI, or direct Anthropic. A direct Anthropic async-client lifecycle bug was
+  fixed within the adapter; the corrected 10-worker control suite completed 111 calls with no
+  transport or schema errors.
+- **f4aa5f8 — share caches across equivalent routes.** Exact provider-native IDs remain in settings,
+  traces, and cost rows, while provider-neutral pinned-model identities drive caches and Rank
+  freshness. A route-only switch preserves valid work; a model or effective-reasoning change
+  invalidates it.
+- **c40d02f — preserve OpenAI audit observability.** Reasoning summaries and user-visible preambles
+  flow through the existing streamed and persisted narrative path and are labelled as exposed audit
+  text, not raw private chain of thought.
+- **Admin routing.** The model catalog constrains valid route/model combinations, the UI disables
+  direct routes whose server-side secret is absent, and installing a secret cannot change a live
+  workload. Direct OpenAI is an availability choice for this production account, not the cheapest
+  transport in isolation.
+
 ## Milestone 18 — Least-Privilege Google Auth
 
 Split the OAuth footprint for eventual Google app verification and to stop showing members a scary Drive/Sheets consent screen. **Members now log in identity-only** (openid/email/profile — no Drive or Sheets scope); **an admin links the response sheet via the Google Picker**, granting only `drive.file` (access to the one picked file). Sync reads the sheet with that admin's designated-reader token, so members never need a Drive/Sheets scope. Verified against the deployed app (2026-07-26): a non-admin sign-in's callback granted only identity scopes, and every post-login call succeeded.

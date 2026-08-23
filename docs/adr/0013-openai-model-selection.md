@@ -1,6 +1,6 @@
 # 13. Select Luna/Terra and verify the direct OpenAI route
 
-- Status: **accepted** (direct route locally verified; runtime switchover deferred)
+- Status: **accepted** (direct route production-verified; runtime switch is operator-controlled)
 - Date: 2026-08-21
 
 ## Context
@@ -38,8 +38,8 @@ The production AWS account rejected both models as unavailable in `us-east-1`, `
 availability block, not a model-quality finding. M20 does not change persisted or default model
 choices. It does persist `low` reasoning per pass so the chosen effort travels with the model
 configuration; that value is inactive for Claude. Direct OpenAI is the selected future route because
-the production AWS account remains blocked. Production defaults still require a later explicit
-operator change after the direct secrets are installed and probed on Fly.
+the production AWS account remains blocked. Production defaults change only through an explicit
+admin selection; installing credentials alone cannot move a workload.
 
 ## Evidence
 
@@ -104,6 +104,10 @@ Haiku. One provider-neutral sentence reserving scores beyond +/-0.7 for substant
 evidence corrected that calibration without changing the fixture: Luna then passed 25/25 Scoring
 judgments over five repeats.
 
+On August 22, 2026, synthetic schema-constrained probes also passed from the production Fly Machine
+for direct Luna-low and Terra-low. Both returned valid structured output and an audit narrative. The
+probe read no application data and did not change the persisted production model settings.
+
 Two direct Luna-low plus Terra-low synthetic Ranks completed all 40 applicants with no failed calls
 or invariant violations. They took 186.7 and 235.8 seconds and cost $1.5038 and $1.7623, producing
 35 and 41 final dimensions. Human review found the larger sample over-segmented in places; the two
@@ -116,16 +120,11 @@ therefore an availability decision, not an isolated price reduction.
 
 ## Privacy decision
 
-Future use of these models would process applicant text through Bedrock Mantle. The evaluated
-account's effective retention mode was `default`, not zero-data-retention. Traffic flagged by AWS's
-automated abuse detection may be retained by AWS for up to 30 days; AWS says operators cannot access
-it and it is not shared with the model provider. The co-op explicitly accepted this tradeoff for a
-future switchover of applicant-bearing passes.
-
-Recheck the current
-[AWS abuse-detection](https://docs.aws.amazon.com/bedrock/latest/userguide/abuse-detection.html) and
-[data-retention](https://docs.aws.amazon.com/bedrock/latest/userguide/data-retention.html)
-documentation before changing providers or retention settings.
+The co-op accepts the documented provider privacy tradeoffs for applicant-bearing passes. Direct
+routes process application content under the selected vendor's API terms; Bedrock routes use AWS's
+terms and account retention settings. The active route is explicit in admin settings and model
+traces. Recheck the selected provider's current data-use and retention terms before changing routes
+or privacy settings.
 
 ## Reproduction
 
@@ -158,7 +157,7 @@ a quality result.
 - The current application remains on Claude and does not depend on Mantle availability.
 - Each pass stores its reasoning effort beside its model. Effective reasoning is part of cache,
   Rank-fingerprint, and eval-run identity; settings for unsupported models are ignored.
-- A future production switchover depends on installing the direct OpenAI secret on Fly and probing
-  both models there; it no longer depends on Bedrock Mantle availability.
+- Direct Luna-low and Terra-low are credential- and schema-verified on the production Fly Machine;
+  an admin can switch each pass independently without a deployment.
 - That future model change will invalidate the relevant content-addressed caches and Rank-input
   fingerprint, so its first Screen and Rank will perform fresh work.

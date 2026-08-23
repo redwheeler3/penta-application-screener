@@ -55,9 +55,8 @@ class AISettings(BridgeModel):
     self-documenting. The high-volume per-applicant passes (screening and dimension
     scoring) default to cheap-and-fast Haiku because call count drives their cost (scoring
     alone is candidates × dimensions). The higher-judgment discovery, decomposition,
-    matching, and consolidation passes default to Sonnet. M20 also added evaluated Luna and
-    Terra support, but the production AWS account must gain access before those models can
-    become runtime defaults.
+    matching, and consolidation passes default to Sonnet. Evaluated direct Luna and Terra
+    routes are available in production; moving a pass remains an explicit admin decision.
 
     ``match_model`` earned its own tier from evidence: on Haiku the identity-match
     pass over-matched genuinely-drifted concepts (freezing the wrong prior
