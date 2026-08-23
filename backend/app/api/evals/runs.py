@@ -15,7 +15,7 @@ from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSE_PROMPT_VERSIO
 from app.ai.dimension_matching import PROMPT_VERSION as MATCH_PROMPT_VERSION
 from app.ai.provider import AIProvider
 from app.api.dependencies import get_ai_provider, require_current_user
-from app.api.evals._categorical import CategoricalPass, register
+from app.api.evals._categorical import CategoricalPass, run_categorical
 from app.api.evals._shared import (
     DEFAULT_STABILITY_K,
     ReasoningProvider,
@@ -160,41 +160,108 @@ def run_scoring(
     return stream(db, "scoring", SCORING_PROMPT_VERSION, work)
 
 
-# The three categorical passes (merge/keep, matches/mismatches) share one endpoint shape —
-# registered from a spec each; see _categorical.py. Scoring, screening, and the judge below
-# grade different output shapes, so they stay first-class handlers. Each spec's run_case/
-# stability_run is a thin adapter onto the pass's runner (whose model kwarg keeps its expressive
-# name — consolidate_model etc. — so the runners and their tests stay untouched).
-for _spec in (
-    CategoricalPass(
-        key="consolidation", load_cases=load_consolidation_cases,
-        model_attr="consolidate_model", reasoning_attr="consolidate_reasoning_effort",
-        prompt_version=lambda: CONSOLIDATE_PROMPT_VERSION,
-        run_case=lambda p, c, m, on_delta: run_consolidation_case(p, c, consolidate_model=m, on_delta=on_delta),
-        stability_run=lambda p, c, m, *, k, on_delta: consolidation_stability_run(p, c, consolidate_model=m, k=k, on_delta=on_delta),
-        case_out=ConsolidationCaseOut, run_response=ConsolidationResponse,
-        stability_out=ConsolidationStabilityCaseOut, stability_response=ConsolidationStabilityResponse,
+CONSOLIDATION_EVAL = CategoricalPass(
+    key="consolidation",
+    load_cases=load_consolidation_cases,
+    model_attr="consolidate_model",
+    reasoning_attr="consolidate_reasoning_effort",
+    prompt_version=lambda: CONSOLIDATE_PROMPT_VERSION,
+    run_case=lambda provider, item, model, on_delta: run_consolidation_case(
+        provider, item, consolidate_model=model, on_delta=on_delta
     ),
-    CategoricalPass(
-        key="matching", load_cases=load_matching_cases,
-        model_attr="match_model", reasoning_attr="match_reasoning_effort",
-        prompt_version=lambda: MATCH_PROMPT_VERSION,
-        run_case=lambda p, c, m, on_delta: run_matching_case(p, c, match_model=m, on_delta=on_delta),
-        stability_run=lambda p, c, m, *, k, on_delta: matching_stability_run(p, c, match_model=m, k=k, on_delta=on_delta),
-        case_out=MatchingCaseOut, run_response=MatchingResponse,
-        stability_out=MatchingStabilityCaseOut, stability_response=MatchingStabilityResponse,
+    stability_run=lambda provider, item, model, *, k, on_delta: consolidation_stability_run(
+        provider, item, consolidate_model=model, k=k, on_delta=on_delta
     ),
-    CategoricalPass(
-        key="decomposition", load_cases=load_decomposition_cases,
-        model_attr="decompose_model", reasoning_attr="decompose_reasoning_effort",
-        prompt_version=lambda: DECOMPOSE_PROMPT_VERSION,
-        run_case=lambda p, c, m, on_delta: run_decomposition_case(p, c, decompose_model=m, on_delta=on_delta),
-        stability_run=lambda p, c, m, *, k, on_delta: decomposition_stability_run(p, c, decompose_model=m, k=k, on_delta=on_delta),
-        case_out=DecompositionCaseOut, run_response=DecompositionResponse,
-        stability_out=DecompositionStabilityCaseOut, stability_response=DecompositionStabilityResponse,
+    case_out=ConsolidationCaseOut,
+    run_response=ConsolidationResponse,
+    stability_out=ConsolidationStabilityCaseOut,
+    stability_response=ConsolidationStabilityResponse,
+)
+
+MATCHING_EVAL = CategoricalPass(
+    key="matching",
+    load_cases=load_matching_cases,
+    model_attr="match_model",
+    reasoning_attr="match_reasoning_effort",
+    prompt_version=lambda: MATCH_PROMPT_VERSION,
+    run_case=lambda provider, item, model, on_delta: run_matching_case(
+        provider, item, match_model=model, on_delta=on_delta
     ),
-):
-    register(router, _spec)
+    stability_run=lambda provider, item, model, *, k, on_delta: matching_stability_run(
+        provider, item, match_model=model, k=k, on_delta=on_delta
+    ),
+    case_out=MatchingCaseOut,
+    run_response=MatchingResponse,
+    stability_out=MatchingStabilityCaseOut,
+    stability_response=MatchingStabilityResponse,
+)
+
+DECOMPOSITION_EVAL = CategoricalPass(
+    key="decomposition",
+    load_cases=load_decomposition_cases,
+    model_attr="decompose_model",
+    reasoning_attr="decompose_reasoning_effort",
+    prompt_version=lambda: DECOMPOSE_PROMPT_VERSION,
+    run_case=lambda provider, item, model, on_delta: run_decomposition_case(
+        provider, item, decompose_model=model, on_delta=on_delta
+    ),
+    stability_run=lambda provider, item, model, *, k, on_delta: decomposition_stability_run(
+        provider, item, decompose_model=model, k=k, on_delta=on_delta
+    ),
+    case_out=DecompositionCaseOut,
+    run_response=DecompositionResponse,
+    stability_out=DecompositionStabilityCaseOut,
+    stability_response=DecompositionStabilityResponse,
+)
+
+
+def _run_categorical_endpoint(
+    spec: CategoricalPass,
+    mode: str,
+    k: int,
+    case: str | None,
+    provider: AIProvider,
+    db: Session,
+) -> StreamingResponse:
+    return run_categorical(
+        spec, mode=mode, k=k, case=case, provider=provider, db=db
+    )
+
+
+@router.post("/consolidation")
+def run_consolidation(
+    mode: str = "run",
+    k: int = DEFAULT_STABILITY_K,
+    case: str | None = None,
+    _user: User = Depends(require_current_user),
+    provider: AIProvider = Depends(get_ai_provider),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    return _run_categorical_endpoint(CONSOLIDATION_EVAL, mode, k, case, provider, db)
+
+
+@router.post("/matching")
+def run_matching(
+    mode: str = "run",
+    k: int = DEFAULT_STABILITY_K,
+    case: str | None = None,
+    _user: User = Depends(require_current_user),
+    provider: AIProvider = Depends(get_ai_provider),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    return _run_categorical_endpoint(MATCHING_EVAL, mode, k, case, provider, db)
+
+
+@router.post("/decomposition")
+def run_decomposition(
+    mode: str = "run",
+    k: int = DEFAULT_STABILITY_K,
+    case: str | None = None,
+    _user: User = Depends(require_current_user),
+    provider: AIProvider = Depends(get_ai_provider),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    return _run_categorical_endpoint(DECOMPOSITION_EVAL, mode, k, case, provider, db)
 
 
 @router.post("/screening")
