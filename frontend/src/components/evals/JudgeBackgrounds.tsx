@@ -2,9 +2,7 @@ import { type ReactNode, useEffect, useState } from "react";
 
 import { fetchJudgeBackgrounds, saveJudgeBackground } from "../../api";
 import { readProblem } from "../../format";
-
-// One pass's editable "what this pass does" brief + how many golden cases it contributes.
-type Background = { passName: string; background: string; caseCount: number };
+import type { JudgeBackground } from "../../types";
 
 // The Judge tab's per-pass background editors. The blind judge reproduces each pass's output
 // from THIS brief (+ the case's given), so it's the one knob that tunes the audit — hence
@@ -16,16 +14,15 @@ export function JudgeBackgrounds(props: {
   onToast: (message: string) => void;
   onError: (message: string) => void;
 }): ReactNode {
-  const [items, setItems] = useState<Background[] | null>(null);
+  const [items, setItems] = useState<JudgeBackground[] | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
     fetchJudgeBackgrounds()
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { backgrounds?: Background[] } | null) => {
-        if (live && d?.backgrounds) setItems(d.backgrounds);
+      .then((data) => {
+        if (live) setItems(data.backgrounds);
       });
     return () => {
       live = false;
@@ -39,7 +36,7 @@ export function JudgeBackgrounds(props: {
     const resp = await saveJudgeBackground(passName, text);
     setSaving(null);
     if (resp.ok) {
-      const saved: Background = await resp.json();
+      const saved: JudgeBackground = await resp.json();
       setItems((prev) => (prev ?? []).map((b) => (b.passName === passName ? saved : b)));
       setDrafts((prev) => {
         const { [passName]: _drop, ...rest } = prev;

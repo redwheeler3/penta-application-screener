@@ -40,8 +40,8 @@ export function AIQualityView(props: {
   const [catalog, setCatalog] = useState<EvalDescriptor[] | null>(null);
   useEffect(() => {
     fetchEvalCatalog()
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => d && setCatalog(d.evals));
+      .then((data) => setCatalog(data.evals))
+      .catch(() => setCatalog([]));
   }, []);
 
   // Observability subtabs in pipeline order; the per-run trace tabs exist only once a run

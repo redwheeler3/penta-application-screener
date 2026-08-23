@@ -14,6 +14,8 @@ import type {
   RankEstimateResponse,
   ScoreCurrentEstimateResponse,
   RankProgress,
+  RankingStreamEvent,
+  ScreeningStreamEvent,
   SettingsResponse,
   ViewTab,
   WorkflowState,
@@ -508,12 +510,11 @@ export function App() {
   async function requestScreeningEstimate() {
     dismissRankEstimate(); // only one card shows at a time
     setImportConfirm(false);
-    const response = await api.fetchScreeningEstimate();
-    if (response.ok) {
+    try {
       // Always open the card — even a $0 no-op states there's nothing to do and
       // disables Confirm, rather than firing a transient toast.
-      setScreeningEstimate(await response.json());
-    } else {
+      setScreeningEstimate(await api.fetchScreeningEstimate());
+    } catch {
       showError("Could not load the AI cost estimate for screening.");
     }
     // Refresh shared workflow state after the estimate so it does not delay the confirmation
@@ -531,7 +532,7 @@ export function App() {
         const problem = await readProblem(response);
         showError(problem ? `Screening failed: ${problem}` : "Screening failed.");
       } else {
-        await api.streamNdjson(response.body, (event) => {
+        await api.streamNdjson<ScreeningStreamEvent>(response.body, (event) => {
           if (event.type === "progress") {
             setScreeningProgress({ processed: event.processed, total: event.total });
           } else if (event.type === "summary") {
@@ -571,27 +572,26 @@ export function App() {
     // Attach a rejection handler now: the optional read can fail before the full-Rank
     // estimate arrives and before we attach its result handler below.
     if (scoreCurrentPromise) void scoreCurrentPromise.catch(() => undefined);
-    const rankResponse = await rankPromise;
-    if (requestId !== rankEstimateRequestRef.current) return;
-    if (rankResponse.ok) {
-      // Always open the card, even when unchanged: it explains there's nothing to
-      // re-rank and disables Confirm, instead of a transient toast.
-      const estimate = await rankResponse.json();
-      if (requestId !== rankEstimateRequestRef.current) return;
-      setRankEstimate(estimate);
-      if (scoreCurrentPromise) {
-        void scoreCurrentPromise
-          .then(async (response) => {
-            if (!response.ok || requestId !== rankEstimateRequestRef.current) return;
-            const estimate = await response.json();
-            if (requestId === rankEstimateRequestRef.current) setScoreCurrentEstimate(estimate);
-          })
-          // This optional path previously failed silently for non-OK responses. A rejected
-          // request should likewise leave the full-Rank confirmation usable.
-          .catch(() => undefined);
+    let estimate: RankEstimateResponse;
+    try {
+      estimate = await rankPromise;
+    } catch {
+      if (requestId === rankEstimateRequestRef.current) {
+        showError("Could not load the AI cost estimate for ranking.");
       }
-    } else {
-      showError("Could not load the AI cost estimate for ranking.");
+      refreshDashboard();
+      return;
+    }
+    if (requestId !== rankEstimateRequestRef.current) return;
+    // Always open the card, even when unchanged: it explains there's nothing to
+    // re-rank and disables Confirm, instead of a transient toast.
+    setRankEstimate(estimate);
+    if (scoreCurrentPromise) {
+      void scoreCurrentPromise
+        .then((scoreEstimate) => {
+          if (requestId === rankEstimateRequestRef.current) setScoreCurrentEstimate(scoreEstimate);
+        })
+        .catch(() => undefined);
     }
     // Refresh the badge AFTER the estimate (see requestScreeningEstimate): the heavy dashboard
     // call fired first would compete with the estimate fetches and delay the card.
@@ -622,12 +622,12 @@ export function App() {
           setDisplayedProposals(priorProposals);
         }
       } else {
-        await api.streamNdjson(response.body, (event) => {
+        await api.streamNdjson<RankingStreamEvent>(response.body, (event) => {
           if (event.type === "phase") {
             // New pass: reset the bar to its total (criteria is one call → no total).
-            setRankProgress({ phase: event.phase, processed: 0, total: event.total ?? 0 });
+            setRankProgress({ phase: event.phase as RankProgress["phase"], processed: 0, total: event.total ?? 0 });
           } else if (event.type === "progress") {
-            setRankProgress({ phase: event.phase, processed: event.processed, total: event.total });
+            setRankProgress({ phase: event.phase as RankProgress["phase"], processed: event.processed, total: event.total });
           } else if (event.type === "stage") {
             // A sub-step transition within the criteria phase — update the stage label
             // in place, keeping the current phase/counts.

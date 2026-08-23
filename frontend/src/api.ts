@@ -10,17 +10,29 @@ import type {
   ConsolidateAuditResponse,
   CostReport,
   Coverage,
+  CurrentRunResponse,
   CurrentUser,
   DashboardCounts,
   DecomposeAuditResponse,
   EligibilityRules,
   EligibilityRulesResponse,
+  EvalDescriptor,
   EvalRunMode,
+  EvalStreamEvent,
   FanOutAuditResponse,
   FeedbackItem,
+  InvariantsResult,
+  JudgeBackground,
+  LastEvalRun,
   LastRunsReport,
   MatchAuditResponse,
   MetricsReport,
+  RankEstimateResponse,
+  RankingResponse,
+  RankingStreamEvent,
+  ScoreCurrentEstimateResponse,
+  ScreeningEstimateResponse,
+  ScreeningStreamEvent,
   SettingsResponse,
   Tier,
   WorkflowState,
@@ -233,7 +245,7 @@ export function linkSheet(fileId: string): Promise<Response> {
   });
 }
 
-export const fetchRankingCurrent = () => request("/ranking/current");
+export const fetchRankingCurrent = () => getJson<CurrentRunResponse | null>("/ranking/current");
 
 // The current run's carry-forward audit, or null when none is stored.
 export const fetchMatchAudit = () => getJson<MatchAuditResponse | null>("/ranking/current/match-audit");
@@ -261,7 +273,8 @@ export const fetchLastRuns = () => getJson<LastRunsReport>("/observability/last-
 // Operational trends across all runs: cost, tokens, latency, cache use, and failures.
 export const fetchMetrics = () => getJson<MetricsReport>("/observability/metrics");
 
-export const fetchScreeningEstimate = () => request("/screening/run/estimate");
+export const fetchScreeningEstimate = () =>
+  getJson<ScreeningEstimateResponse>("/screening/run/estimate");
 // Streaming runs carry heartbeats for their multi-minute lifetimes. Bound only the time to
 // receive the Response; fetch resolves at that point, so this deadline never aborts a healthy
 // active stream.
@@ -271,19 +284,15 @@ function streamRequest(path: string): Promise<Response> {
 
 export const runScreening = () => streamRequest("/screening/run");
 
-export const fetchRankEstimate = () => request("/ranking/run/estimate");
+export const fetchRankEstimate = () => getJson<RankEstimateResponse>("/ranking/run/estimate");
 export const runRank = () => streamRequest("/ranking/run");
 export const fetchScoreCurrentEstimate = () =>
-  request("/ranking/score-current/estimate");
+  getJson<ScoreCurrentEstimateResponse>("/ranking/score-current/estimate");
 export const scoreCurrent = () => streamRequest("/ranking/score-current");
 
-export function fetchRanking(): Promise<Response> {
-  return request("/ranking");
-}
+export const fetchRanking = () => getJson<RankingResponse>("/ranking");
 
-export function fetchTiers(): Promise<Response> {
-  return request("/ranking/tiers");
-}
+export const fetchTiers = () => getJson<{ tiers: Tier[] }>("/ranking/tiers");
 
 // analysisId is the analysis the client is viewing; the server rejects a save against a
 // superseded one (409 stale_analysis) so a member's edit never lands on the wrong board.
@@ -345,14 +354,10 @@ export function setStar(id: number, starred: boolean): Promise<Response> {
 // --- Evals tab -------------------------------------------------------------
 
 // The runnable evals + their spend estimates (free; no model calls).
-export function fetchEvalCatalog(): Promise<Response> {
-  return request("/evals/catalog");
-}
+export const fetchEvalCatalog = () => getJson<{ evals: EvalDescriptor[] }>("/evals/catalog");
 
 // Deterministic invariants over the baseline fixture (free).
-export function fetchEvalInvariants(): Promise<Response> {
-  return request("/evals/invariants");
-}
+export const fetchEvalInvariants = () => getJson<InvariantsResult>("/evals/invariants");
 
 // Re-record the invariant baseline fixture from the current Rank (writes the committed
 // rank_baseline.json — commit to git afterward). Returns the fresh invariants.
@@ -361,15 +366,13 @@ export function rebaselineEval(): Promise<Response> {
 }
 
 // The eval's cases, straight from its committed JSON fixture (free).
-export function fetchEvalCases(evalKey: string): Promise<Response> {
-  return request(`/evals/cases/${evalKey}`);
-}
+export const fetchEvalCases = (evalKey: string) =>
+  getJson<{ cases: Record<string, unknown>[] }>(`/evals/cases/${evalKey}`);
 
 // The per-pass judge_background briefs (what each pass does) the Judge tab lists + edits,
 // with each pass's golden case count. Free (reads the committed golden files).
-export function fetchJudgeBackgrounds(): Promise<Response> {
-  return request("/evals/judge-backgrounds");
-}
+export const fetchJudgeBackgrounds = () =>
+  getJson<{ backgrounds: JudgeBackground[] }>("/evals/judge-backgrounds");
 
 // Write one pass's judge_background to its golden file (operator commits deliberately).
 export function saveJudgeBackground(passName: string, background: string): Promise<Response> {
@@ -382,9 +385,8 @@ export function saveJudgeBackground(passName: string, background: string): Promi
 
 // The most recent persisted run among `keys` (comma-joined), to restore a tab on remount.
 // Result JSON only (no thinking narration); identifies prompt and model drift separately.
-export function fetchLastEvalRun(keys: string[]): Promise<Response> {
-  return request(`/evals/last-run?keys=${encodeURIComponent(keys.join(","))}`);
-}
+export const fetchLastEvalRun = (keys: string[]) =>
+  getJson<{ runs: LastEvalRun[] }>(`/evals/last-run?keys=${encodeURIComponent(keys.join(","))}`);
 
 // Upsert one case (by its `key`) into the eval's fixture FILE. Validated server-side;
 // the operator commits the changed file to git deliberately.
@@ -420,7 +422,10 @@ export function runEval(
 
 // Read an NDJSON stream, invoking `onEvent` for each parsed line. Used by the
 // screening and Rank runs, which stream progress then a summary.
-export async function streamNdjson(body: ReadableStream<Uint8Array>, onEvent: (event: any) => void): Promise<void> {
+export async function streamNdjson<TEvent extends ScreeningStreamEvent | RankingStreamEvent | EvalStreamEvent>(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: TEvent) => void,
+): Promise<void> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -432,7 +437,7 @@ export async function streamNdjson(body: ReadableStream<Uint8Array>, onEvent: (e
     buffer = lines.pop() ?? ""; // keep any partial line for the next chunk
     for (const line of lines) {
       if (!line.trim()) continue;
-      onEvent(JSON.parse(line));
+      onEvent(JSON.parse(line) as TEvent);
     }
   }
 }

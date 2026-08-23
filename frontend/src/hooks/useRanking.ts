@@ -1,6 +1,6 @@
 import { useState } from "react";
 import * as api from "../api";
-import { problemMessage, readProblem, readProblemBody } from "../format";
+import { problemMessage, readProblemBody } from "../format";
 import type { CurrentRunResponse, RankingResponse, Tier } from "../types";
 
 export interface RankingState {
@@ -96,9 +96,7 @@ export function useRanking(onError: (message: string) => void): RankingState {
     const loadedId = ranking?.analysisId ?? rankingRun?.analysisId;
     if (loadedId === undefined || loadedId === null || staleAnalysis) return;
     try {
-      const response = await api.fetchRankingCurrent();
-      if (!response.ok) return;
-      const current: CurrentRunResponse | null = await response.json();
+      const current = await api.fetchRankingCurrent();
       if (current && current.analysisId !== loadedId) setStaleAnalysis(true);
     } catch {
       /* transient — try again on the next focus */
@@ -108,23 +106,18 @@ export function useRanking(onError: (message: string) => void): RankingState {
   function refreshRankingRun() {
     return api
       .fetchRankingCurrent()
-      .then((response) => (response.ok ? response.json() : null))
-      .then((payload: CurrentRunResponse | null) => setRankingRun(payload))
+      .then(setRankingRun)
       .catch(() => setRankingRun(null));
   }
 
   async function loadRanking(): Promise<boolean> {
     setRankingLoadState("loading");
     try {
-      const [rankRes, tiersRes] = await Promise.all([api.fetchRanking(), api.fetchTiers()]);
-      if (rankRes.ok) {
-        setRanking(await rankRes.json());
-        if (tiersRes.ok) setTiers((await tiersRes.json()).tiers);
-        setRankingLoadState("ready");
-        return true;
-      }
-      const problem = await readProblem(rankRes);
-      onError(problem ? `Could not load the ranking: ${problem}` : "Could not load the ranking.");
+      const [nextRanking, nextTiers] = await Promise.all([api.fetchRanking(), api.fetchTiers()]);
+      setRanking(nextRanking);
+      setTiers(nextTiers.tiers);
+      setRankingLoadState("ready");
+      return true;
     } catch {
       onError("Could not load the ranking. Please try again.");
     }

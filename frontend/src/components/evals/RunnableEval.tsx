@@ -3,7 +3,14 @@ import ReactMarkdown from "react-markdown";
 import { fetchEvalCases, fetchLastEvalRun, runEval, saveEvalCase, streamNdjson } from "../../api";
 import { AI_PASS_PIPELINE_ORDER } from "../../constants";
 import { formatPacificDate, reasoningEffortLabel } from "../../format";
-import type { EvalCaseResult, EvalFixtureKey, EvalRunMode, EvalRunResult, LastEvalRun } from "../../types";
+import type {
+  EvalCaseResult,
+  EvalFixtureKey,
+  EvalRunMode,
+  EvalRunResult,
+  EvalStreamEvent,
+  LastEvalRun,
+} from "../../types";
 import { EvalCaseDetail } from "./EvalCaseDetail";
 import { EvalCaseEditor } from "./EvalCaseEditor";
 import { InlineConfirm } from "./InlineConfirm";
@@ -70,8 +77,8 @@ export function RunnableEval(props: {
 
   const loadCases = () => {
     fetchEvalCases(caseEvalKey)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setCases(d?.cases ?? []));
+      .then((data) => setCases(data.cases))
+      .catch(() => setCases([]));
   };
   useEffect(loadCases, [caseEvalKey]);
 
@@ -85,9 +92,8 @@ export function RunnableEval(props: {
   // outcome-not-replay choice). Returns a promise so callers can await the refresh.
   const loadLastRuns = (seedResults: boolean) =>
     fetchLastEvalRun(props.runKeys)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { runs?: LastEvalRun[] } | null) => {
-        if (!d?.runs?.length) return;
+      .then((d) => {
+        if (!d.runs.length) return;
         const byMode: Record<string, LastEvalRun> = {};
         for (const lastRun of d.runs) byMode[lastRun.evalKey as EvalRunMode] = lastRun;
         setRestored(byMode);
@@ -130,10 +136,10 @@ export function RunnableEval(props: {
         setRun((r) => ({ ...r, running: false, error: `Request failed (${resp.status})` }));
         return;
       }
-      await streamNdjson(resp.body, (e) => {
+      await streamNdjson<EvalStreamEvent>(resp.body, (e) => {
         if (e.type === "thinking") setRun((r) => ({ ...r, thinking: r.thinking + e.text }));
         else if (e.type === "summary") {
-          const result = e.result as EvalRunResult;
+          const result = e.result;
           setRun((r) => ({ ...r, running: false, result }));
           // Merge this run's per-case results under THIS MODE, preserving other modes'
           // results on each case. A whole-set run replaces every case's entry for this mode

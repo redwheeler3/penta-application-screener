@@ -604,6 +604,60 @@ export type RankProgress = {
   stage?: CriteriaStage | null;
 };
 
+type PhaseEvent = { type: "phase"; phase: string; total: number | null };
+type ProgressEvent = { type: "progress"; phase: string; processed: number; total: number };
+type ThinkingEvent = { type: "thinking"; phase: string; text: string };
+type StageEvent = { type: "stage"; phase: string; stage: CriteriaStage };
+type NoticeEvent = {
+  type: "notice";
+  phase: string;
+  dimensions: number;
+  carriedForward: number;
+  newDimensions: number;
+};
+type WarningEvent = { type: "warning"; phase: string; message: string };
+type ItemErrorEvent = {
+  type: "item_error";
+  phase: string;
+  message: string;
+  applicationId: number | null;
+};
+type ErrorEvent = { type: "error"; phase: string; message: string };
+type PingEvent = { type: "ping"; phase: string };
+
+export type ScreeningStreamEvent =
+  | PhaseEvent
+  | ProgressEvent
+  | ItemErrorEvent
+  | ErrorEvent
+  | PingEvent
+  | {
+      type: "summary";
+      analyzed: number;
+      cached: number;
+      flagged: number;
+      failed: number;
+      totalCostUsd: number;
+    };
+
+export type RankingStreamEvent =
+  | PhaseEvent
+  | ProgressEvent
+  | ThinkingEvent
+  | StageEvent
+  | NoticeEvent
+  | WarningEvent
+  | ItemErrorEvent
+  | ErrorEvent
+  | PingEvent
+  | {
+      type: "summary";
+      dimensions: number;
+      scored: number;
+      failed: number;
+      totalCostUsd: number;
+    };
+
 // --- Evals tab (in-UI eval cockpit) -----------------------------------------
 // Mirrors backend/app/schemas/evals.py. The catalog is free; runs stream NDJSON
 // (thinking lines then a summary carrying one of the result shapes below).
@@ -670,6 +724,14 @@ export type EvalRunResult = {
   scoringModel?: string;
   judgeModel?: string;
 };
+
+export type EvalStreamEvent =
+  | ThinkingEvent
+  | ErrorEvent
+  | PingEvent
+  | { type: "summary"; eval: string; savedPath: string | null; result: EvalRunResult };
+
+export type JudgeBackground = { passName: string; background: string; caseCount: number };
 
 export type EvalDescriptor = {
   key: EvalKey;

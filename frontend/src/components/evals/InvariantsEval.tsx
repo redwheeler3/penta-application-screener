@@ -17,8 +17,8 @@ export function InvariantsEval(): ReactNode {
 
   useEffect(() => {
     fetchEvalInvariants()
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setResult);
+      .then(setResult)
+      .catch(() => setError("Could not load invariants."));
   }, []);
 
   async function rebaseline() {
