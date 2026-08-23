@@ -52,9 +52,8 @@ export interface RankingState {
 /** The ranking cluster: the current run's dimensions, the ranked shortlist, and the
  * committee's tiers + free-text proposals — plus the pure-persistence handlers that keep
  * them in lockstep (a tier edit re-sorts; a proposal feeds the next Rank). Talks to the
- * api layer and surfaces failures through the injected ``onError``. The AI *run* flow
- * (discover/score) lives in App: it orchestrates dashboard/list/tab refreshes across
- * clusters, so it stays with the orchestrator rather than owning this state. */
+ * api layer and surfaces failures through the injected ``onError``. The separate
+ * ``useAiRuns`` hook owns the discover/score lifecycle and coordinates its refreshes. */
 export function useRanking(onError: (message: string) => void): RankingState {
   const [rankingRun, setRankingRun] = useState<CurrentRunResponse | null>(null);
   const [ranking, setRanking] = useState<RankingResponse | null>(null);

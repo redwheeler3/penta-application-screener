@@ -2,16 +2,10 @@ import { Filter, LogIn, LogOut, Settings } from "lucide-react";
 import { type ReactNode, type SyntheticEvent, useEffect, useRef, useState } from "react";
 import { HouseIcon } from "./HouseIcon";
 import * as api from "./api";
-import { money, readProblem } from "./format";
+import { readProblem } from "./format";
 import type {
   ApplicationDetail,
   AppStatus,
-  ScreeningEstimateResponse,
-  RankEstimateResponse,
-  ScoreCurrentEstimateResponse,
-  RankProgress,
-  RankingStreamEvent,
-  ScreeningStreamEvent,
   SettingsResponse,
   ViewTab,
 } from "./types";
@@ -31,6 +25,7 @@ import { useSession } from "./hooks/useSession";
 import { useSharedSettings } from "./hooks/useSharedSettings";
 import { useDashboard } from "./hooks/useDashboard";
 import { useNavigation } from "./hooks/useNavigation";
+import { useAiRuns } from "./hooks/useAiRuns";
 
 export function App() {
   const {
@@ -77,16 +72,9 @@ export function App() {
     applyFilter,
     search: searchApplications,
   } = useApplications();
-  // AI run flows share a shape: estimate (confirmation) -> running -> result.
-  // Outcomes surface as toasts, so no per-step message state is kept here.
-  const [screeningEstimate, setScreeningEstimate] = useState<ScreeningEstimateResponse | null>(null);
-  const [screeningRunning, setScreeningRunning] = useState(false);
-  const [screeningProgress, setScreeningProgress] = useState<{ processed: number; total: number } | null>(null);
-
   // The ranking cluster: the current run's dimensions, the ranked shortlist, the
   // committee's tiers, and the pure-persistence handlers that keep them in lockstep.
-  // See useRanking. The AI run flow (discover/score) stays here — it orchestrates
-  // dashboard/list/tab refreshes across clusters.
+  // See useRanking. useAiRuns separately coordinates the model-run lifecycle.
   const {
     rankingRun,
     ranking,
@@ -104,21 +92,6 @@ export function App() {
     checkForStaleRanking,
     reloadStaleRanking,
   } = useRanking(showError);
-
-  // The full Rank discovers a new criteria set; the safe alternative fills missing
-  // scores against the current set. Both begin with their own capped estimate.
-  const [rankEstimate, setRankEstimate] = useState<RankEstimateResponse | null>(null);
-  const [scoreCurrentEstimate, setScoreCurrentEstimate] = useState<ScoreCurrentEstimateResponse | null>(null);
-  // A score-current estimate is optional enrichment for the Rank confirmation card. Keep a
-  // generation so a slower response cannot update a card the member dismissed or replaced.
-  const rankEstimateRequestRef = useRef(0);
-  const [rankRunning, setRankRunning] = useState(false);
-  const [rankProgress, setRankProgress] = useState<RankProgress | null>(null);
-  // The model's live reasoning during the run's opaque calls (criteria discovery +
-  // match, and post-score consolidation) — multi-minute calls with no per-item
-  // progress, so we show the streamed "thinking" text instead of a bare spinner.
-  // Both phases append here, so the box carries through the whole run.
-  const [criteriaThinking, setCriteriaThinking] = useState("");
 
   const {
     activeTab,
@@ -149,11 +122,35 @@ export function App() {
     },
   });
 
-  function dismissRankEstimate() {
-    rankEstimateRequestRef.current += 1;
-    setRankEstimate(null);
-    setScoreCurrentEstimate(null);
-  }
+  const {
+    screeningEstimate,
+    screeningRunning,
+    screeningProgress,
+    rankEstimate,
+    scoreCurrentEstimate,
+    rankRunning,
+    rankProgress,
+    criteriaThinking,
+    requestScreeningEstimate,
+    runScreening,
+    cancelScreeningEstimate,
+    requestRankEstimate,
+    runRank,
+    cancelRankEstimate,
+    resetEstimates,
+  } = useAiRuns({
+    ranking: {
+      currentRun: rankingRun,
+      refreshCurrentRun: refreshRankingRun,
+      load: loadRanking,
+      setDisplayedProposals,
+    },
+    notifications: { success: showToast, error: showError, warning: showWarning },
+    closeImportConfirm: () => setImportConfirm(false),
+    refreshDashboard,
+    reloadApplications,
+    clearSelectedApplication: () => setSelectedApp(null),
+  });
 
   useEffect(() => {
     if (!user) return;
@@ -234,8 +231,7 @@ export function App() {
       // Cost estimates are a snapshot of the saved AI settings. Invalidate them so
       // a cap increase (or any model/cost setting change) cannot leave a stale
       // over-cap warning and disabled confirmation button on screen.
-      setScreeningEstimate(null);
-      dismissRankEstimate();
+      resetEstimates();
       setSelectedApp(null);
       refreshDashboard();
       requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
@@ -246,8 +242,7 @@ export function App() {
 
   // Open the Import confirmation. Close the other cards so only one shows at a time.
   function requestImport() {
-    setScreeningEstimate(null);
-    dismissRankEstimate();
+    resetEstimates();
     setImportConfirm(true); // open first; the badge refresh below shouldn't gate the card
     refreshDashboard(); // freshen the badge against current shared state (see requestScreeningEstimate)
   }
@@ -290,174 +285,6 @@ export function App() {
       );
     }
     setIsSyncing(false);
-  }
-
-  // Fetch the cost estimate and show the confirmation prompt. AI never runs without
-  // the user first seeing the estimate and confirming (SPEC cost control).
-  async function requestScreeningEstimate() {
-    dismissRankEstimate(); // only one card shows at a time
-    setImportConfirm(false);
-    try {
-      // Always open the card — even a $0 no-op states there's nothing to do and
-      // disables Confirm, rather than firing a transient toast.
-      setScreeningEstimate(await api.fetchScreeningEstimate());
-    } catch {
-      showError("Could not load the AI cost estimate for screening.");
-    }
-    // Refresh shared workflow state after the estimate so it does not delay the confirmation
-    // card the member is waiting to see.
-    refreshDashboard();
-  }
-
-  async function runScreening() {
-    setScreeningRunning(true);
-    setScreeningEstimate(null);
-    setScreeningProgress(null);
-    try {
-      const response = await api.runScreening();
-      if (!response.ok || !response.body) {
-        const problem = await readProblem(response);
-        showError(problem ? `Screening failed: ${problem}` : "Screening failed.");
-      } else {
-        await api.streamNdjson<ScreeningStreamEvent>(response.body, (event) => {
-          if (event.type === "progress") {
-            setScreeningProgress({ processed: event.processed, total: event.total });
-          } else if (event.type === "summary") {
-            const failedNote = event.failed ? ` ${event.failed} failed and were skipped.` : "";
-            showToast(
-              `Screening complete: ${event.flagged} flagged of ${event.analyzed + event.cached} analyzed ` +
-                `(${money(event.totalCostUsd)}).` +
-                failedNote,
-            );
-          }
-        });
-        // Refresh dashboard counts, the list + facet counts, and the open candidate
-        // so new flags/status show immediately after the run.
-        refreshDashboard();
-        reloadApplications();
-        setSelectedApp(null);
-      }
-    } catch (error) {
-      showError(error instanceof Error ? `Screening error: ${error.message}` : "Screening error.");
-    }
-    setScreeningProgress(null);
-    setScreeningRunning(false);
-  }
-
-  async function requestRankEstimate() {
-    setScreeningEstimate(null); // only one card shows at a time
-    setImportConfirm(false);
-    const requestId = rankEstimateRequestRef.current + 1;
-    rankEstimateRequestRef.current = requestId;
-    setRankEstimate(null);
-    setScoreCurrentEstimate(null);
-    // The full-Rank estimate alone is the confirmation gate. Start the exact
-    // score-current calculation at the same time, but don't make the card wait for its
-    // cache-grid read; it only adds the optional "Score missing applicants" path.
-    const rankPromise = api.fetchRankEstimate();
-    const scoreCurrentPromise = rankingRun ? api.fetchScoreCurrentEstimate() : null;
-    // Attach a rejection handler now: the optional read can fail before the full-Rank
-    // estimate arrives and before we attach its result handler below.
-    if (scoreCurrentPromise) void scoreCurrentPromise.catch(() => undefined);
-    let estimate: RankEstimateResponse;
-    try {
-      estimate = await rankPromise;
-    } catch {
-      if (requestId === rankEstimateRequestRef.current) {
-        showError("Could not load the AI cost estimate for ranking.");
-      }
-      refreshDashboard();
-      return;
-    }
-    if (requestId !== rankEstimateRequestRef.current) return;
-    // Always open the card, even when unchanged: it explains there's nothing to
-    // re-rank and disables Confirm, instead of a transient toast.
-    setRankEstimate(estimate);
-    if (scoreCurrentPromise) {
-      void scoreCurrentPromise
-        .then((scoreEstimate) => {
-          if (requestId === rankEstimateRequestRef.current) setScoreCurrentEstimate(scoreEstimate);
-        })
-        .catch(() => undefined);
-    }
-    // Refresh the badge AFTER the estimate (see requestScreeningEstimate): the heavy dashboard
-    // call fired first would compete with the estimate fetches and delay the card.
-    refreshDashboard();
-  }
-
-  async function runRank(mode: "discover" | "score-current") {
-    setRankRunning(true);
-    dismissRankEstimate();
-    setRankProgress(null);
-    setCriteriaThinking("");
-    // A discover run consumes the pending proposals (they become real dimensions). Clear
-    // them from the UI as soon as the run STARTS — they're in use now — rather than leaving
-    // them visible until the run finishes and the refresh lands. Remember them so a failed
-    // run (nothing consumed) can restore them.
-    const priorProposals = rankingRun?.proposedDimensions ?? [];
-    if (mode === "discover" && priorProposals.length > 0) {
-      setDisplayedProposals([]);
-    }
-    try {
-      const response = mode === "discover" ? await api.runRank() : await api.scoreCurrent();
-      if (!response.ok || !response.body) {
-        const problem = await readProblem(response);
-        showError(problem ? `Ranking failed: ${problem}` : "Ranking failed.");
-        // The run never consumed the proposals — restore them so the member doesn't lose
-        // what they typed.
-        if (mode === "discover" && priorProposals.length > 0) {
-          setDisplayedProposals(priorProposals);
-        }
-      } else {
-        await api.streamNdjson<RankingStreamEvent>(response.body, (event) => {
-          if (event.type === "phase") {
-            // New pass: reset the bar to its total (criteria is one call → no total).
-            setRankProgress({ phase: event.phase as RankProgress["phase"], processed: 0, total: event.total ?? 0 });
-          } else if (event.type === "progress") {
-            setRankProgress({ phase: event.phase as RankProgress["phase"], processed: event.processed, total: event.total });
-          } else if (event.type === "stage") {
-            // A sub-step transition within the criteria phase — update the stage label
-            // in place, keeping the current phase/counts.
-            setRankProgress((prior) =>
-              prior ? { ...prior, stage: event.stage } : { phase: "criteria", processed: 0, total: 0, stage: event.stage },
-            );
-          } else if (event.type === "thinking") {
-            // Live model reasoning from the opaque calls (discovery + match, and
-            // consolidation); append as it streams so the box carries the whole run.
-            setCriteriaThinking((prior) => prior + event.text);
-          } else if (event.type === "warning") {
-            // Run-level but non-fatal (e.g. some discovery workers timed out); the run
-            // continued on the survivors. Amber toast — informational, not a failure.
-            showWarning(event.message || "The run completed with a warning.");
-          } else if (event.type === "error") {
-            // Fatal phase failure (e.g. the criteria thread crashed); ends the stream.
-            showError(event.message || "Ranking failed.");
-          } else if (event.type === "summary") {
-            const failedNote = event.failed ? ` ${event.failed} failed and were skipped.` : "";
-            showToast(
-              `${mode === "discover" ? "Ranking complete" : "Current criteria updated"}: ` +
-                `${event.dimensions} criteria, ${event.scored} candidates scored ` +
-                `(${money(event.totalCostUsd)}).` +
-                failedNote,
-            );
-          }
-        });
-        // The chain replaced the dimensions and scores. Refresh the run and shortlist
-        // so the Ranking tab is current when the member chooses to open it.
-        await refreshRankingRun();
-        refreshDashboard();
-        void loadRanking();
-      }
-    } catch (error) {
-      showError(error instanceof Error ? `Ranking error: ${error.message}` : "Ranking error.");
-      // A mid-stream throw may land either before or after the run consumed the proposals
-      // (create_analysis commits at end of phase 1). Reconcile to server truth rather than
-      // guess — refresh restores them if untouched, or confirms them gone if consumed.
-      if (mode === "discover") refreshRankingRun();
-    }
-    setRankProgress(null);
-    setRankRunning(false);
-    setCriteriaThinking("");
   }
 
   // One tab in the view-tab row. A tab is "active" only when it's selected AND no
@@ -612,7 +439,7 @@ export function App() {
             screeningProgress={screeningProgress}
             onRequestScreening={requestScreeningEstimate}
             onRunScreening={runScreening}
-            onCancelScreening={() => setScreeningEstimate(null)}
+            onCancelScreening={cancelScreeningEstimate}
             rankRunning={rankRunning}
             rankEstimate={rankEstimate}
             scoreCurrentEstimate={scoreCurrentEstimate}
@@ -622,7 +449,7 @@ export function App() {
             pendingProposals={rankingRun?.proposedDimensions ?? []}
             onRequestRank={requestRankEstimate}
             onRunRank={runRank}
-            onCancelRank={dismissRankEstimate}
+            onCancelRank={cancelRankEstimate}
           />
 
           {/* Tab row: the data views on the left, the config tabs (Eligibility Settings

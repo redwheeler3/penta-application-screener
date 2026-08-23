@@ -1,0 +1,240 @@
+import { useRef, useState } from "react";
+
+import * as api from "../api";
+import { money, readProblem } from "../format";
+import type {
+  CurrentRunResponse,
+  RankEstimateResponse,
+  RankProgress,
+  RankingStreamEvent,
+  ScoreCurrentEstimateResponse,
+  ScreeningEstimateResponse,
+  ScreeningStreamEvent,
+} from "../types";
+
+type Notifications = {
+  success: (message: string) => void;
+  error: (message: string) => void;
+  warning: (message: string) => void;
+};
+
+type RankingCoordinator = {
+  currentRun: CurrentRunResponse | null;
+  refreshCurrentRun: () => Promise<void>;
+  load: () => Promise<boolean>;
+  setDisplayedProposals: (proposals: string[]) => void;
+};
+
+export function useAiRuns(options: {
+  ranking: RankingCoordinator;
+  notifications: Notifications;
+  closeImportConfirm: () => void;
+  refreshDashboard: () => void;
+  reloadApplications: () => void;
+  clearSelectedApplication: () => void;
+}) {
+  const [screeningEstimate, setScreeningEstimate] =
+    useState<ScreeningEstimateResponse | null>(null);
+  const [screeningRunning, setScreeningRunning] = useState(false);
+  const [screeningProgress, setScreeningProgress] = useState<{
+    processed: number;
+    total: number;
+  } | null>(null);
+  const [rankEstimate, setRankEstimate] = useState<RankEstimateResponse | null>(null);
+  const [scoreCurrentEstimate, setScoreCurrentEstimate] =
+    useState<ScoreCurrentEstimateResponse | null>(null);
+  const [rankRunning, setRankRunning] = useState(false);
+  const [rankProgress, setRankProgress] = useState<RankProgress | null>(null);
+  const [criteriaThinking, setCriteriaThinking] = useState("");
+  const rankEstimateRequest = useRef(0);
+
+  function cancelScreeningEstimate() {
+    setScreeningEstimate(null);
+  }
+
+  function cancelRankEstimate() {
+    rankEstimateRequest.current += 1;
+    setRankEstimate(null);
+    setScoreCurrentEstimate(null);
+  }
+
+  function resetEstimates() {
+    cancelScreeningEstimate();
+    cancelRankEstimate();
+  }
+
+  async function requestScreeningEstimate() {
+    cancelRankEstimate();
+    options.closeImportConfirm();
+    try {
+      setScreeningEstimate(await api.fetchScreeningEstimate());
+    } catch {
+      options.notifications.error("Could not load the AI cost estimate for screening.");
+    }
+    options.refreshDashboard();
+  }
+
+  async function runScreening() {
+    setScreeningRunning(true);
+    setScreeningEstimate(null);
+    setScreeningProgress(null);
+    try {
+      const response = await api.runScreening();
+      if (!response.ok || !response.body) {
+        const problem = await readProblem(response);
+        options.notifications.error(
+          problem ? `Screening failed: ${problem}` : "Screening failed.",
+        );
+      } else {
+        await api.streamNdjson<ScreeningStreamEvent>(response.body, (event) => {
+          if (event.type === "progress") {
+            setScreeningProgress({ processed: event.processed, total: event.total });
+          } else if (event.type === "summary") {
+            const failedNote = event.failed ? ` ${event.failed} failed and were skipped.` : "";
+            options.notifications.success(
+              `Screening complete: ${event.flagged} flagged of ${event.analyzed + event.cached} analyzed ` +
+                `(${money(event.totalCostUsd)}).` +
+                failedNote,
+            );
+          }
+        });
+        options.refreshDashboard();
+        options.reloadApplications();
+        options.clearSelectedApplication();
+      }
+    } catch (error) {
+      options.notifications.error(
+        error instanceof Error ? `Screening error: ${error.message}` : "Screening error.",
+      );
+    } finally {
+      setScreeningProgress(null);
+      setScreeningRunning(false);
+    }
+  }
+
+  async function requestRankEstimate() {
+    setScreeningEstimate(null);
+    options.closeImportConfirm();
+    const requestId = ++rankEstimateRequest.current;
+    setRankEstimate(null);
+    setScoreCurrentEstimate(null);
+
+    const rankPromise = api.fetchRankEstimate();
+    const scoreCurrentPromise = options.ranking.currentRun
+      ? api.fetchScoreCurrentEstimate()
+      : null;
+    if (scoreCurrentPromise) void scoreCurrentPromise.catch(() => undefined);
+
+    let estimate: RankEstimateResponse;
+    try {
+      estimate = await rankPromise;
+    } catch {
+      if (requestId === rankEstimateRequest.current) {
+        options.notifications.error("Could not load the AI cost estimate for ranking.");
+      }
+      options.refreshDashboard();
+      return;
+    }
+    if (requestId !== rankEstimateRequest.current) return;
+
+    setRankEstimate(estimate);
+    if (scoreCurrentPromise) {
+      void scoreCurrentPromise
+        .then((scoreEstimate) => {
+          if (requestId === rankEstimateRequest.current) {
+            setScoreCurrentEstimate(scoreEstimate);
+          }
+        })
+        .catch(() => undefined);
+    }
+    options.refreshDashboard();
+  }
+
+  async function runRank(mode: "discover" | "score-current") {
+    setRankRunning(true);
+    cancelRankEstimate();
+    setRankProgress(null);
+    setCriteriaThinking("");
+    const priorProposals = options.ranking.currentRun?.proposedDimensions ?? [];
+    if (mode === "discover" && priorProposals.length > 0) {
+      options.ranking.setDisplayedProposals([]);
+    }
+
+    try {
+      const response = mode === "discover" ? await api.runRank() : await api.scoreCurrent();
+      if (!response.ok || !response.body) {
+        const problem = await readProblem(response);
+        options.notifications.error(problem ? `Ranking failed: ${problem}` : "Ranking failed.");
+        if (mode === "discover" && priorProposals.length > 0) {
+          options.ranking.setDisplayedProposals(priorProposals);
+        }
+      } else {
+        await api.streamNdjson<RankingStreamEvent>(response.body, (event) => {
+          if (event.type === "phase") {
+            setRankProgress({
+              phase: event.phase as RankProgress["phase"],
+              processed: 0,
+              total: event.total ?? 0,
+            });
+          } else if (event.type === "progress") {
+            setRankProgress({
+              phase: event.phase as RankProgress["phase"],
+              processed: event.processed,
+              total: event.total,
+            });
+          } else if (event.type === "stage") {
+            setRankProgress((current) =>
+              current
+                ? { ...current, stage: event.stage }
+                : { phase: "criteria", processed: 0, total: 0, stage: event.stage },
+            );
+          } else if (event.type === "thinking") {
+            setCriteriaThinking((current) => current + event.text);
+          } else if (event.type === "warning") {
+            options.notifications.warning(event.message || "The run completed with a warning.");
+          } else if (event.type === "error") {
+            options.notifications.error(event.message || "Ranking failed.");
+          } else if (event.type === "summary") {
+            const failedNote = event.failed ? ` ${event.failed} failed and were skipped.` : "";
+            options.notifications.success(
+              `${mode === "discover" ? "Ranking complete" : "Current criteria updated"}: ` +
+                `${event.dimensions} criteria, ${event.scored} candidates scored ` +
+                `(${money(event.totalCostUsd)}).` +
+                failedNote,
+            );
+          }
+        });
+        await options.ranking.refreshCurrentRun();
+        options.refreshDashboard();
+        void options.ranking.load();
+      }
+    } catch (error) {
+      options.notifications.error(
+        error instanceof Error ? `Ranking error: ${error.message}` : "Ranking error.",
+      );
+      if (mode === "discover") void options.ranking.refreshCurrentRun();
+    } finally {
+      setRankProgress(null);
+      setRankRunning(false);
+      setCriteriaThinking("");
+    }
+  }
+
+  return {
+    screeningEstimate,
+    screeningRunning,
+    screeningProgress,
+    rankEstimate,
+    scoreCurrentEstimate,
+    rankRunning,
+    rankProgress,
+    criteriaThinking,
+    requestScreeningEstimate,
+    runScreening,
+    cancelScreeningEstimate,
+    requestRankEstimate,
+    runRank,
+    cancelRankEstimate,
+    resetEstimates,
+  };
+}
