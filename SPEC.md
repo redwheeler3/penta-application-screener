@@ -71,15 +71,16 @@ The essay section tells applicants that members must share responsibility for op
 
 Essay questions are:
 
-- Please introduce yourself and your family, including your employment background, interests, and values.
-- Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.
-- Please tell us about any previous co-op experience you or the co-applicant may have.
-- Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.
+- Who is in your household, and what would you like us to know about you?
+- What skills could your household contribute to Penta?
+- What previous co-op experience does your household have?
+- Why does your household want to live in a co-op?
 
 Optional questions are:
 
+- Is there anything else you would like us to know?
 - Link to a photo of the applicant and household.
-- Pets description. The form notes that the co-op pet policy allows one dog and one cat, of a size and type subject to Board approval.
+- What pets would live with your household?
 
 Employment information asks for applicant and co-applicant job title, company name, start date, manager name, manager phone, and manager email. The form explains that employer reference checks are required before membership acceptance, will happen only if selected for interview, and self-employed applicants should enter their own contact information.
 
@@ -97,7 +98,7 @@ The declaration states that applicants understand:
 
 The final declaration checkbox text is: `I / We have read and agree to be bound by the conditions outlined above`.
 
-Current application response columns include applicant/co-applicant identity and contact fields, household children fields, current address + duration, real-estate ownership, current and previous landlord references, the four essay fields, an optional household photo link, pets description, applicant/co-applicant employment fields, applicant/co-applicant/household gross yearly income, and the declaration. (Full column-by-column detail: [docs/form-field-reference.md](docs/form-field-reference.md).)
+Current application response columns include applicant/co-applicant identity and contact fields, household children fields, current address + duration, real-estate ownership, current and previous landlord references, the four required essay fields, optional additional information, an optional household photo link, pets description, applicant/co-applicant employment fields, applicant/co-applicant/household gross yearly income, and the declaration. (Full column-by-column detail: [docs/form-field-reference.md](docs/form-field-reference.md).)
 
 ## Built-In Application Intake (M21 Target)
 
@@ -139,9 +140,13 @@ durable application therefore does not rewrite a prior cycle's historical record
 
 ### Applicant access and draft persistence
 
-Applicants can begin filling out the form as guests without authenticating. Guest answers stay
-in browser storage until the applicant submits or explicitly chooses a server-backed save
-operation. Submission is always an explicit action after reviewing the completed application.
+Applicants can begin filling out the form as guests without authenticating. Guest answers remain
+only in the open page until **Save and return later** writes the current answers to a private
+server-side pending draft and emails an access link. The save accepts an incomplete application as
+long as the primary email is valid. It does not enter a separate verification or polling state,
+and the form remains usable after the save. Submission is always a deliberate action after
+reviewing the completed application; following an access link for a pending submission opens the
+review but does not submit it.
 While an application remains active and within its retention period, its authenticated primary
 applicant may view and edit it even when no opening is active. An edit outside an active opening
 changes only the private working copy; it does not enroll the application in a future opening or
@@ -164,31 +169,53 @@ pre-populated, or exposed as an email collision; it remains linked only as neede
 retention and purge date. There is still at most one current application for the address.
 
 Applicants use passwordless email access rather than Google sign-in. A secure return flow sends a
-short-lived, single-use link to the primary applicant's email address; consuming it establishes an
+24-hour, single-use link to the primary applicant's email address; consuming it establishes an
 HTTPS-only application session and removes the credential from the browser URL. Tokens are stored
 only as hashes, expire, cannot be reused, and are protected by rate limits and non-enumerating
 responses. Only the primary applicant receives access links and application updates; the
 co-applicant does not have separate editing access.
 
+The primary email is the first field in the household section. While signed out, it sits beside an
+**Email me a link to continue** action that becomes available once the address is valid. One
+non-enumerating server request chooses the safe behavior: an existing application or pending draft
+receives a return link without letting the mostly empty guest form replace it, while a new address
+has its current incomplete form saved for 30 days and receives its first access link. Both paths
+return the same acknowledgement and direct the applicant to check their inbox. The control is
+hidden after sign-in because the applicant is already working in the durable application.
+
 After each initial or updated submission, the product sends the primary applicant a confirmation
 email with secure return access. There is no opt-in checkbox: the applicant may ignore or delete
 the message, and can request a fresh access email later through the return flow.
 
-Email ownership is verified before the first application is published or a browser-only draft is
-saved to the server. That required verification is separate from the automatic post-submission
-confirmation email. A submission request always gives the same response whether its email is new
-or already known, so it does not reveal which people have applications.
+The access link proves control of the primary email before an application can be published or an
+existing application can be changed. Saving the private pending draft itself does not require a
+separate email-verification transaction. A save request gives the same response whether its email
+is new or already known, so it does not reveal which people have applications.
+
+After sign-in, the verified primary email is read-only in the application form. **Change email
+address** is a separate sensitive action requiring authentication within the last 24 hours. It
+sends a 24-hour, single-use confirmation link to the proposed address and leaves the current
+identity unchanged until that link is consumed. Confirmation atomically updates the application
+identity and private working answers, sends the previous address a security notice naming the new
+address and directing an unexpected change to Penta Tech Support, revokes other application
+sessions and unused links, and establishes a session in the confirmation tab.
+The recently authenticated session that initiated the change remains valid so its original tab can
+refresh the identity when it next becomes visible; there is no polling dependency. If the proposed
+address already belongs to another current application, neither application changes and they are
+never merged. A replacement request supersedes an earlier unconfirmed address, and the applicant
+may cancel an unconfirmed change.
 
 An unauthenticated browser can never overwrite an existing working or submitted copy merely by
 entering the same primary email. The existing submitted application remains committee-visible and
-unchanged while control of the address is verified. After verification, the address owner returns
-to the existing application and may deliberately adopt the browser's answers as its working copy;
-the browser copy is never published automatically. The system therefore does not create two
+unchanged while control of the address is proven. After using the access link, the newer of the
+browser draft and existing private working copy is selected by UTC save time; an equal timestamp
+prefers the browser draft associated with the link. The selected snapshot is never published
+automatically. The system therefore does not create two
 committee-facing applications or ask the committee to adjudicate an identity collision. Requests
 are rate-limited and notification emails are coalesced so this protection cannot become an email-
 bombing tool.
 
-An emailed credential is not a permanent bearer link. It is short-lived and single-use, and a new
+An emailed credential is not a permanent bearer link. It is valid for 24 hours and single-use, and a new
 request invalidates older unused links for that applicant. Consuming it creates a revocable
 server-side session. Applicants can sign out the current browser and revoke all application
 sessions; an administrator can also revoke them. If the email account itself is compromised,
@@ -199,11 +226,30 @@ An administrator may initiate a fresh magic-link email to the application's alre
 primary address, but cannot see or copy the credential. This invalidates older unused links just
 like an applicant-initiated request. Administrators cannot edit applicant answers.
 
-A dedicated **Save and return later** action deliberately moves the current working copy from
-browser-only storage into private server-side draft storage and emails the primary applicant an
-access link. This is the only way an unauthenticated, unsubmitted draft leaves the browser. It
-lets an applicant preserve unfinished work across browsers or devices without creating a
-password.
+A dedicated **Save and return later** action deliberately moves a signed-out working copy from the
+open page into private server-side draft storage and emails the primary applicant an access link.
+This is the only way an unauthenticated, unsubmitted draft leaves the page. It lets an applicant
+preserve unfinished work across browsers or devices without creating a password. Once signed in,
+the same action saves directly to the authenticated private working copy and does not send an
+unnecessary email. An unclaimed pending draft expires under the 30-day never-submitted-draft policy
+even if its access email is still available.
+
+Access-link handling follows one explicit decision table:
+
+| Link and browser state | Result |
+| --- | --- |
+| Valid link; no applicant session | Offer the remembered-device choice, then consume the link, open or create the application, and establish a session. |
+| Valid link; same applicant session | Offer the remembered-device choice, then consume the link, refresh the session, and open the application. |
+| Expired, used, or replaced link; same applicant session | Ignore the stale credential and open the already-authenticated application. |
+| Expired, used, or replaced link; no applicant session | Explain that the application remains saved and offer to email a fresh 24-hour link without asking for the address again. |
+| Recognizable link; different applicant session | Before consuming or replacing anything, show the full current-session email and link email and require a choice. A valid link offers **Keep current application** or **Open linked application**; a stale link offers **Keep current application** or **Email a new link**. |
+| Invalid or abandoned-draft link | Do not reveal an address or establish a session; direct the visitor back to the application entry point. |
+
+An applicant-session conflict is resolved before link validity changes behavior. Choosing the
+current application leaves its session and browser-local draft untouched. Choosing the linked
+application revokes only the current applicant-session credential, then consumes the valid link.
+Browser-local drafts are scoped to their pending-draft or application identity so answers never
+follow a session switch. Applicant and committee cookies remain independent.
 
 ### Committee authentication providers
 
@@ -225,13 +271,30 @@ authentication provider. Control of an email address or Google account does not 
 unless its verified address is active on the allowlist. A Google outage leaves email sign-in
 available, and an email-provider outage leaves Google sign-in available to committee members.
 
-### Remembered browser sessions
+Committee email credentials use the same 24-hour lifetime as applicant links. Following a stale
+link while its matching committee session remains active simply continues that session. If the
+browser is signed in as a different committee member, the screener shows both email addresses
+before doing anything: a valid link offers to keep the current member or explicitly switch, while
+a stale link offers to keep the current member or email a fresh link to the linked member. A
+switch revokes the browser's previous committee session before establishing the new one. Without
+an active session, a recognizable stale link can email its allowlisted member a replacement
+without asking them to re-enter the address; an invalid link reveals nothing.
 
-Using a magic link creates a persistent, revocable server-side session for that browser. The
-browser remains signed in across restarts; committee members are not asked to follow another link
-on every visit. A session expires after 7 days without activity or after 30 days in total,
-whichever comes first. Ordinary activity may extend the idle deadline but never the absolute
-deadline. These are explicit product settings, not framework defaults.
+### Browser sessions and shared devices
+
+Opening an applicant access link and committee sign-in both offer **Keep me signed in on this
+device**, unchecked by default. The applicant choice appears on the device that actually opens the
+link, immediately before the link is consumed. Without the opt-in, the app issues a non-persistent
+session cookie and does not retain applicant answers after the page closes. With it, the cookie and
+authenticated applicant draft storage may survive browser restarts. Either kind of server-side
+session expires after 7 days without activity or after 30 days in total, whichever comes first.
+Ordinary activity may extend the idle deadline but never the absolute deadline. These are explicit
+product settings, not framework defaults.
+
+Closing a window is not treated as a guaranteed security boundary because browsers may restore
+session cookies and tabs. People using a shared device should leave the opt-in unchecked and
+explicitly sign out when finished. Sign-out clears the relevant cookie and browser-held applicant
+data in addition to revoking the server session.
 
 Signing out revokes the current server-side session immediately. **Sign out all devices** revokes
 every session for that identity. Administrators can revoke a committee member's sessions, and
@@ -244,7 +307,8 @@ an easy-to-remember day / week / month policy.
 Session cookies are host-only, `Secure`, `HttpOnly`, and `SameSite=Lax`; raw session credentials are
 not stored in browser-readable storage. The server records only hashed session credentials plus
 creation, last-activity, expiry, and revocation metadata, without IP addresses or device
-fingerprints.
+fingerprints. Applicant API responses use `Cache-Control: no-store` so application content is not
+retained in the browser's HTTP cache.
 
 Applicant and committee access remain separate identities even when the same person and email
 address have both. The applications hostname authenticates the retained application; the screener
@@ -253,7 +317,7 @@ nor changes the retention or access rules for that person's application.
 
 ### Transactional email
 
-SocketLabs sends applicant verification, save-and-return, submission, update, and
+SocketLabs sends applicant access, save-and-return, submission, update, and
 security-notification messages through its Injection API. The application calls it through a
 small provider-neutral email-sender interface so authentication and intake behavior do not depend
 on SocketLabs-specific response shapes. Resend is the documented operational fallback if
@@ -263,20 +327,31 @@ change is an explicit operational action, never an automatic retry after an ambi
 SocketLabs uses a dedicated Server ID and Injection API key stored as Fly secrets. The sending
 domain is authenticated with DKIM, SPF, and DMARC. Messages use `Penta Co-operative Housing` as
 the display name and `applications@pentacoop.com` as both the sender and monitored Reply-To address.
-The privacy-policy contact is `privacy@pentacoop.com`, and committee access-removal requests go to
-Penta Tech Support at `techsupport@pentacoop.com`; the application does not receive email.
+The privacy-policy contact is `privacy@pentacoop.com`.
 
-Email is a load-bearing part of applicant access. A failed verification or save-and-return send
-leaves the browser draft intact and offers retry or email correction. Confirmation failures are
-recorded for retry and surfaced to administrators. Sending is rate-limited, repeated requests are
+Every message uses the same footer: **Click here to permanently unsubscribe this email address.
+Penta will no longer be able to email you, including secure sign-in links.** SocketLabs replaces
+its native unsubscribe tags in the HTML and plain-text bodies and adds a confirmed unsubscribe to
+the server suppression list. Penta treats that suppression as permanent. Individual message
+templates do not add footer variants. The notification sent to a previous address after an email
+change is the deliberate body-copy exception: it directs an unexpected change to
+`techsupport@pentacoop.com`, because the browser confirmation alone cannot alert the original
+address owner to a compromised session.
+
+Email is a load-bearing part of applicant access. A failed access-link or save-and-return send
+leaves the private pending draft intact and directs the applicant to Penta Tech Support rather than
+asking them to retry an unexpected failure. Confirmation failures are recorded for administrators.
+Sending is rate-limited, repeated requests are
 coalesced, and bounce/complaint state is monitored. Operational records contain the provider
 message ID, message kind, recipient identifier, and delivery state, but never a raw access token,
 email body, or applicant answers. Automated tests and normal local development use a captured fake
 sender and never deliver real email.
 
-Authentication links opt out of provider click tracking so the credential-bearing destination is
-never rewritten through an engagement-tracking redirect. Vacancy-list links may use engagement
-tracking where it supports the notification and unsubscribe workflow.
+SocketLabs' normal click-tracking configuration applies to email action links. The provider already
+receives the complete message body to deliver it, while the application-facing credential remains
+short-lived, single-use, and carried in a URL fragment that is not sent in application HTTP requests.
+SocketLabs also generates the common provider-managed unsubscribe link so it can confirm the
+request and place the address on the suppression list.
 
 Developers may explicitly enable live SocketLabs delivery for end-to-end email testing. Every
 development subject is prefixed with `[Penta development]`. The central email-sender boundary
@@ -458,17 +533,15 @@ failure can be retried without losing the recipient. The notice clearly says tha
 been removed from the list and links to
 the public form so the recipient can create a new one-notice subscription if they want future
 notifications. Resubscribing creates a new record; it does not reactivate or retain the consumed
-one. A hard bounce or complaint also terminates and removes the record. The application does not
-keep a permanent unsubscribe/suppression record.
+one. A hard bounce, complaint, or provider suppression also terminates and removes the record. The
+application does not duplicate SocketLabs' permanent suppression list.
 
-Every vacancy-list message includes a prominent one-click unsubscribe action. It is
-non-enumerating and deletes any vacancy subscription that currently exists for the normalized
-address, even if the record that originally caused the email has already been consumed and the
-person subsequently subscribed again. A link from an older vacancy notice can therefore remove a
-newer vacancy subscription for the same address. The narrowly scoped credential grants no
-application or sign-in access and does not require a permanent suppression record. A vacancy
-notice states that the address has already been removed after this notification and offers the
-fresh sign-up link while retaining the unsubscribe link for this later-resubscription case.
+Every vacancy-list message uses the common SocketLabs unsubscribe footer. Confirming that
+provider-managed link permanently suppresses the address from all Penta email sent through the
+server, including secure sign-in links. The M22 unsubscribe webhook also removes any active vacancy
+subscription for the address so the product does not retain a record that SocketLabs can never
+deliver. A vacancy notice still states that its one-notice subscription has been consumed and
+offers the public sign-up link for recipients who have not permanently unsubscribed.
 
 ## Prior Email Templates
 
@@ -831,7 +904,7 @@ selection evidence and reproduction commands are in
 [ADR 0013](docs/adr/0013-openai-model-selection.md); the routing architecture is in
 [ADR 0014](docs/adr/0014-multi-provider-model-routing.md).
 
-### Built-In Applications And Committee Access (M21) — planned
+### Built-In Applications And Committee Access (M21) — in progress
 
 **Goal:** replace the external Google Form/Sheet intake path with a first-party public
 application experience at a separate applicant-facing hostname, add email-delivered access for
@@ -840,12 +913,23 @@ Connect. The product contract is specified in
 [Built-In Application Intake](#built-in-application-intake-m21-target); this section defines the
 implementation boundary and sequence.
 
-M21 is one milestone because intake identity, private drafts, publication, email verification,
+M21 is one milestone because intake identity, private drafts, publication, email access,
 and removal of the Google source are one correctness boundary. Splitting them into independently
 shippable production states would either expose unauthenticated PII, permit identity collisions,
 or require the dual Google/built-in transition that the between-cycle cutover deliberately avoids.
 The work is delivered in internal stages and released only when the end-to-end replacement is
 ready.
+
+Stages 1 through 3 are complete. The browser form includes
+immediate private Save and return later, 24-hour access links with regeneration and cross-session
+choice, declaration acceptance, and restoration of an existing application without allowing
+pending answers to overwrite it. Applicant and committee sign-in default to shared-device-safe
+non-persistent browser credentials with an explicit remembered-device opt-in. Private
+working copies are excluded from every committee and AI query. The first publication slice also
+validates the complete form and declaration, requires exactly one active opening, and atomically
+publishes into that opening. Multiple-opening selection, private photo storage, closed-cycle
+snapshots, committee intake changes, and cutover remain internal work; the production committee
+workflow is unchanged until the milestone is complete.
 
 **Delivery stages:**
 
@@ -854,16 +938,16 @@ ready.
    opening participation, and closed-cycle snapshots. Preserve the existing content hash as the
    boundary for stale AI results.
 2. **Transactional email and sessions** — add the provider-neutral sender with SocketLabs, domain
-   authentication, passwordless email verification, collision-safe account
+   authentication, passwordless email access, collision-safe account
    claiming, revocable server-side sessions, allowlist authorization, and delivery observability.
    Refactor Google committee sign-in to issue the same server-side session rather than retaining a
    parallel signed-cookie session.
-3. **Applicant form** — build the field-reference sections, browser-local guest draft, explicit
+3. **Applicant form (complete)** — build the field-reference sections, in-page guest draft, explicit
    Save and return later, validation/review/Submit flow, calculated household income, persistent
    unsubmitted-change warning, and accessible responsive behavior.
 4. **Private photo storage** — upload, validate, privately serve, replace, and clean up the one
    working/submitted household photo without putting binary data in SQLite or AI prompts.
-5. **Publication and cycle behavior** — atomically publish initial and updated working copies,
+5. **Publication and cycle behavior (in progress)** — atomically publish initial and updated working copies,
    keep drafts invisible, retain the prior submitted copy until publication, record participation,
    and freeze the final submitted snapshot when an opening closes.
 6. **Committee intake workflow** — replace the external-source Sync step with an honestly named
@@ -889,10 +973,14 @@ separate milestone with its own storage, hostname, and isolation decisions.
 
 **Definition of done:**
 
-- A guest can complete the entire form without signing in; the browser preserves progress locally,
-  and publication occurs only after verifying control of the primary email.
+- A guest can complete the entire form without signing in; durable progress requires Save and
+  return later, and publication occurs only after proving control of the primary email through an
+  access link.
 - Save and return later preserves a private server-side draft and restores it from a fresh email
   link on another browser; committee members cannot read it.
+- Applicant links are single-use for 24 hours; recognizable stale links can request a replacement,
+  and a different active applicant session always presents both emails and requires an explicit
+  keep/switch choice before the valid credential is consumed.
 - An unauthenticated submission using an existing email cannot reveal, replace, hide, or publish
   over that person's application.
 - A submitted edit leaves the previous committee copy visible until the applicant explicitly
@@ -900,8 +988,8 @@ separate milestone with its own storage, hostname, and isolation decisions.
 - One application can participate in a later opening while each closed opening retains the final
   snapshot its committee considered.
 - Committee members sign in through an allowlisted magic link or identity-only Google OIDC; both
-  issue the same remembered-browser session and support the same revocation, expiry, and recent-
-  authentication policy. Role/access changes revoke those sessions server-side.
+  issue the same server-side session and support the same revocation, expiry, recent-authentication,
+  and remembered-device choice. Role/access changes revoke those sessions server-side.
 - Photos are private, authorized, excluded from AI, and covered by deletion and backup/retention
   behavior.
 - SocketLabs send failure, retry, rate-limit, bounce, and complaint paths are observable without
@@ -959,15 +1047,13 @@ matching vacancy notice.
   after provider acceptance. The notice explains the removal and offers a link to subscribe again.
 - Application deletion and mailing-list deletion remain independent, and application activity
   never silently subscribes an address.
-- Every vacancy-list message contains a prominent one-click unsubscribe action. A link from an
-  older vacancy notice removes a current re-subscription for the same address; hard bounces and
-  complaints also remove subscriptions without creating an indefinite suppression record in this
-  product.
+- Every vacancy-list message uses the common SocketLabs permanent-unsubscribe footer. An
+  unsubscribe, hard bounce, or complaint removes any active vacancy subscription; SocketLabs owns
+  the durable suppression record.
 - The production website uses the built-in form and the Google form/sheet and their operational
   handling are removed after a count-verified migration.
 
-**Open decisions before implementation:** final notification wording and legal review, and how
-SocketLabs suppression state is reconciled with the product's no-permanent-suppression rule.
+**Open decision before implementation:** legal review of the final vacancy notification.
 
 ### Reporting (M10 shipped) — ✅ closed, demand-driven from here
 

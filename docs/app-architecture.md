@@ -71,6 +71,35 @@ preview) and the committee surface everywhere else. `App.tsx` owns the committee
 `applicant/ApplicantApp.tsx` owns the public application flow so applicant state and committee
 state do not become one conditional-heavy component.
 
+The applicant form keeps unauthenticated work only in the open page. For a signed-out applicant,
+**Save and return later** accepts an incomplete form, writes a private `ApplicantDraft`, and sends
+a 24-hour, single-use access link; for a signed-in applicant, it updates the authenticated private
+working copy without sending another email. There is no separate email-verification record or
+polling loop. Opening a valid link
+presents the remembered-device choice before claiming the pending draft and establishing the
+normal revocable applicant session. If the email already belongs to an application, the
+newer of the pending draft and existing private working copy wins by UTC save time; equal timestamps
+prefer the pending draft. The submitted committee copy remains unchanged. If a different applicant
+is already active, link inspection returns both emails
+and the frontend requires a keep/switch choice before consuming the credential. Browser drafts are
+keyed by pending-draft or application identity so they do not follow a session switch.
+
+The primary email becomes read-only after authentication. Changing it issues an `email_change`
+credential to the proposed address and leaves the application unchanged until that link is
+consumed. Confirmation updates the identity and private working answers together, revokes other
+application sessions and unused links, preserves only the recently authenticated session that
+initiated the change, creates a session for the confirmation tab, and notifies the previous address
+of both the new address and the Tech Support recovery path. The original tab refreshes identity
+state when it next becomes visible; it does not poll. An address already attached to a different
+current application is rejected after confirmation and the records are never merged.
+
+Server-side working answers use `WorkingApplicationAnswers`, whose optional fields preserve a
+partial draft. Publication separately validates `CanonicalApplicationAnswers`, copies it to the
+committee-facing projection, records opening participation, and changes the content hash that
+drives AI cache currency. All committee lists, eligibility calculations, and AI passes share the
+submitted-and-not-deleted scope in `app/services/application_scope.py`; private drafts are never
+part of those downstream workflows.
+
 The committee surface's main responsibilities are:
 
 1. On load, call the backend's `/auth/me` endpoint.
@@ -203,8 +232,11 @@ fetch(`${apiBaseUrl}/auth/me`, { credentials: "include" })
 
 The login panel always offers Google. `/auth/me` also reports whether the runtime is configured for
 live email delivery; only `development` and `production` modes reveal the email option. An email
-link returns with its single-use credential in the URL fragment. Either successful exchange creates
-the same committee `BrowserSession`.
+link returns with its credential in the URL fragment. The frontend inspects it before exchange so
+a matching active session can ignore a stale credential and a different active committee identity
+must be chosen explicitly. A recognizable stale link can request a replacement without exposing
+its address to an invalid token. A successful email exchange and Google sign-in create the same
+committee `BrowserSession`.
 
 Logout calls `POST http://localhost:8000/auth/logout` and then clears the local `user` state.
 

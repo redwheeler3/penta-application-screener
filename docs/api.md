@@ -23,12 +23,29 @@ configuration, committee defaults, Observability, and Evals require an admin.
 | GET | `/auth/google/callback` | Verify Google identity and issue a committee browser session. | Public |
 | POST | `/auth/magic-link` | Request an allowlist-gated committee sign-in email. | Public |
 | POST | `/auth/magic-link/consume` | Consume a committee link and issue the same browser session used by Google. | Public |
-| POST | `/applicant/auth/magic-link` | Request access to an existing application without revealing whether it exists. | Public |
-| POST | `/applicant/auth/magic-link/consume` | Consume an applicant link and issue a separate applicant session. | Public |
+| POST | `/auth/magic-link/inspect` | Inspect a committee link and identify a conflicting active committee session without consuming the credential. | Public |
+| POST | `/auth/magic-link/regenerate` | Request a replacement for a recognizable stale committee link without asking for the address again. | Public |
+| POST | `/applicant/access-links/inspect` | Inspect an applicant link without consuming it, including cross-session conflicts. | Public |
+| POST | `/applicant/access-links/open` | Consume a valid applicant link with its switch and remembered-device choices. | Public |
+| POST | `/applicant/access-links/regenerate` | Email a replacement for a recognizable stale applicant link. | Public |
 | GET | `/applicant/auth/me` | Return the current application identity, if any. | Public |
 | POST | `/applicant/auth/logout` | Revoke the current applicant session. | Public |
 | GET | `/auth/me` | Return the current user, if any, and whether email sign-in is enabled. | Public |
 | POST | `/auth/logout` | Revoke the current committee session. | Public |
+
+### Applicant intake — `app/api/applicant_intake.py`
+
+| Method | Path | Purpose | Auth |
+| --- | --- | --- | --- |
+| POST | `/applicant/drafts` | Save an incomplete private pending draft and request its access link. | Public |
+| DELETE | `/applicant/drafts` | Discard an unclaimed pending draft using a body-held credential. | Draft token |
+| POST | `/applicant/access-links/request` | Safely start or return to an application and email its access link without revealing which path occurred. | Public or applicant |
+| GET | `/applicant/application` | Read the authenticated working application. | Applicant |
+| PUT | `/applicant/application` | Save the authenticated private working copy. | Applicant |
+| POST | `/applicant/application/email-change` | Email a confirmation link for a new primary address. | Applicant + recent auth |
+| DELETE | `/applicant/application/email-change` | Cancel an unconfirmed primary-address change. | Applicant |
+| POST | `/applicant/application/reauthentication` | Email the current address a fresh access link for sensitive actions. | Applicant |
+| POST | `/applicant/application/submit` | Deliberately publish the validated working copy into the active opening. | Applicant |
 
 ### Health — `app/api/health.py`
 
