@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     magic_link_coalesce_seconds: int = 60
     session_idle_days: int = 7
     session_absolute_days: int = 30
-    recent_authentication_minutes: int = 60
+    recent_authentication_minutes: int = 24 * 60
     # Bootstrap-only: emails seeded onto the access allowlist as admins at startup
     # (one per line, '#' comments). Once seeded, admins manage the list in-app; this
     # file does not revoke. Gitignored — real emails are deployment-specific.

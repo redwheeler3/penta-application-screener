@@ -293,7 +293,9 @@ async def test_stale_passwordless_session_cannot_change_committee_access() -> No
         ).status_code == 200
         browser_session = db.scalar(select(BrowserSession))
         assert browser_session is not None
-        browser_session.recently_authenticated_at = datetime.now(UTC) - timedelta(minutes=61)
+        browser_session.recently_authenticated_at = datetime.now(UTC) - timedelta(
+            days=1, minutes=1
+        )
         db.commit()
 
         response = await client.put(

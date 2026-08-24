@@ -163,12 +163,12 @@ the applicant starts a blank current application. The retained record is never r
 pre-populated, or exposed as an email collision; it remains linked only as needed to enforce its
 retention and purge date. There is still at most one current application for the address.
 
-The product uses passwordless email access rather than Google sign-in. A secure return flow sends
-a short-lived, single-use link to the primary applicant's email address; consuming it establishes
-an HTTPS-only application session and removes the credential from the browser URL. Tokens are
-stored only as hashes, expire, cannot be reused, and are protected by rate limits and
-non-enumerating responses. Only the primary applicant receives access links and application
-updates; the co-applicant does not have separate editing access.
+Applicants use passwordless email access rather than Google sign-in. A secure return flow sends a
+short-lived, single-use link to the primary applicant's email address; consuming it establishes an
+HTTPS-only application session and removes the credential from the browser URL. Tokens are stored
+only as hashes, expire, cannot be reused, and are protected by rate limits and non-enumerating
+responses. Only the primary applicant receives access links and application updates; the
+co-applicant does not have separate editing access.
 
 After each initial or updated submission, the product sends the primary applicant a confirmation
 email with secure return access. There is no opt-in checkbox: the applicant may ignore or delete
@@ -205,12 +205,25 @@ access link. This is the only way an unauthenticated, unsubmitted draft leaves t
 lets an applicant preserve unfinished work across browsers or devices without creating a
 password.
 
-Committee members use the same passwordless email-link mechanism as applicants. This deliberately
-trades the higher assurance of Google-backed or passkey authentication for one simple sign-in
-flow that this non-technical committee can use reliably. Committee access remains allowlist-gated
-with the existing admin/member roles: control of an email address does not grant committee access
-unless that address is active on the allowlist. Removing Forms, Sheets, Picker, stored Drive
-credentials, and Google OAuth leaves no Google runtime integration.
+### Committee authentication providers
+
+Committee members may either request the same kind of passwordless email link or sign in with
+Google. Both methods prove an allowlisted committee identity and then issue the same revocable
+server-side browser session. Provider choice does not create a second user, cookie, session
+policy, authorization path, or logout/revocation mechanism. A fresh magic-link exchange or fresh
+Google sign-in satisfies the same recent-authentication requirement for sensitive actions.
+
+Google is retained only as an identity provider for committee convenience and as an operational
+alternative when transactional email is unavailable. It uses standard OpenID Connect with only
+`openid`, `email`, and `profile`; verifies the returned identity and email; and associates Google's
+stable subject identifier with the existing committee user. It does not request offline access,
+force repeated consent, retain access or refresh tokens, or grant access to Drive, Sheets, or any
+other Google data. Applicants never use Google sign-in.
+
+Committee access remains allowlist-gated with the existing admin/member roles regardless of the
+authentication provider. Control of an email address or Google account does not grant access
+unless its verified address is active on the allowlist. A Google outage leaves email sign-in
+available, and an email-provider outage leaves Google sign-in available to committee members.
 
 ### Remembered browser sessions
 
@@ -224,7 +237,9 @@ Signing out revokes the current server-side session immediately. **Sign out all 
 every session for that identity. Administrators can revoke a committee member's sessions, and
 deactivation, removal from the allowlist, a role change, or a primary-email change invalidates
 affected sessions. Changing committee access or performing another sensitive administrator action
-requires a recently authenticated session rather than trusting a months-old remembered browser.
+requires authentication within the previous 24 hours rather than trusting an older remembered
+browser. Together, sensitive-action reauthentication, inactivity expiry, and absolute expiry use
+an easy-to-remember day / week / month policy.
 
 Session cookies are host-only, `Secure`, `HttpOnly`, and `SameSite=Lax`; raw session credentials are
 not stored in browser-readable storage. The server records only hashed session credentials plus
@@ -798,13 +813,14 @@ selection evidence and reproduction commands are in
 [ADR 0013](docs/adr/0013-openai-model-selection.md); the routing architecture is in
 [ADR 0014](docs/adr/0014-multi-provider-model-routing.md).
 
-### Built-In Applications And Passwordless Access (M21) — planned
+### Built-In Applications And Committee Access (M21) — planned
 
 **Goal:** replace the external Google Form/Sheet intake path with a first-party public
-application experience at a separate applicant-facing hostname, and replace Google OAuth with
-email-delivered magic links for applicants and committee members. The product contract is
-specified in [Built-In Application Intake](#built-in-application-intake-m21-target); this section
-defines the implementation boundary and sequence.
+application experience at a separate applicant-facing hostname, add email-delivered access for
+applicants and committee members, and reduce committee Google sign-in to identity-only OpenID
+Connect. The product contract is specified in
+[Built-In Application Intake](#built-in-application-intake-m21-target); this section defines the
+implementation boundary and sequence.
 
 M21 is one milestone because intake identity, private drafts, publication, email verification,
 and removal of the Google source are one correctness boundary. Splitting them into independently
@@ -822,6 +838,8 @@ ready.
 2. **Transactional email and sessions** — add the provider-neutral sender with SocketLabs, domain
    authentication, passwordless email verification, collision-safe account
    claiming, revocable server-side sessions, allowlist authorization, and delivery observability.
+   Refactor Google committee sign-in to issue the same server-side session rather than retaining a
+   parallel signed-cookie session.
 3. **Applicant form** — build the field-reference sections, browser-local guest draft, explicit
    Save and return later, validation/review/Submit flow, calculated household income, persistent
    unsubmitted-change warning, and accessible responsive behavior.
@@ -835,8 +853,9 @@ ready.
    emailing the committee for routine updates.
 7. **Between-cycle cutover** — configure the applicant hostname, exercise SocketLabs and storage in
    production with synthetic data, retain existing production records as specified below, then
-   remove Google Form/Sheet import, Picker, Drive credentials, Google OAuth, their settings/UI, and
-   their operational documentation completely.
+   remove Google Form/Sheet import, Picker, Drive credentials and tokens, data-access scopes, their
+   settings/UI, and their operational documentation completely. Retain only the identity-scoped
+   Google committee sign-in and its OAuth client configuration.
 
 The applicant hostname is `applications.pentacoop.com`. Existing production application records
 and committee history are retained at cutover rather than reset. They are not sent unsolicited
@@ -845,10 +864,10 @@ recorded primary email. Records with a missing, duplicated, or inaccessible addr
 administrator-mediated recovery and are never guessed or automatically combined.
 
 **Non-goals:** a general-purpose form builder; separate co-applicant access; simultaneous Google
-and built-in intake; multiple applications per primary applicant; committee-visible drafts;
-automatic AI screening on submission; inbound email handling; or shared-database multi-tenancy.
-M21 should leave clean tenant boundaries possible, but onboarding other co-ops is a separate
-milestone with its own storage, hostname, and isolation decisions.
+Form/Sheet and built-in intake; multiple applications per primary applicant; committee-visible
+drafts; automatic AI screening on submission; inbound email handling; or shared-database
+multi-tenancy. M21 should leave clean tenant boundaries possible, but onboarding other co-ops is a
+separate milestone with its own storage, hostname, and isolation decisions.
 
 **Definition of done:**
 
@@ -862,8 +881,9 @@ milestone with its own storage, hostname, and isolation decisions.
   republishes, then invalidates derived screening/ranking currency by content hash.
 - One application can participate in a later opening while each closed opening retains the final
   snapshot its committee considered.
-- Committee members sign in through allowlisted magic links, remain signed in under the explicit
-  remembered-browser policy, and can revoke sessions; role/access changes revoke them server-side.
+- Committee members sign in through an allowlisted magic link or identity-only Google OIDC; both
+  issue the same remembered-browser session and support the same revocation, expiry, and recent-
+  authentication policy. Role/access changes revoke those sessions server-side.
 - Photos are private, authorized, excluded from AI, and covered by deletion and backup/retention
   behavior.
 - SocketLabs send failure, retry, rate-limit, bounce, and complaint paths are observable without
@@ -872,8 +892,8 @@ milestone with its own storage, hostname, and isolation decisions.
   development tests send only synthetic messages to exact `@jeffo.net` or `@pentacoop.com`
   recipients, enforced before the provider call with no per-message bypass.
 - The production application accepts built-in submissions at the applicant hostname, the screener
-  reflects new/updated submissions, and no Google runtime dependency or dead compatibility path
-  remains.
+  reflects new/updated submissions, and no Google Forms, Sheets, Drive, Picker, stored-token, or
+  dead compatibility path remains. Google runtime use is limited to committee identity.
 - Backend tests, frontend build, database migration against a production-shaped copy, synthetic
   browser submission/edit/collision checks, email delivery checks, and permission/retention checks
   pass before the cycle opens.
@@ -885,8 +905,6 @@ milestone with its own storage, hostname, and isolation decisions.
 - Exact backup lifetime and the implementation mechanics for complete applicant deletion and the
   opportunistic retention sweep.
 - SocketLabs event-webhook configuration and administrator delivery-status UI.
-- Whether the 60-minute recent-authentication window for sensitive admin actions needs adjustment
-  after committee usability testing.
 
 ### Built-In Vacancy Notifications (M22) — planned
 
