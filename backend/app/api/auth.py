@@ -1,16 +1,19 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import optional_current_user
 from app.api.problems import Problem
+from app.api.session_cookie import clear_session_cookie, session_token
 from app.core.config import get_settings
 from app.core.google_oauth import get_oauth
-from app.db.models import User
+from app.db.models import PasswordlessIdentityKind, User
 from app.db.session import get_db
 from app.schemas.auth import CurrentUser, LogoutResponse, MeResponse
 from app.services.allowlist import get_entry
 from app.services.denied_sign_ins import record_denied_sign_in
 from app.services.google_credentials import save_google_token
+from app.services.passwordless_auth import revoke_browser_session
 from app.services.users import record_user_activity, upsert_google_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -85,20 +88,22 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/me", response_model=MeResponse)
-def get_current_user(request: Request, db: Session = Depends(get_db)) -> MeResponse:
-    user_id = request.session.get("user_id")
-    if user_id is None:
-        return MeResponse(user=None)
-
-    user = db.get(User, user_id)
-    if user is None or not user.is_active:
-        request.session.clear()
-        return MeResponse(user=None)
-
-    return MeResponse(user=serialize_user(user))
+def get_current_user(
+    user: User | None = Depends(optional_current_user),
+) -> MeResponse:
+    return MeResponse(user=serialize_user(user) if user is not None else None)
 
 
 @router.post("/logout", response_model=LogoutResponse)
-def logout(request: Request) -> LogoutResponse:
+def logout(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> LogoutResponse:
+    token = session_token(request, PasswordlessIdentityKind.COMMITTEE)
+    if token is not None:
+        revoke_browser_session(db, token)
+        db.commit()
+    clear_session_cookie(response, PasswordlessIdentityKind.COMMITTEE)
     request.session.clear()
     return LogoutResponse(ok=True)

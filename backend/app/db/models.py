@@ -58,6 +58,14 @@ class MagicLinkPurpose(StrEnum):
     EMAIL_CHANGE = "email_change"
 
 
+class EmailDeliveryState(StrEnum):
+    QUEUED = "queued"
+    ACCEPTED = "accepted"
+    FAILED = "failed"
+    BOUNCED = "bounced"
+    COMPLAINED = "complained"
+
+
 def enum_values(enum_class: type[StrEnum]) -> list[str]:
     return [item.value for item in enum_class]
 
@@ -381,6 +389,43 @@ class BrowserSession(Base):
 
     application: Mapped[Application | None] = relationship()
     user: Mapped[User | None] = relationship()
+
+
+class EmailDelivery(TimestampMixin, Base):
+    """Provider delivery metadata without an address, body, token, or applicant answers."""
+
+    __tablename__ = "email_deliveries"
+    __table_args__ = (
+        CheckConstraint(
+            "(recipient_kind = 'applicant' AND application_id IS NOT NULL AND user_id IS NULL) "
+            "OR (recipient_kind = 'committee' AND user_id IS NOT NULL AND application_id IS NULL)",
+            name="ck_email_delivery_recipient",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_kind: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    recipient_kind: Mapped[PasswordlessIdentityKind] = mapped_column(
+        Enum(PasswordlessIdentityKind, values_callable=enum_values), nullable=False, index=True
+    )
+    application_id: Mapped[int | None] = mapped_column(
+        ForeignKey("applications.id"), index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    magic_link_token_id: Mapped[int | None] = mapped_column(
+        ForeignKey("magic_link_tokens.id"), index=True
+    )
+    state: Mapped[EmailDeliveryState] = mapped_column(
+        Enum(EmailDeliveryState, values_callable=enum_values), nullable=False, index=True
+    )
+    provider_message_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_code: Mapped[str | None] = mapped_column(String(120))
+
+    application: Mapped[Application | None] = relationship()
+    user: Mapped[User | None] = relationship()
+    magic_link_token: Mapped[MagicLinkToken | None] = relationship()
 
 
 class MemberEligibility(TimestampMixin, Base):

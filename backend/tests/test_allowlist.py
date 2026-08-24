@@ -11,6 +11,8 @@ from app.db.models import (
     AccessAllowlistEntry,
     Base,
     DeniedSignInAttempt,
+    MagicLinkPurpose,
+    PasswordlessIdentityKind,
     User,
     UserRole,
 )
@@ -18,6 +20,7 @@ from app.db.session import get_db
 from app.main import create_app
 from app.services import allowlist
 from app.services.denied_sign_ins import list_denied_sign_ins, record_denied_sign_in
+from app.services.passwordless_auth import create_browser_session, issue_magic_link
 from app.services.users import record_user_activity, upsert_google_user
 
 
@@ -224,3 +227,54 @@ async def test_admin_cannot_demote_themself_when_another_admin_exists() -> None:
 
     assert demote.status_code == 422
     assert allowlist.get_entry(db, "me@x.com").role == UserRole.ADMIN
+
+
+def test_role_change_revokes_committee_sessions_and_unused_links() -> None:
+    _, db = setup_app(role=None)
+    allowlist.upsert_entry(db, email="member@x.com", role=UserRole.MEMBER)
+    user = User(email="member@x.com", display_name="Member", role=UserRole.MEMBER)
+    db.add(user)
+    db.commit()
+    browser_session = create_browser_session(
+        db,
+        identity_kind=PasswordlessIdentityKind.COMMITTEE,
+        user_id=user.id,
+    ).record
+    link = issue_magic_link(
+        db,
+        identity_kind=PasswordlessIdentityKind.COMMITTEE,
+        user_id=user.id,
+        email=user.email,
+        purpose=MagicLinkPurpose.COMMITTEE_ACCESS,
+    ).record
+    db.commit()
+
+    allowlist.upsert_entry(db, email=user.email, role=UserRole.ADMIN)
+
+    db.refresh(user)
+    db.refresh(browser_session)
+    db.refresh(link)
+    assert user.role == UserRole.ADMIN
+    assert browser_session.revoked_at is not None
+    assert link.revoked_at is not None
+
+
+def test_removing_allowlist_entry_deactivates_user_and_revokes_access() -> None:
+    _, db = setup_app(role=None)
+    allowlist.upsert_entry(db, email="member@x.com", role=UserRole.MEMBER)
+    user = User(email="member@x.com", display_name="Member", role=UserRole.MEMBER)
+    db.add(user)
+    db.commit()
+    browser_session = create_browser_session(
+        db,
+        identity_kind=PasswordlessIdentityKind.COMMITTEE,
+        user_id=user.id,
+    ).record
+    db.commit()
+
+    assert allowlist.remove_entry(db, user.email)
+
+    db.refresh(user)
+    db.refresh(browser_session)
+    assert not user.is_active
+    assert browser_session.revoked_at is not None

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from email.utils import parseaddr
+from functools import lru_cache
 from typing import Protocol
 
 from app.core.config import Settings
@@ -118,6 +119,14 @@ def build_email_sender(settings: Settings, *, ses_client=None) -> EmailSender:
         )
     _require_domain(settings.email_reply_to, "pentacoop.com")
     return sender
+
+
+@lru_cache
+def get_email_sender() -> EmailSender:
+    """One reusable sender dependency for the process; tests may override it at the API edge."""
+    from app.core.config import get_settings
+
+    return build_email_sender(get_settings())
 
 
 def _ses_client(settings: Settings):

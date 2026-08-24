@@ -18,6 +18,7 @@ from app.api.evals import router as evals_router
 from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
 from app.api.observability import router as observability_router
+from app.api.passwordless_auth import router as passwordless_auth_router
 from app.api.problems import Problem
 from app.api.ranking import router as ranking_router
 from app.api.screening import router as screening_router
@@ -93,7 +94,7 @@ def create_app() -> FastAPI:
     # in both without a hardcoded localhost.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.frontend_url],
+        allow_origins=list({settings.frontend_url, settings.applicant_frontend_url}),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -107,6 +108,7 @@ def create_app() -> FastAPI:
     app.include_router(feedback_router)
     app.include_router(health_router)
     app.include_router(observability_router)
+    app.include_router(passwordless_auth_router)
     app.include_router(screening_router)
     app.include_router(ranking_router)
     app.include_router(settings_router)

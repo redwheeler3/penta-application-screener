@@ -14,7 +14,16 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings, resolve_backend_path
 from app.core.text import normalize_email
-from app.db.models import AccessAllowlistEntry, UserRole
+from app.db.models import (
+    AccessAllowlistEntry,
+    PasswordlessIdentityKind,
+    User,
+    UserRole,
+)
+from app.services.passwordless_auth import (
+    revoke_identity_magic_links,
+    revoke_identity_sessions,
+)
 
 
 def get_entry(db: Session, email: str) -> AccessAllowlistEntry | None:
@@ -33,12 +42,29 @@ def list_entries(db: Session) -> list[AccessAllowlistEntry]:
 
 def upsert_entry(db: Session, *, email: str, role: UserRole) -> AccessAllowlistEntry:
     """Add an allowed email or update its role. Idempotent on email."""
+    email = normalize_email(email)
     entry = get_entry(db, email)
+    role_changed = entry is not None and entry.role != role
     if entry is None:
-        entry = AccessAllowlistEntry(email=normalize_email(email), role=role)
+        entry = AccessAllowlistEntry(email=email, role=role)
         db.add(entry)
     else:
         entry.role = role
+    user = db.scalar(select(User).where(User.email == email))
+    if user is not None:
+        if role_changed:
+            revoke_identity_sessions(
+                db,
+                identity_kind=PasswordlessIdentityKind.COMMITTEE,
+                user_id=user.id,
+            )
+            revoke_identity_magic_links(
+                db,
+                identity_kind=PasswordlessIdentityKind.COMMITTEE,
+                user_id=user.id,
+            )
+        user.role = role
+        user.is_active = True
     db.commit()
     db.refresh(entry)
     return entry
@@ -49,6 +75,19 @@ def remove_entry(db: Session, email: str) -> bool:
     entry = get_entry(db, email)
     if entry is None:
         return False
+    user = db.scalar(select(User).where(User.email == entry.email))
+    if user is not None:
+        user.is_active = False
+        revoke_identity_sessions(
+            db,
+            identity_kind=PasswordlessIdentityKind.COMMITTEE,
+            user_id=user.id,
+        )
+        revoke_identity_magic_links(
+            db,
+            identity_kind=PasswordlessIdentityKind.COMMITTEE,
+            user_id=user.id,
+        )
     db.delete(entry)
     db.commit()
     return True

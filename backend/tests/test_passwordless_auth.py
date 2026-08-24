@@ -17,6 +17,7 @@ from app.services.passwordless_auth import (
     consume_magic_link,
     create_browser_session,
     issue_magic_link,
+    magic_link_request_allowed,
     recently_authenticated,
     revoke_browser_session,
     revoke_identity_magic_links,
@@ -110,11 +111,26 @@ def test_magic_link_is_single_use_and_expired_links_are_indistinguishable() -> N
         lifetime=timedelta(minutes=5),
     )
 
-    consumed = consume_magic_link(db, issued.token, now=NOW + timedelta(minutes=1))
+    consumed = consume_magic_link(
+        db,
+        issued.token,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
+        purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+        now=NOW + timedelta(minutes=1),
+    )
 
     assert consumed is not None
     assert consumed.application_id == application.id
-    assert consume_magic_link(db, issued.token, now=NOW + timedelta(minutes=2)) is None
+    assert (
+        consume_magic_link(
+            db,
+            issued.token,
+            identity_kind=PasswordlessIdentityKind.APPLICANT,
+            purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+            now=NOW + timedelta(minutes=2),
+        )
+        is None
+    )
 
     expired = issue_magic_link(
         db,
@@ -125,8 +141,26 @@ def test_magic_link_is_single_use_and_expired_links_are_indistinguishable() -> N
         now=NOW,
         lifetime=timedelta(minutes=1),
     )
-    assert consume_magic_link(db, expired.token, now=NOW + timedelta(minutes=1)) is None
-    assert consume_magic_link(db, "unknown-token", now=NOW) is None
+    assert (
+        consume_magic_link(
+            db,
+            expired.token,
+            identity_kind=PasswordlessIdentityKind.APPLICANT,
+            purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+            now=NOW + timedelta(minutes=1),
+        )
+        is None
+    )
+    assert (
+        consume_magic_link(
+            db,
+            "unknown-token",
+            identity_kind=PasswordlessIdentityKind.APPLICANT,
+            purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+            now=NOW,
+        )
+        is None
+    )
 
 
 def test_magic_link_purpose_must_match_its_identity_kind() -> None:
@@ -142,6 +176,46 @@ def test_magic_link_purpose_must_match_its_identity_kind() -> None:
             purpose=MagicLinkPurpose.COMMITTEE_ACCESS,
             now=NOW,
         )
+
+
+def test_magic_link_requests_are_coalesced_and_limited_per_identity() -> None:
+    db = _session()
+    application = _application(db)
+    parameters = {
+        "identity_kind": PasswordlessIdentityKind.APPLICANT,
+        "application_id": application.id,
+        "purpose": MagicLinkPurpose.APPLICANT_ACCESS,
+        "request_limit": 3,
+        "rate_window": timedelta(minutes=15),
+        "coalesce_window": timedelta(seconds=60),
+    }
+    assert magic_link_request_allowed(db, now=NOW, **parameters)
+    for minute in (0, 2, 4):
+        issued_at = NOW + timedelta(minutes=minute)
+        issue_magic_link(
+            db,
+            identity_kind=PasswordlessIdentityKind.APPLICANT,
+            application_id=application.id,
+            email=application.primary_email,
+            purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+            now=issued_at,
+        )
+        assert not magic_link_request_allowed(
+            db,
+            now=issued_at + timedelta(seconds=30),
+            **parameters,
+        )
+
+    assert not magic_link_request_allowed(
+        db,
+        now=NOW + timedelta(minutes=6),
+        **parameters,
+    )
+    assert magic_link_request_allowed(
+        db,
+        now=NOW + timedelta(minutes=16),
+        **parameters,
+    )
 
 
 def test_same_email_can_have_separate_applicant_and_committee_identities() -> None:
@@ -167,8 +241,20 @@ def test_same_email_can_have_separate_applicant_and_committee_identities() -> No
         now=NOW,
     )
 
-    consumed_applicant = consume_magic_link(db, applicant_link.token, now=NOW)
-    consumed_committee = consume_magic_link(db, committee_link.token, now=NOW)
+    consumed_applicant = consume_magic_link(
+        db,
+        applicant_link.token,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
+        purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+        now=NOW,
+    )
+    consumed_committee = consume_magic_link(
+        db,
+        committee_link.token,
+        identity_kind=PasswordlessIdentityKind.COMMITTEE,
+        purpose=MagicLinkPurpose.COMMITTEE_ACCESS,
+        now=NOW,
+    )
 
     assert consumed_applicant is not None
     assert consumed_committee is not None
@@ -191,6 +277,7 @@ def test_remembered_session_slides_idle_expiry_but_respects_absolute_expiry() ->
     after_five_days = authenticate_browser_session(
         db,
         issued.token,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
         now=NOW + timedelta(days=5),
         idle_lifetime=timedelta(days=7),
     )
@@ -202,6 +289,7 @@ def test_remembered_session_slides_idle_expiry_but_respects_absolute_expiry() ->
         near_hard_limit = authenticate_browser_session(
             db,
             issued.token,
+            identity_kind=PasswordlessIdentityKind.APPLICANT,
             now=NOW + timedelta(days=day),
             idle_lifetime=timedelta(days=7),
         )
@@ -212,6 +300,7 @@ def test_remembered_session_slides_idle_expiry_but_respects_absolute_expiry() ->
         authenticate_browser_session(
             db,
             issued.token,
+            identity_kind=PasswordlessIdentityKind.APPLICANT,
             now=NOW + timedelta(days=30),
             idle_lifetime=timedelta(days=7),
         )
@@ -252,7 +341,15 @@ def test_sessions_are_hashed_revocable_and_support_recent_authentication() -> No
         maximum_age=timedelta(minutes=60),
     )
     assert revoke_browser_session(db, first.token, now=NOW + timedelta(hours=1))
-    assert authenticate_browser_session(db, first.token, now=NOW + timedelta(hours=2)) is None
+    assert (
+        authenticate_browser_session(
+            db,
+            first.token,
+            identity_kind=PasswordlessIdentityKind.COMMITTEE,
+            now=NOW + timedelta(hours=2),
+        )
+        is None
+    )
     assert (
         revoke_identity_sessions(
             db,
@@ -277,7 +374,16 @@ def test_all_unused_links_can_be_revoked_without_touching_consumed_links() -> No
         purpose=MagicLinkPurpose.APPLICANT_ACCESS,
         now=NOW,
     )
-    assert consume_magic_link(db, consumed.token, now=NOW) is not None
+    assert (
+        consume_magic_link(
+            db,
+            consumed.token,
+            identity_kind=PasswordlessIdentityKind.APPLICANT,
+            purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+            now=NOW,
+        )
+        is not None
+    )
     unused = issue_magic_link(
         db,
         identity_kind=PasswordlessIdentityKind.APPLICANT,

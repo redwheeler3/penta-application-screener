@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/penta_screener.db"
     session_secret: str = "dev-only-change-me"
     frontend_url: str = "http://localhost:5173"
+    applicant_frontend_url: str = "http://localhost:5173"
     google_client_id: str = ""
     google_client_secret: str = ""
     google_oauth_client_secrets_file: str = ""
@@ -26,6 +27,9 @@ class Settings(BaseSettings):
     ses_aws_access_key_id: str = ""
     ses_aws_secret_access_key: str = ""
     magic_link_lifetime_minutes: int = 15
+    magic_link_request_limit: int = 3
+    magic_link_rate_window_minutes: int = 15
+    magic_link_coalesce_seconds: int = 60
     session_idle_days: int = 7
     session_absolute_days: int = 30
     recent_authentication_minutes: int = 60
@@ -78,6 +82,17 @@ class Settings(BaseSettings):
         ``http://localhost`` must NOT be (a Secure cookie is dropped on plain HTTP, which
         would silently break the dev login). One source of truth, no flag to forget."""
         return self.frontend_url.startswith("https://")
+
+    def passwordless_cookie_secure(
+        self, identity_kind: Literal["applicant", "committee"]
+    ) -> bool:
+        """Derive each host-only passwordless cookie's Secure flag from its own origin."""
+        origin = (
+            self.applicant_frontend_url
+            if identity_kind == "applicant"
+            else self.frontend_url
+        )
+        return origin.startswith("https://")
 
 
 @lru_cache

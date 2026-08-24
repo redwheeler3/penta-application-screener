@@ -39,7 +39,33 @@ def upsert_google_user(
         user.display_name = display_name
         user.avatar_url = avatar_url
         user.role = role
+        user.is_active = True
 
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def upsert_committee_user(
+    db: Session,
+    *,
+    email: str,
+    role: UserRole,
+) -> User:
+    """Create or reactivate the committee user represented by an allowlist entry."""
+    normalized_email = normalize_email(email)
+    user = db.scalar(select(User).where(User.email == normalized_email))
+    if user is None:
+        user = User(
+            email=normalized_email,
+            display_name=normalized_email,
+            role=role,
+            is_active=True,
+        )
+        db.add(user)
+    else:
+        user.role = role
+        user.is_active = True
     db.commit()
     db.refresh(user)
     return user

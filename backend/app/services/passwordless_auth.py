@@ -7,7 +7,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -122,10 +122,57 @@ def issue_magic_link(
     return IssuedMagicLink(token=raw_token, record=record)
 
 
+def magic_link_request_allowed(
+    db: Session,
+    *,
+    identity_kind: PasswordlessIdentityKind,
+    purpose: MagicLinkPurpose,
+    application_id: int | None = None,
+    user_id: int | None = None,
+    now: datetime | None = None,
+    request_limit: int | None = None,
+    rate_window: timedelta | None = None,
+    coalesce_window: timedelta | None = None,
+) -> bool:
+    """Whether another email may be sent without flooding one identity's mailbox."""
+    now = now or datetime.now(UTC)
+    settings = get_settings()
+    request_limit = request_limit or settings.magic_link_request_limit
+    rate_window = rate_window or timedelta(minutes=settings.magic_link_rate_window_minutes)
+    coalesce_window = coalesce_window or timedelta(
+        seconds=settings.magic_link_coalesce_seconds
+    )
+    identity_values = _identity_values(
+        identity_kind,
+        application_id=application_id,
+        user_id=user_id,
+    )
+    _validate_purpose(identity_kind, purpose)
+    identity_filters = (
+        MagicLinkToken.identity_kind == identity_kind,
+        MagicLinkToken.purpose == purpose,
+        MagicLinkToken.application_id == identity_values["application_id"],
+        MagicLinkToken.user_id == identity_values["user_id"],
+    )
+    latest = db.scalar(
+        select(func.max(MagicLinkToken.created_at)).where(*identity_filters)
+    )
+    if latest is not None and as_utc(latest) > now - coalesce_window:
+        return False
+    requests_in_window = db.scalar(
+        select(func.count())
+        .select_from(MagicLinkToken)
+        .where(*identity_filters, MagicLinkToken.created_at > now - rate_window)
+    )
+    return int(requests_in_window or 0) < request_limit
+
+
 def consume_magic_link(
     db: Session,
     token: str,
     *,
+    identity_kind: PasswordlessIdentityKind,
+    purpose: MagicLinkPurpose,
     now: datetime | None = None,
 ) -> MagicLinkToken | None:
     """Atomically consume a valid link. Invalid, expired, and reused links look alike."""
@@ -135,6 +182,8 @@ def consume_magic_link(
         update(MagicLinkToken)
         .where(
             MagicLinkToken.token_hash == token_hash,
+            MagicLinkToken.identity_kind == identity_kind,
+            MagicLinkToken.purpose == purpose,
             MagicLinkToken.consumed_at.is_(None),
             MagicLinkToken.revoked_at.is_(None),
             MagicLinkToken.expires_at > now,
@@ -189,6 +238,7 @@ def authenticate_browser_session(
     db: Session,
     token: str,
     *,
+    identity_kind: PasswordlessIdentityKind,
     now: datetime | None = None,
     idle_lifetime: timedelta | None = None,
 ) -> BrowserSession | None:
@@ -197,7 +247,10 @@ def authenticate_browser_session(
     settings = get_settings()
     idle_lifetime = idle_lifetime or timedelta(days=settings.session_idle_days)
     record = db.scalar(
-        select(BrowserSession).where(BrowserSession.token_hash == _token_hash(token))
+        select(BrowserSession).where(
+            BrowserSession.token_hash == _token_hash(token),
+            BrowserSession.identity_kind == identity_kind,
+        )
     )
     if record is None or record.revoked_at is not None:
         return None
