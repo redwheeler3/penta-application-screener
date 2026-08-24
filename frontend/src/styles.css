@@ -947,7 +947,8 @@ h1 {
   }
 
   .settings-form,
-  .settings-grid {
+  .settings-grid,
+  .pet-limits-row {
     grid-template-columns: 1fr;
   }
 
@@ -2333,6 +2334,18 @@ h1 {
 .settings-form .checkbox-label span {
   font-weight: 400;
   color: var(--ink);
+}
+
+.pet-limits-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.settings-form .pet-limits-toggle {
+  align-self: end;
+  min-height: 42px;
 }
 
 .checkbox-label input[type="checkbox"] {

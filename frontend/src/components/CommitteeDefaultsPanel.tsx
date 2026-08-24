@@ -1,13 +1,14 @@
 import { type ReactNode, type SyntheticEvent, useEffect, useState } from "react";
 
 import * as api from "../api";
-import { ELIGIBILITY_NUMERIC_FIELDS } from "../constants";
+import { ELIGIBILITY_GENERAL_NUMERIC_FIELDS } from "../constants";
 import { readProblem } from "../format";
 import { useFetchResource } from "../hooks/useFetchResource";
 import type { EligibilityRules } from "../types";
 import { CheckGroup } from "./CheckToggles";
 import { EmploymentRequirementField } from "./EmploymentRequirementField";
 import { NumberInput } from "./NumberInput";
+import { PetLimitsFields } from "./PetLimitsFields";
 import { RetryLoadError } from "./RetryLoadError";
 
 export function CommitteeDefaultsPanel(props: {
@@ -85,7 +86,7 @@ export function CommitteeDefaultsPanel(props: {
         <p className="panel-hint">Loading…</p>
       ) : (
         <form className="settings-form" onSubmit={save}>
-          {ELIGIBILITY_NUMERIC_FIELDS.map((field) => (
+          {ELIGIBILITY_GENERAL_NUMERIC_FIELDS.map((field) => (
             <label key={field.key}>
               <span>{field.label}</span>
               <NumberInput
@@ -98,18 +99,11 @@ export function CommitteeDefaultsPanel(props: {
               />
             </label>
           ))}
+          <PetLimitsFields value={draft} onChange={set} />
           <EmploymentRequirementField
             value={draft.employmentRequirement}
             onChange={(employmentRequirement) => set({ employmentRequirement })}
           />
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={draft.allowOtherPets}
-              onChange={(event) => set({ allowOtherPets: event.target.checked })}
-            />
-            <span>Allow other pets</span>
-          </label>
           <div className="rules-section">
             <h4>Screening checks</h4>
             <p className="rules-hint">Unchecked checks are off in the committee default.</p>

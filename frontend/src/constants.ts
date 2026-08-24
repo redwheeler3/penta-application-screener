@@ -92,20 +92,30 @@ export const SOURCE_DESCRIPTIONS: Record<StatusSource, string> = {
 // bounds. Single source of truth for the three surfaces that render them: the member's
 // EligibilitySettingsPanel form, the admin CommitteeDefaultsPanel form, and the divergence
 // diff (which needs key+label only). `allowOtherPets` is boolean, rendered separately.
-export const ELIGIBILITY_NUMERIC_FIELDS: {
+type EligibilityNumericField = {
   key: keyof EligibilityRules;
   label: string;
   min: string;
   max?: string;
-}[] = [
+};
+
+export const ELIGIBILITY_GENERAL_NUMERIC_FIELDS: EligibilityNumericField[] = [
   { key: "incomeMin", label: "Income minimum", min: "0" },
   { key: "incomeMax", label: "Income maximum", min: "0" },
   { key: "minAdultAge", label: "Min adult age", min: "1", max: "100" },
   { key: "maxChildAge", label: "Max child age", min: "0", max: "100" },
   { key: "minChildren", label: "Min children per unit", min: "0", max: "20" },
   { key: "maxChildren", label: "Max children per unit", min: "0", max: "20" },
+];
+
+export const ELIGIBILITY_PET_NUMERIC_FIELDS: EligibilityNumericField[] = [
   { key: "maxDogs", label: "Max dogs", min: "0", max: "10" },
   { key: "maxCats", label: "Max cats", min: "0", max: "10" },
+];
+
+export const ELIGIBILITY_NUMERIC_FIELDS = [
+  ...ELIGIBILITY_GENERAL_NUMERIC_FIELDS,
+  ...ELIGIBILITY_PET_NUMERIC_FIELDS,
 ];
 
 // The five AI passes in PIPELINE order — screening first, then the Rank chain (decompose →

@@ -1,10 +1,11 @@
 import { type ReactNode, useEffect, useState } from "react";
-import { ELIGIBILITY_NUMERIC_FIELDS } from "../constants";
+import { ELIGIBILITY_GENERAL_NUMERIC_FIELDS, ELIGIBILITY_NUMERIC_FIELDS } from "../constants";
 import * as api from "../api";
 import { readProblem } from "../format";
 import { CheckGroup } from "./CheckToggles";
 import { EmploymentRequirementField } from "./EmploymentRequirementField";
 import { NumberInput } from "./NumberInput";
+import { PetLimitsFields } from "./PetLimitsFields";
 import type { EligibilityRules } from "../types";
 import { RetryLoadError } from "./RetryLoadError";
 import { useFetchResource } from "../hooks/useFetchResource";
@@ -126,7 +127,7 @@ export function EligibilitySettingsPanel(props: {
                 resetting={resetting}
               />
             )}
-            {ELIGIBILITY_NUMERIC_FIELDS.map((f) => (
+            {ELIGIBILITY_GENERAL_NUMERIC_FIELDS.map((f) => (
               <label key={f.key}>
                 <span>{f.label}</span>
                 <NumberInput
@@ -137,20 +138,16 @@ export function EligibilitySettingsPanel(props: {
                 />
               </label>
             ))}
+            <PetLimitsFields
+              value={draft}
+              onChange={(patch) => setDraft({ ...draft, ...patch })}
+            />
             <EmploymentRequirementField
               value={draft.employmentRequirement}
               onChange={(employmentRequirement) =>
                 setDraft({ ...draft, employmentRequirement })
               }
             />
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={draft.allowOtherPets}
-                onChange={(event) => setDraft({ ...draft, allowOtherPets: event.target.checked })}
-              />
-              <span>Allow other pets</span>
-            </label>
             <div className="rules-section">
               <h4>Screening checks</h4>
               <p className="rules-hint">
