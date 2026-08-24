@@ -216,7 +216,7 @@ credentials, and Google OAuth leaves no Google runtime integration.
 
 Using a magic link creates a persistent, revocable server-side session for that browser. The
 browser remains signed in across restarts; committee members are not asked to follow another link
-on every visit. A session expires after 30 days without activity or after 90 days in total,
+on every visit. A session expires after 7 days without activity or after 30 days in total,
 whichever comes first. Ordinary activity may extend the idle deadline but never the absolute
 deadline. These are explicit product settings, not framework defaults.
 
@@ -230,6 +230,11 @@ Session cookies are host-only, `Secure`, `HttpOnly`, and `SameSite=Lax`; raw ses
 not stored in browser-readable storage. The server records only hashed session credentials plus
 creation, last-activity, expiry, and revocation metadata, without IP addresses or device
 fingerprints.
+
+Applicant and committee access remain separate identities even when the same person and email
+address have both. The applications hostname authenticates the retained application; the screener
+hostname authenticates the allowlisted committee user. Becoming a committee member neither merges
+nor changes the retention or access rules for that person's application.
 
 ### Transactional email
 
@@ -877,8 +882,8 @@ milestone with its own storage, hostname, and isolation decisions.
   opportunistic retention sweep.
 - Exact monitored Membership Committee Reply-To address, SES region, bounce/complaint event
   plumbing, and administrator delivery-status UI. The sender address is fixed above.
-- The recent-authentication window for sensitive admin actions and whether the proposed 30-day
-  idle / 90-day absolute session limits need adjustment after committee usability testing.
+- Whether the 60-minute recent-authentication window for sensitive admin actions needs adjustment
+  after committee usability testing.
 
 ### Built-In Vacancy Notifications (M22) — planned
 

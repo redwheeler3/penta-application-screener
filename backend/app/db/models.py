@@ -47,6 +47,17 @@ class OpeningStatus(StrEnum):
     CLOSED = "closed"
 
 
+class PasswordlessIdentityKind(StrEnum):
+    APPLICANT = "applicant"
+    COMMITTEE = "committee"
+
+
+class MagicLinkPurpose(StrEnum):
+    APPLICANT_ACCESS = "applicant_access"
+    COMMITTEE_ACCESS = "committee_access"
+    EMAIL_CHANGE = "email_change"
+
+
 def enum_values(enum_class: type[StrEnum]) -> list[str]:
     return [item.value for item in enum_class]
 
@@ -300,6 +311,76 @@ class ApplicationCycleSnapshot(Base):
     )
 
     participation: Mapped[ApplicationParticipation] = relationship()
+
+
+class MagicLinkToken(Base):
+    """A short-lived, single-use emailed credential stored only as a hash."""
+
+    __tablename__ = "magic_link_tokens"
+    __table_args__ = (
+        CheckConstraint(
+            "(identity_kind = 'applicant' AND application_id IS NOT NULL AND user_id IS NULL) "
+            "OR (identity_kind = 'committee' AND user_id IS NOT NULL AND application_id IS NULL)",
+            name="ck_magic_link_token_identity",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    identity_kind: Mapped[PasswordlessIdentityKind] = mapped_column(
+        Enum(PasswordlessIdentityKind, values_callable=enum_values), nullable=False, index=True
+    )
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    application_id: Mapped[int | None] = mapped_column(
+        ForeignKey("applications.id"), index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    purpose: Mapped[MagicLinkPurpose] = mapped_column(
+        Enum(MagicLinkPurpose, values_callable=enum_values), nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    application: Mapped[Application | None] = relationship()
+    user: Mapped[User | None] = relationship()
+
+
+class BrowserSession(Base):
+    """A persistent applicant or committee browser session, revocable server-side."""
+
+    __tablename__ = "browser_sessions"
+    __table_args__ = (
+        CheckConstraint(
+            "(identity_kind = 'applicant' AND application_id IS NOT NULL AND user_id IS NULL) "
+            "OR (identity_kind = 'committee' AND user_id IS NOT NULL AND application_id IS NULL)",
+            name="ck_browser_session_identity",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    identity_kind: Mapped[PasswordlessIdentityKind] = mapped_column(
+        Enum(PasswordlessIdentityKind, values_callable=enum_values), nullable=False, index=True
+    )
+    application_id: Mapped[int | None] = mapped_column(
+        ForeignKey("applications.id"), index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    idle_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    absolute_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recently_authenticated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    application: Mapped[Application | None] = relationship()
+    user: Mapped[User | None] = relationship()
 
 
 class MemberEligibility(TimestampMixin, Base):

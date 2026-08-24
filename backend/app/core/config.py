@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     ses_region: str = "us-east-1"
     ses_aws_access_key_id: str = ""
     ses_aws_secret_access_key: str = ""
+    magic_link_lifetime_minutes: int = 15
+    session_idle_days: int = 7
+    session_absolute_days: int = 30
+    recent_authentication_minutes: int = 60
     # Bootstrap-only: emails seeded onto the access allowlist as admins at startup
     # (one per line, '#' comments). Once seeded, admins manage the list in-app; this
     # file does not revoke. Gitignored — real emails are deployment-specific.

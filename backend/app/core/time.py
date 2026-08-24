@@ -12,6 +12,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 
+def as_utc(dt: datetime) -> datetime:
+    """Return an aware UTC timestamp, treating SQLite's naive values as UTC."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
 def utc_isoformat(dt: datetime | None) -> str | None:
     """ISO-8601 for a DB timestamp, always zone-qualified. A naive value is assumed UTC (it
     came from ``func.now()``); an aware value is preserved. ``None`` in → ``None`` out."""
