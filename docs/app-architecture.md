@@ -84,6 +84,10 @@ is already active, link inspection returns both emails
 and the frontend requires a keep/switch choice before consuming the credential. Browser drafts are
 keyed by pending-draft or application identity so they do not follow a session switch.
 
+Review is also identity-aware: a signed-out review only validates and renders the in-page answers,
+while **Save and review** persists an authenticated private working copy before changing screens.
+If that save fails, the form remains open and the review is not shown.
+
 The primary email becomes read-only after authentication. Changing it issues an `email_change`
 credential to the proposed address and leaves the application unchanged until that link is
 consumed. Confirmation updates the identity and private working answers together, revokes other

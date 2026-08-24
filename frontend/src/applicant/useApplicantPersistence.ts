@@ -303,13 +303,7 @@ export function useApplicantPersistence(
     setMessage("");
     setPhase("working");
     if (applicationId != null) {
-      const response = intent === "submit"
-        ? await submitApplication(canonicalAnswers(draftRef.current), true)
-        : await saveApplication(workingAnswers(draftRef.current));
-      if (!response.ok) return fail(response);
-      setSavedAnswers(answerSnapshot(draftRef.current));
-      if (intent === "submit") clearApplicationDraft(applicationId);
-      setPhase(intent === "submit" ? "submitted" : "saved");
+      await persistAuthenticatedApplication(intent);
       return;
     }
 
@@ -330,6 +324,29 @@ export function useApplicantPersistence(
     setPhase("email_sent");
   }
 
+  async function saveForReview(): Promise<boolean> {
+    if (applicationId == null) return true;
+    setMessage("");
+    setPhase("working");
+    const saved = await persistAuthenticatedApplication("save");
+    if (saved) setPhase("idle");
+    return saved;
+  }
+
+  async function persistAuthenticatedApplication(intent: DraftIntent): Promise<boolean> {
+    const response = intent === "submit"
+      ? await submitApplication(canonicalAnswers(draftRef.current), true)
+      : await saveApplication(workingAnswers(draftRef.current));
+    if (!response.ok) {
+      await fail(response);
+      return false;
+    }
+    setSavedAnswers(answerSnapshot(draftRef.current));
+    if (intent === "submit" && applicationId != null) clearApplicationDraft(applicationId);
+    setPhase(intent === "submit" ? "submitted" : "saved");
+    return true;
+  }
+
   async function emailReturnLink(): Promise<boolean> {
     const response = await requestReturnAccessLink(workingAnswers(draftRef.current));
     if (!response.ok) return false;
@@ -340,6 +357,15 @@ export function useApplicantPersistence(
 
   async function resendCurrentIntent(): Promise<void> {
     await start(lastIntent);
+  }
+
+  function clearActionFeedback(): void {
+    setMessage("");
+    setPhase((current) => (
+      current === "saved" || current === "email_sent" || current === "error"
+        ? "idle"
+        : current
+    ));
   }
 
   async function openLinkedApplication(rememberDevice: boolean): Promise<void> {
@@ -397,7 +423,9 @@ export function useApplicantPersistence(
     accessApplicationEmail,
     reviewAfterAccess,
     clearReviewAfterAccess: () => setReviewAfterAccess(false),
+    clearActionFeedback,
     start,
+    saveForReview,
     emailReturnLink,
     resendCurrentIntent,
     openLinkedApplication,

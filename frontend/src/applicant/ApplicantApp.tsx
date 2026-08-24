@@ -93,10 +93,11 @@ export function ApplicantApp() {
     setDraft(updater);
   }
 
-  function review(event: FormEvent<HTMLFormElement>): void {
+  async function review(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     validateFormFields(formRef.current);
     if (!formRef.current?.reportValidity()) return;
+    if (!(await persistence.saveForReview())) return;
     setReviewing(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -177,11 +178,6 @@ export function ApplicantApp() {
           ) : null}
         </div>
 
-        <PersistenceNotice
-          phase={persistence.phase}
-          message={persistence.message}
-        />
-
         {persistence.phase === "submitted" ? (
           <ApplicationComplete submitted />
         ) : persistence.phase === "link_ready" && persistence.accessEmail ? (
@@ -207,11 +203,15 @@ export function ApplicantApp() {
             draft={draft}
             declarationAccepted={declarationAccepted}
             persistencePhase={persistence.phase}
+            persistenceMessage={persistence.message}
             authenticated={persistence.authenticated}
             onRetry={() => void persistence.resendCurrentIntent()}
             onDeclarationChange={setDeclarationAccepted}
             onSubmit={() => void persistence.start("submit")}
-            onEdit={() => setReviewing(false)}
+            onEdit={() => {
+              persistence.clearActionFeedback();
+              setReviewing(false);
+            }}
           />
         ) : (
           <form
@@ -259,6 +259,7 @@ export function ApplicantApp() {
               <div className="applicant-action-stack">
                 <PersistenceActionStatus
                   phase={persistence.phase}
+                  message={persistence.message}
                   onRetry={() => void persistence.resendCurrentIntent()}
                 />
                 <div className="applicant-action-group">
@@ -270,8 +271,8 @@ export function ApplicantApp() {
                   >
                     <Save size={17} /> Save and return later
                   </button>
-                  <button className="applicant-primary-button" type="submit">
-                    Review application
+                  <button className="applicant-primary-button" type="submit" disabled={persistence.busy}>
+                    {persistence.authenticated ? "Save and review" : "Review application"}
                     <FileCheck2 size={18} />
                   </button>
                 </div>
@@ -596,6 +597,7 @@ function ApplicationReview(props: {
   draft: ApplicantDraft;
   declarationAccepted: boolean;
   persistencePhase: string;
+  persistenceMessage: string;
   authenticated: boolean;
   onRetry: () => void;
   onDeclarationChange: (accepted: boolean) => void;
@@ -639,7 +641,13 @@ function ApplicationReview(props: {
           </ul>
           <p>
             Penta handles this information as described in its{" "}
-            <a href="https://www.pentacoop.com/privacy.html">Privacy Policy</a>.
+            <a
+              href="https://www.pentacoop.com/privacy.html"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Privacy Policy
+            </a>.
           </p>
           <label className="declaration-acceptance">
             <input
@@ -654,6 +662,7 @@ function ApplicationReview(props: {
       <div className="applicant-action-stack">
         <PersistenceActionStatus
           phase={props.persistencePhase}
+          message={props.persistenceMessage}
           onRetry={props.onRetry}
         />
         <div className="review-actions">
@@ -675,37 +684,30 @@ function ApplicationReview(props: {
   );
 }
 
-function PersistenceNotice(props: {
+function PersistenceActionStatus(props: {
   phase: string;
   message: string;
+  onRetry: () => void;
 }) {
   if (props.phase === "error") {
     return (
-      <div className="persistence-notice error" role="alert">
-        <div><strong>We couldn't continue</strong><span>{props.message}</span></div>
+      <div className="persistence-action-status error" role="alert">
+        <strong>We couldn't continue</strong>
+        <span>{props.message}</span>
       </div>
     );
   }
-  if (props.phase === "email_sent" || props.phase === "saved") {
-    return (
-      <div className="persistence-notice success" role="status">
-        <CheckCircle2 size={20} />
-        <div>
-          <strong>{props.phase === "saved" ? "Application saved" : "Check your email"}</strong>
-          {props.message ? <span>{props.message}</span> : null}
-        </div>
-      </div>
-    );
-  }
-  return null;
-}
-
-function PersistenceActionStatus(props: {
-  phase: string;
-  onRetry: () => void;
-}) {
   if (props.phase === "working") {
     return <p className="persistence-action-status" role="status">Saving securely…</p>;
+  }
+  if (props.phase === "saved") {
+    return (
+      <p className="persistence-action-status success" role="status">
+        <span className="persistence-action-confirmation">
+          <CheckCircle2 size={16} /> Application saved
+        </span>
+      </p>
+    );
   }
   if (props.phase === "email_sent") {
     return (

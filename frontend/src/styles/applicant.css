@@ -304,6 +304,8 @@
 .applicant-action-group,
 .review-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
 .persistence-action-status { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; max-width: 620px; margin: 0; color: #365f7c; font-size: 0.84rem; font-weight: 650; line-height: 1.35; text-align: right; }
+.persistence-action-status.error { color: #8f2f2a; }
+.persistence-action-status.success { color: #23613d; }
 .persistence-action-confirmation { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
 .persistence-action-status button { padding: 0; border: 0; color: var(--applicant-green-dark); background: none; font: inherit; text-decoration: underline; cursor: pointer; }
 .persistence-action-status svg { flex: 0 0 auto; }
@@ -330,13 +332,6 @@
 .declaration-acceptance input { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 1px; accent-color: var(--applicant-green); }
 .declaration-acceptance span { font-size: 0.9rem; font-weight: 750; line-height: 1.45; }
 
-.persistence-notice { display: flex; align-items: center; gap: 12px; padding: 15px 18px; margin: -12px 0 24px; border: 1px solid; border-radius: 10px; }
-.persistence-notice > svg { flex: 0 0 auto; }
-.persistence-notice > div { display: flex; flex-direction: column; gap: 2px; }
-.persistence-notice span { font-size: 0.85rem; }
-.persistence-notice.info { color: #244e70; background: #eff8ff; border-color: #bedcf1; }
-.persistence-notice.success { color: #23613d; background: var(--applicant-mint); border-color: #bfe5ce; }
-.persistence-notice.error { color: #8f2f2a; background: #fff3f2; border-color: #efc1be; }
 
 .application-complete,
 .existing-application-choice { padding: 42px; text-align: center; background: #fff; border: 1px solid #dbe4e0; border-radius: 14px; box-shadow: 0 12px 35px rgb(17 53 39 / 7%); }

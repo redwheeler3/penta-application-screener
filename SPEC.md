@@ -147,6 +147,10 @@ long as the primary email is valid. It does not enter a separate verification or
 and the form remains usable after the save. Submission is always a deliberate action after
 reviewing the completed application; following an access link for a pending submission opens the
 review but does not submit it.
+For an authenticated applicant, the corresponding **Save and review** action first persists the
+private working copy and opens the review only after that save succeeds. A signed-out **Review
+application** action validates and previews the in-page answers without creating a server record or
+sending email.
 While an application remains active and within its retention period, its authenticated primary
 applicant may view and edit it even when no opening is active. An edit outside an active opening
 changes only the private working copy; it does not enroll the application in a future opening or
