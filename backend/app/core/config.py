@@ -18,14 +18,10 @@ class Settings(BaseSettings):
     # credentials remain deployment secrets and are never returned by the settings API.
     openai_api_key: str = ""
     anthropic_api_key: str = ""
-    # Email defaults to capture-only. Live development is an explicit, guarded mode;
-    # production SES uses its own least-privilege credential rather than Bedrock's.
-    email_delivery_mode: Literal["capture", "development_ses", "production_ses"] = "capture"
-    email_sender: str = ""
-    email_reply_to: str = ""
-    ses_region: str = "us-east-1"
-    ses_aws_access_key_id: str = ""
-    ses_aws_secret_access_key: str = ""
+    email_delivery_mode: Literal["capture", "development", "production"] = "capture"
+    socketlabs_server_id: str = ""
+    socketlabs_injection_api_key: str = ""
+    socketlabs_gateway: str = "https://inject-cx.socketlabs.com/api/v1/email"
     magic_link_lifetime_minutes: int = 15
     magic_link_request_limit: int = 3
     magic_link_rate_window_minutes: int = 15

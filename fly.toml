@@ -1,7 +1,7 @@
 # Fly.io deployment (M17, ADR 0012). Single-region app that suspends to zero when idle and
 # keeps a persistent volume for the SQLite DB.
 # Secrets (SESSION_SECRET, GOOGLE_CLIENT_*, AWS_*, OPENAI_API_KEY,
-# ANTHROPIC_API_KEY) are set via `fly secrets set`, never here.
+# ANTHROPIC_API_KEY, SOCKETLABS_*) are set via `fly secrets set`, never here.
 #
 # First-time setup (run once, from the repo root):
 #   fly launch --no-deploy --copy-config     # or `fly apps create penta-application-screener`

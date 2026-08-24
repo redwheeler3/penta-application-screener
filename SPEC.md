@@ -238,17 +238,17 @@ nor changes the retention or access rules for that person's application.
 
 ### Transactional email
 
-Amazon Simple Email Service (SES) sends applicant verification, save-and-return, submission,
-update, and security-notification messages. The application calls it through a small
-provider-neutral email-sender interface so authentication and intake behavior do not depend on
-SES-specific response shapes.
+SocketLabs sends applicant verification, save-and-return, submission, update, and
+security-notification messages through its Injection API. The application calls it through a
+small provider-neutral email-sender interface so authentication and intake behavior do not depend
+on SocketLabs-specific response shapes. Resend is the documented operational fallback if
+SocketLabs becomes unsuitable, but M21 does not implement or test a Resend adapter. A provider
+change is an explicit operational action, never an automatic retry after an ambiguous send result.
 
-SES uses a dedicated least-privilege IAM credential stored as a Fly secret, separate from the
-Bedrock credential. The sending domain is authenticated with DKIM, SPF, and DMARC, and the SES
-account must have production access before applications open. Messages use
-`applications@pentacoop.com` as the recognizable Penta sender, a monitored Membership Committee
-mailbox as Reply-To, and `privacy@pentacoop.com` as the privacy-policy contact; the application
-does not receive email.
+SocketLabs uses a dedicated Server ID and Injection API key stored as Fly secrets. The sending
+domain is authenticated with DKIM, SPF, and DMARC. Messages use `Penta Co-operative Housing` as
+the display name and `applications@pentacoop.com` as both the sender and monitored Reply-To address.
+The privacy-policy contact is `privacy@pentacoop.com`; the application does not receive email.
 
 Email is a load-bearing part of applicant access. A failed verification or save-and-return send
 leaves the browser draft intact and offers retry or email correction. Confirmation failures are
@@ -258,15 +258,13 @@ message ID, message kind, recipient identifier, and delivery state, but never a 
 email body, or applicant answers. Automated tests and normal local development use a captured fake
 sender and never deliver real email.
 
-Developers may explicitly enable live SES delivery for end-to-end email testing. This development
-mode uses a separate least-privilege SES credential and a sender and Reply-To address under
-`jeffo.net`; every subject is prefixed with `[Penta development]`. The central email-sender boundary
-normalizes and parses every To, CC, and BCC mailbox and rejects the entire message before calling
-SES unless every domain is exactly `jeffo.net` (not a subdomain or a suffix match). The development
-credential independently restricts `ses:SendEmail` and `ses:SendRawEmail` to the approved sending
-identity and uses the `ses:Recipients` IAM condition to permit only `*@jeffo.net`. There is no
-per-message bypass. Development uses only synthetic applicant data and never copies production
-applicant or vacancy-list records into email tests.
+Developers may explicitly enable live SocketLabs delivery for end-to-end email testing. Every
+development subject is prefixed with `[Penta development]`. The central email-sender boundary
+normalizes and parses every sender, Reply-To, To, CC, and BCC mailbox and rejects the entire
+message before calling SocketLabs unless every domain is exactly `jeffo.net` or `pentacoop.com`
+(not a subdomain or a suffix match). There is no per-message bypass. Development uses only
+synthetic applicant data and never copies production applicant or vacancy-list records into email
+tests.
 
 Every applicant transactional message clearly says that it was sent because the recipient has or
 requested access to a Penta application, not because they are on the vacancy-notification list. It
@@ -421,10 +419,11 @@ replaces the entire earlier unit-size selection and becomes the current subscrip
 intentional no-verification tradeoff that lets a person update their preferences without receiving
 or following a confirmation email; preferences are never merged.
 
-When any requested unit size becomes available, SES sends one vacancy notice and the entire list
-record is consumed, even if the person selected other unit sizes. Consumption occurs only after
-SES accepts the message for delivery so a transient send failure can be retried without losing the
-recipient. The notice clearly says that the address has been removed from the list and links to
+When any requested unit size becomes available, the transactional email provider sends one vacancy
+notice and the entire list record is consumed, even if the person selected other unit sizes.
+Consumption occurs only after the provider accepts the message for delivery so a transient send
+failure can be retried without losing the recipient. The notice clearly says that the address has
+been removed from the list and links to
 the public form so the recipient can create a new one-notice subscription if they want future
 notifications. Resubscribing creates a new record; it does not reactivate or retain the consumed
 one. A hard bounce or complaint also terminates and removes the record. The application does not
@@ -798,7 +797,7 @@ selection evidence and reproduction commands are in
 
 **Goal:** replace the external Google Form/Sheet intake path with a first-party public
 application experience at a separate applicant-facing hostname, and replace Google OAuth with
-SES-delivered magic links for applicants and committee members. The product contract is
+email-delivered magic links for applicants and committee members. The product contract is
 specified in [Built-In Application Intake](#built-in-application-intake-m21-target); this section
 defines the implementation boundary and sequence.
 
@@ -815,8 +814,8 @@ ready.
    introduce one durable application with private working and committee-facing submitted copies,
    opening participation, and closed-cycle snapshots. Preserve the existing content hash as the
    boundary for stale AI results.
-2. **Transactional email and sessions** — add the provider-neutral sender with SES, domain
-   authentication, production access, passwordless email verification, collision-safe account
+2. **Transactional email and sessions** — add the provider-neutral sender with SocketLabs, domain
+   authentication, passwordless email verification, collision-safe account
    claiming, revocable server-side sessions, allowlist authorization, and delivery observability.
 3. **Applicant form** — build the field-reference sections, browser-local guest draft, explicit
    Save and return later, validation/review/Submit flow, calculated household income, persistent
@@ -829,7 +828,7 @@ ready.
 6. **Committee intake workflow** — replace the external-source Sync step with an honestly named
    new/updated-applications surface; show submission times and stale Screen/Rank state without
    emailing the committee for routine updates.
-7. **Between-cycle cutover** — configure the applicant hostname, exercise SES and storage in
+7. **Between-cycle cutover** — configure the applicant hostname, exercise SocketLabs and storage in
    production with synthetic data, retain existing production records as specified below, then
    remove Google Form/Sheet import, Picker, Drive credentials, Google OAuth, their settings/UI, and
    their operational documentation completely.
@@ -862,11 +861,11 @@ milestone with its own storage, hostname, and isolation decisions.
   remembered-browser policy, and can revoke sessions; role/access changes revoke them server-side.
 - Photos are private, authorized, excluded from AI, and covered by deletion and backup/retention
   behavior.
-- SES send failure, retry, rate-limit, bounce, and complaint paths are observable without logging
-  tokens, email bodies, or applicant content.
+- SocketLabs send failure, retry, rate-limit, bounce, and complaint paths are observable without
+  logging tokens, email bodies, or applicant content.
 - Automated tests and normal local development capture email without sending it. Explicit live
-  development tests send only synthetic messages to exact `@jeffo.net` recipients, enforced both
-  before the provider call and by a separate least-privilege SES credential.
+  development tests send only synthetic messages to exact `@jeffo.net` or `@pentacoop.com`
+  recipients, enforced before the provider call with no per-message bypass.
 - The production application accepts built-in submissions at the applicant hostname, the screener
   reflects new/updated submissions, and no Google runtime dependency or dead compatibility path
   remains.
@@ -880,8 +879,7 @@ milestone with its own storage, hostname, and isolation decisions.
   The user-facing formats and size policy are fixed above.
 - Exact backup lifetime and the implementation mechanics for complete applicant deletion and the
   opportunistic retention sweep.
-- Exact monitored Membership Committee Reply-To address, SES region, bounce/complaint event
-  plumbing, and administrator delivery-status UI. The sender address is fixed above.
+- SocketLabs event-webhook configuration and administrator delivery-status UI.
 - Whether the 60-minute recent-authentication window for sensitive admin actions needs adjustment
   after committee usability testing.
 
@@ -916,8 +914,8 @@ matching vacancy notice.
 - A later submission for the same normalized email replaces, rather than merges with, the prior
   unit-size preferences and does not reveal that a prior record existed.
 - The first matching opening sends one notice and consumes the entire record regardless of how
-  many sizes were selected; a transient SES failure remains retryable and cannot double-send after
-  provider acceptance. The notice explains the removal and offers a link to subscribe again.
+  many sizes were selected; a transient provider failure remains retryable and cannot double-send
+  after provider acceptance. The notice explains the removal and offers a link to subscribe again.
 - Application deletion and mailing-list deletion remain independent, and application activity
   never silently subscribes an address.
 - Every vacancy-list message contains a prominent one-click unsubscribe action. A link from an
@@ -927,9 +925,8 @@ matching vacancy notice.
 - The production website uses the built-in form and the Google form/sheet and their operational
   handling are removed after a count-verified migration.
 
-**Open decisions before implementation:** final notification wording and legal review, and whether
-SES account-level suppression must be reconciled separately from the product's
-no-permanent-suppression rule.
+**Open decisions before implementation:** final notification wording and legal review, and how
+SocketLabs suppression state is reconciled with the product's no-permanent-suppression rule.
 
 ### Reporting (M10 shipped) — ✅ closed, demand-driven from here
 
