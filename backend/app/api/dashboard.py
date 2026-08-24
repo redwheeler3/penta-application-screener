@@ -36,6 +36,7 @@ from app.services.analysis import (
     ranking_is_current,
 )
 from app.services.application_import import settings_fingerprint
+from app.services.application_scope import committee_applications
 from app.services.eligibility import (
     active_flags,
     machine_flags_by_app,
@@ -204,7 +205,7 @@ def _member_status_counts(
     """This member's effective (status, source) tallies over every application — their
     overrides applied over the shared machine verdict. Computed on read (status is no
     longer stored), so it mirrors exactly what the applications list shows the member."""
-    applications = db.scalars(select(Application)).all()
+    applications = committee_applications(db)
     ids = [app.id for app in applications]
     flags_by_app = machine_flags_by_app(db, ids)
     facts_by_app = pet_facts_by_app(db, ids)

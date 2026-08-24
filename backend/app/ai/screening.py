@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import (
@@ -26,6 +25,7 @@ from app.ai.schemas import ScreeningReport
 from app.db.models import Application
 from app.schemas.settings import AppSettings, effective_reasoning_effort
 from app.services.application_import import extract_essays
+from app.services.application_scope import committee_applications
 from app.services.eligibility import rules_eligible_application_ids
 
 KIND = "screening"
@@ -127,7 +127,7 @@ def applications_for_screening(db: Session) -> list[Application]:
     scope = rules_eligible_application_ids(db)
     return [
         app
-        for app in db.scalars(select(Application).order_by(Application.id))
+        for app in committee_applications(db)
         if app.id in scope
     ]
 

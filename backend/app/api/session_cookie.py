@@ -23,15 +23,19 @@ def set_session_cookie(
     *,
     identity_kind: PasswordlessIdentityKind,
     settings: Settings,
+    persistent: bool = False,
 ) -> None:
+    cookie_options = {}
+    if persistent:
+        cookie_options["max_age"] = settings.session_absolute_days * 24 * 60 * 60
     response.set_cookie(
         SESSION_COOKIE_NAMES[identity_kind],
         token,
-        max_age=settings.session_absolute_days * 24 * 60 * 60,
         secure=settings.passwordless_cookie_secure(identity_kind.value),
         httponly=True,
         samesite="lax",
         path="/",
+        **cookie_options,
     )
 
 

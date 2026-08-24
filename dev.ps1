@@ -1,5 +1,21 @@
 $ErrorActionPreference = "Stop"
 
+function Assert-DevPortAvailable {
+    param(
+        [int]$Port,
+        [string]$Service
+    )
+
+    $listeners = ([System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties()).GetActiveTcpListeners()
+    $inUse = $listeners | Where-Object { $_.Port -eq $Port }
+    if ($inUse) {
+        throw "$Service port $Port is already in use. Stop the existing dev session before starting another one."
+    }
+}
+
+Assert-DevPortAvailable -Port 8000 -Service "Backend"
+Assert-DevPortAvailable -Port 5173 -Service "Frontend"
+
 Write-Host "Running migrations..."
 $migration = Start-Process -PassThru -NoNewWindow -Wait -WorkingDirectory "$PSScriptRoot\backend" `
     -FilePath "uv" -ArgumentList "run", "alembic", "upgrade", "head"
@@ -87,6 +103,8 @@ try {
         -RedirectStandardOutput $backendOutputLog -RedirectStandardError $backendErrorLog
 
     Write-Host "Starting frontend on http://localhost:5173 ..."
+    Write-Host "  Committee screener: http://localhost:5173"
+    Write-Host "  Application form:   http://localhost:5173/?applicant"
     $frontendRun = Start-Frontend -Attempt 0
     $frontend = $frontendRun.Process
 

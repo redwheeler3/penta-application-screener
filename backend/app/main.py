@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.allowlist import router as allowlist_router
+from app.api.applicant_intake import router as applicant_intake_router
 from app.api.applications import router as applications_router
 from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
@@ -99,8 +100,17 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def prevent_applicant_data_caching(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/applicant"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
     register_error_handlers(app)
     app.include_router(allowlist_router)
+    app.include_router(applicant_intake_router)
     app.include_router(applications_router)
     app.include_router(auth_router)
     app.include_router(dashboard_router)

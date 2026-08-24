@@ -1,9 +1,7 @@
-"""Single-use email credentials and revocable remembered browser sessions."""
+"""Single-use email credentials and revocable browser sessions."""
 
 from __future__ import annotations
 
-import hashlib
-import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -19,8 +17,7 @@ from app.db.models import (
     MagicLinkToken,
     PasswordlessIdentityKind,
 )
-
-TOKEN_BYTES = 32
+from app.services.token_credentials import new_token, token_hash
 
 
 @dataclass(frozen=True)
@@ -35,14 +32,6 @@ class IssuedBrowserSession:
     record: BrowserSession
 
 
-def _new_token() -> str:
-    return secrets.token_urlsafe(TOKEN_BYTES)
-
-
-def _token_hash(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
-
-
 def _identity_values(
     identity_kind: PasswordlessIdentityKind,
     *,
@@ -55,6 +44,25 @@ def _identity_values(
     elif user_id is None or application_id is not None:
         raise ValueError("committee credentials require only user_id")
     return {"application_id": application_id, "user_id": user_id}
+
+
+def _magic_link_identity_values(
+    identity_kind: PasswordlessIdentityKind,
+    *,
+    application_id: int | None,
+    applicant_draft_id: int | None,
+    user_id: int | None,
+) -> dict[str, int | None]:
+    if identity_kind == PasswordlessIdentityKind.APPLICANT:
+        if user_id is not None or (application_id is None) == (applicant_draft_id is None):
+            raise ValueError("applicant links require exactly one application or pending draft")
+    elif user_id is None or application_id is not None or applicant_draft_id is not None:
+        raise ValueError("committee links require only user_id")
+    return {
+        "application_id": application_id,
+        "applicant_draft_id": applicant_draft_id,
+        "user_id": user_id,
+    }
 
 
 def _validate_purpose(
@@ -76,17 +84,22 @@ def issue_magic_link(
     email: str,
     purpose: MagicLinkPurpose,
     application_id: int | None = None,
+    applicant_draft_id: int | None = None,
     user_id: int | None = None,
     now: datetime | None = None,
     lifetime: timedelta | None = None,
+    remember_device: bool = False,
+    initiating_session_id: int | None = None,
 ) -> IssuedMagicLink:
     """Create one credential and revoke older unused links for the same purpose."""
     now = now or datetime.now(UTC)
     settings = get_settings()
-    lifetime = lifetime or timedelta(minutes=settings.magic_link_lifetime_minutes)
-    identity_values = _identity_values(
+    if lifetime is None:
+        lifetime = timedelta(hours=settings.magic_link_lifetime_hours)
+    identity_values = _magic_link_identity_values(
         identity_kind,
         application_id=application_id,
+        applicant_draft_id=applicant_draft_id,
         user_id=user_id,
     )
     _validate_purpose(identity_kind, purpose)
@@ -100,6 +113,7 @@ def issue_magic_link(
             MagicLinkToken.identity_kind == identity_kind,
             MagicLinkToken.purpose == purpose,
             MagicLinkToken.application_id == identity_values["application_id"],
+            MagicLinkToken.applicant_draft_id == identity_values["applicant_draft_id"],
             MagicLinkToken.user_id == identity_values["user_id"],
             MagicLinkToken.consumed_at.is_(None),
             MagicLinkToken.revoked_at.is_(None),
@@ -107,14 +121,16 @@ def issue_magic_link(
         .values(revoked_at=now)
     )
 
-    raw_token = _new_token()
+    raw_token = new_token()
     record = MagicLinkToken(
         identity_kind=identity_kind,
         email=email,
         purpose=purpose,
-        token_hash=_token_hash(raw_token),
+        token_hash=token_hash(raw_token),
         created_at=now,
         expires_at=now + lifetime,
+        remember_device=remember_device,
+        initiating_session_id=initiating_session_id,
         **identity_values,
     )
     db.add(record)
@@ -128,7 +144,9 @@ def magic_link_request_allowed(
     identity_kind: PasswordlessIdentityKind,
     purpose: MagicLinkPurpose,
     application_id: int | None = None,
+    applicant_draft_id: int | None = None,
     user_id: int | None = None,
+    email: str | None = None,
     now: datetime | None = None,
     request_limit: int | None = None,
     rate_window: timedelta | None = None,
@@ -142,9 +160,10 @@ def magic_link_request_allowed(
     coalesce_window = coalesce_window or timedelta(
         seconds=settings.magic_link_coalesce_seconds
     )
-    identity_values = _identity_values(
+    identity_values = _magic_link_identity_values(
         identity_kind,
         application_id=application_id,
+        applicant_draft_id=applicant_draft_id,
         user_id=user_id,
     )
     _validate_purpose(identity_kind, purpose)
@@ -152,10 +171,14 @@ def magic_link_request_allowed(
         MagicLinkToken.identity_kind == identity_kind,
         MagicLinkToken.purpose == purpose,
         MagicLinkToken.application_id == identity_values["application_id"],
+        MagicLinkToken.applicant_draft_id == identity_values["applicant_draft_id"],
         MagicLinkToken.user_id == identity_values["user_id"],
     )
+    coalesce_filters = identity_filters
+    if email is not None:
+        coalesce_filters = (*identity_filters, MagicLinkToken.email == normalize_email(email))
     latest = db.scalar(
-        select(func.max(MagicLinkToken.created_at)).where(*identity_filters)
+        select(func.max(MagicLinkToken.created_at)).where(*coalesce_filters)
     )
     if latest is not None and as_utc(latest) > now - coalesce_window:
         return False
@@ -177,11 +200,11 @@ def consume_magic_link(
 ) -> MagicLinkToken | None:
     """Atomically consume a valid link. Invalid, expired, and reused links look alike."""
     now = now or datetime.now(UTC)
-    token_hash = _token_hash(token)
+    hashed_token = token_hash(token)
     result = db.execute(
         update(MagicLinkToken)
         .where(
-            MagicLinkToken.token_hash == token_hash,
+            MagicLinkToken.token_hash == hashed_token,
             MagicLinkToken.identity_kind == identity_kind,
             MagicLinkToken.purpose == purpose,
             MagicLinkToken.consumed_at.is_(None),
@@ -189,10 +212,28 @@ def consume_magic_link(
             MagicLinkToken.expires_at > now,
         )
         .values(consumed_at=now)
+        .execution_options(synchronize_session=False)
     )
     if result.rowcount != 1:
         return None
-    return db.scalar(select(MagicLinkToken).where(MagicLinkToken.token_hash == token_hash))
+    return db.scalar(select(MagicLinkToken).where(MagicLinkToken.token_hash == hashed_token))
+
+
+def magic_link_for_token(
+    db: Session,
+    token: str,
+    *,
+    identity_kind: PasswordlessIdentityKind,
+    purpose: MagicLinkPurpose,
+) -> MagicLinkToken | None:
+    """Resolve a recognizable link even after expiry or use, without authenticating it."""
+    return db.scalar(
+        select(MagicLinkToken).where(
+            MagicLinkToken.token_hash == token_hash(token),
+            MagicLinkToken.identity_kind == identity_kind,
+            MagicLinkToken.purpose == purpose,
+        )
+    )
 
 
 def create_browser_session(
@@ -205,7 +246,7 @@ def create_browser_session(
     idle_lifetime: timedelta | None = None,
     absolute_lifetime: timedelta | None = None,
 ) -> IssuedBrowserSession:
-    """Create a remembered session; only its random credential leaves the server."""
+    """Create a server-side session; only its random credential leaves the server."""
     now = now or datetime.now(UTC)
     settings = get_settings()
     idle_lifetime = idle_lifetime or timedelta(days=settings.session_idle_days)
@@ -218,10 +259,10 @@ def create_browser_session(
     if idle_lifetime > absolute_lifetime:
         raise ValueError("session idle lifetime cannot exceed absolute lifetime")
 
-    raw_token = _new_token()
+    raw_token = new_token()
     record = BrowserSession(
         identity_kind=identity_kind,
-        token_hash=_token_hash(raw_token),
+        token_hash=token_hash(raw_token),
         created_at=now,
         last_activity_at=now,
         idle_expires_at=now + idle_lifetime,
@@ -248,7 +289,7 @@ def authenticate_browser_session(
     idle_lifetime = idle_lifetime or timedelta(days=settings.session_idle_days)
     record = db.scalar(
         select(BrowserSession).where(
-            BrowserSession.token_hash == _token_hash(token),
+            BrowserSession.token_hash == token_hash(token),
             BrowserSession.identity_kind == identity_kind,
         )
     )
@@ -283,7 +324,7 @@ def revoke_browser_session(db: Session, token: str, *, now: datetime | None = No
     result = db.execute(
         update(BrowserSession)
         .where(
-            BrowserSession.token_hash == _token_hash(token),
+            BrowserSession.token_hash == token_hash(token),
             BrowserSession.revoked_at.is_(None),
         )
         .values(revoked_at=now)
@@ -297,6 +338,7 @@ def revoke_identity_sessions(
     identity_kind: PasswordlessIdentityKind,
     application_id: int | None = None,
     user_id: int | None = None,
+    except_session_id: int | None = None,
     now: datetime | None = None,
 ) -> int:
     """Revoke every active browser session for one application or committee user."""
@@ -312,10 +354,11 @@ def revoke_identity_sessions(
         else BrowserSession.user_id
     )
     identity_id = identity_values["application_id"] or identity_values["user_id"]
+    filters = [identity_column == identity_id, BrowserSession.revoked_at.is_(None)]
+    if except_session_id is not None:
+        filters.append(BrowserSession.id != except_session_id)
     result = db.execute(
-        update(BrowserSession)
-        .where(identity_column == identity_id, BrowserSession.revoked_at.is_(None))
-        .values(revoked_at=now)
+        update(BrowserSession).where(*filters).values(revoked_at=now)
     )
     return result.rowcount
 
@@ -326,6 +369,7 @@ def revoke_identity_magic_links(
     identity_kind: PasswordlessIdentityKind,
     application_id: int | None = None,
     user_id: int | None = None,
+    purpose: MagicLinkPurpose | None = None,
     now: datetime | None = None,
 ) -> int:
     """Revoke every unused email credential for one application or committee user."""
@@ -341,13 +385,14 @@ def revoke_identity_magic_links(
         else MagicLinkToken.user_id
     )
     identity_id = identity_values["application_id"] or identity_values["user_id"]
+    filters = [
+        identity_column == identity_id,
+        MagicLinkToken.consumed_at.is_(None),
+        MagicLinkToken.revoked_at.is_(None),
+    ]
+    if purpose is not None:
+        filters.append(MagicLinkToken.purpose == purpose)
     result = db.execute(
-        update(MagicLinkToken)
-        .where(
-            identity_column == identity_id,
-            MagicLinkToken.consumed_at.is_(None),
-            MagicLinkToken.revoked_at.is_(None),
-        )
-        .values(revoked_at=now)
+        update(MagicLinkToken).where(*filters).values(revoked_at=now)
     )
     return result.rowcount

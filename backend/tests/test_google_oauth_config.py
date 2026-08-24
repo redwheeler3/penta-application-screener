@@ -12,6 +12,12 @@ def test_oauth_state_cookie_secure_on_for_https_prod() -> None:
     assert Settings(frontend_url="https://screener.jeffo.net").oauth_state_cookie_secure is True
 
 
+def test_local_applicant_links_open_the_applicant_surface() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.applicant_frontend_url == "http://localhost:5173/?applicant"
+
+
 def test_local_db_backups_default_on_for_dev() -> None:
     # The post-rank auto-snapshot defaults on, so local dev keeps its safety net with no config.
     assert Settings().local_db_backups is True

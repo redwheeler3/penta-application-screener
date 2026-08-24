@@ -47,7 +47,7 @@ const GET_TIMEOUT_MS = 15_000;
 const ACTION_REQUEST_TIMEOUT_MS = 30_000;
 const SYNC_RETRY_DELAY_MS = 500;
 
-async function request(path: string, init: RequestInit = {}, timeoutMs = ACTION_REQUEST_TIMEOUT_MS): Promise<Response> {
+export async function request(path: string, init: RequestInit = {}, timeoutMs = ACTION_REQUEST_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
   const callerSignal = init.signal;
   const abortForCaller = () => controller.abort();
@@ -98,20 +98,36 @@ export function fetchAuthState(): Promise<AuthState> {
   return getJson<AuthState>("/auth/me");
 }
 
-export function googleSignInUrl(): string {
-  return url("/auth/google/login");
+export function googleSignInUrl(rememberDevice = false): string {
+  return url(`/auth/google/login?remember_device=${rememberDevice}`);
 }
 
-export function requestCommitteeMagicLink(email: string): Promise<Response> {
+export function requestCommitteeMagicLink(email: string, rememberDevice: boolean): Promise<Response> {
   return request("/auth/magic-link", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, rememberDevice }),
   });
 }
 
-export function consumeCommitteeMagicLink(token: string): Promise<Response> {
+export function inspectCommitteeMagicLink(token: string): Promise<Response> {
+  return request("/auth/magic-link/inspect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+}
+
+export function consumeCommitteeMagicLink(token: string, switchCurrent = false): Promise<Response> {
   return request("/auth/magic-link/consume", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, switchCurrent }),
+  });
+}
+
+export function regenerateCommitteeMagicLink(token: string): Promise<Response> {
+  return request("/auth/magic-link/regenerate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token }),

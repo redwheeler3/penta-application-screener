@@ -53,6 +53,32 @@ def _user(db: Session) -> User:
     return user
 
 
+def test_applicant_and_committee_links_share_the_24_hour_lifetime() -> None:
+    db = _session()
+    application = _application(db)
+    user = _user(db)
+
+    applicant = issue_magic_link(
+        db,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
+        application_id=application.id,
+        email=application.primary_email,
+        purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+        now=NOW,
+    )
+    committee = issue_magic_link(
+        db,
+        identity_kind=PasswordlessIdentityKind.COMMITTEE,
+        user_id=user.id,
+        email=user.email,
+        purpose=MagicLinkPurpose.COMMITTEE_ACCESS,
+        now=NOW,
+    )
+
+    assert as_utc(applicant.record.expires_at) == NOW + timedelta(hours=24)
+    assert as_utc(committee.record.expires_at) == NOW + timedelta(hours=24)
+
+
 def test_new_magic_link_revokes_only_older_links_for_the_same_identity_and_purpose() -> None:
     db = _session()
     first_application = _application(db)

@@ -60,6 +60,26 @@ def test_extract_essays_handles_missing_columns() -> None:
     assert all(essay["answer"] == "" for essay in essays)
 
 
+def test_extract_essays_includes_optional_built_in_response() -> None:
+    essays = extract_essays(
+        {
+            "essays": {
+                "household_introduction": "A synthetic household.",
+                "additional_information": "Additional synthetic context.",
+            }
+        }
+    )
+
+    assert [essay["label"] for essay in essays] == [
+        "About the household",
+        "Skills to contribute",
+        "Previous co-op experience",
+        "Why a co-op",
+        "Additional information",
+    ]
+    assert essays[-1]["answer"] == "Additional synthetic context."
+
+
 def test_normalize_application_extracts_basic_fields() -> None:
     row = {
         "Email Address": "TEST@EXAMPLE.COM",

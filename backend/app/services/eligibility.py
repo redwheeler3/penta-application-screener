@@ -32,6 +32,7 @@ from app.db.models import (
 from app.domain.hard_filters import PetFacts, RulesConfig
 from app.domain.status import effective_status
 from app.schemas.settings import EligibilityRules
+from app.services.application_scope import committee_applications
 from app.services.rules import (
     committee_default_rules_config,
     hard_filter_reasons_for,
@@ -164,7 +165,7 @@ def eligible_application_ids_for(db: Session, user_id: int) -> set[int]:
     """The applications eligible in this member's OWN view — their overrides applied over
     the machine verdict computed under THIS member's rules. Drives the member's ranked list.
     One ruleset for the member, so one hard-filter evaluation per application."""
-    applications = db.scalars(select(Application)).all()
+    applications = committee_applications(db)
     ids = [app.id for app in applications]
     flags_by_app = machine_flags_by_app(db, ids)
     facts_by_app = pet_facts_by_app(db, ids)
@@ -225,7 +226,7 @@ def rules_eligible_application_ids(db: Session) -> set[int]:
     but the reviewer still wants the AI's evidence for fidelity on the application — so we screen
     them too, rather than leaving a forced-eligible applicant with no AI result behind them.
     """
-    applications = db.scalars(select(Application)).all()
+    applications = committee_applications(db)
     ruleset_by_user, default_config = _ruleset_by_user(db)
     # Always include the committee default: it's the shared baseline every member reads
     # unless they diverge, and it keeps the scope well-defined when there are no members
@@ -244,7 +245,8 @@ def rules_eligible_application_ids(db: Session) -> set[int]:
     eligible |= set(
         db.scalars(
             select(MemberEligibility.application_id).where(
-                MemberEligibility.status == ApplicationStatus.ELIGIBLE
+                MemberEligibility.status == ApplicationStatus.ELIGIBLE,
+                MemberEligibility.application_id.in_([app.id for app in applications]),
             )
         )
     )
@@ -267,7 +269,7 @@ def union_eligible_application_ids(db: Session) -> set[int]:
     committee-default ruleset, computed once and reused. Overrides are sparse, so the
     per-app override bookkeeping is cheap set/counter work.
     """
-    applications = db.scalars(select(Application)).all()
+    applications = committee_applications(db)
     ids = [app.id for app in applications]
     flags_by_app = machine_flags_by_app(db, ids)
     facts_by_app = pet_facts_by_app(db, ids)

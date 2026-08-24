@@ -1,5 +1,7 @@
 """The per-member eligibility model and the union pool (M15 1c + per-member rules 1d)."""
 
+from datetime import UTC, datetime
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -51,6 +53,7 @@ def add_app(
         raw_row={},
         raw_row_hash=email,
         normalized=normalized,
+        submitted_at=datetime.now(UTC),
     )
     db.add(app)
     db.commit()

@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime
 
 from httpx2 import AsyncClient
 from sqlalchemy import create_engine
@@ -80,6 +81,7 @@ def add_eligible(db: Session, *, email: str, raw_hash: str) -> Application:
         raw_row={"Why a co-op": "We want community and will pitch in."},
         raw_row_hash=raw_hash,
         normalized={},
+        submitted_at=datetime.now(UTC),
     )
     db.add(application)
     db.commit()

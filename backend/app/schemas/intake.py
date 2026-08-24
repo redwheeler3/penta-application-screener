@@ -3,28 +3,30 @@
 from datetime import date
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import EmailStr, Field, model_validator
+
+from app.schemas.base import BridgeModel
 
 
-class PersonAnswers(BaseModel):
+class PersonAnswers(BridgeModel):
     first_name: str
     last_name: str
     birth_date: date
     phone: str
-    email: str
+    email: EmailStr
 
 
 class CoApplicantAnswers(PersonAnswers):
     relationship: str
 
 
-class ChildAnswers(BaseModel):
+class ChildAnswers(BridgeModel):
     first_name: str
     last_name: str
     birth_date: date
 
 
-class AddressAnswers(BaseModel):
+class AddressAnswers(BridgeModel):
     street: str
     street_2: str | None = None
     city: str
@@ -33,17 +35,18 @@ class AddressAnswers(BaseModel):
     country: str
 
 
-class ReferenceAnswers(BaseModel):
+class ReferenceAnswers(BridgeModel):
     name: str
-    email: str
+    email: EmailStr
     phone: str
 
 
-class EssayAnswers(BaseModel):
+class EssayAnswers(BridgeModel):
     household_introduction: str
     skills_to_contribute: str
     previous_coop_experience: str
     why_coop: str
+    additional_information: str = ""
 
 
 class EmploymentStatus(StrEnum):
@@ -52,7 +55,7 @@ class EmploymentStatus(StrEnum):
     UNEMPLOYED = "unemployed"
 
 
-class EmploymentAnswers(BaseModel):
+class EmploymentAnswers(BridgeModel):
     status: EmploymentStatus
     job_title: str | None = None
     company_name: str | None = None
@@ -76,7 +79,59 @@ class EmploymentAnswers(BaseModel):
         return self
 
 
-class CanonicalApplicationAnswers(BaseModel):
+class WorkingPersonAnswers(BridgeModel):
+    first_name: str = ""
+    last_name: str = ""
+    birth_date: str = ""
+    phone: str = ""
+    email: str = ""
+
+
+class WorkingCoApplicantAnswers(WorkingPersonAnswers):
+    relationship: str = ""
+
+
+class WorkingChildAnswers(BridgeModel):
+    first_name: str = ""
+    last_name: str = ""
+    birth_date: str = ""
+
+
+class WorkingReferenceAnswers(BridgeModel):
+    name: str = ""
+    email: str = ""
+    phone: str = ""
+
+
+class WorkingEmploymentAnswers(BridgeModel):
+    status: EmploymentStatus | None = None
+    job_title: str = ""
+    company_name: str = ""
+    start_date: str = ""
+    manager: WorkingReferenceAnswers | None = None
+
+
+class WorkingApplicationAnswers(BridgeModel):
+    """A typed but intentionally incomplete private working copy."""
+
+    applicant: WorkingPersonAnswers
+    co_applicant: WorkingCoApplicantAnswers | None = None
+    children: list[WorkingChildAnswers] = Field(default_factory=list)
+    current_address: AddressAnswers
+    lived_at_current_address_two_years: bool | None = None
+    owns_current_home: bool | None = None
+    owns_other_real_estate: bool | None = None
+    current_landlord: WorkingReferenceAnswers | None = None
+    previous_landlord: WorkingReferenceAnswers | None = None
+    essays: EssayAnswers
+    pets: str | None = None
+    applicant_employment: WorkingEmploymentAnswers
+    co_applicant_employment: WorkingEmploymentAnswers | None = None
+    applicant_income: int | None = Field(default=None, ge=0)
+    co_applicant_income: int | None = Field(default=None, ge=0)
+
+
+class CanonicalApplicationAnswers(BridgeModel):
     """The durable answer document used by working copies and submissions.
 
     Required-vs-optional structure mirrors the existing form. Cross-field completeness

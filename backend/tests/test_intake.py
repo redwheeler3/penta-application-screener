@@ -26,21 +26,21 @@ from app.services.intake import canonical_answers, content_hash, save_working_co
 
 
 def _answers() -> CanonicalApplicationAnswers:
-    reference = ReferenceAnswers(name="Synthetic Reference", email="ref@example.test", phone="604-555-0101")
+    reference = ReferenceAnswers(name="Synthetic Reference", email="ref@example.com", phone="604-555-0101")
     return CanonicalApplicationAnswers(
         applicant=PersonAnswers(
             first_name="Avery",
             last_name="Example",
             birth_date=date(1988, 4, 12),
             phone="604-555-0100",
-            email="avery@example.test",
+            email="avery@example.com",
         ),
         co_applicant=CoApplicantAnswers(
             first_name="Morgan",
             last_name="Example",
             birth_date=date(1989, 5, 13),
             phone="(604) 555-0102",
-            email="morgan@example.test",
+            email="morgan@example.com",
             relationship="Partner",
         ),
         children=[ChildAnswers(first_name="Casey", last_name="Example", birth_date=date(2015, 6, 1))],
@@ -138,7 +138,7 @@ def test_canonical_answers_allow_every_child_without_intake_eligibility_block() 
 def test_employment_status_controls_applicable_details() -> None:
     reference = ReferenceAnswers(
         name="Synthetic Reference",
-        email="ref@example.test",
+        email="ref@example.com",
         phone="(604) 555-0101",
     )
     unemployed = EmploymentAnswers(
@@ -174,7 +174,7 @@ def test_employed_applicant_requires_manager() -> None:
 def test_working_copy_does_not_replace_submitted_projection() -> None:
     saved_at = datetime(2026, 8, 23, tzinfo=UTC)
     application = Application(
-        primary_email="avery@example.test",
+        primary_email="avery@example.com",
         applicant_name="Prior Applicant",
         raw_row={"legacy": "submitted"},
         raw_row_hash="submitted-hash",
@@ -194,7 +194,7 @@ def test_opening_participation_and_closed_cycle_snapshot_are_separate() -> None:
     db = _session()
     submitted_at = datetime(2026, 8, 23, tzinfo=UTC)
     application = Application(
-        primary_email="avery@example.test",
+        primary_email="avery@example.com",
         applicant_name="Avery Example",
         raw_row={"answer": "submitted"},
         raw_row_hash="content-hash",

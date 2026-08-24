@@ -1,4 +1,5 @@
 import threading
+from datetime import UTC, datetime
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -44,6 +45,7 @@ def add_application(
         raw_row=raw_row or {},
         raw_row_hash=raw_hash,
         normalized=normalized,
+        submitted_at=datetime.now(UTC),
     )
     db.add(app)
     db.commit()

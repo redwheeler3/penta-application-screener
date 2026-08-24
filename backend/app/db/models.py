@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -56,6 +57,11 @@ class MagicLinkPurpose(StrEnum):
     APPLICANT_ACCESS = "applicant_access"
     COMMITTEE_ACCESS = "committee_access"
     EMAIL_CHANGE = "email_change"
+
+
+class ApplicantDraftIntent(StrEnum):
+    SAVE = "save"
+    SUBMIT = "submit"
 
 
 class EmailDeliveryState(StrEnum):
@@ -322,14 +328,43 @@ class ApplicationCycleSnapshot(Base):
     participation: Mapped[ApplicationParticipation] = relationship()
 
 
+class ApplicantDraft(Base):
+    """A private draft that has not yet been claimed through an applicant session."""
+
+    __tablename__ = "applicant_drafts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    intent: Mapped[ApplicantDraftIntent] = mapped_column(
+        Enum(ApplicantDraftIntent, values_callable=enum_values), nullable=False
+    )
+    application_id: Mapped[int | None] = mapped_column(
+        ForeignKey("applications.id"), index=True
+    )
+    draft_token_hash: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )
+    working_answers: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    abandon_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    application: Mapped[Application | None] = relationship()
+
+
 class MagicLinkToken(Base):
     """A short-lived, single-use emailed credential stored only as a hash."""
 
     __tablename__ = "magic_link_tokens"
     __table_args__ = (
         CheckConstraint(
-            "(identity_kind = 'applicant' AND application_id IS NOT NULL AND user_id IS NULL) "
-            "OR (identity_kind = 'committee' AND user_id IS NOT NULL AND application_id IS NULL)",
+            "(identity_kind = 'applicant' AND user_id IS NULL AND "
+            "((application_id IS NOT NULL AND applicant_draft_id IS NULL) OR "
+            "(application_id IS NULL AND applicant_draft_id IS NOT NULL))) "
+            "OR (identity_kind = 'committee' AND user_id IS NOT NULL "
+            "AND application_id IS NULL AND applicant_draft_id IS NULL)",
             name="ck_magic_link_token_identity",
         ),
     )
@@ -342,7 +377,13 @@ class MagicLinkToken(Base):
     application_id: Mapped[int | None] = mapped_column(
         ForeignKey("applications.id"), index=True
     )
+    applicant_draft_id: Mapped[int | None] = mapped_column(
+        ForeignKey("applicant_drafts.id"), index=True
+    )
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    initiating_session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("browser_sessions.id"), index=True
+    )
     purpose: Mapped[MagicLinkPurpose] = mapped_column(
         Enum(MagicLinkPurpose, values_callable=enum_values), nullable=False
     )
@@ -351,15 +392,17 @@ class MagicLinkToken(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    remember_device: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     application: Mapped[Application | None] = relationship()
+    applicant_draft: Mapped[ApplicantDraft | None] = relationship()
     user: Mapped[User | None] = relationship()
 
 
 class BrowserSession(Base):
-    """A persistent applicant or committee browser session, revocable server-side."""
+    """An applicant or committee browser session, revocable server-side."""
 
     __tablename__ = "browser_sessions"
     __table_args__ = (
@@ -398,8 +441,11 @@ class EmailDelivery(TimestampMixin, Base):
     __tablename__ = "email_deliveries"
     __table_args__ = (
         CheckConstraint(
-            "(recipient_kind = 'applicant' AND application_id IS NOT NULL AND user_id IS NULL) "
-            "OR (recipient_kind = 'committee' AND user_id IS NOT NULL AND application_id IS NULL)",
+            "(recipient_kind = 'applicant' AND user_id IS NULL AND "
+            "((application_id IS NOT NULL AND applicant_draft_id IS NULL) OR "
+            "(application_id IS NULL AND applicant_draft_id IS NOT NULL))) "
+            "OR (recipient_kind = 'committee' AND user_id IS NOT NULL "
+            "AND application_id IS NULL AND applicant_draft_id IS NULL)",
             name="ck_email_delivery_recipient",
         ),
     )
@@ -416,6 +462,9 @@ class EmailDelivery(TimestampMixin, Base):
     magic_link_token_id: Mapped[int | None] = mapped_column(
         ForeignKey("magic_link_tokens.id"), index=True
     )
+    applicant_draft_id: Mapped[int | None] = mapped_column(
+        ForeignKey("applicant_drafts.id"), index=True
+    )
     state: Mapped[EmailDeliveryState] = mapped_column(
         Enum(EmailDeliveryState, values_callable=enum_values), nullable=False, index=True
     )
@@ -427,6 +476,7 @@ class EmailDelivery(TimestampMixin, Base):
     application: Mapped[Application | None] = relationship()
     user: Mapped[User | None] = relationship()
     magic_link_token: Mapped[MagicLinkToken | None] = relationship()
+    applicant_draft: Mapped[ApplicantDraft | None] = relationship()
 
 
 class MemberEligibility(TimestampMixin, Base):

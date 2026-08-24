@@ -35,7 +35,8 @@ def serialize_user(user: User) -> CurrentUser:
 
 
 @router.get("/google/login")
-async def google_login(request: Request):
+async def google_login(request: Request, remember_device: bool = False):
+    request.session["remember_device"] = remember_device
     oauth = get_oauth()
     settings = get_settings()
     return await oauth.google.authorize_redirect(request, settings.google_redirect_uri)
@@ -45,6 +46,7 @@ async def google_login(request: Request):
 async def google_callback(request: Request, db: Session = Depends(get_db)):
     oauth = get_oauth()
     token = await oauth.google.authorize_access_token(request)
+    remember_device = request.session.pop("remember_device", False)
     request.session.clear()
     user_info = token.get("userinfo")
 
@@ -101,6 +103,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         issued_session.token,
         identity_kind=PasswordlessIdentityKind.COMMITTEE,
         settings=get_settings(),
+        persistent=remember_device,
     )
     return response
 

@@ -1,4 +1,4 @@
-import { Filter, LogOut, Settings } from "lucide-react";
+import { Filter, Settings } from "lucide-react";
 import {
   lazy,
   type ReactNode,
@@ -8,7 +8,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { HouseIcon } from "./HouseIcon";
+import { BrandLockup } from "./BrandLockup";
+import { HeaderAccount } from "./HeaderAccount";
 import * as api from "./api";
 import type { AuthRedirect } from "./authRedirect";
 import { readProblem } from "./format";
@@ -50,12 +51,17 @@ export function App(props: { authRedirect: AuthRedirect }) {
   const {
     user,
     emailSignInEnabled,
+    linkConflict,
+    linkedEmail,
     isAdmin,
     isLoadingUser,
     userLoadFailed,
     signInState,
     loadCurrentUser,
     requestMagicLink,
+    keepCurrentSession,
+    openLinkedSession,
+    emailNewLinkedSession,
     resetSignIn,
     logout,
   } = useSession(props.authRedirect);
@@ -381,23 +387,10 @@ export function App(props: { authRedirect: AuthRedirect }) {
   return (
     <main className="app-shell">
       <header className="topnav">
-        <div className="topnav-inner">
-          <div className="brand-lockup">
-            <span className="brand-mark" aria-hidden="true">
-              <HouseIcon size={30} />
-            </span>
-            <span className="brand-name">Penta Housing Co-Op</span>
-          </div>
+        <div className="topnav-inner penta-header-inner">
+          <BrandLockup />
           {user ? (
-            <div className="toolbar">
-              <div className="user-chip">
-                <span>{user.displayName}</span>
-                <strong>{user.role}</strong>
-              </div>
-              <button className="icon-button" aria-label="Log out" title="Log out" onClick={logout}>
-                <LogOut size={16} />
-              </button>
-            </div>
+            <HeaderAccount email={user.email} role={user.role} onSignOut={logout} />
           ) : null}
         </div>
       </header>
@@ -406,13 +399,18 @@ export function App(props: { authRedirect: AuthRedirect }) {
         <h1>Penta Application Screener</h1>
       </div>
 
-      {!user ? (
+      {!user || linkConflict ? (
         <CommitteeSignIn
           emailSignInEnabled={emailSignInEnabled}
           isLoadingUser={isLoadingUser}
           userLoadFailed={userLoadFailed}
           signInState={signInState}
+          linkConflict={linkConflict}
+          linkedEmail={linkedEmail}
           onRequestLink={requestMagicLink}
+          onKeepCurrent={keepCurrentSession}
+          onOpenLinked={openLinkedSession}
+          onEmailNew={emailNewLinkedSession}
           onReset={resetSignIn}
           onRetrySession={loadCurrentUser}
         />

@@ -7,6 +7,8 @@ uncached dimensions are sent, token splitting, the merge shape, and the
 whole-pool ceiling estimate.
 """
 
+from datetime import UTC, datetime
+
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -54,6 +56,7 @@ def add_eligible(db: Session, *, email: str, raw_hash: str) -> Application:
         raw_row={"Why a co-op": "We want community."},
         raw_row_hash=raw_hash,
         normalized={},
+        submitted_at=datetime.now(UTC),
     )
     db.add(app)
     db.commit()

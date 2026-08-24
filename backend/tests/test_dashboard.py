@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, select
@@ -15,6 +17,8 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.main import create_app
+
+SUBMITTED_AT = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 @pytest.mark.anyio
@@ -67,6 +71,7 @@ async def test_workflow_flags_track_progress() -> None:
         application = Application(
             primary_email="a@x.com", applicant_name="A", raw_row={}, raw_row_hash="h1",
             normalized={},
+            submitted_at=SUBMITTED_AT,
         )
         db.add(application)
         db.commit()
@@ -123,6 +128,7 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
         db.add(Application(
             primary_email="a@x.com", applicant_name="A", raw_row={}, raw_row_hash="h1",
             normalized={},
+            submitted_at=SUBMITTED_AT,
         ))
         db.commit()
 
@@ -141,6 +147,7 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
         db.add(Application(
             primary_email="b@x.com", applicant_name="B", raw_row={}, raw_row_hash="h2",
             normalized={},
+            submitted_at=SUBMITTED_AT,
         ))
         db.commit()
         workflow = (await client.get("/dashboard")).json()["workflow"]
@@ -187,10 +194,12 @@ def test_rank_fingerprint_can_reuse_an_already_loaded_pool() -> None:
         Application(
             primary_email="a@x.com", applicant_name="A", raw_row={},
             raw_row_hash="h1", normalized={},
+            submitted_at=SUBMITTED_AT,
         ),
         Application(
             primary_email="b@x.com", applicant_name="B", raw_row={},
             raw_row_hash="h2", normalized={},
+            submitted_at=SUBMITTED_AT,
         ),
     ])
     db.commit()
@@ -303,10 +312,12 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
     a = Application(
         primary_email="a@x.com", applicant_name="A", raw_row={"q": "1"}, raw_row_hash="ha",
         normalized={},
+        submitted_at=SUBMITTED_AT,
     )
     b = Application(
         primary_email="b@x.com", applicant_name="B", raw_row={"q": "2"}, raw_row_hash="hb",
         normalized={},
+        submitted_at=SUBMITTED_AT,
     )
     db.add_all([a, b])
     db.commit()
@@ -353,6 +364,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     a = Application(
         primary_email="a@x.com", applicant_name="A", raw_row={"q": "1"}, raw_row_hash="ha",
         normalized={},
+        submitted_at=SUBMITTED_AT,
     )
     db.add(a)
     db.commit()

@@ -6,6 +6,7 @@ from app.api.session_cookie import clear_session_cookie, session_token
 from app.db.models import Application, PasswordlessIdentityKind
 from app.db.session import get_db
 from app.services.applicant_auth import authenticate_applicant
+from app.services.passwordless_auth import recently_authenticated
 
 
 def optional_current_application(
@@ -29,4 +30,18 @@ def require_current_application(
 ) -> Application:
     if application is None:
         raise Problem("unauthorized", detail="Application access required.")
+    return application
+
+
+def require_recent_applicant(
+    request: Request,
+    application: Application = Depends(require_current_application),
+) -> Application:
+    """Require a sign-in within the sensitive-action window for an identity change."""
+    browser_session = getattr(request.state, "passwordless_session", None)
+    if browser_session is None or not recently_authenticated(browser_session):
+        raise Problem(
+            "recent_authentication_required",
+            detail="Sign in again before changing your email address.",
+        )
     return application

@@ -409,6 +409,11 @@ def _future_employment_start(
     reasons = []
     for field_key in ("applicant_employment_start", "co_applicant_employment_start"):
         start_date = application.get(field_key)
+        if isinstance(start_date, str):
+            try:
+                start_date = date.fromisoformat(start_date)
+            except ValueError:
+                start_date = None
         if isinstance(start_date, date) and start_date > rules.today:
             reasons.append(
                 FilterReason(

@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
@@ -82,6 +83,7 @@ def add_eligible(
         # route a specific verdict to this application regardless of the order
         # concurrent screening calls complete in.
         normalized={"applicant_name": name},
+        submitted_at=datetime.now(UTC),
     )
     db.add(app)
     db.commit()

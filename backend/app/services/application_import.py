@@ -76,9 +76,30 @@ ESSAY_FIELDS: list[tuple[str, str]] = [
     ),
 ]
 
+BUILT_IN_ESSAY_FIELDS: tuple[tuple[str, str], ...] = (
+    ("About the household", "household_introduction"),
+    ("Skills to contribute", "skills_to_contribute"),
+    ("Previous co-op experience", "previous_coop_experience"),
+    ("Why a co-op", "why_coop"),
+    ("Additional information", "additional_information"),
+)
+
 
 def extract_essays(row: dict[str, Any]) -> list[dict[str, str]]:
     """Pull the free-text essay answers out of a raw form row, in form order."""
+    built_in_essays = row.get("essays")
+    if isinstance(built_in_essays, dict):
+        essays = [
+            {
+                "label": label,
+                "question": label,
+                "answer": str(built_in_essays.get(key, "") or "").strip(),
+            }
+            for label, key in BUILT_IN_ESSAY_FIELDS
+        ]
+        if not essays[-1]["answer"]:
+            essays.pop()
+        return essays
     essays = []
     for label, column in ESSAY_FIELDS:
         answer = str(row.get(column, "") or "").strip()

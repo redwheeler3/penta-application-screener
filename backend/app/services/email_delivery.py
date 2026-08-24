@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.db.models import (
+    ApplicantDraft,
     EmailDelivery,
     EmailDeliveryState,
     MagicLinkToken,
@@ -22,6 +23,7 @@ def deliver_email(
     application_id: int | None = None,
     user_id: int | None = None,
     magic_link_token: MagicLinkToken | None = None,
+    applicant_draft: ApplicantDraft | None = None,
     now: datetime | None = None,
 ) -> bool:
     """Attempt one send and durably record its provider outcome."""
@@ -32,6 +34,7 @@ def deliver_email(
         application_id=application_id,
         user_id=user_id,
         magic_link_token_id=magic_link_token.id if magic_link_token is not None else None,
+        applicant_draft_id=applicant_draft.id if applicant_draft is not None else None,
         state=EmailDeliveryState.QUEUED,
         attempt_count=1,
         last_attempt_at=now,

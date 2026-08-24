@@ -49,6 +49,7 @@ from app.services.analysis import (
     stored_tiers,
 )
 from app.services.application_import import extract_essays
+from app.services.application_scope import committee_application, committee_applications
 from app.services.eligibility import (
     active_flags,
     machine_flags_by_app,
@@ -67,7 +68,7 @@ router = APIRouter(prefix="/applications", tags=["applications"])
 
 
 def _get_application_or_404(db: Session, application_id: int) -> Application:
-    application = db.get(Application, application_id)
+    application = committee_application(db, application_id)
     if application is None:
         raise Problem("not_found", detail="Application not found.")
     return application
@@ -81,7 +82,7 @@ def list_applications(
     """Every application, unpaginated. A co-op pool is a few hundred rows at most, so
     the client holds the whole list and owns filtering, sorting, facet counts, and the
     favourites view — no server-side paging to keep consistent."""
-    applications = db.scalars(select(Application).order_by(Application.id)).all()
+    applications = committee_applications(db)
     ids = [app.id for app in applications]
     flags = machine_flags_by_app(db, ids)
     facts = pet_facts_by_app(db, ids)

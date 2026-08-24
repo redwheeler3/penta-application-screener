@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/penta_screener.db"
     session_secret: str = "dev-only-change-me"
     frontend_url: str = "http://localhost:5173"
-    applicant_frontend_url: str = "http://localhost:5173"
+    applicant_frontend_url: str = "http://localhost:5173/?applicant"
     google_client_id: str = ""
     google_client_secret: str = ""
     google_oauth_client_secrets_file: str = ""
@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     socketlabs_server_id: str = ""
     socketlabs_injection_api_key: str = ""
     socketlabs_gateway: str = "https://inject-cx.socketlabs.com/api/v1/email"
-    magic_link_lifetime_minutes: int = 15
+    magic_link_lifetime_hours: int = 24
     magic_link_request_limit: int = 3
     magic_link_rate_window_minutes: int = 15
     magic_link_coalesce_seconds: int = 60

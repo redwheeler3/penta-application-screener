@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -120,6 +121,156 @@ async def test_committee_magic_link_creates_hashed_session_and_cannot_be_reused(
 
 
 @pytest.mark.anyio
+async def test_used_committee_link_recognizes_its_active_browser_session() -> None:
+    app, db = _app_and_db()
+    user = _committee_user(db)
+    issued = issue_magic_link(
+        db,
+        identity_kind=PasswordlessIdentityKind.COMMITTEE,
+        user_id=user.id,
+        email=user.email,
+        purpose=MagicLinkPurpose.COMMITTEE_ACCESS,
+    )
+    db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        assert (
+            await client.post("/auth/magic-link/consume", json={"token": issued.token})
+        ).status_code == 200
+        inspected = await client.post(
+            "/auth/magic-link/inspect", json={"token": issued.token}
+        )
+
+    assert inspected.status_code == 200
+    assert inspected.json() == {
+        "state": "used",
+        "currentUser": {
+            "id": user.id,
+            "email": user.email,
+            "displayName": user.display_name,
+            "avatarUrl": None,
+            "role": "member",
+        },
+        "linkEmail": user.email,
+        "switchRequired": False,
+    }
+
+
+@pytest.mark.anyio
+async def test_committee_link_requires_confirmation_before_switching_active_user() -> None:
+    app, db = _app_and_db()
+    current = _committee_user(db)
+    linked = User(
+        email="other-member@example.test",
+        display_name="Other Synthetic Member",
+        role=UserRole.MEMBER,
+    )
+    db.add_all([linked, AccessAllowlistEntry(email=linked.email, role=UserRole.MEMBER)])
+    db.commit()
+    current_link = issue_magic_link(
+        db,
+        identity_kind=PasswordlessIdentityKind.COMMITTEE,
+        user_id=current.id,
+        email=current.email,
+        purpose=MagicLinkPurpose.COMMITTEE_ACCESS,
+    )
+    linked_link = issue_magic_link(
+        db,
+        identity_kind=PasswordlessIdentityKind.COMMITTEE,
+        user_id=linked.id,
+        email=linked.email,
+        purpose=MagicLinkPurpose.COMMITTEE_ACCESS,
+    )
+    db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        assert (
+            await client.post("/auth/magic-link/consume", json={"token": current_link.token})
+        ).status_code == 200
+        current_session = db.scalar(
+            select(BrowserSession).where(BrowserSession.user_id == current.id)
+        )
+        inspected = await client.post(
+            "/auth/magic-link/inspect", json={"token": linked_link.token}
+        )
+        refused = await client.post(
+            "/auth/magic-link/consume", json={"token": linked_link.token}
+        )
+        switched = await client.post(
+            "/auth/magic-link/consume",
+            json={"token": linked_link.token, "switchCurrent": True},
+        )
+
+    assert current_session is not None
+    assert inspected.json()["currentUser"]["email"] == current.email
+    assert inspected.json()["linkEmail"] == linked.email
+    assert inspected.json()["switchRequired"] is True
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "session_switch_required"
+    assert switched.status_code == 200
+    assert switched.json()["user"]["email"] == linked.email
+    db.refresh(current_session)
+    assert current_session.revoked_at is not None
+
+
+@pytest.mark.anyio
+async def test_stale_committee_link_can_send_a_fresh_link_for_its_member() -> None:
+    app, db = _app_and_db()
+    user = _committee_user(db)
+    sender = CapturedEmailSender()
+    app.dependency_overrides[get_email_sender] = lambda: sender
+    issued = issue_magic_link(
+        db,
+        identity_kind=PasswordlessIdentityKind.COMMITTEE,
+        user_id=user.id,
+        email=user.email,
+        purpose=MagicLinkPurpose.COMMITTEE_ACCESS,
+        now=datetime.now(UTC) - timedelta(days=2),
+        lifetime=timedelta(hours=24),
+    )
+    db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        inspected = await client.post(
+            "/auth/magic-link/inspect", json={"token": issued.token}
+        )
+        regenerated = await client.post(
+            "/auth/magic-link/regenerate", json={"token": issued.token}
+        )
+
+    assert inspected.json()["state"] == "expired"
+    assert regenerated.status_code == 202
+    assert len(sender.messages) == 1
+    assert sender.messages[0].to == (user.email,)
+
+
+@pytest.mark.anyio
+async def test_committee_remembered_device_choice_controls_cookie_persistence() -> None:
+    app, db = _app_and_db()
+    user = _committee_user(db)
+    sender = CapturedEmailSender()
+    app.dependency_overrides[get_email_sender] = lambda: sender
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        requested = await client.post(
+            "/auth/magic-link",
+            json={"email": user.email, "rememberDevice": True},
+        )
+        token = re.search(r"#magic-link=([^\s]+)", sender.messages[-1].text_body)
+        assert token is not None
+        consumed = await client.post(
+            "/auth/magic-link/consume",
+            json={"token": token.group(1)},
+        )
+
+    assert requested.status_code == 202
+    assert "Max-Age=" in consumed.headers["set-cookie"]
+
+
+@pytest.mark.anyio
 async def test_wrong_host_exchange_does_not_consume_an_applicant_link() -> None:
     app, db = _app_and_db()
     application = _application(db)
@@ -139,13 +290,13 @@ async def test_wrong_host_exchange_does_not_consume_an_applicant_link() -> None:
             json={"token": issued.token},
         )
         correct_host = await client.post(
-            "/applicant/auth/magic-link/consume",
-            json={"token": issued.token},
+            "/applicant/access-links/open",
+            json={"token": issued.token, "switchCurrent": False},
         )
 
     assert wrong_host.status_code == 401
     assert correct_host.status_code == 200
-    assert correct_host.json() == {"applicationId": application.id}
+    assert correct_host.json()["applicationId"] == application.id
 
 
 @pytest.mark.anyio
@@ -184,8 +335,8 @@ async def test_applicant_and_committee_sessions_coexist_on_localhost() -> None:
     async with AsyncClient(transport=transport, base_url="http://localhost") as client:
         assert (
             await client.post(
-                "/applicant/auth/magic-link/consume",
-                json={"token": applicant_link.token},
+                "/applicant/access-links/open",
+                json={"token": applicant_link.token, "switchCurrent": False},
             )
         ).status_code == 200
         assert (
@@ -223,11 +374,12 @@ async def test_deleted_application_cannot_establish_a_session() -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.post(
-            "/applicant/auth/magic-link/consume",
-            json={"token": issued.token},
+            "/applicant/access-links/open",
+            json={"token": issued.token, "switchCurrent": False},
         )
 
-    assert response.status_code == 401
+    assert response.status_code == 200
+    assert response.json()["state"] == "abandoned"
     assert db.scalar(select(func.count()).select_from(BrowserSession)) == 0
 
 
@@ -343,6 +495,7 @@ def test_passwordless_cookie_is_host_only_secure_and_bounded() -> None:
         "raw-session-token",
         identity_kind=PasswordlessIdentityKind.APPLICANT,
         settings=settings,
+        persistent=True,
     )
 
     cookie = response.headers["set-cookie"]
@@ -353,16 +506,17 @@ def test_passwordless_cookie_is_host_only_secure_and_bounded() -> None:
     assert "Domain=" not in cookie
 
 
-def test_magic_link_email_uses_fragment_and_correct_transactional_footer() -> None:
+def test_magic_link_email_uses_fragment_and_common_unsubscribe_footer() -> None:
     settings = Settings(
         applicant_frontend_url="https://applications.pentacoop.com/",
         frontend_url="https://screener.pentacoop.com/",
-        magic_link_lifetime_minutes=15,
+        magic_link_lifetime_hours=24,
         _env_file=None,
     )
 
     applicant = magic_link_email(
         identity_kind=PasswordlessIdentityKind.APPLICANT,
+        purpose=MagicLinkPurpose.APPLICANT_ACCESS,
         recipient_id=42,
         email="applicant@example.test",
         token="secret-token",
@@ -370,24 +524,34 @@ def test_magic_link_email_uses_fragment_and_correct_transactional_footer() -> No
     )
     committee = magic_link_email(
         identity_kind=PasswordlessIdentityKind.COMMITTEE,
+        purpose=MagicLinkPurpose.COMMITTEE_ACCESS,
         recipient_id=7,
         email="member@example.test",
         token="committee-token",
         settings=settings,
     )
 
-    assert "#magic-link=secret-token" in applicant.text_body
-    assert 'HsTracking="false"' in applicant.html_body
+    assert "#applicant-link=secret-token" in applicant.text_body
+    assert "HsTracking" not in applicant.html_body
     assert "PENTA HOUSING CO-OP" in applicant.html_body
-    assert 'src="https://www.pentacoop.com/house-favicon.png"' in applicant.html_body
+    assert 'src="https://www.pentacoop.com/email-house.png"' in applicant.html_body
     assert 'width="36" height="36" alt=""' in applicant.html_body
     assert "background-color:#16a34a" in applicant.html_body
-    assert "Delete application" in applicant.text_body
+    assert "expires in" not in applicant.text_body
+    assert "expires in" not in applicant.html_body
     assert "application:42" == applicant.recipient_id
     assert "#magic-link=committee-token" in committee.text_body
-    assert 'HsTracking="false"' in committee.html_body
-    assert "active Penta committee access" in committee.text_body
-    assert "Penta Tech Support at techsupport@pentacoop.com" in committee.text_body
-    assert 'href="mailto:techsupport@pentacoop.com"' in committee.html_body
+    assert "HsTracking" not in committee.html_body
     assert "PENTA HOUSING CO-OP" in committee.html_body
-    assert "Delete application" not in committee.text_body
+    assert "expires in" not in committee.text_body
+    assert "expires in" not in committee.html_body
+    for message in (applicant, committee):
+        assert "{{HsUnsubscribe}}" in message.text_body
+        assert (
+            "<HsUnsubscribe>Click here to permanently unsubscribe this email "
+            "address.</HsUnsubscribe>"
+            in message.html_body
+        )
+        assert "Penta will no longer be able to email you" in message.text_body
+        assert "Penta Tech Support" not in message.text_body
+        assert "techsupport@pentacoop.com" not in message.html_body
