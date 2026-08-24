@@ -375,8 +375,17 @@ def test_magic_link_email_uses_fragment_and_correct_transactional_footer() -> No
     )
 
     assert "#magic-link=secret-token" in applicant.text_body
+    assert 'HsTracking="false"' in applicant.html_body
+    assert "PENTA HOUSING CO-OP" in applicant.html_body
+    assert 'src="https://www.pentacoop.com/house-favicon.png"' in applicant.html_body
+    assert 'width="36" height="36" alt=""' in applicant.html_body
+    assert "background-color:#16a34a" in applicant.html_body
     assert "Delete application" in applicant.text_body
     assert "application:42" == applicant.recipient_id
     assert "#magic-link=committee-token" in committee.text_body
+    assert 'HsTracking="false"' in committee.html_body
     assert "active Penta committee access" in committee.text_body
+    assert "Penta Tech Support at techsupport@pentacoop.com" in committee.text_body
+    assert 'href="mailto:techsupport@pentacoop.com"' in committee.html_body
+    assert "PENTA HOUSING CO-OP" in committee.html_body
     assert "Delete application" not in committee.text_body

@@ -248,7 +248,8 @@ change is an explicit operational action, never an automatic retry after an ambi
 SocketLabs uses a dedicated Server ID and Injection API key stored as Fly secrets. The sending
 domain is authenticated with DKIM, SPF, and DMARC. Messages use `Penta Co-operative Housing` as
 the display name and `applications@pentacoop.com` as both the sender and monitored Reply-To address.
-The privacy-policy contact is `privacy@pentacoop.com`; the application does not receive email.
+The privacy-policy contact is `privacy@pentacoop.com`, and committee access-removal requests go to
+Penta Tech Support at `techsupport@pentacoop.com`; the application does not receive email.
 
 Email is a load-bearing part of applicant access. A failed verification or save-and-return send
 leaves the browser draft intact and offers retry or email correction. Confirmation failures are
@@ -257,6 +258,10 @@ coalesced, and bounce/complaint state is monitored. Operational records contain 
 message ID, message kind, recipient identifier, and delivery state, but never a raw access token,
 email body, or applicant answers. Automated tests and normal local development use a captured fake
 sender and never deliver real email.
+
+Authentication links opt out of provider click tracking so the credential-bearing destination is
+never rewritten through an engagement-tracking redirect. Vacancy-list links may use engagement
+tracking where it supports the notification and unsubscribe workflow.
 
 Developers may explicitly enable live SocketLabs delivery for end-to-end email testing. Every
 development subject is prefixed with `[Penta development]`. The central email-sender boundary
