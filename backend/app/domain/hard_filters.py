@@ -16,6 +16,12 @@ DEFAULT_MAX_DOGS = 1
 DEFAULT_MAX_CATS = 1
 DEFAULT_ALLOW_OTHER_PETS = False
 
+
+class EmploymentRequirement(StrEnum):
+    NONE = "none"
+    AT_LEAST_ONE = "at_least_one"
+    ALL = "all"
+
 # The reason code for a pet-limit violation. Named because it is load-bearing beyond this
 # module: status resolution treats it specially (M15 1g) — a pet verdict needs the AI to
 # extract pet counts from free text first, so it can only land at Screen, and it attributes
@@ -39,6 +45,7 @@ class RulesConfig:
     max_dogs: int = DEFAULT_MAX_DOGS
     max_cats: int = DEFAULT_MAX_CATS
     allow_other_pets: bool = DEFAULT_ALLOW_OTHER_PETS
+    employment_requirement: EmploymentRequirement = EmploymentRequirement.NONE
     # Checks the member has switched off (M15 1g Move 3, renamed from disabled_rules). ONE
     # flat set spanning both kinds of eligibility check: deterministic hard-filter reason
     # codes (income_below_range, …) AND AI screening flag categories (fake_contact, …). The
@@ -104,6 +111,7 @@ def evaluate_hard_filters(
     reasons.extend(_income_arithmetic_mismatch(application))
     reasons.extend(_owns_real_estate(application))
     reasons.extend(_negative_number(application))
+    reasons.extend(_employment_requirement(application, rules))
     reasons.extend(_future_employment_start(application, rules))
     reasons.extend(_co_applicant_incomplete(application))
     if pet_facts is not None:
@@ -410,6 +418,40 @@ def _future_employment_start(
                 )
             )
     return reasons
+
+
+def _employment_requirement(
+    application: dict[str, Any], rules: RulesConfig
+) -> list[FilterReason]:
+    if rules.employment_requirement == EmploymentRequirement.NONE:
+        return []
+
+    applicant_status = application.get("applicant_employment_status")
+    co_applicant_status = application.get("co_applicant_employment_status")
+    valid_statuses = {"employed", "self_employed", "unemployed"}
+    if applicant_status not in valid_statuses:
+        return []
+    if co_applicant_status is not None and co_applicant_status not in valid_statuses:
+        return []
+    explicit_statuses = [applicant_status]
+    if co_applicant_status is not None:
+        explicit_statuses.append(co_applicant_status)
+
+    working_statuses = {"employed", "self_employed"}
+    requirement_met = (
+        any(status in working_statuses for status in explicit_statuses)
+        if rules.employment_requirement == EmploymentRequirement.AT_LEAST_ONE
+        else all(status in working_statuses for status in explicit_statuses)
+    )
+    if requirement_met:
+        return []
+    return [
+        FilterReason(
+            code="employment_requirement_not_met",
+            message="The household does not meet the employment requirement.",
+            details={"requirement": rules.employment_requirement.value},
+        )
+    ]
 
 
 def _co_applicant_incomplete(application: dict[str, Any]) -> list[FilterReason]:

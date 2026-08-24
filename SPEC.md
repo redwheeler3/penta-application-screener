@@ -316,6 +316,14 @@ removed. They do not show an applicant-removal link.
 - Applicant and co-applicant gross yearly income are entered separately. Household income is a
   read-only calculated value; the form adds the two inputs rather than asking the applicant to
   repeat the total.
+- Each adult selects `Employed`, `Self-employed`, or `Not currently employed`. Employed adults
+  provide employer and manager details; self-employed adults provide business details without an
+  artificial manager reference; unemployed adults are not asked for inapplicable employer fields.
+- Housing ownership uses two plain questions: whether the applicant owns the home where they
+  currently live, and whether they own any other real estate. Either answer supplies the broader
+  real-estate ownership fact used by screening. Current-landlord fields are shown only to renters;
+  previous-landlord fields are shown only to renters who have lived at their current address for
+  less than two years.
 - The form supports a private household-photo upload rather than only a link. The binary is kept
   outside SQLite in private object storage; the database stores ownership and file metadata.
   Uploads are never public, are served only through authorized application/committee access,
@@ -556,6 +564,12 @@ Rules run in a defined order. An application that fails any enabled rule is `fil
 | `income_below_range` | Household gross income is below the configured minimum. Parameter: min_income (default $70,000). |
 | `income_above_range` | Household gross income is above the configured maximum. Parameter: max_income (default $150,000). |
 | `income_arithmetic_mismatch` | Applicant income + co-applicant income does not exactly equal the stated household total. No tolerance. |
+
+**Employment rules:**
+
+| Rule ID | Description |
+|---------|-------------|
+| `employment_requirement_not_met` | The household does not meet the member's configured employment requirement: none, at least one adult working, or every adult working. Employed and self-employed adults count as working; a missing co-applicant is not counted. Legacy applications without explicit employment status are not inferred or flagged. |
 
 **Property rules:**
 

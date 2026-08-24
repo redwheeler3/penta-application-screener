@@ -126,6 +126,7 @@ export type EligibilityRules = {
   maxDogs: number;
   maxCats: number;
   allowOtherPets: boolean;
+  employmentRequirement: "none" | "at_least_one" | "all";
   disabledChecks: string[];
 };
 

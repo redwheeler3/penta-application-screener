@@ -63,9 +63,15 @@ cd frontend
 npm run dev
 ```
 
-Then open `http://localhost:5173`.
+Then open `http://localhost:5173` for the committee application or
+`http://localhost:5173/?applicant` for the in-progress applicant surface.
 
-The frontend is a single React screen (`App.tsx`) that has grown to cover the full review workflow. Its main responsibilities:
+`main.tsx` selects the applicant surface on `applications.pentacoop.com` (or the local applicant
+preview) and the committee surface everywhere else. `App.tsx` owns the committee review workflow;
+`applicant/ApplicantApp.tsx` owns the public application flow so applicant state and committee
+state do not become one conditional-heavy component.
+
+The committee surface's main responsibilities are:
 
 1. On load, call the backend's `/auth/me` endpoint.
 2. If no user is logged in, show a Google sign-in panel.
@@ -553,6 +559,7 @@ Settings are stored in the `admin_settings` table as one JSON value under the ke
 - Income minimum and maximum
 - Income mismatch tolerance
 - Household limits: max adults, minimum adult age
+- Employment requirement: none, at least one adult working, or every adult working
 - Pet limits: max dogs, max cats, whether other/exotic pets are allowed
 - `disabled_rules`: which deterministic hard-filter rules are turned off
 - A nested `ai` block (`AISettings`): region, one model and reasoning effort per AI pass (`screening`, `dimension_scoring`, `discovery`, `decompose`, `match`, `consolidate`), the consolidation correlation threshold, spending cap (default `$2.00`), and screening concurrency (`max_workers`) — see [ai-screening.md](ai-screening.md). Models remain config-only; reasoning is editable beside each displayed model and is ignored when that model does not support it.
@@ -584,7 +591,7 @@ class AppSettings(BaseModel):
     max_child_age: int = Field(default=17, ge=0, le=100)
     min_children: int = Field(default=1, ge=0, le=20)
     max_children: int = Field(default=4, ge=0, le=20)
-    # ...plus pet limits, disabled_rules, and a nested ai: AISettings
+    # ...plus employment and pet rules, disabled_rules, and a nested ai: AISettings
 ```
 
 The full model (see `app/schemas/settings.py`) includes the nested `AISettings` sub-model and normalizes a pasted Google Sheets URL into a sheet ID before saving, so the frontend can show a friendly URL while the backend stores a stable ID. Note there is no `unit_size` or `move_in_date` (those were display-only and removed), and no income-mismatch tolerance — the arithmetic check requires exact equality. Settings are stored as one JSON blob in `admin_settings`, which is simple for MVP because there is only one settings object.

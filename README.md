@@ -119,6 +119,8 @@ Start both servers:
 ```
 
 The backend runs at `http://localhost:8000`. The frontend runs at `http://localhost:5173`.
+During M21 development, preview the browser-local applicant form at
+`http://localhost:5173/?applicant`. It uses synthetic data only and does not submit answers yet.
 On Windows, `dev.ps1` writes per-service output and errors to `.dev-logs/`. If either
 service exits, it prints the last log lines; it also retries the frontend twice before
 leaving the backend running for diagnosis.

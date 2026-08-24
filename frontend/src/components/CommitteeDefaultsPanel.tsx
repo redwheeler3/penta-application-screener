@@ -6,6 +6,7 @@ import { readProblem } from "../format";
 import { useFetchResource } from "../hooks/useFetchResource";
 import type { EligibilityRules } from "../types";
 import { CheckGroup } from "./CheckToggles";
+import { EmploymentRequirementField } from "./EmploymentRequirementField";
 import { NumberInput } from "./NumberInput";
 import { RetryLoadError } from "./RetryLoadError";
 
@@ -97,6 +98,10 @@ export function CommitteeDefaultsPanel(props: {
               />
             </label>
           ))}
+          <EmploymentRequirementField
+            value={draft.employmentRequirement}
+            onChange={(employmentRequirement) => set({ employmentRequirement })}
+          />
           <label className="checkbox-label">
             <input
               type="checkbox"

@@ -1,6 +1,11 @@
 from datetime import date
 
-from app.domain.hard_filters import FilterStatus, RulesConfig, evaluate_hard_filters
+from app.domain.hard_filters import (
+    EmploymentRequirement,
+    FilterStatus,
+    RulesConfig,
+    evaluate_hard_filters,
+)
 
 
 def eligible_application(**overrides):
@@ -259,6 +264,66 @@ def test_future_employment_start_is_filtered_out() -> None:
 
     assert result.status == FilterStatus.FILTERED_OUT
     assert "future_employment_start" in reason_codes(result)
+
+
+def test_at_least_one_employed_adult_accepts_either_applicant() -> None:
+    rules = RulesConfig(employment_requirement=EmploymentRequirement.AT_LEAST_ONE)
+    result = evaluate_hard_filters(
+        eligible_application(
+            applicant_employment_status="unemployed",
+            co_applicant_employment_status="self_employed",
+        ),
+        rules,
+    )
+
+    assert "employment_requirement_not_met" not in reason_codes(result)
+
+
+def test_at_least_one_employed_adult_rejects_no_working_adult() -> None:
+    rules = RulesConfig(employment_requirement=EmploymentRequirement.AT_LEAST_ONE)
+    result = evaluate_hard_filters(
+        eligible_application(
+            applicant_employment_status="unemployed",
+            co_applicant_employment_status="unemployed",
+        ),
+        rules,
+    )
+
+    assert "employment_requirement_not_met" in reason_codes(result)
+
+
+def test_all_employed_adults_requires_a_working_co_applicant_only_when_present() -> None:
+    rules = RulesConfig(employment_requirement=EmploymentRequirement.ALL)
+    with_unemployed_co_applicant = evaluate_hard_filters(
+        eligible_application(
+            applicant_employment_status="employed",
+            co_applicant_employment_status="unemployed",
+        ),
+        rules,
+    )
+    without_co_applicant = evaluate_hard_filters(
+        eligible_application(
+            adult_count=1,
+            co_applicant_name=None,
+            co_applicant_phone=None,
+            co_applicant_email=None,
+            co_applicant_age=None,
+            applicant_employment_status="employed",
+            co_applicant_employment_status=None,
+        ),
+        rules,
+    )
+
+    assert "employment_requirement_not_met" in reason_codes(with_unemployed_co_applicant)
+    assert "employment_requirement_not_met" not in reason_codes(without_co_applicant)
+
+
+def test_employment_requirement_skips_legacy_records_without_explicit_status() -> None:
+    rules = RulesConfig(employment_requirement=EmploymentRequirement.ALL)
+
+    result = evaluate_hard_filters(eligible_application(), rules)
+
+    assert "employment_requirement_not_met" not in reason_codes(result)
 
 
 def test_co_applicant_incomplete_is_filtered_out() -> None:

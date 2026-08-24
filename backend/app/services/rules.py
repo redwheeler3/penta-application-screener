@@ -91,6 +91,7 @@ def rules_config_from(rules: EligibilityRules) -> RulesConfig:
         max_dogs=rules.max_dogs,
         max_cats=rules.max_cats,
         allow_other_pets=rules.allow_other_pets,
+        employment_requirement=rules.employment_requirement,
         disabled_checks=tuple(rules.disabled_checks),
     )
 

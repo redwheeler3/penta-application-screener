@@ -555,6 +555,12 @@ h1 {
   font-weight: 700;
 }
 
+.settings-form label > small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 .settings-form label .sheet-reference {
   color: var(--penta-green-dark);
   font-size: 0.84rem;

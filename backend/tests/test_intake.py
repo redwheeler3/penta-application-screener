@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,7 @@ from app.schemas.intake import (
     AddressAnswers,
     CanonicalApplicationAnswers,
     ChildAnswers,
+    CoApplicantAnswers,
     EmploymentAnswers,
     EssayAnswers,
     PersonAnswers,
@@ -33,6 +35,14 @@ def _answers() -> CanonicalApplicationAnswers:
             phone="604-555-0100",
             email="avery@example.test",
         ),
+        co_applicant=CoApplicantAnswers(
+            first_name="Morgan",
+            last_name="Example",
+            birth_date=date(1989, 5, 13),
+            phone="(604) 555-0102",
+            email="morgan@example.test",
+            relationship="Partner",
+        ),
         children=[ChildAnswers(first_name="Casey", last_name="Example", birth_date=date(2015, 6, 1))],
         current_address=AddressAnswers(
             street="1 Example Street",
@@ -42,7 +52,8 @@ def _answers() -> CanonicalApplicationAnswers:
             country="Canada",
         ),
         lived_at_current_address_two_years=True,
-        owns_real_estate=False,
+        owns_current_home=False,
+        owns_other_real_estate=False,
         current_landlord=reference,
         essays=EssayAnswers(
             household_introduction="Synthetic household introduction.",
@@ -51,6 +62,7 @@ def _answers() -> CanonicalApplicationAnswers:
             why_coop="Synthetic interest in shared community work.",
         ),
         applicant_employment=EmploymentAnswers(
+            status="employed",
             job_title="Tester",
             company_name="Example Company",
             start_date=date(2020, 1, 1),
@@ -76,6 +88,44 @@ def test_canonical_answers_have_stable_content_hash_and_calculated_income() -> N
     assert content_hash(stored) == content_hash({**stored})
 
 
+def test_household_income_ignores_hidden_co_applicant_income() -> None:
+    answers = _answers().model_copy(update={"co_applicant": None})
+
+    assert answers.household_income == 70_000
+
+
+def test_real_estate_fact_combines_current_home_and_other_property() -> None:
+    answers = _answers()
+
+    assert answers.owns_real_estate is False
+    assert answers.model_copy(update={"owns_current_home": True}).owns_real_estate is True
+    assert answers.model_copy(update={"owns_other_real_estate": True}).owns_real_estate is True
+
+
+def test_housing_references_follow_current_home_and_residency_answers() -> None:
+    homeowner = _answers().model_dump()
+    homeowner.update(
+        owns_current_home=True,
+        lived_at_current_address_two_years=False,
+        current_landlord=None,
+        previous_landlord=None,
+    )
+
+    homeowner_answers = CanonicalApplicationAnswers.model_validate(homeowner)
+    assert homeowner_answers.current_landlord is None
+    assert homeowner_answers.previous_landlord is None
+
+    renter_without_landlord = _answers().model_dump()
+    renter_without_landlord["current_landlord"] = None
+    with pytest.raises(ValueError, match="current landlord"):
+        CanonicalApplicationAnswers.model_validate(renter_without_landlord)
+
+    recent_mover = _answers().model_dump()
+    recent_mover["lived_at_current_address_two_years"] = False
+    with pytest.raises(ValueError, match="previous housing reference"):
+        CanonicalApplicationAnswers.model_validate(recent_mover)
+
+
 def test_canonical_answers_allow_every_child_without_intake_eligibility_block() -> None:
     data = _answers().model_dump()
     data["children"] = data["children"] * 5
@@ -83,6 +133,42 @@ def test_canonical_answers_allow_every_child_without_intake_eligibility_block() 
     answers = CanonicalApplicationAnswers.model_validate(data)
 
     assert len(answers.children) == 5
+
+
+def test_employment_status_controls_applicable_details() -> None:
+    reference = ReferenceAnswers(
+        name="Synthetic Reference",
+        email="ref@example.test",
+        phone="(604) 555-0101",
+    )
+    unemployed = EmploymentAnswers(
+        status="unemployed",
+        job_title="Stale hidden value",
+        company_name="Stale hidden value",
+        start_date=date(2020, 1, 1),
+        manager=reference,
+    )
+    self_employed = EmploymentAnswers(
+        status="self_employed",
+        job_title="Consultant",
+        company_name="Example Consulting",
+        start_date=date(2022, 2, 1),
+        manager=reference,
+    )
+
+    assert unemployed.job_title is None
+    assert unemployed.manager is None
+    assert self_employed.manager is None
+
+
+def test_employed_applicant_requires_manager() -> None:
+    with pytest.raises(ValueError, match="manager details"):
+        EmploymentAnswers(
+            status="employed",
+            job_title="Tester",
+            company_name="Example Company",
+            start_date=date(2020, 1, 1),
+        )
 
 
 def test_working_copy_does_not_replace_submitted_projection() -> None:

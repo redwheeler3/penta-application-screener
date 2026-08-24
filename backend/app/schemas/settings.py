@@ -21,6 +21,7 @@ from app.domain.hard_filters import (
     DEFAULT_MIN_ADULT_AGE,
     DEFAULT_MIN_CHILDREN,
     DEFAULT_MIN_INCOME,
+    EmploymentRequirement,
 )
 from app.schemas.base import BridgeModel, ResponseModel
 
@@ -150,6 +151,7 @@ class EligibilityRules(BridgeModel):
     max_dogs: int = Field(default=DEFAULT_MAX_DOGS, ge=0, le=10)
     max_cats: int = Field(default=DEFAULT_MAX_CATS, ge=0, le=10)
     allow_other_pets: bool = Field(default=DEFAULT_ALLOW_OTHER_PETS)
+    employment_requirement: EmploymentRequirement = EmploymentRequirement.NONE
     # One flat list spans both kinds of eligibility check: deterministic hard-filter reason
     # codes (income_below_range, pets_over_limit, …) AND AI screening flag categories
     # (fake_contact, internal_inconsistency, …). The two namespaces are disjoint; the hard

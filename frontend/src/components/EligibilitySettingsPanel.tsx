@@ -3,6 +3,7 @@ import { ELIGIBILITY_NUMERIC_FIELDS } from "../constants";
 import * as api from "../api";
 import { readProblem } from "../format";
 import { CheckGroup } from "./CheckToggles";
+import { EmploymentRequirementField } from "./EmploymentRequirementField";
 import { NumberInput } from "./NumberInput";
 import type { EligibilityRules } from "../types";
 import { RetryLoadError } from "./RetryLoadError";
@@ -136,6 +137,12 @@ export function EligibilitySettingsPanel(props: {
                 />
               </label>
             ))}
+            <EmploymentRequirementField
+              value={draft.employmentRequirement}
+              onChange={(employmentRequirement) =>
+                setDraft({ ...draft, employmentRequirement })
+              }
+            />
             <label className="checkbox-label">
               <input
                 type="checkbox"
@@ -190,10 +197,11 @@ export function EligibilitySettingsPanel(props: {
 // renders as a checkbox but the diff still compares.
 const RULE_FIELDS: { key: keyof EligibilityRules; label: string }[] = [
   ...ELIGIBILITY_NUMERIC_FIELDS.map(({ key, label }) => ({ key, label })),
+  { key: "employmentRequirement", label: "Employment requirement" },
   { key: "allowOtherPets", label: "Allow other pets" },
 ];
 
-function fmt(v: number | boolean | string[]): string {
+function fmt(v: number | boolean | string | string[]): string {
   if (typeof v === "boolean") return v ? "yes" : "no";
   if (Array.isArray(v)) return v.length ? v.join(", ") : "none";
   return String(v);
@@ -214,8 +222,8 @@ function DivergencePanel(props: {
     ? [
         ...RULE_FIELDS.filter((f) => mine[f.key] !== committeeDefault[f.key]).map((f) => ({
           label: f.label,
-          mine: fmt(mine[f.key] as number | boolean),
-          def: fmt(committeeDefault[f.key] as number | boolean),
+          mine: fmt(mine[f.key] as number | boolean | string),
+          def: fmt(committeeDefault[f.key] as number | boolean | string),
         })),
         // disabledChecks is a list — compare as sets, show if they differ.
         ...(sameChecks(mine.disabledChecks, committeeDefault.disabledChecks)

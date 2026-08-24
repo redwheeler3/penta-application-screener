@@ -10,6 +10,7 @@ ELIGIBILITY_CHECK_CATALOG = EligibilityCheckCatalog(
         EligibilityCheck(id="child_count_mismatch", label="Child count mismatch", description="The stated number of children doesn't match the child details provided."),
         EligibilityCheck(id="co_applicant_incomplete", label="Co-applicant incomplete", description="Co-applicant details are only partially filled in."),
         EligibilityCheck(id="co_applicant_under_min_age", label="Co-applicant under minimum age", description="The co-applicant is younger than the minimum adult age."),
+        EligibilityCheck(id="employment_requirement_not_met", label="Employment requirement not met", description="The household does not meet the configured employment requirement."),
         EligibilityCheck(id="future_employment_start", label="Future employment start", description="An employment start date is in the future."),
         EligibilityCheck(id="income_above_range", label="Income above range", description="Household gross income is above the allowed maximum."),
         EligibilityCheck(id="income_arithmetic_mismatch", label="Income arithmetic mismatch", description="The stated household income doesn't match the sum of the individual incomes."),
