@@ -24,7 +24,7 @@ A few decisions I'm particularly happy with — the ideas that make this more th
 
 The workflow is three single-verb steps — **Import → Screen → Rank** — each gated behind a confirmation card with an up-front cost estimate, plus a "View ranking" action.
 
-- Google OAuth login with signed server-side sessions, **least-privilege by design**: members sign in with identity only (no Drive/Sheets scope). An admin links the one response sheet via the Google Picker, granting `drive.file` access to that single file — so the app never asks a member for broad Drive access.
+- Committee sign-in by Google or emailed magic link, both issuing the same revocable server-side session. Google login is identity-only; an admin separately links the response sheet through the Picker with `drive.file` access to that file.
 - Google Sheets sync into a SQLite database, read with the linking admin's designated token.
 - Configurable application settings for unit size, move-in date, income range, household rules, pets, and disabled deterministic rules.
 - Deterministic hard filters for clear eligibility issues, applied at import.
@@ -68,7 +68,7 @@ The sample CSV in [test-data](test-data) is synthetic and intentionally realisti
 - Backend: Python, FastAPI, SQLAlchemy, Alembic, SQLite
 - Python tooling: `uv`, project-local virtual environment, `pytest`
 - Frontend: Vite, React, TypeScript, npm
-- Authentication: Google OAuth with signed server-side session cookies
+- Authentication: identity-only Google OIDC or email magic links with revocable server-side sessions
 - Google integration: Google Sheets import/sync via the Picker (`drive.file`, least-privilege)
 - AI integration: provider-agnostic interface; Strands routes through Bedrock or direct OpenAI/Anthropic APIs; mock provider for tests
 - Hosting: Fly.io (single instance, auto-suspend, persistent-volume SQLite); single-origin — FastAPI serves the built SPA; deployed manually with `fly deploy --remote-only`

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { HouseIcon } from "./HouseIcon";
 import * as api from "./api";
+import type { AuthRedirect } from "./authRedirect";
 import { readProblem } from "./format";
 import type {
   ApplicationDetail,
@@ -45,9 +46,10 @@ const aiQualityLoading = (
   </div>
 );
 
-export function App(props: { initialMagicLinkToken: string | null }) {
+export function App(props: { authRedirect: AuthRedirect }) {
   const {
     user,
+    emailSignInEnabled,
     isAdmin,
     isLoadingUser,
     userLoadFailed,
@@ -56,7 +58,7 @@ export function App(props: { initialMagicLinkToken: string | null }) {
     requestMagicLink,
     resetSignIn,
     logout,
-  } = useSession(props.initialMagicLinkToken);
+  } = useSession(props.authRedirect);
 
   const {
     counts: dashboardCounts,
@@ -406,6 +408,7 @@ export function App(props: { initialMagicLinkToken: string | null }) {
 
       {!user ? (
         <CommitteeSignIn
+          emailSignInEnabled={emailSignInEnabled}
           isLoadingUser={isLoadingUser}
           userLoadFailed={userLoadFailed}
           signInState={signInState}

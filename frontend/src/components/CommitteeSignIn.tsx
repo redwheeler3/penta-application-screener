@@ -1,9 +1,11 @@
 import { LogIn } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 
+import * as api from "../api";
 import type { SignInState } from "../hooks/useSession";
 
 type CommitteeSignInProps = {
+  emailSignInEnabled: boolean;
   isLoadingUser: boolean;
   userLoadFailed: boolean;
   signInState: SignInState;
@@ -49,39 +51,70 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
     <SignInPanel title={props.isLoadingUser ? "Checking session" : "Sign in to continue"}>
       {props.signInState === "invalidLink" ? (
         <p className="login-message login-message-error" role="alert">
-          This sign-in link is invalid or has expired. Request a new one.
+          This sign-in link is invalid or has expired.
+          {props.emailSignInEnabled
+            ? " Request a new one or continue with Google."
+            : " Continue with Google."}
         </p>
       ) : props.signInState === "requestFailed" ? (
         <p className="login-message login-message-error" role="alert">
           We couldn't send a sign-in link. Please try again.
+        </p>
+      ) : props.signInState === "googleDenied" ? (
+        <p className="login-message login-message-error" role="alert">
+          We couldn't sign in with that Google account. Try another account or ask an
+          administrator to check its committee access.
         </p>
       ) : props.userLoadFailed ? (
         <p className="login-message login-message-error" role="alert">
           The server may have been starting up. Try checking your session again.
         </p>
       ) : (
-        <p>We'll email you a secure sign-in link. No password needed.</p>
+        <p>
+          {props.emailSignInEnabled
+            ? "Choose Google or receive a secure sign-in link by email."
+            : "Continue with your allowlisted Google account."}
+        </p>
       )}
 
       {!props.isLoadingUser ? (
-        <form className="login-form" onSubmit={submit}>
-          <label>
-            <span>Email address</span>
-            <input
-              type="email"
-              required
-              autoComplete="email"
-              autoFocus
-              placeholder="name@example.com"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
-          </label>
-          <button className={`primary-button${busy ? " is-busy" : ""}`} type="submit" disabled={busy}>
-            <LogIn size={16} />
-            <span>Send sign-in link</span>
-          </button>
-        </form>
+        <>
+          <a
+            className={`${props.emailSignInEnabled ? "secondary" : "primary"}-button login-google-button`}
+            href={api.googleSignInUrl()}
+          >
+            Continue with Google
+          </a>
+          {props.emailSignInEnabled ? (
+            <>
+              <div className="login-divider" aria-hidden="true">
+                <span>or use email</span>
+              </div>
+              <form className="login-form" onSubmit={submit}>
+                <label>
+                  <span>Email address</span>
+                  <input
+                    type="email"
+                    required
+                    autoComplete="email"
+                    autoFocus
+                    placeholder="name@example.com"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                  />
+                </label>
+                <button
+                  className={`primary-button${busy ? " is-busy" : ""}`}
+                  type="submit"
+                  disabled={busy}
+                >
+                  <LogIn size={16} />
+                  <span>Send sign-in link</span>
+                </button>
+              </form>
+            </>
+          ) : null}
+        </>
       ) : null}
 
       {props.userLoadFailed ? (

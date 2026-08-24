@@ -79,14 +79,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="Penta Application Screener API", lifespan=lifespan)
-    # Secure (HTTPS-only) session cookie in prod, plain in local dev — derived from
-    # frontend_url so there's no flag to forget (a Secure cookie over http://localhost is
-    # dropped, silently breaking dev login). See Settings.secure_cookies.
+    # Authlib uses this signed cookie only while a browser completes Google OIDC. Successful
+    # Google and email sign-ins both issue the same revocable BrowserSession cookie.
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.session_secret,
         same_site="lax",
-        https_only=settings.secure_cookies,
+        https_only=settings.oauth_state_cookie_secure,
+        max_age=10 * 60,
     )
     # CORS is only load-bearing in the two-origin DEV setup (Vite :5173 → API :8000).
     # In the single-origin prod deploy (FastAPI serves the bundle) requests are same-origin,

@@ -1,10 +1,9 @@
-"""The access allowlist: who may sign in, and with what role.
+"""The committee access allowlist: who may sign in, and with what role.
 
-An OAuth login is admitted only if its email matches an entry here; the resulting
-``User`` takes the entry's role (see ``services/users``). The list is also role
-management — an ``admin`` entry grants admin, a ``member`` entry grants member.
-Initial admins are seeded from a config file at startup; after that admins manage
-the list in-app.
+Google and email-link sign-ins both require a matching verified address. The
+resulting ``User`` takes the entry's role (see ``services/users``), so an ``admin``
+entry grants admin and a ``member`` entry grants member. Initial admins are seeded
+from a config file at startup; after that admins manage the list in-app.
 """
 
 from pathlib import Path

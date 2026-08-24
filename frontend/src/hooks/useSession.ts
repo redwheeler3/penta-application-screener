@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import * as api from "../api";
+import type { AuthRedirect } from "../authRedirect";
 import { retryWithBackoff } from "../retry";
 import type { CurrentUser } from "../types";
 
@@ -9,15 +10,21 @@ export type SignInState =
   | "requesting"
   | "emailSent"
   | "exchanging"
+  | "googleDenied"
   | "invalidLink"
   | "requestFailed";
 
-export function useSession(initialMagicLinkToken: string | null) {
+export function useSession(authRedirect: AuthRedirect) {
   const [user, setUser] = useState<CurrentUser | null>(null);
+  const [emailSignInEnabled, setEmailSignInEnabled] = useState(false);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
   const [userLoadFailed, setUserLoadFailed] = useState(false);
   const [signInState, setSignInState] = useState<SignInState>(
-    initialMagicLinkToken ? "exchanging" : "idle",
+    authRedirect.magicLinkToken
+      ? "exchanging"
+      : authRedirect.googleAccessDenied
+        ? "googleDenied"
+        : "idle",
   );
   const exchangeStarted = useRef(false);
 
@@ -25,7 +32,9 @@ export function useSession(initialMagicLinkToken: string | null) {
     setIsLoadingUser(true);
     setUserLoadFailed(false);
     try {
-      setUser(await retryWithBackoff(api.fetchCurrentUser, 3));
+      const authState = await retryWithBackoff(api.fetchAuthState, 3);
+      setUser(authState.user);
+      setEmailSignInEnabled(authState.emailSignInEnabled);
     } catch {
       setUserLoadFailed(true);
     } finally {
@@ -34,7 +43,7 @@ export function useSession(initialMagicLinkToken: string | null) {
   }
 
   useEffect(() => {
-    if (!initialMagicLinkToken) {
+    if (!authRedirect.magicLinkToken) {
       void loadCurrentUser();
       return;
     }
@@ -43,8 +52,12 @@ export function useSession(initialMagicLinkToken: string | null) {
     // only once while still allowing the first request to update this mounted root component.
     if (exchangeStarted.current) return;
     exchangeStarted.current = true;
-    void exchangeMagicLink(initialMagicLinkToken);
-  }, [initialMagicLinkToken]);
+    void api
+      .fetchAuthState()
+      .then((authState) => setEmailSignInEnabled(authState.emailSignInEnabled))
+      .catch(() => undefined);
+    void exchangeMagicLink(authRedirect.magicLinkToken);
+  }, [authRedirect.magicLinkToken]);
 
   async function exchangeMagicLink(token: string): Promise<void> {
     const response = await api.consumeCommitteeMagicLink(token);
@@ -76,6 +89,7 @@ export function useSession(initialMagicLinkToken: string | null) {
 
   return {
     user,
+    emailSignInEnabled,
     isAdmin: user?.role === "admin",
     isLoadingUser,
     userLoadFailed,

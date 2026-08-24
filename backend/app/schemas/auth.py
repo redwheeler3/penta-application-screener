@@ -19,6 +19,7 @@ class MeResponse(ResponseModel):
     """
 
     user: CurrentUser | None = None
+    email_sign_in_enabled: bool
 
 
 class LogoutResponse(ResponseModel):

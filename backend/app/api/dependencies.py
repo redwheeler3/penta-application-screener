@@ -11,7 +11,6 @@ from app.db.session import get_db
 from app.services.committee_auth import authenticate_committee_user
 from app.services.passwordless_auth import recently_authenticated
 from app.services.settings import get_app_settings
-from app.services.users import record_user_activity
 
 
 def optional_current_user(
@@ -19,27 +18,15 @@ def optional_current_user(
     response: Response,
     db: Session = Depends(get_db),
 ) -> User | None:
-    passwordless_token = session_token(request, PasswordlessIdentityKind.COMMITTEE)
-    if passwordless_token is not None:
-        authentication = authenticate_committee_user(db, passwordless_token)
+    committee_token = session_token(request, PasswordlessIdentityKind.COMMITTEE)
+    if committee_token is not None:
+        authentication = authenticate_committee_user(db, committee_token)
         if authentication is not None:
-            request.state.passwordless_session = authentication.browser_session
+            request.state.browser_session = authentication.browser_session
             return authentication.user
         clear_session_cookie(response, PasswordlessIdentityKind.COMMITTEE)
 
-    # Google remains available only while the between-cycle M21 replacement is being built.
-    # The completed cutover removes this signed-cookie path with the rest of Google OAuth.
-    user_id = request.session.get("user_id")
-    if user_id is None:
-        return None
-
-    user = db.get(User, int(user_id))
-    if user is None or not user.is_active:
-        request.session.clear()
-        return None
-
-    record_user_activity(db, user=user)
-    return user
+    return None
 
 
 def require_current_user(user: User | None = Depends(optional_current_user)) -> User:
@@ -59,12 +46,12 @@ def require_recent_admin(
     request: Request,
     user: User = Depends(require_admin),
 ) -> User:
-    """Require a fresh magic-link exchange for a sensitive access change."""
-    browser_session = getattr(request.state, "passwordless_session", None)
-    if browser_session is not None and not recently_authenticated(browser_session):
+    """Require a recent Google or email sign-in for a sensitive access change."""
+    browser_session = getattr(request.state, "browser_session", None)
+    if browser_session is None or not recently_authenticated(browser_session):
         raise Problem(
             "recent_authentication_required",
-            detail="Request a fresh sign-in link before changing committee access.",
+            detail="Sign in again before changing committee access.",
         )
     return user
 

@@ -105,7 +105,7 @@ class User(TimestampMixin, Base):
 
 
 class DeniedSignInAttempt(Base):
-    """A Google login rejected because its email was not allowlisted.
+    """A Google identity rejected by the committee access boundary.
 
     The row retains only identity and time needed for access administration. It
     deliberately excludes OAuth tokens, IP addresses, devices, and page activity.
@@ -123,13 +123,12 @@ class DeniedSignInAttempt(Base):
 
 
 class AccessAllowlistEntry(TimestampMixin, Base):
-    """One approved Google account (by email) and the role it is admitted with.
+    """One approved committee email identity and the role it is admitted with.
 
-    The allowlist is the access gate: an OAuth login is admitted only if its email
-    matches an entry here, and the resulting ``User`` takes the entry's role. It is
-    also role management — there is no separate promote/demote flow; an ``admin``
-    entry grants admin. Initial admins are seeded from a config file at startup (see
-    ``services/allowlist``); after that admins manage the list in-app.
+    Google and email-link sign-ins are admitted only when the verified email matches
+    an entry here. The resulting ``User`` takes the entry's role, so this table also
+    owns role management. Initial admins are seeded from a config file at startup;
+    after that admins manage the list in-app.
     """
 
     __tablename__ = "access_allowlist"
@@ -144,6 +143,8 @@ class AccessAllowlistEntry(TimestampMixin, Base):
 
 
 class GoogleCredential(TimestampMixin, Base):
+    """The designated sheet reader's Picker-granted credential, never a login session."""
+
     __tablename__ = "google_credentials"
 
     id: Mapped[int] = mapped_column(primary_key=True)

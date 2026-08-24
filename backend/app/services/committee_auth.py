@@ -1,4 +1,4 @@
-"""Resolve a passwordless browser credential to an actively allowlisted committee user."""
+"""Resolve a browser credential to an actively allowlisted committee user."""
 
 from dataclasses import dataclass
 from datetime import datetime

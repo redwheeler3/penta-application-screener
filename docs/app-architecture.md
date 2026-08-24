@@ -13,7 +13,9 @@ The app has two local development processes:
 
 The frontend is what the user sees in the browser. The backend owns authentication, database access, Google API integration, deterministic screening rules, and AI-assisted screening.
 
-The two communicate over HTTP. When authentication is involved, they also share a signed session cookie issued by the backend.
+The two communicate over HTTP. Authentication uses an opaque cookie whose random credential maps
+to a revocable, expiring server-side `BrowserSession`. A separate signed cookie exists only long
+enough to protect Google OIDC's redirect state.
 
 ## Frontend
 
@@ -157,7 +159,8 @@ The second `useEffect` runs when `user` changes: once a user is logged in, it fe
 
 The functions in `App.tsx` line up with user actions:
 
-- `login()`: sends the browser to the backend's Google OAuth login route.
+- `requestMagicLink()`: requests a committee sign-in email.
+- Google sign-in navigates directly to the backend's OIDC login route.
 - `logout()`: calls the backend logout route and clears local user state.
 - `saveSettings()`: sends the settings form to `PUT /settings`.
 - `syncApplications()`: calls `POST /sync/applications`, then refreshes the dashboard and the applications list.
@@ -192,7 +195,10 @@ fetch(`${apiBaseUrl}/auth/me`, { credentials: "include" })
 
 `credentials: "include"` is essential — without it the browser would not send the backend session cookie on cross-origin requests from `5173` to `8000`.
 
-When the user clicks "Sign in with Google", the browser is redirected to `http://localhost:8000/auth/google/login`. The backend then redirects to Google's OAuth consent flow. After Google finishes, it redirects back to the backend callback route; on success the backend redirects the browser back to the frontend.
+The login panel always offers Google. `/auth/me` also reports whether the runtime is configured for
+live email delivery; only `development` and `production` modes reveal the email option. An email
+link returns with its single-use credential in the URL fragment. Either successful exchange creates
+the same committee `BrowserSession`.
 
 Logout calls `POST http://localhost:8000/auth/logout` and then clears the local `user` state.
 
@@ -276,14 +282,14 @@ FastAPI app
   uses dependencies to get the current user and database session
   calls service functions for app work
   uses SQLAlchemy models to read/write SQLite
-  calls Google APIs when sync or OAuth needs them
+  calls Google for committee OIDC identity and the temporary spreadsheet workflow
   returns JSON back to the frontend
 ```
 
 The backend is more complex than the frontend because it owns the trusted parts:
 
 - login/session handling
-- Google OAuth token handling
+- Google OIDC identity and the separate sheet-reader credential
 - database schema and persistence
 - Google Sheets reads
 - application import and normalization
@@ -359,7 +365,7 @@ The health check is `http://localhost:8000/health`.
 
 `backend/app/main.py` creates the FastAPI app. It currently installs:
 
-- `SessionMiddleware`, which signs the browser session cookie and reads/writes it on each request.
+- `SessionMiddleware`, used only for Google OIDC's short-lived signed state cookie.
 - `CORSMiddleware`, which allows the local React frontend at port `5173` to call the backend at port `8000` with credentials.
 - Route modules from `app.api.applications`, `app.api.auth`, `app.api.dashboard`, `app.api.evals`, `app.api.health`, `app.api.observability`, `app.api.screening`, `app.api.ranking`, `app.api.settings`, and `app.api.sync`.
 
@@ -508,19 +514,27 @@ Route ends
 Auth routes live in `backend/app/api/auth.py`:
 
 - `GET /auth/google/login` — starts the OAuth flow by redirecting the browser to Google.
-- `GET /auth/google/callback` — handles Google's redirect back: exchanges the OAuth code for tokens, extracts user identity, creates or updates a local user record, stores `user_id` in the signed session cookie, and redirects back to the frontend.
-- `GET /auth/me` — reads the signed session cookie. If it contains a valid active user ID, returns a serialized user; otherwise returns `{ "user": null }`.
-- `POST /auth/logout` — clears the session cookie.
+- `GET /auth/google/callback` — verifies Google's stable subject and verified email, applies the
+  allowlist, and issues a committee `BrowserSession`.
+- `POST /auth/magic-link` and `POST /auth/magic-link/consume` — request and consume the alternative
+  email credential, issuing the same kind of committee session.
+- `GET /auth/me` — resolves the opaque committee-session cookie and returns its active allowlisted
+  user, or `{ "user": null }`.
+- `POST /auth/logout` — revokes that server-side session and clears its cookie.
 
-The login flow uses two separate pieces of identity: the Google identity (who Google says the user is) and the local user record (who the app knows the user as). On successful login the backend stores or updates a local `User` row; the first created user becomes `admin`, later users become `member`.
+Both login methods resolve one local `User`; the access allowlist supplies its role. Google attaches
+its stable `sub` identifier to that user but receives only `openid`, `email`, and `profile` scopes.
+Email and Google do not create parallel users or sessions.
 
-The backend also stores the Google OAuth token in `google_credentials`, which allows later Google Sheets reads without re-login. The browser never receives the raw Google token — only a signed session cookie carrying local session state (in practice, the local `user_id`). Later authenticated requests work like this:
+Google login does not store its access token. While the spreadsheet workflow remains, the separate
+admin-only Picker exchange stores a `drive.file` credential in `google_credentials` for the
+designated sheet reader. That credential is not a login session. Authenticated requests work like
+this:
 
 ```text
-Browser calls GET /settings with session cookie
-  Backend verifies signed cookie
-  Backend loads user_id from session
-  Backend queries local User row
+Browser calls GET /settings with committee-session cookie
+  Backend hashes the credential and loads BrowserSession
+  Backend verifies expiry, revocation, user activity, and current allowlist role
   Route runs as that user
 ```
 
@@ -590,14 +604,16 @@ The sync route:
 1. Requires a logged-in user.
 2. Reads saved app settings.
 3. Requires a Google Sheet link or ID.
-4. Loads the logged-in user's stored Google OAuth token.
+4. Loads the designated sheet reader's stored `drive.file` credential.
 5. Fetches rows from the first tab in the configured Google Sheet.
 6. De-dupes applications by normalized applicant email, keeping the last row.
 7. Stores the raw row JSON and normalized fields.
 8. Applies deterministic hard filters.
 9. Creates a `SyncRun` record.
 
-Google OAuth tokens are stored in the local SQLite database in `google_credentials`. This is acceptable for the local MVP because the database is ignored by Git. A future hosted deployment should move this secret material to an encrypted store or cloud secret/token storage design.
+Only the designated sheet reader's Picker-granted `drive.file` token is stored in
+`google_credentials`; ordinary Google login never writes that table. M21 removes this credential
+with the spreadsheet import path at cutover.
 
 The dashboard route returns `settingsComplete` (whether a Google Sheet is configured), a `submitted` total, and counts grouped by `status` (eligible / ineligible) and `status_source` (untouched / rules / ai / human). "Needs review" is the client's label for the `source = ai` group; "filtered out" is `source = rules`.
 
@@ -662,7 +678,9 @@ The AI screening endpoints (`GET /screening/run/estimate` and `POST /screening/r
 
 ### User Creation
 
-User creation/update logic lives in `backend/app/services/users.py`. Users are matched by normalized email address; the first user created becomes `admin`, later users become `member`. This is intentionally simple for MVP — invitations and stricter access control can come later.
+User creation/update logic lives in `backend/app/services/users.py`. Email links resolve the
+allowlisted normalized address; Google additionally binds its stable subject to that same local
+user. The allowlist is the source of truth for both admission and the admin/member role.
 
 ### Deterministic Hard Filters
 
@@ -730,9 +748,9 @@ class SettingsResponse(BaseModel):
 
 Services live in `backend/app/services/`. Service functions are reusable app operations that do not themselves define HTTP routes. Current service files:
 
-- `users.py`: create/update users from Google identity.
+- `users.py`: create/update committee users from email or Google identity.
 - `settings.py`: load/save the app settings JSON record.
-- `google_credentials.py`: store/retrieve Google OAuth tokens.
+- `google_credentials.py`: store/retrieve the temporary spreadsheet-reader credential.
 - `google_sheets.py`: read spreadsheet metadata and rows.
 - `application_import.py`: turn sheet rows into `Application` and `SyncRun` records.
 - `ranking_run.py`: the Rank run's persistence + carry-forward — `create_run`, `dimension_weights` (derived from tiers), `adopt_matched_keys`, `carry_forward_layout`, `apply_consolidation`, the `*_audit_view` accessors, `rank_inputs_fingerprint`.
@@ -798,7 +816,8 @@ The current login flow:
 7. Backend creates OAuth state in the signed session cookie and redirects to Google.
 8. User approves Google scopes.
 9. Google redirects to `GET /auth/google/callback`.
-10. Backend validates OAuth state, reads Google identity, upserts the local user, and stores `user_id` in the session.
+10. Backend validates OAuth state and verified identity, applies the allowlist, and issues an opaque
+    committee-session credential backed by `BrowserSession`.
 11. Backend redirects to the frontend.
 12. React calls `GET /auth/me` again.
 13. Backend returns the current user.

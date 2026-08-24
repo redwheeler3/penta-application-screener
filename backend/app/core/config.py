@@ -71,13 +71,14 @@ class Settings(BaseSettings):
     )
 
     @property
-    def secure_cookies(self) -> bool:
-        """Mark the session cookie Secure (HTTPS-only) in production. Derived from
-        ``frontend_url`` rather than a separate flag: a prod deploy is served over HTTPS
-        (``https://screener.pentacoop.com``) so cookies must be Secure, while local dev over
-        ``http://localhost`` must NOT be (a Secure cookie is dropped on plain HTTP, which
-        would silently break the dev login). One source of truth, no flag to forget."""
+    def oauth_state_cookie_secure(self) -> bool:
+        """Protect the transient Google OAuth-state cookie on an HTTPS frontend."""
         return self.frontend_url.startswith("https://")
+
+    @property
+    def email_delivery_enabled(self) -> bool:
+        """Whether this runtime is configured to deliver rather than capture email."""
+        return self.email_delivery_mode in {"development", "production"}
 
     def passwordless_cookie_secure(
         self, identity_kind: Literal["applicant", "committee"]

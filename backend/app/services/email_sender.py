@@ -132,7 +132,7 @@ class SocketLabsEmailSender:
 def build_email_sender(
     settings: Settings, *, client: httpx.Client | None = None
 ) -> EmailSender:
-    if settings.email_delivery_mode == "capture":
+    if not settings.email_delivery_enabled:
         return CapturedEmailSender()
 
     server_id = _socketlabs_server_id(settings.socketlabs_server_id)

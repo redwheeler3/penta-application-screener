@@ -11,16 +11,24 @@ This page is just a **map** — a one-line index of every endpoint so you can se
 
 ## Endpoint Index
 
-Unless noted, endpoints require a logged-in user (the signed session cookie). There is currently no admin-only endpoint — every committee member is a trusted screener, so all screening surfaces (status override, raw row, AI narrative) are open to any logged-in user. The `admin` / `member` roles exist in the data model but do not gate any route today.
+Unless noted, endpoints require a logged-in committee user through the opaque server-side session
+cookie. Core review surfaces are available to every committee member; access management, shared
+configuration, committee defaults, Observability, and Evals require an admin.
 
 ### Auth — `app/api/auth.py`
 
 | Method | Path | Purpose | Auth |
 | --- | --- | --- | --- |
 | GET | `/auth/google/login` | Start the Google OAuth flow (redirects to Google). | Public |
-| GET | `/auth/google/callback` | OAuth redirect target; upserts the user and sets the session. | Public |
-| GET | `/auth/me` | The current user, or `{ "user": null }`. | Public |
-| POST | `/auth/logout` | Clear the session cookie. | Public |
+| GET | `/auth/google/callback` | Verify Google identity and issue a committee browser session. | Public |
+| POST | `/auth/magic-link` | Request an allowlist-gated committee sign-in email. | Public |
+| POST | `/auth/magic-link/consume` | Consume a committee link and issue the same browser session used by Google. | Public |
+| POST | `/applicant/auth/magic-link` | Request access to an existing application without revealing whether it exists. | Public |
+| POST | `/applicant/auth/magic-link/consume` | Consume an applicant link and issue a separate applicant session. | Public |
+| GET | `/applicant/auth/me` | Return the current application identity, if any. | Public |
+| POST | `/applicant/auth/logout` | Revoke the current applicant session. | Public |
+| GET | `/auth/me` | Return the current user, if any, and whether email sign-in is enabled. | Public |
+| POST | `/auth/logout` | Revoke the current committee session. | Public |
 
 ### Health — `app/api/health.py`
 

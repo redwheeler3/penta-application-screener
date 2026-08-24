@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.dependencies import require_current_user
+from app.api.dependencies import require_current_user, require_recent_admin
 from app.db.models import (
     AccessAllowlistEntry,
     Base,
@@ -21,7 +21,11 @@ from app.main import create_app
 from app.services import allowlist
 from app.services.denied_sign_ins import list_denied_sign_ins, record_denied_sign_in
 from app.services.passwordless_auth import create_browser_session, issue_magic_link
-from app.services.users import record_user_activity, upsert_google_user
+from app.services.users import (
+    GoogleIdentityConflict,
+    record_user_activity,
+    upsert_google_user,
+)
 
 
 def setup_app(role: UserRole | None) -> tuple:
@@ -46,6 +50,8 @@ def setup_app(role: UserRole | None) -> tuple:
     app.dependency_overrides[get_db] = lambda: db
     if user is not None:
         app.dependency_overrides[require_current_user] = lambda: user
+        if user.role == UserRole.ADMIN:
+            app.dependency_overrides[require_recent_admin] = lambda: user
     return app, db
 
 
@@ -79,6 +85,50 @@ def test_upsert_google_user_resyncs_role_on_return_login() -> None:
     )
     assert again.role == UserRole.ADMIN
     assert db.scalar(select(User).where(User.email == "u@x.com")).role == UserRole.ADMIN
+
+
+def test_google_identity_cannot_replace_another_account_for_the_same_email() -> None:
+    _, db = setup_app(role=None)
+    upsert_google_user(
+        db,
+        google_subject="original-subject",
+        email="u@x.com",
+        display_name="U",
+        avatar_url=None,
+        role=UserRole.MEMBER,
+    )
+
+    with pytest.raises(GoogleIdentityConflict):
+        upsert_google_user(
+            db,
+            google_subject="different-subject",
+            email="u@x.com",
+            display_name="U",
+            avatar_url=None,
+            role=UserRole.MEMBER,
+        )
+
+
+def test_google_identity_cannot_silently_change_its_committee_email() -> None:
+    _, db = setup_app(role=None)
+    upsert_google_user(
+        db,
+        google_subject="stable-subject",
+        email="old@x.com",
+        display_name="U",
+        avatar_url=None,
+        role=UserRole.MEMBER,
+    )
+
+    with pytest.raises(GoogleIdentityConflict):
+        upsert_google_user(
+            db,
+            google_subject="stable-subject",
+            email="new@x.com",
+            display_name="U",
+            avatar_url=None,
+            role=UserRole.MEMBER,
+        )
 
 
 def test_user_activity_keeps_only_first_and_latest_timestamps() -> None:

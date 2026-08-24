@@ -107,7 +107,7 @@ async def test_committee_magic_link_creates_hashed_session_and_cannot_be_reused(
     assert response.json()["user"]["email"] == user.email
     assert me.json()["user"]["email"] == user.email
     assert logout.status_code == 200
-    assert after_logout.json() == {"user": None}
+    assert after_logout.json()["user"] is None
     cookie_name = SESSION_COOKIE_NAMES[PasswordlessIdentityKind.COMMITTEE]
     assert cookie_name in response.cookies
     assert "HttpOnly" in response.headers["set-cookie"]
@@ -260,7 +260,7 @@ async def test_magic_link_request_is_non_enumerating_and_coalesces_email() -> No
 
 
 @pytest.mark.anyio
-async def test_stale_passwordless_session_cannot_change_committee_access() -> None:
+async def test_stale_email_session_cannot_change_committee_access() -> None:
     app, db = _app_and_db()
     user = User(
         email="admin@example.test",

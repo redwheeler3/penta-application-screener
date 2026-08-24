@@ -9,6 +9,10 @@ from app.db.models import User, UserRole
 ACTIVITY_WRITE_INTERVAL = timedelta(minutes=5)
 
 
+class GoogleIdentityConflict(ValueError):
+    """The Google account and committee user point at different identities."""
+
+
 def upsert_google_user(
     db: Session,
     *,
@@ -18,13 +22,21 @@ def upsert_google_user(
     avatar_url: str | None,
     role: UserRole,
 ) -> User:
-    """Create or update the User for a signed-in Google account. ``role`` comes from
-    the caller's allowlist lookup (the allowlist is the source of truth for who may
-    sign in and with what role), so an existing user's role is re-synced on each login
-    — an admin flipping someone's allowlist role takes effect on their next sign-in."""
+    """Attach one stable Google identity to an allowlisted committee user."""
     normalized_email = normalize_email(email)
-    user = db.scalar(select(User).where(User.email == normalized_email))
+    subject_user = db.scalar(select(User).where(User.google_subject == google_subject))
+    email_user = db.scalar(select(User).where(User.email == normalized_email))
 
+    if subject_user is not None and subject_user.email != normalized_email:
+        raise GoogleIdentityConflict("Google account email does not match its committee user")
+    if (
+        email_user is not None
+        and email_user.google_subject is not None
+        and email_user.google_subject != google_subject
+    ):
+        raise GoogleIdentityConflict("Committee user is linked to another Google account")
+
+    user = subject_user or email_user
     if user is None:
         user = User(
             google_subject=google_subject,

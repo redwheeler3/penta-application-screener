@@ -18,7 +18,7 @@ def record_denied_sign_in(
     email: str,
     display_name: str,
 ) -> None:
-    """Record an unallowlisted Google login after discarding expired attempts."""
+    """Record a rejected Google identity after discarding expired attempts."""
     _prune_expired(db)
     db.add(
         DeniedSignInAttempt(

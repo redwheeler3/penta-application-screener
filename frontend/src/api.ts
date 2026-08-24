@@ -89,8 +89,17 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function fetchCurrentUser(): Promise<CurrentUser | null> {
-  return getJson<{ user: CurrentUser | null }>("/auth/me").then((p) => p.user);
+export type AuthState = {
+  user: CurrentUser | null;
+  emailSignInEnabled: boolean;
+};
+
+export function fetchAuthState(): Promise<AuthState> {
+  return getJson<AuthState>("/auth/me");
+}
+
+export function googleSignInUrl(): string {
+  return url("/auth/google/login");
 }
 
 export function requestCommitteeMagicLink(email: string): Promise<Response> {

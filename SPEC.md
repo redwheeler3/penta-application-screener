@@ -286,6 +286,10 @@ message before calling SocketLabs unless every domain is exactly `jeffo.net` or 
 synthetic applicant data and never copies production applicant or vacancy-list records into email
 tests.
 
+The committee login page offers email sign-in only when `EMAIL_DELIVERY_MODE` is explicitly
+`development` or `production`. The default `capture` mode presents Google alone, so a partial or
+accidental deployment cannot promise an email that will never be delivered.
+
 Every applicant transactional message clearly says that it was sent because the recipient has or
 requested access to a Penta application, not because they are on the vacancy-notification list. It
 links to the authenticated **Delete application** flow and explains that deletion stops ordinary
