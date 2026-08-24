@@ -89,10 +89,24 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await response.json()) as T;
 }
 
-export const authLoginUrl = () => url("/auth/google/login");
-
 export function fetchCurrentUser(): Promise<CurrentUser | null> {
   return getJson<{ user: CurrentUser | null }>("/auth/me").then((p) => p.user);
+}
+
+export function requestCommitteeMagicLink(email: string): Promise<Response> {
+  return request("/auth/magic-link", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function consumeCommitteeMagicLink(token: string): Promise<Response> {
+  return request("/auth/magic-link/consume", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
 }
 
 export function logout(): Promise<Response> {

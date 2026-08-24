@@ -94,9 +94,9 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
       <div className="access-panel-head">
         <h3>Access allowlist</h3>
         <p className="panel-hint">
-          Only these Google accounts can sign in. An <strong>admin</strong> entry can manage this
-          list; a <strong>member</strong> screens applicants. Editing takes effect at their next
-          sign-in. The last admin can't be removed or demoted.
+          Only these email addresses can sign in. An <strong>admin</strong> entry can manage this
+          list; a <strong>member</strong> screens applicants. Changes take effect immediately. The
+          last admin can't be removed or demoted.
         </p>
       </div>
 

@@ -261,17 +261,63 @@ h1 {
   font-size: 0.92rem;
 }
 
+.login-form {
+  display: grid;
+  gap: 14px;
+}
+
+.login-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.login-form label span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.login-form input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.login-form input:focus {
+  outline: 2px solid var(--success-border);
+  outline-offset: 1px;
+  border-color: var(--penta-green);
+}
+
+.login-form .primary-button {
+  min-height: 42px;
+}
+
 .login-legal {
   font-size: 0.82rem;
 }
 
-.login-denied {
+.login-message {
   padding: 0.6rem 0.75rem;
   border-radius: 6px;
+}
+
+.login-panel .login-message-error {
   background: var(--danger-bg); /* red-50 */
   border: 1px solid var(--danger-border); /* red-200 */
   color: var(--danger-text); /* red-800 */
   font-size: 0.9rem;
+}
+
+.login-panel .login-message-success {
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+  color: var(--success-text);
 }
 
 /* Access allowlist (admin-only tab) */

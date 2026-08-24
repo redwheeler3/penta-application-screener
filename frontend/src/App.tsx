@@ -1,4 +1,4 @@
-import { Filter, LogIn, LogOut, Settings } from "lucide-react";
+import { Filter, LogOut, Settings } from "lucide-react";
 import {
   lazy,
   type ReactNode,
@@ -20,6 +20,7 @@ import type {
 import { AdminSettingsPanel } from "./components/AdminSettingsPanel";
 import { ApplicationsList } from "./components/ApplicationsList";
 import { CandidateDetail } from "./components/CandidateDetail";
+import { CommitteeSignIn } from "./components/CommitteeSignIn";
 import { EligibilitySettingsPanel } from "./components/EligibilitySettingsPanel";
 import { FeedbackButton } from "./components/FeedbackButton";
 import { RankingView } from "./components/RankingView";
@@ -44,17 +45,18 @@ const aiQualityLoading = (
   </div>
 );
 
-export function App() {
+export function App(props: { initialMagicLinkToken: string | null }) {
   const {
     user,
     isAdmin,
     isLoadingUser,
     userLoadFailed,
-    accessDenied,
+    signInState,
     loadCurrentUser,
-    login,
+    requestMagicLink,
+    resetSignIn,
     logout,
-  } = useSession();
+  } = useSession(props.initialMagicLinkToken);
 
   const {
     counts: dashboardCounts,
@@ -403,38 +405,14 @@ export function App() {
       </div>
 
       {!user ? (
-        <section className="login-panel">
-          <span className="panel-kicker">Member access</span>
-          <h2>{isLoadingUser ? "Checking session" : userLoadFailed ? "Couldn't verify your session" : "Sign in to continue"}</h2>
-          {accessDenied && !isLoadingUser ? (
-            <p className="login-denied" role="alert">
-              That Google account isn't approved for this screener. Ask an admin to add your email,
-              then sign in again.
-            </p>
-          ) : userLoadFailed ? (
-            <p className="login-denied" role="alert">The server may have been starting up. Try checking your session again.</p>
-          ) : null}
-          <button className="primary-button" onClick={login} disabled={isLoadingUser}>
-            <LogIn size={16} />
-            <span>Sign in with Google</span>
-          </button>
-          {userLoadFailed ? (
-            <button className="secondary-button" type="button" onClick={() => void loadCurrentUser()}>
-              Retry
-            </button>
-          ) : null}
-          <p className="login-legal">
-            By signing in you agree to our{" "}
-            <a href="https://www.pentacoop.com/terms.html" target="_blank" rel="noopener noreferrer">
-              Terms of Service
-            </a>{" "}
-            and{" "}
-            <a href="https://www.pentacoop.com/privacy.html" target="_blank" rel="noopener noreferrer">
-              Privacy Policy
-            </a>
-            .
-          </p>
-        </section>
+        <CommitteeSignIn
+          isLoadingUser={isLoadingUser}
+          userLoadFailed={userLoadFailed}
+          signInState={signInState}
+          onRequestLink={requestMagicLink}
+          onReset={resetSignIn}
+          onRetrySession={loadCurrentUser}
+        />
       ) : (
         <>
           {/* Global actions first (workflow acts on the whole dataset regardless of

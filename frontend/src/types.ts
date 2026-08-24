@@ -19,7 +19,7 @@ export type CurrentUser = {
   role: "admin" | "member";
 };
 
-// One approved Google account and its coarse activity summary. Admin-only surface.
+// One approved committee email address and its coarse activity summary. Admin-only surface.
 export type AllowlistEntry = {
   email: string;
   role: "admin" | "member";
