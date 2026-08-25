@@ -21,6 +21,7 @@ export const FIELD_LABELS: Record<string, string> = {
   co_applicant_income: "Co-applicant income",
   has_real_estate: "Owns real estate",
   pets_text: "Pets",
+  household_photo_link: "Household photo link",
   co_applicant_phone: "Co-applicant phone",
   co_applicant_email: "Co-applicant email",
   applicant_email: "Applicant email",

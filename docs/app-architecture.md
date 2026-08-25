@@ -102,7 +102,8 @@ partial draft. Publication separately validates `CanonicalApplicationAnswers`, c
 committee-facing projection, records opening participation, and changes the content hash that
 drives AI cache currency. All committee lists, eligibility calculations, and AI passes share the
 submitted-and-not-deleted scope in `app/services/application_scope.py`; private drafts are never
-part of those downstream workflows.
+part of those downstream workflows. The optional household photo is stored as an applicant-supplied
+web link, rendered as a safe new-tab link after submission, and excluded from AI inputs.
 
 An `Opening` has application open, application close, and move-in dates plus its unit size and
 housing charge. Admins edit an unpublished draft and explicitly publish it; publication does not

@@ -177,6 +177,9 @@ def normalize_answers(
         ),
         "has_real_estate": answers.owns_real_estate,
         "pets_text": answers.pets,
+        "household_photo_link": (
+            str(answers.household_photo_link) if answers.household_photo_link is not None else None
+        ),
         "applicant_email": str(answers.applicant.email),
         "co_applicant_email": str(co_applicant.email) if co_applicant is not None else None,
         "co_applicant_phone": co_applicant.phone if co_applicant is not None else None,

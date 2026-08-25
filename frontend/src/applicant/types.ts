@@ -66,6 +66,7 @@ export type ApplicantDraft = {
     additionalInformation: string;
   };
   pets: string;
+  householdPhotoLink: string;
   applicantEmployment: EmploymentDraft;
   coApplicantEmployment: EmploymentDraft;
   applicantIncome: string;
@@ -91,6 +92,7 @@ export type CanonicalApplicationAnswers = {
   previousLandlord: ReferenceDraft | null;
   essays: ApplicantDraft["essays"];
   pets: string | null;
+  householdPhotoLink: string | null;
   applicantEmployment: CanonicalEmployment;
   coApplicantEmployment: CanonicalEmployment | null;
   applicantIncome: number;
@@ -175,6 +177,7 @@ export function emptyApplicantDraft(): ApplicantDraft {
       additionalInformation: "",
     },
     pets: "",
+    householdPhotoLink: "",
     applicantEmployment: emptyEmployment(),
     coApplicantEmployment: emptyEmployment(),
     applicantIncome: "",
@@ -220,6 +223,7 @@ export function canonicalAnswers(draft: ApplicantDraft): CanonicalApplicationAns
         : null,
     essays: draft.essays,
     pets: draft.pets.trim() || null,
+    householdPhotoLink: draft.householdPhotoLink.trim() || null,
     applicantEmployment: canonicalEmployment(draft.applicantEmployment),
     coApplicantEmployment: draft.hasCoApplicant
       ? canonicalEmployment(draft.coApplicantEmployment)
@@ -268,6 +272,7 @@ export function draftFromWorking(answers: WorkingApplicationAnswers): ApplicantD
     previousLandlord: answers.previousLandlord ?? draft.previousLandlord,
     essays: answers.essays,
     pets: answers.pets ?? "",
+    householdPhotoLink: answers.householdPhotoLink ?? "",
     applicantEmployment: draftEmployment(answers.applicantEmployment),
     coApplicantEmployment: answers.coApplicantEmployment
       ? draftEmployment(answers.coApplicantEmployment)

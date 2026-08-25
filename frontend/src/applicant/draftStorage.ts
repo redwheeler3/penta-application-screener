@@ -108,6 +108,7 @@ export function hasAnswersBeyondEmail(draft: ApplicantDraft): boolean {
       references.some((reference) => Object.values(reference).some((value) => value.trim())) ||
       Object.values(draft.essays).some((value) => value.trim()) ||
       draft.pets.trim() ||
+      draft.householdPhotoLink.trim() ||
       employment.some((job) => (
         job.status ||
         job.jobTitle.trim() ||

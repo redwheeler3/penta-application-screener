@@ -28,6 +28,7 @@ const EMAIL_INVALID_MESSAGE = "This is not a valid email address.";
 const PHONE_PATTERN = /^[0-9]{3}-[0-9]{3}-[0-9]{4}$/;
 
 type DraftUpdater = (current: ApplicantDraft) => ApplicantDraft;
+type DraftConfirmation = "clear" | "revert";
 
 export function ApplicantApp() {
   const [draft, setDraft] = useState(emptyApplicantDraft);
@@ -37,6 +38,7 @@ export function ApplicantApp() {
   const [rememberDevice, setRememberDeviceState] = useState(remembersDevice);
   const [emailChangeOpen, setEmailChangeOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [draftConfirmation, setDraftConfirmation] = useState<DraftConfirmation | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const invalidTarget = useRef<HTMLElement | null>(null);
   const openingsRef = useRef<HTMLElement | null>(null);
@@ -111,6 +113,7 @@ export function ApplicantApp() {
   function update(updater: DraftUpdater): void {
     setReviewing(false);
     setDeclarationAccepted(false);
+    setDraftConfirmation(null);
     setDraft(updater);
   }
 
@@ -164,7 +167,7 @@ export function ApplicantApp() {
   }
 
   function discardLocalDraft(): void {
-    if (!window.confirm("Clear the answers in this form?")) return;
+    setDraftConfirmation(null);
     void persistence.discardDraft();
     setDraft(emptyApplicantDraft());
     setSavedAt(null);
@@ -172,7 +175,7 @@ export function ApplicantApp() {
   }
 
   async function revertToSubmitted(): Promise<void> {
-    if (!window.confirm("Revert your private changes to the last submitted application?")) return;
+    setDraftConfirmation(null);
     if (await persistence.revertToSubmitted()) {
       setSavedAt(null);
       setReviewing(false);
@@ -344,14 +347,23 @@ export function ApplicantApp() {
             <IncomeSection draft={draft} update={update} />
 
             <div className="applicant-actions">
-              {persistence.authenticated ? (
+              {draftConfirmation ? (
+                <DraftActionConfirmation
+                  action={draftConfirmation}
+                  onCancel={() => setDraftConfirmation(null)}
+                  onConfirm={() => {
+                    if (draftConfirmation === "clear") discardLocalDraft();
+                    else void revertToSubmitted();
+                  }}
+                />
+              ) : persistence.authenticated ? (
                 persistence.hasSubmittedApplication && persistence.hasUnsubmittedChanges ? (
-                  <button className="text-button" type="button" onClick={() => void revertToSubmitted()}>
+                  <button className="text-button" type="button" onClick={() => setDraftConfirmation("revert")}>
                     <ChevronLeft size={16} /> Revert to last submitted application
                   </button>
                 ) : <span />
               ) : (
-                <button className="applicant-danger-link" type="button" onClick={discardLocalDraft}>
+                <button className="applicant-danger-link" type="button" onClick={() => setDraftConfirmation("clear")}>
                   <Trash2 size={16} /> Clear this draft
                 </button>
               )}
@@ -492,7 +504,7 @@ function OpeningSelection(props: {
               />
               <span className="applicant-opening-copy">
                 <strong>{openingLabel(opening)}</strong>
-                <span className="applicant-opening-phase">{openingPhaseLabel(opening)}</span>
+                <span className="applicant-opening-phase">{openingPhaseLabel(opening, selected)}</span>
                 <span className="applicant-opening-dates">
                   <span><b>Opens</b>{formatOpeningDate(opening.applicationOpenDate)}</span>
                   <span><b>Closes</b>{formatOpeningDate(opening.applicationCloseDate)}</span>
@@ -570,9 +582,13 @@ function openingLabel(opening: ApplicantOpening): string {
   return `${unit} · ${charge} per month`;
 }
 
-function openingPhaseLabel(opening: ApplicantOpening): string {
-  if (opening.phase === "open") return "Applications are open";
-  if (opening.phase === "closed") return "Applications are closed";
+function openingPhaseLabel(opening: ApplicantOpening, selected: boolean): string {
+  if (opening.phase === "open") return "Applications are open.";
+  if (opening.phase === "closed") {
+    if (selected) return "Applications are closed. Unchecking withdraws your application.";
+    if (opening.participating) return "Applications are closed. Recheck to remain applied.";
+    return "Applications are closed. You can’t apply for this opening.";
+  }
   if (opening.phase === "archived") return "Opening is archived";
   if (opening.phase === "upcoming") return "Applications have not opened yet";
   return "Opening status unavailable";
@@ -806,10 +822,14 @@ function EssaysSection(props: { draft: ApplicantDraft; update: (fn: DraftUpdater
         <TextArea label="Why does your household want to live in a co-op?" help="Describe how your household would contribute as members of Penta." value={props.draft.essays.whyCoop} required onChange={(whyCoop) => setEssay({ whyCoop })} />
         <TextArea label="Is there anything else you’d like us to know? (optional)" help="Share anything else that would help us understand your household or application." value={props.draft.essays.additionalInformation} onChange={(additionalInformation) => setEssay({ additionalInformation })} />
         <TextArea label="What pets would live with your household? (optional)" help="Include the type and number of pets." value={props.draft.pets} compact onChange={(pets) => props.update((current) => ({ ...current, pets }))} />
-      </div>
-      <div className="photo-placeholder">
-        <strong>Household photo (optional)</strong>
-        <span>Private photo upload will be added in the next M21 stage.</span>
+        <TextField
+          label="Would you like to share a household photo? (optional)"
+          help="Paste a link to a photo of yourself and your household. Make sure the committee can open it."
+          placeholder="https://"
+          url
+          value={props.draft.householdPhotoLink}
+          onChange={(householdPhotoLink) => props.update((current) => ({ ...current, householdPhotoLink }))}
+        />
       </div>
     </FormSection>
   );
@@ -900,6 +920,9 @@ function ApplicationReview(props: {
         <ReviewRow label="Email" value={d.applicant.email} />
         <ReviewRow label="Co-applicant" value={d.hasCoApplicant ? `${d.coApplicant.firstName} ${d.coApplicant.lastName}` : "None"} />
         <ReviewRow label="Children" value={String(d.children.length)} />
+        {d.householdPhotoLink ? (
+          <ReviewRow label="Household photo" value={d.householdPhotoLink} link />
+        ) : null}
       </ReviewSection>
       <ReviewSection title="Current housing">
         <ReviewRow label="Address" value={`${d.currentAddress.street}, ${d.currentAddress.city}, ${d.currentAddress.provinceOrState}`} />
@@ -1104,7 +1127,7 @@ function ApplicationDeletion(props: {
     );
   }
   return (
-    <section className="application-delete-confirm" aria-labelledby="delete-application-title">
+    <section className="application-action-confirm application-delete-confirm" aria-labelledby="delete-application-title">
       <h2 id="delete-application-title">Delete your application?</h2>
       <p>
         It will be removed from consideration for every opening, and you will be signed out.
@@ -1131,6 +1154,33 @@ function ApplicationDeletion(props: {
           onClick={props.onDelete}
         >
           {props.status === "working" ? "Deleting…" : "Delete application"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function DraftActionConfirmation(props: {
+  action: DraftConfirmation;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const reverting = props.action === "revert";
+  const titleId = `${props.action}-draft-title`;
+  return (
+    <section className="application-action-confirm application-draft-confirm" aria-labelledby={titleId}>
+      <h2 id={titleId}>{reverting ? "Revert your changes?" : "Clear this draft?"}</h2>
+      <p>
+        {reverting
+          ? "Your private changes will be replaced by your last submitted application. This cannot be undone."
+          : "The answers in this draft will be removed. This cannot be undone."}
+      </p>
+      <div className="applicant-action-group">
+        <button className="applicant-secondary-button compact" type="button" autoFocus onClick={props.onCancel}>
+          Keep editing
+        </button>
+        <button className="applicant-danger-button compact" type="button" onClick={props.onConfirm}>
+          {reverting ? "Revert changes" : "Clear draft"}
         </button>
       </div>
     </section>
@@ -1303,23 +1353,27 @@ function Subheading(props: { title: string; required?: boolean }) {
 
 function Required() { return <span className="required-mark" aria-label="required">*</span>; }
 
-function TextField(props: { label: string; value: string; onChange: (value: string) => void; type?: string; email?: boolean; phone?: boolean; required?: boolean; wide?: boolean; help?: string; inputMode?: "numeric"; maxLength?: number; placeholder?: string }) {
+function TextField(props: { label: string; value: string; onChange: (value: string) => void; type?: string; email?: boolean; phone?: boolean; url?: boolean; required?: boolean; wide?: boolean; help?: string; inputMode?: "numeric"; maxLength?: number; placeholder?: string }) {
   return (
     <label className={`applicant-field${props.wide ? " wide" : ""}`}>
       <span>{props.label}{props.required ? <Required /> : null}</span>
+      {props.help ? <small>{props.help}</small> : null}
       <input
         type={props.email || props.phone ? "text" : props.type ?? "text"}
         value={props.value}
         required={props.required}
-        inputMode={props.email ? "email" : props.phone ? "tel" : props.inputMode}
+        inputMode={props.email ? "email" : props.phone ? "tel" : props.url ? "url" : props.inputMode}
         data-email={props.email ? "true" : undefined}
         data-phone={props.phone ? "true" : undefined}
+        data-url={props.url ? "true" : undefined}
         maxLength={props.maxLength}
         placeholder={props.placeholder}
         onInput={(event) => event.currentTarget.setCustomValidity("")}
-        onChange={(event) => props.onChange(event.target.value)}
+        onChange={(event) => {
+          event.currentTarget.setCustomValidity("");
+          props.onChange(event.target.value);
+        }}
       />
-      {props.help ? <small>{props.help}</small> : null}
     </label>
   );
 }
@@ -1674,8 +1728,17 @@ function ReviewSection(props: { title: string; children: React.ReactNode }) {
   return <section className="review-section"><h2>{props.title}</h2><dl>{props.children}</dl></section>;
 }
 
-function ReviewRow(props: { label: string; value: string }) {
-  return <div><dt>{props.label}</dt><dd>{props.value || "—"}</dd></div>;
+function ReviewRow(props: { label: string; value: string; link?: boolean }) {
+  return (
+    <div>
+      <dt>{props.label}</dt>
+      <dd>
+        {props.link && props.value ? (
+          <a href={props.value} target="_blank" rel="noopener noreferrer">{props.value}</a>
+        ) : props.value || "—"}
+      </dd>
+    </div>
+  );
 }
 
 function updateChild(update: (fn: DraftUpdater) => void, id: string, patch: Partial<ApplicantDraft["children"][number]>): void {
@@ -1733,6 +1796,12 @@ function validateFormFields(form: HTMLFormElement | null): void {
       value && !PHONE_PATTERN.test(value) ? "Enter a 10-digit phone number." : "",
     );
   });
+  form?.querySelectorAll<HTMLInputElement>("input[data-url]").forEach((input) => {
+    const value = input.value.trim();
+    input.setCustomValidity(
+      value && !isValidWebUrl(value) ? "Enter a valid link beginning with http:// or https://." : "",
+    );
+  });
   form?.querySelectorAll<HTMLInputElement>("input[data-money]").forEach((input) => {
     const amount = Number(input.value);
     input.setCustomValidity(
@@ -1741,6 +1810,15 @@ function validateFormFields(form: HTMLFormElement | null): void {
         : "",
     );
   });
+}
+
+function isValidWebUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:") && Boolean(url.hostname);
+  } catch {
+    return false;
+  }
 }
 
 function validateEmailField(input: HTMLInputElement | null): void {

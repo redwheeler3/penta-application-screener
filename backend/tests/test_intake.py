@@ -69,6 +69,7 @@ def _answers() -> CanonicalApplicationAnswers:
             previous_coop_experience="Synthetic co-op experience.",
             why_coop="Synthetic interest in shared community work.",
         ),
+        household_photo_link="https://example.com/synthetic-household-photo",
         applicant_employment=EmploymentAnswers(
             status="employed",
             job_title="Tester",
@@ -93,7 +94,16 @@ def test_canonical_answers_have_stable_content_hash_and_calculated_income() -> N
 
     assert answers.household_income == 90_000
     assert stored["applicant"]["birth_date"] == "1988-04-12"
+    assert stored["household_photo_link"] == "https://example.com/synthetic-household-photo"
     assert content_hash(stored) == content_hash({**stored})
+
+
+def test_household_photo_link_must_be_a_web_address() -> None:
+    data = _answers().model_dump()
+    data["household_photo_link"] = "not a link"
+
+    with pytest.raises(ValueError, match="URL"):
+        CanonicalApplicationAnswers.model_validate(data)
 
 
 def test_household_income_ignores_hidden_co_applicant_income() -> None:
@@ -227,6 +237,8 @@ def test_publication_records_participation_and_an_application_version() -> None:
     assert version.application_id == application.id
     assert version.selected_opening_ids == [opening.id]
     assert version.content_hash == application.raw_row_hash
+    assert application.normalized["household_photo_link"] == "https://example.com/synthetic-household-photo"
+    assert version.answers["household_photo_link"] == "https://example.com/synthetic-household-photo"
 
 
 def test_age_checks_are_anchored_to_last_submitted_edit() -> None:

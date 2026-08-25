@@ -96,6 +96,7 @@ def _answers(email: str = "avery@example.com", introduction: str = "Synthetic in
             "additionalInformation": "Synthetic additional context.",
         },
         "pets": None,
+        "householdPhotoLink": "https://example.com/synthetic-household-photo",
         "applicantEmployment": {
             "status": "employed",
             "jobTitle": "Synthetic role",
@@ -139,6 +140,7 @@ async def test_save_immediately_persists_private_draft_and_sends_access_link() -
     assert draft is not None
     assert link is not None
     assert draft.working_answers["essays"]["household_introduction"] == "Synthetic introduction"
+    assert draft.working_answers["household_photo_link"] == "https://example.com/synthetic-household-photo"
     assert link.applicant_draft_id == draft.id
     assert timedelta(hours=23, minutes=59) < link.expires_at.replace(tzinfo=UTC) - before <= timedelta(hours=24, seconds=5)
 

@@ -175,6 +175,9 @@ offers **Revert to last submitted application**. This replaces the entire privat
 including pending opening selections, with the last submitted version. Saves and submissions carry
 an optimistic working-copy revision: a stale tab is refused rather than silently overwriting a
 newer save, and the applicant can deliberately reload the latest saved copy.
+Destructive actions initiated inside the application use styled, in-page confirmations. Browser-
+native confirmation is reserved for leaving or reloading a page with unsaved answers, where the
+browser controls the warning.
 
 If the same verified address applies again while an older deleted record remains under legal hold,
 the applicant starts a blank current application. The retained record is never returned,
@@ -419,13 +422,9 @@ removed. They do not show an applicant-removal link.
   real-estate ownership fact used by screening. Current-landlord fields are shown only to renters;
   previous-landlord fields are shown only to renters who have lived at their current address for
   less than two years.
-- The form supports a private household-photo upload rather than only a link. The binary is kept
-  outside SQLite in private object storage; the database stores ownership and file metadata.
-  Uploads are never public, are served only through authorized application/committee access,
-  and require file-type, size, and image-safety validation. A working-copy photo remains private
-  from the committee until the applicant submits it. There is at most one optional household
-  photo. The initial accepted formats are JPEG, PNG, and WebP with a 10 MB upload limit; the server
-  re-encodes accepted images and strips embedded metadata.
+- The form accepts one optional web link to a household photo. Applicants are reminded to use a
+  link the committee can open. The link follows the same private-working-copy and submitted-copy
+  visibility rules as every other answer and never enters AI prompts.
 - The final **Declaration** section presents the membership declaration and the updated privacy
   notice together. Its privacy wording reflects the self-service application deletion and
   retention behavior specified here rather than directing applicants to contact the Privacy
@@ -508,7 +507,7 @@ administrator merge operation.
 The built-in form writes canonical application fields directly. Google column headings and
 spreadsheet rows cease to define the domain model. The submitted copy retains the exact answers
 needed by the committee and AI passes, while normalized values remain the deterministic screening
-input. Uploaded photos never enter AI prompts.
+input. Household photo links never enter AI prompts.
 
 The implementation must preserve the current privacy boundary: drafts and submitted applicant
 data are sensitive PII; they do not enter logs, source control, fixtures, or general operational
@@ -538,7 +537,7 @@ removed after terminal delivery handling; it does not preserve the application o
 mailing-list subscription.
 
 Deletion covers the working and submitted answers, dated application versions,
-photos and abandoned uploads, application participation, AI outputs and caches, eligibility and
+application participation, AI outputs and caches, eligibility and
 ranking data tied to the applicant, committee notes, sessions and unused login tokens, and
 applicant-identifying delivery records. Backups expire under a bounded backup-retention policy,
 and restoring a backup reapplies the deletion ledger before the restored service is opened. Only
@@ -974,7 +973,7 @@ working copies are excluded from every committee and AI query. Publication valid
 form and declaration, records an immutable dated application version, and atomically updates the
 applicant's explicit participation in one or more openings. Opening selection, date-derived
 lifecycle enforcement, submission-date household age checks, and committee opening
-visibility/filtering are implemented. Private photo storage, committee intake changes, and cutover
+visibility/filtering and the optional household photo link are implemented. Committee intake changes and cutover
 remain internal work; the production committee workflow is unchanged until the milestone is
 complete.
 
@@ -990,18 +989,16 @@ complete.
    Refactor Google committee sign-in to issue the same server-side session rather than retaining a
    parallel signed-cookie session.
 3. **Applicant form (complete)** — build the field-reference sections, in-page guest draft, explicit
-   Save and return later, validation/review/Submit flow, calculated household income, persistent
-   unsubmitted-change warning, and accessible responsive behavior.
-4. **Private photo storage** — upload, validate, privately serve, replace, and clean up the one
-   working/submitted household photo without putting binary data in SQLite or AI prompts.
-5. **Publication and opening behavior (in progress)** — configure and publish dated openings;
+   Save and return later, validation/review/Submit flow, calculated household income, optional
+   household photo link, persistent unsubmitted-change warning, and accessible responsive behavior.
+4. **Publication and opening behavior (in progress)** — configure and publish dated openings;
    atomically publish initial and updated working copies; keep drafts invisible; record dated
    application versions and explicit multi-opening participation; and enforce open, closed, and
    archived behavior from the opening dates.
-6. **Committee intake workflow** — replace the external-source Sync step with an honestly named
+5. **Committee intake workflow** — replace the external-source Sync step with an honestly named
    new/updated-applications surface; show submission times and stale Screen/Rank state without
    emailing the committee for routine updates.
-7. **Between-cycle cutover** — configure the applicant hostname, exercise SocketLabs and storage in
+6. **Between-cycle cutover** — configure the applicant hostname and exercise SocketLabs in
    production with synthetic data, retain existing production records as specified below, then
    remove Google Form/Sheet import, Picker, Drive credentials and tokens, data-access scopes, their
    settings/UI, and their operational documentation completely. Retain only the identity-scoped
@@ -1038,8 +1035,8 @@ separate milestone with its own storage, hostname, and isolation decisions.
 - Committee members sign in through an allowlisted magic link or identity-only Google OIDC; both
   issue the same server-side session and support the same revocation, expiry, recent-authentication,
   and remembered-device choice. Role/access changes revoke those sessions server-side.
-- Photos are private, authorized, excluded from AI, and covered by deletion and backup/retention
-  behavior.
+- The optional household photo link is private until submission, is available to the committee
+  afterward, and is excluded from AI prompts.
 - SocketLabs send failure, retry, rate-limit, bounce, and complaint paths are observable without
   logging tokens, email bodies, or applicant content.
 - Automated tests and normal local development capture email without sending it. Explicit live
@@ -1054,8 +1051,6 @@ separate milestone with its own storage, hostname, and isolation decisions.
 
 **Open decisions before implementation:**
 
-- Private object-storage provider, image re-encoding/safety implementation, and deletion mechanics.
-  The user-facing formats and size policy are fixed above.
 - Exact backup lifetime and the implementation mechanics for complete applicant deletion and the
   opportunistic retention sweep.
 - SocketLabs event-webhook configuration and administrator delivery-status UI.

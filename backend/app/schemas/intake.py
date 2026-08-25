@@ -3,7 +3,7 @@
 from datetime import date
 from enum import StrEnum
 
-from pydantic import EmailStr, Field, model_validator
+from pydantic import EmailStr, Field, HttpUrl, model_validator
 
 from app.schemas.base import BridgeModel
 
@@ -125,6 +125,7 @@ class WorkingApplicationAnswers(BridgeModel):
     previous_landlord: WorkingReferenceAnswers | None = None
     essays: EssayAnswers
     pets: str | None = None
+    household_photo_link: str | None = None
     applicant_employment: WorkingEmploymentAnswers
     co_applicant_employment: WorkingEmploymentAnswers | None = None
     applicant_income: int | None = Field(default=None, ge=0)
@@ -150,6 +151,7 @@ class CanonicalApplicationAnswers(BridgeModel):
     previous_landlord: ReferenceAnswers | None = None
     essays: EssayAnswers
     pets: str | None = None
+    household_photo_link: HttpUrl | None = None
     applicant_employment: EmploymentAnswers
     co_applicant_employment: EmploymentAnswers | None = None
     applicant_income: int = Field(ge=0)
