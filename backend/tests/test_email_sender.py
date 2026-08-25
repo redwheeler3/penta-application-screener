@@ -245,3 +245,42 @@ def test_development_sender_rejects_header_injection() -> None:
 
     with pytest.raises(EmailConfigurationError):
         sender.send(_message(to=("person@jeffo.net\r\nBcc: victim@example.com",)))
+
+
+def test_development_sender_rejects_a_mixed_recipient_list_before_delivery() -> None:
+    inner = CapturedEmailSender()
+    sender = DevelopmentEmailSender(
+        inner,
+        sender="applications@pentacoop.com",
+        reply_to="applications@pentacoop.com",
+    )
+
+    with pytest.raises(EmailConfigurationError):
+        sender.send(
+            _message(to=("safe@jeffo.net", "unsafe@example.com"))
+        )
+
+    assert inner.messages == []
+
+
+@pytest.mark.parametrize("identity_field", ["sender", "reply_to"])
+@pytest.mark.parametrize(
+    "mailbox",
+    [
+        "applications@example.com",
+        "applications@sub.jeffo.net",
+        "applications@pentacoop.com.example.com",
+        "applications@pentacoop.com\r\nBcc: victim@example.com",
+    ],
+)
+def test_development_sender_rejects_unsafe_delivery_identities(
+    identity_field: str, mailbox: str
+) -> None:
+    identities = {
+        "sender": "applications@pentacoop.com",
+        "reply_to": "applications@pentacoop.com",
+    }
+    identities[identity_field] = mailbox
+
+    with pytest.raises(EmailConfigurationError):
+        DevelopmentEmailSender(CapturedEmailSender(), **identities)

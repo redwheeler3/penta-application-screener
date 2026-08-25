@@ -17,7 +17,7 @@ import json
 
 from app.ai.applicant_facts import applicant_facts
 from app.ai.dimension_scoring import KIND_PREFIX
-from app.services.application_import import extract_essays
+from app.services.application_content import extract_essays
 from scripts._harvest_common import opaque_index, open_synthetic_run
 
 
@@ -27,7 +27,7 @@ def main() -> None:
     from app.db.models import Application, ApplicationAIResult
     from app.services.analysis import current_dimension_report
 
-    db, run, sheet_id = open_synthetic_run()
+    db, run, source_label = open_synthetic_run()
     try:
         if run is None:
             print("No ranking run to harvest from.")
@@ -41,7 +41,7 @@ def main() -> None:
         apps = {a.id: a for a in db.scalars(select(Application))}
         opaque = opaque_index([r.application_id for r in rows])
 
-        print(f"Harvesting SCORING candidates from run {run.id} (synthetic sheet {sheet_id}) — "
+        print(f"Harvesting SCORING candidates from run {run.id} ({source_label}) — "
               f"{len(rows)} cached scores. Set the expected band + note, drop the HARVEST_ prefix, commit.\n")
         for r in rows:
             out = r.output or {}
@@ -58,7 +58,7 @@ def main() -> None:
                     "pass": "scoring",
                     "expected": {"score_min": "SET_ME", "score_max": "SET_ME", "confidence": "SET_ME (low|medium|high, optional)"},
                     "observed_score": out.get("score"),  # what the run produced — a hint for the band, NOT the label
-                    "source": f"synthetic sheet {sheet_id}, run {run.id}, applicant idx {idx}",
+                    "source": f"{source_label}, run {run.id}, applicant idx {idx}",
                 },
                 "given": {
                     "applicant": {"facts": applicant_facts(app), "essays": extract_essays(app.raw_row or {})},

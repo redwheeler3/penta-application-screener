@@ -31,11 +31,11 @@ from app.db.models import (
     Application,
     DimensionAlias,
     MemberRanking,
-    SyncRun,
     User,
 )
 from app.schemas.settings import AppSettings
 from app.services.analysis_freshness import rank_inputs_fingerprint
+from app.services.application_scope import committee_applications
 from app.services.dimension_identity import flatten_merges, transfer_merged_tiers
 
 
@@ -68,13 +68,11 @@ def create_analysis(
     list (they are now real dimensions).
     """
     layout = tier_layout if tier_layout is not None else default_tier_layout()
-    # Link the analysis to the sync whose pool it ranked over — the most recent import. This
-    # records data provenance (which imported pool it scored), which the eval synthetic-source
-    # guard reads to decide whether the pool's evidence is safe to commit. None when nothing has
-    # been imported yet (shouldn't happen — ranking needs a pool).
-    latest_sync_id = db.scalar(select(SyncRun.id).order_by(SyncRun.id.desc()).limit(1))
+    applications = committee_applications(db)
     analysis = Analysis(
-        source_sync_run_id=latest_sync_id,
+        synthetic_data=bool(applications) and all(
+            application.synthetic_data for application in applications
+        ),
         dimension_report=report.model_dump(mode="json"),
         # Everything this analysis's ranking depends on — pool + rank-chain prompt and model
         # identity. The next Rank compares it to flag the analysis "out of date" when the pool,

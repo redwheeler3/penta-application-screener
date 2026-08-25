@@ -119,12 +119,15 @@ class ApplicationSummary(ResponseModel):
     # per member; a personal working aid with no effect on ranking or eligibility.
     starred_by_me: bool = False
     opening_ids: list[int] = []
-    created_at: str | None = None
 
 
 class ApplicationDetail(ApplicationSummary):
     auto_status: str
     auto_status_source: str
+    first_submitted_at: str | None = None
+    last_submitted_at: str | None = None
+    declaration_accepted_at: str | None = None
+    submission_version_count: int = 0
     normalized: dict[str, Any] | None = None
     essays: list[Essay] = []
     flags: list[ScreeningFlagOut] | None = None

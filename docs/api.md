@@ -71,20 +71,14 @@ configuration, committee defaults, Observability, and Evals require an admin.
 
 | Method | Path | Purpose | Auth |
 | --- | --- | --- | --- |
-| GET | `/settings` | Read the admin settings (plus the resolved Sheet URL/title). | Login |
+| GET | `/settings` | Read the shared AI settings and supported model catalog. | Login |
 | PUT | `/settings` | Save the admin settings. | Login |
-
-### Sync — `app/api/sync.py`
-
-| Method | Path | Purpose | Auth |
-| --- | --- | --- | --- |
-| POST | `/sync/applications` | Import + normalize rows from the configured Google Sheet, apply hard filters. | Login |
 
 ### Dashboard — `app/api/dashboard.py`
 
 | Method | Path | Purpose | Auth |
 | --- | --- | --- | --- |
-| GET | `/dashboard` | `settingsComplete`, the submitted total, and counts grouped by `status` and `status_source`. | Login |
+| GET | `/dashboard` | Read Screen/Rank availability, currentness, and cache coverage. | Login |
 
 ### Applications — `app/api/applications.py`
 

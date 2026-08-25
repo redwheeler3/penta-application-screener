@@ -283,7 +283,7 @@ def test_pet_only_ineligible_attributes_to_ai_source(monkeypatch) -> None:
 
 def test_mixed_pet_and_numeric_ineligible_stays_rules_source(monkeypatch) -> None:
     """A numeric reason present alongside pets keeps source Rules: the numeric reason alone
-    made it ineligible at Sync, so Rules is the honest higher-trust source. Only a pet-ONLY
+    made it ineligible from submitted fields, so Rules is the honest higher-trust source. Only a pet-ONLY
     verdict moves to AI."""
     db = make_session()
     member = add_user(db, "m@x.com")

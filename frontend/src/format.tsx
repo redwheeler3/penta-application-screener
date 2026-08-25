@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 import { FIELD_LABELS, FLAG_CATEGORY_LABELS, MONEY_FIELDS } from "./constants";
-import type { CommitteeOpening, SettingsResponse } from "./types";
+import type { CommitteeOpening } from "./types";
 
 export function openingLabel(opening: CommitteeOpening): string {
   const moveIn = new Date(`${opening.moveInDate}T12:00:00`).toLocaleDateString("en-CA", {
@@ -49,6 +49,12 @@ export function formatPacificDate(value: string): string {
   }).format(new Date(value));
 }
 
+export function formatDateOnly(value: string): string {
+  return new Intl.DateTimeFormat("en-CA", { dateStyle: "medium" }).format(
+    new Date(`${value}T12:00:00`),
+  );
+}
+
 export function flagCategoryLabel(category: string): string {
   return FLAG_CATEGORY_LABELS[category] ?? category;
 }
@@ -74,12 +80,6 @@ export function scoreBand(score: number): { label: string; cls: string } {
 // and the progress-bar width so the two never drift apart.
 export function screeningPercent(progress: { processed: number; total: number }): number {
   return (progress.processed / progress.total) * 100;
-}
-
-// The configured sheet id from a server response: prefer the resolved URL, falling
-// back to the bare id. Returns "" when no sheet is configured.
-export function resolveSheetId(payload: SettingsResponse): string {
-  return payload.googleSheetUrl || payload.settings.googleSheetId;
 }
 
 export function formatArrayItem(item: unknown): string {

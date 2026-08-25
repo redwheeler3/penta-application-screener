@@ -1,924 +1,246 @@
 # Application Architecture
 
-This document explains how the current local MVP is organized: the frontend, the backend, and how the two communicate.
+This document is the practical map of the current codebase. Exact HTTP contracts belong to the
+generated OpenAPI document at `/docs`; product policy belongs in [SPEC.md](../SPEC.md).
 
-The application is intentionally simple right now, to keep the code readable while the product shape is still changing quickly.
+## Runtime shape
 
-## Big Picture
-
-The app has two local development processes:
-
-1. A FastAPI backend running at `http://localhost:8000`
-2. A Vite React frontend running at `http://localhost:5173`
-
-The frontend is what the user sees in the browser. The backend owns authentication, database access, Google API integration, deterministic screening rules, and AI-assisted screening.
-
-The two communicate over HTTP. Authentication uses an opaque cookie whose random credential maps
-to a revocable, expiring server-side `BrowserSession`. A separate signed cookie exists only long
-enough to protect Google OIDC's redirect state.
-
-## Frontend
-
-The frontend lives in `frontend/`. The mental model:
+The production deployment is one FastAPI process serving both the API and the built React SPA.
+SQLite lives on a Fly persistent volume. Local development runs Vite and FastAPI separately:
 
 ```text
-index.html
-  loads src/main.tsx
-    renders App.tsx
-      stores browser state in React state variables
-      calls the backend with fetch()
-      redraws the UI when state changes
-      uses styles.css for layout and visual design
+Applicant or committee browser
+        |
+        v
+React / TypeScript SPA
+        |
+        v
+FastAPI routes
+        |
+        +-- domain and service modules
+        +-- provider-neutral email and AI adapters
+        v
+SQLAlchemy -> SQLite
 ```
 
-React is the UI library: code changes state, and React redraws the matching UI. For example, `App.tsx` has state like:
+The frontend never talks directly to SQLite, an AI provider, or an email provider.
 
-```ts
-const [user, setUser] = useState<CurrentUser | null>(null);
-const [draft, setDraft] = useState<AppSettings>(defaultSettings);
-const [dashboardCounts, setDashboardCounts] = useState<DashboardCounts>(...);
-```
+## Two browser surfaces
 
-`user` is the current value, `setUser` changes it, and calling `setUser(...)` triggers a re-render of the relevant parts.
+The same frontend bundle selects its entry surface from the host in production and the query
+string in development:
 
-Vite is the frontend build tool and dev server: it serves the app locally, hot-reloads on file changes, and builds optimized static files for production.
+- committee screener: `screener.pentacoop.com` or the normal local root;
+- applicant form: `applications.pentacoop.com` or `http://localhost:5173/?applicant`.
 
-Current important files:
+`frontend/src/main.tsx` chooses the surface. `App.tsx` owns the committee shell, while
+`ApplicantApp.tsx` owns intake. Shared branding and account controls live in small components
+rather than being duplicated between them.
 
-- `frontend/package.json`: npm scripts and frontend dependencies.
-- `frontend/index.html`: the single HTML page that loads the React app.
-- `frontend/vite.config.ts`: Vite configuration.
-- `frontend/src/main.tsx`: React entrypoint. It mounts the app into `index.html`.
-- `frontend/src/App.tsx`: Current top-level application UI.
-- `frontend/src/styles.css`: Current global styling and Penta-inspired palette.
-- `frontend/src/vite-env.d.ts`: TypeScript support for Vite environment variables such as `import.meta.env`.
-- `frontend/public/favicon.ico`: static favicon served by Vite at `/favicon.ico`.
+## Applicant intake
 
-### Frontend Runtime
+Applicant-facing routes live in `backend/app/api/applicant_intake.py`. The domain operations are
+in `backend/app/services/intake.py`, with authentication and draft-link concerns separated into
+their own services.
 
-During local development, start the frontend with:
+An `Application` has two meaningful representations:
 
-```powershell
-cd frontend
-npm run dev
-```
+- its private working answers in `working_answers`; and
+- its committee-visible submitted fields plus immutable `ApplicationVersion` history.
 
-Then open `http://localhost:5173` for the committee application or
-`http://localhost:5173/?applicant` for the in-progress applicant surface.
+Saving a draft changes only the working copy. Submitting validates the answers, publishes them
+onto the committee-visible columns, records a version, and updates the selected
+`ApplicationParticipation` rows. Committee queries use `committee_applications`, so private
+drafts cannot accidentally enter screening.
 
-`main.tsx` selects the applicant surface on `applications.pentacoop.com` (or the local applicant
-preview) and the committee surface everywhere else. `App.tsx` owns the committee review workflow;
-`applicant/ApplicantApp.tsx` owns the public application flow so applicant state and committee
-state do not become one conditional-heavy component.
+Openings are independent records with open, closed, and archived phases derived from their three
+dates. Applicants can join open openings, withdraw from open or closed openings, and cannot
+change archived participation. The committee can filter the application list and ranking by
+current openings; archived openings remain available only in administration and retained history.
 
-The applicant form keeps unauthenticated work only in the open page. For a signed-out applicant,
-**Save and return later** accepts an incomplete form, writes a private `ApplicantDraft`, and sends
-a 24-hour, single-use access link; for a signed-in applicant, it updates the authenticated private
-working copy without sending another email. There is no separate email-verification record or
-polling loop. Opening a valid link
-presents the remembered-device choice before claiming the pending draft and establishing the
-normal revocable applicant session. If the email already belongs to an application, the
-newer of the pending draft and existing private working copy wins by UTC save time; equal timestamps
-prefer the pending draft. The submitted committee copy remains unchanged. If a different applicant
-is already active, link inspection returns both emails
-and the frontend requires a keep/switch choice before consuming the credential. Browser drafts are
-keyed by pending-draft or application identity so they do not follow a session switch.
+Submitted applications are already in the database. There is no import or committee sync action.
+The committee client refreshes its lightweight application and workflow reads on focus, on
+visibility return, and every 60 seconds while visible.
 
-Review is also identity-aware: a signed-out review only validates and renders the in-page answers,
-while **Save and review** persists an authenticated private working copy before changing screens.
-If that save fails, the form remains open and the review is not shown.
+## Authentication and sessions
 
-The primary email becomes read-only after authentication. Changing it issues an `email_change`
-credential to the proposed address and leaves the application unchanged until that link is
-consumed. Confirmation updates the identity and private working answers together, revokes other
-application sessions and unused links, preserves only the recently authenticated session that
-initiated the change, creates a session for the confirmation tab, and notifies the previous address
-of both the new address and the Tech Support recovery path. The original tab refreshes identity
-state when it next becomes visible; it does not poll. An address already attached to a different
-current application is rejected after confirmation and the records are never merged.
+Committee members may use identity-only Google OIDC or an emailed magic link. Both routes end in
+the same revocable `BrowserSession`. Applicant access is email-link based and uses a separate,
+host-only session cookie so applicant and committee identities can coexist safely.
 
-Server-side working answers use `WorkingApplicationAnswers`, whose optional fields preserve a
-partial draft. Publication separately validates `CanonicalApplicationAnswers`, copies it to the
-committee-facing projection, records opening participation, and changes the content hash that
-drives AI cache currency. All committee lists, eligibility calculations, and AI passes share the
-submitted-and-not-deleted scope in `app/services/application_scope.py`; private drafts are never
-part of those downstream workflows. The optional household photo is stored as an applicant-supplied
-web link, rendered as a safe new-tab link after submission, and excluded from AI inputs.
+Session policy is implemented server-side:
 
-An `Opening` has application open, application close, and move-in dates plus its unit size and
-housing charge. Admins edit an unpublished draft and explicitly publish it; publication does not
-send email. `services/openings.py` derives the phase from Pacific calendar dates, so no mutable
-status can drift from the schedule. Dates are non-decreasing and may be equal; move-in archiving
-takes precedence when boundaries coincide. Open openings may be selected or withdrawn. For a closed
-opening, an existing participant may stage or reverse a withdrawal until submitting; nobody new
-may join it. Move-in archives the opening and freezes participation. The applicant's
-private working selection is stored separately from `ApplicationParticipation`; only Submit
-changes committee-visible participation and records an immutable `ApplicationVersion`.
+- 1 day recent-auth window for sensitive actions;
+- 7 days of inactivity;
+- 30 days absolute lifetime.
 
-Applicant, co-applicant, and child ages are calculated from their birth dates against the latest
-submitted edit's Pacific date. They remain stable for that committee-visible version and update
-only on another submission; private draft saves do not change committee eligibility. Move-in dates
-do not affect age eligibility. Application details expose every selected opening, while the workflow-bar multi-select
-uses matches-any semantics across both the application and ranking lists. It is a view scope rather
-than an AI-run scope: applications are screened and scored once, then the filtered ranking
-preserves that order and renumbers the visible shortlist from one.
-Archived openings remain available in administration and application history, but are omitted
-from the applicant form/review and the workflow-bar filter. Administrators can still correct an
-archived opening; move-in corrections propagate to participant retention dates.
+The access allowlist gates committee sign-in regardless of identity provider. Google provides
+identity only; it has no access to application data.
 
-The committee surface's main responsibilities are:
+## Transactional email boundary
 
-1. On load, call the backend's `/auth/me` endpoint.
-2. If no user is logged in, show a Google sign-in panel.
-3. If a user is logged in, fetch saved app settings, dashboard counts, and the applications list.
-4. Show the dashboard: status/source tabs with faceted counts.
-5. Let the user expand the admin settings panel (an "Edit settings" toggle, not a gear icon) and save changes.
-6. Let the user sync applications from the configured Google Sheet.
-7. Show a searchable, sortable applications table with a matches-any opening filter.
-8. Open a candidate detail view: normalized fields, essays, filter reasons, AI screening flags, a private reviewer note, the raw row, and the AI narrative.
-9. Run the AI screening pass with a cost-estimate confirmation and live streamed progress.
-10. Let a committee member override an application's status (the human decision is sticky) or clear the override to hand the decision back to the machine.
+Email templates and delivery orchestration are provider-neutral. `email_sender.py` translates
+`OutboundEmail` into SocketLabs requests at the final adapter boundary.
 
-### Vite Files
+`EMAIL_DELIVERY_MODE` has three values:
 
-`frontend/package.json` defines the frontend project and its commands. Important scripts:
+- `capture`: retain messages in memory and perform no network I/O;
+- `development`: deliver through SocketLabs only after a fail-closed exact-domain check;
+- `production`: normal transactional delivery.
 
-```json
-"dev": "vite",
-"build": "tsc -b && vite build",
-"preview": "vite preview"
-```
+Development delivery permits exactly `jeffo.net` and `pentacoop.com`. The adapter validates its
+sender, reply-to, and every To/CC/BCC address before invoking SocketLabs. Subdomains and lookalike
+domains do not match.
 
-- `npm run dev` starts Vite's local development server.
-- `npm run build` runs the TypeScript compiler, then has Vite create production assets.
-- `npm run preview` serves the production build locally after `npm run build`.
+## Committee workflow
 
-Important dependencies:
+The visible workflow has two paid steps:
 
-- `react`: the UI library.
-- `react-dom`: connects React to the browser DOM.
-- `lucide-react`: icon library used for toolbar/button icons.
-- `react-markdown`: renders the AI narrative (Markdown) in the candidate detail view.
-- `vite` (devDependency): dev server and bundler.
-- `typescript` (devDependency): typed JavaScript tooling.
+1. **Screen** runs the per-application integrity pass.
+2. **Rank** discovers criteria, decomposes them, matches prior identities, scores applicants, and
+   consolidates duplicate dimensions.
 
-`frontend/vite.config.ts` is small: it uses the React plugin and pins the dev server to `host: "localhost"` and `port: 5173`. The rest comes from Vite defaults.
+`backend/app/api/dashboard.py` reports whether submitted applications exist and whether each AI
+stage is current. Coverage is content-addressed: an applicant edit changes its content hash and
+makes only affected results stale. The opening filter changes the committee view, not the shared
+analysis pool.
 
-`frontend/index.html` is the one real HTML document. Its key contents:
+The frontend holds the few-hundred-row committee list in memory and derives search, sorting,
+facets, favourites, and opening filters locally. Server reads remain the source of truth after
+mutations.
 
-```html
-<div id="root"></div>
-<script type="module" src="/src/main.tsx"></script>
-<link rel="icon" href="/favicon.ico" />
-```
+## Eligibility and status
 
-The `root` div is an empty mounting point that React fills in after `src/main.tsx` loads. Files in `frontend/public/` are served directly by Vite, which is why `frontend/public/favicon.ico` is available at `http://localhost:5173/favicon.ico`.
+`backend/app/domain/hard_filters.py` is pure deterministic policy. It accepts normalized
+application facts and a `RulesConfig`; it knows nothing about FastAPI, SQLAlchemy, or React.
 
-### React Entry Point
-
-`frontend/src/main.tsx` starts React:
-
-```tsx
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
-```
-
-It finds the `root` element from `index.html`, creates a React root inside it, and renders the `App` component. `React.StrictMode` is a development helper that surfaces unsafe patterns; it may cause development-only double calls but does not change production behavior.
-
-### App.tsx
-
-`frontend/src/App.tsx` is currently the main UI component. It does a lot because the frontend is still young; keeping the current flow in one readable file is acceptable for now.
-
-The top of the file defines TypeScript types that mirror the backend's JSON shapes — `CurrentUser`, `AppSettings`, `SettingsResponse`, `DashboardCounts`, `AppFacets`, `ApplicationSummary`, `ApplicationDetail`, `Essay`, `ScreeningFlag`, `ScreeningEstimateResponse`, plus the `AppStatus` / `StatusSource` / `SortKey` unions. These are compile-time help for the frontend; they do not create runtime database tables or backend models.
-
-Next:
-
-```ts
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
-```
-
-`import.meta.env` is Vite's way of exposing frontend environment variables. If `VITE_API_BASE_URL` is not set, the app defaults to the local backend at port `8000`.
-
-Inside `App()`, the `useState` calls hold browser-side state (more than twenty now). The main groups:
-
-- Auth: `user`, `isLoadingUser`.
-- Settings: `draft` (the editable form values), `saved` (the persisted `SettingsResponse`, which carries the canonical Google Sheets URL and title), `isSettingsExpanded`, `isSavingSettings`, `settingsMessage`.
-- Dashboard/sync: `dashboardCounts`, `syncMessage`, `syncError`, `isSyncing`.
-- Applications list: `applications`, `appTotal`, `appPage`, `appPageSize`, `appFilter`, `appFacets`, `appSearch`, `appSort`, `selectedApp`. (Since M14 the list state is grouped in a `useApplications` hook, and toasts/ranking state in `useToasts`/`useRanking`; see `src/hooks/`.)
-- Screening: `screeningEstimate`, `screeningRunning`, `screeningProgress`.
-
-The first `useEffect` runs on mount and asks the backend whether the browser already has a valid login session:
-
-```ts
-fetch(`${apiBaseUrl}/auth/me`, { credentials: "include" })
-```
-
-The second `useEffect` runs when `user` changes: once a user is logged in, it fetches saved settings and dashboard counts.
-
-The functions in `App.tsx` line up with user actions:
-
-- `requestMagicLink()`: requests a committee sign-in email.
-- Google sign-in navigates directly to the backend's OIDC login route.
-- `logout()`: calls the backend logout route and clears local user state.
-- `saveSettings()`: sends the settings form to `PUT /settings`.
-- `syncApplications()`: calls `POST /sync/applications`, then refreshes the dashboard and the applications list.
-- `refreshDashboard()`: calls `GET /dashboard`.
-- `applySettingsResponse()`: converts the backend settings response into the shape the UI displays.
-- `fetchApplications()`: calls `GET /applications` with the current filter, search, sort, and page.
-- `viewApplication()`: loads one application's detail via `GET /applications/{id}`.
-- `toggleSort()`: changes the table sort column/direction.
-- `requestScreeningEstimate()` / `runScreening()`: fetch the cost estimate, then stream the AI screening run.
-- `overrideStatus()`: sets an application's status as a human decision via the applications API.
-- `clearStatusOverride()`: removes a human override (DELETE), handing the decision back to the machine, which recomputes from current findings.
-
-The bottom half of `App.tsx` returns JSX, using normal JavaScript conditions to decide what to show:
-
-```tsx
-{!user ? (
-  <section className="login-panel">...</section>
-) : (
-  <>...</>
-)}
-```
-
-If there is no user, show the login panel; otherwise show the authenticated dashboard.
-
-### Frontend Authentication Flow
-
-`App.tsx` checks the current user with:
-
-```ts
-fetch(`${apiBaseUrl}/auth/me`, { credentials: "include" })
-```
-
-`credentials: "include"` is essential — without it the browser would not send the backend session cookie on cross-origin requests from `5173` to `8000`.
-
-The login panel always offers Google. `/auth/me` also reports whether the runtime is configured for
-live email delivery; only `development` and `production` modes reveal the email option. An email
-link returns with its credential in the URL fragment. The frontend inspects it before exchange so
-a matching active session can ignore a stale credential and a different active committee identity
-must be chosen explicitly. A recognizable stale link can request a replacement without exposing
-its address to an invalid token. A successful email exchange and Google sign-in create the same
-committee `BrowserSession`.
-
-Logout calls `POST http://localhost:8000/auth/logout` and then clears the local `user` state.
-
-### Frontend Data Flow
-
-The frontend does not directly read Google Sheets or SQLite. It only talks to the backend.
-
-The normal dashboard load:
+Eligibility is computed on read rather than stored as a final verdict:
 
 ```text
-Browser loads React
-  App.tsx calls GET /auth/me
-  If logged in:
-    App.tsx calls GET /settings
-    App.tsx calls GET /dashboard
-    App.tsx calls GET /applications
-  React stores the responses in state
-  React renders the dashboard, tabs, and applications table from that state
+submitted fields + current member rules + cached AI findings + member override
+                                    |
+                                    v
+                       effective status and source
 ```
 
-The sync flow:
+Structured-field reasons attribute to Rules. Pet limits attribute to AI because the screening
+pass first extracts pet facts from free text. A member's explicit override is sticky and is never
+overwritten by a later machine calculation.
 
-```text
-User clicks Sync applications
-  App.tsx calls POST /sync/applications
-  Backend imports rows and applies hard filters
-  App.tsx receives sync counts
-  App.tsx calls GET /dashboard and GET /applications
-  React redraws the counts and table
-```
+## AI boundary and caching
 
-This separation matters: the frontend handles presentation and browser interactions; the backend handles trusted work — authentication, Google API calls, database writes, and screening logic.
+`backend/app/ai/provider.py` defines the application-facing provider contract. Model catalog
+entries identify vendor, route, model, and reasoning support. Downstream screening and ranking
+code does not branch on Bedrock versus direct APIs.
 
-### Frontend Styling
+Each pass owns:
 
-The current look borrows from `pentacoop.com`:
+- a structured output schema;
+- a derived prompt version;
+- a model and applicable reasoning level;
+- a cost estimate;
+- a content-addressed cache identity;
+- stored reasoning and usage trace.
 
-- White and very light gray page surfaces
-- Green primary actions and success states
-- Blue neutral/action accents (also used for the `ai` source badge)
-- Orange for caution and the staleness/needs-review accents
-- Red for ineligible status, flagged fields, and error toasts
+Application cache keys depend on semantic model identity, prompt version, reasoning level, and
+application content—not on an equivalent provider route. Ranking freshness adds the eligible
+pool and every rank-chain pass identity.
 
-The app should remain dashboard-like and operational, not a marketing landing page.
+The main AI modules are:
 
-`frontend/src/styles.css` is plain CSS. It defines color variables at the top, used later via `var(...)`:
+- `screening.py`: integrity flags and extracted pet facts;
+- `pool_digest.py`: bounded pool context;
+- `dimension_discovery.py`: parallel candidate-dimension discovery;
+- `dimension_decomposition.py`: one non-overlapping dimension set;
+- `dimension_identity.py`: carry-forward matching;
+- `dimension_scoring.py`: per-application scores and evidence;
+- `dimension_consolidation.py`: post-score duplicate confirmation.
 
-```css
-:root {
-  --penta-blue: #2563eb;
-  --penta-green: #16a34a;
-  --ink: #111827;
-}
-```
+Orchestration is deterministic code. Models never decide which pass runs next, and ranking is
+pure weighted math over cached scores.
 
-Main class families:
+## Data model
 
-- `.app-shell`: centered page width and outer spacing.
-- `.topnav` / `.topnav-inner`: app header row (note: not `.topbar`).
-- `.brand-lockup` and `.brand-mark`: Penta title/icon grouping.
-- `.toolbar`: right-side icon buttons.
-- `.settings-panel`, `.settings-form`, `.settings-summary`, `.rules-section` / `.rules-grid`: admin settings layout and the per-rule toggle grid.
-- `.app-controls`, `.filter-group`, `.app-tabs` / `.tab-button`, `.app-search`: dashboard tabs and table controls.
-- `.app-table`, `.sort-header`, `.status-badge` / `.source-badge` / `.stale-badge`, `.pagination`: the applications table.
-- `.app-detail`, `.app-detail-essays` / `.essay-block`, `.filter-reasons`, `.flags-panel` / `.flag` (+ `.flag-category`/`.flag-summary`/`.flag-evidence`), `.ai-narrative`, `.raw-row-section`, `.field-flagged`: the candidate detail view.
-- The AI-run flow (estimate → confirm → progress) uses the shared workflow-strip classes in `WorkflowBar.tsx`, not a screening-specific family.
-- `.toast` / `.toast-error` / `.toast-success`: transient messages.
-- media query at the bottom: mobile layout adjustments.
+The central tables are:
 
-(`.stats-grid` / `.stat-card` are still defined but no longer used — dashboard counts now surface as tab labels.)
+- `applications`: identity, private working answers, current submitted representation, lifecycle,
+  and synthetic provenance;
+- `application_versions`: immutable submitted versions;
+- `openings` and `application_participations`: vacancy configuration and applicant selection;
+- `browser_sessions` and token-credential tables: revocable authentication;
+- `application_ai_results`: cached per-application passes;
+- `analyses`, `analysis_audits`, dimension definitions, and scores: shared Rank state;
+- member eligibility overrides, notes, stars, rules, allowlist, feedback, and settings.
 
-When reading CSS in this project, start from the JSX class name in `App.tsx`, then search that class name in `styles.css`.
+SQLAlchemy models live in `backend/app/db/models.py`. Alembic migrations are the only supported
+way to change an existing database. Additive migrations apply in place; never delete the local
+database without explicit approval.
 
-## Backend
+## Synthetic local data
 
-The backend lives in `backend/`. The mental model:
+`test-data/synthetic-penta-application-responses.csv` mirrors the canonical built-in application
+shape. `backend/app/services/synthetic_fixture.py` parses and validates every row through the same
+Pydantic schema used by intake.
 
-```text
-FastAPI app
-  receives HTTP requests from the frontend
-  uses dependencies to get the current user and database session
-  calls service functions for app work
-  uses SQLAlchemy models to read/write SQLite
-  calls Google for committee OIDC identity and the temporary spreadsheet workflow
-  returns JSON back to the frontend
-```
+The loader is deliberately narrow:
 
-The backend is more complex than the frontend because it owns the trusted parts:
-
-- login/session handling
-- Google OIDC identity and the separate sheet-reader credential
-- database schema and persistence
-- Google Sheets reads
-- application import and normalization
-- deterministic screening rules
-- AI-assisted screening (screening flags + the Rank chain)
-- API responses consumed by the React frontend
-
-The backend is split into layers so each file has a clear job:
-
-```text
-app/api/       HTTP routes
-app/core/      config and OAuth setup
-app/db/        database models and sessions
-app/domain/    pure business rules
-app/schemas/   request/response data shapes
-app/services/  reusable application operations
-app/ai/        AI-assisted screening (provider, caching, screening + Rank passes)
-```
-
-Current important files:
-
-- `backend/pyproject.toml`: Python package metadata, dependencies, and pytest configuration.
-- `backend/alembic.ini`: Alembic migration configuration.
-- `backend/alembic/`: database migration environment and versions.
-- `backend/app/main.py`: FastAPI app factory and middleware registration.
-- `backend/app/api/`: HTTP route modules.
-- `backend/app/core/`: configuration and OAuth setup.
-- `backend/app/db/`: SQLAlchemy models and database session setup.
-- `backend/app/domain/`: pure domain logic, including deterministic hard filters.
-- `backend/app/services/`: application services that coordinate database work.
-- `backend/tests/`: backend tests.
-
-### Backend File Map
-
-`backend/pyproject.toml` defines the backend package, dependencies, and pytest configuration. Important dependencies:
-
-- `fastapi[standard]`: web framework and local dev server support.
-- `sqlalchemy`: ORM used to work with SQLite as Python objects.
-- `alembic`: database migration tool.
-- `authlib`: OAuth client used for Google login.
-- `google-api-python-client`: Google Sheets API client.
-- `google-auth`: Google credential/refresh support.
-- `pydantic-settings`: environment-based settings.
-- `pytest`: tests.
-
-`backend/app/main.py` creates the FastAPI app (the backend equivalent of the frontend entry point).
-
-`backend/app/api/*.py` files (and packages) define routes — HTTP endpoints such as `GET /dashboard` or `POST /sync/applications`. The modules are `applications.py` (list/detail/status-override), `auth.py`, `dashboard.py`, `health.py`, `screening.py` (the AI screening estimate/run endpoints), `ranking/` (the Rank-chain package: `run`/`current`/`shortlist`), `observability.py` (cost/metrics/last-runs), `evals/` (the eval cockpit package), `settings.py`, and `sync.py`, plus `dependencies.py` for shared FastAPI dependencies (e.g. `require_current_user`) and `problems.py` for the RFC 9457 error contract.
-
-`backend/app/services/*.py` files contain reusable operations that routes call. For example, sync route code does not know every detail of importing application rows; it calls service functions.
-
-`backend/app/domain/hard_filters.py` contains pure screening logic, intentionally separate from HTTP, SQLAlchemy, and Google APIs. `backend/app/domain/status.py` is the companion module that resolves an application's eligibility status from its findings (see the status model under "Database").
-
-`backend/app/db/models.py` defines the database tables as Python classes. `backend/app/db/session.py` defines how code opens database sessions. `backend/alembic/versions/*.py` defines the migrations that give the database file the tables from `models.py`. `backend/tests/*.py` verifies important behavior.
-
-### Backend Runtime
-
-During local development, start the backend with:
-
-```powershell
+```sh
 cd backend
-uv run alembic upgrade head
-uv run fastapi dev app/main.py --port 8000
+uv run python -m scripts.load_synthetic_applications --opening-id 1 --opening-id 2
 ```
 
-The health check is `http://localhost:8000/health`.
+It requires `APPLICATION_DATA_IS_SYNTHETIC=true`, SQLite, and published non-archived openings.
+Repeated `--opening-id` arguments connect every fixture applicant to each target opening. It sends
+no email, is idempotent by primary email plus content/opening state, and refuses to replace an
+application not already stamped synthetic.
 
-`uv run ...` runs the command inside the backend project's managed Python environment, keeping dependencies local to this project instead of relying on globally installed packages.
+Synthetic provenance is persisted on applications and copied onto each analysis when the entire
+pool is synthetic. Evidence-harvesting tools fail closed unless the analysis carries that stamp;
+filenames and email domains never establish safety.
 
-### FastAPI App Setup
+## Configuration
 
-> For a one-line index of every HTTP endpoint, see [api.md](api.md). Because this is a FastAPI app, the live, always-current reference is also auto-generated at `http://localhost:8000/docs` (Swagger UI) and `http://localhost:8000/openapi.json`.
+Runtime secrets and host-specific behavior live in environment variables. Shared AI settings and
+per-member eligibility rules live in the database. Important local-only controls include:
 
-`backend/app/main.py` creates the FastAPI app. It currently installs:
+- `EMAIL_DELIVERY_MODE`;
+- `APPLICATION_DATA_IS_SYNTHETIC`;
+- provider credentials;
+- session and OAuth secrets;
+- frontend/backend origins.
 
-- `SessionMiddleware`, used only for Google OIDC's short-lived signed state cookie.
-- `CORSMiddleware`, which allows the local React frontend at port `5173` to call the backend at port `8000` with credentials.
-- Route modules from `app.api.applications`, `app.api.auth`, `app.api.dashboard`, `app.api.evals`, `app.api.health`, `app.api.observability`, `app.api.screening`, `app.api.ranking`, `app.api.settings`, and `app.api.sync`.
+Safe placeholders belong in `.env.example`; actual `.env.local` files are ignored.
 
-The app uses an app factory, which makes testing easier because tests can create a fresh app instance:
+## Where code belongs
 
-```py
-def create_app() -> FastAPI:
-    ...
-```
+- `backend/app/api/`: HTTP translation, dependencies, and status codes;
+- `backend/app/services/`: reusable database-backed operations and external boundaries;
+- `backend/app/domain/`: framework-free business rules;
+- `backend/app/schemas/`: request/response and structured data contracts;
+- `backend/app/ai/`: prompts, pass schemas, model catalog, providers, and costs;
+- `frontend/src/components/`: focused visual surfaces;
+- `frontend/src/hooks/`: stateful data orchestration;
+- `frontend/src/api.ts`: browser HTTP boundary;
+- `backend/tests/`: behavior and contract coverage.
 
-Routes are kept in separate router modules rather than registered in one central object; each router owns one slice of the API (for example, `app.api.sync` owns `/sync/applications`):
+Route handlers should stay thin. Business rules belong in services or domain modules, and a rule
+should have one named implementation rather than parallel frontend/backend copies whenever the
+server can own it.
 
-```py
-app.include_router(applications_router)
-app.include_router(auth_router)
-app.include_router(dashboard_router)
-app.include_router(evals_router)
-app.include_router(health_router)
-app.include_router(observability_router)
-app.include_router(screening_router)
-app.include_router(ranking_router)
-app.include_router(settings_router)
-app.include_router(sync_router)
-```
+## Verification
 
-FastAPI route functions are normal Python functions with a route decorator and dependency injection:
+Run backend checks from `backend/`:
 
-```py
-@router.post("/applications")
-def sync_applications(
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> dict:
-    ...
-```
-
-The `Depends(...)` pieces tell FastAPI to run `require_current_user` and `get_db` before the route and pass the results as `user` and `db`. That is why route bodies focus on app behavior instead of manually opening database connections or checking cookies. Middleware wraps every request/response:
-
-```text
-Browser request
-  Session/CORS middleware
-    Route function
-  Middleware finalizes response
-Browser receives response
-```
-
-### Configuration
-
-Configuration lives in `backend/app/core/config.py`. Settings are loaded from environment variables and local env files:
-
-- `../.env`
-- `../.env.local`
-- `.env`
-- `.env.local`
-
-For this repo, the most important local file is `backend/.env.local` (ignored by Git).
-
-The backend supports two ways to configure Google OAuth:
-
-1. Direct environment variables: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-2. A downloaded Google OAuth JSON file: `GOOGLE_OAUTH_CLIENT_SECRETS_FILE`
-
-For local MVP development, the JSON file approach is simpler because Google already provides that file.
-
-The `Settings` class is a Pydantic settings model defining config values and defaults:
-
-```py
-class Settings(BaseSettings):
-    database_url: str = "sqlite:///./data/penta_screener.db"
-    session_secret: str = "dev-only-change-me"
-    frontend_url: str = "http://localhost:5173"
-    ...
-```
-
-`get_settings()` is cached so the backend reads config once and reuses it:
-
-```py
-@lru_cache
-def get_settings() -> Settings:
-    return Settings()
-```
-
-`backend/app/core/google_oauth.py` turns those settings into an Authlib OAuth client. It can read either direct env vars or the downloaded Google client-secret JSON; we use the JSON route locally because it keeps Google-provided values together.
-
-### Database
-
-The backend uses SQLite locally through SQLAlchemy. The default database URL is:
-
-```text
-sqlite:///./data/penta_screener.db
-```
-
-The SQLite database file is generated locally and ignored by Git.
-
-Alembic owns schema migrations (in `backend/alembic/versions/`; M12 squashed the original chain into one baseline, and later migrations add the eval-runs table and the M14 `ranking_runs` split). The tables:
-
-- `users`
-- `google_credentials`
-- `admin_settings`
-- `applications`
-- `application_notes` (a member's private per-application note)
-- `application_ai_results` (cached AI analysis — see [ai-screening.md](ai-screening.md))
-- `sync_runs`
-- `ranking_runs` (a Rank's discovered dimensions + committee state; see the criteria-split note below)
-- `ranking_run_audit` (1:1 with `ranking_runs`: the AI-legibility trail — discovery narrative + match/fan-out/decompose/consolidate audits)
-- `dimension_aliases` (the sole merge-truth: a consolidated duplicate key → its canonical key)
-- `run_cost_ledger` + `run_pass_cost` (per-run and per-pass cost/tokens/latency — M13 observability)
-- `eval_runs` (persisted eval-cockpit runs)
-
-During MVP iteration we do not preserve backward compatibility for local schema changes. If the local database shape changes, it is acceptable to delete the generated SQLite file and recreate it from migrations. Once real users or applicant data depend on the app, that tradeoff changes.
-
-Three related concepts: SQLAlchemy models (Python classes describing tables), SQLAlchemy sessions (short-lived objects to query and save data), and Alembic migrations (scripts that create/change actual tables).
-
-`backend/app/db/models.py` defines classes like:
-
-```py
-class Application(TimestampMixin, Base):
-    __tablename__ = "applications"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    primary_email: Mapped[str] = mapped_column(String(320), unique=True)
-    raw_row: Mapped[dict[str, Any]] = mapped_column(JSON)
-    raw_row_hash: Mapped[str] = mapped_column(String(64))
-    normalized: Mapped[dict[str, Any]] = mapped_column(JSON)
-    status: Mapped[ApplicationStatus] = mapped_column(...)
-    status_source: Mapped[StatusSource] = mapped_column(...)
-```
-
-This declares an `applications` table with those columns. Some are regular relational columns (`id`, `primary_email`, `status`, `status_source`, `created_at`); some are JSON columns (`raw_row`, `normalized`, `hard_filter_reasons`). The hybrid is intentional: relational columns for things we query/filter/sort, JSON columns for flexible source payloads or debug/audit details.
-
-**The status model.** Eligibility is not a single boolean. An application has a `status` (`ApplicationStatus`: `eligible` / `ineligible`) and a `status_source` (`StatusSource`: `untouched` / `rules` / `ai` / `human`) recording *who* last set it. The precedence is rules > AI > untouched, and a `human` source is sticky — machine re-runs never overwrite it. This is the model that lets the AI pass and the hard filters coexist; the logic lives in `app/domain/status.py`. (The older single `hard_filter_status` column was replaced by this two-column model.)
-
-`backend/app/db/session.py` creates the database engine and session factory. A session is the unit of work for a request:
-
-```text
-Route starts
-  get_db opens a Session
-  route/service queries and writes through that Session
-  get_db closes the Session
-Route ends
-```
-
-`backend/alembic/versions/9c0ee540ce8f_squashed_baseline_schema.py` is the baseline migration (M12 squashed the original chain into one); later migrations in the same directory evolve the schema (eval-runs table, estimated-usd column, the ranking-run criteria-blob split). Running `uv run alembic upgrade head` applies migrations to the local SQLite database.
-
-### Auth Routes
-
-Auth routes live in `backend/app/api/auth.py`:
-
-- `GET /auth/google/login` — starts the OAuth flow by redirecting the browser to Google.
-- `GET /auth/google/callback` — verifies Google's stable subject and verified email, applies the
-  allowlist, and issues a committee `BrowserSession`.
-- `POST /auth/magic-link` and `POST /auth/magic-link/consume` — request and consume the alternative
-  email credential, issuing the same kind of committee session.
-- `GET /auth/me` — resolves the opaque committee-session cookie and returns its active allowlisted
-  user, or `{ "user": null }`.
-- `POST /auth/logout` — revokes that server-side session and clears its cookie.
-
-Both login methods resolve one local `User`; the access allowlist supplies its role. Google attaches
-its stable `sub` identifier to that user but receives only `openid`, `email`, and `profile` scopes.
-Email and Google do not create parallel users or sessions.
-
-Google login does not store its access token. While the spreadsheet workflow remains, the separate
-admin-only Picker exchange stores a `drive.file` credential in `google_credentials` for the
-designated sheet reader. That credential is not a login session. Authenticated requests work like
-this:
-
-```text
-Browser calls GET /settings with committee-session cookie
-  Backend hashes the credential and loads BrowserSession
-  Backend verifies expiry, revocation, user activity, and current allowlist role
-  Route runs as that user
-```
-
-### Settings Routes
-
-Settings routes live in `backend/app/api/settings.py`:
-
-- `GET /settings`
-- `PUT /settings`
-
-Settings are stored in the `admin_settings` table as one JSON value under the key `app_settings`. Current settings:
-
-- Google Sheet link or ID
-- Unit size
-- Move-in date
-- Income minimum and maximum
-- Income mismatch tolerance
-- Household limits: max adults, minimum adult age
-- Employment requirement: none, at least one adult working, or every adult working
-- Pet limits: max dogs, max cats, whether other/exotic pets are allowed
-- `disabled_rules`: which deterministic hard-filter rules are turned off
-- A nested `ai` block (`AISettings`): region, one model and reasoning effort per AI pass (`screening`, `dimension_scoring`, `discovery`, `decompose`, `match`, `consolidate`), the consolidation correlation threshold, spending cap (default `$2.00`), and screening concurrency (`max_workers`) — see [ai-screening.md](ai-screening.md). Models remain config-only; reasoning is editable beside each displayed model and is ignored when that model does not support it.
-
-The defaults match the current planned 2-bedroom opening:
-
-- Unit size: `2br`
-- Move-in date: `2026-09-01`
-- Income range: `$70,000` to `$150,000`
-
-The settings API currently requires login. Role-specific authorization can be added when Member/Admin workflows become more complete.
-
-When a user saves a Google Sheets link, the backend normalizes and stores the spreadsheet ID. Settings responses also include a canonical Google Sheets URL for display, plus the spreadsheet title when the logged-in user's Google token can resolve it.
-
-Three files are involved:
-
-- `backend/app/api/settings.py`: HTTP routes.
-- `backend/app/schemas/settings.py`: request/response shape and validation.
-- `backend/app/services/settings.py`: database read/write helpers.
-
-`AppSettings` is a Pydantic model that validates settings coming from the frontend:
-
-```py
-class AppSettings(BaseModel):
-    google_sheet_id: str = Field(default="", max_length=2000)
-    income_min: int = Field(default=70_000, ge=0)
-    income_max: int = Field(default=150_000, ge=0)
-    min_adult_age: int = Field(default=18, ge=1, le=100)
-    max_child_age: int = Field(default=17, ge=0, le=100)
-    min_children: int = Field(default=1, ge=0, le=20)
-    max_children: int = Field(default=4, ge=0, le=20)
-    # ...plus employment and pet rules, disabled_rules, and a nested ai: AISettings
-```
-
-The full model (see `app/schemas/settings.py`) includes the nested `AISettings` sub-model and normalizes a pasted Google Sheets URL into a sheet ID before saving, so the frontend can show a friendly URL while the backend stores a stable ID. Note there is no `unit_size` or `move_in_date` (those were display-only and removed), and no income-mismatch tolerance — the arithmetic check requires exact equality. Settings are stored as one JSON blob in `admin_settings`, which is simple for MVP because there is only one settings object.
-
-### Sync And Dashboard Routes
-
-Sync routes live in `backend/app/api/sync.py`:
-
-- `POST /sync/applications`
-
-Dashboard routes live in `backend/app/api/dashboard.py`:
-
-- `GET /dashboard`
-
-The sync route:
-
-1. Requires a logged-in user.
-2. Reads saved app settings.
-3. Requires a Google Sheet link or ID.
-4. Loads the designated sheet reader's stored `drive.file` credential.
-5. Fetches rows from the first tab in the configured Google Sheet.
-6. De-dupes applications by normalized applicant email, keeping the last row.
-7. Stores the raw row JSON and normalized fields.
-8. Applies deterministic hard filters.
-9. Creates a `SyncRun` record.
-
-Only the designated sheet reader's Picker-granted `drive.file` token is stored in
-`google_credentials`; ordinary Google login never writes that table. M21 removes this credential
-with the spreadsheet import path at cutover.
-
-The dashboard route returns `settingsComplete` (whether a Google Sheet is configured), a `submitted` total, and counts grouped by `status` (eligible / ineligible) and `status_source` (untouched / rules / ai / human). "Needs review" is the client's label for the `source = ai` group; "filtered out" is `source = rules`.
-
-The sync flow crosses several layers:
-
-```text
-POST /sync/applications
-  app/api/sync.py
-    checks current user
-    loads app settings
-    loads stored Google token
-    calls fetch_sheet_rows(...)
-      app/services/google_sheets.py
-        refreshes Google credentials if needed
-        reads spreadsheet metadata
-        reads values from the first sheet tab
-        makes repeated headers unique
-        returns list[dict] rows
-    calls import_applications_from_rows(...)
-      app/services/application_import.py
-        de-dupes by email
-        normalizes each row
-        calls evaluate_hard_filters(...)
-          app/domain/hard_filters.py
-        writes Application rows
-        writes SyncRun record
-  returns sync counts as JSON
-```
-
-`backend/app/services/google_sheets.py` is concerned only with Google Sheets access and turning sheet values into row dictionaries. One important detail: Google Forms response sheets may repeat column labels, and a dictionary cannot have duplicate keys, so repeated headers are made unique (`First name`, `First name [2]`, `First name [3]`) to prevent later columns from overwriting earlier ones.
-
-`backend/app/services/application_import.py` is where source rows become app data. It handles:
-
-- primary email normalization
-- duplicate email handling
-- row hashing
-- applicant/co-applicant name extraction
-- child count extraction
-- income parsing
-- real-estate parsing
-- pet parsing
-- storing raw and normalized values
-
-The importer preserves the raw Google Sheets row as JSON — useful for debugging, auditability, schema drift, and future candidate detail screens.
-
-`SyncRun` records what happened during sync: `row_count`, `duplicate_count`, `imported_count`, `updated_count`, `unchanged_count`, `eligible_count`, `filtered_out_count`, and a `settings_fingerprint` (hash of the import-relevant settings at sync time). The dashboard compares the latest sync's fingerprint to the live settings to flag the Import step amber when settings changed since the last import (`workflow.importCurrent`).
-
-`backend/app/api/dashboard.py` queries application counts from SQLite and returns them (see the response shape above). Richer per-application data is served by the separate `app/api/applications.py` list/detail endpoints.
-
-### Application Routes
-
-Application routes live in `backend/app/api/applications.py`:
-
-- `GET /applications` — the unpaginated committee pool plus the opening catalog. Each row carries
-  its current opening IDs; the browser derives search, opening/status/source filters, sorting, and
-  faceted counts without another request.
-- `GET /applications/{id}` — one application's detail: selected openings, normalized fields,
-  essays, filter reasons, AI screening flags, the raw source row, and the AI narrative.
-- `PATCH /applications/{id}/status` — a human status override. Sets `status_source = human`, which machine re-runs then leave untouched.
-- `DELETE /applications/{id}/status` — removes a human override, handing the decision back to the machine. Recomputes status from the current findings and clears human ownership; idempotent if no override is set.
-
-All application routes are open to any logged-in committee member. Roles (`admin` / `member`) exist in the data model but do not currently gate any route — members are trusted screeners.
-
-The AI screening endpoints (`GET /screening/run/estimate` and `POST /screening/run`) live in `app/api/screening.py` and are documented in [ai-screening.md](ai-screening.md).
-
-### User Creation
-
-User creation/update logic lives in `backend/app/services/users.py`. Email links resolve the
-allowlisted normalized address; Google additionally binds its stable subject to that same local
-user. The allowlist is the source of truth for both admission and the admin/member role.
-
-### Deterministic Hard Filters
-
-Hard-filter logic lives in `backend/app/domain/hard_filters.py`. This module is intentionally pure domain logic: it takes normalized application-like data and returns a result, without knowing about FastAPI, SQLAlchemy, Google Sheets, or the UI. Keeping it isolated makes it easy to test, read, and change, and it is a good place to read the business rules without web-framework noise.
-
-Current tests cover all deterministic screening rules including child age limits, child age exceeding a parent, applicant and co-applicant age, income range, the household-income arithmetic mismatch, real estate ownership, child count mismatch, negative values, future employment dates, and co-applicant completeness.
-
-### AI Screening
-
-On top of the deterministic hard filters, the app runs an **AI screening pass**. It reviews each application for data-integrity concerns — placeholder-looking names, non-responsive essays, pet descriptions that conflict with the co-op policy, obviously fake contact details — and surfaces them as informational notices (flags) for a human screener.
-
-Two things keep this bounded:
-
-- **Flags never decide eligibility.** The hard filters decide; AI only annotates. A flagged application moves into a "needs review" bucket, not a rejection.
-- **Machines never overwrite humans.** A human-set status is sticky across re-runs.
-
-The AI code lives in `backend/app/ai/` and is built around a provider boundary: the app depends on an `AIProvider` interface, with a Strands implementation that routes catalogued models through Amazon Bedrock, OpenAI, or Anthropic and a `MockProvider` used in tests with no external access. `model_catalog.py` is the sole authority for provider routing, capabilities, and equivalence; callers treat route IDs as opaque. Results are cached by content + provider-neutral model identity + reasoning + prompt version, so equivalent provider routes share valid work while actual model changes do not. Every run is cost-estimated and capped before it starts.
-
-The pass runs applications **concurrently** through a thread pool (the model call is a slow, blocking network round-trip), streaming progress back to the browser as NDJSON. The design rule: only the model call runs in worker threads; all database access stays on the request thread, so the SQLAlchemy session is never shared.
-
-This section is a summary. The full pipeline — provider boundary, structured output, caching, cost cap, the flags-to-status model, and the concurrency design — is documented in **[ai-screening.md](ai-screening.md)**.
-
-The main hard-filter function is:
-
-```py
-def evaluate_hard_filters(application: dict[str, Any], rules: RulesConfig = RulesConfig()) -> FilterResult:
-    ...
-```
-
-It takes already-normalized application data, not raw Google Sheets rows. That separation matters:
-
-```text
-Raw Google row
-  application_import.py normalizes it
-Normalized application dict
-  hard_filters.py evaluates it
-FilterResult
-  application_import.py stores status/reasons
-```
-
-The hard-filter module returns structured reasons, so the UI can show a readable message while keeping machine-readable `code` and `details`:
-
-```py
-FilterReason(
-    code="income_below_range",
-    message=f"Household gross income (${income:,.0f}) is below ${rules.min_income:,}.",
-    details={"household_income": income, "min_income": rules.min_income},
-)
-```
-
-### Schemas
-
-Schemas live in `backend/app/schemas/`. Here, "schema" means Pydantic request/response models, not database tables (those live in `backend/app/db/models.py`). FastAPI uses these models to validate and serialize data, and they make route behavior easier to read because the expected JSON shape is explicit. For example, `SettingsResponse` describes JSON returned to the frontend:
-
-```py
-class SettingsResponse(BaseModel):
-    settings: AppSettings
-    google_sheet_url: str = ""
-    google_sheet_title: str | None = None
-```
-
-`backend/app/schemas/settings.py` also defines `AppSettings` (the full admin settings model) and its nested `AISettings` sub-model. The AI structured-output schemas (`ScreeningReport` and friends) live separately in `app/ai/schemas.py` — see [ai-screening.md](ai-screening.md).
-
-### Services
-
-Services live in `backend/app/services/`. Service functions are reusable app operations that do not themselves define HTTP routes. Current service files:
-
-- `users.py`: create/update committee users from email or Google identity.
-- `settings.py`: load/save the app settings JSON record.
-- `google_credentials.py`: store/retrieve the temporary spreadsheet-reader credential.
-- `google_sheets.py`: read spreadsheet metadata and rows.
-- `application_import.py`: turn sheet rows into `Application` and `SyncRun` records.
-- `intake.py`: persist revision-guarded private working answers and atomically publish application versions.
-- `openings.py`: derive opening phases and manage date-driven publication.
-- `opening_participation.py`: validate applicant selection/withdrawal and maintain participation.
-- `application_scope.py`: define the active, submitted opening participation shared by committee and AI workflows.
-- `retention.py`: shared retention-date calculations.
-- `ranking_run.py`: the Rank run's persistence + carry-forward — `create_run`, `dimension_weights` (derived from tiers), `adopt_matched_keys`, `carry_forward_layout`, `apply_consolidation`, the `*_audit_view` accessors, `rank_inputs_fingerprint`.
-- `ranking_view.py`: assemble a candidate's per-dimension score contributions for the detail page.
-- `cost_report.py` / `metrics.py`: the M13 observability surfaces (per-run/per-pass cost + operational trends) over the `run_cost_ledger` / `run_pass_cost` tables.
-- `backup.py`: local `.db` snapshot/restore (a post-Rank snapshot is taken automatically).
-
-This keeps route files short: a route says "what HTTP endpoint is this?" and "what service work should happen?"; the service does the details.
-
-### Tests
-
-Backend tests live in `backend/tests/`. They are deliberately focused:
-
-- `test_hard_filters.py`: business-rule behavior.
-- `test_application_import.py`: row normalization, duplicate handling, importer behavior.
-- `test_settings.py`: settings defaults, saving, URL normalization.
-- `test_google_oauth_config.py`: OAuth config loading.
-- `test_auth.py`: auth endpoint expectations.
-- `test_dashboard.py`: dashboard access expectations.
-- `test_health.py`: health endpoint.
-- `test_status_model.py`: the status / status_source transition rules (machine vs. human, staleness).
-- `test_sync_errors.py`: sync failure handling.
-- `test_ai_analysis.py`: AI caching, cost estimate, and spending-cap behavior.
-- `test_screening.py` / `test_screening_api.py`: the AI screening pass, including its concurrency and failure-isolation contracts.
-- `test_ranking.py` / `test_ranking_api.py`: the ranking math and the Rank-chain streaming endpoints (criteria → score → consolidate).
-- `test_dimension_scoring.py`, and the eval suite (`test_evals*.py`, `test_*_eval.py`): per-pass scoring, invariants, and the eval-cockpit endpoints.
-
-The most important tests right now are the hard-filter and application-import tests, because those protect the screening behavior. Some tests use an in-memory SQLite database so they run quickly without touching the local development database file:
-
-```py
-engine = create_engine("sqlite:///:memory:")
-Base.metadata.create_all(engine)
-return Session(engine)
-```
-
-## How Frontend And Backend Communicate
-
-The frontend calls backend routes using `fetch`:
-
-```ts
-fetch(`${apiBaseUrl}/auth/me`, { credentials: "include" })
-```
-
-`apiBaseUrl` comes from `import.meta.env.VITE_API_BASE_URL` and falls back to `http://localhost:8000`.
-
-For local development, the frontend runs on port `5173` and the backend on port `8000`. Because these are different origins, the backend must explicitly allow the frontend origin through CORS. It currently allows:
-
-- `http://localhost:5173`
-- `http://127.0.0.1:5173`
-
-It also allows credentials so browser cookies work across the local frontend/backend boundary.
-
-## OAuth Login Sequence
-
-The current login flow:
-
-1. Browser opens `http://localhost:5173`.
-2. React calls `GET /auth/me`.
-3. Backend returns `{ "user": null }`.
-4. React shows the login panel.
-5. User clicks "Sign in with Google".
-6. Browser navigates to `GET /auth/google/login`.
-7. Backend creates OAuth state in the signed session cookie and redirects to Google.
-8. User approves Google scopes.
-9. Google redirects to `GET /auth/google/callback`.
-10. Backend validates OAuth state and verified identity, applies the allowlist, and issues an opaque
-    committee-session credential backed by `BrowserSession`.
-11. Backend redirects to the frontend.
-12. React calls `GET /auth/me` again.
-13. Backend returns the current user.
-14. React shows the dashboard shell.
-
-The local flow must consistently use `localhost` rather than mixing `localhost` and `127.0.0.1`. Browser cookies are host-specific, so mixing them can break OAuth state.
-
-## Current Verification Commands
-
-Backend:
-
-```powershell
-cd backend
-uv run alembic upgrade head
+```sh
+uv run ruff check .
 uv run pytest
 ```
 
-Frontend:
+Run the frontend type and production build from `frontend/`:
 
-```powershell
-cd frontend
+```sh
 npm run build
 ```
 
-All backend tests should pass (`uv run pytest` reports the current count).
-
-## Next Architecture Step
-
-The current feature set includes Google Sheets sync, deterministic hard filters, application tables, searchable/filterable views, candidate detail pages, filtered-out reason display, raw row inspection, the AI screening pass, and the Rank chain that discovers criteria across the pool and scores candidates against them, feeding a deterministic stack-ranked shortlist (see [ai-screening.md](ai-screening.md)).
-
-The next planned product areas build on the AI foundation, reusing the provider boundary, caching, and cost-cap machinery already in `app/ai/`.
+Browser verification is reserved for interaction-heavy or visual changes. Vite HMR applies
+frontend edits without reloading the page.

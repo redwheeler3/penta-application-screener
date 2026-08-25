@@ -6,7 +6,7 @@ what the experiment needs but no endpoint/UI exposes (the audit endpoints only
 ever show the *current* run): does the dimension set CONVERGE or CREEP across
 repeated runs on a locked pool?
 
-Run it after a Sync → Screen → Rank → Rank → Rank sequence on an UNCHANGED pool:
+Run it after a Screen → Rank → Rank → Rank sequence on an UNCHANGED pool:
 
     cd backend && uv run python -m scripts.analyze_convergence
 
@@ -61,7 +61,7 @@ def main() -> None:
         db.close()
 
     if not runs:
-        print("No ranking runs found. Run Sync → Screen → Rank first.")
+        print("No ranking runs found. Run Screen → Rank first.")
         return
 
     print(f"\n{'=' * 70}")

@@ -1,66 +1,50 @@
 # Google Cloud And OAuth Setup
 
-This checklist documents the planned local MVP setup for Google login and Google Sheets access.
+Google is an optional identity provider for committee members. Applicant intake and application
+data do not use Google APIs. Email magic links remain available independently when transactional
+email delivery is enabled.
 
-## Google Cloud Project
+## Google Cloud project
 
-1. Create a separate Google Cloud project named `Penta Application Screener`.
-2. Configure the OAuth consent screen for testing.
-3. Add Jeff's Google accounts as test users while the app is local/MVP-only.
-4. Enable the API needed for the current MVP:
-   - Google Sheets API
+1. Create a Google Cloud project named `Penta Application Screener`.
+2. Configure the OAuth consent screen.
+3. Add the intended Google accounts as test users while the consent screen is in testing mode.
+4. No Drive, Sheets, Docs, or Picker API needs to be enabled.
 
-## OAuth Client
+## OAuth client
 
-1. Create an OAuth client for a web application.
-2. Add local JavaScript origins:
-   - `http://localhost:5173`
-   - `http://127.0.0.1:5173`
-3. Add local redirect URIs:
-   - `http://localhost:8000/auth/google/callback`
-   - `http://127.0.0.1:8000/auth/google/callback`
-4. Store the client ID and secret in `.env.local`, or store Google's downloaded OAuth client JSON in `backend/secrets/`.
-5. Do not commit OAuth credentials.
+Create a Web application OAuth client and configure the origins used by the app.
 
-## Initial Scopes
+Local JavaScript origins:
 
-Use the minimum scopes that support Google login and read-only spreadsheet sync:
+- `http://localhost:5173`
+- `http://127.0.0.1:5173`
 
-- `openid`
-- `https://www.googleapis.com/auth/userinfo.email`
-- `https://www.googleapis.com/auth/userinfo.profile`
-- `https://www.googleapis.com/auth/spreadsheets.readonly`
+Local redirect URIs:
 
-These scopes keep login simple and allow read-only application import from Google Sheets. Reports ship as browser print-to-PDF, so the app does not request Google Docs or Drive scopes.
+- `http://localhost:8000/auth/google/callback`
+- `http://127.0.0.1:8000/auth/google/callback`
 
-## Local Environment
+Production:
 
-Create `.env.local` from `.env.example` or `backend/.env.example` and fill in:
+- JavaScript origin: `https://screener.pentacoop.com`
+- Redirect URI: `https://screener.pentacoop.com/auth/google/callback`
+
+Use only the identity scopes `openid`, `email`, and `profile`. The backend verifies the returned
+identity and then applies the same committee allowlist used by email sign-in.
+
+## Local configuration
+
+Set the following in `backend/.env.local`:
 
 - `SESSION_SECRET`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
-- `GOOGLE_OAUTH_CLIENT_SECRETS_FILE`
 - `GOOGLE_REDIRECT_URI`
 
-For frontend-only values, create `frontend/.env.local` from `frontend/.env.example` and set:
+Alternatively, place Google's downloaded OAuth client JSON under the ignored
+`backend/secrets/` directory and set `GOOGLE_OAUTH_CLIENT_SECRETS_FILE` to its path. Do not commit
+OAuth credentials.
 
-- `VITE_GOOGLE_PICKER_API_KEY`
-- `VITE_GOOGLE_CLIENT_ID`
-- `VITE_GOOGLE_PROJECT_NUMBER`
-
-Vite loads these when the frontend starts, so restart the local frontend after changing them.
-The browser API key must allow `http://localhost:5173/*`, and the OAuth client must list
-`http://localhost:5173` as an Authorized JavaScript origin.
-
-For local browser testing, keep the app on one hostname family. The default setup uses `localhost` for both frontend and backend callback URLs so OAuth session cookies are sent back to the callback route.
-
-If using Google's downloaded OAuth client JSON, store it under `backend/secrets/`, which is ignored by Git. A simple local filename is preferred:
-
-- `backend/secrets/google-oauth-client.json`
-
-The local backend can also point directly to Google's downloaded filename through `backend/.env.local`:
-
-- `GOOGLE_OAUTH_CLIENT_SECRETS_FILE=./secrets/<downloaded-client-secret-file>.json`
-
-Admin settings such as source Google Sheet link or ID, unit size, move-in date, income range, AI spending cap, and provider/model choices should live in the database, not `.env.local`.
+Keep the frontend and backend on the same hostname family during local testing. The default uses
+`localhost` for both so the temporary OAuth session cookie reaches the callback route.

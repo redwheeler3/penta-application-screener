@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 
 // The app's inline confirm card — the same visual language as the workflow's pre-spend
 // confirm (`.run-confirm`), used before any eval action that spends money or overwrites a
-// committed file. NOT window.confirm: styled, in-flow, and consistent with Sync/Screen/Rank.
+// committed file. NOT window.confirm: styled, in-flow, and consistent with Screen/Rank.
 export function InlineConfirm(props: {
   title: string;
   body: ReactNode;

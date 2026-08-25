@@ -1,74 +1,58 @@
-"""The synthetic-pool guard for score-defensibility eval-evidence capture.
-
-Built and tested BEFORE the capture path it guards (same order as the DB-guard hook):
-the whole point is that committing an applicant evidence quote is refused unless the pool
-is provably synthetic. These tests pin the three outcomes — allowlisted sheet passes, an
-unknown sheet is refused, a missing source is refused (fail-safe)."""
+"""The fail-closed guard for evidence-bearing eval fixture capture."""
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+from sqlalchemy import select
 
-from app.db.base import Base
-from app.db.models import Analysis, SyncRun
+from app.ai.schemas import PoolDimensionReport
+from app.db.models import Analysis, User, UserRole
 from app.evals.synthetic_guard import (
-    SYNTHETIC_SHEET_IDS,
     NonSyntheticPoolError,
     is_synthetic_pool,
     require_synthetic_pool,
 )
-
-_SYNTHETIC = next(iter(SYNTHETIC_SHEET_IDS))
-
-
-@pytest.fixture
-def db():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
+from app.schemas.settings import AppSettings
+from app.services.analysis import create_analysis
+from tests.ranking_support import add_eligible, setup_app
 
 
-def _run_from_sheet(db: Session, sheet_id: str | None) -> Analysis:
-    """An Analysis whose pool traces to a SyncRun with the given sheet id (or no source
-    at all when sheet_id is None)."""
-    source_id = None
-    if sheet_id is not None:
-        sync = SyncRun(source_sheet_id=sheet_id, row_count=1, settings_fingerprint="fp")
-        db.add(sync)
-        db.flush()
-        source_id = sync.id
-    run = Analysis(dimension_report={}, source_sync_run_id=source_id)
-    db.add(run)
-    db.flush()
-    return run
+def test_explicitly_synthetic_run_is_accepted() -> None:
+    analysis = Analysis(id=1, dimension_report={}, synthetic_data=True)
+
+    assert is_synthetic_pool(analysis) is True
+    assert require_synthetic_pool(analysis) == "synthetic application data"
 
 
-def test_allowlisted_synthetic_sheet_is_accepted(db) -> None:
-    run = _run_from_sheet(db, _SYNTHETIC)
-    assert is_synthetic_pool(db, run) is True
-    assert require_synthetic_pool(db, run) == _SYNTHETIC
+def test_unverified_run_is_refused() -> None:
+    analysis = Analysis(id=2, dimension_report={}, synthetic_data=False)
+
+    assert is_synthetic_pool(analysis) is False
+    with pytest.raises(NonSyntheticPoolError, match="not stamped as synthetic"):
+        require_synthetic_pool(analysis)
 
 
-def test_unknown_sheet_is_refused(db) -> None:
-    run = _run_from_sheet(db, "some-real-deployment-sheet-id")
-    assert is_synthetic_pool(db, run) is False
-    with pytest.raises(NonSyntheticPoolError, match="not on the synthetic allowlist"):
-        require_synthetic_pool(db, run)
+def test_analysis_is_synthetic_only_when_its_whole_pool_is_synthetic() -> None:
+    _app, db, _provider = setup_app(role=UserRole.MEMBER)
+    user = db.scalar(select(User))
+    assert user is not None
+    synthetic = add_eligible(db, email="synthetic@x.com", raw_hash="synthetic")
+    synthetic.synthetic_data = True
+    db.commit()
 
+    analysis = create_analysis(
+        db,
+        user=user,
+        report=PoolDimensionReport(dimensions=[]),
+        settings=AppSettings(),
+        narrative=None,
+    )
+    assert analysis.synthetic_data is True
 
-def test_missing_source_is_refused(db) -> None:
-    run = _run_from_sheet(db, None)
-    assert is_synthetic_pool(db, run) is False
-    with pytest.raises(NonSyntheticPoolError, match="no recorded source sheet"):
-        require_synthetic_pool(db, run)
-
-
-def test_dangling_source_sync_run_is_refused(db) -> None:
-    # source_sync_run_id points at a SyncRun that doesn't exist — treat as unprovable.
-    run = Analysis(dimension_report={}, source_sync_run_id=999)
-    db.add(run)
-    db.flush()
-    assert is_synthetic_pool(db, run) is False
-    with pytest.raises(NonSyntheticPoolError):
-        require_synthetic_pool(db, run)
+    add_eligible(db, email="unverified@x.com", raw_hash="unverified")
+    analysis = create_analysis(
+        db,
+        user=user,
+        report=PoolDimensionReport(dimensions=[]),
+        settings=AppSettings(),
+        narrative=None,
+    )
+    assert analysis.synthetic_data is False

@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 
 from app.ai.screening import KIND as SCREENING_KIND
-from app.services.application_import import ESSAY_FIELDS
+from app.services.application_content import extract_essays
 from scripts._harvest_common import opaque_index, open_synthetic_run
 
 # The exact fields the screening pass sends (see app/ai/screening.build_prompt) — kept in the
@@ -28,12 +28,16 @@ _FIELD_KEYS = (
 )
 
 
-def _essays_by_column(raw_row: dict) -> dict[str, str]:
-    """Essays keyed by their form-question column — the shape the golden `given.essays` uses
-    (the eval feeds it as an applicant's raw_row, and the screening prompt reads each answer by
-    column). Mirrors extract_essays' column lookup, but as a dict, not the list the live pass
-    uses internally."""
-    return {column: str(raw_row.get(column, "") or "").strip() for _label, column in ESSAY_FIELDS}
+def _essays_by_column(raw_row: dict) -> dict:
+    """Return essays in the same stored shape that ``build_prompt`` reads.
+
+    Built-in answers stay under their canonical ``essays`` object. Retained external
+    rows keep their original question keys until retention removes them.
+    """
+    built_in = raw_row.get("essays")
+    if isinstance(built_in, dict):
+        return {"essays": built_in}
+    return {essay["question"]: essay["answer"] for essay in extract_essays(raw_row)}
 
 
 def main() -> None:
@@ -41,7 +45,7 @@ def main() -> None:
 
     from app.db.models import Application, ApplicationAIResult
 
-    db, run, sheet_id = open_synthetic_run()
+    db, run, source_label = open_synthetic_run()
     try:
         if run is None:
             print("No ranking run to harvest from.")
@@ -50,7 +54,7 @@ def main() -> None:
         apps = {a.id: a for a in db.scalars(select(Application))}
         opaque = opaque_index([r.application_id for r in rows])
 
-        print(f"Harvesting SCREENING candidates from run {run.id} (synthetic sheet {sheet_id}) — "
+        print(f"Harvesting SCREENING candidates from run {run.id} ({source_label}) — "
               f"{len(rows)} cached screenings. Set expected.fires/absent + note, drop the HARVEST_ prefix, commit.\n")
         for r in rows:
             app = apps.get(r.application_id)
@@ -66,7 +70,7 @@ def main() -> None:
                     "pass": "screening",
                     "expected": {"fires": "SET_ME (categories that MUST fire)", "absent": "SET_ME (over-reach guards)"},
                     "observed_flags": produced,  # what the run flagged — a hint for fires/absent, NOT the label
-                    "source": f"synthetic sheet {sheet_id}, run {run.id}, applicant idx {idx}",
+                    "source": f"{source_label}, run {run.id}, applicant idx {idx}",
                 },
                 "given": {
                     "fields": {k: normalized.get(k) for k in _FIELD_KEYS},

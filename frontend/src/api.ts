@@ -13,7 +13,6 @@ import type {
   Coverage,
   CurrentRunResponse,
   CurrentUser,
-  DashboardCounts,
   DecomposeAuditResponse,
   EligibilityRules,
   EligibilityCheckCatalog,
@@ -48,7 +47,6 @@ function url(path: string): string {
 
 const GET_TIMEOUT_MS = 15_000;
 const ACTION_REQUEST_TIMEOUT_MS = 30_000;
-const SYNC_RETRY_DELAY_MS = 500;
 
 export async function request(path: string, init: RequestInit = {}, timeoutMs = ACTION_REQUEST_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
@@ -167,14 +165,6 @@ export function updateOpening(id: number, opening: OpeningWrite): Promise<Respon
 export const publishOpening = (id: number) =>
   request(`/openings/${id}/publish`, { method: "POST" });
 
-export function exchangeSheetCode(code: string): Promise<Response> {
-  return request("/settings/exchange-sheet-code", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code }),
-  });
-}
-
 // --- Access allowlist (admin only) -----------------------------------------
 
 export const fetchAllowlist = () =>
@@ -269,7 +259,7 @@ export function saveCommitteeDefaultRules(rules: EligibilityRules): Promise<Resp
 }
 
 export const fetchDashboard = () =>
-  getJson<{ counts: DashboardCounts; workflow: WorkflowState; coverage: Coverage }>("/dashboard");
+  getJson<{ workflow: WorkflowState; coverage: Coverage }>("/dashboard");
 
 // The whole pool, unpaginated — the client derives filtering/sorting/facets from it.
 export type ApplicationsResponse = {
@@ -283,50 +273,6 @@ export function fetchApplications(): Promise<ApplicationsResponse> {
 
 export function fetchApplication(id: number): Promise<ApplicationDetail> {
   return getJson<{ application: ApplicationDetail }>(`/applications/${id}`).then((p) => p.application);
-}
-
-export function syncApplications(): Promise<Response> {
-  return retrySyncRequest();
-}
-
-async function retrySyncRequest(): Promise<Response> {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const response = await syncRequest();
-      if (!isRetryableSyncResponse(response) || attempt === 1) return response;
-    } catch (error) {
-      if (attempt === 1) throw error;
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, SYNC_RETRY_DELAY_MS));
-  }
-
-  throw new Error("Sync retry loop exhausted without returning a response.");
-}
-
-async function syncRequest(): Promise<Response> {
-  // Unlike GETs, this request may spend time reading the source sheet. It still needs a
-  // finite deadline: browser fetch otherwise leaves the Sync dialog running forever when
-  // the production edge or an upstream dependency is unavailable. The import is idempotent,
-  // so retrySyncRequest can safely retry a timed-out attempt once.
-  return request("/sync/applications", { method: "POST" });
-}
-
-function isRetryableSyncResponse(response: Response): boolean {
-  // Import upserts applications and leaves byte-identical rows untouched, so retrying after a
-  // lost response is safe. Do not retry configuration or permission responses: the member
-  // needs the error message those carry.
-  return response.status === 408 || response.status === 429 || response.status >= 500;
-}
-
-// Save the sheet the admin picked in the Google Picker as the linked source (and designate
-// them the reader). Returns the updated SettingsResponse on success. The drive.file grant +
-// token exchange happen in googlePicker.ts (GIS code model) before this is called.
-export function linkSheet(fileId: string): Promise<Response> {
-  return request("/settings/link-sheet", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fileId }),
-  });
 }
 
 export const fetchRankingCurrent = () => getJson<CurrentRunResponse | null>("/ranking/current");

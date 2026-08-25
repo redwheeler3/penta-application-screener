@@ -1,14 +1,11 @@
 import { useEffect, useState } from "react";
 
 import * as api from "../api";
-import { resolveSheetId } from "../format";
 import { retryWithBackoff } from "../retry";
-import type { AppSettings, CurrentUser, SettingsResponse } from "../types";
+import type { AppSettings, SettingsResponse } from "../types";
 
 export function useSharedSettings(options: {
-  user: CurrentUser | null;
   dashboardReady: boolean;
-  onMissingSheet: () => void;
 }) {
   const [draft, setDraft] = useState<AppSettings | null>(null);
   const [saved, setSaved] = useState<SettingsResponse | null>(null);
@@ -16,11 +13,9 @@ export function useSharedSettings(options: {
   const [loadFailed, setLoadFailed] = useState(false);
 
   function apply(payload: SettingsResponse) {
-    const sheetId = resolveSheetId(payload);
     setSaved(payload);
-    setDraft({ ...payload.settings, googleSheetId: sheetId });
+    setDraft(payload.settings);
     setLoadFailed(false);
-    if (!sheetId) options.onMissingSheet();
   }
 
   async function load(): Promise<void> {
@@ -56,30 +51,6 @@ export function useSharedSettings(options: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.dashboardReady, loadFailed]);
 
-  const linkedSheetId = saved?.settings.googleSheetId ?? "";
-  const linkedSheetTitle = saved?.googleSheetTitle ?? null;
-  useEffect(() => {
-    if (!options.user || !linkedSheetId || linkedSheetTitle) return;
-
-    const retrySheetTitle = () => {
-      if (document.visibilityState !== "visible") return;
-      void api
-        .fetchSettings()
-        .then((payload) => {
-          if (!payload.googleSheetTitle) return;
-          setSaved((current) =>
-            current && current.settings.googleSheetId === payload.settings.googleSheetId
-              ? { ...current, googleSheetTitle: payload.googleSheetTitle }
-              : current,
-          );
-        })
-        .catch(() => {});
-    };
-
-    document.addEventListener("visibilitychange", retrySheetTitle);
-    return () => document.removeEventListener("visibilitychange", retrySheetTitle);
-  }, [options.user, linkedSheetId, linkedSheetTitle]);
-
   return {
     draft,
     setDraft,
@@ -89,8 +60,5 @@ export function useSharedSettings(options: {
     load,
     retry,
     save,
-    apply,
-    hasLinkedSheet: Boolean(saved && resolveSheetId(saved)),
-    loadState: saved ? ("ready" as const) : loadFailed ? ("error" as const) : ("loading" as const),
   };
 }

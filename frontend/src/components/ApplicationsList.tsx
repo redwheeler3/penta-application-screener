@@ -126,7 +126,7 @@ export function ApplicationsList(props: {
               ? "You haven't favourited any applicants yet."
               : appFilter.status || appFilter.statusSource
                 ? "No applications match this filter."
-                : "No applications imported yet."}
+                : "No submitted applications yet."}
           </p>
         </div>
       ) : (

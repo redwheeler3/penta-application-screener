@@ -7,7 +7,7 @@ the big experiments lives in `docs/case-studies/`.
 
 ## Purpose
 
-The Penta Application Screener helps screen 300+ housing co-op applications for Penta Housing Coop. It imports application responses from a Google Sheets response spreadsheet in the Penta Google Drive folder, applies deterministic hard filters, uses AI-assisted review for essay answers, and produces a committee-ready report for MOMI (Move In Move Out).
+The Penta Application Screener collects housing co-op applications, applies deterministic hard filters, uses AI-assisted review for essay answers, and produces a committee-ready report for MOMI (Move In Move Out).
 
 The project is also a deliberate learning and portfolio project for Jeff to build practical expertise in AI product management, agentic workflows, evals, cost-aware model use, human-in-the-loop product design, and AI-assisted software delivery. The code may eventually be made public as part of Jeff's AI product management portfolio, so the implementation should be understandable, well-documented, and credible as a real product artifact while preserving applicant privacy.
 
@@ -102,12 +102,11 @@ The final declaration checkbox text is: `I / We have read and agree to be bound 
 
 Current application response columns include applicant/co-applicant identity and contact fields, household children fields, current address + duration, real-estate ownership, current and previous landlord references, the four required essay fields, optional additional information, an optional household photo link, pets description, applicant/co-applicant employment fields, applicant/co-applicant/household gross yearly income, and the declaration. (Full column-by-column detail: [docs/form-field-reference.md](docs/form-field-reference.md).)
 
-## Built-In Application Intake (M21 Target)
+## Built-In Application Intake (M21)
 
-The application form will move into this product between application cycles. It is a clean
-cutover, not a period of dual Google Form and built-in intake: no Google Sheet transition or
-compatibility path is required. The existing field reference remains the baseline for the
-built-in form, with the product behavior below superseding the Google Form behavior.
+The application form moves into this product between application cycles. It is a clean cutover,
+not a period of dual external-form and built-in intake. The field reference remains the baseline
+for the built-in form.
 
 ### One application, working and submitted copies
 
@@ -479,15 +478,14 @@ removed. They do not show an applicant-removal link.
 
 ### Committee intake awareness
 
-The committee dashboard identifies applications submitted or updated since the relevant
-screening work. Applicant edits are already in the database when submitted, so the replacement
-for the Google Sheet **Sync** control does not perform an external data sync. It surfaces new and
-updated applications, their submitted times, and which screening/ranking outputs are stale. Its
-final label must describe that intake/acknowledgement job rather than claim that data is being
-synced.
+Submitted applications appear directly in the committee list. The screener refreshes its
+lightweight application and workflow reads on focus, on visibility return, and every 60 seconds
+while visible. There is no import, acknowledgement, or manual synchronization action.
 
-Routine applicant updates do not email the whole committee. The in-product updated state is the
-default notification mechanism.
+A newly submitted application or version makes **Screen** and **Rank** amber when their
+content-addressed state no longer covers the submitted pool. The list stays compact;
+submission/version/declaration timestamps belong on the application detail page. Routine
+applicant updates do not email the committee.
 
 ### Primary email changes
 
@@ -601,9 +599,9 @@ The prior email templates establish these operational rules and tone:
 
 ## Product Concept
 
-The screener proceeds in phases:
+The product proceeds in phases:
 
-1. Import and normalize application data from Google Sheets.
+1. Collect, save, version, and normalize submitted applications.
 2. Apply deterministic hard filters without AI.
 3. Use AI to flag data-integrity concerns and discover the dimensions the pool varies on.
 4. Let the committee weight those dimensions (a tier-list), re-sorting the ranked pool instantly.
@@ -621,17 +619,13 @@ The application form is responsible for collecting complete applications. The sc
 
 The app provides a dashboard summarizing the current application pool and screening state: total submitted applications, eligible applications after deterministic hard filters, filtered-out applications with reasons, applications ready for AI review, currently qualified applications, and the ranked shortlist. Every submitted application remains visible somewhere; deterministically disqualified applicants are excluded from AI review but remain accessible in a filtered-out view with their reasons.
 
-## Sync And Run Records
+## Intake And Analysis Records
 
-The app uses a hybrid live-sync/run-record model:
-
-- While applications are open, the app may sync live from the Google Sheets response spreadsheet.
-- Once serious screening begins, each screening run records the application set and source sync state used for that run.
-- The dashboard shows any new applications submitted after the run's recorded source sync state.
-- Users can add newly synced applications to an existing run by updating the run record.
-- Reports reference the exact sync/run record used.
-
-Immutable snapshots are not required. This preserves convenience during intake while keeping screening decisions and reports understandable.
+Submitted applications are immediately available to the committee. Screening results are cached
+against application content, prompt, model identity, and applicable reasoning level. A new or
+edited submission therefore makes only affected work stale. Each Rank analysis records the pool
+fingerprint and the exact AI configuration it used; immutable opening-specific application
+snapshots are not required because dated `ApplicationVersion` rows preserve submission history.
 
 ## Deterministic Eligibility Rules
 
@@ -736,7 +730,7 @@ There is no third status. The UI surfaces the `status_source = ai` group as an "
 
 A human flipping the status never deletes these records — an applicant can be `eligible / human` while still showing the AI flags a reviewer chose to accept. This preserves the audit trail.
 
-**Stickiness:** a machine actor (rules or AI) must never overwrite a `human` status. On re-sync or re-run, machine actors refresh the reason/flag records but leave a human-set status untouched.
+**Stickiness:** a machine actor (rules or AI) must never overwrite a `human` status. When submitted fields or AI findings change, machine actors refresh the reason/flag records but leave a human-set status untouched.
 
 **Clearing an override:** a human override can be removed, handing the decision back to the machine. Clearing recomputes the status from the *current* findings (rules then AI) and resets `status_source` to the machine source. The detail view models this as source ownership: a segmented **Decided by** control over `Automatic | Eligible | Ineligible`, where "Automatic" is selected whenever `status_source != human` and selecting it clears the override. The detail payload carries `autoStatus`/`autoStatusSource` (what the machine would decide right now). Clearing is idempotent.
 
@@ -770,7 +764,7 @@ AI review runs only for candidates who pass deterministic hard filters (or are r
 
 The AI architecture is provider-adaptable behind an internal `AIProvider` interface, with a deterministic `MockProvider` backing tests. The Strands implementation supports Claude and GPT through Amazon Bedrock plus direct Anthropic and OpenAI routes. One exact model catalog owns routing, capabilities, and the shared provider-neutral model identity for equivalent routes. Provider-native model IDs remain in settings, traces, evals, and cost rows for provenance and route-specific pricing; caches and freshness use the model identity, so moving the same pinned model between Bedrock and its direct API preserves valid work. Credentials are deployment secrets, while admins choose configured routes per pass in the UI. Existing defaults remain Claude on Bedrock. See ADRs 0010 and 0014.
 
-Cost control is a core requirement. The app prefers: cached AI analysis per application and per run; smaller/cheaper models for high-volume passes and frontier models only for cross-document synthesis; short structured outputs; a visible AI cost estimate before running; and a configurable per-run spending cap (default `$2.00`, enforced against the estimate before any model call — an over-cap run fails fast with 402). Hard filters run automatically after import/sync; AI review starts only after the user sees the estimate and confirms.
+Cost control is a core requirement. The app prefers: cached AI analysis per application and per run; smaller/cheaper models for high-volume passes and frontier models only for cross-document synthesis; short structured outputs; a visible AI cost estimate before running; and a configurable per-run spending cap (default `$2.00`, enforced against the estimate before any model call — an over-cap run fails fast with 402). Hard filters are computed from submitted application fields; AI review starts only after the user sees the estimate and confirms.
 
 ### Interactive Screening And Ranking
 
@@ -794,7 +788,7 @@ Then the ranked list is **pure deterministic math** (`app/domain/ranking.py`): f
 
 **Two Rank modes.** *Discover new criteria* runs the full chain and may replace the criteria set. *Score missing applicants* runs only scoring, for eligible applicants missing a current-dimension result — preserving the run's dimensions and tier layout, independently cap-gated. Complete score coverage makes the retained criteria current for the changed pool.
 
-**Cost gating and staleness.** The whole chain is gated on a **rank-inputs fingerprint** (`Analysis.rank_inputs_fingerprint`, an indexed column — a hash of the eligible pool *plus* each rank-chain prompt, model identity, and applicable reasoning level). If unchanged, the UI flags "up to date"; a re-run is still allowed (discovery is nondeterministic, so a member may want a fresh criteria set — the confirmation card explains nothing requires it). Switching only between certified-equivalent Bedrock and direct routes preserves freshness; changing the actual model or reasoning level does not. The workflow strip is three single-verb steps — **Import** (sync + hard filters), **Screen** (the AI integrity pass), **Rank** (this chain) — each amber-stale by the same signal its no-op gate uses (Import on a settings fingerprint, Screen on coverage, Rank on the rank-inputs fingerprint). Every AI step opens a confirmation card before running, even when there's nothing to do. Rank streams phase-aware progress; the opaque criteria/consolidation calls stream the model's live reasoning as a "thinking" panel. A completed Rank lands the user directly in the ranked view.
+**Cost gating and staleness.** The whole chain is gated on a **rank-inputs fingerprint** (`Analysis.rank_inputs_fingerprint`, an indexed column — a hash of the eligible pool *plus* each rank-chain prompt, model identity, and applicable reasoning level). If unchanged, the UI flags "up to date"; a re-run is still allowed (discovery is nondeterministic, so a member may want a fresh criteria set — the confirmation card explains nothing requires it). Switching only between certified-equivalent Bedrock and direct routes preserves freshness; changing the actual model or reasoning level does not. The workflow strip is **Screen** (the AI integrity pass) then **Rank** (this chain), each amber-stale by the same signal its no-op gate uses. Every AI step opens a confirmation card before running, even when there's nothing to do. Rank streams phase-aware progress; the opaque criteria/consolidation calls stream the model's live reasoning as a "thinking" panel. A completed Rank lands the user directly in the ranked view.
 
 ### Ranking And Outputs
 
@@ -818,7 +812,7 @@ The pipeline makes real, non-deterministic model judgments, so it is instrumente
   - **Live per-pass evals** — each pass's golden cases fed through the *real* production prompt and graded by a grader matched to the output shape (categorical → exact-match; scoring → a band; screening → per-category), with a `?mode=stability` K-repeat run measuring verdict flips. See ADR 0008.
   - **Judge** — a blind label-auditor: an independent model reproduces each pass's output from an editable per-pass brief + the case's input, blind to the label; the harness grades it against the human label with that pass's own grader. Agreement (κ, failure-recall) calibrates the judge; a consistent disagreement flags the *label*. Run occasionally, not per-run. See ADR 0002.
 
-Applicant-facing eval cases are protected by a synthetic-source guard (`require_synthetic_pool` refuses any run not traceable to an allowlisted synthetic sheet). Fixtures are PII-safe (opaque column indices; narratives/`why_it_differentiates` stripped). Golden sets are grown with the harvest scripts under `backend/scripts/` (co-authored, then labelled by hand).
+Applicant-facing eval cases are protected by persisted synthetic provenance: `require_synthetic_pool` refuses any analysis unless every application in its pool was explicitly stamped synthetic. Fixtures are PII-safe (opaque column indices; narratives/`why_it_differentiates` stripped). Golden sets are grown with the harvest scripts under `backend/scripts/` (co-authored, then labelled by hand).
 
 ### Agent Workflow
 
@@ -830,7 +824,7 @@ Every AI recommendation is reviewable and overrideable, and explains why a candi
 
 ### Privacy, Auditability, And Evals
 
-It is acceptable to send full application context, including names/contact context, to the AI model. Redaction is not required. Applicant data is still treated as sensitive: deterministic filtering stays separate from AI judgment; prompts, model outputs, filter decisions, ranking rationales, and overrides are auditable; the app does not write back to source Google Sheets. The eval-oriented design (fixtures, schema-consistency checks, grounding/evidence-quality tracking, enough trace data to debug regressions) is built and described above.
+It is acceptable to send full application context, including names/contact context, to the AI model. Redaction is not required. Applicant data is still treated as sensitive: deterministic filtering stays separate from AI judgment; prompts, model outputs, filter decisions, ranking rationales, and overrides are auditable. The eval-oriented design (fixtures, schema-consistency checks, grounding/evidence-quality tracking, enough trace data to debug regressions) is built and described above.
 
 ## Multi-Member MOMI Workflow (Milestone 15)
 
@@ -840,7 +834,7 @@ It is acceptable to send full application context, including names/contact conte
 
 | State | Scope | Notes |
 |---|---|---|
-| Applicant pool + sync | shared | one source of truth |
+| Submitted applicant pool | shared | one source of truth |
 | Discovered dimension set | **shared union** | grown by any member's Rank, de-duped by the existing match pass + `dimension_aliases` |
 | Per-(app, dim) AI scores | **shared** | content-addressed cache key has no member id — sharing is automatic |
 | Cost ledger / traces / evals | shared | + a "triggered-by member" stamp per run; Observability stays committee-wide |
@@ -848,7 +842,7 @@ It is acceptable to send full application context, including names/contact conte
 | Eligibility **overrides** (per applicant) | **per-member** | |
 | Tier placement + ranking + new/revived/requested badges | **per-member** | weights stay **derived** from tiers, so per-member re-weighting is free math |
 | Notes | per-member | already are, today |
-| AI/model/cap/sheet settings | shared | infra config, not judgment — split out of the eligibility-rules blob |
+| AI model/cap settings | shared | infra config, not judgment — split out of the eligibility-rules blob |
 
 **Union eligible pool.** An applicant is **globally eligible** if they pass *any* member's effective screen (that member's rules *or* an explicit override) — a derived predicate over the per-member views, not new stored state. Discovery and scoring operate on this union floor; **globally ineligible** applicants (no member passes them) are never scored — preserving "don't score applicants who won't clear the screen." A member's ranked list is the shared analysis **filtered to their eligible view and weighted by their tiers** — pure math, instant, free.
 
@@ -864,7 +858,7 @@ It is acceptable to send full application context, including names/contact conte
 
 ## Users, Roles, And Authentication
 
-The MVP uses real Google login (multi-member screening is a major design requirement). Access is invitation/approval based when live; Jeff is the initial admin and can invite MOMI members. Roles:
+Committee members may sign in with an allowlisted email magic link or identity-only Google OIDC. Applicants use email access only. Access is invitation/approval based when live; Jeff is the initial admin and can invite MOMI members. Roles:
 
 - `Admin`: the initial account; will gate user management once invitations are built.
 - `Member`: a MOMI committee screener — screens independently (own eligibility rules, overrides, tiering, ranking, notes) over the shared cached AI substrate; no merged comparison surface (M15 is isolation, not merge).
@@ -875,24 +869,21 @@ AI screening results are shared across users and cached per application content,
 
 ## Screening Runs
 
-Users may create multiple runs for the same pool ("Jeff first pass", "Jeff revised after thinking"). Runs preserve enough source information to understand what pool was used (a sync/run metadata record; no immutable snapshots). When criteria are revised after a completed run, the default is to update the same run, with the option to create a separate new run. Manual candidate notes are private to their author. AI-generated criteria summaries need no dedicated editing workflow, and an audit log is not required, for the initial design.
+Users may create multiple runs for the same pool ("Jeff first pass", "Jeff revised after thinking"). Each analysis preserves its applicant-content fingerprint and AI provenance. When criteria are revised after a completed run, the default is to update the same run, with the option to create a separate new run. Manual candidate notes are private to their author. AI-generated criteria summaries need no dedicated editing workflow, and an audit log is not required, for the initial design.
 
 ## Data Storage
 
-- Google Sheets is the external source of truth for submitted applications.
-- Application rows import into the app database for screening runs, AI outputs, notes, rankings, and reports.
+- The application database is the source of truth for working copies, submitted applications, versions, opening participation, screening, notes, rankings, and reports.
 - SQLite, and it **stays** for go-live: M17 hosts it on a persistent volume rather than moving to Postgres (ADR 0012), because at the expected ~5-member committee with light concurrency (hardened in M16 via WAL + a run lease) the data layer needs no change. The relational model is kept portable to Postgres should real growth or the deferred atomic-budget feature later warrant it — but that is explicitly *not* an M17 concern.
-- Spreadsheet access is minimized — import/sync rows, then use the app DB for screening state.
 
 Core data model:
 
-- An `Application` represents one household/application (applicant, co-applicant, children, essays, references, income, pets, declaration, source + screening metadata). The raw Google Sheets row is preserved exactly as JSON alongside normalized fields.
-- Primary application identity is the primary applicant email (normalized: trimmed + lowercased); each application also has an internal DB ID. Duplicate detection is by email; the newest row wins.
-- Normalized fields computed at import/sync: `adult_count`, `child_count`, `children_under_18_at_move_in`, `has_real_estate`, `household_income`, `pet_count`, `pet_types`.
-- Each sync creates a `SyncRun` record (timestamp, source sheet ID, `settings_fingerprint`). It records no eligibility tally — eligibility is a per-member on-read derivation now, so an import-time committee tally would be misleading.
+- An `Application` represents one household with a private working document and one current committee-visible submitted projection. `ApplicationVersion` preserves each dated submission; `ApplicationParticipation` links that durable applicant to selected openings.
+- Primary application identity is the normalized primary applicant email plus an internal DB ID. An unauthenticated collision can never overwrite the existing working or submitted copy, and records are never automatically merged.
+- Normalized fields computed on submission include ages as of the submission date, adult and child counts, household income, real-estate ownership, employment state, and other deterministic screening facts.
 - A shared `Analysis` (one current, `get_current_analysis()`) holds a Rank's discovered dimensions (`dimension_report`) and the `rank_inputs_fingerprint`; its 1:1 `analysis_audit` child holds the AI-legibility trail (discovery narrative + match/fan-out/decompose/consolidate audits) so the hot read path stays lean. The committee's mutable view is **per-member** in `MemberRanking` (member × analysis: `run_state` = tiers + new/revived/requested flags + pending proposals; weights are **derived** from the tiers, never stored). Per-member eligibility overrides live in `MemberEligibility` (member × applicant); a member's diverged eligibility rules in a copy-on-write `member_rules` row over the shared `committee_default_rules`. `dimension_aliases` is the sole merge-truth. Per-run/per-pass cost lives in `run_cost_ledger` (+ a nullable `triggered_by_user_id` attributing each shared run) + `run_pass_cost`; eval runs in `eval_runs`. (Schema layout: [docs/app-architecture.md](docs/app-architecture.md); the M15 per-member split: CHANGELOG M15; the M14 split of the old `criteria` blob: CHANGELOG M14 Phase 5.)
 
-Settings live in the database, not `.env`, split by audience (M15): **Admin Settings** (shared infra — Google Sheet link/ID, AI spending cap, model choices, discovery fan-out) and per-member **Eligibility Settings** (income/age/children thresholds, pet limits, per-check toggles — over a shared committee default). Local `.env.local` holds secrets; `.env.example` holds safe placeholders. Never committed: `.env` files, OAuth credentials, SQLite DB files, applicant exports, AI traces, and raw prompts/outputs containing applicant data. During MVP iteration, local schema changes need no backward compatibility — deleting and recreating the SQLite file from migrations is acceptable.
+Settings live in the database, not `.env`, split by audience (M15): **Admin Settings** (shared AI spending cap, model choices, discovery fan-out) and per-member **Eligibility Settings** (income/age/children thresholds, employment requirements, pet limits, per-check toggles — over a shared committee default). Local `.env.local` holds secrets and runtime safety controls; `.env.example` holds safe placeholders. Never committed: `.env` files, OAuth credentials, SQLite DB files, applicant exports, AI traces, and raw prompts/outputs containing applicant data. Existing databases change through Alembic migrations rather than resets.
 
 ## Reports
 
@@ -902,11 +893,11 @@ This replaced the originally-planned Google Docs generation — print-to-PDF nee
 
 ## MVP Shape And Tech Stack
 
-The MVP is a web app that runs locally in the browser: a **Python/FastAPI** backend, a **Vite + React/TypeScript** frontend, **SQLite** (SQLAlchemy + Alembic), **Google OAuth** with signed server-side session cookies, read-only **Google Sheets** import/sync, and **Amazon Bedrock** (behind the provider-agnostic interface). Python deps via `uv`; frontend via `npm`; backend tests via `pytest`.
+The MVP is a web app with a **Python/FastAPI** backend, a **Vite + React/TypeScript** frontend, **SQLite** (SQLAlchemy + Alembic), revocable server-side sessions, SocketLabs transactional email, optional identity-only Google OIDC for committee users, and provider-neutral AI routing across Bedrock or direct APIs. Python deps use `uv`; frontend uses `npm`; backend tests use `pytest`.
 
-Google setup: a dedicated Google Cloud project; OAuth app named `Penta Application Screener`; scopes are the minimum the workflow needs — basic login profile/email + Google Sheets read-only (no Docs/Drive; reports are print-to-PDF). Local redirect URLs may use localhost. Once user management exists, login is restricted to invited/approved emails. Setup is documented in [docs/google-cloud-oauth-setup.md](docs/google-cloud-oauth-setup.md).
+Google setup uses only `openid`, `email`, and `profile` for optional committee identity. It requests no Google data scope and stores no provider access or refresh token. Setup is documented in [docs/google-cloud-oauth-setup.md](docs/google-cloud-oauth-setup.md).
 
-The settings surfaces (M15): **Eligibility Settings** (per-member) covers income range, min/max children + max child age, min adult age, pet limits, and per-check toggles; **Admin Settings** (admin-only) covers the AI spending cap, provider/model choices, discovery fan-out, the committee-default rules, the access allowlist, and the Google Sheet link/ID. If required configuration is missing after login, the app directs the user to settings; otherwise the first screen is the dashboard.
+The settings surfaces: **Eligibility Settings** (per-member) covers income range, min/max children + max child age, min adult age, employment requirements, pet limits, and per-check toggles; **Admin Settings** covers the AI spending cap, provider/model choices, discovery fan-out, committee-default rules, access allowlist, openings, feedback, and AI-quality tools.
 
 Implementation defaults:
 
@@ -916,7 +907,7 @@ Implementation defaults:
 - Clean changes over backward compatibility for internal APIs, local schemas, fixtures, and UI shapes; backward compatibility is added only when real users or real applicant data require it.
 - Relational tables for workflow data, JSON columns for raw rows, flexible payloads, AI outputs, and debug traces; the relational model stays portable to Postgres.
 
-**Milestones 1–20 are complete** and proven end-to-end against real Bedrock (sync → screen → discover ~30–35 fact-aware dimensions → score the pool → rank with the tier-list weighting → print a committee-ready PDF), now with per-member independent screening on a shared compute-once substrate, **hosted live at [screener.pentacoop.com](https://screener.pentacoop.com)** for the real committee. Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md). The latest milestones landed as: **17 (hosting / go-live on Fly.io — see [ADR 0012](docs/adr/0012-hosting-platform-m17.md))**, **18 (least-privilege Google auth — members log in identity-only; an admin links the response sheet via the Google Picker with `drive.file`)**, **19 (scale-to-zero recovery — health-aware Fly Machine watchdog)**, and **20 (provider-neutral AI routing plus the Luna/Terra bake-off — see [ADR 0013](docs/adr/0013-openai-model-selection.md) and [ADR 0014](docs/adr/0014-multi-provider-model-routing.md))**.
+**Milestones 1–20 are complete** and proven end-to-end against real models (screen → discover fact-aware dimensions → score the pool → rank with tier-list weighting → print a committee-ready PDF), now with per-member independent screening on a shared compute-once substrate, **hosted live at [screener.pentacoop.com](https://screener.pentacoop.com)** for the real committee. Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md). The latest milestones landed as: **17 (hosting / go-live on Fly.io — see [ADR 0012](docs/adr/0012-hosting-platform-m17.md))**, **18 (least-privilege identity-only Google auth)**, **19 (scale-to-zero recovery — health-aware Fly Machine watchdog)**, and **20 (provider-neutral AI routing plus the Luna/Terra bake-off — see [ADR 0013](docs/adr/0013-openai-model-selection.md) and [ADR 0014](docs/adr/0014-multi-provider-model-routing.md))**.
 
 ## Milestones And Remaining Open Questions
 
@@ -964,7 +955,7 @@ or require the dual Google/built-in transition that the between-cycle cutover de
 The work is delivered in internal stages and released only when the end-to-end replacement is
 ready.
 
-Stages 1 through 3 are complete. The browser form includes
+Stages 1 through 5 are complete. The browser form includes
 immediate private Save and return later, 24-hour access links with regeneration and cross-session
 choice, declaration acceptance, and restoration of an existing application without allowing
 pending answers to overwrite it. Applicant and committee sign-in default to shared-device-safe
@@ -973,9 +964,11 @@ working copies are excluded from every committee and AI query. Publication valid
 form and declaration, records an immutable dated application version, and atomically updates the
 applicant's explicit participation in one or more openings. Opening selection, date-derived
 lifecycle enforcement, submission-date household age checks, and committee opening
-visibility/filtering and the optional household photo link are implemented. Committee intake changes and cutover
-remain internal work; the production committee workflow is unchanged until the milestone is
-complete.
+visibility/filtering and the optional household photo link are implemented. Submitted applications
+appear without a committee sync action; Screen and Rank currentness derives from the stored pool.
+The committed synthetic fixture now mirrors the canonical intake schema, and a fail-closed,
+email-free local loader can migrate it into one or more published openings. Production cutover
+remains deliberately deferred until the end of the milestone.
 
 **Delivery stages:**
 
@@ -991,18 +984,19 @@ complete.
 3. **Applicant form (complete)** — build the field-reference sections, in-page guest draft, explicit
    Save and return later, validation/review/Submit flow, calculated household income, optional
    household photo link, persistent unsubmitted-change warning, and accessible responsive behavior.
-4. **Publication and opening behavior (in progress)** — configure and publish dated openings;
+4. **Publication and opening behavior (complete)** — configure and publish dated openings;
    atomically publish initial and updated working copies; keep drafts invisible; record dated
    application versions and explicit multi-opening participation; and enforce open, closed, and
    archived behavior from the opening dates.
-5. **Committee intake workflow** — replace the external-source Sync step with an honestly named
-   new/updated-applications surface; show submission times and stale Screen/Rank state without
-   emailing the committee for routine updates.
+5. **Committee intake workflow (complete)** — remove the Sync step; refresh submitted applications
+   automatically; keep the list compact; show submission/version metadata in coherent application
+   details; and derive stale Screen/Rank state from the submitted pool without routine committee
+   email.
 6. **Between-cycle cutover** — configure the applicant hostname and exercise SocketLabs in
-   production with synthetic data, retain existing production records as specified below, then
-   remove Google Form/Sheet import, Picker, Drive credentials and tokens, data-access scopes, their
-   settings/UI, and their operational documentation completely. Retain only the identity-scoped
-   Google committee sign-in and its OAuth client configuration.
+   production with synthetic data and retain existing production records as specified below.
+   Application import, Picker, Drive credentials/tokens, and Google data scopes have already been
+   removed from the codebase. Retain only identity-scoped Google committee sign-in and its OAuth
+   client configuration.
 
 The applicant hostname is `applications.pentacoop.com`. Existing production application records
 and committee history are retained at cutover rather than reset. They are not sent unsolicited
@@ -1043,8 +1037,9 @@ separate milestone with its own storage, hostname, and isolation decisions.
   development tests send only synthetic messages to exact `@jeffo.net` or `@pentacoop.com`
   recipients, enforced before the provider call with no per-message bypass.
 - The production application accepts built-in submissions at the applicant hostname, the screener
-  reflects new/updated submissions, and no Google Forms, Sheets, Drive, Picker, stored-token, or
-  dead compatibility path remains. Google runtime use is limited to committee identity.
+  reflects new/updated submissions, and Google runtime use is limited to committee identity.
+- The committed canonical synthetic fixture can be loaded into every selected local opening, sends
+  no email, and cannot overwrite an application that is not explicitly stamped synthetic.
 - Backend tests, frontend build, database migration against a production-shaped copy, synthetic
   browser submission/edit/collision checks, email delivery checks, and permission/retention checks
   pass before the cycle opens.
@@ -1124,12 +1119,11 @@ Multi-member introduces real concurrent writes. This is a **software** concern (
 - **A single run lease serializes the expensive runs** (`RunLock` + `services/run_lock`) — Screen / full Rank / score-current claim one DB-backed lease (atomic conditional UPDATE, 15-min TTL steal so a crashed run self-heals) and 409 (`run_in_progress`) if another holds it. This closes the one genuinely destructive overlap — two concurrent full Ranks each creating an `Analysis` and last-writer-wins stranding the loser's `MemberRanking` — and also eliminates concurrent-Screen double-billing. DB-backed (not in-process) so it survives multiple web workers under M17. The frontend surfaces the 409 detail as a toast.
 - **Tier/seed edits are blocked during an in-flight rank** — a full rank snapshots the committee kept-list once at the start of discovery then supersedes the analysis, so an edit made after that snapshot (e.g. dragging an axis out of Ignore) could neither reach the run nor survive it, silently vanishing. `_require_viewed_analysis` rejects the save (`run_in_progress`, holder-agnostic so it covers the initiator's own run) rather than let the edit persist onto a doomed board.
 - **Stale-view detection landed** — the deferred M15 1b "this ranking was refreshed by another member" UX now exists as a global toast with a Reload action, raised both on a `409 stale_analysis` save AND on tab focus/visibility (a cheap current-analysis-id check; no standing poll). Suppressed during the member's own run to avoid a self-inflicted false positive.
-- **The settings PUT can't clobber the Picker-owned sheet link** (2026-07-26) — `PUT /settings` sends the whole `AppSettings` blob, but `google_sheet_id` / `google_sheet_reader_user_id` are owned by the link-sheet Picker flow, not the settings form. `update_settings` now keeps the server's current values for those two fields and applies only the AI settings, so a stale form (a second tab open from before a sheet was linked) can no longer null the reader id and silently break sync. This closes the *damaging* half of the settings-concurrency question by fixing field ownership — no version token or migration needed.
 
 **Explicitly out of scope (Jeff, 2026-07-29):**
 
 1. **Committee-wide spending budget** — the run lease already prevents concurrent runs, and the per-run cap plus cache reuse is sufficient for this app. A period-based shared budget would add product policy and UI that the committee does not need.
-2. **Optimistic concurrency for AI settings** — Picker-owned sheet-link fields are protected server-side. The remaining possibility is two trusted admins simultaneously changing re-typeable AI settings; last-write-wins is accepted.
+2. **Optimistic concurrency for AI settings** — two trusted admins simultaneously changing re-typeable AI settings remains last-write-wins.
 
 ### Hosting / Go-Live (M17) — infra — ✅ complete
 
@@ -1175,7 +1169,10 @@ The production Machine currently suspends to zero. The watchdog bounds the rare 
 
 ### Least-Privilege Google Auth (M18) — ✅ complete
 
-For eventual Google app verification and to stop showing members a scary Drive/Sheets consent, M18 split the OAuth footprint: **members log in identity-only** (openid/email/profile — no Drive or Sheets scope), and **an admin links the response sheet via the Google Picker**, granting only `drive.file` (access to the one picked file). Sync reads the sheet with that admin's designated-reader token, so members never need a Drive/Sheets scope. The Picker uses the GIS code model (`ux_mode: popup`) exchanged server-side for a refresh token; `setAppId(<project number>)` is required for `drive.file` to authorize the picked file. Prod setup steps are in [docs/deploy.md](docs/deploy.md) §8.
+Committee Google sign-in is identity-only: `openid`, `email`, and `profile`. It requests no Google
+data scope, stores no provider access or refresh token, and issues the same revocable server-side
+session as email sign-in. Setup is in
+[docs/google-cloud-oauth-setup.md](docs/google-cloud-oauth-setup.md).
 
 ### Validation Experiments On Real Bedrock — ✅ all closed
 

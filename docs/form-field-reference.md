@@ -1,15 +1,17 @@
-# Google Form Field Reference
+# Application Field Reference
 
-Complete field-by-field reference for the Penta Co-operative Housing Application form. This documents field types, validation rules, and required status as configured in Google Forms.
+Complete field-by-field reference for the Penta Co-operative Housing built-in application. This
+document records the product fields and validation intent; the canonical stored contract is
+`backend/app/schemas/intake.py`.
 
 Form ID: `1fxl3CP_DIK05I_HwTSQBQ_M7j7gNh2nCBZzl16aUTWg`
 
 ## Validation Patterns Used
 
 - **Phone regex**: `^[2-9]\d{2}-\d{3}-\d{4}$` (North American format xxx-xxx-xxxx, no leading 0 or 1)
-- **Number → Whole number**: Google Forms rejects anything that isn't a clean integer
-- **Text → Email**: Google Forms validates email format
-- **Date picker**: Google Forms native date input (Month, day, year)
+- **Whole number**: income values accept non-negative integers
+- **Email**: addresses require a syntactically valid domain
+- **Date**: dates use `YYYY-MM-DD` and are formatted for display
 
 ## Section 1: Application Introduction and Consent
 

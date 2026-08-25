@@ -24,7 +24,6 @@ export function AdminSettingsPanel(props: {
   isSaving: boolean;
   onSubmit: (event: SyntheticEvent<HTMLFormElement>) => void;
   onError: (message: string) => void;
-  onSettingsUpdated: (payload: SettingsResponse) => void;
   onEligibilityChanged: () => void;
   onOpenApplicant: (id: number) => void;
   onOpenView: (tab: ViewTab) => void;
@@ -78,8 +77,6 @@ export function AdminSettingsPanel(props: {
           saved={props.saved}
           isSaving={props.isSaving}
           onSubmit={props.onSubmit}
-          onError={props.onError}
-          onSettingsUpdated={props.onSettingsUpdated}
         />
       )}
     </section>

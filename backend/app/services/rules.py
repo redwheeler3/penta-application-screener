@@ -112,8 +112,8 @@ def rules_config_for(db: Session, user_id: int) -> RulesConfig:
 
 def committee_default_rules_config(db: Session) -> RulesConfig:
     """The domain ``RulesConfig`` for the shared committee-default ruleset. This is the
-    SHARED baseline the screening pass and the sync summary evaluate against — not any one
-    member's rules."""
+    SHARED baseline used by screening and committee-wide eligibility calculations — not any
+    one member's rules."""
     return rules_config_from(committee_default_rules(db))
 
 

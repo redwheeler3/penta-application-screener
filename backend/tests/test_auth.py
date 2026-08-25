@@ -13,7 +13,6 @@ from app.db.models import (
     AccessAllowlistEntry,
     Base,
     BrowserSession,
-    GoogleCredential,
     PasswordlessIdentityKind,
     User,
     UserRole,
@@ -101,7 +100,7 @@ async def test_google_login_does_not_request_offline_access_or_force_consent(mon
 
 
 @pytest.mark.anyio
-async def test_google_login_issues_shared_session_and_preserves_sheet_token(monkeypatch) -> None:
+async def test_google_login_issues_shared_committee_session(monkeypatch) -> None:
     app, db = _app_and_db()
     user = User(
         email="member@example.test",
@@ -114,13 +113,6 @@ async def test_google_login_issues_shared_session_and_preserves_sheet_token(monk
             AccessAllowlistEntry(email=user.email, role=UserRole.ADMIN),
         ]
     )
-    db.commit()
-    sheet_token = {
-        "access_token": "sheet-access",
-        "refresh_token": "sheet-refresh",
-        "scope": "openid https://www.googleapis.com/auth/drive.file",
-    }
-    db.add(GoogleCredential(user_id=user.id, token=sheet_token))
     db.commit()
     google = FakeGoogleOAuthClient(_google_identity())
     monkeypatch.setattr("app.api.auth.get_oauth", lambda: SimpleNamespace(google=google))
@@ -142,9 +134,6 @@ async def test_google_login_issues_shared_session_and_preserves_sheet_token(monk
     db.refresh(user)
     assert user.google_subject == "google-subject"
     assert db.scalar(select(func.count()).select_from(BrowserSession)) == 1
-    credential = db.scalar(select(GoogleCredential).where(GoogleCredential.user_id == user.id))
-    assert credential is not None
-    assert credential.token == sheet_token
 
 
 @pytest.mark.anyio

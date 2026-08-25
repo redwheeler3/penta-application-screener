@@ -117,7 +117,7 @@ def run(
         raise Problem(
             "unchanged_pool",
             detail="Screening is already up to date for these applicants. "
-            "Sync new or changed applications before re-screening.",
+            "Wait for a new or edited application before re-screening.",
         )
 
     try:

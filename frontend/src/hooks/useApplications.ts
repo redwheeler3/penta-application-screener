@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import * as api from "../api";
 import { retryWithBackoff } from "../retry";
 import type {
@@ -26,9 +26,9 @@ export interface ApplicationsState {
   appFilter: AppFilter;
   appSearch: string;
   appSort: SortState;
-  /** (Re)fetch the whole pool. Called after sync/screen/override so the list reflects
+  /** (Re)fetch the whole pool. Called after screen/override or by the intake refresh so the list reflects
    * server truth; filtering/sorting then happen client-side with no further fetches. */
-  reloadApplications: () => void;
+  reloadApplications: () => Promise<void>;
   /** Recover the initial list load after its automatic retries were exhausted. */
   loadInitialApplications: () => Promise<void>;
   toggleSort: (key: SortKey) => void;
@@ -40,7 +40,7 @@ export interface ApplicationsState {
 /** The applications-list view state. The whole pool (a few hundred rows at most) is held
  * client-side; filtering, sorting, opening scope, and facet counts are derived here with no server
  * round-trips — so a filter/sort/favourites toggle is instant. Only a data-changing
- * action (sync, screen, status override, star) triggers a refetch. The selected
+ * action (screen, status override, star) triggers a refetch. The selected
  * candidate detail is NOT here: it's cross-cutting (tab switches, overrides, settings
  * save all clear it), so it stays in App. */
 export function useApplications(): ApplicationsState {
@@ -52,7 +52,7 @@ export function useApplications(): ApplicationsState {
   const [appSearch, setAppSearch] = useState("");
   const [appSort, setAppSort] = useState<SortState>(null);
 
-  function acceptApplications(response: Awaited<ReturnType<typeof api.fetchApplications>>) {
+  const acceptApplications = useCallback((response: Awaited<ReturnType<typeof api.fetchApplications>>) => {
     setAllApplications(response.applications);
     setOpenings(response.openings);
     const currentOpeningIds = new Set(
@@ -64,10 +64,10 @@ export function useApplications(): ApplicationsState {
       selected.filter((openingId) => currentOpeningIds.has(openingId))
     ));
     setApplicationsLoadState("ready");
-  }
+  }, []);
 
-  function reloadApplications() {
-    api
+  const reloadApplications = useCallback(() => {
+    return api
       .fetchApplications()
       .then((response) => {
         acceptApplications(response);
@@ -75,9 +75,9 @@ export function useApplications(): ApplicationsState {
       // Keep the last successful list visible when a background refresh fails. Initial loading
       // uses loadInitialApplications so it can recover deliberately instead of spinning forever.
       .catch(() => {});
-  }
+  }, [acceptApplications]);
 
-  async function loadInitialApplications(): Promise<void> {
+  const loadInitialApplications = useCallback(async (): Promise<void> => {
     setApplicationsLoadState("loading");
     try {
       const response = await retryWithBackoff(api.fetchApplications, 5);
@@ -85,7 +85,7 @@ export function useApplications(): ApplicationsState {
     } catch {
       setApplicationsLoadState("error");
     }
-  }
+  }, [acceptApplications]);
 
   // Everything below is derived from the full pool — no fetch on filter/sort/search.
   const searchTerm = appSearch.trim().toLowerCase();

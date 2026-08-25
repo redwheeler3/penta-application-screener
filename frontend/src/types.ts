@@ -114,16 +114,11 @@ export type AIModelOption = {
 
 // Shared infrastructure settings. Member-specific screening policy lives in EligibilityRules.
 export type AppSettings = {
-  googleSheetId: string;
-  // The user whose token reads the sheet during sync; null until a sheet is linked.
-  googleSheetReaderUserId: number | null;
   ai: AISettings;
 };
 
 export type SettingsResponse = {
   settings: AppSettings;
-  googleSheetUrl: string;
-  googleSheetTitle: string | null;
   aiModelOptions: AIModelOption[];
   aiPasses: AIPassOption[];
 };
@@ -161,19 +156,9 @@ export type EligibilityRulesResponse = {
 export type AppStatus = "eligible" | "ineligible";
 export type StatusSource = "untouched" | "rules" | "ai" | "human";
 
-// Counts keyed by the real columns; named views are composed client-side.
-export type DashboardCounts = {
-  submitted: number;
-  status: Record<AppStatus, number>;
-  source: Record<StatusSource, number>;
-};
-
 // Which screening steps have run (persisted), so workflow gating survives a reload.
 export type WorkflowState = {
-  synced: boolean;
-  // Whether the latest import used the settings as they are now. False flags the
-  // Import step amber: a re-import would reclassify eligibility.
-  importCurrent: boolean;
+  applicationsAvailable: boolean;
   screened: boolean;
   patternsDiscovered: boolean;
   candidatesScored: boolean;
@@ -218,7 +203,6 @@ export type ApplicationSummary = {
   // per member; a personal working aid with no effect on ranking or eligibility.
   starredByMe: boolean;
   openingIds: number[];
-  createdAt: string | null;
 };
 
 export type CommitteeOpening = OpeningDetails & {
@@ -265,6 +249,10 @@ export type ApplicationDetail = ApplicationSummary & {
   // clearing a human override. Lets the status control show the automatic verdict.
   autoStatus: AppStatus;
   autoStatusSource: StatusSource;
+  firstSubmittedAt: string | null;
+  lastSubmittedAt: string | null;
+  declarationAcceptedAt: string | null;
+  submissionVersionCount: number;
   normalized: Record<string, unknown>;
   essays: Essay[];
   // null = screening pass not yet run for this application; [] = ran, clean.

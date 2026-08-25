@@ -35,7 +35,7 @@ Work as a **principal developer on Jeff's team**: pragmatic, biased toward prove
 ## Project Intent
 
 - Application screener for Penta Housing Coop applications.
-- Source data from Google Drive spreadsheets in the Penta Drive folder.
+- Applicant data is collected and versioned by the built-in application form.
 - Deterministic hard filters before any AI review.
 - AI mainly interprets essay answers and narrows qualified candidates.
 - Produce committee-ready MOMI (Move In Move Out) reports with recommendations and justifications.
@@ -80,7 +80,7 @@ Work as a **principal developer on Jeff's team**: pragmatic, biased toward prove
 - **JSON *key order* is not part of the wire contract — don't let it block a refactor (2026-08-01).** The contract is the set of keys and their types/values; the frontend reads responses by key (`payload.foo`), never by position. So a schema refactor that only reorders keys — e.g. a shared Pydantic base, whose inherited fields serialize *before* the subclass's — is safe to make. What you MUST preserve: key *names* (the camelCase the `ResponseModel` generator emits), types, and presence/absence. Renaming or dropping a key, or changing its casing, IS a contract change — those still need a matching frontend edit. The tell that reordering is fine: no client indexes into the object or depends on `Object.keys()` order (ours don't).
 - Separate deterministic screening logic from AI-assisted evaluation.
 - Design for human override at every candidate-screening stage.
-- Avoid irreversible writes to source Google Drive data unless Jeff approves.
+- Keep applicant data mutations explicit, auditable, and scoped to the requested record.
 - Don't commit `.env`, OAuth secrets, SQLite DBs, applicant exports, AI traces, or raw prompts/outputs containing applicant data.
 
 ## AI / Prompt Engineering
@@ -98,5 +98,5 @@ Work as a **principal developer on Jeff's team**: pragmatic, biased toward prove
 ## UI Gotchas
 
 - **A new surface matches its siblings — reuse the existing class, don't invent a parallel one (2026-07-24).** Before styling a new panel/tab/subtab, find the surface that already does the same job and reuse its classes: nested sub-navigation uses `.subtab`/`.subtabs` (the underline tabs Observability/Evals use), not a fresh folder-tab style; a tab opens with a title heading like `.observability-header`/`.settings-header`'s `<h3>`; etc. Two misses this session both traced to building a parallel style instead of reusing: subtabs first built as folder-tabs (should've been the underline `.subtab`), and settings tabs shipping with no title heading at all. When the reused class needs a positional tweak, scope it to a real class (`.settings-field-wide`), never a brittle positional selector like `:first-child` (that broke the two-column form when the first field changed).
-- **Gate UI affordances on persisted state, not live form input.** A form-bound value (`draft.google_sheet_id`) changes as the user types; affordances that need a setting *saved* (Sync button, "setup needed" callouts) must read the saved value or they fire against unsaved state.
+- **Gate UI affordances on persisted state, not live form input.** An unsaved form value changes as the user types; affordances that depend on a completed save must read persisted state or they can act on values the server has never accepted.
 - **Type numbers through the shared `NumberInput` (`components/NumberInput.tsx`), never a raw `<input type="number">`.** A native number input has two papercuts: (a) mouse-wheel over it while focused silently changes the value, and (b) it rejects a leading-dot literal (`.7`). `NumberInput` sidesteps both by rendering a `type="text"` input with `inputMode="decimal"` (touch keyboards still show a number pad; a text input has no wheel-scroll behaviour) and parsing the value itself. Used everywhere a number is typed (settings, eval case fields).

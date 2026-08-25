@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.time import pacific_today
 from app.db.models import (
     Application,
@@ -67,6 +68,7 @@ def create_application(
         raw_row={},
         raw_row_hash=content_hash({}),
         normalized={},
+        synthetic_data=get_settings().application_data_is_synthetic,
     )
     db.add(application)
     save_working_copy(

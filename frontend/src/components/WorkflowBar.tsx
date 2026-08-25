@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, ChevronRight, RefreshCw, Sparkles } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, Sparkles } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import { money, openingLabel, screeningPercent } from "../format";
@@ -6,7 +6,6 @@ import type {
   Coverage,
   CommitteeOpening,
   CriteriaStage,
-  DashboardCounts,
   ScreeningEstimateResponse,
   RankEstimateResponse,
   ScoreCurrentEstimateResponse,
@@ -48,7 +47,7 @@ const STAGE_CAPTIONS: Record<CriteriaStage | "scoring" | "consolidate", string> 
 // to the next step (omitted on the last). Line 1 is the title; line 2 is the live
 // "processed/total" while running, else the step's coverage "cached/inScope". When
 // results are stale (cached < inScope) the step is NOT done — the badge turns amber
-// so "it ran once" can't masquerade as "it's current" after a re-sync.
+// so "it ran once" can't masquerade as "it's current" after an applicant edit.
 function WorkflowStep(props: {
   n: number;
   title: string;
@@ -62,8 +61,7 @@ function WorkflowStep(props: {
   last?: boolean;
   coverage?: { cached: number; inScope: number };
   progress?: { processed: number; total: number } | null;
-  // A single value for line 2 when there's no coverage fraction (e.g. sync's row
-  // count) — shown as one number, not "n/n".
+  // A single value for line 2 when there's no coverage fraction.
   caption?: string;
   // Explicit "out of date" signal for steps not captured by score coverage (Rank:
   // the pool can change while every candidate keeps a cached score). Drives the
@@ -123,26 +121,17 @@ function WorkflowStep(props: {
   );
 }
 
-// The ordered screening workflow band: three single-verb steps (Import, Screen,
-// Rank), the shared opening view scope, and the confirm + progress cards for the
-// two AI runs. The opening scope filters the application and ranking views; it does
+// The ordered screening workflow band: Screen and Rank, the shared opening view scope,
+// and the confirm + progress cards for the two AI runs. The opening scope filters the
+// application and ranking views; it does
 // not narrow the reusable AI analysis pool. Rank is one button that runs the whole criteria → scores
 // chain under one combined cost estimate. Later steps stay hard-gated until the
 // previous has run; "done" flags come from the backend, so gating survives reload.
 export function WorkflowBar(props: {
   workflow: WorkflowState;
   coverage: Coverage;
-  dashboardCounts: DashboardCounts;
   loadState: "loading" | "ready" | "error";
   onRetryLoad: () => void;
-  settingsLoadState: "loading" | "ready" | "error";
-  onRetrySettings: () => void;
-  hasGoogleSheetLink: boolean;
-  isSyncing: boolean;
-  importConfirm: boolean;
-  onRequestImport: () => void;
-  onConfirmImport: () => void;
-  onCancelImport: () => void;
   screeningRunning: boolean;
   screeningEstimate: ScreeningEstimateResponse | null;
   screeningEstimateLoading: boolean;
@@ -176,7 +165,6 @@ export function WorkflowBar(props: {
   const {
     workflow,
     coverage,
-    dashboardCounts,
     loadState,
     screeningEstimate,
     screeningProgress,
@@ -192,14 +180,6 @@ export function WorkflowBar(props: {
   // Screen and Rank are shared actions over the union scope, so both gate on the shared
   // pool being empty — not on this member's personal eligible count.
   const noApplicantsInScope = (coverage.screened?.inScope ?? 0) === 0;
-  const syncDisabled =
-    props.isSyncing || props.importConfirm || !props.hasGoogleSheetLink || props.settingsLoadState !== "ready";
-  const syncDisabledTitle =
-    props.settingsLoadState === "loading"
-      ? "Loading the configuration required to sync."
-      : props.settingsLoadState === "error"
-        ? "Couldn't load the configuration required to sync. Use Retry below."
-        : "Add a Google Sheet link in settings to sync.";
 
   if (loadState !== "ready") {
     return (
@@ -224,48 +204,26 @@ export function WorkflowBar(props: {
         <ol className="workflow-steps">
           <WorkflowStep
             n={1}
-            title="Sync"
-            icon={<RefreshCw size={16} />}
-            done={workflow.synced}
-            busy={props.isSyncing}
-            busyLabel="Syncing…"
-            // Step 1 is always available once a sheet is configured. The caption
-            // persists the synced row count (not a fraction).
-            disabled={syncDisabled}
-            disabledTitle={syncDisabledTitle}
-            // Amber only when the source SHEET LINK changed since the last sync — the one
-            // change a re-sync acts on (it pulls different rows). Eligibility-rule changes do
-            // NOT amber Sync: they reclassify on read over the already-normalized data, no
-            // re-sync needed.
-            outOfDate={workflow.synced && !workflow.importCurrent}
-            staleTitle="The Google Sheet link changed — re-sync to pull from the new sheet."
-            onClick={props.onRequestImport}
-            caption={
-              workflow.synced && dashboardCounts.submitted > 0 ? `${dashboardCounts.submitted} rows` : undefined
-            }
-          />
-          <WorkflowStep
-            n={2}
             title="Screen"
             icon={<Sparkles size={16} />}
             done={workflow.screened}
             busy={props.screeningRunning}
             busyLabel="Screening…"
-            // Needs a sync, applicants in the SHARED screening scope, and no estimate
+            // Needs submitted applicants in the shared screening scope and no estimate
             // prompt open. Emptiness is the union scope (coverage.screened.inScope), NOT
             // this member's own eligible count — Screen is a shared action over the union
             // pool, so gating on a member's personal view would disable it (amber but
             // unclickable) whenever their view is emptier than the committee's.
             disabled={
-              !workflow.synced ||
+              !workflow.applicationsAvailable ||
               props.screeningRunning ||
               props.screeningEstimateLoading ||
               screeningEstimate !== null ||
               noApplicantsInScope
             }
             disabledTitle={
-              !workflow.synced
-                ? "Import applications first."
+              !workflow.applicationsAvailable
+                ? "No submitted applications yet."
                 : noApplicantsInScope
                   ? "No applicants to screen."
                   : undefined
@@ -275,11 +233,11 @@ export function WorkflowBar(props: {
             progress={screeningProgress}
           />
           <WorkflowStep
-            n={3}
+            n={2}
             title="Rank"
             icon={<Sparkles size={16} />}
             // Done only once the final pass (scoring) has full coverage, which
-            // coverage tracks so a re-sync correctly shows it stale.
+            // coverage tracks so an applicant edit correctly shows it stale.
             done={workflow.candidatesScored}
             busy={props.rankRunning}
             busyLabel="Ranking…"
@@ -357,39 +315,6 @@ export function WorkflowBar(props: {
         ) : null}
       </div>
 
-      {props.settingsLoadState === "error" ? (
-        <div className="workflow-settings-error" role="alert">
-          <p>Couldn't load the configuration required to sync.</p>
-          <button type="button" className="secondary-button" onClick={props.onRetrySettings}>
-            Retry configuration
-          </button>
-        </div>
-      ) : null}
-
-      {props.importConfirm ? (
-        <div className="run-confirm">
-          <div className="run-confirm-body">
-            <strong>Sync applications?</strong>
-            {workflow.synced ? (
-              <p>
-                Re-sync from the Google Sheet. New and changed applications are reclassified against the current
-                settings; existing decisions are preserved.
-              </p>
-            ) : (
-              <p>Pull the applications from the configured Google Sheet and screen them against the current settings.</p>
-            )}
-          </div>
-          <div className="run-confirm-actions">
-            <button className="primary-button" type="button" onClick={props.onConfirmImport} disabled={props.isSyncing}>
-              {props.isSyncing ? "Syncing…" : "Confirm & sync"}
-            </button>
-            <button className="secondary-button" type="button" onClick={props.onCancelImport}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : null}
-
       {props.screeningEstimateLoading ? (
         <div className="run-confirm" aria-live="polite">
           <div className="run-confirm-body">
@@ -410,8 +335,8 @@ export function WorkflowBar(props: {
             {screeningEstimate.toAnalyze === 0 ? (
               <p>
                 Screening is already up to date — all {screeningEstimate.cached} eligible applicant
-                {screeningEstimate.cached === 1 ? " has" : "s have"} been checked. Sync new or changed applications to screen
-                again.
+                {screeningEstimate.cached === 1 ? " has" : "s have"} been checked. New or updated submissions will appear here
+                when screening is needed again.
               </p>
             ) : (
               <p>

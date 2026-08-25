@@ -18,16 +18,6 @@ primary_region = "iad"   # Ashburn — lower-cost region; Bedrock runs in nearby
 [build]
   dockerfile = "Dockerfile"
 
-  # Build-time config for the Vite bundle (the Google Picker, M18). Vite inlines VITE_* at
-  # build time, so these must be here, not in [env]. NOT secrets: the Picker API key is a
-  # browser key (public by design; locked down by HTTP-referrer + Picker-API restrictions in
-  # Google Cloud), and the client id / project number are public identifiers. The API key's
-  # referrer restriction must include https://screener.pentacoop.com (see docs/deploy.md).
-  [build.args]
-    VITE_GOOGLE_PICKER_API_KEY = "AIzaSyAVRCic8nyaDjS_YkiD_dRqgwKidMhsbT0"
-    VITE_GOOGLE_CLIENT_ID = "923025380694-0hr3gg9oki06ab8bl9rgn59nugra8t5d.apps.googleusercontent.com"
-    VITE_GOOGLE_PROJECT_NUMBER = "923025380694"
-
 [env]
   # Non-secret runtime config. The DB path is relative to the backend workdir (/app/backend),
   # so this file lands on the mounted volume below. FRONTEND_URL / GOOGLE_REDIRECT_URI use the

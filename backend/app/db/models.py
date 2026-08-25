@@ -153,18 +153,6 @@ class AccessAllowlistEntry(TimestampMixin, Base):
     )
 
 
-class GoogleCredential(TimestampMixin, Base):
-    """The designated sheet reader's Picker-granted credential, never a login session."""
-
-    __tablename__ = "google_credentials"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, nullable=False)
-    token: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-
-    user: Mapped[User] = relationship()
-
-
 class RunLock(TimestampMixin, Base):
     """A single-row advisory lease serializing the expensive AI runs across members (M16).
 
@@ -260,17 +248,22 @@ class Application(TimestampMixin, Base):
     working_content_hash: Mapped[str | None] = mapped_column(String(64))
     working_saved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     working_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    # Null means a never-submitted draft. Existing Google-sourced rows are backfilled as
-    # submitted by the M21 migration; built-in drafts start null.
+    # Null means a never-submitted draft. Retained externally collected rows are
+    # submitted; built-in drafts start null.
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     declaration_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     retention_due_on: Mapped[date | None] = mapped_column(Date)
+    # Provenance for evidence-bearing eval exports. Production form submissions are
+    # false; committed synthetic fixtures and explicitly synthetic local intake are true.
+    synthetic_data: Mapped[bool] = mapped_column(
+        default=False, server_default="0", nullable=False
+    )
     # NB: no eligibility columns. Eligibility is a pure derivation computed on read per member
     # (M15 1c–1d): the deterministic hard-filter reasons come from ``evaluate_hard_filters`` over
     # ``normalized`` + the member's rules (per-member as of 1d); the AI half from the cached
-    # screening flags; a member's human override from ``MemberEligibility``. Import only syncs
-    # + normalizes — it stores no verdict. See ``services/eligibility`` + ``services/rules``.
+    # screening flags; a member's human override from ``MemberEligibility``. Intake stores no
+    # verdict. See ``services/eligibility`` + ``services/rules``.
 
 
 class Opening(TimestampMixin, Base):
@@ -616,25 +609,6 @@ class ApplicationAIResult(TimestampMixin, Base):
     application: Mapped[Application] = relationship()
 
 
-class SyncRun(TimestampMixin, Base):
-    __tablename__ = "sync_runs"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    source_sheet_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    row_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    duplicate_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    imported_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    updated_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    unchanged_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    deleted_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
-    # No eligible/filtered count: import doesn't evaluate eligibility (it's per-member,
-    # computed on read), so any count here would describe no one's actual view.
-    # Hash of the import-relevant settings (sheet id + hard-filter thresholds +
-    # disabled rules) at import time, so the dashboard can flag Import out of date
-    # when settings change.
-    settings_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
-
-
 class RunCostLedger(TimestampMixin, Base):
     """One row per completed AI run (a Screen, full Rank, or score-current update) — the
     header (M13). This is the only honest source of *per-run* cost:
@@ -728,14 +702,16 @@ class Analysis(TimestampMixin, Base):
     __tablename__ = "analyses"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    source_sync_run_id: Mapped[int | None] = mapped_column(ForeignKey("sync_runs.id"))
+    # True only when every application in the ranked pool was stamped synthetic.
+    synthetic_data: Mapped[bool] = mapped_column(
+        default=False, server_default="0", nullable=False
+    )
     # The analysis's discovered dimensions (a serialized PoolDimensionReport).
     dimension_report: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     # Everything the ranking depends on — pool + each rank-chain prompt/model — hashed.
     # The next Rank compares it to flag the analysis "out of date". Indexed: read on every estimate.
     rank_inputs_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
 
-    source_sync_run: Mapped[SyncRun | None] = relationship()
     audit: Mapped[AnalysisAudit | None] = relationship(
         back_populates="analysis", cascade="all, delete-orphan", uselist=False
     )

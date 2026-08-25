@@ -24,7 +24,7 @@ from app.ai.provider import AIProvider
 from app.ai.schemas import ScreeningReport
 from app.db.models import Application
 from app.schemas.settings import AppSettings, effective_reasoning_effort
-from app.services.application_import import extract_essays
+from app.services.application_content import extract_essays
 from app.services.application_scope import committee_applications
 from app.services.eligibility import rules_eligible_application_ids
 

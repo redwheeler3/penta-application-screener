@@ -3,8 +3,8 @@
 
 Harvesting a scoring/screening golden case means committing an applicant's real evidence
 (essay text, flag quotes), which is only safe on a SYNTHETIC pool — so every harvest routes
-through ``require_synthetic_pool`` (fail-safe: refuses any run not traceable to an allowlisted
-synthetic sheet). These are OPERATOR tools: they PROPOSE unlabelled candidates in the current
+through ``require_synthetic_pool`` (fail-safe: refuses any run not explicitly stamped
+synthetic). These are OPERATOR tools: they PROPOSE unlabelled candidates in the current
 golden envelope (``{key, metadata:{expected…}, given}``) shaped as an EXACT slice of a real
 run's input; a human picks the instructive ones, fills the SET_ME label + note, drops the
 HARVEST_ key prefix, and commits them into ``<pass>_golden.json``. Capture never labels.
@@ -35,12 +35,12 @@ def opaque_index(application_ids: list[int]) -> dict[int, int]:
 
 def open_synthetic_run():
     """Open a session + resolve the newest analysis, GATED on the synthetic-pool guard. Returns
-    ``(db, analysis, sheet_id)``; the caller closes ``db``. Raises via ``require_synthetic_pool``
-    if the pool isn't allowlisted-synthetic — the fail-safe that keeps real applicant evidence
+    ``(db, analysis, source_label)``; the caller closes ``db``. Raises via ``require_synthetic_pool``
+    if the pool isn't stamped synthetic — the fail-safe that keeps real applicant evidence
     out of committed fixtures. Returns ``(db, None, "")`` if there is no analysis yet."""
     db = SessionLocal()
     analysis = latest_analysis(db)
     if analysis is None:
         return db, None, ""
-    sheet_id = require_synthetic_pool(db, analysis)  # raises on a non-synthetic pool
-    return db, analysis, sheet_id
+    source_label = require_synthetic_pool(analysis)
+    return db, analysis, source_label

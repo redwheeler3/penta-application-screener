@@ -447,17 +447,17 @@ rule the comparison passes use. That makes the committable-substrate question th
 not the grader (scoring uses the same deterministic band-check as everything else — see Grader
 architecture).
 
-**Safe substrate = a synthetic-source guard, not a scrubbed fixture.** A quote is
-committable only when its pool is synthetic. The DB can't infer synthetic-vs-real (both
-arrive as a Google Sheet id on `SyncRun`), so `app/evals/synthetic_guard.py` holds an
-allowlist of known-synthetic sheet ids; `require_synthetic_pool(run)` traces a run →
-its source `SyncRun` → sheet id and **refuses** anything not allowlisted (fail-safe: a
-real deployment's sheet is rejected by default). To make that link exist, `create_run`
-stamps `RankingRun.source_sync_run_id` with the latest import (it was a latent unused
-FK). `python -m scripts.harvest_scoring_cases` proposes opaque-indexed candidate cases from a
-run, guard-gated, `source`-stamped; a human labels `metadata.expected` (a band) + rationale
-before they land in `scoring_golden.json` (harvest never labels; the screening harvester mirrors
-it into `screening_golden.json`).
+**Safe substrate = persisted synthetic provenance, not a scrubbed fixture.** A quote is
+committable only when its pool is wholly synthetic. Production intake defaults every application
+to non-synthetic; the local fixture loader can stamp canonical applications synthetic only when
+the runtime explicitly sets `APPLICATION_DATA_IS_SYNTHETIC=true`. Creating an `Analysis` stamps it
+synthetic only when every application in its pool carries that provenance. The evidence harvesters
+call `require_synthetic_pool(analysis)` and fail closed otherwise—filenames, email domains, and the
+current environment setting cannot retroactively make a run safe. `python -m
+scripts.harvest_scoring_cases` proposes opaque-indexed candidate cases from a guard-gated analysis;
+a human labels `metadata.expected` (a band) + rationale before they land in
+`scoring_golden.json` (harvest never labels; the screening harvester mirrors it into
+`screening_golden.json`).
 
 Seeded scoring cases span the basic spectrum — an unaddressed dimension against an
 absence-defined pole (neutral band straddling 0), a strongly-evidenced high case, and the

@@ -46,7 +46,7 @@ def test_resolve_clean_is_untouched() -> None:
 def test_resolve_pet_only_reason_attributes_to_ai() -> None:
     # M15 1g: a pet verdict is deterministic, but it needs the AI to extract pet counts from
     # free text first, so it lands at Screen and attributes to AI — not Rules (which would
-    # imply it was knowable at Sync).
+    # imply it was knowable directly from submitted fields).
     assert resolve_machine_status(reasons=_reasons("pets_over_limit"), has_ai_flags=False) == (
         ApplicationStatus.INELIGIBLE,
         StatusSource.AI,
@@ -54,7 +54,7 @@ def test_resolve_pet_only_reason_attributes_to_ai() -> None:
 
 
 def test_resolve_mixed_pet_and_non_pet_reason_stays_rules() -> None:
-    # An income reason alone made it ineligible at Sync, so Rules is the honest, higher-trust
+    # An income reason alone made it ineligible from submitted fields, so Rules is the honest, higher-trust
     # source even when a pet reason is also present. Only a pet-ONLY verdict moves to AI.
     assert resolve_machine_status(
         reasons=_reasons("income_below_range", "pets_over_limit"), has_ai_flags=False

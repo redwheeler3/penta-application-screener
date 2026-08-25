@@ -28,7 +28,6 @@ type RankingCoordinator = {
 export function useAiRuns(options: {
   ranking: RankingCoordinator;
   notifications: Notifications;
-  closeImportConfirm: () => void;
   refreshDashboard: () => void;
   reloadApplications: () => void;
   clearSelectedApplication: () => void;
@@ -82,7 +81,6 @@ export function useAiRuns(options: {
 
   async function requestScreeningEstimate() {
     cancelRankEstimate();
-    options.closeImportConfirm();
     const requestId = ++screeningEstimateRequest.current;
     const controller = new AbortController();
     screeningEstimateAbort.current = controller;
@@ -147,7 +145,6 @@ export function useAiRuns(options: {
 
   async function requestRankEstimate() {
     cancelScreeningEstimate();
-    options.closeImportConfirm();
     const requestId = ++rankEstimateRequest.current;
     const controller = new AbortController();
     rankEstimateAbort.current = controller;

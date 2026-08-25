@@ -16,7 +16,7 @@ import json
 
 from app.ai.applicant_facts import applicant_facts
 from app.db.models import Application
-from app.services.application_import import extract_essays
+from app.services.application_content import extract_essays
 
 # Rough per-candidate input token weight for the pre-run cost estimate only (the
 # real call is priced from actual usage). Tuned to the SPEC's observed ~$0.07-0.11

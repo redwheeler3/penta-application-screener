@@ -12,11 +12,9 @@ import { BrandLockup } from "./BrandLockup";
 import { HeaderAccount } from "./HeaderAccount";
 import * as api from "./api";
 import type { AuthRedirect } from "./authRedirect";
-import { readProblem } from "./format";
 import type {
   ApplicationDetail,
   AppStatus,
-  SettingsResponse,
   ViewTab,
 } from "./types";
 import { AdminSettingsPanel } from "./components/AdminSettingsPanel";
@@ -67,18 +65,12 @@ export function App(props: { authRedirect: AuthRedirect }) {
   } = useSession(props.authRedirect);
 
   const {
-    counts: dashboardCounts,
     workflow,
     coverage,
     loadState: dashboardLoadState,
     refresh: refreshDashboard,
     loadInitial: loadInitialDashboard,
   } = useDashboard();
-  const [isSyncing, setIsSyncing] = useState(false);
-  // Whether the Import confirmation card is open. Import has no cost (a Sheet pull,
-  // no model calls), so it's a plain confirm — just friction so a click doesn't
-  // immediately re-import, matching the Screen/Rank cards.
-  const [importConfirm, setImportConfirm] = useState(false);
 
   // Workflow notifications surface as bottom-right toasts (success auto-dismisses;
   // errors/warnings persist until dismissed). See useToasts.
@@ -131,7 +123,6 @@ export function App(props: { authRedirect: AuthRedirect }) {
     viewApplication,
     backToList,
     navigateToView,
-    openAdminSetup,
   } = useNavigation({ loadRanking, onError: showError });
   const {
     draft,
@@ -142,15 +133,8 @@ export function App(props: { authRedirect: AuthRedirect }) {
     load: loadSettings,
     retry: retrySettings,
     save: saveSettingsDraft,
-    apply: applySettingsResponse,
-    hasLinkedSheet: hasGoogleSheetLink,
-    loadState: settingsLoadState,
   } = useSharedSettings({
-    user,
     dashboardReady: dashboardLoadState === "ready",
-    onMissingSheet: () => {
-      if (isAdmin) openAdminSetup();
-    },
   });
 
   const {
@@ -179,7 +163,6 @@ export function App(props: { authRedirect: AuthRedirect }) {
       setDisplayedProposals,
     },
     notifications: { success: showToast, error: showError, warning: showWarning },
-    closeImportConfirm: () => setImportConfirm(false),
     refreshDashboard,
     reloadApplications,
     clearSelectedApplication: () => setSelectedApp(null),
@@ -193,6 +176,28 @@ export function App(props: { authRedirect: AuthRedirect }) {
     void loadInitialApplications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  // Refresh the lightweight list/dashboard reads while this page is visible and whenever
+  // the member returns to it, so new or edited applications appear without a reload.
+  useEffect(() => {
+    if (!user) return;
+    let refreshInFlight = false;
+    const refreshIntake = () => {
+      if (document.visibilityState !== "visible" || refreshInFlight) return;
+      refreshInFlight = true;
+      void Promise.all([refreshDashboard(), reloadApplications()]).finally(() => {
+        refreshInFlight = false;
+      });
+    };
+    const interval = window.setInterval(refreshIntake, 60_000);
+    window.addEventListener("focus", refreshIntake);
+    document.addEventListener("visibilitychange", refreshIntake);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshIntake);
+      document.removeEventListener("visibilitychange", refreshIntake);
+    };
+  }, [user, refreshDashboard, reloadApplications]);
 
   // A ranking became stale (another member re-ranked) — surface it as a global toast with a
   // Reload action, so it reaches the member wherever they are on the page (not only on the
@@ -239,16 +244,6 @@ export function App(props: { authRedirect: AuthRedirect }) {
     };
   }, [user, checkForStaleRanking]);
 
-  // Linking/changing the applications sheet changes the source pool, so the synced data is now
-  // stale relative to it — the workflow bar should go amber (re-sync needed). Apply the new
-  // settings AND refresh the dashboard + applications so that shows immediately, rather than
-  // only after a manual page refresh.
-  function applyLinkedSheet(payload: SettingsResponse) {
-    applySettingsResponse(payload);
-    refreshDashboard();
-    reloadApplications();
-  }
-
   // Eligibility is computed from the current member's rules and overrides whenever a view is
   // read. Every mutation therefore needs to refresh each surface that presents that derived
   // status: the workflow bar, application rows/facets, and an already-open ranked shortlist.
@@ -271,53 +266,6 @@ export function App(props: { authRedirect: AuthRedirect }) {
     } else {
       showError("Settings could not be saved.");
     }
-  }
-
-  // Open the Import confirmation. Close the other cards so only one shows at a time.
-  function requestImport() {
-    resetEstimates();
-    setImportConfirm(true); // open first; the badge refresh below shouldn't gate the card
-    refreshDashboard(); // freshen the badge against current shared state (see requestScreeningEstimate)
-  }
-
-  async function syncApplications() {
-    setImportConfirm(false);
-    setIsSyncing(true);
-    try {
-      const response = await api.syncApplications();
-      if (response.ok) {
-        const payload: {
-          rowCount: number;
-          duplicateCount: number;
-          importedCount: number;
-          updatedCount: number;
-          unchangedCount: number;
-          deletedCount: number;
-        } = await response.json();
-        const { rowCount, duplicateCount, importedCount, updatedCount, unchangedCount, deletedCount } = payload;
-        // rowCount is every raw sheet row; imported/updated/unchanged count only the
-        // deduplicated applications. Surface the duplicates that account for the gap (a
-        // repeat submission keeps the latest), so the numbers reconcile — but only mention
-        // them when there are any, to keep the common clean-sync message short.
-        const dupeNote = duplicateCount > 0 ? `, ${duplicateCount} duplicate` : "";
-        const deletedNote = deletedCount > 0 ? `, ${deletedCount} deleted` : "";
-        showToast(
-          `Synced ${rowCount} rows: ${importedCount} imported, ${updatedCount} updated, ${unchangedCount} unchanged${deletedNote}${dupeNote}.`,
-        );
-        refreshDashboard();
-        reloadApplications();
-      } else {
-        const problem = await readProblem(response);
-        showError(problem ? `Sync failed: ${problem}` : `Sync failed (HTTP ${response.status}).`);
-      }
-    } catch (error) {
-      showError(
-        `Sync error: ${
-          error instanceof Error ? error.message : "Network request failed. Check that the backend is running."
-        }`,
-      );
-    }
-    setIsSyncing(false);
   }
 
   // One tab in the view-tab row. A tab is "active" only when it's selected AND no
@@ -425,17 +373,8 @@ export function App(props: { authRedirect: AuthRedirect }) {
           <WorkflowBar
             workflow={workflow}
             coverage={coverage}
-            dashboardCounts={dashboardCounts}
             loadState={dashboardLoadState}
             onRetryLoad={() => void loadInitialDashboard()}
-            settingsLoadState={settingsLoadState}
-            onRetrySettings={retrySettings}
-            hasGoogleSheetLink={hasGoogleSheetLink}
-            isSyncing={isSyncing}
-            importConfirm={importConfirm}
-            onRequestImport={requestImport}
-            onConfirmImport={syncApplications}
-            onCancelImport={() => setImportConfirm(false)}
             screeningRunning={screeningRunning}
             screeningEstimate={screeningEstimate}
             screeningEstimateLoading={screeningEstimateLoading}
@@ -505,7 +444,6 @@ export function App(props: { authRedirect: AuthRedirect }) {
                   isSaving={isSavingSettings}
                   onSubmit={saveSettings}
                   onError={showError}
-                  onSettingsUpdated={applyLinkedSheet}
                   onEligibilityChanged={refreshEligibilityViews}
                   onOpenApplicant={viewApplication}
                   onOpenView={navigateToView}

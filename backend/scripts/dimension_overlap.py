@@ -125,7 +125,7 @@ def main() -> None:
         db.close()
 
     if not vectors:
-        print("No dimension_scoring rows found. Run Sync → Screen → Rank first.")
+        print("No dimension_scoring rows found. Run Screen → Rank first.")
         return
 
     report = overlap_report(vectors)

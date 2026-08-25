@@ -8,16 +8,8 @@ alias generator, which only renames declared field names.
 from app.schemas.base import ResponseModel
 
 
-class DashboardCounts(ResponseModel):
-    submitted: int
-    # Keyed by ApplicationStatus / StatusSource values (data, not field names).
-    status: dict[str, int]
-    source: dict[str, int]
-
-
 class WorkflowState(ResponseModel):
-    synced: bool
-    import_current: bool
+    applications_available: bool
     screened: bool
     patterns_discovered: bool
     candidates_scored: bool
@@ -30,8 +22,6 @@ class CoverageEntry(ResponseModel):
 
 
 class DashboardResponse(ResponseModel):
-    settings_complete: bool
-    counts: DashboardCounts
     workflow: WorkflowState
     # Per-AI-step coverage; keys absent for steps not yet computable.
     coverage: dict[str, CoverageEntry]

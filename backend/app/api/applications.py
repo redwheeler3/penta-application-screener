@@ -2,19 +2,20 @@ from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai.model_catalog import supports_reasoning_effort
 from app.api.dependencies import require_current_user
 from app.api.problems import Problem
-from app.core.time import pacific_date, pacific_today, utc_isoformat
+from app.core.time import as_utc, pacific_date, pacific_today, utc_isoformat
 from app.db.models import (
     Application,
     ApplicationAIResult,
     ApplicationNote,
     ApplicationStar,
     ApplicationStatus,
+    ApplicationVersion,
     MemberEligibility,
     Opening,
     User,
@@ -50,7 +51,7 @@ from app.services.analysis import (
     get_or_create_member_ranking,
     stored_tiers,
 )
-from app.services.application_import import extract_essays
+from app.services.application_content import extract_essays
 from app.services.application_scope import committee_application, committee_applications
 from app.services.eligibility import (
     active_flags,
@@ -88,6 +89,14 @@ def list_applications(
     the client holds the whole list and owns filtering, sorting, facet counts, and the
     favourites view — no server-side paging to keep consistent."""
     applications = committee_applications(db)
+    applications.sort(
+        key=lambda application: (
+            as_utc(application.submitted_at).timestamp()
+            if application.submitted_at is not None
+            else 0
+        ),
+        reverse=True,
+    )
     ids = [app.id for app in applications]
     flags = machine_flags_by_app(db, ids)
     facts = pet_facts_by_app(db, ids)
@@ -304,7 +313,6 @@ def _serialize_summary(
         flag_categories=None if flags is None else _distinct_categories(flags),
         starred_by_me=starred,
         opening_ids=opening_ids or [],
-        created_at=utc_isoformat(app.created_at),
     )
 
 
@@ -394,12 +402,21 @@ def _serialize_detail(app: Application, db: Session, user: User) -> ApplicationD
     auto_status, auto_source = resolve_machine_status(
         reasons=reasons, has_ai_flags=bool(flags)
     )
+    submission_version_count, first_submitted_at = db.execute(
+        select(func.count(), func.min(ApplicationVersion.submitted_at)).where(
+            ApplicationVersion.application_id == app.id
+        )
+    ).one()
 
     dimension_scores = _dimension_scores(db, app, user)
     return ApplicationDetail(
         **summary.model_dump(),
         auto_status=auto_status.value,
         auto_status_source=auto_source.value,
+        first_submitted_at=utc_isoformat(first_submitted_at or app.submitted_at),
+        last_submitted_at=utc_isoformat(app.submitted_at),
+        declaration_accepted_at=utc_isoformat(app.declaration_accepted_at),
+        submission_version_count=submission_version_count,
         normalized=normalized_with_ages(
             app.normalized or {},
             pacific_date(app.submitted_at) if app.submitted_at is not None else pacific_today(),

@@ -1,7 +1,4 @@
 from fastapi import APIRouter, Depends
-from google.auth.exceptions import RefreshError, TransportError
-from googleapiclient.errors import HttpError
-from httplib2 import HttpLib2Error
 from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
 
@@ -20,18 +17,8 @@ from app.schemas.settings import (
     EligibilityRules,
     EligibilityRulesResponse,
     SettingsResponse,
-    SheetCodeExchangeRequest,
-    SheetLinkRequest,
-    google_sheet_url_from_id,
 )
 from app.services.eligibility_catalog import ELIGIBILITY_CHECK_CATALOG
-from app.services.google_credentials import (
-    exchange_auth_code,
-    get_google_sheet_credentials,
-    get_google_token,
-    save_google_token,
-)
-from app.services.google_sheets import fetch_sheet_title
 from app.services.rules import (
     committee_default_rules,
     member_rules,
@@ -50,33 +37,8 @@ rules_router = APIRouter(prefix="/eligibility-rules", tags=["eligibility-rules"]
 
 def build_settings_response(db: Session, user: User, settings: AppSettings) -> SettingsResponse:
     runtime = get_settings()
-    sheet_title: str | None = None
-    if settings.google_sheet_id:
-        # Read the title with the DESIGNATED reader's token (it's the one that can access the
-        # linked file post-M18), falling back to the viewing user's own token. The title is a
-        # nice-to-have label, so ANY failure just drops it — a revoked/expired token raises
-        # RefreshError (during refresh, before any HTTP call), which must be caught alongside
-        # HttpError or loading Settings 500s (seen right after an M18 deploy, pre-relink).
-        reader_id = settings.google_sheet_reader_user_id or user.id
-        try:
-            credentials = get_google_sheet_credentials(
-                db, user_id=reader_id, settings=runtime
-            )
-        except (RefreshError, TransportError, TimeoutError):
-            credentials = None
-        if credentials is not None:
-            try:
-                sheet_title = fetch_sheet_title(
-                    sheet_id=settings.google_sheet_id,
-                    credentials=credentials,
-                )
-            except (HttpError, RefreshError, TransportError, HttpLib2Error, TimeoutError):
-                sheet_title = None
-
     return SettingsResponse(
         settings=settings,
-        google_sheet_url=google_sheet_url_from_id(settings.google_sheet_id),
-        google_sheet_title=sheet_title,
         ai_model_options=[
             AIModelOption(
                 model_id=model.model_id,
@@ -117,19 +79,8 @@ def update_settings(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> SettingsResponse:
-    # No income cross-check here: the numeric eligibility thresholds moved to
-    # /eligibility-rules (M15 1d; pets joined them in 1e). This surface is shared infra
-    # only (sheet + AI).
-    #
-    # The sheet-link fields (google_sheet_id, google_sheet_reader_user_id) are owned by the
-    # Picker flow (/settings/link-sheet), NOT this blob — so we always keep the server's
-    # current values and ignore whatever the client sent for them. Without this, a stale form
-    # (e.g. a second tab open from before a sheet was linked) saving AI settings would clobber
-    # the reader id back to null and silently break sync. This makes the PUT touch only the
-    # AI settings it's actually for.
-    current = get_app_settings(db)
-    settings.google_sheet_id = current.google_sheet_id
-    settings.google_sheet_reader_user_id = current.google_sheet_reader_user_id
+    # Numeric eligibility thresholds live under /eligibility-rules. This endpoint
+    # owns only the shared AI configuration.
     runtime = get_settings()
     unavailable = [
         model_id
@@ -145,84 +96,6 @@ def update_settings(
             "ai_provider_not_configured",
             detail="The selected model provider is not configured on this server.",
         )
-    return build_settings_response(db, admin, save_app_settings(db, settings))
-
-
-@router.post("/exchange-sheet-code")
-def exchange_sheet_code(
-    body: SheetCodeExchangeRequest,
-    admin: User = Depends(require_admin),
-    db: Session = Depends(get_db),
-) -> dict[str, str]:
-    """Exchange the GIS code-model auth code for tokens (M18). Stores the resulting token
-    (with refresh, for durable sync) as the admin's credential, and returns the access token
-    for the browser to open the Picker with. Because this token comes from the INTERACTIVE
-    auth-code grant, a file picked with it is properly drive.file-authorized — which a
-    server-refreshed token is not. Admin-only."""
-    try:
-        token = exchange_auth_code(code=body.code, settings=get_settings())
-    except Exception as exc:
-        raise Problem(
-            "sheet_auth_failed",
-            detail="Couldn't complete Google authorization. Try Connect applications sheet again.",
-        ) from exc
-
-    access_token = token.get("access_token")
-    if not access_token:
-        raise Problem(
-            "sheet_auth_failed",
-            detail="Google authorization returned no access token. Try again.",
-        )
-    # Re-consent may omit refresh_token; preserve the admin's existing one so durable sync
-    # keeps working. Then store as this admin's credential (they become the designated reader
-    # when they finish linking a sheet).
-    existing = get_google_token(db, user_id=admin.id) or {}
-    if not token.get("refresh_token") and existing.get("refresh_token"):
-        token["refresh_token"] = existing["refresh_token"]
-    save_google_token(db, user_id=admin.id, token=token)
-    return {"accessToken": access_token}
-
-
-@router.post("/link-sheet", response_model=SettingsResponse)
-def link_sheet(
-    body: SheetLinkRequest,
-    admin: User = Depends(require_admin),
-    db: Session = Depends(get_db),
-) -> SettingsResponse:
-    """Link the applications sheet the admin picked in the Google Picker (M18). By now the admin
-    has run exchange-sheet-code, so their stored token came from the interactive drive.file
-    grant and can read the file they picked. We verify by reading the sheet's title with THEIR
-    token before saving; on success we record the sheet id and mark this admin the designated
-    reader, so all future syncs read with their (offline, refreshing) token — members never
-    need a Drive/Sheets scope."""
-    # Verify the picked file is actually reachable with this admin's drive.file token before
-    # committing it as the source — a wrong/unshared file or a token lacking drive.file fails
-    # here rather than silently breaking every future sync.
-    try:
-        credentials = get_google_sheet_credentials(db, user_id=admin.id, settings=get_settings())
-        if credentials is None:
-            raise Problem(
-                "sheet_reader_unavailable",
-                detail="Your Google connection is missing. Click Connect applications sheet to grant access.",
-            )
-        title = fetch_sheet_title(sheet_id=body.file_id, credentials=credentials)
-    except (HttpError, RefreshError, TransportError, TimeoutError) as exc:
-        raise Problem(
-            "sheet_read_failed",
-            detail=(
-                "Couldn't read that sheet with your Google access. Re-connect via "
-                "Connect applications sheet and pick the file again."
-            ),
-        ) from exc
-    if title is None:
-        raise Problem(
-            "sheet_read_failed",
-            detail="Couldn't read that sheet. Re-connect and pick the applications sheet again.",
-        )
-
-    settings = get_app_settings(db)
-    settings.google_sheet_id = body.file_id
-    settings.google_sheet_reader_user_id = admin.id
     return build_settings_response(db, admin, save_app_settings(db, settings))
 
 

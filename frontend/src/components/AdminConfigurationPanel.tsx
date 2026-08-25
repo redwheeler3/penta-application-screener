@@ -1,8 +1,5 @@
-import { type ReactNode, type SyntheticEvent, useState } from "react";
+import { type ReactNode, type SyntheticEvent } from "react";
 
-import * as api from "../api";
-import { readProblem } from "../format";
-import { isPickerConfigured, pickApplicationsSheet } from "../googlePicker";
 import type {
   AIModelProvider,
   AppSettings,
@@ -24,8 +21,6 @@ export function AdminConfigurationPanel(props: {
   saved: SettingsResponse | null;
   isSaving: boolean;
   onSubmit: (event: SyntheticEvent<HTMLFormElement>) => void;
-  onError: (message: string) => void;
-  onSettingsUpdated: (payload: SettingsResponse) => void;
 }): ReactNode {
   const { draft, setDraft, saved } = props;
 
@@ -36,12 +31,6 @@ export function AdminConfigurationPanel(props: {
       </div>
       {!saved ? null : (
         <form className="settings-form" onSubmit={props.onSubmit}>
-          <SheetLinkField
-            saved={saved}
-            onError={props.onError}
-            onSettingsUpdated={props.onSettingsUpdated}
-          />
-
           <div className="rules-section">
             <h4>AI Screening</h4>
             <div className="settings-grid">
@@ -179,89 +168,6 @@ export function AdminConfigurationPanel(props: {
           </div>
         </form>
       )}
-    </div>
-  );
-}
-
-function SheetLinkField(props: {
-  saved: SettingsResponse;
-  onError: (message: string) => void;
-  onSettingsUpdated: (payload: SettingsResponse) => void;
-}): ReactNode {
-  const [busy, setBusy] = useState(false);
-  const linkedTitle = props.saved.googleSheetTitle ?? null;
-  const linkedUrl = props.saved.googleSheetUrl ?? "";
-  const hasLink = Boolean(props.saved.settings.googleSheetId);
-
-  async function connectAndPick() {
-    setBusy(true);
-    try {
-      const picked = await pickApplicationsSheet();
-      if (!picked) return;
-      const response = await api.linkSheet(picked.id);
-      if (!response.ok) {
-        props.onError((await readProblem(response)) ?? "Could not link that sheet.");
-        return;
-      }
-      props.onSettingsUpdated((await response.json()) as SettingsResponse);
-    } catch (error) {
-      props.onError(
-        error instanceof Error ? error.message : "Could not connect the applications sheet.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!isPickerConfigured()) {
-    return (
-      <div className="sheet-link-section">
-        <h4>Applications sheet</h4>
-        <p className="panel-hint">
-          Google Picker isn't configured in this environment (missing API key / client id).
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="sheet-link-section">
-      <h4>Applications sheet</h4>
-      {hasLink ? (
-        linkedTitle ? (
-          <p className="sheet-reference-line">
-            Linked:{" "}
-            {linkedUrl ? (
-              <a className="sheet-reference" href={linkedUrl} target="_blank" rel="noreferrer noopener">
-                {linkedTitle}
-              </a>
-            ) : (
-              <strong>{linkedTitle}</strong>
-            )}
-          </p>
-        ) : (
-          <p className="panel-hint">
-            A sheet is linked, but its name couldn't be read
-            {linkedUrl ? (
-              <>
-                {" "}(
-                <a className="sheet-reference" href={linkedUrl} target="_blank" rel="noreferrer noopener">
-                  open it
-                </a>
-                )
-              </>
-            ) : null}
-            . Try re-linking it below so sync can read it.
-          </p>
-        )
-      ) : (
-        <p className="panel-hint">No sheet linked yet.</p>
-      )}
-      <div className="settings-actions">
-        <button type="button" className="primary-button" onClick={connectAndPick} disabled={busy}>
-          {busy ? "Connecting…" : hasLink ? "Change applications sheet" : "Connect applications sheet"}
-        </button>
-      </div>
     </div>
   );
 }

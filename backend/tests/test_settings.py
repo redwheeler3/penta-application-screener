@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import AdminSetting, Base
 from app.main import create_app
-from app.schemas.settings import AppSettings, google_sheet_url_from_id
+from app.schemas.settings import AppSettings
 from app.services.settings import get_app_settings, save_app_settings
 
 
@@ -22,8 +22,7 @@ def test_get_app_settings_returns_defaults_when_none_saved() -> None:
 
     settings = get_app_settings(db)
 
-    assert settings.google_sheet_id == ""
-    # AppSettings is pure infra now (sheet + AI); pet limits moved to EligibilityRules in 1e.
+    # AppSettings is shared AI infrastructure; eligibility rules are stored separately.
     assert settings.ai.region == "us-east-1"
 
 
@@ -37,7 +36,7 @@ def test_get_app_settings_ignores_pre_split_rule_keys() -> None:
         AdminSetting(
             key="app_settings",
             value={
-                "google_sheet_id": "sheet-123",
+                "retired_option": "ignored",
                 "max_dogs": 2,
                 "income_min": 70_000,
                 "income_max": 150_000,
@@ -50,12 +49,12 @@ def test_get_app_settings_ignores_pre_split_rule_keys() -> None:
 
     settings = get_app_settings(db)
 
-    assert settings.google_sheet_id == "sheet-123"
+    assert settings.ai.region == "us-east-1"
 
 
 def test_save_app_settings_round_trips() -> None:
     db = make_session()
-    saved = AppSettings(google_sheet_id="sheet-123")
+    saved = AppSettings()
     saved.ai.discovery_fan_out = 3
 
     save_app_settings(db, saved)
@@ -69,7 +68,7 @@ def test_save_app_settings_round_trips_ai_block() -> None:
     trip — the UI edits the cap, so it must persist rather than reset.
     """
     db = make_session()
-    saved = AppSettings(google_sheet_id="sheet-123")
+    saved = AppSettings()
     saved.ai.spending_cap_usd = 2.5
 
     save_app_settings(db, saved)
@@ -81,24 +80,6 @@ def test_save_app_settings_round_trips_ai_block() -> None:
     assert loaded.ai.region == "us-east-1"
 
 
-def test_app_settings_accepts_google_sheet_url() -> None:
-    settings = AppSettings(
-        google_sheet_id="https://docs.google.com/spreadsheets/d/sheet-123/edit?gid=0#gid=0",
-    )
-
-    assert settings.google_sheet_id == "sheet-123"
-
-
-def test_app_settings_accepts_raw_google_sheet_id() -> None:
-    settings = AppSettings(google_sheet_id=" sheet-123 ")
-
-    assert settings.google_sheet_id == "sheet-123"
-
-
-def test_google_sheet_url_from_id_returns_copyable_url() -> None:
-    assert google_sheet_url_from_id("sheet-123") == "https://docs.google.com/spreadsheets/d/sheet-123/edit"
-
-
 @pytest.mark.anyio
 async def test_read_settings_requires_login() -> None:
     transport = ASGITransport(app=create_app())
@@ -107,36 +88,6 @@ async def test_read_settings_requires_login() -> None:
         response = await client.get("/settings")
 
     assert response.status_code == 401
-
-
-@pytest.mark.anyio
-async def test_put_settings_preserves_server_owned_sheet_link() -> None:
-    """PUT /settings must NOT let a (possibly stale) client blob clobber the sheet-link
-    fields — those are owned by the Picker flow (/settings/link-sheet), not this form. The
-    footgun: a second tab open from before a sheet was linked saves AI settings and nulls the
-    reader id, silently breaking sync. The server keeps its own sheet id + reader id and
-    applies only the AI settings the PUT is actually for."""
-    app, db = _rules_client(role="admin")
-    # Simulate a sheet already linked via the Picker flow.
-    save_app_settings(
-        db, AppSettings(google_sheet_id="linked-sheet", google_sheet_reader_user_id=1)
-    )
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        # A stale client PUTs settings with the sheet fields cleared (as a pre-link tab would).
-        resp = await client.put(
-            "/settings",
-            json={"googleSheetId": "", "googleSheetReaderUserId": None,
-                  "ai": {"spendingCapUsd": 3.0}},
-        )
-        assert resp.status_code == 200
-
-    # The server-owned link survived; the AI edit still applied.
-    loaded = get_app_settings(db)
-    assert loaded.google_sheet_id == "linked-sheet"
-    assert loaded.google_sheet_reader_user_id == 1
-    assert loaded.ai.spending_cap_usd == 3.0
 
 
 @pytest.mark.anyio

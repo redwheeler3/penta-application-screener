@@ -160,7 +160,7 @@ export function EligibilitySettingsPanel(props: {
                 <>
                   <CheckGroup
                     title="Deterministic rules"
-                    hint="Threshold checks decided at Sync from the form data."
+                    hint="Threshold checks decided directly from application fields."
                     checks={checks.data.deterministic}
                     disabledChecks={draft.disabledChecks}
                     onToggle={toggleCheck}

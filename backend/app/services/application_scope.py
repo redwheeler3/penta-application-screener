@@ -23,8 +23,8 @@ def committee_applications_query() -> Select[tuple[Application]]:
     return select(Application).where(
         Application.submitted_at.is_not(None),
         Application.deleted_at.is_(None),
-        # Legacy imported applications remain available until the first built-in opening
-        # is published. From that point onward, explicit current participation owns scope.
+        # Retained externally collected applications remain available until the first
+        # built-in opening is published. From then on, current participation owns scope.
         or_(not_(published_opening_exists), current_participation),
     )
 

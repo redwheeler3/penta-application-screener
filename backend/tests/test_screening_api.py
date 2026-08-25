@@ -16,6 +16,7 @@ from app.db.models import (
     ApplicationNote,
     ApplicationParticipation,
     ApplicationStar,
+    ApplicationVersion,
     Base,
     Opening,
     User,
@@ -247,6 +248,20 @@ async def test_list_and_detail_expose_opening_participation() -> None:
             applied_at=datetime.now(UTC),
         )
     )
+    submitted_at = datetime(2026, 2, 3, 4, 5, tzinfo=UTC)
+    application.submitted_at = submitted_at
+    application.declaration_accepted_at = submitted_at
+    db.add(
+        ApplicationVersion(
+            application_id=application.id,
+            answers=application.raw_row,
+            normalized=application.normalized,
+            selected_opening_ids=[opening.id],
+            content_hash=application.raw_row_hash,
+            submitted_at=submitted_at,
+            declaration_accepted_at=submitted_at,
+        )
+    )
     db.commit()
 
     transport = ASGITransport(app=app)
@@ -256,7 +271,13 @@ async def test_list_and_detail_expose_opening_participation() -> None:
 
     assert listing["openings"][0]["id"] == opening.id
     assert listing["applications"][0]["openingIds"] == [opening.id]
+    assert "submittedAt" not in listing["applications"][0]
+    assert "submissionVersionCount" not in listing["applications"][0]
     assert detail["openingIds"] == [opening.id]
+    assert detail["firstSubmittedAt"] == "2026-02-03T04:05:00+00:00"
+    assert detail["lastSubmittedAt"] == "2026-02-03T04:05:00+00:00"
+    assert detail["declarationAcceptedAt"] == "2026-02-03T04:05:00+00:00"
+    assert detail["submissionVersionCount"] == 1
 
 
 @pytest.mark.anyio
@@ -392,12 +413,6 @@ async def test_ai_flag_sets_needs_review_status_and_filter() -> None:
         # exactly one row carries the ai source.
         ai_sourced = [a for a in all_apps if a["statusSource"] == "ai"]
         assert [a["primaryEmail"] for a in ai_sourced] == ["flag@x.com"]
-
-        dashboard = (await client.get("/dashboard")).json()
-        # "Needs review" is the client's label for the ai source bucket.
-        assert dashboard["counts"]["source"]["ai"] == 1
-        assert dashboard["counts"]["status"]["ineligible"] == 1
-
 
 @pytest.mark.anyio
 async def test_raw_row_and_narrative_visible_to_members() -> None:

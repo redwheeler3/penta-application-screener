@@ -1,5 +1,3 @@
-import re
-
 from pydantic import Field, field_validator
 
 from app.ai.model_catalog import (
@@ -24,15 +22,6 @@ from app.domain.hard_filters import (
     EmploymentRequirement,
 )
 from app.schemas.base import BridgeModel, ResponseModel
-
-SHEETS_URL_ID_PATTERN = re.compile(r"/spreadsheets/d/([a-zA-Z0-9-_]+)")
-SHEETS_OPEN_ID_PATTERN = re.compile(r"[?&]id=([a-zA-Z0-9-_]+)")
-
-
-def google_sheet_url_from_id(sheet_id: str) -> str:
-    if not sheet_id:
-        return ""
-    return f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit"
 
 
 def effective_reasoning_effort(model_id: str, effort: ReasoningEffort) -> ReasoningEffort | None:
@@ -161,49 +150,9 @@ class EligibilityRules(BridgeModel):
 
 
 class AppSettings(BridgeModel):
-    """Shared source-sheet and AI settings. Eligibility policy is stored separately."""
+    """Shared AI settings. Eligibility policy is stored separately."""
 
-    google_sheet_id: str = Field(default="", max_length=2000)
-    # The user whose stored Google token reads the sheet during sync. Sync uses this token
-    # regardless of who clicks Sync, so other members do not need Drive/Sheets access.
-    google_sheet_reader_user_id: int | None = Field(default=None)
     ai: AISettings = Field(default_factory=AISettings)
-
-    @field_validator("google_sheet_id")
-    @classmethod
-    def normalize_google_sheet_id(cls, value: str) -> str:
-        spreadsheet_reference = value.strip()
-        if not spreadsheet_reference:
-            return ""
-
-        for pattern in (SHEETS_URL_ID_PATTERN, SHEETS_OPEN_ID_PATTERN):
-            match = pattern.search(spreadsheet_reference)
-            if match:
-                return match.group(1)
-
-        return spreadsheet_reference
-
-
-class SheetCodeExchangeRequest(BridgeModel):
-    """The GIS code-model authorization code POSTed so
-    the backend can exchange it for a refresh+access token."""
-
-    code: str = Field(min_length=1)
-
-
-class SheetLinkRequest(BridgeModel):
-    """Admin links the applications sheet via the Google Picker. The Picker only selects the
-    file (returns its id); the sheet is READ during sync with the linking admin's own stored
-    LOGIN token — which carries drive.file + a refresh_token (offline access), so it reads
-    durably and auto-refreshes. Hence only the file id is sent here, not the Picker's
-    short-lived (non-refreshable) access token. The endpoint marks the admin the designated
-    reader, so members need no Drive/Sheets scope at all.
-
-    The linking admin's stored token must have the ``drive.file`` reader scope. The endpoint
-    verifies this by
-    reading the sheet's title before saving, and 409s with a re-connect prompt otherwise."""
-
-    file_id: str = Field(min_length=1, max_length=2000)
 
 
 class AIModelOption(ResponseModel):
@@ -223,8 +172,6 @@ class AIPassOption(ResponseModel):
 
 class SettingsResponse(ResponseModel):
     settings: AppSettings
-    google_sheet_url: str = ""
-    google_sheet_title: str | None = None
     ai_model_options: list[AIModelOption]
     ai_passes: list[AIPassOption]
 

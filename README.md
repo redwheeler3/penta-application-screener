@@ -2,7 +2,7 @@
 
 A production tool that turns 300+ housing co-op applications into a committee-ready, weighted shortlist — with a human in the loop at every stage and every AI-influenced number traceable back to its evidence. **In real use by the Penta Housing Co-op membership committee**, hosted at `screener.pentacoop.com`.
 
-It imports Google Sheets responses, applies deterministic eligibility filters, runs cached AI passes over the eligible pool, and produces a ranked list with per-candidate rationale. Reviewers get a searchable table, candidate detail pages, audit-friendly flags, human overrides, and an interactive tier-list for weighting what matters.
+Applicants complete and maintain their application in the app. The screener applies deterministic eligibility filters, runs cached AI passes over the submitted pool, and produces a ranked list with per-candidate rationale. Reviewers get a searchable table, candidate detail pages, audit-friendly flags, human overrides, and an interactive tier-list for weighting what matters.
 
 It's both a live application backing a real co-op screening workflow and a portfolio project exploring the craft of AI product design: human-in-the-loop review, cost-aware model use, and the judgment of which decisions to keep deterministic and which to hand to an LLM.
 
@@ -22,12 +22,12 @@ A few decisions I'm particularly happy with — the ideas that make this more th
 
 ## What It Does
 
-The workflow is three single-verb steps — **Import → Screen → Rank** — each gated behind a confirmation card with an up-front cost estimate, plus a "View ranking" action.
+Submitted applications appear automatically. The committee workflow is **Screen → Rank**; each paid step is gated behind a confirmation card with an up-front cost estimate.
 
-- Committee sign-in by Google or emailed magic link, both issuing the same revocable server-side session. Google login is identity-only; an admin separately links the response sheet through the Picker with `drive.file` access to that file.
-- Google Sheets sync into a SQLite database, read with the linking admin's designated token.
-- Configurable application settings for unit size, move-in date, income range, household rules, pets, and disabled deterministic rules.
-- Deterministic hard filters for clear eligibility issues, applied at import.
+- Built-in applicant form with private working copies, explicit submission, opening selection, emailed access links, and version history.
+- Committee sign-in by Google or emailed magic link, both issuing the same revocable server-side session. Google login is identity-only.
+- Admin-managed openings and configurable eligibility rules, pet limits, AI models, concurrency, and spending cap.
+- Deterministic hard filters for clear eligibility issues, computed from the latest submitted fields.
 - Application dashboard, searchable/sortable table, facets, pagination, and candidate detail pages.
 - **Screen:** AI integrity pass flagging suspicious, AI-boilerplate, or low-quality submissions (informational input to human review, never auto-disqualifying).
 - **Rank:** one orchestrated AI chain over eligible applicants — parallel pattern discovery → decomposition into one non-overlapping set → identity-match onto prior runs → per-dimension scoring → post-score duplicate consolidation — feeding a weighted ranked list with relative fit bands and per-driver rationale. (Detailed in *The AI Pipeline* below; the ranking math is in *The LLM extracts features; the math does the ranking* above.)
@@ -61,7 +61,7 @@ The spec lives in [SPEC.md](SPEC.md); developer architecture notes in [docs/app-
 
 Applicant data is sensitive. Do not commit real application exports, local SQLite databases, OAuth credentials, raw AI traces, exported/printed reports with applicant data, or `.env` files.
 
-The sample CSV in [test-data](test-data) is synthetic and intentionally realistic so import logic and AI quality checks can be exercised locally. See [test-data/README.md](test-data/README.md) for the directory policy.
+The sample CSV in [test-data](test-data) is synthetic and intentionally realistic so intake, screening, and AI quality checks can be exercised locally. See [test-data/README.md](test-data/README.md) for the loader and directory policy.
 
 ## Tech Stack
 
@@ -69,7 +69,7 @@ The sample CSV in [test-data](test-data) is synthetic and intentionally realisti
 - Python tooling: `uv`, project-local virtual environment, `pytest`
 - Frontend: Vite, React, TypeScript, npm
 - Authentication: identity-only Google OIDC or email magic links with revocable server-side sessions
-- Google integration: Google Sheets import/sync via the Picker (`drive.file`, least-privilege)
+- Google integration: optional identity-only OIDC for committee sign-in
 - AI integration: provider-agnostic interface; Strands routes through Bedrock or direct OpenAI/Anthropic APIs; mock provider for tests
 - Hosting: Fly.io (single instance, auto-suspend, persistent-volume SQLite); single-origin — FastAPI serves the built SPA; deployed manually with `fly deploy --remote-only`
 
@@ -121,8 +121,19 @@ Start both servers:
 The backend runs at `http://localhost:8000`. The frontend runs at `http://localhost:5173`.
 During M21 development, open `http://localhost:5173/?applicant` to exercise the applicant form.
 Save and return later accepts an incomplete application, stores a private pending draft, and sends
-a 24-hour access link. Submitting still requires a deliberate action after using that link. Submit
-also requires exactly one active opening until opening selection is added.
+a 24-hour access link. Submitting still requires a deliberate action and at least one selectable
+opening.
+
+To seed a wholly synthetic local database from the committed fixture, publish an opening,
+set `APPLICATION_DATA_IS_SYNTHETIC=true`, then run from `backend/`:
+
+```sh
+uv run python -m scripts.load_synthetic_applications --opening-id 1 --opening-id 2
+```
+
+Repeat `--opening-id` to attach every fixture applicant to each desired local opening. The loader
+is idempotent, sends no email, refuses non-SQLite databases, and will not overwrite an application
+unless it is already stamped synthetic.
 On Windows, `dev.ps1` writes per-service output and errors to `.dev-logs/`. If either
 service exits, it prints the last log lines; it also retries the frontend twice before
 leaving the backend running for diagnosis.

@@ -26,7 +26,6 @@ from app.api.ranking import router as ranking_router
 from app.api.screening import router as screening_router
 from app.api.settings import router as settings_router
 from app.api.settings import rules_router as eligibility_rules_router
-from app.api.sync import router as sync_router
 from app.core.config import get_settings
 
 PROBLEM_JSON = "application/problem+json"
@@ -125,7 +124,6 @@ def create_app() -> FastAPI:
     app.include_router(ranking_router)
     app.include_router(settings_router)
     app.include_router(eligibility_rules_router)
-    app.include_router(sync_router)
     # Serve the built frontend from the API origin. API routers are registered above,
     # so they always win; this catch-all mount handles everything else — the SPA's assets and
     # its index.html (html=True serves index.html for "/" and for unknown paths). Mounted only

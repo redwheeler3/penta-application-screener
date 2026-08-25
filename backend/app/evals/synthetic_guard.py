@@ -1,67 +1,33 @@
-"""Guard: is a Rank's applicant pool SAFE to commit evidence quotes from?
+"""Guard: is a Rank's applicant pool safe to commit evidence quotes from?
 
 Score-defensibility eval cases must include the applicant's cited ``evidence`` quote —
 that quote is the thing under test, so unlike every other eval category it can't be
 stripped. That's only committable when the pool is SYNTHETIC (fictional test data), never
 real applicants.
 
-The DB can't infer synthetic-vs-real: both arrive via a Google Sheet, recorded only as
-``SyncRun.source_sheet_id``. So the safe pool is identified by an explicit **allowlist of
-known-synthetic sheet ids**. The synthetic pool was made by exporting
-``test-data/synthetic-penta-application-responses.csv`` into one specific sheet; that id
-is allowlisted below. Any other sheet — including a real deployment's — is rejected BY
-DEFAULT (fail-safe: you never add a real sheet here, so the guard can't be tripped by
-forgetting a flag). Verifiable from data the DB actually has, not an operator promise.
+Each analysis records whether its data was explicitly configured as synthetic when the
+run was created. The default is false, so copied or production databases fail closed.
 """
 
 from __future__ import annotations
 
-from sqlalchemy.orm import Session
-
-from app.db.models import Analysis, SyncRun
-
-# Google Sheet ids whose contents are known-synthetic (the test-data CSV, exported to a
-# sheet for import). Add ONLY sheets you can personally vouch contain no real applicant
-# data. A real deployment's sheet must never appear here.
-SYNTHETIC_SHEET_IDS: frozenset[str] = frozenset({
-    "1shuJeJRWL05F4TCQ9yr0-uiQB58MbjaNc6dkokmBn8Y",  # test-data/synthetic-penta-...csv export
-})
+from app.db.models import Analysis
 
 
 class NonSyntheticPoolError(RuntimeError):
     """Raised when eval-evidence capture is attempted on a pool not proven synthetic."""
 
 
-def source_sheet_id_for_analysis(db: Session, analysis: Analysis) -> str | None:
-    """The Google Sheet id the run's pool was imported from, via its source SyncRun.
-    None when the run has no recorded source (older/hand-built runs)."""
-    if analysis.source_sync_run_id is None:
-        return None
-    sync = db.get(SyncRun, analysis.source_sync_run_id)
-    return sync.source_sheet_id if sync is not None else None
+def is_synthetic_pool(analysis: Analysis) -> bool:
+    """True only when the run was explicitly stamped as synthetic."""
+    return analysis.synthetic_data
 
 
-def is_synthetic_pool(db: Session, analysis: Analysis) -> bool:
-    """True only when the run's pool traces to an allowlisted synthetic sheet."""
-    sheet_id = source_sheet_id_for_analysis(db, analysis)
-    return sheet_id is not None and sheet_id in SYNTHETIC_SHEET_IDS
-
-
-def require_synthetic_pool(db: Session, analysis: Analysis) -> str:
-    """Assert the run's pool is safe to commit evidence quotes from; return the sheet id
-    (for stamping ``evidence_source``). Raises ``NonSyntheticPoolError`` otherwise — the
-    fail-safe gate: an unrecognized or missing source is refused, never assumed safe."""
-    sheet_id = source_sheet_id_for_analysis(db, analysis)
-    if sheet_id is None:
+def require_synthetic_pool(analysis: Analysis) -> str:
+    """Assert that evidence from this run is safe to commit and return its source label."""
+    if not is_synthetic_pool(analysis):
         raise NonSyntheticPoolError(
-            f"Analysis {analysis.id} has no recorded source sheet — cannot prove its pool is "
-            "synthetic, so committing applicant evidence quotes is refused."
+            f"Analysis {analysis.id} is not stamped as synthetic. Committing applicant "
+            "evidence quotes is refused because it may contain real applicant data."
         )
-    if sheet_id not in SYNTHETIC_SHEET_IDS:
-        raise NonSyntheticPoolError(
-            f"Analysis {analysis.id}'s source sheet {sheet_id!r} is not on the synthetic allowlist. "
-            "Committing applicant evidence quotes is refused (it may be real applicant "
-            "data). Add the sheet to SYNTHETIC_SHEET_IDS only if you can vouch it is "
-            "fictional test data."
-        )
-    return sheet_id
+    return "synthetic application data"

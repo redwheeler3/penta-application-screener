@@ -25,7 +25,8 @@ class EmploymentRequirement(StrEnum):
 # The reason code for a pet-limit violation. Named because it is load-bearing beyond this
 # module: status resolution treats it specially (M15 1g) — a pet verdict needs the AI to
 # extract pet counts from free text first, so it can only land at Screen, and it attributes
-# to the AI status source, not Rules. Every other hard-filter reason is Sync-knowable (Rules).
+# to the AI status source, not Rules. Every other hard-filter reason comes directly from
+# structured application fields (Rules).
 PETS_OVER_LIMIT_CODE = "pets_over_limit"
 
 
