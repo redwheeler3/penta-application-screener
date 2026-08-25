@@ -1,6 +1,15 @@
 import { type ReactNode } from "react";
 import { FIELD_LABELS, FLAG_CATEGORY_LABELS, MONEY_FIELDS } from "./constants";
-import type { SettingsResponse } from "./types";
+import type { CommitteeOpening, SettingsResponse } from "./types";
+
+export function openingLabel(opening: CommitteeOpening): string {
+  const moveIn = new Date(`${opening.moveInDate}T12:00:00`).toLocaleDateString("en-CA", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  return `${opening.unitSizeBedrooms}-bedroom · ${moveIn}`;
+}
 
 export function fieldLabel(key: string): string {
   return FIELD_LABELS[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());

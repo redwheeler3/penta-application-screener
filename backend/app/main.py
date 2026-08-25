@@ -19,6 +19,7 @@ from app.api.evals import router as evals_router
 from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
 from app.api.observability import router as observability_router
+from app.api.openings import router as openings_router
 from app.api.passwordless_auth import router as passwordless_auth_router
 from app.api.problems import Problem
 from app.api.ranking import router as ranking_router
@@ -118,6 +119,7 @@ def create_app() -> FastAPI:
     app.include_router(feedback_router)
     app.include_router(health_router)
     app.include_router(observability_router)
+    app.include_router(openings_router)
     app.include_router(passwordless_auth_router)
     app.include_router(screening_router)
     app.include_router(ranking_router)

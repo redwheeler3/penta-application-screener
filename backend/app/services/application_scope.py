@@ -1,15 +1,31 @@
-"""The one application scope visible to committee workflows and AI processing."""
+"""The current-opening application scope visible to committee workflows and AI."""
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, exists, not_, or_, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Application
+from app.core.time import pacific_today
+from app.db.models import Application, ApplicationParticipation, Opening
 
 
 def committee_applications_query() -> Select[tuple[Application]]:
+    published_opening_exists = exists(
+        select(Opening.id).where(Opening.published_at.is_not(None))
+    )
+    current_participation = exists(
+        select(ApplicationParticipation.id)
+        .join(Opening, Opening.id == ApplicationParticipation.opening_id)
+        .where(
+            ApplicationParticipation.application_id == Application.id,
+            ApplicationParticipation.withdrawn_at.is_(None),
+            Opening.move_in_date > pacific_today(),
+        )
+    )
     return select(Application).where(
         Application.submitted_at.is_not(None),
         Application.deleted_at.is_(None),
+        # Legacy imported applications remain available until the first built-in opening
+        # is published. From that point onward, explicit current participation owns scope.
+        or_(not_(published_opening_exists), current_participation),
     )
 
 

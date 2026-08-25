@@ -9,7 +9,21 @@ serializing so the wire string carries ``+00:00`` and the client parses it corre
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
+
+PACIFIC = ZoneInfo("America/Vancouver")
+
+
+def pacific_today(*, now: datetime | None = None) -> date:
+    instant = now or datetime.now(UTC)
+    return pacific_date(instant)
+
+
+def pacific_date(instant: datetime) -> date:
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=UTC)
+    return instant.astimezone(PACIFIC).date()
 
 
 def as_utc(dt: datetime) -> datetime:

@@ -36,6 +36,27 @@ export type DeniedSignInAttempt = {
   count: number;
 };
 
+export type OpeningPhase = "draft" | "upcoming" | "open" | "closed" | "archived";
+
+export type OpeningDetails = {
+  id: number;
+  unitSizeBedrooms: number;
+  housingChargeCents: number;
+  applicationOpenDate: string;
+  applicationCloseDate: string;
+  moveInDate: string;
+};
+
+export type Opening = OpeningDetails & {
+  phase: OpeningPhase;
+  publishedAt: string | null;
+  submissionCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OpeningWrite = Omit<OpeningDetails, "id">;
+
 // A member's feedback item. Members submit body + context; identity/version/time are
 // server-stamped. The admin Feedback subtab reads the full shape.
 export type FeedbackItem = {
@@ -196,7 +217,12 @@ export type ApplicationSummary = {
   // Whether the signed-in member has starred (favourited) this applicant. Private
   // per member; a personal working aid with no effect on ranking or eligibility.
   starredByMe: boolean;
+  openingIds: number[];
   createdAt: string | null;
+};
+
+export type CommitteeOpening = OpeningDetails & {
+  phase: "upcoming" | "open" | "closed" | "archived";
 };
 
 export type Essay = {
@@ -606,7 +632,11 @@ export type SortKey = "applicant" | "co_applicant" | "children" | "income" | "st
 export type SortState = { key: SortKey; direction: "asc" | "desc" } | null;
 
 // The filter that the applications list / facets are keyed on.
-export type AppFilter = { status?: AppStatus; statusSource?: StatusSource; favourites?: boolean };
+export type AppFilter = {
+  status?: AppStatus;
+  statusSource?: StatusSource;
+  favourites?: boolean;
+};
 
 // Live progress emitted by the streaming Rank chain. `stage` is the current sub-step
 // within the criteria phase (discovery → decompose → match), set by "stage" events so

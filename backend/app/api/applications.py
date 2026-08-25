@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.ai.model_catalog import supports_reasoning_effort
 from app.api.dependencies import require_current_user
 from app.api.problems import Problem
-from app.core.time import utc_isoformat
+from app.core.time import pacific_date, pacific_today, utc_isoformat
 from app.db.models import (
     Application,
     ApplicationAIResult,
@@ -16,6 +16,7 @@ from app.db.models import (
     ApplicationStar,
     ApplicationStatus,
     MemberEligibility,
+    Opening,
     User,
 )
 from app.db.session import get_db
@@ -33,6 +34,7 @@ from app.schemas.applications import (
     ApplicationEnvelope,
     ApplicationListResponse,
     ApplicationSummary,
+    CommitteeOpeningOut,
     DimensionContributionOut,
     DimensionScoringTraceOut,
     PetFactsOut,
@@ -56,9 +58,12 @@ from app.services.eligibility import (
     overrides_by_app,
     pet_facts_by_app,
 )
+from app.services.opening_participation import opening_ids_by_application
+from app.services.openings import opening_phase, published_openings
 from app.services.ranking_view import candidate_scores
 from app.services.rules import (
     hard_filter_reasons_for,
+    normalized_with_ages,
     pet_facts_from_screening,
     rules_config_for,
 )
@@ -88,6 +93,7 @@ def list_applications(
     facts = pet_facts_by_app(db, ids)
     starred = starred_ids(db, user.id, ids)
     overrides = overrides_by_app(db, user.id, ids)
+    opening_ids = opening_ids_by_application(db, ids)
     # This member's rules are one ruleset, so resolve once and evaluate the hard filters
     # once per application — the reasons are computed on read (no stored column).
     rules_config = rules_config_for(db, user.id)
@@ -96,16 +102,20 @@ def list_applications(
             _serialize_summary(
                 app,
                 reasons=hard_filter_reasons_for(
-                    rules_config, app, pet_facts=facts.get(app.id)
+                    rules_config,
+                    app,
+                    pet_facts=facts.get(app.id),
                 ),
                 override=overrides.get(app.id),
                 # Muted categories are hidden AND non-gating for this member (1g Move 2),
                 # so pass only the active flags — they drive both status and display.
                 flags=active_flags(flags.get(app.id), rules_config.disabled_checks),
                 starred=app.id in starred,
+                opening_ids=opening_ids[app.id],
             )
             for app in applications
         ],
+        openings=[_committee_opening(opening) for opening in published_openings(db)],
     )
 
 
@@ -142,7 +152,11 @@ def override_status(
     rules_config = rules_config_for(db, user.id)
     flags = active_flags(machine_flags_by_app(db, [application_id]).get(application_id), rules_config.disabled_checks)
     pet_facts = pet_facts_by_app(db, [application_id]).get(application_id)
-    reasons = hard_filter_reasons_for(rules_config, application, pet_facts=pet_facts)
+    reasons = hard_filter_reasons_for(
+        rules_config,
+        application,
+        pet_facts=pet_facts,
+    )
     fingerprint = findings_fingerprint(reasons, flags)
     override = db.scalar(
         select(MemberEligibility).where(
@@ -261,6 +275,7 @@ def _serialize_summary(
     override: MemberEligibility | None = None,
     flags: list[dict[str, Any]] | None = None,
     starred: bool = False,
+    opening_ids: list[int] | None = None,
 ) -> ApplicationSummary:
     """One application as the signed-in member sees it. ``status``/``status_source``/``stale``
     are that member's effective view: their override if present, else the machine verdict
@@ -288,7 +303,20 @@ def _serialize_summary(
         # Distinct flag categories from the latest pass, for the list REASON cell.
         flag_categories=None if flags is None else _distinct_categories(flags),
         starred_by_me=starred,
+        opening_ids=opening_ids or [],
         created_at=utc_isoformat(app.created_at),
+    )
+
+
+def _committee_opening(opening: Opening) -> CommitteeOpeningOut:
+    return CommitteeOpeningOut(
+        id=opening.id,
+        unit_size_bedrooms=opening.unit_size_bedrooms,
+        housing_charge_cents=opening.housing_charge_cents,
+        application_open_date=opening.application_open_date,
+        application_close_date=opening.application_close_date,
+        move_in_date=opening.move_in_date,
+        phase=opening_phase(opening).value,
     )
 
 
@@ -348,10 +376,16 @@ def _serialize_detail(app: Application, db: Session, user: User) -> ApplicationD
     )
     pet_facts = pet_facts_from_screening(flag_result.output) if flag_result else None
     override = overrides_by_app(db, user.id, [app.id]).get(app.id)
-    reasons = hard_filter_reasons_for(rules_config, app, pet_facts=pet_facts)
+    opening_ids = opening_ids_by_application(db, [app.id])[app.id]
+    reasons = hard_filter_reasons_for(
+        rules_config,
+        app,
+        pet_facts=pet_facts,
+    )
     summary = _serialize_summary(
         app, reasons=reasons, override=override, flags=flags,
         starred=is_starred(db, app.id, user.id),
+        opening_ids=opening_ids,
     )
     # What the machine would decide from the current findings, independent of this
     # member's override — lets the UI show the live automatic verdict (the result of
@@ -366,7 +400,10 @@ def _serialize_detail(app: Application, db: Session, user: User) -> ApplicationD
         **summary.model_dump(),
         auto_status=auto_status.value,
         auto_status_source=auto_source.value,
-        normalized=app.normalized,
+        normalized=normalized_with_ages(
+            app.normalized or {},
+            pacific_date(app.submitted_at) if app.submitted_at is not None else pacific_today(),
+        ),
         essays=extract_essays(app.raw_row or {}),
         flags=(
             [ScreeningFlagOut(**f) for f in flags] if flags is not None else None

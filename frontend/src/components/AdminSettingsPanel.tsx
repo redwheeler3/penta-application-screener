@@ -5,11 +5,13 @@ import { AccessPanel } from "./AccessPanel";
 import { AdminConfigurationPanel } from "./AdminConfigurationPanel";
 import { CommitteeDefaultsPanel } from "./CommitteeDefaultsPanel";
 import { FeedbackPanel } from "./FeedbackPanel";
+import { OpeningsPanel } from "./OpeningsPanel";
 
-type AdminSubtab = "configuration" | "defaults" | "access" | "feedback";
+type AdminSubtab = "configuration" | "openings" | "defaults" | "access" | "feedback";
 
 const ADMIN_SUBTABS: Array<{ id: AdminSubtab; label: string }> = [
   { id: "configuration", label: "Configuration" },
+  { id: "openings", label: "Openings" },
   { id: "defaults", label: "Committee Defaults" },
   { id: "access", label: "Access" },
   { id: "feedback", label: "Feedback" },
@@ -62,6 +64,8 @@ export function AdminSettingsPanel(props: {
         />
       ) : subtab === "access" ? (
         <AccessPanel currentUser={props.currentUser} onError={props.onError} />
+      ) : subtab === "openings" ? (
+        <OpeningsPanel onError={props.onError} />
       ) : subtab === "defaults" ? (
         <CommitteeDefaultsPanel
           onError={props.onError}

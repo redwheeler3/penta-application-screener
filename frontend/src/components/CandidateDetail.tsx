@@ -7,10 +7,17 @@ import {
   flagCategoryLabel,
   formatFieldValue,
   money,
+  openingLabel,
   reasoningEffortLabel,
   scoreBand,
 } from "../format";
-import type { AIResultTrace, ApplicationDetail, AppStatus, DimensionScoringTrace } from "../types";
+import type {
+  AIResultTrace,
+  ApplicationDetail,
+  AppStatus,
+  CommitteeOpening,
+  DimensionScoringTrace,
+} from "../types";
 import { StarButton } from "./StarButton";
 
 type DetailField = {
@@ -190,6 +197,7 @@ const SOURCE_SECTIONS: Array<{ title: string; fields: SourceField[] }> = [
 
 export function CandidateDetail(props: {
   app: ApplicationDetail;
+  openings: CommitteeOpening[];
   onBack: () => void;
   onOverrideStatus: (id: number, status: AppStatus) => void;
   onClearOverride: (id: number) => void;
@@ -310,6 +318,17 @@ export function CandidateDetail(props: {
         ) : null}
       </div>
       {app.coApplicantName ? <p className="co-applicant-line">Co-applicant: {app.coApplicantName}</p> : null}
+      <div className="application-openings" aria-label="Applied openings">
+        <span>Applied for</span>
+        {app.openingIds.length ? (
+          app.openingIds.map((openingId) => {
+            const opening = props.openings.find((candidate) => candidate.id === openingId);
+            return opening ? <strong key={opening.id}>{openingLabel(opening)}</strong> : null;
+          })
+        ) : (
+          <strong>No current opening</strong>
+        )}
+      </div>
 
       <div className="detail-review-row">
         <div className="status-panel">

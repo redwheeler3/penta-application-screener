@@ -5,6 +5,7 @@ import type {
   AppFacets,
   AppFilter,
   ApplicationSummary,
+  CommitteeOpening,
   SortKey,
   SortState,
 } from "../types";
@@ -12,6 +13,10 @@ import type {
 export interface ApplicationsState {
   /** The filtered + sorted list the UI renders (derived from the full pool). */
   applications: ApplicationSummary[];
+  openings: CommitteeOpening[];
+  selectedOpeningIds: number[];
+  /** Shared opening scope consumed by both this list and the ranking view. */
+  applicationIdsInOpeningScope: Set<number>;
   /** Distinguishes initial loading, a settled list (including an empty one), and a
    * definitively failed initial load. */
   applicationsLoadState: "loading" | "ready" | "error";
@@ -28,28 +33,44 @@ export interface ApplicationsState {
   loadInitialApplications: () => Promise<void>;
   toggleSort: (key: SortKey) => void;
   applyFilter: (next: AppFilter) => void;
+  setSelectedOpeningIds: (openingIds: number[]) => void;
   search: (value: string) => void;
 }
 
 /** The applications-list view state. The whole pool (a few hundred rows at most) is held
- * client-side; filtering, sorting, and facet counts are derived here with no server
+ * client-side; filtering, sorting, opening scope, and facet counts are derived here with no server
  * round-trips — so a filter/sort/favourites toggle is instant. Only a data-changing
  * action (sync, screen, status override, star) triggers a refetch. The selected
  * candidate detail is NOT here: it's cross-cutting (tab switches, overrides, settings
  * save all clear it), so it stays in App. */
 export function useApplications(): ApplicationsState {
   const [allApplications, setAllApplications] = useState<ApplicationSummary[]>([]);
+  const [openings, setOpenings] = useState<CommitteeOpening[]>([]);
+  const [selectedOpeningIds, setSelectedOpeningIds] = useState<number[]>([]);
   const [applicationsLoadState, setApplicationsLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [appFilter, setAppFilter] = useState<AppFilter>({});
   const [appSearch, setAppSearch] = useState("");
   const [appSort, setAppSort] = useState<SortState>(null);
 
+  function acceptApplications(response: Awaited<ReturnType<typeof api.fetchApplications>>) {
+    setAllApplications(response.applications);
+    setOpenings(response.openings);
+    const currentOpeningIds = new Set(
+      response.openings
+        .filter((opening) => opening.phase !== "archived")
+        .map((opening) => opening.id),
+    );
+    setSelectedOpeningIds((selected) => (
+      selected.filter((openingId) => currentOpeningIds.has(openingId))
+    ));
+    setApplicationsLoadState("ready");
+  }
+
   function reloadApplications() {
     api
       .fetchApplications()
-      .then((rows) => {
-        setAllApplications(rows);
-        setApplicationsLoadState("ready");
+      .then((response) => {
+        acceptApplications(response);
       })
       // Keep the last successful list visible when a background refresh fails. Initial loading
       // uses loadInitialApplications so it can recover deliberately instead of spinning forever.
@@ -59,9 +80,8 @@ export function useApplications(): ApplicationsState {
   async function loadInitialApplications(): Promise<void> {
     setApplicationsLoadState("loading");
     try {
-      const rows = await retryWithBackoff(api.fetchApplications, 5);
-      setAllApplications(rows);
-      setApplicationsLoadState("ready");
+      const response = await retryWithBackoff(api.fetchApplications, 5);
+      acceptApplications(response);
     } catch {
       setApplicationsLoadState("error");
     }
@@ -74,11 +94,21 @@ export function useApplications(): ApplicationsState {
     [a.applicantName, a.coApplicantName, a.primaryEmail].some((v) =>
       (v ?? "").toLowerCase().includes(searchTerm),
     );
+  const matchesOpening = (a: ApplicationSummary) =>
+    selectedOpeningIds.length === 0 ||
+    selectedOpeningIds.some((openingId) => a.openingIds.includes(openingId));
+  const applicationIdsInOpeningScope = useMemo(
+    () => new Set(allApplications.filter(matchesOpening).map((application) => application.id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allApplications, selectedOpeningIds],
+  );
 
   // Facets reflect every active filter EXCEPT their own group (like the server did),
   // so the two filter rows stay mutually consistent. Search + favourites apply to both.
   const appFacets = useMemo<AppFacets>(() => {
-    const base = allApplications.filter(matchesSearch);
+    const base = allApplications.filter(
+      (application) => matchesSearch(application) && matchesOpening(application),
+    );
     const favBase = appFilter.favourites ? base.filter((a) => a.starredByMe) : base;
     const status: Record<string, number> = { eligible: 0, ineligible: 0 };
     const source: Record<string, number> = { untouched: 0, rules: 0, ai: 0, human: 0 };
@@ -105,7 +135,7 @@ export function useApplications(): ApplicationsState {
       favourites,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allApplications, appFilter, searchTerm]);
+  }, [allApplications, appFilter, searchTerm, selectedOpeningIds]);
 
   const applications = useMemo(() => {
     const filtered = allApplications.filter(
@@ -113,11 +143,12 @@ export function useApplications(): ApplicationsState {
         matchesSearch(a) &&
         (!appFilter.status || a.status === appFilter.status) &&
         (!appFilter.statusSource || a.statusSource === appFilter.statusSource) &&
-        (!appFilter.favourites || a.starredByMe),
+        (!appFilter.favourites || a.starredByMe) &&
+        matchesOpening(a),
     );
     return appSort ? sortApplications(filtered, appSort) : filtered;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allApplications, appFilter, searchTerm, appSort]);
+  }, [allApplications, appFilter, searchTerm, appSort, selectedOpeningIds]);
 
   function toggleSort(key: SortKey) {
     // First click sorts ascending; clicking the active column flips direction.
@@ -130,6 +161,9 @@ export function useApplications(): ApplicationsState {
 
   return {
     applications,
+    openings,
+    selectedOpeningIds,
+    applicationIdsInOpeningScope,
     applicationsLoadState,
     appFacets,
     appFilter,
@@ -139,6 +173,7 @@ export function useApplications(): ApplicationsState {
     loadInitialApplications,
     toggleSort,
     applyFilter: setAppFilter,
+    setSelectedOpeningIds,
     search: setAppSearch,
   };
 }

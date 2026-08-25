@@ -215,7 +215,11 @@ def _member_status_counts(
     by_status: dict[ApplicationStatus, int] = {}
     by_source: dict[StatusSource, int] = {}
     for app in applications:
-        reasons = hard_filter_reasons_for(rules_config, app, pet_facts=facts_by_app.get(app.id))
+        reasons = hard_filter_reasons_for(
+            rules_config,
+            app,
+            pet_facts=facts_by_app.get(app.id),
+        )
         status, source = effective_status(
             overrides.get(app.id),
             reasons=reasons,

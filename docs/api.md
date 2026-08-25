@@ -37,15 +37,29 @@ configuration, committee defaults, Observability, and Evals require an admin.
 
 | Method | Path | Purpose | Auth |
 | --- | --- | --- | --- |
+| GET | `/applicant/openings` | Return published openings and whether a guest may begin an application. | Public |
+| POST | `/applicant/submissions/check` | Before guest review, require email access when a current application already owns the address. | Public |
+| POST | `/applicant/submissions` | Publish a completed guest application and email confirmation with future access. | Public |
 | POST | `/applicant/drafts` | Save an incomplete private pending draft and request its access link. | Public |
 | DELETE | `/applicant/drafts` | Discard an unclaimed pending draft using a body-held credential. | Draft token |
 | POST | `/applicant/access-links/request` | Safely start or return to an application and email its access link without revealing which path occurred. | Public or applicant |
 | GET | `/applicant/application` | Read the authenticated working application. | Applicant |
 | PUT | `/applicant/application` | Save the authenticated private working copy. | Applicant |
+| POST | `/applicant/application/revert` | Replace private edits and pending opening choices with the last submitted application. | Applicant |
+| DELETE | `/applicant/application` | Withdraw from every opening, delete ordinary applicant access, and revoke applicant sessions and links. | Applicant + recent auth |
 | POST | `/applicant/application/email-change` | Email a confirmation link for a new primary address. | Applicant + recent auth |
 | DELETE | `/applicant/application/email-change` | Cancel an unconfirmed primary-address change. | Applicant |
 | POST | `/applicant/application/reauthentication` | Email the current address a fresh access link for sensitive actions. | Applicant |
-| POST | `/applicant/application/submit` | Deliberately publish the validated working copy into the active opening. | Applicant |
+| POST | `/applicant/application/submit` | Publish the validated working copy and update explicit participation in the selected openings. | Applicant |
+
+### Openings — `app/api/openings.py`
+
+| Method | Path | Purpose | Auth |
+| --- | --- | --- | --- |
+| GET | `/openings` | List configured openings, derived phases, and active submission counts. | Admin |
+| POST | `/openings` | Create an unpublished opening draft. | Admin + recent auth |
+| PUT | `/openings/{id}` | Update any opening, including an archived historical record. | Admin + recent auth |
+| POST | `/openings/{id}/publish` | Publish an opening without sending applicant email. | Admin + recent auth |
 
 ### Health — `app/api/health.py`
 
@@ -76,8 +90,8 @@ configuration, committee defaults, Observability, and Evals require an admin.
 
 | Method | Path | Purpose | Auth |
 | --- | --- | --- | --- |
-| GET | `/applications` | Searchable, filterable, sortable, paginated list with faceted counts. | Login |
-| GET | `/applications/{id}` | One application's detail, including the raw source row and AI narrative. | Login |
+| GET | `/applications` | Unpaginated committee pool with opening participation and the opening filter catalog. | Login |
+| GET | `/applications/{id}` | One application's detail, including its openings, raw source row, and AI narrative. | Login |
 | PATCH | `/applications/{id}/status` | Human status override (sets `status_source = human`, which is sticky). | Login |
 | DELETE | `/applications/{id}/status` | Remove a human override; recomputes status from the current findings (rules then AI) and clears human ownership. Idempotent if no override is set. | Login |
 

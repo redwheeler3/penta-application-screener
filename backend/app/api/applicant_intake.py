@@ -5,7 +5,8 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import delete as sql_delete
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.applicant_dependencies import (
@@ -14,18 +15,23 @@ from app.api.applicant_dependencies import (
     require_recent_applicant,
 )
 from app.api.problems import Problem
-from app.api.session_cookie import session_token, set_session_cookie
+from app.api.session_cookie import (
+    clear_session_cookie,
+    session_token,
+    set_session_cookie,
+)
 from app.core.config import get_settings
 from app.core.text import normalize_email
-from app.core.time import as_utc
+from app.core.time import as_utc, pacific_today
 from app.db.models import (
     ApplicantDraft,
     ApplicantDraftIntent,
     Application,
+    ApplicationParticipation,
+    BrowserSession,
+    EmailDelivery,
     MagicLinkPurpose,
     MagicLinkToken,
-    Opening,
-    OpeningStatus,
     PasswordlessIdentityKind,
 )
 from app.db.session import get_db
@@ -33,14 +39,23 @@ from app.schemas.applicant_intake import (
     AccessLinkRequest,
     AccessLinkResponse,
     ApplicantApplicationResponse,
+    ApplicantOpeningOut,
+    ApplicantOpeningsResponse,
+    AuthenticatedSubmitApplicationResponse,
+    DeleteApplicationResponse,
     EmailChangeRequest,
     EmailChangeResponse,
+    GuestSubmissionCheckRequest,
+    GuestSubmissionCheckResponse,
+    GuestSubmitApplicationRequest,
+    GuestSubmitApplicationResponse,
     OpenAccessLinkRequest,
     PendingDraftRequest,
     PendingDraftResponse,
     RegenerateAccessLinkResponse,
     RequestAccessLinkRequest,
     RequestAccessLinkResponse,
+    RevertApplicationRequest,
     SaveApplicationRequest,
     SubmitApplicationRequest,
 )
@@ -59,9 +74,18 @@ from app.services.intake import (
     save_working_copy,
 )
 from app.services.magic_link_delivery import (
+    EmailSendOutcome,
     send_application_confirmation,
+    send_application_deleted,
     send_email_change_notice,
     send_magic_link,
+)
+from app.services.opening_participation import (
+    ApplicantOpeningState,
+    applicant_opening_states,
+    application_is_editable,
+    validate_opening_selection,
+    validate_working_opening_selection,
 )
 from app.services.passwordless_auth import (
     consume_magic_link,
@@ -75,38 +99,145 @@ from app.services.passwordless_auth import (
 router = APIRouter(prefix="/applicant", tags=["applicant intake"])
 
 
+@router.get("/openings", response_model=ApplicantOpeningsResponse)
+def read_applicant_openings(db: Session = Depends(get_db)) -> ApplicantOpeningsResponse:
+    states = applicant_opening_states(db, None)
+    return ApplicantOpeningsResponse(
+        can_start_application=any(state.can_select for state in states),
+        openings=[_applicant_opening(state) for state in states],
+    )
+
+
+@router.post("/submissions/check", response_model=GuestSubmissionCheckResponse)
+def check_guest_submission(
+    body: GuestSubmissionCheckRequest,
+    db: Session = Depends(get_db),
+    sender: EmailSender = Depends(get_email_sender),
+) -> GuestSubmissionCheckResponse:
+    """Stop an existing application at the pre-review boundary and email its owner."""
+    email = normalize_email(str(body.email))
+    application = db.scalar(
+        select(Application).where(
+            Application.primary_email == email,
+            Application.deleted_at.is_(None),
+        )
+    )
+    if application is None:
+        return GuestSubmissionCheckResponse(can_submit=True)
+    outcome = send_magic_link(
+        db,
+        sender,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
+        purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+        email=email,
+        recipient_id=application.id,
+        application_id=application.id,
+    )
+    return GuestSubmissionCheckResponse(
+        can_submit=False,
+        email_sent=outcome.email_sent,
+        email_status=outcome.value,
+    )
+
+
 @router.post("/drafts", response_model=PendingDraftResponse, status_code=status.HTTP_202_ACCEPTED)
 def save_applicant_draft(
     body: PendingDraftRequest,
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
 ) -> PendingDraftResponse:
+    _require_new_applications_open(db)
     now = datetime.now(UTC)
+    validate_working_opening_selection(db, None, body.opening_ids, now=now)
     saved = save_pending_draft(
         db,
         answers=body.answers,
+        opening_ids=body.opening_ids,
         intent=body.intent,
         draft_token=body.draft_token,
         now=now,
     )
     can_send = applicant_email_request_allowed(db, saved.record.email, now=now)
-    sent = can_send and send_magic_link(
-        db,
-        sender,
-        identity_kind=PasswordlessIdentityKind.APPLICANT,
-        purpose=MagicLinkPurpose.APPLICANT_ACCESS,
-        email=saved.record.email,
-        recipient_id=saved.record.id,
-        applicant_draft=saved.record,
-        now=now,
-        enforce_request_limits=False,
-    )
+    outcome = EmailSendOutcome.RECENT
+    if can_send:
+        outcome = send_magic_link(
+            db,
+            sender,
+            identity_kind=PasswordlessIdentityKind.APPLICANT,
+            purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+            email=saved.record.email,
+            recipient_id=saved.record.id,
+            applicant_draft=saved.record,
+            now=now,
+            enforce_request_limits=False,
+        )
     if not can_send:
         db.commit()
     return PendingDraftResponse(
         draft_token=saved.token,
-        email_sent=sent,
+        email_sent=outcome.email_sent,
+        email_status=outcome.value,
         retry_after_seconds=get_settings().magic_link_coalesce_seconds,
+    )
+
+
+@router.post(
+    "/submissions",
+    response_model=GuestSubmitApplicationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def submit_guest_application(
+    body: GuestSubmitApplicationRequest,
+    db: Session = Depends(get_db),
+    sender: EmailSender = Depends(get_email_sender),
+) -> GuestSubmitApplicationResponse:
+    """Publish a first application without making email access a submission gate."""
+    if not body.declaration_accepted:
+        raise Problem("declaration_required", detail="Accept the declaration before submitting.")
+    _require_new_applications_open(db)
+    now = datetime.now(UTC)
+    email = normalize_email(str(body.answers.applicant.email))
+    existing = db.scalar(
+        select(Application).where(
+            Application.primary_email == email,
+            Application.deleted_at.is_(None),
+        )
+    )
+    if existing is not None:
+        send_magic_link(
+            db,
+            sender,
+            identity_kind=PasswordlessIdentityKind.APPLICANT,
+            purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+            email=email,
+            recipient_id=existing.id,
+            application_id=existing.id,
+            now=now,
+        )
+        raise Problem(
+            "application_already_exists",
+            detail="An application already exists for this email. Check your inbox for a secure link to it.",
+        )
+
+    openings = validate_opening_selection(db, None, body.opening_ids, now=now)
+    application = create_application(
+        db,
+        email,
+        body.answers,
+        saved_at=now,
+        opening_ids=body.opening_ids,
+    )
+    publish_working_copy(db, application, body.answers, openings, submitted_at=now)
+    if body.draft_token is not None:
+        draft = pending_draft_for_token(db, body.draft_token)
+        if draft is not None and draft.email == email:
+            draft.application_id = application.id
+            draft.resolved_at = now
+    db.commit()
+    sent = send_application_confirmation(db, sender, application, submitted=True, now=now)
+    return GuestSubmitApplicationResponse(
+        email_sent=sent,
+        email_status="sent" if sent else "failed",
     )
 
 
@@ -142,8 +273,16 @@ def request_applicant_access_link(
     email = normalize_email(str(body.answers.applicant.email))
 
     if current is not None:
+        _require_application_editable(db, current)
         _require_matching_email(current, body.answers)
-        save_working_copy(current, body.answers, saved_at=now)
+        _require_current_revision(current, body.base_revision)
+        validate_working_opening_selection(db, current, body.opening_ids, now=now)
+        save_working_copy(
+            current,
+            body.answers,
+            saved_at=now,
+            opening_ids=body.opening_ids,
+        )
         target: Application | ApplicantDraft = current
     else:
         draft = latest_pending_draft_for_email(db, email, now=now)
@@ -158,17 +297,21 @@ def request_applicant_access_link(
         elif application is not None:
             target = application
         else:
+            _require_new_applications_open(db)
+            validate_working_opening_selection(db, None, body.opening_ids, now=now)
             saved = save_pending_draft(
                 db,
                 answers=body.answers,
+                opening_ids=body.opening_ids,
                 intent=ApplicantDraftIntent.SAVE,
                 now=now,
             )
             target = saved.record
 
     can_send = applicant_email_request_allowed(db, email, now=now)
+    outcome = EmailSendOutcome.RECENT
     if can_send:
-        send_magic_link(
+        outcome = send_magic_link(
             db,
             sender,
             identity_kind=PasswordlessIdentityKind.APPLICANT,
@@ -183,7 +326,10 @@ def request_applicant_access_link(
     else:
         db.commit()
 
-    return RequestAccessLinkResponse(current_answers_saved=current is not None)
+    return RequestAccessLinkResponse(
+        current_answers_saved=current is not None,
+        email_status=outcome.value,
+    )
 
 
 @router.post("/access-links/inspect", response_model=AccessLinkResponse)
@@ -286,23 +432,31 @@ def regenerate_applicant_access_link(
     link = _applicant_link(db, body.token)
     target = _link_target(db, link) if link is not None else None
     if link is None or target is None:
-        return RegenerateAccessLinkResponse(email_sent=False, retry_after_seconds=0)
+        return RegenerateAccessLinkResponse(
+            target_available=False,
+            email_sent=False,
+            email_status="failed",
+            retry_after_seconds=0,
+        )
     can_send = applicant_email_request_allowed(db, link.email, now=now)
-    sent = can_send and send_magic_link(
-        db,
-        sender,
-        identity_kind=PasswordlessIdentityKind.APPLICANT,
-        purpose=link.purpose,
-        email=link.email,
-        recipient_id=link.applicant_draft_id or link.application_id or 0,
-        application_id=target.id if isinstance(target, Application) else None,
-        applicant_draft=target if isinstance(target, ApplicantDraft) else None,
-        initiating_session_id=link.initiating_session_id,
-        now=now,
-        enforce_request_limits=False,
-    )
+    outcome = EmailSendOutcome.RECENT
+    if can_send:
+        outcome = send_magic_link(
+            db,
+            sender,
+            identity_kind=PasswordlessIdentityKind.APPLICANT,
+            purpose=link.purpose,
+            email=link.email,
+            recipient_id=link.applicant_draft_id or link.application_id or 0,
+            application_id=target.id if isinstance(target, Application) else None,
+            applicant_draft=target if isinstance(target, ApplicantDraft) else None,
+            initiating_session_id=link.initiating_session_id,
+            now=now,
+            enforce_request_limits=False,
+        )
     return RegenerateAccessLinkResponse(
-        email_sent=sent,
+        email_sent=outcome.email_sent,
+        email_status=outcome.value,
         retry_after_seconds=get_settings().magic_link_coalesce_seconds,
     )
 
@@ -312,16 +466,36 @@ def get_applicant_application(
     application: Application = Depends(require_current_application),
     db: Session = Depends(get_db),
 ) -> ApplicantApplicationResponse:
+    opening_states = applicant_opening_states(db, application, use_working_copy=True)
+    submitted_opening_ids = {
+        state.opening.id
+        for state in applicant_opening_states(db, application)
+        if state.selected
+    }
+    working_opening_ids = {
+        state.opening.id for state in opening_states if state.selected
+    }
     return ApplicantApplicationResponse(
         application_id=application.id,
         primary_email=application.primary_email,
         pending_email_change=_pending_email_change(db, application.id),
         answers=_stored_answers(application),
+        working_saved_at=(
+            as_utc(application.working_saved_at)
+            if application.working_saved_at is not None
+            else None
+        ),
+        working_revision=application.working_revision,
         submitted=application.submitted_at is not None,
         has_unsubmitted_changes=(
             application.submitted_at is not None
-            and application.working_content_hash != application.raw_row_hash
+            and (
+                application.working_content_hash != application.raw_row_hash
+                or working_opening_ids != submitted_opening_ids
+            )
         ),
+        can_edit=application_is_editable(opening_states),
+        openings=[_applicant_opening(state) for state in opening_states],
     )
 
 
@@ -340,7 +514,7 @@ def request_applicant_email_change(
     new_email = normalize_email(str(body.new_email))
     if new_email == normalize_email(application.primary_email):
         raise Problem("email_unchanged", detail="Enter a different email address.")
-    sent = send_magic_link(
+    outcome = send_magic_link(
         db,
         sender,
         identity_kind=PasswordlessIdentityKind.APPLICANT,
@@ -352,7 +526,8 @@ def request_applicant_email_change(
     )
     pending_email = _pending_email_change(db, application.id)
     return EmailChangeResponse(
-        email_sent=sent,
+        email_sent=outcome.email_sent,
+        email_status=outcome.value,
         retry_after_seconds=get_settings().magic_link_coalesce_seconds,
         pending_email=pending_email,
     )
@@ -383,7 +558,7 @@ def request_applicant_reauthentication(
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
 ) -> RegenerateAccessLinkResponse:
-    sent = send_magic_link(
+    outcome = send_magic_link(
         db,
         sender,
         identity_kind=PasswordlessIdentityKind.APPLICANT,
@@ -393,7 +568,8 @@ def request_applicant_reauthentication(
         application_id=application.id,
     )
     return RegenerateAccessLinkResponse(
-        email_sent=sent,
+        email_sent=outcome.email_sent,
+        email_status=outcome.value,
         retry_after_seconds=get_settings().magic_link_coalesce_seconds,
     )
 
@@ -404,28 +580,159 @@ def save_applicant_application(
     db: Session = Depends(get_db),
     application: Application = Depends(require_current_application),
 ) -> ApplicantApplicationResponse:
+    _require_application_editable(db, application)
     _require_matching_email(application, body.answers)
-    save_working_copy(application, body.answers, saved_at=datetime.now(UTC))
+    _require_current_revision(application, body.base_revision)
+    now = datetime.now(UTC)
+    validate_working_opening_selection(db, application, body.opening_ids, now=now)
+    save_working_copy(
+        application,
+        body.answers,
+        saved_at=now,
+        opening_ids=body.opening_ids,
+    )
     db.commit()
     return get_applicant_application(application, db)
 
 
-@router.post("/application/submit", response_model=ApplicantApplicationResponse)
+@router.post("/application/submit", response_model=AuthenticatedSubmitApplicationResponse)
 def submit_applicant_application(
     body: SubmitApplicationRequest,
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
     application: Application = Depends(require_current_application),
-) -> ApplicantApplicationResponse:
+) -> AuthenticatedSubmitApplicationResponse:
     if not body.declaration_accepted:
         raise Problem("declaration_required", detail="Accept the declaration before submitting.")
+    _require_application_editable(db, application)
     _require_matching_email(application, body.answers)
+    _require_current_revision(application, body.base_revision)
     now = datetime.now(UTC)
-    opening = _active_opening(db, now=now)
-    publish_working_copy(db, application, body.answers, opening, submitted_at=now)
+    openings = validate_opening_selection(db, application, body.opening_ids, now=now)
+    publish_working_copy(db, application, body.answers, openings, submitted_at=now)
     db.commit()
-    send_application_confirmation(db, sender, application, submitted=True, now=now)
+    email_sent = send_application_confirmation(
+        db, sender, application, submitted=True, now=now
+    )
+    restored = get_applicant_application(application, db)
+    return AuthenticatedSubmitApplicationResponse(
+        **restored.model_dump(),
+        email_sent=email_sent,
+        email_status="sent" if email_sent else "failed",
+    )
+
+
+@router.post("/application/revert", response_model=ApplicantApplicationResponse)
+def revert_applicant_application(
+    body: RevertApplicationRequest,
+    application: Application = Depends(require_current_application),
+    db: Session = Depends(get_db),
+) -> ApplicantApplicationResponse:
+    _require_application_editable(db, application)
+    _require_current_revision(application, body.base_revision)
+    if application.submitted_at is None:
+        raise Problem(
+            "no_submitted_application",
+            detail="This application does not have a submitted copy to restore.",
+        )
+    selected_ids = [
+        state.opening.id
+        for state in applicant_opening_states(db, application)
+        if state.selected
+    ]
+    application.working_answers = dict(application.raw_row)
+    application.working_content_hash = application.raw_row_hash
+    application.working_saved_at = datetime.now(UTC)
+    application.working_opening_ids = selected_ids
+    application.working_revision += 1
+    db.commit()
     return get_applicant_application(application, db)
+
+
+@router.delete("/application", response_model=DeleteApplicationResponse)
+def delete_applicant_application(
+    response: Response,
+    application: Application = Depends(require_recent_applicant),
+    db: Session = Depends(get_db),
+    sender: EmailSender = Depends(get_email_sender),
+) -> DeleteApplicationResponse:
+    """Remove one application and every opening participation from ordinary access."""
+    now = datetime.now(UTC)
+    if application.submitted_at is None:
+        email_sent = send_application_deleted(db, sender, application, now=now)
+        _purge_never_submitted_application(db, application)
+        db.commit()
+        clear_session_cookie(response, PasswordlessIdentityKind.APPLICANT)
+        return DeleteApplicationResponse(
+            email_sent=email_sent,
+            email_status="sent" if email_sent else "failed",
+        )
+
+    for state in applicant_opening_states(db, application):
+        if state.participating:
+            participation = db.scalar(
+                select(ApplicationParticipation).where(
+                    ApplicationParticipation.application_id == application.id,
+                    ApplicationParticipation.opening_id == state.opening.id,
+                )
+            )
+            if participation is not None and participation.withdrawn_at is None:
+                participation.withdrawn_at = now
+
+    application.deleted_at = now
+    application.working_answers = dict(application.raw_row)
+    application.working_content_hash = application.raw_row_hash
+    application.working_saved_at = now
+    application.working_opening_ids = []
+    application.working_revision += 1
+    if application.retention_due_on is None:
+        application.retention_due_on = pacific_today(now=now)
+    revoke_identity_sessions(
+        db,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
+        application_id=application.id,
+    )
+    revoke_identity_magic_links(
+        db,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
+        application_id=application.id,
+    )
+    db.commit()
+    email_sent = send_application_deleted(db, sender, application, now=now)
+    clear_session_cookie(response, PasswordlessIdentityKind.APPLICANT)
+    return DeleteApplicationResponse(
+        email_sent=email_sent,
+        email_status="sent" if email_sent else "failed",
+    )
+
+
+def _purge_never_submitted_application(db: Session, application: Application) -> None:
+    """Physically remove a draft-only application and its access records."""
+    draft_ids = select(ApplicantDraft.id).where(ApplicantDraft.application_id == application.id)
+    link_ids = select(MagicLinkToken.id).where(
+        or_(
+            MagicLinkToken.application_id == application.id,
+            MagicLinkToken.applicant_draft_id.in_(draft_ids),
+        )
+    )
+    db.execute(
+        sql_delete(EmailDelivery).where(
+            or_(
+                EmailDelivery.application_id == application.id,
+                EmailDelivery.applicant_draft_id.in_(draft_ids),
+                EmailDelivery.magic_link_token_id.in_(link_ids),
+            )
+        )
+    )
+    db.execute(sql_delete(MagicLinkToken).where(MagicLinkToken.id.in_(link_ids)))
+    db.execute(sql_delete(ApplicantDraft).where(ApplicantDraft.id.in_(draft_ids)))
+    db.execute(
+        sql_delete(BrowserSession).where(
+            BrowserSession.identity_kind == PasswordlessIdentityKind.APPLICANT,
+            BrowserSession.application_id == application.id,
+        )
+    )
+    db.delete(application)
 
 
 def _applicant_link(db: Session, token: str) -> MagicLinkToken | None:
@@ -506,7 +813,13 @@ def _claim_link_target(db: Session, link: MagicLinkToken) -> _ClaimedApplicantLi
     answers = _draft_answers(draft)
     if answers is None:
         return _ClaimedApplicantLink(None)
-    application = create_application(db, draft.email, answers, saved_at=as_utc(draft.saved_at))
+    application = create_application(
+        db,
+        draft.email,
+        answers,
+        saved_at=as_utc(draft.saved_at),
+        opening_ids=draft.working_opening_ids,
+    )
     draft.application_id = application.id
     draft.resolved_at = datetime.now(UTC)
     return _ClaimedApplicantLink(application, draft.intent)
@@ -561,7 +874,12 @@ def _resolve_pending_draft(application: Application, draft: ApplicantDraft) -> N
     if answers is not None and (
         application_saved_at is None or draft_saved_at >= application_saved_at
     ):
-        save_working_copy(application, answers, saved_at=draft_saved_at)
+        save_working_copy(
+            application,
+            answers,
+            saved_at=draft_saved_at,
+            opening_ids=draft.working_opening_ids,
+        )
     draft.application_id = application.id
     draft.resolved_at = datetime.now(UTC)
 
@@ -604,24 +922,32 @@ def _pending_email_change(db: Session, application_id: int) -> str | None:
         )
         .order_by(MagicLinkToken.created_at.desc())
     )
-def _active_opening(db: Session, *, now: datetime) -> Opening:
-    openings = [
-        opening
-        for opening in db.scalars(
-            select(Opening)
-            .where(Opening.status == OpeningStatus.OPEN)
-            .order_by(Opening.application_deadline.desc())
-        )
-        if as_utc(opening.application_deadline) > now
-    ]
-    if not openings:
+def _applicant_opening(state: ApplicantOpeningState) -> ApplicantOpeningOut:
+    opening = state.opening
+    return ApplicantOpeningOut(
+        id=opening.id,
+        unit_size_bedrooms=opening.unit_size_bedrooms,
+        housing_charge_cents=opening.housing_charge_cents,
+        application_open_date=opening.application_open_date.isoformat(),
+        application_close_date=opening.application_close_date.isoformat(),
+        move_in_date=opening.move_in_date.isoformat(),
+        phase=state.phase,
+        selected=state.selected,
+        participating=state.participating,
+        has_participated=state.has_participated,
+        can_select=state.can_select,
+        can_withdraw=state.can_withdraw,
+    )
+
+
+def _require_new_applications_open(db: Session) -> None:
+    if not any(state.can_select for state in applicant_opening_states(db, None)):
         raise Problem("applications_closed", detail="Applications are not currently open.")
-    if len(openings) > 1:
-        raise Problem(
-            "opening_selection_required",
-            detail="Choose which opening you want this application considered for.",
-        )
-    return openings[0]
+
+
+def _require_application_editable(db: Session, application: Application) -> None:
+    if not application_is_editable(applicant_opening_states(db, application)):
+        raise Problem("applications_locked", detail="This application is currently read-only.")
 
 
 def _stored_answers(application: Application) -> WorkingApplicationAnswers | None:
@@ -646,4 +972,15 @@ def _require_matching_email(
         raise Problem(
             "verified_email_required",
             detail="Changing the primary email requires a new access link.",
+        )
+
+
+def _require_current_revision(application: Application, base_revision: int | None) -> None:
+    if base_revision != application.working_revision:
+        raise Problem(
+            "stale_application",
+            detail=(
+                "This application was saved in another tab or browser. "
+                "Reload the latest saved copy before continuing."
+            ),
         )

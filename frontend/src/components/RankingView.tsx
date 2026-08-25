@@ -116,12 +116,20 @@ export function RankingView(props: {
   onRemoveProposal: (text: string) => void;
   onSelectApplication: (id: number) => void;
   onToggleStar: (id: number, starred: boolean) => void;
+  applicationIdsInOpeningScope: Set<number> | null;
 }): ReactNode {
   const { ranking, rankingRun, tiers, proposedDimensions } = props;
+  const candidates = (
+    props.applicationIdsInOpeningScope === null
+      ? ranking.candidates
+      : ranking.candidates.filter((candidate) =>
+          props.applicationIdsInOpeningScope!.has(candidate.applicationId),
+        )
+  ).map((candidate, index) => ({ ...candidate, rank: index + 1 }));
   // "Favourites only" is a local view filter over this member's stars — the ranked
   // list is one short page, so it filters client-side (no refetch, no pagination).
   const [favouritesOnly, setFavouritesOnly] = useState(false);
-  const starredCount = ranking.candidates.filter((c) => c.starredByMe).length;
+  const starredCount = candidates.filter((c) => c.starredByMe).length;
   const favouritesLabel = favouritesOnly
     ? `Showing favourites (${starredCount})`
     : `Show favourites (${starredCount})`;
@@ -200,9 +208,13 @@ export function RankingView(props: {
         </>
       ) : null}
 
-      {ranking.candidates.length === 0 ? (
+      {candidates.length === 0 ? (
         <div className="empty-state">
-          <p>No scored candidates to rank yet. Run scoring first.</p>
+          <p>
+            {props.applicationIdsInOpeningScope === null
+              ? "No scored candidates to rank yet. Run scoring first."
+              : "No ranked candidates match the selected opening."}
+          </p>
         </div>
       ) : (
         <>
@@ -228,7 +240,7 @@ export function RankingView(props: {
           </button>
         </div>
         <ol className={`ranking-list${favouritesOnly ? " showing-favourites-only" : ""}`}>
-          {ranking.candidates
+          {candidates
             .map((candidate) => {
             // Lead with what most moved this candidate's rank — by |impact|, not raw
             // weight×score — so a heavy strike surfaces as readily as a strength.

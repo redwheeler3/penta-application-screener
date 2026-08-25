@@ -172,7 +172,12 @@ def import_applications_from_rows(
         normalized = normalize_application(row)
         normalized = _make_json_safe(normalized)
 
-        application = db.scalar(select(Application).where(Application.primary_email == email))
+        application = db.scalar(
+            select(Application).where(
+                Application.primary_email == email,
+                Application.deleted_at.is_(None),
+            )
+        )
         if application is None:
             imported_count += 1
             application = Application(
@@ -204,7 +209,10 @@ def import_applications_from_rows(
 
     deleted_applications = list(
         db.scalars(
-            select(Application).where(Application.primary_email.not_in(latest_by_email))
+            select(Application).where(
+                Application.primary_email.not_in(latest_by_email),
+                Application.deleted_at.is_(None),
+            )
         )
     )
     deleted_ids = [application.id for application in deleted_applications]

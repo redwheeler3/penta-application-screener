@@ -1,17 +1,30 @@
 import { request } from "../api";
 import type { CanonicalApplicationAnswers, WorkingApplicationAnswers } from "./types";
 
+export function fetchApplicantOpenings() {
+  return request("/applicant/openings");
+}
+
+export function checkGuestSubmission(email: string) {
+  return request(
+    "/applicant/submissions/check",
+    jsonRequest("POST", { email }),
+  );
+}
+
 export type DraftIntent = "save" | "submit";
 
 export function savePendingDraft(
   answers: WorkingApplicationAnswers,
   intent: DraftIntent,
   draftToken: string | null,
+  openingIds: number[],
 ) {
   return request("/applicant/drafts", jsonRequest("POST", {
     answers,
     intent,
     draftToken,
+    openingIds,
   }));
 }
 
@@ -37,10 +50,14 @@ export function regenerateAccessLink(token: string) {
   );
 }
 
-export function requestReturnAccessLink(answers: WorkingApplicationAnswers) {
+export function requestReturnAccessLink(
+  answers: WorkingApplicationAnswers,
+  openingIds: number[],
+  baseRevision: number | null,
+) {
   return request(
     "/applicant/access-links/request",
-    jsonRequest("POST", { answers }),
+    jsonRequest("POST", { answers, openingIds, baseRevision }),
   );
 }
 
@@ -70,17 +87,49 @@ export function logoutApplicant() {
   return request("/applicant/auth/logout", { method: "POST" });
 }
 
-export function saveApplication(answers: WorkingApplicationAnswers) {
-  return request("/applicant/application", jsonRequest("PUT", { answers }));
+export function saveApplication(
+  answers: WorkingApplicationAnswers,
+  openingIds: number[],
+  baseRevision: number,
+) {
+  return request(
+    "/applicant/application",
+    jsonRequest("PUT", { answers, openingIds, baseRevision }),
+  );
+}
+
+export function revertApplication(baseRevision: number) {
+  return request(
+    "/applicant/application/revert",
+    jsonRequest("POST", { baseRevision }),
+  );
+}
+
+export function deleteApplication() {
+  return request("/applicant/application", { method: "DELETE" });
 }
 
 export function submitApplication(
   answers: CanonicalApplicationAnswers,
   declarationAccepted: boolean,
+  openingIds: number[],
+  baseRevision: number,
 ) {
   return request(
     "/applicant/application/submit",
-    jsonRequest("POST", { answers, declarationAccepted }),
+    jsonRequest("POST", { answers, declarationAccepted, openingIds, baseRevision }),
+  );
+}
+
+export function submitGuestApplication(
+  answers: CanonicalApplicationAnswers,
+  declarationAccepted: boolean,
+  openingIds: number[],
+  draftToken: string | null,
+) {
+  return request(
+    "/applicant/submissions",
+    jsonRequest("POST", { answers, declarationAccepted, openingIds, draftToken }),
   );
 }
 

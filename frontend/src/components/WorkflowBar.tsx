@@ -1,9 +1,10 @@
 import { AlertTriangle, Check, ChevronRight, RefreshCw, Sparkles } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
-import { money, screeningPercent } from "../format";
+import { money, openingLabel, screeningPercent } from "../format";
 import type {
   Coverage,
+  CommitteeOpening,
   CriteriaStage,
   DashboardCounts,
   ScreeningEstimateResponse,
@@ -123,8 +124,9 @@ function WorkflowStep(props: {
 }
 
 // The ordered screening workflow band: three single-verb steps (Import, Screen,
-// Rank), the View-ranking entry point, and the confirm + progress cards for the
-// two AI runs. Rank is one button that runs the whole criteria → scores
+// Rank), the shared opening view scope, and the confirm + progress cards for the
+// two AI runs. The opening scope filters the application and ranking views; it does
+// not narrow the reusable AI analysis pool. Rank is one button that runs the whole criteria → scores
 // chain under one combined cost estimate. Later steps stay hard-gated until the
 // previous has run; "done" flags come from the backend, so gating survives reload.
 export function WorkflowBar(props: {
@@ -167,6 +169,9 @@ export function WorkflowBar(props: {
   onRequestRank: () => void;
   onRunRank: (mode: "discover" | "score-current") => void;
   onCancelRank: () => void;
+  openings: CommitteeOpening[];
+  selectedOpeningIds: number[];
+  onOpeningScopeChange: (openingIds: number[]) => void;
 }): ReactNode {
   const {
     workflow,
@@ -183,6 +188,7 @@ export function WorkflowBar(props: {
   } = props;
   const hasMissingScores = (scoreCurrentEstimate?.toAnalyze ?? 0) > 0;
   const hasPendingProposals = pendingProposals.length > 0;
+  const currentOpenings = props.openings.filter((opening) => opening.phase !== "archived");
   // Screen and Rank are shared actions over the union scope, so both gate on the shared
   // pool being empty — not on this member's personal eligible count.
   const noApplicantsInScope = (coverage.screened?.inScope ?? 0) === 0;
@@ -316,8 +322,39 @@ export function WorkflowBar(props: {
             last
           />
         </ol>
-        {/* The ranked shortlist now has its own "Ranking" tab in the panel header,
-            so there's no entry-point button here. */}
+        {currentOpenings.length ? (
+          <div className="workflow-opening-scope">
+            <span className="workflow-opening-label">Viewing</span>
+            <div className="segmented" role="group" aria-label="Filter applications and ranking by opening">
+              <button
+                type="button"
+                className="segment"
+                aria-pressed={props.selectedOpeningIds.length === 0}
+                onClick={() => props.onOpeningScopeChange([])}
+              >
+                All openings
+              </button>
+              {currentOpenings.map((opening) => {
+                const selected = props.selectedOpeningIds.includes(opening.id);
+                return (
+                  <button
+                    key={opening.id}
+                    type="button"
+                    className="segment"
+                    aria-pressed={selected}
+                    onClick={() => props.onOpeningScopeChange(
+                      selected
+                        ? props.selectedOpeningIds.filter((id) => id !== opening.id)
+                        : [...props.selectedOpeningIds, opening.id],
+                    )}
+                  >
+                    {openingLabel(opening)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {props.settingsLoadState === "error" ? (

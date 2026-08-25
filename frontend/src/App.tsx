@@ -88,6 +88,9 @@ export function App(props: { authRedirect: AuthRedirect }) {
   // See useApplications; the selected candidate detail stays here (cross-cutting).
   const {
     applications,
+    openings,
+    selectedOpeningIds,
+    applicationIdsInOpeningScope,
     applicationsLoadState,
     appFilter,
     appFacets,
@@ -97,6 +100,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
     loadInitialApplications,
     toggleSort,
     applyFilter,
+    setSelectedOpeningIds,
     search: searchApplications,
   } = useApplications();
   // The ranking cluster: the current run's dimensions, the ranked shortlist, the
@@ -450,6 +454,9 @@ export function App(props: { authRedirect: AuthRedirect }) {
             onRequestRank={requestRankEstimate}
             onRunRank={runRank}
             onCancelRank={cancelRankEstimate}
+            openings={openings}
+            selectedOpeningIds={selectedOpeningIds}
+            onOpeningScopeChange={setSelectedOpeningIds}
           />
 
           {/* Tab row: the data views on the left, the config tabs (Eligibility Settings
@@ -476,6 +483,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
             {selectedApp ? (
               <CandidateDetail
                 app={selectedApp}
+                openings={openings}
                 onBack={backToList}
                 onOverrideStatus={overrideStatus}
                 onClearOverride={clearStatusOverride}
@@ -534,6 +542,9 @@ export function App(props: { authRedirect: AuthRedirect }) {
                 onRemoveProposal={removeProposal}
                 onSelectApplication={viewApplication}
                 onToggleStar={toggleStar}
+                applicationIdsInOpeningScope={
+                  selectedOpeningIds.length > 0 ? applicationIdsInOpeningScope : null
+                }
               />
             ) : activeTab === "ranking" ? (
               <div className="list-load-state" role={rankingLoadState === "error" ? "alert" : "status"}>

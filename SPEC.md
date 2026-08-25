@@ -55,7 +55,9 @@ The application has 9 sections:
 8. Household income
 9. Declaration
 
-The applicant/co-applicant section asks for applicant name, age, phone, and email; co-applicant name, age, relationship, phone, and email; and number of children under 18 living in the unit on the move-in date. Child-count options are `0`, `1`, `2`, `3`, `4`, and `More than 4`.
+The applicant/co-applicant section asks for applicant name, date of birth, phone, and email;
+co-applicant name, date of birth, relationship, phone, and email; and the children who will live in
+the unit. Ages are calculated from those birth dates as of the application's last submitted edit.
 
 The form contains an ineligible branch titled `Sorry...` that says the current unit accepts families with at least 1 child and at most 4 children, invites people to use the mailing list, and restates unit-size requirements:
 
@@ -134,9 +136,10 @@ AI analysis, eligibility, notes, and ranking consume only the submitted copy. Pu
 answers changes the application's content hash and makes any derived screening/ranking state
 stale through the existing content-addressed mechanisms.
 
-The application itself is not a revision collection, but a closed application cycle retains the
-final submitted snapshot that its committee actually considered. A later edit to the applicant's
-durable application therefore does not rewrite a prior cycle's historical record.
+Each Submit action also records an immutable, dated application version for audit history. Versions
+belong to the durable application rather than to an opening. Committee members normally see the
+latest submitted copy, including when filtering applicants from an older opening; the version
+history exists for audit rather than as a separate opening-specific view.
 
 ### Applicant access and draft persistence
 
@@ -145,34 +148,40 @@ only in the open page until **Save and return later** writes the current answers
 server-side pending draft and emails an access link. The save accepts an incomplete application as
 long as the primary email is valid. It does not enter a separate verification or polling state,
 and the form remains usable after the save. Submission is always a deliberate action after
-reviewing the completed application; following an access link for a pending submission opens the
-review but does not submit it.
+reviewing the completed application.
 For an authenticated applicant, the corresponding **Save and review** action first persists the
 private working copy and opens the review only after that save succeeds. A signed-out **Review
 application** action validates and previews the in-page answers without creating a server record or
-sending email.
-While an application remains active and within its retention period, its authenticated primary
-applicant may view and edit it even when no opening is active. An edit outside an active opening
-changes only the private working copy; it does not enroll the application in a future opening or
-make the change committee-visible. An applicant-deleted legal-hold record is not active and is not
-available through this flow.
+sending email. **Submit application** then publishes the application immediately and emails a
+confirmation with secure access for future edits; initial submission does not wait for the
+applicant to follow that link.
+An authenticated primary applicant may edit while at least one published opening is between its
+open date and move-in date. Before the next open date, or after every published opening reaches its
+move-in date, application content is read-only. An applicant-deleted legal-hold record is not active
+and is not available through this flow.
 
 An authenticated applicant can choose **Delete application** without contacting the Privacy
 Officer. After a short confirmation, this immediately retracts every active participation,
 excludes the application from all committee views and future consideration, discards unsubmitted
 changes, revokes applicant sessions and unused links, and removes applicant access. The UI and
 confirmation email simply say that the application has been deleted and will no longer be
-considered, with a link to the privacy policy; they do not expose the internal retention workflow.
+considered; they do not expose the internal retention workflow.
 A never-submitted draft is physically purged immediately. Submitted information that must be
 retained becomes a read-only legal-hold record accessible only through an audited administrator
 retention view until its scheduled purge. It cannot be restored into active consideration.
+
+If an authenticated applicant has private edits that differ from the committee copy, the form
+offers **Revert to last submitted application**. This replaces the entire private working copy,
+including pending opening selections, with the last submitted version. Saves and submissions carry
+an optimistic working-copy revision: a stale tab is refused rather than silently overwriting a
+newer save, and the applicant can deliberately reload the latest saved copy.
 
 If the same verified address applies again while an older deleted record remains under legal hold,
 the applicant starts a blank current application. The retained record is never returned,
 pre-populated, or exposed as an email collision; it remains linked only as needed to enforce its
 retention and purge date. There is still at most one current application for the address.
 
-Applicants use passwordless email access rather than Google sign-in. A secure return flow sends a
+Applicants use passwordless email access rather than Google sign-in. A secure application-access flow sends a
 24-hour, single-use link to the primary applicant's email address; consuming it establishes an
 HTTPS-only application session and removes the credential from the browser URL. Tokens are stored
 only as hashes, expire, cannot be reused, and are protected by rate limits and non-enumerating
@@ -182,17 +191,18 @@ co-applicant does not have separate editing access.
 The primary email is the first field in the household section. While signed out, it sits beside an
 **Email me a link to continue** action that becomes available once the address is valid. One
 non-enumerating server request chooses the safe behavior: an existing application or pending draft
-receives a return link without letting the mostly empty guest form replace it, while a new address
+receives an application link without letting the mostly empty guest form replace it, while a new address
 has its current incomplete form saved for 30 days and receives its first access link. Both paths
 return the same acknowledgement and direct the applicant to check their inbox. The control is
 hidden after sign-in because the applicant is already working in the durable application.
 
 After each initial or updated submission, the product sends the primary applicant a confirmation
-email with secure return access. There is no opt-in checkbox: the applicant may ignore or delete
-the message, and can request a fresh access email later through the return flow.
+email with secure application access. There is no opt-in checkbox: the applicant may ignore or delete
+the message, and can request a fresh access email later through the same flow.
 
-The access link proves control of the primary email before an application can be published or an
-existing application can be changed. Saving the private pending draft itself does not require a
+The access link proves control of the primary email before an existing application can be changed.
+A first guest submission may be published before email control is proven, then its confirmation
+provides secure access for future edits. Saving a private pending draft likewise does not require a
 separate email-verification transaction. A save request gives the same response whether its email
 is new or already known, so it does not reveal which people have applications.
 
@@ -210,8 +220,11 @@ never merged. A replacement request supersedes an earlier unconfirmed address, a
 may cancel an unconfirmed change.
 
 An unauthenticated browser can never overwrite an existing working or submitted copy merely by
-entering the same primary email. The existing submitted application remains committee-visible and
-unchanged while control of the address is proven. After using the access link, the newer of the
+entering the same primary email. Before opening the guest review, the server detects an existing
+current application, emails its owner an access link, and requires authentication instead. The
+submission endpoint repeats this check as a race-condition safeguard. The existing submitted
+application remains committee-visible and unchanged while control of the address is proven. After
+using the access link, the newer of the
 browser draft and existing private working copy is selected by UTC save time; an equal timestamp
 prefers the browser draft associated with the link. The selected snapshot is never published
 automatically. The system therefore does not create two
@@ -248,6 +261,9 @@ Access-link handling follows one explicit decision table:
 | Expired, used, or replaced link; no applicant session | Explain that the application remains saved and offer to email a fresh 24-hour link without asking for the address again. |
 | Recognizable link; different applicant session | Before consuming or replacing anything, show the full current-session email and link email and require a choice. A valid link offers **Keep current application** or **Open linked application**; a stale link offers **Keep current application** or **Email a new link**. |
 | Invalid or abandoned-draft link | Do not reveal an address or establish a session; direct the visitor back to the application entry point. |
+
+After a replacement-link request succeeds, the page shows a dedicated **Check your email**
+confirmation rather than attempting to load application data before authentication.
 
 An applicant-session conflict is resolved before link validity changes behavior. Choosing the
 current application leaves its session and browser-local draft untouched. Choosing the linked
@@ -384,7 +400,7 @@ removed. They do not show an applicant-removal link.
 
 - M21 preserves the current field set and required/optional behavior rather than redesigning the
   application schema. The deliberate exception is that every applicant, co-applicant, and child
-  age field becomes a date of birth so age can be calculated for an opening's target move-in date
+  age field becomes a date of birth so the application can calculate age on the last submitted edit
   instead of becoming stale. Committee and AI views receive the calculated age needed for
   screening, not the raw birth date. Existing submitted integer ages remain unchanged in their
   historical snapshots; they are never converted into invented birth dates. A returning applicant
@@ -418,25 +434,49 @@ removed. They do not show an applicant-removal link.
   continuing or entering an email is not consent. The primary applicant must accept this before
   every initial or updated Submit action. The product records acceptance and time but does not
   introduce separately managed declaration or privacy-notice versions.
+- Each opening records an application open date, application close date, move-in date, unit size,
+  and monthly housing charge. A draft is invisible to applicants until an administrator explicitly
+  publishes it; publishing an opening never sends email. Its phase is then derived from the dates
+  rather than maintained with manual Open and Close actions.
+- The dates may be equal but cannot run backward: the open date is on or before the close date,
+  which is on or before the move-in date. If move-in shares another boundary date, archiving on
+  that date takes precedence.
 - Application-close timing does not prevent an existing application's information from being
   reused for a later opening. Each opening has a separate participation record that says the
   applicant affirmatively wants their one application considered for that opening. Participation
-  does not duplicate the application. The application close freezes that cycle's final submitted
-  snapshot while the applicant's durable application remains available for a later opening.
+  attaches the applicant, not a separate copy of their application, to the opening.
 - An existing applicant enters a later opening by following their access flow, reviewing or
   updating the retained application, accepting the declaration again, and explicitly submitting
   it for that opening. An invitation or an existing application alone does not enroll them.
-- Multiple openings may be active at the same time. The applicant chooses which open offerings to
-  enter, and every active participation uses the application's same current submitted copy. A
-  later publication updates what each active opening's committee sees; each opening freezes its
-  own final snapshot when it closes.
-- A withdrawal retracts participation from the active opening but does not delete the durable
-  application: the applicant may continue to view and edit it. The applicant may reactivate it
-  before the deadline; after the deadline only an administrator may do so. Retraction does not
-  alter a snapshot already frozen for a closed cycle.
-- The server's receipt time determines whether a submission met the opening deadline. Having the
-  form open or a draft saved before the deadline does not permit a late submission; an
-  administrator must reopen or explicitly reactivate the opening to accept one.
+- Multiple openings may be active at the same time. The applicant form shows every relevant
+  opening's three dates, unit size, and housing charge. Opening selection is a multi-select that is
+  always visible: exactly one open offering is selected by default, while multiple open offerings
+  start unselected and require at least one selection before submission. Committee views always
+  expose the applicant's selected openings and provide a matches-any multi-select filter.
+- Before and through the application close date, an applicant may select or unselect an opening.
+  After the close date and before the move-in date, an existing participant may unselect it to
+  withdraw but nobody may newly select it. Because working selections remain private until Submit,
+  the participant may reverse that pending choice in either direction before submitting. On the
+  move-in date the opening is archived and its participation can
+  neither be selected nor withdrawn. If another opening still permits editing, a later publication
+  updates the one committee-facing application shown for every opening, including archived ones.
+- Before submission, the review page separately names every opening the applicant will remain
+  enrolled in and every existing participation that the submission will withdraw.
+- Archived openings are history rather than current choices. They remain in the admin opening list
+  and committee application details, but do not appear in the applicant selector or review and are
+  not offered in the screener's shared application/ranking filter.
+- Committee and AI workflows include only applications with at least one current, unwithdrawn
+  participation. Once every participation is archived or withdrawn, the retained application
+  leaves the active committee pool without losing its historical records.
+- Administrators may edit archived opening facts to correct the historical record. Changing a
+  move-in date recalculates affected retention dates using the corrected value.
+- The server's Pacific calendar date determines which actions are allowed. Merely receiving an
+  announcement, following its access link, editing, saving, or reviewing does not create
+  participation. Submission creates or updates participation for the selected openings.
+- Applicant, co-applicant, and child age checks use each person's age on the application version's
+  last submitted edit date in Penta's Pacific time zone. Ages remain stable while the committee
+  reviews that version and update only when the applicant submits an edit. Age eligibility is
+  application-wide and has no dependency on selected openings or their move-in dates.
 
 ### Committee intake awareness
 
@@ -497,7 +537,7 @@ notification list. The minimum transient delivery record needed to send or retry
 removed after terminal delivery handling; it does not preserve the application or become a
 mailing-list subscription.
 
-Deletion covers the working and submitted answers, cycle snapshots when their own hold has ended,
+Deletion covers the working and submitted answers, dated application versions,
 photos and abandoned uploads, application participation, AI outputs and caches, eligibility and
 ranking data tied to the applicant, committee notes, sessions and unused login tokens, and
 applicant-identifying delivery records. Backups expire under a bounded backup-retention policy,
@@ -669,7 +709,8 @@ Rules run in a defined order. An application that fails any enabled rule is `fil
 - Applications should be complete at submission time. The screener does not create applicant follow-up workflows.
 - Applicants with an application already on file are not treated differently.
 - Email-list signup date and notification history must not influence screening.
-- For child age calculations, use age on the move-in date when a date is needed. A child turning 18 shortly after move-in does not matter.
+- Applicant, co-applicant, and child ages are calculated from their dates of birth as of the
+  application's last submitted edit.
 
 ### Application Status Model
 
@@ -929,17 +970,19 @@ immediate private Save and return later, 24-hour access links with regeneration 
 choice, declaration acceptance, and restoration of an existing application without allowing
 pending answers to overwrite it. Applicant and committee sign-in default to shared-device-safe
 non-persistent browser credentials with an explicit remembered-device opt-in. Private
-working copies are excluded from every committee and AI query. The first publication slice also
-validates the complete form and declaration, requires exactly one active opening, and atomically
-publishes into that opening. Multiple-opening selection, private photo storage, closed-cycle
-snapshots, committee intake changes, and cutover remain internal work; the production committee
-workflow is unchanged until the milestone is complete.
+working copies are excluded from every committee and AI query. Publication validates the complete
+form and declaration, records an immutable dated application version, and atomically updates the
+applicant's explicit participation in one or more openings. Opening selection, date-derived
+lifecycle enforcement, submission-date household age checks, and committee opening
+visibility/filtering are implemented. Private photo storage, committee intake changes, and cutover
+remain internal work; the production committee workflow is unchanged until the milestone is
+complete.
 
 **Delivery stages:**
 
 1. **Canonical intake model** — make application fields independent of spreadsheet headings;
    introduce one durable application with private working and committee-facing submitted copies,
-   opening participation, and closed-cycle snapshots. Preserve the existing content hash as the
+   opening participation, and dated application versions. Preserve the existing content hash as the
    boundary for stale AI results.
 2. **Transactional email and sessions** — add the provider-neutral sender with SocketLabs, domain
    authentication, passwordless email access, collision-safe account
@@ -951,9 +994,10 @@ workflow is unchanged until the milestone is complete.
    unsubmitted-change warning, and accessible responsive behavior.
 4. **Private photo storage** — upload, validate, privately serve, replace, and clean up the one
    working/submitted household photo without putting binary data in SQLite or AI prompts.
-5. **Publication and cycle behavior (in progress)** — atomically publish initial and updated working copies,
-   keep drafts invisible, retain the prior submitted copy until publication, record participation,
-   and freeze the final submitted snapshot when an opening closes.
+5. **Publication and opening behavior (in progress)** — configure and publish dated openings;
+   atomically publish initial and updated working copies; keep drafts invisible; record dated
+   application versions and explicit multi-opening participation; and enforce open, closed, and
+   archived behavior from the opening dates.
 6. **Committee intake workflow** — replace the external-source Sync step with an honestly named
    new/updated-applications surface; show submission times and stale Screen/Rank state without
    emailing the committee for routine updates.
@@ -977,9 +1021,9 @@ separate milestone with its own storage, hostname, and isolation decisions.
 
 **Definition of done:**
 
-- A guest can complete the entire form without signing in; durable progress requires Save and
-  return later, and publication occurs only after proving control of the primary email through an
-  access link.
+- A guest can complete and submit the entire form without signing in. Durable progress before
+  submission requires Save and return later; a successful submission publishes immediately and
+  emails secure access for future edits.
 - Save and return later preserves a private server-side draft and restores it from a fresh email
   link on another browser; committee members cannot read it.
 - Applicant links are single-use for 24 hours; recognizable stale links can request a replacement,
@@ -989,8 +1033,8 @@ separate milestone with its own storage, hostname, and isolation decisions.
   over that person's application.
 - A submitted edit leaves the previous committee copy visible until the applicant explicitly
   republishes, then invalidates derived screening/ranking currency by content hash.
-- One application can participate in a later opening while each closed opening retains the final
-  snapshot its committee considered.
+- One application can participate in later and simultaneous openings, the committee can filter by
+  those selections, and the latest submitted application remains the normal committee view.
 - Committee members sign in through an allowlisted magic link or identity-only Google OIDC; both
   issue the same server-side session and support the same revocation, expiry, recent-authentication,
   and remembered-device choice. Role/access changes revoke those sessions server-side.

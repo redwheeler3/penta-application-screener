@@ -1,16 +1,21 @@
 """Wire contracts for private applicant drafts, access links, and applications."""
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import EmailStr, Field
 
-from app.db.models import ApplicantDraftIntent, MagicLinkPurpose
+from app.db.models import ApplicantDraftIntent, MagicLinkPurpose, OpeningPhase
 from app.schemas.base import RequestModel, ResponseModel
 from app.schemas.intake import CanonicalApplicationAnswers, WorkingApplicationAnswers
+from app.schemas.openings import OpeningDetailsOut
+
+EmailSendStatus = Literal["sent", "recent", "failed"]
 
 
 class PendingDraftRequest(RequestModel):
     answers: WorkingApplicationAnswers
+    opening_ids: list[int] = Field(default_factory=list, max_length=20)
     intent: ApplicantDraftIntent
     draft_token: str | None = Field(default=None, min_length=32, max_length=500)
 
@@ -19,15 +24,19 @@ class PendingDraftResponse(ResponseModel):
     draft_token: str
     email_sent: bool
     retry_after_seconds: int
+    email_status: EmailSendStatus
 
 
 class RequestAccessLinkRequest(RequestModel):
     answers: WorkingApplicationAnswers
+    opening_ids: list[int] = Field(default_factory=list, max_length=20)
+    base_revision: int | None = Field(default=None, ge=1)
 
 
 class RequestAccessLinkResponse(ResponseModel):
     accepted: bool = True
     current_answers_saved: bool
+    email_status: EmailSendStatus
 
 
 class AccessLinkRequest(RequestModel):
@@ -54,8 +63,19 @@ class AccessLinkResponse(ResponseModel):
 
 class RegenerateAccessLinkResponse(ResponseModel):
     accepted: bool = True
+    target_available: bool = True
     email_sent: bool
     retry_after_seconds: int
+    email_status: EmailSendStatus
+
+
+class ApplicantOpeningOut(OpeningDetailsOut):
+    phase: OpeningPhase
+    selected: bool
+    participating: bool
+    has_participated: bool
+    can_select: bool
+    can_withdraw: bool
 
 
 class ApplicantApplicationResponse(ResponseModel):
@@ -63,12 +83,27 @@ class ApplicantApplicationResponse(ResponseModel):
     primary_email: str
     pending_email_change: str | None = None
     answers: WorkingApplicationAnswers | None = None
+    working_saved_at: datetime | None = None
+    working_revision: int
     submitted: bool
     has_unsubmitted_changes: bool
+    can_edit: bool
+    openings: list[ApplicantOpeningOut]
+
+
+class ApplicantOpeningsResponse(ResponseModel):
+    can_start_application: bool
+    openings: list[ApplicantOpeningOut]
 
 
 class SaveApplicationRequest(RequestModel):
     answers: WorkingApplicationAnswers
+    opening_ids: list[int] = Field(default_factory=list, max_length=20)
+    base_revision: int = Field(ge=1)
+
+
+class RevertApplicationRequest(RequestModel):
+    base_revision: int = Field(ge=1)
 
 
 class EmailChangeRequest(RequestModel):
@@ -79,8 +114,42 @@ class EmailChangeResponse(ResponseModel):
     email_sent: bool
     retry_after_seconds: int
     pending_email: str | None
+    email_status: EmailSendStatus
 
 
 class SubmitApplicationRequest(RequestModel):
     answers: CanonicalApplicationAnswers
+    opening_ids: list[int] = Field(max_length=20)
     declaration_accepted: bool = False
+    base_revision: int | None = Field(default=None, ge=1)
+
+
+class GuestSubmitApplicationRequest(SubmitApplicationRequest):
+    draft_token: str | None = Field(default=None, min_length=32, max_length=500)
+
+
+class GuestSubmitApplicationResponse(ResponseModel):
+    submitted: bool = True
+    email_sent: bool
+    email_status: EmailSendStatus
+
+
+class GuestSubmissionCheckRequest(RequestModel):
+    email: EmailStr
+
+
+class GuestSubmissionCheckResponse(ResponseModel):
+    can_submit: bool
+    email_sent: bool = False
+    email_status: EmailSendStatus | None = None
+
+
+class AuthenticatedSubmitApplicationResponse(ApplicantApplicationResponse):
+    email_sent: bool
+    email_status: EmailSendStatus
+
+
+class DeleteApplicationResponse(ResponseModel):
+    deleted: bool = True
+    email_sent: bool
+    email_status: EmailSendStatus

@@ -104,6 +104,27 @@ drives AI cache currency. All committee lists, eligibility calculations, and AI 
 submitted-and-not-deleted scope in `app/services/application_scope.py`; private drafts are never
 part of those downstream workflows.
 
+An `Opening` has application open, application close, and move-in dates plus its unit size and
+housing charge. Admins edit an unpublished draft and explicitly publish it; publication does not
+send email. `services/openings.py` derives the phase from Pacific calendar dates, so no mutable
+status can drift from the schedule. Dates are non-decreasing and may be equal; move-in archiving
+takes precedence when boundaries coincide. Open openings may be selected or withdrawn. For a closed
+opening, an existing participant may stage or reverse a withdrawal until submitting; nobody new
+may join it. Move-in archives the opening and freezes participation. The applicant's
+private working selection is stored separately from `ApplicationParticipation`; only Submit
+changes committee-visible participation and records an immutable `ApplicationVersion`.
+
+Applicant, co-applicant, and child ages are calculated from their birth dates against the latest
+submitted edit's Pacific date. They remain stable for that committee-visible version and update
+only on another submission; private draft saves do not change committee eligibility. Move-in dates
+do not affect age eligibility. Application details expose every selected opening, while the workflow-bar multi-select
+uses matches-any semantics across both the application and ranking lists. It is a view scope rather
+than an AI-run scope: applications are screened and scored once, then the filtered ranking
+preserves that order and renumbers the visible shortlist from one.
+Archived openings remain available in administration and application history, but are omitted
+from the applicant form/review and the workflow-bar filter. Administrators can still correct an
+archived opening; move-in corrections propagate to participant retention dates.
+
 The committee surface's main responsibilities are:
 
 1. On load, call the backend's `/auth/me` endpoint.
@@ -112,7 +133,7 @@ The committee surface's main responsibilities are:
 4. Show the dashboard: status/source tabs with faceted counts.
 5. Let the user expand the admin settings panel (an "Edit settings" toggle, not a gear icon) and save changes.
 6. Let the user sync applications from the configured Google Sheet.
-7. Show a searchable, sortable, paginated applications table.
+7. Show a searchable, sortable applications table with a matches-any opening filter.
 8. Open a candidate detail view: normalized fields, essays, filter reasons, AI screening flags, a private reviewer note, the raw row, and the AI narrative.
 9. Run the AI screening pass with a cost-estimate confirmation and live streamed progress.
 10. Let a committee member override an application's status (the human decision is sticky) or clear the override to hand the decision back to the machine.
@@ -710,8 +731,11 @@ The importer preserves the raw Google Sheets row as JSON — useful for debuggin
 
 Application routes live in `backend/app/api/applications.py`:
 
-- `GET /applications` — a searchable, filterable, sortable, paginated list. Filters by `status` and `status_source`, and returns faceted counts so the UI can show how many applications fall in each tab.
-- `GET /applications/{id}` — one application's detail: normalized fields, essays, filter reasons, AI screening flags, the raw source row, and the AI narrative.
+- `GET /applications` — the unpaginated committee pool plus the opening catalog. Each row carries
+  its current opening IDs; the browser derives search, opening/status/source filters, sorting, and
+  faceted counts without another request.
+- `GET /applications/{id}` — one application's detail: selected openings, normalized fields,
+  essays, filter reasons, AI screening flags, the raw source row, and the AI narrative.
 - `PATCH /applications/{id}/status` — a human status override. Sets `status_source = human`, which machine re-runs then leave untouched.
 - `DELETE /applications/{id}/status` — removes a human override, handing the decision back to the machine. Recomputes status from the current findings and clears human ownership; idempotent if no override is set.
 
@@ -796,6 +820,11 @@ Services live in `backend/app/services/`. Service functions are reusable app ope
 - `google_credentials.py`: store/retrieve the temporary spreadsheet-reader credential.
 - `google_sheets.py`: read spreadsheet metadata and rows.
 - `application_import.py`: turn sheet rows into `Application` and `SyncRun` records.
+- `intake.py`: persist revision-guarded private working answers and atomically publish application versions.
+- `openings.py`: derive opening phases and manage date-driven publication.
+- `opening_participation.py`: validate applicant selection/withdrawal and maintain participation.
+- `application_scope.py`: define the active, submitted opening participation shared by committee and AI workflows.
+- `retention.py`: shared retention-date calculations.
 - `ranking_run.py`: the Rank run's persistence + carry-forward — `create_run`, `dimension_weights` (derived from tiers), `adopt_matched_keys`, `carry_forward_layout`, `apply_consolidation`, the `*_audit_view` accessors, `rank_inputs_fingerprint`.
 - `ranking_view.py`: assemble a candidate's per-dimension score contributions for the detail page.
 - `cost_report.py` / `metrics.py`: the M13 observability surfaces (per-run/per-pass cost + operational trends) over the `run_cost_ledger` / `run_pass_cost` tables.

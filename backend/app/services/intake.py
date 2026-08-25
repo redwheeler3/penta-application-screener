@@ -6,11 +6,17 @@ from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Application, ApplicationParticipation, Opening
+from app.core.time import pacific_today
+from app.db.models import (
+    Application,
+    ApplicationVersion,
+    Opening,
+)
+from app.domain.ages import age_on
 from app.schemas.intake import CanonicalApplicationAnswers, WorkingApplicationAnswers
+from app.services.opening_participation import apply_opening_selection
 
 
 def stored_answers(answers: BaseModel) -> dict[str, Any]:
@@ -31,19 +37,24 @@ def save_working_copy(
     answers: BaseModel,
     *,
     saved_at: datetime,
+    opening_ids: list[int] | None = None,
 ) -> None:
     stored = stored_answers(answers)
     application.working_answers = stored
     application.working_content_hash = content_hash(stored)
     application.working_saved_at = saved_at
+    if opening_ids is not None:
+        application.working_opening_ids = list(opening_ids)
+    application.working_revision = (application.working_revision or 0) + 1
 
 
 def create_application(
     db: Session,
     primary_email: str,
-    answers: WorkingApplicationAnswers,
+    answers: WorkingApplicationAnswers | CanonicalApplicationAnswers,
     *,
     saved_at: datetime,
+    opening_ids: list[int] | None = None,
 ) -> Application:
     application = Application(
         primary_email=primary_email,
@@ -58,7 +69,12 @@ def create_application(
         normalized={},
     )
     db.add(application)
-    save_working_copy(application, answers, saved_at=saved_at)
+    save_working_copy(
+        application,
+        answers,
+        saved_at=saved_at,
+        opening_ids=opening_ids,
+    )
     db.flush()
     return application
 
@@ -67,12 +83,18 @@ def publish_working_copy(
     db: Session,
     application: Application,
     answers: CanonicalApplicationAnswers,
-    opening: Opening,
+    openings: list[Opening],
     *,
     submitted_at: datetime,
 ) -> None:
-    """Atomically replace the committee projection and enroll in one opening."""
-    save_working_copy(application, answers, saved_at=submitted_at)
+    """Atomically replace the committee projection and selected opening participation."""
+    selected_opening_ids = [opening.id for opening in openings]
+    save_working_copy(
+        application,
+        answers,
+        saved_at=submitted_at,
+        opening_ids=selected_opening_ids,
+    )
     stored = stored_answers(answers)
     application.primary_email = str(answers.applicant.email).lower()
     application.applicant_name = _full_name(
@@ -85,34 +107,36 @@ def publish_working_copy(
     )
     application.raw_row = stored
     application.raw_row_hash = content_hash(stored)
-    application.normalized = normalize_answers(answers, move_in_date=opening.move_in_date)
+    application.normalized = normalize_answers(
+        answers,
+        as_of_date=pacific_today(now=submitted_at),
+    )
     application.submitted_at = submitted_at
     application.declaration_accepted_at = submitted_at
-
-    participation = db.scalar(
-        select(ApplicationParticipation).where(
-            ApplicationParticipation.application_id == application.id,
-            ApplicationParticipation.opening_id == opening.id,
-        )
-    )
-    if participation is None:
-        participation = ApplicationParticipation(
+    db.add(
+        ApplicationVersion(
             application_id=application.id,
-            opening_id=opening.id,
+            answers=stored,
+            normalized=application.normalized,
+            selected_opening_ids=selected_opening_ids,
+            content_hash=application.raw_row_hash,
             submitted_at=submitted_at,
             declaration_accepted_at=submitted_at,
         )
-        db.add(participation)
-    else:
-        participation.submitted_at = submitted_at
-        participation.declaration_accepted_at = submitted_at
-        participation.retracted_at = None
+    )
+
+    apply_opening_selection(
+        db,
+        application,
+        openings,
+        submitted_at=submitted_at,
+    )
 
 
 def normalize_answers(
     answers: CanonicalApplicationAnswers,
     *,
-    move_in_date: date,
+    as_of_date: date,
 ) -> dict[str, Any]:
     co_applicant = answers.co_applicant
     co_employment = answers.co_applicant_employment if co_applicant is not None else None
@@ -125,11 +149,15 @@ def normalize_answers(
             if co_applicant is not None
             else None
         ),
-        "applicant_age": _age_on(answers.applicant.birth_date, move_in_date),
+        "applicant_age": age_on(answers.applicant.birth_date, as_of_date),
+        "applicant_birth_date": answers.applicant.birth_date.isoformat(),
         "co_applicant_age": (
-            _age_on(co_applicant.birth_date, move_in_date)
+            age_on(co_applicant.birth_date, as_of_date)
             if co_applicant is not None
             else None
+        ),
+        "co_applicant_birth_date": (
+            co_applicant.birth_date.isoformat() if co_applicant is not None else None
         ),
         "adult_count": 1 + int(co_applicant is not None),
         "child_count": len(answers.children),
@@ -137,7 +165,8 @@ def normalize_answers(
             {
                 "first_name": child.first_name,
                 "last_name": child.last_name,
-                "age": _age_on(child.birth_date, move_in_date),
+                "age": age_on(child.birth_date, as_of_date),
+                "birth_date": child.birth_date.isoformat(),
             }
             for child in answers.children
         ],
@@ -170,8 +199,3 @@ def normalize_answers(
 
 def _full_name(first_name: str, last_name: str) -> str:
     return " ".join((first_name.strip(), last_name.strip()))
-
-
-def _age_on(birth_date: date, on_date: date) -> int:
-    before_birthday = (on_date.month, on_date.day) < (birth_date.month, birth_date.day)
-    return on_date.year - birth_date.year - int(before_birthday)

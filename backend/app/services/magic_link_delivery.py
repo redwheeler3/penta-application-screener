@@ -1,6 +1,7 @@
 """Issue and deliver passwordless access links through the shared email ledger."""
 
 from datetime import UTC, datetime
+from enum import StrEnum
 
 from sqlalchemy.orm import Session
 
@@ -13,6 +14,7 @@ from app.db.models import (
 )
 from app.services.auth_email import (
     application_confirmation_email,
+    application_deleted_email,
     email_change_notice_email,
     magic_link_email,
 )
@@ -22,6 +24,16 @@ from app.services.passwordless_auth import (
     issue_magic_link,
     magic_link_request_allowed,
 )
+
+
+class EmailSendOutcome(StrEnum):
+    SENT = "sent"
+    RECENT = "recent"
+    FAILED = "failed"
+
+    @property
+    def email_sent(self) -> bool:
+        return self == EmailSendOutcome.SENT
 
 
 def send_magic_link(
@@ -39,7 +51,7 @@ def send_magic_link(
     enforce_request_limits: bool = True,
     remember_device: bool = False,
     initiating_session_id: int | None = None,
-) -> bool:
+) -> EmailSendOutcome:
     now = now or datetime.now(UTC)
     if enforce_request_limits and not magic_link_request_allowed(
         db,
@@ -51,7 +63,7 @@ def send_magic_link(
         email=email,
         now=now,
     ):
-        return False
+        return EmailSendOutcome.RECENT
     issued = issue_magic_link(
         db,
         identity_kind=identity_kind,
@@ -72,7 +84,7 @@ def send_magic_link(
         token=issued.token,
         settings=get_settings(),
     )
-    return deliver_email(
+    delivered = deliver_email(
         db,
         sender,
         message,
@@ -83,6 +95,7 @@ def send_magic_link(
         magic_link_token=issued.record,
         now=now,
     )
+    return EmailSendOutcome.SENT if delivered else EmailSendOutcome.FAILED
 
 
 def send_application_confirmation(
@@ -135,6 +148,28 @@ def send_email_change_notice(
         application_id=application.id,
         old_email=old_email,
         new_email=application.primary_email,
+    )
+    return deliver_email(
+        db,
+        sender,
+        message,
+        recipient_kind=PasswordlessIdentityKind.APPLICANT,
+        application_id=application.id,
+        now=now,
+    )
+
+
+def send_application_deleted(
+    db: Session,
+    sender: EmailSender,
+    application: Application,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    now = now or datetime.now(UTC)
+    message = application_deleted_email(
+        application_id=application.id,
+        email=application.primary_email,
     )
     return deliver_email(
         db,

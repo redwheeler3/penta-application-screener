@@ -12,6 +12,11 @@ from typing import Any
 from pydantic import Field
 
 from app.schemas.base import RequestModel, ResponseModel
+from app.schemas.openings import OpeningDetailsOut
+
+
+class CommitteeOpeningOut(OpeningDetailsOut):
+    phase: str
 
 
 class HardFilterReason(ResponseModel):
@@ -113,6 +118,7 @@ class ApplicationSummary(ResponseModel):
     # Whether the current member has starred (favourited) this applicant. Private
     # per member; a personal working aid with no effect on ranking or eligibility.
     starred_by_me: bool = False
+    opening_ids: list[int] = []
     created_at: str | None = None
 
 
@@ -147,3 +153,4 @@ class ApplicationListResponse(ResponseModel):
     # The whole pool, unpaginated; the client derives filters, sorting, and facet
     # counts (status/source/favourites) from it.
     applications: list[ApplicationSummary]
+    openings: list[CommitteeOpeningOut]

@@ -2,7 +2,13 @@ import { ChevronDown, ChevronUp, Star } from "lucide-react";
 import { type ReactNode } from "react";
 import { SOURCE_LABELS, STATUS_LABELS } from "../constants";
 import { flagCategoryLabel } from "../format";
-import type { AppFacets, AppFilter, ApplicationSummary, SortKey, SortState } from "../types";
+import type {
+  AppFacets,
+  AppFilter,
+  ApplicationSummary,
+  SortKey,
+  SortState,
+} from "../types";
 import { StarButton } from "./StarButton";
 
 export function ApplicationsList(props: {

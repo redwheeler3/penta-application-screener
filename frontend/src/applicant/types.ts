@@ -1,4 +1,15 @@
+import type { OpeningDetails } from "../types";
+
 export type YesNo = "" | "yes" | "no";
+
+export type ApplicantOpening = OpeningDetails & {
+  phase: "upcoming" | "open" | "closed" | "archived";
+  selected: boolean;
+  participating: boolean;
+  hasParticipated: boolean;
+  canSelect: boolean;
+  canWithdraw: boolean;
+};
 
 export type PersonDraft = {
   firstName: string;

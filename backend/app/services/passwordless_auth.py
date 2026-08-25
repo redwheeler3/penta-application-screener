@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select, update
+from sqlalchemy import exists, func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -13,6 +13,8 @@ from app.core.text import normalize_email
 from app.core.time import as_utc
 from app.db.models import (
     BrowserSession,
+    EmailDelivery,
+    EmailDeliveryState,
     MagicLinkPurpose,
     MagicLinkToken,
     PasswordlessIdentityKind,
@@ -174,18 +176,33 @@ def magic_link_request_allowed(
         MagicLinkToken.applicant_draft_id == identity_values["applicant_draft_id"],
         MagicLinkToken.user_id == identity_values["user_id"],
     )
+    delivered_or_unrecorded = ~exists(
+        select(EmailDelivery.id).where(
+            EmailDelivery.magic_link_token_id == MagicLinkToken.id,
+            EmailDelivery.state == EmailDeliveryState.FAILED,
+        )
+    )
     coalesce_filters = identity_filters
     if email is not None:
         coalesce_filters = (*identity_filters, MagicLinkToken.email == normalize_email(email))
     latest = db.scalar(
-        select(func.max(MagicLinkToken.created_at)).where(*coalesce_filters)
+        select(func.max(MagicLinkToken.created_at)).where(
+            *coalesce_filters,
+            delivered_or_unrecorded,
+            MagicLinkToken.consumed_at.is_(None),
+            MagicLinkToken.revoked_at.is_(None),
+        )
     )
     if latest is not None and as_utc(latest) > now - coalesce_window:
         return False
     requests_in_window = db.scalar(
         select(func.count())
         .select_from(MagicLinkToken)
-        .where(*identity_filters, MagicLinkToken.created_at > now - rate_window)
+        .where(
+            *identity_filters,
+            delivered_or_unrecorded,
+            MagicLinkToken.created_at > now - rate_window,
+        )
     )
     return int(requests_in_window or 0) < request_limit
 

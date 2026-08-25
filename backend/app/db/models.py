@@ -12,11 +12,13 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
@@ -36,16 +38,19 @@ class ApplicationStatus(StrEnum):
     INELIGIBLE = "ineligible"
 
 
+class OpeningPhase(StrEnum):
+    DRAFT = "draft"
+    UPCOMING = "upcoming"
+    OPEN = "open"
+    CLOSED = "closed"
+    ARCHIVED = "archived"
+
+
 class StatusSource(StrEnum):
     UNTOUCHED = "untouched"  # passed rules, AI didn't flag (or hasn't run)
     RULES = "rules"  # deterministic filters set it ineligible (high trust)
     AI = "ai"  # AI screening pass set it ineligible (low trust — needs review)
     HUMAN = "human"  # a person set the status, either direction
-
-
-class OpeningStatus(StrEnum):
-    OPEN = "open"
-    CLOSED = "closed"
 
 
 class PasswordlessIdentityKind(StrEnum):
@@ -231,9 +236,18 @@ class AdminSetting(TimestampMixin, Base):
 
 class Application(TimestampMixin, Base):
     __tablename__ = "applications"
+    __table_args__ = (
+        Index(
+            "uq_applications_active_primary_email",
+            "primary_email",
+            unique=True,
+            sqlite_where=text("deleted_at IS NULL"),
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    primary_email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
+    primary_email: Mapped[str] = mapped_column(String(320), nullable=False)
     applicant_name: Mapped[str | None] = mapped_column(String(255))
     co_applicant_name: Mapped[str | None] = mapped_column(String(255))
     raw_row: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
@@ -242,8 +256,10 @@ class Application(TimestampMixin, Base):
     # Private applicant edits. The submitted projection above remains unchanged until an
     # explicit publication replaces it, so committee reads and AI caches cannot see drafts.
     working_answers: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    working_opening_ids: Mapped[list[int] | None] = mapped_column(JSON)
     working_content_hash: Mapped[str | None] = mapped_column(String(64))
     working_saved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    working_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     # Null means a never-submitted draft. Existing Google-sourced rows are backfilled as
     # submitted by the M21 migration; built-in drafts start null.
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
@@ -271,18 +287,14 @@ class Opening(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text)
     unit_size_bedrooms: Mapped[int] = mapped_column(Integer, nullable=False)
     housing_charge_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    application_open_date: Mapped[date] = mapped_column(Date, nullable=False)
+    application_close_date: Mapped[date] = mapped_column(Date, nullable=False)
     move_in_date: Mapped[date] = mapped_column(Date, nullable=False)
-    application_deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    status: Mapped[OpeningStatus] = mapped_column(
-        Enum(OpeningStatus, values_callable=enum_values),
-        default=OpeningStatus.CLOSED,
-        nullable=False,
-        index=True,
-    )
+    # Publication is the sole manual lifecycle action. Once published, Pacific calendar dates
+    # determine whether this opening is upcoming, open, closed, or archived.
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
 
 class ApplicationParticipation(TimestampMixin, Base):
@@ -296,36 +308,30 @@ class ApplicationParticipation(TimestampMixin, Base):
         ForeignKey("applications.id"), index=True, nullable=False
     )
     opening_id: Mapped[int] = mapped_column(ForeignKey("openings.id"), index=True, nullable=False)
-    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    declaration_accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    retracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     application: Mapped[Application] = relationship()
     opening: Mapped[Opening] = relationship()
 
 
-class ApplicationCycleSnapshot(Base):
-    """The final submitted application a closed opening's committee actually considered."""
+class ApplicationVersion(Base):
+    """One immutable application publication, independent of opening participation."""
 
-    __tablename__ = "application_cycle_snapshots"
+    __tablename__ = "application_versions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    participation_id: Mapped[int] = mapped_column(
-        ForeignKey("application_participations.id"), unique=True, index=True, nullable=False
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id"), index=True, nullable=False
     )
-    primary_email: Mapped[str] = mapped_column(String(320), nullable=False)
-    applicant_name: Mapped[str | None] = mapped_column(String(255))
-    co_applicant_name: Mapped[str | None] = mapped_column(String(255))
     answers: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     normalized: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    selected_opening_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     declaration_accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    frozen_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
 
-    participation: Mapped[ApplicationParticipation] = relationship()
+    application: Mapped[Application] = relationship()
 
 
 class ApplicantDraft(Base):
@@ -345,6 +351,7 @@ class ApplicantDraft(Base):
         String(64), unique=True, index=True, nullable=False
     )
     working_answers: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    working_opening_ids: Mapped[list[int] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     abandon_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

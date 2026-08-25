@@ -6,13 +6,20 @@ bulk callers should use ``eligibility_snapshot`` to avoid one query per applicat
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Final
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.time import pacific_date, pacific_today
 from app.db.models import AdminSetting, Application, MemberRules
-from app.domain.hard_filters import PetFacts, RulesConfig, evaluate_hard_filters
+from app.domain.ages import age_on
+from app.domain.hard_filters import (
+    PetFacts,
+    RulesConfig,
+    evaluate_hard_filters,
+)
 from app.schemas.settings import EligibilityRules
 
 COMMITTEE_DEFAULT_RULES_KEY: Final = "committee_default_rules"
@@ -93,6 +100,7 @@ def rules_config_from(rules: EligibilityRules) -> RulesConfig:
         allow_other_pets=rules.allow_other_pets,
         employment_requirement=rules.employment_requirement,
         disabled_checks=tuple(rules.disabled_checks),
+        today=pacific_today(),
     )
 
 
@@ -151,7 +159,36 @@ def hard_filter_reasons_for(
     through to ``evaluate_hard_filters`` so the per-member pet limit gates on read; ``None``
     skips the pet check (an unscreened app, or a caller that gates before screening).
     """
-    result = evaluate_hard_filters(
-        application.normalized or {}, rules_config, pet_facts=pet_facts
+    age_date = (
+        pacific_date(application.submitted_at)
+        if application.submitted_at is not None
+        else rules_config.today
     )
+    normalized = normalized_with_ages(application.normalized or {}, age_date)
+    result = evaluate_hard_filters(normalized, rules_config, pet_facts=pet_facts)
     return [_reason_to_payload(reason) for reason in result.reasons]
+
+
+def normalized_with_ages(normalized: dict[str, Any], as_of_date: date) -> dict[str, Any]:
+    if not isinstance(normalized.get("applicant_birth_date"), str):
+        return normalized
+    applicant = dict(normalized)
+    applicant["applicant_age"] = age_on(
+        date.fromisoformat(applicant["applicant_birth_date"]), as_of_date
+    )
+    co_birth_date = applicant.get("co_applicant_birth_date")
+    applicant["co_applicant_age"] = (
+        age_on(date.fromisoformat(co_birth_date), as_of_date)
+        if isinstance(co_birth_date, str)
+        else None
+    )
+    applicant["child_details"] = [
+        {
+            **child,
+            "age": age_on(date.fromisoformat(child["birth_date"]), as_of_date),
+        }
+        if isinstance(child.get("birth_date"), str)
+        else dict(child)
+        for child in normalized.get("child_details", [])
+    ]
+    return applicant

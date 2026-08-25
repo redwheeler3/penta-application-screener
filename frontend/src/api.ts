@@ -7,6 +7,7 @@ import type {
   AppSettings,
   ApplicationDetail,
   ApplicationSummary,
+  CommitteeOpening,
   ConsolidateAuditResponse,
   CostReport,
   Coverage,
@@ -28,6 +29,8 @@ import type {
   LastRunsReport,
   MatchAuditResponse,
   MetricsReport,
+  Opening,
+  OpeningWrite,
   RankEstimateResponse,
   RankingResponse,
   RankingStreamEvent,
@@ -140,6 +143,30 @@ export function logout(): Promise<Response> {
 
 export const fetchSettings = () => getJson<SettingsResponse>("/settings");
 
+// --- Openings (admin only) --------------------------------------------------
+
+export const fetchOpenings = () =>
+  getJson<{ openings: Opening[] }>("/openings").then((payload) => payload.openings);
+
+export function createOpening(opening: OpeningWrite): Promise<Response> {
+  return request("/openings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(opening),
+  });
+}
+
+export function updateOpening(id: number, opening: OpeningWrite): Promise<Response> {
+  return request(`/openings/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(opening),
+  });
+}
+
+export const publishOpening = (id: number) =>
+  request(`/openings/${id}/publish`, { method: "POST" });
+
 export function exchangeSheetCode(code: string): Promise<Response> {
   return request("/settings/exchange-sheet-code", {
     method: "POST",
@@ -245,10 +272,13 @@ export const fetchDashboard = () =>
   getJson<{ counts: DashboardCounts; workflow: WorkflowState; coverage: Coverage }>("/dashboard");
 
 // The whole pool, unpaginated — the client derives filtering/sorting/facets from it.
-export function fetchApplications(): Promise<ApplicationSummary[]> {
-  return getJson<{ applications: ApplicationSummary[] }>("/applications").then(
-    (p) => p.applications,
-  );
+export type ApplicationsResponse = {
+  applications: ApplicationSummary[];
+  openings: CommitteeOpening[];
+};
+
+export function fetchApplications(): Promise<ApplicationsResponse> {
+  return getJson<ApplicationsResponse>("/applications");
 }
 
 export function fetchApplication(id: number): Promise<ApplicationDetail> {

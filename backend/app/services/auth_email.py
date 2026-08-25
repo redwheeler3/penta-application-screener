@@ -155,6 +155,33 @@ def email_change_notice_email(
     )
 
 
+def application_deleted_email(*, application_id: int, email: str) -> OutboundEmail:
+    heading = "Your application has been deleted"
+    introduction = (
+        "Your Penta housing application has been removed from consideration. "
+        "You no longer need to take any action."
+    )
+    text = _with_common_footer(f"""{heading}.
+
+{introduction}""")
+    html = _email_shell(
+        eyebrow="Application update",
+        heading=heading,
+        introduction=introduction,
+        action_url=None,
+        action_label=None,
+        link_notice=None,
+    )
+    return OutboundEmail(
+        kind="application_deleted",
+        recipient_id=f"application:{application_id}",
+        to=(email,),
+        subject=heading,
+        text_body=text,
+        html_body=html,
+    )
+
+
 def _applicant_magic_link_email(
     *, recipient_id: int, email: str, token: str, settings: Settings
 ) -> OutboundEmail:

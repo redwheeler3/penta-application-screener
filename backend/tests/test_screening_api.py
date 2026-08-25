@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
@@ -14,8 +14,10 @@ from app.api.screening import get_ai_provider
 from app.db.models import (
     Application,
     ApplicationNote,
+    ApplicationParticipation,
     ApplicationStar,
     Base,
+    Opening,
     User,
     UserRole,
 )
@@ -221,6 +223,40 @@ async def test_list_embeds_my_star_state_per_row() -> None:
         by_id = {a["id"]: a for a in listing["applications"]}
         assert by_id[starred_app.id]["starredByMe"] is True
         assert by_id[plain_app.id]["starredByMe"] is False
+
+
+@pytest.mark.anyio
+async def test_list_and_detail_expose_opening_participation() -> None:
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    application = add_eligible(db, email="opening@x.com", raw_hash="h1")
+    today = date.today()
+    opening = Opening(
+        unit_size_bedrooms=2,
+        housing_charge_cents=125_000,
+        application_open_date=today - timedelta(days=1),
+        application_close_date=today + timedelta(days=10),
+        move_in_date=today + timedelta(days=30),
+        published_at=datetime.now(UTC),
+    )
+    db.add(opening)
+    db.flush()
+    db.add(
+        ApplicationParticipation(
+            application_id=application.id,
+            opening_id=opening.id,
+            applied_at=datetime.now(UTC),
+        )
+    )
+    db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        listing = (await client.get("/applications")).json()
+        detail = (await client.get(f"/applications/{application.id}")).json()["application"]
+
+    assert listing["openings"][0]["id"] == opening.id
+    assert listing["applications"][0]["openingIds"] == [opening.id]
+    assert detail["openingIds"] == [opening.id]
 
 
 @pytest.mark.anyio

@@ -105,9 +105,9 @@ class WorkingReferenceAnswers(BridgeModel):
 
 class WorkingEmploymentAnswers(BridgeModel):
     status: EmploymentStatus | None = None
-    job_title: str = ""
-    company_name: str = ""
-    start_date: str = ""
+    job_title: str | None = None
+    company_name: str | None = None
+    start_date: str | None = None
     manager: WorkingReferenceAnswers | None = None
 
 

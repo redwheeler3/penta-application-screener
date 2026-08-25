@@ -12,12 +12,12 @@ from app.db.models import (
     ApplicantDraft,
     Application,
     ApplicationParticipation,
+    ApplicationVersion,
     Base,
     BrowserSession,
     MagicLinkPurpose,
     MagicLinkToken,
     Opening,
-    OpeningStatus,
 )
 from app.db.session import get_db
 from app.main import create_app
@@ -40,6 +40,18 @@ def _app_and_db() -> tuple:
     Base.metadata.create_all(engine)
     test_session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     db = test_session()
+    today = date.today()
+    db.add(
+        Opening(
+            unit_size_bedrooms=2,
+            housing_charge_cents=100_000,
+            application_open_date=today - timedelta(days=1),
+            application_close_date=today + timedelta(days=10),
+            move_in_date=today + timedelta(days=30),
+            published_at=datetime.now(UTC),
+        )
+    )
+    db.commit()
     app = create_app()
     sender = CapturedEmailSender()
     app.dependency_overrides[get_db] = lambda: db
@@ -148,6 +160,23 @@ async def test_delivery_failure_never_discards_the_saved_pending_draft() -> None
 
 
 @pytest.mark.anyio
+async def test_delivery_failure_does_not_suppress_an_immediate_retry() -> None:
+    app, db, _sender = _app_and_db()
+    app.dependency_overrides[get_email_sender] = lambda: FailingEmailSender()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        opening = db.scalar(select(Opening))
+        assert opening is not None
+        request = {"answers": _answers(), "openingIds": [opening.id]}
+        first = await client.post("/applicant/access-links/request", json=request)
+        second = await client.post("/applicant/access-links/request", json=request)
+
+    assert first.json()["emailStatus"] == "failed"
+    assert second.json()["emailStatus"] == "failed"
+    assert len(list(db.scalars(select(MagicLinkToken)))) == 2
+
+
+@pytest.mark.anyio
 async def test_save_and_return_later_accepts_an_incomplete_application() -> None:
     app, db, sender = _app_and_db()
     answers = _answers()
@@ -170,6 +199,61 @@ async def test_save_and_return_later_accepts_an_incomplete_application() -> None
     assert response.status_code == 202
     assert db.scalar(select(ApplicantDraft)) is not None
     assert len(sender.messages) == 1
+
+
+@pytest.mark.anyio
+async def test_guest_can_submit_directly_and_receives_application_access() -> None:
+    app, db, sender = _app_and_db()
+    opening = db.scalar(select(Opening))
+    assert opening is not None
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/applicant/submissions",
+            json={
+                "answers": _answers(),
+                "openingIds": [opening.id],
+                "declarationAccepted": True,
+            },
+        )
+
+    application = db.scalar(select(Application))
+    assert response.status_code == 201
+    assert response.json() == {
+        "submitted": True,
+        "emailSent": True,
+        "emailStatus": "sent",
+    }
+    assert application is not None
+    assert application.submitted_at is not None
+    assert db.scalar(select(ApplicationVersion.application_id)) == application.id
+    assert db.scalar(select(ApplicationParticipation.opening_id)) == opening.id
+    assert len(sender.messages) == 1
+
+
+@pytest.mark.anyio
+async def test_guest_with_existing_email_is_stopped_before_review_and_sent_access() -> None:
+    app, _db, sender = _app_and_db()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await _save_draft(client)
+        await client.post(
+            "/applicant/access-links/open",
+            json={"token": _link(sender), "switchCurrent": False},
+        )
+        await client.post("/applicant/auth/logout")
+        response = await client.post(
+            "/applicant/submissions/check",
+            json={"email": "avery@example.com"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "canSubmit": False,
+        "emailSent": True,
+        "emailStatus": "sent",
+    }
+    assert len(sender.messages) == 2
 
 
 @pytest.mark.anyio
@@ -199,6 +283,7 @@ async def test_return_link_request_does_not_reveal_whether_application_exists() 
     assert existing.json() == missing.json() == {
         "accepted": True,
         "currentAnswersSaved": False,
+        "emailStatus": "sent",
     }
     assert "emailSent" not in existing.json() | missing.json()
     assert existing_application.working_answers is None
@@ -253,15 +338,23 @@ async def test_authenticated_return_link_saves_current_answers_before_emailing()
         original_link.created_at = datetime.now(UTC) - timedelta(minutes=10)
         db.commit()
         sender.messages.clear()
+        restored = await client.get("/applicant/application")
         response = await client.post(
             "/applicant/access-links/request",
-            json={"answers": _answers(introduction="Authenticated saved answers")},
+            json={
+                "answers": _answers(introduction="Authenticated saved answers"),
+                "baseRevision": restored.json()["workingRevision"],
+            },
         )
 
     application = db.scalar(select(Application))
     assert application is not None
     assert response.status_code == 202
-    assert response.json() == {"accepted": True, "currentAnswersSaved": True}
+    assert response.json() == {
+        "accepted": True,
+        "currentAnswersSaved": True,
+        "emailStatus": "sent",
+    }
     assert application.working_answers["essays"]["household_introduction"] == (
         "Authenticated saved answers"
     )
@@ -631,18 +724,28 @@ async def test_abandoned_30_day_draft_cannot_be_opened_or_regenerated() -> None:
 
 
 @pytest.mark.anyio
-async def test_authenticated_submission_still_requires_declaration_and_opening() -> None:
+async def test_authenticated_submission_requires_declaration_and_accepts_multiple_openings() -> None:
     app, db, sender = _app_and_db()
-    opening = Opening(
-        title="Synthetic opening",
-        unit_size_bedrooms=2,
-        housing_charge_cents=100000,
-        move_in_date=date(2027, 1, 1),
-        application_deadline=datetime.now(UTC) + timedelta(days=10),
-        status=OpeningStatus.OPEN,
+    opening = db.scalar(select(Opening))
+    assert opening is not None
+    later_opening = Opening(
+        unit_size_bedrooms=3,
+        housing_charge_cents=150_000,
+        application_open_date=opening.application_open_date,
+        application_close_date=opening.application_close_date,
+        move_in_date=opening.move_in_date + timedelta(days=30),
+        published_at=datetime.now(UTC),
     )
-    db.add(opening)
+    db.add(later_opening)
     db.commit()
+    submitted_answers = _answers()
+    submitted_answers["applicantEmployment"] = {
+        "status": "unemployed",
+        "jobTitle": None,
+        "companyName": None,
+        "startDate": None,
+        "manager": None,
+    }
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         await _save_draft(client, intent="submit")
@@ -650,15 +753,237 @@ async def test_authenticated_submission_still_requires_declaration_and_opening()
             "/applicant/access-links/open",
             json={"token": _link(sender), "switchCurrent": False},
         )
+        restored_before_submit = await client.get("/applicant/application")
         rejected = await client.post(
             "/applicant/application/submit",
-            json={"answers": _answers(), "declarationAccepted": False},
+            json={
+                "answers": _answers(),
+                "openingIds": [opening.id, later_opening.id],
+                "declarationAccepted": False,
+            },
         )
         submitted = await client.post(
             "/applicant/application/submit",
-            json={"answers": _answers(), "declarationAccepted": True},
+            json={
+                "answers": submitted_answers,
+                "openingIds": [opening.id, later_opening.id],
+                "declarationAccepted": True,
+                "baseRevision": restored_before_submit.json()["workingRevision"],
+            },
         )
+        restored = await client.get("/applicant/application")
 
     assert rejected.status_code == 422
     assert submitted.status_code == 200
-    assert db.scalar(select(ApplicationParticipation)) is not None
+    assert submitted.json()["answers"] == submitted_answers
+    assert all(opening["participating"] for opening in submitted.json()["openings"])
+    saved_at = datetime.fromisoformat(submitted.json()["workingSavedAt"])
+    assert saved_at.utcoffset() == timedelta(0)
+    assert restored.status_code == 200
+    assert restored.json()["answers"] == submitted_answers
+    assert set(db.scalars(select(ApplicationParticipation.opening_id))) == {
+        opening.id,
+        later_opening.id,
+    }
+    version = db.scalar(select(ApplicationVersion))
+    assert version is not None
+    assert version.selected_opening_ids == [opening.id, later_opening.id]
+
+
+@pytest.mark.anyio
+async def test_stale_browser_cannot_overwrite_a_newer_working_copy() -> None:
+    app, db, sender = _app_and_db()
+    opening = db.scalar(select(Opening))
+    assert opening is not None
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await _save_draft(client)
+        await client.post(
+            "/applicant/access-links/open",
+            json={"token": _link(sender), "switchCurrent": False},
+        )
+        restored = await client.get("/applicant/application")
+        revision = restored.json()["workingRevision"]
+        first_answers = _answers(introduction="Saved by the first browser")
+        second_answers = _answers(introduction="Stale second browser")
+        first = await client.put(
+            "/applicant/application",
+            json={
+                "answers": first_answers,
+                "openingIds": [opening.id],
+                "baseRevision": revision,
+            },
+        )
+        stale = await client.put(
+            "/applicant/application",
+            json={
+                "answers": second_answers,
+                "openingIds": [opening.id],
+                "baseRevision": revision,
+            },
+        )
+        latest = await client.get("/applicant/application")
+
+    assert first.status_code == 200
+    assert stale.status_code == 409
+    assert stale.json()["code"] == "stale_application"
+    assert latest.json()["answers"]["essays"]["householdIntroduction"] == (
+        "Saved by the first browser"
+    )
+
+
+@pytest.mark.anyio
+async def test_revert_restores_the_submitted_answers_and_openings() -> None:
+    app, db, sender = _app_and_db()
+    opening = db.scalar(select(Opening))
+    assert opening is not None
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await _save_draft(client)
+        await client.post(
+            "/applicant/access-links/open",
+            json={"token": _link(sender), "switchCurrent": False},
+        )
+        restored = await client.get("/applicant/application")
+        submitted_answers = _answers(introduction="Committee copy")
+        submitted = await client.post(
+            "/applicant/application/submit",
+            json={
+                "answers": submitted_answers,
+                "openingIds": [opening.id],
+                "declarationAccepted": True,
+                "baseRevision": restored.json()["workingRevision"],
+            },
+        )
+        private_answers = _answers(introduction="Private edit")
+        saved = await client.put(
+            "/applicant/application",
+            json={
+                "answers": private_answers,
+                "openingIds": [],
+                "baseRevision": submitted.json()["workingRevision"],
+            },
+        )
+        reverted = await client.post(
+            "/applicant/application/revert",
+            json={"baseRevision": saved.json()["workingRevision"]},
+        )
+
+    assert saved.json()["hasUnsubmittedChanges"] is True
+    assert not any(item["selected"] for item in saved.json()["openings"])
+    assert reverted.status_code == 200
+    assert reverted.json()["answers"] == submitted_answers
+    assert reverted.json()["hasUnsubmittedChanges"] is False
+    selected = [item for item in reverted.json()["openings"] if item["selected"]]
+    assert [item["id"] for item in selected] == [opening.id]
+
+
+@pytest.mark.anyio
+async def test_delete_withdraws_every_opening_and_revokes_applicant_access() -> None:
+    app, db, sender = _app_and_db()
+    opening = db.scalar(select(Opening))
+    assert opening is not None
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await _save_draft(client)
+        await client.post(
+            "/applicant/access-links/open",
+            json={"token": _link(sender), "switchCurrent": False},
+        )
+        restored = await client.get("/applicant/application")
+        await client.post(
+            "/applicant/application/submit",
+            json={
+                "answers": _answers(),
+                "openingIds": [opening.id],
+                "declarationAccepted": True,
+                "baseRevision": restored.json()["workingRevision"],
+            },
+        )
+        deleted = await client.delete("/applicant/application")
+        after_delete = await client.get("/applicant/application")
+        deletion_message_kind = sender.messages[-1].kind
+        requested_again = await client.post(
+            "/applicant/access-links/request",
+            json={"answers": _answers(), "openingIds": [opening.id]},
+        )
+
+    application = db.scalar(select(Application))
+    participation = db.scalar(select(ApplicationParticipation))
+    assert deleted.status_code == 200
+    assert deleted.json() == {
+        "deleted": True,
+        "emailSent": True,
+        "emailStatus": "sent",
+    }
+    assert after_delete.status_code == 401
+    assert application is not None
+    assert application.deleted_at is not None
+    assert participation is not None
+    assert participation.withdrawn_at is not None
+    assert all(session.revoked_at is not None for session in db.scalars(select(BrowserSession)))
+    assert deletion_message_kind == "application_deleted"
+    assert requested_again.json()["emailStatus"] == "sent"
+    assert sender.messages[-1].kind == "applicant_magic_link"
+
+
+@pytest.mark.anyio
+async def test_delete_physically_removes_a_never_submitted_application() -> None:
+    app, db, sender = _app_and_db()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await _save_draft(client)
+        await client.post(
+            "/applicant/access-links/open",
+            json={"token": _link(sender), "switchCurrent": False},
+        )
+        deleted = await client.delete("/applicant/application")
+
+    assert deleted.status_code == 200
+    assert db.scalar(select(Application)) is None
+    assert db.scalar(select(ApplicantDraft)) is None
+    assert db.scalar(select(MagicLinkToken)) is None
+    assert db.scalar(select(BrowserSession)) is None
+    assert sender.messages[-1].kind == "application_deleted"
+
+
+@pytest.mark.anyio
+async def test_deleted_email_can_start_a_new_blank_application() -> None:
+    app, db, sender = _app_and_db()
+    opening = db.scalar(select(Opening))
+    assert opening is not None
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        first = await client.post(
+            "/applicant/submissions",
+            json={
+                "answers": _answers(),
+                "openingIds": [opening.id],
+                "declarationAccepted": True,
+            },
+        )
+        await client.post(
+            "/applicant/access-links/open",
+            json={"token": _link(sender), "switchCurrent": False},
+        )
+        deleted = await client.delete("/applicant/application")
+        second_answers = _answers(introduction="A completely new application")
+        second = await client.post(
+            "/applicant/submissions",
+            json={
+                "answers": second_answers,
+                "openingIds": [opening.id],
+                "declarationAccepted": True,
+            },
+        )
+
+    applications = list(db.scalars(select(Application).order_by(Application.id)))
+    assert first.status_code == 201
+    assert deleted.status_code == 200
+    assert second.status_code == 201
+    assert len(applications) == 2
+    assert applications[0].deleted_at is not None
+    assert applications[1].deleted_at is None
+    assert applications[1].raw_row["essays"]["household_introduction"] == (
+        "A completely new application"
+    )

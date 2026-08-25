@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -13,6 +13,8 @@ from app.db.models import (
     ApplicantDraft,
     ApplicantDraftIntent,
     Application,
+    EmailDelivery,
+    EmailDeliveryState,
     MagicLinkPurpose,
     MagicLinkToken,
 )
@@ -30,6 +32,7 @@ def save_pending_draft(
     db: Session,
     *,
     answers: WorkingApplicationAnswers,
+    opening_ids: list[int],
     intent: ApplicantDraftIntent,
     draft_token: str | None = None,
     now: datetime | None = None,
@@ -60,6 +63,7 @@ def save_pending_draft(
         db.add(record)
     record.intent = intent
     record.working_answers = answers.model_dump(mode="json")
+    record.working_opening_ids = list(opening_ids)
     record.saved_at = now
     record.abandon_after = now + timedelta(days=30)
     record.resolved_at = None
@@ -120,7 +124,20 @@ def applicant_email_request_allowed(
         MagicLinkToken.email == normalize_email(email),
         MagicLinkToken.purpose == MagicLinkPurpose.APPLICANT_ACCESS,
     )
-    latest = db.scalar(select(func.max(MagicLinkToken.created_at)).where(*filters))
+    delivered_or_unrecorded = ~exists(
+        select(EmailDelivery.id).where(
+            EmailDelivery.magic_link_token_id == MagicLinkToken.id,
+            EmailDelivery.state == EmailDeliveryState.FAILED,
+        )
+    )
+    latest = db.scalar(
+        select(func.max(MagicLinkToken.created_at)).where(
+            *filters,
+            delivered_or_unrecorded,
+            MagicLinkToken.consumed_at.is_(None),
+            MagicLinkToken.revoked_at.is_(None),
+        )
+    )
     if latest is not None and as_utc(latest) > now - timedelta(
         seconds=settings.magic_link_coalesce_seconds
     ):
@@ -130,6 +147,7 @@ def applicant_email_request_allowed(
         .select_from(MagicLinkToken)
         .where(
             *filters,
+            delivered_or_unrecorded,
             MagicLinkToken.created_at
             > now - timedelta(minutes=settings.magic_link_rate_window_minutes),
         )

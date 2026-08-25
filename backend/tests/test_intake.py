@@ -4,14 +4,15 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from app.core.time import as_utc
 from app.db.models import (
     Application,
-    ApplicationCycleSnapshot,
     ApplicationParticipation,
+    ApplicationVersion,
     Base,
     Opening,
-    OpeningStatus,
 )
+from app.domain.hard_filters import RulesConfig
 from app.schemas.intake import (
     AddressAnswers,
     CanonicalApplicationAnswers,
@@ -22,7 +23,14 @@ from app.schemas.intake import (
     PersonAnswers,
     ReferenceAnswers,
 )
-from app.services.intake import canonical_answers, content_hash, save_working_copy
+from app.services.intake import (
+    canonical_answers,
+    content_hash,
+    normalize_answers,
+    publish_working_copy,
+    save_working_copy,
+)
+from app.services.rules import hard_filter_reasons_for
 
 
 def _answers() -> CanonicalApplicationAnswers:
@@ -190,50 +198,77 @@ def test_working_copy_does_not_replace_submitted_projection() -> None:
     assert application.working_saved_at == saved_at
 
 
-def test_opening_participation_and_closed_cycle_snapshot_are_separate() -> None:
+def test_publication_records_participation_and_an_application_version() -> None:
     db = _session()
     submitted_at = datetime(2026, 8, 23, tzinfo=UTC)
     application = Application(
         primary_email="avery@example.com",
-        applicant_name="Avery Example",
-        raw_row={"answer": "submitted"},
-        raw_row_hash="content-hash",
-        normalized={"applicant_name": "Avery Example"},
-        submitted_at=submitted_at,
-        declaration_accepted_at=submitted_at,
+        raw_row={},
+        raw_row_hash=content_hash({}),
+        normalized={},
     )
     opening = Opening(
-        title="Synthetic three-bedroom opening",
         unit_size_bedrooms=3,
         housing_charge_cents=120_000,
+        application_open_date=date(2026, 8, 1),
+        application_close_date=date(2026, 9, 1),
         move_in_date=date(2026, 10, 1),
-        application_deadline=datetime(2026, 7, 31, 23, 59, tzinfo=UTC),
-        status=OpeningStatus.OPEN,
+        published_at=datetime(2026, 7, 1, tzinfo=UTC),
     )
     db.add_all([application, opening])
     db.flush()
-    participation = ApplicationParticipation(
-        application_id=application.id,
-        opening_id=opening.id,
-        submitted_at=submitted_at,
-        declaration_accepted_at=submitted_at,
-    )
-    db.add(participation)
-    db.flush()
-    db.add(
-        ApplicationCycleSnapshot(
-            participation_id=participation.id,
-            primary_email=application.primary_email,
-            applicant_name=application.applicant_name,
-            co_applicant_name=application.co_applicant_name,
-            answers=application.raw_row,
-            normalized=application.normalized,
-            content_hash=application.raw_row_hash,
-            submitted_at=submitted_at,
-            declaration_accepted_at=submitted_at,
-        )
-    )
+    publish_working_copy(db, application, _answers(), [opening], submitted_at=submitted_at)
     db.commit()
 
+    participation = db.query(ApplicationParticipation).one()
     assert participation.application_id == application.id
-    assert db.query(ApplicationCycleSnapshot).one().answers == {"answer": "submitted"}
+    assert as_utc(participation.applied_at) == submitted_at
+    version = db.query(ApplicationVersion).one()
+    assert version.application_id == application.id
+    assert version.selected_opening_ids == [opening.id]
+    assert version.content_hash == application.raw_row_hash
+
+
+def test_age_checks_are_anchored_to_last_submitted_edit() -> None:
+    answers = _answers().model_copy(
+        update={
+            "applicant": _answers().applicant.model_copy(
+                update={"birth_date": date(2008, 9, 15)}
+            ),
+            "co_applicant": _answers().co_applicant.model_copy(
+                update={"birth_date": date(2008, 9, 10)}
+            ),
+            "children": [
+                ChildAnswers(
+                    first_name="Casey",
+                    last_name="Example",
+                    birth_date=date(2008, 9, 20),
+                )
+            ],
+        }
+    )
+    application = Application(
+        primary_email="avery@example.com",
+        raw_row={},
+        raw_row_hash=content_hash({}),
+        normalized=normalize_answers(answers, as_of_date=date(2026, 9, 9)),
+        submitted_at=datetime(2026, 9, 16, 18, tzinfo=UTC),
+    )
+    submitted_between_birthdays = hard_filter_reasons_for(
+        RulesConfig(min_adult_age=18, max_child_age=17, today=date(2030, 1, 1)),
+        application,
+    )
+    application.submitted_at = datetime(2026, 9, 21, 18, tzinfo=UTC)
+    submitted_after_child_birthday = hard_filter_reasons_for(
+        RulesConfig(min_adult_age=18, max_child_age=17, today=date(2030, 1, 1)),
+        application,
+    )
+
+    assert not {
+        "applicant_under_min_age",
+        "co_applicant_under_min_age",
+        "child_age_over_max",
+    } & {reason["code"] for reason in submitted_between_birthdays}
+    assert "child_age_over_max" in {
+        reason["code"] for reason in submitted_after_child_birthday
+    }

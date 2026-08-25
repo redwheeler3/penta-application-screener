@@ -1,9 +1,9 @@
-import { CheckCircle2, ChevronLeft, FileCheck2, Mail, Plus, Save, ShieldCheck, Trash2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronLeft, FileCheck2, Mail, Plus, Save, ShieldCheck, Trash2 } from "lucide-react";
 import { type FormEvent, type InvalidEvent, useEffect, useRef, useState } from "react";
 
 import { BrandLockup } from "../BrandLockup";
 import { HeaderAccount } from "../HeaderAccount";
-import { TECH_SUPPORT_EMAIL } from "../support";
+import { TECH_SUPPORT_EMAIL, TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import {
   hasDraftContent,
   remembersDevice,
@@ -12,6 +12,7 @@ import {
 } from "./draftStorage";
 import {
   type ApplicantDraft,
+  type ApplicantOpening,
   type EmploymentDraft,
   householdIncome,
   emptyApplicantDraft,
@@ -35,18 +36,38 @@ export function ApplicantApp() {
   const [declarationAccepted, setDeclarationAccepted] = useState(false);
   const [rememberDevice, setRememberDeviceState] = useState(remembersDevice);
   const [emailChangeOpen, setEmailChangeOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const invalidTarget = useRef<HTMLElement | null>(null);
+  const openingsRef = useRef<HTMLElement | null>(null);
+  const [openingError, setOpeningError] = useState(false);
   const persistence = useApplicantPersistence(draft, setDraft, changeRememberDevice);
 
   useEffect(() => {
-    if (!persistence.authenticated || !rememberDevice || persistence.applicationId == null) return;
+    if (
+      !persistence.authenticated
+      || !rememberDevice
+      || persistence.applicationId == null
+      || persistence.workingRevision == null
+    ) return;
     const timeout = window.setTimeout(
-      () => setSavedAt(saveApplicationDraft(persistence.applicationId!, draft)),
+      () => setSavedAt(saveApplicationDraft(
+        persistence.applicationId!,
+        draft,
+        persistence.openingIds,
+        persistence.workingRevision!,
+      )),
       350,
     );
     return () => window.clearTimeout(timeout);
-  }, [draft, persistence.applicationId, persistence.authenticated, rememberDevice]);
+  }, [
+    draft,
+    persistence.applicationId,
+    persistence.authenticated,
+    persistence.openingIds,
+    persistence.workingRevision,
+    rememberDevice,
+  ]);
 
   useEffect(() => {
     if (!persistence.reviewAfterAccess) return;
@@ -95,8 +116,24 @@ export function ApplicantApp() {
 
   async function review(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    const currentSelected = persistence.openings.some((opening) => (
+      opening.phase !== "archived" && persistence.openingIds.includes(opening.id)
+    ));
+    const withdrawing = persistence.openings.some((opening) => (
+      opening.phase !== "archived"
+      && opening.participating
+      && !persistence.openingIds.includes(opening.id)
+    ));
+    if (!currentSelected && !withdrawing) {
+      setOpeningError(true);
+      const top = (openingsRef.current?.getBoundingClientRect().top ?? 0) + window.scrollY - 110;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      return;
+    }
+    setOpeningError(false);
     validateFormFields(formRef.current);
     if (!formRef.current?.reportValidity()) return;
+    if (!(await persistence.prepareGuestReview())) return;
     if (!(await persistence.saveForReview())) return;
     setReviewing(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -134,14 +171,23 @@ export function ApplicantApp() {
     setReviewing(false);
   }
 
+  async function revertToSubmitted(): Promise<void> {
+    if (!window.confirm("Revert your private changes to the last submitted application?")) return;
+    if (await persistence.revertToSubmitted()) {
+      setSavedAt(null);
+      setReviewing(false);
+      setDeclarationAccepted(false);
+    }
+  }
+
   function changeRememberDevice(remember: boolean): void {
     setRememberDevice(remember);
     setRememberDeviceState(remember);
     if (!remember) setSavedAt(null);
   }
 
-  function signOut(): void {
-    void persistence.signOut();
+  async function signOut(): Promise<void> {
+    if (!(await persistence.signOut())) return;
     setDraft(emptyApplicantDraft());
     setSavedAt(null);
     setReviewing(false);
@@ -152,6 +198,19 @@ export function ApplicantApp() {
     if (await persistence.stopEmailChange()) setEmailChangeOpen(false);
   }
 
+  const showDeleteApplication = persistence.authenticated
+    && persistence.openingsLoaded
+    && ![
+      "deleted",
+      "session_expired",
+      "link_ready",
+      "link_conflict",
+      "link_expired",
+      "link_invalid",
+      "access_link_sent",
+      "load_error",
+    ].includes(persistence.phase);
+
   return (
     <div className="applicant-surface">
       <header className="applicant-header">
@@ -159,8 +218,8 @@ export function ApplicantApp() {
           <a className="applicant-brand" href="https://www.pentacoop.com/">
             <BrandLockup />
           </a>
-          {persistence.authenticated ? (
-            <HeaderAccount email={persistence.primaryEmail || draft.applicant.email || null} onSignOut={signOut} />
+          {persistence.authenticated && persistence.phase !== "session_expired" ? (
+            <HeaderAccount email={persistence.primaryEmail || draft.applicant.email || null} onSignOut={() => void signOut()} />
           ) : null}
         </div>
       </header>
@@ -178,8 +237,17 @@ export function ApplicantApp() {
           ) : null}
         </div>
 
-        {persistence.phase === "submitted" ? (
-          <ApplicationComplete submitted />
+        {persistence.phase === "deleted" ? (
+          <ApplicationDeleted emailSent={persistence.deletionEmailSent} />
+        ) : persistence.phase === "session_expired" ? (
+          <ApplicationSessionExpired onEmail={() => void persistence.emailSessionAccessLink()} />
+        ) : persistence.phase === "submitted" ? (
+          <ApplicationComplete submitted emailSent={persistence.submissionEmailSent} />
+        ) : persistence.phase === "access_link_sent" ? (
+          <AccessLinkSent
+            purpose={persistence.accessPurpose}
+            message={persistence.message}
+          />
         ) : persistence.phase === "link_ready" && persistence.accessEmail ? (
           <AccessLinkReady
             email={persistence.accessEmail}
@@ -198,20 +266,37 @@ export function ApplicantApp() {
           <ExpiredAccessLink purpose={persistence.accessPurpose} onEmailNew={() => void persistence.emailNewAccessLink()} />
         ) : persistence.phase === "link_invalid" ? (
           <InvalidAccessLink />
+        ) : !persistence.openingsLoaded && (
+          persistence.phase === "load_error" || persistence.phase === "error"
+        ) ? (
+          <ApplicationLoadError
+            message={persistence.message}
+            onRetry={() => void persistence.retryInitialLoad()}
+          />
         ) : reviewing ? (
           <ApplicationReview
             draft={draft}
+            openings={persistence.openings}
+            selectedOpeningIds={persistence.openingIds}
             declarationAccepted={declarationAccepted}
             persistencePhase={persistence.phase}
             persistenceMessage={persistence.message}
             authenticated={persistence.authenticated}
             onRetry={() => void persistence.resendCurrentIntent()}
+            onReload={() => void persistence.reloadLatestApplication()}
             onDeclarationChange={setDeclarationAccepted}
             onSubmit={() => void persistence.start("submit")}
             onEdit={() => {
               persistence.clearActionFeedback();
               setReviewing(false);
             }}
+          />
+        ) : !persistence.openingsLoaded ? (
+          <p className="applicant-loading" role="status">Loading application details…</p>
+        ) : !persistence.canEdit ? (
+          <ApplicationsUnavailable
+            authenticated={persistence.authenticated}
+            openings={persistence.openings}
           />
         ) : (
           <form
@@ -221,6 +306,17 @@ export function ApplicantApp() {
             onInvalid={revealInvalidField}
           >
             <Introduction />
+            {persistence.hasUnsubmittedChanges ? <PrivateChangesNotice /> : null}
+            <OpeningSelection
+              sectionRef={openingsRef}
+              openings={persistence.openings}
+              selectedIds={persistence.openingIds}
+              showError={openingError}
+              onChange={(openingId, selected) => {
+                setOpeningError(false);
+                persistence.setOpeningSelected(openingId, selected);
+              }}
+            />
             <HouseholdSection
               draft={draft}
               update={update}
@@ -248,19 +344,23 @@ export function ApplicantApp() {
             <IncomeSection draft={draft} update={update} />
 
             <div className="applicant-actions">
-              <button
-                className="applicant-danger-link"
-                type="button"
-                onClick={discardLocalDraft}
-              >
-                <Trash2 size={16} />
-                Clear this draft
-              </button>
+              {persistence.authenticated ? (
+                persistence.hasSubmittedApplication && persistence.hasUnsubmittedChanges ? (
+                  <button className="text-button" type="button" onClick={() => void revertToSubmitted()}>
+                    <ChevronLeft size={16} /> Revert to last submitted application
+                  </button>
+                ) : <span />
+              ) : (
+                <button className="applicant-danger-link" type="button" onClick={discardLocalDraft}>
+                  <Trash2 size={16} /> Clear this draft
+                </button>
+              )}
               <div className="applicant-action-stack">
                 <PersistenceActionStatus
                   phase={persistence.phase}
                   message={persistence.message}
                   onRetry={() => void persistence.resendCurrentIntent()}
+                  onReload={() => void persistence.reloadLatestApplication()}
                 />
                 <div className="applicant-action-group">
                   <button
@@ -280,12 +380,35 @@ export function ApplicantApp() {
             </div>
           </form>
         )}
+
+        {showDeleteApplication ? (
+          <ApplicationDeletion
+            open={deleteConfirmOpen}
+            status={persistence.deletionStatus}
+            message={persistence.deletionMessage}
+            onOpen={() => setDeleteConfirmOpen(true)}
+            onCancel={() => {
+              persistence.clearDeletionFeedback();
+              setDeleteConfirmOpen(false);
+            }}
+            onDelete={() => void persistence.removeApplication()}
+            onReauthenticate={() => void persistence.emailDeletionReauthentication()}
+          />
+        ) : null}
       </main>
 
       <footer className="applicant-footer">
-        <span>© Penta Co-operative Housing Association</span>
-        <a href="https://www.pentacoop.com/privacy.html">Privacy</a>
-        <a href={`mailto:${TECH_SUPPORT_EMAIL}`} target="_blank" rel="noreferrer">Technical help</a>
+        <p>
+          <a href="https://www.pentacoop.com/privacy.html">Privacy Policy</a>
+          <span aria-hidden="true">·</span>
+          <a href="https://www.pentacoop.com/terms.html">Terms of Service</a>
+        </p>
+        <p>
+          Website designed by{" "}
+          <a href="https://www.jeffo.net" target="_blank" rel="noopener noreferrer">
+            Jeff Oriecuia
+          </a>
+        </p>
       </footer>
     </div>
   );
@@ -325,6 +448,139 @@ function Introduction() {
       </div>
     </section>
   );
+}
+
+function OpeningSelection(props: {
+  sectionRef: React.RefObject<HTMLElement | null>;
+  openings: ApplicantOpening[];
+  selectedIds: number[];
+  showError: boolean;
+  onChange: (openingId: number, selected: boolean) => void;
+}) {
+  const currentOpenings = props.openings.filter((opening) => opening.phase !== "archived");
+  return (
+    <section
+      ref={props.sectionRef}
+      className={`applicant-opening-section${props.showError ? " has-error" : ""}`}
+    >
+      <div className="applicant-opening-heading">
+        <CalendarDays size={22} />
+        <div>
+          <h2>Which opening are you applying for?</h2>
+          <p>Select every home you would like the membership committee to consider you for.</p>
+        </div>
+      </div>
+      {props.showError ? (
+        <p className="applicant-opening-error" role="alert">
+          Choose at least one opening before reviewing your application.
+        </p>
+      ) : null}
+      <div className="applicant-opening-options">
+        {currentOpenings.map((opening) => {
+          const selected = props.selectedIds.includes(opening.id);
+          const enabled = opening.canSelect || opening.canWithdraw;
+          return (
+            <label
+              key={opening.id}
+              className={`applicant-opening-option${selected ? " is-selected" : ""}${enabled ? "" : " is-disabled"}`}
+            >
+              <input
+                type="checkbox"
+                checked={selected}
+                disabled={!enabled}
+                onChange={(event) => props.onChange(opening.id, event.target.checked)}
+              />
+              <span className="applicant-opening-copy">
+                <strong>{openingLabel(opening)}</strong>
+                <span className="applicant-opening-phase">{openingPhaseLabel(opening)}</span>
+                <span className="applicant-opening-dates">
+                  <span><b>Opens</b>{formatOpeningDate(opening.applicationOpenDate)}</span>
+                  <span><b>Closes</b>{formatOpeningDate(opening.applicationCloseDate)}</span>
+                  <span><b>Move-in</b>{formatOpeningDate(opening.moveInDate)}</span>
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ApplicationsUnavailable(props: {
+  authenticated: boolean;
+  openings: ApplicantOpening[];
+}) {
+  const upcoming = props.openings.filter((opening) => opening.phase === "upcoming");
+  const waitingForOpening = props.authenticated && upcoming.length > 0;
+  return (
+    <section className="applications-unavailable">
+      <CalendarDays size={30} />
+      <h2>{waitingForOpening
+        ? "Application editing hasn’t opened yet"
+        : props.authenticated
+          ? "Application editing is closed"
+          : "Applications aren’t open right now"}</h2>
+      <p>
+        {waitingForOpening
+          ? "You can edit your application when applications open."
+          : props.authenticated
+          ? "Your application can’t be changed after the move-in date."
+          : "Visit the Penta website for current housing and vacancy information."}
+      </p>
+      {upcoming.length > 0 ? (
+        <div className="applications-upcoming-list">
+          {upcoming.map((opening) => (
+            <div key={opening.id}>
+              <strong>{openingLabel(opening)}</strong>
+              <span>Applications open {formatOpeningDate(opening.applicationOpenDate)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <a className="applicant-primary-button" href="https://www.pentacoop.com/">
+        Visit the Penta website
+      </a>
+    </section>
+  );
+}
+
+function ApplicationLoadError(props: { message: string; onRetry: () => void }) {
+  return (
+    <section className="existing-application-choice" role="alert">
+      <ShieldCheck size={28} />
+      <h2>We couldn’t load your application</h2>
+      <p><ApplicantErrorMessage message={props.message} /></p>
+      {props.message !== TECH_SUPPORT_ERROR_MESSAGE ? (
+        <button className="applicant-secondary-button" type="button" onClick={props.onRetry}>
+          Load it again
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+function openingLabel(opening: ApplicantOpening): string {
+  const unit = `${opening.unitSizeBedrooms}-bedroom home`;
+  const charge = (opening.housingChargeCents / 100).toLocaleString("en-CA", {
+    style: "currency",
+    currency: "CAD",
+    maximumFractionDigits: opening.housingChargeCents % 100 === 0 ? 0 : 2,
+  });
+  return `${unit} · ${charge} per month`;
+}
+
+function openingPhaseLabel(opening: ApplicantOpening): string {
+  if (opening.phase === "open") return "Applications are open";
+  if (opening.phase === "closed") return "Applications are closed";
+  if (opening.phase === "archived") return "Opening is archived";
+  if (opening.phase === "upcoming") return "Applications have not opened yet";
+  return "Opening status unavailable";
+}
+
+function formatOpeningDate(value: string): string {
+  return new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeZone: "UTC" })
+    .format(new Date(`${value}T12:00:00Z`));
 }
 
 function HouseholdSection(props: {
@@ -406,7 +662,7 @@ function HouseholdSection(props: {
         checked={draft.hasCoApplicant}
         onChange={(hasCoApplicant) => update((current) => ({ ...current, hasCoApplicant }))}
         title="Include a co-applicant"
-        description="Uncheck this if no other adult will be part of your household. Only the primary applicant can edit the application."
+        description="Uncheck this if no other adult will be part of your household."
       />
       {draft.hasCoApplicant ? (
         <div className="conditional-fields">
@@ -595,16 +851,27 @@ function IncomeSection(props: { draft: ApplicantDraft; update: (fn: DraftUpdater
 
 function ApplicationReview(props: {
   draft: ApplicantDraft;
+  openings: ApplicantOpening[];
+  selectedOpeningIds: number[];
   declarationAccepted: boolean;
   persistencePhase: string;
   persistenceMessage: string;
   authenticated: boolean;
   onRetry: () => void;
+  onReload: () => void;
   onDeclarationChange: (accepted: boolean) => void;
   onSubmit: () => void;
   onEdit: () => void;
 }) {
   const d = props.draft;
+  const selectedOpenings = props.openings.filter((opening) => (
+    opening.phase !== "archived" && props.selectedOpeningIds.includes(opening.id)
+  ));
+  const withdrawnOpenings = props.openings.filter((opening) => (
+    opening.phase !== "archived" &&
+    opening.participating &&
+    !props.selectedOpeningIds.includes(opening.id)
+  ));
   return (
     <div className="application-review">
       <div className="review-notice">
@@ -614,6 +881,20 @@ function ApplicationReview(props: {
           <span>Nothing has been sent to the membership committee.</span>
         </div>
       </div>
+      <ReviewSection title="Openings">
+        <ReviewRow
+          label="Applying for"
+          value={selectedOpenings.length > 0
+            ? selectedOpenings.map(openingLabel).join(", ")
+            : "None"}
+        />
+        {withdrawnOpenings.length > 0 ? (
+          <ReviewRow
+            label="Withdrawing from"
+            value={withdrawnOpenings.map(openingLabel).join(", ")}
+          />
+        ) : null}
+      </ReviewSection>
       <ReviewSection title="Household">
         <ReviewRow label="Primary applicant" value={`${d.applicant.firstName} ${d.applicant.lastName}`} />
         <ReviewRow label="Email" value={d.applicant.email} />
@@ -664,6 +945,7 @@ function ApplicationReview(props: {
           phase={props.persistencePhase}
           message={props.persistenceMessage}
           onRetry={props.onRetry}
+          onReload={props.onReload}
         />
         <div className="review-actions">
           <button className="applicant-secondary-button" type="button" onClick={props.onEdit}>
@@ -675,8 +957,8 @@ function ApplicationReview(props: {
             disabled={!props.declarationAccepted}
             onClick={props.onSubmit}
           >
-            {props.authenticated ? "Submit application" : "Save and email secure link"}
-            {props.authenticated ? <FileCheck2 size={18} /> : <Mail size={18} />}
+            Submit application
+            <FileCheck2 size={18} />
           </button>
         </div>
       </div>
@@ -688,12 +970,29 @@ function PersistenceActionStatus(props: {
   phase: string;
   message: string;
   onRetry: () => void;
+  onReload: () => void;
 }) {
+  if (props.phase === "authentication_required") {
+    return (
+      <div className="persistence-action-status" role="status">
+        <span>{props.message}</span>
+      </div>
+    );
+  }
   if (props.phase === "error") {
     return (
       <div className="persistence-action-status error" role="alert">
         <strong>We couldn't continue</strong>
-        <span>{props.message}</span>
+        <ApplicantErrorMessage message={props.message} />
+      </div>
+    );
+  }
+  if (props.phase === "stale_copy") {
+    return (
+      <div className="persistence-action-status error" role="alert">
+        <strong>This application changed in another tab</strong>
+        <span>Your answers here have not been overwritten.</span>
+        <button type="button" onClick={props.onReload}>Reload the latest saved copy</button>
       </div>
     );
   }
@@ -715,7 +1014,7 @@ function PersistenceActionStatus(props: {
         <span className="persistence-action-confirmation">
           <Mail size={16} /> Application saved for 30 days
         </span>
-        <span>Check your email for a secure return link.</span>
+        <span>Check your email for a secure link to your application.</span>
         <span>
           Didn’t receive it? Double-check the email address above, then{" "}
           <button type="button" onClick={props.onRetry}>try again</button>.
@@ -723,19 +1022,117 @@ function PersistenceActionStatus(props: {
       </div>
     );
   }
+  if (props.phase === "email_failed") {
+    return (
+      <div className="persistence-action-status error" role="alert">
+        <strong>Application saved for 30 days</strong>
+        <span>We couldn’t email the secure link.</span>
+        <ApplicantErrorMessage message={TECH_SUPPORT_ERROR_MESSAGE} />
+      </div>
+    );
+  }
   return null;
 }
 
-function ApplicationComplete(props: { submitted: boolean }) {
+function PrivateChangesNotice() {
+  return (
+    <div className="private-changes-notice" role="status">
+      <strong>Your changes are private</strong>
+      <span>Submit the application when you are ready for the membership committee to see them.</span>
+    </div>
+  );
+}
+
+function ApplicationComplete(props: { submitted: boolean; emailSent: boolean }) {
   return (
     <section className="application-complete">
       <CheckCircle2 size={34} />
       <h2>{props.submitted ? "Application submitted" : "Application saved"}</h2>
       <p>
-        {props.submitted
-          ? "Your application has been sent to the membership committee. A confirmation and secure return link are on their way."
-          : "Your private application draft is saved. A secure return link is on its way."}
+        {props.submitted && props.emailSent
+          ? "An email confirmation with a link to edit your application in the future is on the way."
+          : props.submitted
+            ? <>Your application was submitted, but we couldn’t email the editing link. <ApplicantErrorMessage message={TECH_SUPPORT_ERROR_MESSAGE} /></>
+            : "Your private application draft is saved. An email with a link to continue editing is on the way."}
       </p>
+    </section>
+  );
+}
+
+function ApplicationDeleted(props: { emailSent: boolean }) {
+  return (
+    <section className="application-complete">
+      <CheckCircle2 size={34} />
+      <h2>Application deleted</h2>
+      <p>Your application has been removed from consideration for every opening.</p>
+      {!props.emailSent ? (
+        <p>We couldn’t email a confirmation, but the deletion is complete.</p>
+      ) : null}
+    </section>
+  );
+}
+
+function ApplicationSessionExpired(props: { onEmail: () => void }) {
+  return (
+    <section className="existing-application-choice">
+      <ShieldCheck size={28} />
+      <h2>Sign in to continue</h2>
+      <p>Your application session has ended. We can email you a secure link to sign in again.</p>
+      <button className="applicant-primary-button" type="button" onClick={props.onEmail}>
+        Email me a secure link
+      </button>
+    </section>
+  );
+}
+
+function ApplicationDeletion(props: {
+  open: boolean;
+  status: "idle" | "working" | "reauth" | "error";
+  message: string;
+  onOpen: () => void;
+  onCancel: () => void;
+  onDelete: () => void;
+  onReauthenticate: () => void;
+}) {
+  if (!props.open) {
+    return (
+      <div className="application-delete-entry">
+        <button className="applicant-danger-link" type="button" onClick={props.onOpen}>
+          <Trash2 size={16} /> Delete application
+        </button>
+      </div>
+    );
+  }
+  return (
+    <section className="application-delete-confirm" aria-labelledby="delete-application-title">
+      <h2 id="delete-application-title">Delete your application?</h2>
+      <p>
+        It will be removed from consideration for every opening, and you will be signed out.
+        This cannot be undone.
+      </p>
+      {props.message ? (
+        <p className={props.status === "error" ? "field-error" : undefined} role="status">
+          <ApplicantErrorMessage message={props.message} />
+        </p>
+      ) : null}
+      {props.status === "reauth" ? (
+        <button className="applicant-secondary-button compact" type="button" onClick={props.onReauthenticate}>
+          Email me a fresh sign-in link
+        </button>
+      ) : null}
+      <div className="applicant-action-group">
+        <button className="applicant-secondary-button" type="button" onClick={props.onCancel}>
+          Keep application
+        </button>
+        <button
+          className="applicant-danger-button"
+          type="button"
+          disabled={props.status === "working"}
+          onClick={props.onDelete}
+        >
+          {props.status === "working" ? "Deleting…" : "Delete application"}
+        </button>
+      </div>
     </section>
   );
 }
@@ -772,6 +1169,24 @@ function AccessLinkReady(props: {
       >
         {props.purpose === "email_change" ? "Confirm email address" : "Open application"}
       </button>
+    </section>
+  );
+}
+
+function AccessLinkSent(props: {
+  purpose: "applicant_access" | "email_change";
+  message: string;
+}) {
+  return (
+    <section className="existing-application-choice">
+      <Mail size={28} />
+      <h2>Check your email</h2>
+      <p>{props.message}</p>
+      <p>
+        {props.purpose === "email_change"
+          ? "Your email address will not change until you open the link."
+          : "Your application remains safely saved while you wait."}
+      </p>
     </section>
   );
 }
@@ -863,6 +1278,9 @@ function InvalidAccessLink() {
       <ShieldCheck size={28} />
       <h2>This link cannot open an application</h2>
       <p>It may be incomplete, or its private draft may have passed the 30-day retention period.</p>
+      <a className="applicant-secondary-button" href={window.location.pathname}>
+        Go to the application form
+      </a>
     </section>
   );
 }
@@ -1014,7 +1432,7 @@ function ReturnLinkAction(props: {
       ) : null}
       {props.status === "error" ? (
         <small className="field-error" role="alert">
-          We couldn’t request a return link. Email{" "}
+          We couldn’t request an application link. Email{" "}
           <a href={`mailto:${TECH_SUPPORT_EMAIL}`} target="_blank" rel="noreferrer">
             Penta Tech Support
           </a>.
@@ -1102,7 +1520,9 @@ function EmailChangeField(props: {
           autoFocus
         />
         {validationMessage ? <small className="field-error">{validationMessage}</small> : null}
-        {props.status === "error" && props.message ? <small className="field-error">{props.message}</small> : null}
+        {props.status === "error" && props.message ? (
+          <small className="field-error"><ApplicantErrorMessage message={props.message} /></small>
+        ) : null}
         {props.needsReauthentication ? (
           <button className="text-button email-reauthentication-button" type="button" onClick={props.onRequestReauthentication}>
             Email me a fresh sign-in link
@@ -1116,6 +1536,18 @@ function EmailChangeField(props: {
         </button>
       </div>
     </div>
+  );
+}
+
+function ApplicantErrorMessage(props: { message: string }) {
+  if (props.message !== TECH_SUPPORT_ERROR_MESSAGE) return <>{props.message}</>;
+  return (
+    <>
+      Something went wrong. Email{" "}
+      <a href={`mailto:${TECH_SUPPORT_EMAIL}`} target="_blank" rel="noreferrer">
+        Penta Tech Support
+      </a>.
+    </>
   );
 }
 

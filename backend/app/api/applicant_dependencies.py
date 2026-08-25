@@ -37,11 +37,11 @@ def require_recent_applicant(
     request: Request,
     application: Application = Depends(require_current_application),
 ) -> Application:
-    """Require a sign-in within the sensitive-action window for an identity change."""
+    """Require a sign-in within the sensitive-action window."""
     browser_session = getattr(request.state, "passwordless_session", None)
     if browser_session is None or not recently_authenticated(browser_session):
         raise Problem(
             "recent_authentication_required",
-            detail="Sign in again before changing your email address.",
+            detail="Sign in again before continuing.",
         )
     return application

@@ -153,7 +153,11 @@ def effective_status_for(
     rules_config = rules_config_for(db, user_id)
     flags = machine_flags_by_app(db, [application.id]).get(application.id)
     pet_facts = pet_facts_by_app(db, [application.id]).get(application.id)
-    reasons = hard_filter_reasons_for(rules_config, application, pet_facts=pet_facts)
+    reasons = hard_filter_reasons_for(
+        rules_config,
+        application,
+        pet_facts=pet_facts,
+    )
     return effective_status(
         override,
         reasons=reasons,
@@ -173,7 +177,11 @@ def eligible_application_ids_for(db: Session, user_id: int) -> set[int]:
     overrides = overrides_by_app(db, user_id, ids)
     eligible: set[int] = set()
     for app in applications:
-        reasons = hard_filter_reasons_for(rules_config, app, pet_facts=facts_by_app.get(app.id))
+        reasons = hard_filter_reasons_for(
+            rules_config,
+            app,
+            pet_facts=facts_by_app.get(app.id),
+        )
         status, _ = effective_status(
             overrides.get(app.id),
             reasons=reasons,
@@ -237,7 +245,10 @@ def rules_eligible_application_ids(db: Session) -> set[int]:
         # Rules-clean under ANY ruleset → in scope. No pet_facts passed: pets can't gate
         # pre-screen (their facts don't exist yet), same as the per-app screening gate.
         if any(
-            not hard_filter_reasons_for(rules_config, app)
+            not hard_filter_reasons_for(
+                rules_config,
+                app,
+            )
             for rules_config in distinct_rulesets
         ):
             eligible.add(app.id)
@@ -309,7 +320,11 @@ def union_eligible_application_ids(db: Session) -> set[int]:
         for user_id in override_users:
             override_counts_by_ruleset[ruleset_by_user[user_id]] += 1
         for rules_config in distinct_rulesets:
-            if hard_filter_reasons_for(rules_config, app, pet_facts=facts_by_app.get(app.id)):
+            if hard_filter_reasons_for(
+                rules_config,
+                app,
+                pet_facts=facts_by_app.get(app.id),
+            ):
                 continue  # rules-ineligible under this ruleset
             if active_flags(flags_by_app.get(app.id), rules_config.disabled_checks):
                 continue  # an un-muted AI flag makes it ineligible under this ruleset

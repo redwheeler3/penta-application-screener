@@ -1,13 +1,18 @@
 import { emptyApplicantDraft, type ApplicantDraft } from "./types";
 
-const DRAFTS_KEY = "penta-application-drafts-v3";
+const DRAFTS_KEY = "penta-application-drafts-v4";
 const REMEMBER_DEVICE_KEY = "penta-application-remember-device-v1";
 const MAX_INACTIVE_MS = 30 * 24 * 60 * 60 * 1000;
 
-type StoredDraft = { savedAt: string; draft: ApplicantDraft };
+type StoredDraft = {
+  savedAt: string;
+  draft: ApplicantDraft;
+  openingIds: number[];
+  baseRevision: number;
+};
 type StoredDrafts = Record<string, StoredDraft>;
 
-export type LoadedDraft = { draft: ApplicantDraft; savedAt: Date | null };
+export type LoadedDraft = Omit<StoredDraft, "savedAt"> & { savedAt: Date };
 
 export function remembersDevice(): boolean {
   return localStorage.getItem(REMEMBER_DEVICE_KEY) === "true";
@@ -41,6 +46,8 @@ export function loadApplicationDraft(applicationId: number, now = new Date()): L
         ...stored.draft.coApplicantEmployment,
       },
     },
+    openingIds: stored.openingIds,
+    baseRevision: stored.baseRevision,
     savedAt,
   };
 }
@@ -48,10 +55,17 @@ export function loadApplicationDraft(applicationId: number, now = new Date()): L
 export function saveApplicationDraft(
   applicationId: number,
   draft: ApplicantDraft,
+  openingIds: number[],
+  baseRevision: number,
   now = new Date(),
 ): Date {
   const drafts = readDrafts();
-  drafts[String(applicationId)] = { savedAt: now.toISOString(), draft };
+  drafts[String(applicationId)] = {
+    savedAt: now.toISOString(),
+    draft,
+    openingIds,
+    baseRevision,
+  };
   writeDrafts(drafts);
   return now;
 }
@@ -68,12 +82,41 @@ export function clearApplicantStorage(): void {
 }
 
 export function hasDraftContent(draft: ApplicantDraft): boolean {
+  return Boolean(draft.applicant.email.trim() || hasAnswersBeyondEmail(draft));
+}
+
+export function hasAnswersBeyondEmail(draft: ApplicantDraft): boolean {
+  const references = [draft.currentLandlord, draft.previousLandlord];
+  const employment = [draft.applicantEmployment, draft.coApplicantEmployment];
+  const coApplicant = Object.values(draft.coApplicant);
   return Boolean(
     draft.applicant.firstName.trim() ||
       draft.applicant.lastName.trim() ||
-      draft.applicant.email.trim() ||
+      draft.applicant.birthDate.trim() ||
+      draft.applicant.phone.trim() ||
+      coApplicant.some((value) => value.trim()) ||
       draft.children.length ||
-      draft.essays.householdIntroduction.trim(),
+      draft.currentAddress.street.trim() ||
+      draft.currentAddress.street2.trim() ||
+      draft.currentAddress.city.trim() ||
+      draft.currentAddress.postalOrZipCode.trim() ||
+      draft.currentAddress.provinceOrState !== "BC" ||
+      draft.currentAddress.country !== "Canada" ||
+      draft.livedAtCurrentAddressTwoYears ||
+      draft.ownsCurrentHome ||
+      draft.ownsOtherRealEstate ||
+      references.some((reference) => Object.values(reference).some((value) => value.trim())) ||
+      Object.values(draft.essays).some((value) => value.trim()) ||
+      draft.pets.trim() ||
+      employment.some((job) => (
+        job.status ||
+        job.jobTitle.trim() ||
+        job.companyName.trim() ||
+        job.startDate.trim() ||
+        Object.values(job.manager).some((value) => value.trim())
+      )) ||
+      draft.applicantIncome.trim() ||
+      draft.coApplicantIncome.trim()
   );
 }
 
