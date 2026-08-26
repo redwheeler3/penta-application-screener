@@ -191,6 +191,41 @@ def application_deleted_email(*, application_id: int, email: str) -> OutboundEma
     )
 
 
+def application_unavailable_email(*, application_id: int, email: str) -> OutboundEmail:
+    heading = "No application updates are available"
+    introduction = (
+        "There isn't currently an opening that you can apply for or update through your "
+        "saved Penta application."
+    )
+    notice = (
+        "Visit Penta's website to see current vacancy information or join the "
+        "notification list."
+    )
+    text = _with_common_footer(f"""{heading}.
+
+{introduction}
+
+{notice}
+
+{VACANCY_LIST_URL}""")
+    html = _email_shell(
+        eyebrow="Application update",
+        heading=heading,
+        introduction=introduction,
+        action_url=VACANCY_LIST_URL,
+        action_label="View vacancy information",
+        link_notice=notice,
+    )
+    return OutboundEmail(
+        kind="application_unavailable",
+        recipient_id=f"application:{application_id}",
+        to=(email,),
+        subject=heading,
+        text_body=text,
+        html_body=html,
+    )
+
+
 def unsuccessful_application_email(
     *, application_id: int, email: str, opening_labels: list[str]
 ) -> OutboundEmail:

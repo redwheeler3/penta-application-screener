@@ -9,6 +9,7 @@ APPLICATION_OWNED_FOREIGN_KEYS = {
     ("magic_link_tokens", "application_id", "applications"),
     ("magic_link_tokens", "applicant_draft_id", "applicant_drafts"),
     ("browser_sessions", "application_id", "applications"),
+    ("browser_sessions", "reconciliation_draft_id", "applicant_drafts"),
     ("email_deliveries", "application_id", "applications"),
     ("email_deliveries", "magic_link_token_id", "magic_link_tokens"),
     ("email_deliveries", "applicant_draft_id", "applicant_drafts"),

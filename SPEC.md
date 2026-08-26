@@ -190,13 +190,15 @@ only as hashes, expire, cannot be reused, and are protected by rate limits and n
 responses. Only the primary applicant receives access links and application updates; the
 co-applicant does not have separate editing access.
 
-The primary email is the first field in the household section. While signed out, it sits beside an
-**Email me a link to continue** action that becomes available once the address is valid. One
-non-enumerating server request chooses the safe behavior: an existing application or pending draft
-receives an application link without letting the mostly empty guest form replace it, while a new address
-has its current incomplete form saved securely and receives its first access link. Both paths
-return the same acknowledgement and direct the applicant to check their inbox. The control is
-hidden after sign-in because the applicant is already working in the durable application.
+Before showing the form, a signed-out visitor chooses between email access and continuing as a
+guest. The single email action serves both new and returning applicants without revealing which
+addresses the system knows. While applications are open, a new address creates an email-only
+private draft and receives its first access link; a known address receives access to its existing
+draft or application. During the closed phase, new guest applications are unavailable, but an
+applicant already participating in a closed opening may still sign in to edit or withdraw. A known
+applicant with nothing actionable receives an email directing them to the public vacancy page
+instead of a credential. If no published opening is open or closed, the entry page disables both
+sign-in and guest access and shows the applications-unavailable state.
 
 After each initial or updated submission, the product sends the primary applicant a confirmation
 email with secure application access. There is no opt-in checkbox: the applicant may ignore or delete
@@ -222,17 +224,16 @@ never merged. A replacement request supersedes an earlier unconfirmed address, a
 may cancel an unconfirmed change.
 
 An unauthenticated browser can never overwrite an existing working or submitted copy merely by
-entering the same primary email. Before opening the guest review, the server detects an existing
-current application, emails its owner an access link, and requires authentication instead. The
-submission endpoint repeats this check as a race-condition safeguard. The existing submitted
-application remains committee-visible and unchanged while control of the address is proven. After
-using the access link, the newer of the
-browser draft and existing private working copy is selected by UTC save time; an equal timestamp
-prefers the browser draft associated with the link. The selected snapshot is never published
-automatically. The system therefore does not create two
-committee-facing applications or ask the committee to adjudicate an identity collision. Requests
-are rate-limited and notification emails are coalesced so this protection cannot become an email-
-bombing tool.
+entering the same primary email. Before opening the guest review, the server preserves the guest
+answers as a private pending copy, emails the address owner an access link, and requires
+authentication instead. The submission endpoint repeats the identity check as a race-condition
+safeguard. After sign-in, the applicant sees only fields that differ between the saved application
+and the answers just entered, then chooses **Keep my saved application** or **Use the answers I just
+entered**. This is a whole-copy choice, never a field-level merge. The exact pending copy is bound
+to the resulting browser session; a newer collision supersedes older unclaimed copies. Either
+choice changes only the private working copy. The committee-facing submitted copy remains unchanged
+until the applicant explicitly submits again. Requests are rate-limited and notification emails
+are coalesced so this protection cannot become an email-bombing tool.
 
 An emailed credential is not a permanent bearer link. It is valid for 24 hours and single-use, and a new
 request invalidates older unused links for that applicant. Consuming it creates a revocable

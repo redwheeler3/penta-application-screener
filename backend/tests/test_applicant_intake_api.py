@@ -246,7 +246,7 @@ async def test_guest_with_existing_email_is_stopped_before_review_and_sent_acces
         await client.post("/applicant/auth/logout")
         response = await client.post(
             "/applicant/submissions/check",
-            json={"email": "avery@example.com"},
+            json={"answers": _answers(introduction="Guest answers"), "openingIds": [1]},
         )
 
     assert response.status_code == 200
@@ -256,6 +256,47 @@ async def test_guest_with_existing_email_is_stopped_before_review_and_sent_acces
         "emailStatus": "sent",
     }
     assert len(sender.messages) == 2
+    draft = _db.scalar(
+        select(ApplicantDraft).where(ApplicantDraft.resolved_at.is_(None))
+    )
+    assert draft is not None
+    assert draft.working_answers["essays"]["household_introduction"] == "Guest answers"
+
+
+@pytest.mark.anyio
+async def test_repeated_guest_collision_updates_the_copy_for_the_link_already_sent() -> None:
+    app, db, sender = _app_and_db()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await _save_draft(client)
+        await client.post(
+            "/applicant/access-links/open",
+            json={"token": _link(sender), "switchCurrent": False},
+        )
+        await client.post("/applicant/auth/logout")
+        sender.messages.clear()
+        first = await client.post(
+            "/applicant/submissions/check",
+            json={"answers": _answers(introduction="First guest copy"), "openingIds": [1]},
+        )
+        token = _link(sender)
+        second = await client.post(
+            "/applicant/submissions/check",
+            json={"answers": _answers(introduction="Latest guest copy"), "openingIds": [1]},
+        )
+        opened = await client.post(
+            "/applicant/access-links/open",
+            json={"token": token, "switchCurrent": False},
+        )
+
+    drafts = list(
+        db.scalars(select(ApplicantDraft).where(ApplicantDraft.resolved_at.is_(None)))
+    )
+    assert first.json()["emailStatus"] == "sent"
+    assert second.json()["emailStatus"] == "recent"
+    assert len(sender.messages) == 1
+    assert len(drafts) == 1
+    assert opened.json()["pendingCopy"]["guestAnswers"]["essays"]["householdIntroduction"] == "Latest guest copy"
 
 
 @pytest.mark.anyio
@@ -323,6 +364,71 @@ async def test_return_link_request_finds_an_unclaimed_pending_draft() -> None:
     assert drafts[0].working_answers["essays"]["household_introduction"] == "Synthetic introduction"
     assert len(links) == 2
     assert links[-1].applicant_draft_id is not None
+
+
+@pytest.mark.anyio
+async def test_email_entry_with_multiple_openings_does_not_preselect_one() -> None:
+    app, db, sender = _app_and_db()
+    opening = db.scalar(select(Opening))
+    assert opening is not None
+    db.add(
+        Opening(
+            unit_size_bedrooms=3,
+            housing_charge_cents=150_000,
+            application_open_date=opening.application_open_date,
+            application_close_date=opening.application_close_date,
+            move_in_date=opening.move_in_date,
+            published_at=datetime.now(UTC),
+        )
+    )
+    db.commit()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/applicant/access-links/request",
+            json={"answers": _answers("new@example.com"), "openingIds": []},
+        )
+
+    draft = db.scalar(select(ApplicantDraft))
+    assert response.status_code == 202
+    assert draft is not None
+    assert draft.working_opening_ids == []
+    assert draft.retention_due_on > pacific_today()
+    assert len(sender.messages) == 1
+
+
+@pytest.mark.anyio
+async def test_existing_applicant_without_an_actionable_opening_receives_public_update() -> None:
+    app, db, sender = _app_and_db()
+    opening = db.scalar(select(Opening))
+    assert opening is not None
+    opening.application_close_date = pacific_today() - timedelta(days=2)
+    opening.move_in_date = pacific_today() - timedelta(days=1)
+    application = Application(
+        primary_email="returning@example.com",
+        applicant_name="Synthetic Returning Applicant",
+        raw_row=_answers("returning@example.com"),
+        raw_row_hash="synthetic-submitted",
+        normalized={},
+        working_answers=_answers("returning@example.com"),
+        working_content_hash="synthetic-working",
+        working_saved_at=datetime.now(UTC),
+    )
+    db.add(application)
+    db.commit()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/applicant/access-links/request",
+            json={"answers": _answers("returning@example.com")},
+        )
+
+    assert response.status_code == 202
+    assert response.json()["emailStatus"] == "sent"
+    assert len(sender.messages) == 1
+    assert sender.messages[0].kind == "application_unavailable"
+    assert "https://www.pentacoop.com/apply.html" in sender.messages[0].text_body
+    assert db.scalar(select(MagicLinkToken)) is None
 
 
 @pytest.mark.anyio
@@ -651,18 +757,8 @@ async def test_stale_link_for_another_applicant_offers_resend_without_switching(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize(
-    ("existing_time_offset", "expected_introduction"),
-    [
-        pytest.param(timedelta(minutes=-1), "Synthetic introduction", id="draft-newer"),
-        pytest.param(timedelta(0), "Synthetic introduction", id="equal-prefers-draft"),
-        pytest.param(timedelta(minutes=1), "Existing working answers", id="existing-newer"),
-    ],
-)
-async def test_claim_keeps_newest_private_working_copy(
-    existing_time_offset: timedelta,
-    expected_introduction: str,
-) -> None:
+@pytest.mark.parametrize("choice", ["saved", "guest"])
+async def test_claim_asks_owner_which_private_copy_to_keep(choice: str) -> None:
     app, db, sender = _app_and_db()
     existing = Application(
         primary_email="avery@example.com",
@@ -684,23 +780,33 @@ async def test_claim_keeps_newest_private_working_copy(
             WorkingApplicationAnswers.model_validate(
                 _answers(introduction="Existing working answers")
             ),
-            saved_at=as_utc(draft.saved_at) + existing_time_offset,
+            saved_at=as_utc(draft.saved_at) + timedelta(minutes=1),
         )
         db.commit()
         opened = await client.post(
             "/applicant/access-links/open",
             json={"token": _link(sender), "switchCurrent": False},
         )
+        pending = await client.get("/applicant/application/pending-copy")
+        reconciled = await client.post(
+            "/applicant/application/pending-copy", json={"choice": choice}
+        )
         stored = await client.get("/applicant/application")
 
     db.refresh(existing)
     db.refresh(draft)
     assert opened.status_code == 200
+    assert opened.json()["pendingCopy"]["guestAnswers"]["essays"]["householdIntroduction"] == "Synthetic introduction"
+    assert pending.json()["pendingCopy"] == opened.json()["pendingCopy"]
+    assert reconciled.status_code == 204
     assert stored.json()["answers"]["essays"]["householdIntroduction"] == (
-        expected_introduction
+        "Synthetic introduction" if choice == "guest" else "Existing working answers"
     )
     assert existing.raw_row == {"submitted": "unchanged"}
     assert draft.resolved_at is not None
+    session = db.scalar(select(BrowserSession))
+    assert session is not None
+    assert session.reconciliation_draft_id is None
 
 
 @pytest.mark.anyio

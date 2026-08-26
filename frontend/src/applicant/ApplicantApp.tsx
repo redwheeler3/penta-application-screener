@@ -21,7 +21,8 @@ import {
   type ReferenceDraft,
   type YesNo,
 } from "./types";
-import { useApplicantPersistence } from "./useApplicantPersistence";
+import { type PendingCopy, useApplicantPersistence } from "./useApplicantPersistence";
+import { pendingCopyDifferences } from "./pendingCopyDiff";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
 const EMAIL_INVALID_MESSAGE = "This is not a valid email address.";
@@ -39,6 +40,7 @@ export function ApplicantApp() {
   const [emailChangeOpen, setEmailChangeOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [draftConfirmation, setDraftConfirmation] = useState<DraftConfirmation | null>(null);
+  const [guestStarted, setGuestStarted] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const invalidTarget = useRef<HTMLElement | null>(null);
   const openingsRef = useRef<HTMLElement | null>(null);
@@ -195,6 +197,7 @@ export function ApplicantApp() {
     setSavedAt(null);
     setReviewing(false);
     setRememberDeviceState(false);
+    setGuestStarted(false);
   }
 
   async function cancelPendingEmailChange(): Promise<void> {
@@ -214,6 +217,10 @@ export function ApplicantApp() {
       "load_error",
       "submitted",
     ].includes(persistence.phase);
+  const hasActiveOpening = persistence.openings.some((opening) => (
+    opening.phase === "open" || opening.phase === "closed"
+  ));
+  const hasOpenOpening = persistence.openings.some((opening) => opening.phase === "open");
 
   return (
     <div className="applicant-surface">
@@ -267,12 +274,29 @@ export function ApplicantApp() {
           <ExpiredAccessLink purpose={persistence.accessPurpose} onEmailNew={() => void persistence.emailNewAccessLink()} />
         ) : persistence.phase === "link_invalid" ? (
           <InvalidAccessLink />
+        ) : persistence.pendingCopy ? (
+          <PendingCopyDecision
+            pendingCopy={persistence.pendingCopy}
+            openings={persistence.openings}
+            busy={persistence.busy}
+            error={persistence.phase === "error" ? persistence.message : null}
+            onChoose={(choice) => void persistence.reconcilePendingCopy(choice)}
+          />
         ) : !persistence.openingsLoaded && (
           persistence.phase === "load_error" || persistence.phase === "error"
         ) ? (
           <ApplicationLoadError
             message={persistence.message}
             onRetry={() => void persistence.retryInitialLoad()}
+          />
+        ) : !persistence.authenticated && !hasActiveOpening ? (
+          <ApplicationsUnavailable authenticated={false} openings={persistence.openings} />
+        ) : !persistence.authenticated && !guestStarted ? (
+          <ApplicationEntry
+            allowGuest={hasOpenOpening}
+            busy={persistence.busy}
+            onContinueGuest={() => setGuestStarted(true)}
+            onEmailLink={persistence.requestEntryLink}
           />
         ) : reviewing ? (
           <ApplicationReview
@@ -336,8 +360,6 @@ export function ApplicantApp() {
               onRequestEmailChange={(email) => void persistence.beginEmailChange(email)}
               onRequestReauthentication={() => void persistence.emailReauthenticationLink()}
               onCancelEmailChange={() => void cancelPendingEmailChange()}
-              onEmailReturnLink={persistence.emailReturnLink}
-              persistenceBusy={persistence.busy}
             />
             <HousingSection draft={draft} update={update} />
             <EssaysSection draft={draft} update={update} />
@@ -434,6 +456,128 @@ function DraftStatus(props: { savedAt: Date | null; hasContent: boolean }) {
         {props.savedAt ? <small>{formatSavedTime(props.savedAt)}</small> : null}
       </span>
     </div>
+  );
+}
+
+function ApplicationEntry(props: {
+  allowGuest: boolean;
+  busy: boolean;
+  onContinueGuest: () => void;
+  onEmailLink: (email: string) => Promise<boolean>;
+}) {
+  const [email, setEmail] = useState("");
+  const [validationMessage, setValidationMessage] = useState("");
+
+  function sendLink(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      setValidationMessage(EMAIL_INVALID_MESSAGE);
+      return;
+    }
+    setValidationMessage("");
+    void props.onEmailLink(email);
+  }
+
+  return (
+    <section className="application-entry">
+      <ShieldCheck size={30} />
+      <h2>Start or continue an application</h2>
+      <p>
+        {props.allowGuest
+          ? "Enter your email address and we’ll send you a secure link. The same step works whether you’re starting a new application or returning to one you saved."
+          : "If you already have an application for a closed opening, enter its email address to continue."}
+      </p>
+      <form onSubmit={sendLink} noValidate>
+        <label className="applicant-field">
+          <span>Email address</span>
+          <input
+            type="email"
+            autoComplete="email"
+            value={email}
+            aria-invalid={validationMessage ? "true" : undefined}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              if (validationMessage) setValidationMessage("");
+            }}
+          />
+          {validationMessage ? <small className="field-error">{validationMessage}</small> : null}
+        </label>
+        <button className="applicant-primary-button" type="submit" disabled={props.busy}>
+          <Mail size={17} /> Email me a secure link
+        </button>
+      </form>
+      {props.allowGuest ? (
+        <>
+          <div className="application-entry-divider"><span>or</span></div>
+          <button className="applicant-secondary-button" type="button" onClick={props.onContinueGuest}>
+            Continue as a guest
+          </button>
+          <small>You can save your application and receive a secure link later.</small>
+        </>
+      ) : (
+        <small>New applications are closed, but current applicants can still sign in.</small>
+      )}
+    </section>
+  );
+}
+
+function PendingCopyDecision(props: {
+  pendingCopy: PendingCopy;
+  openings: ApplicantOpening[];
+  busy: boolean;
+  error: string | null;
+  onChoose: (choice: "saved" | "guest") => void;
+}) {
+  const differences = pendingCopyDifferences(
+    props.pendingCopy.savedAnswers,
+    props.pendingCopy.savedOpeningIds,
+    props.pendingCopy.guestAnswers,
+    props.pendingCopy.guestOpeningIds,
+    props.openings,
+  );
+  return (
+    <section className="pending-copy-decision">
+      <ShieldCheck size={30} />
+      <h2>Choose which application to keep</h2>
+      <p>
+        We found both a saved application and answers entered before you signed in.
+        Review what changed, then keep one complete copy.
+      </p>
+      <div className="pending-copy-table">
+        <div className="pending-copy-heading"><span>Changed answer</span><strong>Saved application</strong><strong>Answers just entered</strong></div>
+        {differences.map((difference) => (
+          <div className="pending-copy-row" key={difference.label}>
+            <strong>{difference.label}</strong>
+            <span>{difference.saved}</span>
+            <span>{difference.guest}</span>
+          </div>
+        ))}
+      </div>
+      {props.error ? (
+        <div className="persistence-action-status error" role="alert">
+          <strong>We couldn’t keep that copy</strong>
+          <ApplicantErrorMessage message={props.error} />
+        </div>
+      ) : null}
+      <div className="review-actions">
+        <button
+          className="applicant-secondary-button"
+          type="button"
+          disabled={props.busy}
+          onClick={() => props.onChoose("saved")}
+        >
+          Keep my saved application
+        </button>
+        <button
+          className="applicant-primary-button"
+          type="button"
+          disabled={props.busy}
+          onClick={() => props.onChoose("guest")}
+        >
+          Use the answers I just entered
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -612,20 +756,8 @@ function HouseholdSection(props: {
   onRequestEmailChange: (email: string) => void;
   onRequestReauthentication: () => void;
   onCancelEmailChange: () => void;
-  onEmailReturnLink: () => Promise<boolean>;
-  persistenceBusy: boolean;
 }) {
   const { draft, update } = props;
-  const [returnLinkStatus, setReturnLinkStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
-
-  useEffect(() => {
-    setReturnLinkStatus("idle");
-  }, [draft.applicant.email]);
-
-  async function sendReturnLink(): Promise<void> {
-    setReturnLinkStatus("sending");
-    setReturnLinkStatus(await props.onEmailReturnLink() ? "sent" : "error");
-  }
 
   return (
     <FormSection number="1" title="Your household" description="Start with the people who would live in the co-op.">
@@ -647,14 +779,6 @@ function HouseholdSection(props: {
               }))}
               onChangeEmail={props.onOpenEmailChange}
             />
-            {!props.authenticated ? (
-              <ReturnLinkAction
-                email={draft.applicant.email}
-                status={returnLinkStatus}
-                disabled={props.persistenceBusy}
-                onSend={() => void sendReturnLink()}
-              />
-            ) : null}
             {props.authenticated && props.emailChangeOpen && props.primaryEmail ? (
               <EmailChangeField
                 currentEmail={props.primaryEmail}
@@ -1231,11 +1355,9 @@ function AccessLinkSent(props: {
       <Mail size={28} />
       <h2>Check your email</h2>
       <p>{props.message}</p>
-      <p>
-        {props.purpose === "email_change"
-          ? "Your email address will not change until you open the link."
-          : "Your application remains safely saved while you wait."}
-      </p>
+      {props.purpose === "email_change" ? (
+        <p>Your email address will not change until you open the link.</p>
+      ) : null}
     </section>
   );
 }
@@ -1456,41 +1578,6 @@ function PrimaryEmailField(props: {
           </button>
         ) : null}
       </div>
-    </div>
-  );
-}
-
-function ReturnLinkAction(props: {
-  email: string;
-  status: "idle" | "sending" | "sent" | "error";
-  disabled: boolean;
-  onSend: () => void;
-}) {
-  const validEmail = EMAIL_PATTERN.test(props.email.trim());
-  return (
-    <div className="applicant-field return-link-field">
-      <span>Already started an application?</span>
-      <button
-        className="applicant-secondary-button"
-        type="button"
-        disabled={!validEmail || props.disabled || props.status === "sending"}
-        onClick={props.onSend}
-      >
-        <Mail size={16} /> Email me a link to continue
-      </button>
-      {props.status === "sent" ? (
-        <small className="field-success" role="status">
-          A secure link is on its way. Check your inbox to continue your application.
-        </small>
-      ) : null}
-      {props.status === "error" ? (
-        <small className="field-error" role="alert">
-          We couldn’t request an application link. Email{" "}
-          <a href={`mailto:${TECH_SUPPORT_EMAIL}`} target="_blank" rel="noreferrer">
-            Penta Tech Support
-          </a>.
-        </small>
-      ) : null}
     </div>
   );
 }

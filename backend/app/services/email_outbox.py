@@ -17,6 +17,7 @@ from app.db.models import (
 from app.services.auth_email import (
     application_confirmation_email,
     application_deleted_email,
+    application_unavailable_email,
     email_change_notice_email,
     magic_link_email,
     unsuccessful_application_email,
@@ -165,6 +166,14 @@ def _build_retry(
     if intent_type == "application_deleted":
         return (
             application_deleted_email(
+                application_id=application.id,
+                email=application.primary_email,
+            ),
+            None,
+        )
+    if intent_type == "application_unavailable":
+        return (
+            application_unavailable_email(
                 application_id=application.id,
                 email=application.primary_email,
             ),

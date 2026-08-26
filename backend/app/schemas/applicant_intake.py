@@ -48,6 +48,13 @@ class OpenAccessLinkRequest(AccessLinkRequest):
     remember_device: bool = False
 
 
+class PendingCopyOut(ResponseModel):
+    saved_answers: WorkingApplicationAnswers
+    saved_opening_ids: list[int]
+    guest_answers: WorkingApplicationAnswers
+    guest_opening_ids: list[int]
+
+
 class AccessLinkResponse(ResponseModel):
     state: Literal[
         "valid", "expired", "used", "replaced", "invalid", "abandoned", "email_in_use"
@@ -59,6 +66,7 @@ class AccessLinkResponse(ResponseModel):
     switch_required: bool = False
     application_id: int | None = None
     pending_intent: ApplicantDraftIntent | None = None
+    pending_copy: PendingCopyOut | None = None
 
 
 class RegenerateAccessLinkResponse(ResponseModel):
@@ -135,13 +143,22 @@ class GuestSubmitApplicationResponse(ResponseModel):
 
 
 class GuestSubmissionCheckRequest(RequestModel):
-    email: EmailStr
+    answers: WorkingApplicationAnswers
+    opening_ids: list[int] = Field(default_factory=list, max_length=20)
 
 
 class GuestSubmissionCheckResponse(ResponseModel):
     can_submit: bool
     email_sent: bool = False
     email_status: EmailSendStatus | None = None
+
+
+class PendingCopyResponse(ResponseModel):
+    pending_copy: PendingCopyOut | None = None
+
+
+class ReconcilePendingCopyRequest(RequestModel):
+    choice: Literal["saved", "guest"]
 
 
 class AuthenticatedSubmitApplicationResponse(ApplicantApplicationResponse):

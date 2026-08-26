@@ -482,6 +482,9 @@ class BrowserSession(Base):
     application_id: Mapped[int | None] = mapped_column(
         ForeignKey("applications.id", ondelete="CASCADE"), index=True
     )
+    reconciliation_draft_id: Mapped[int | None] = mapped_column(
+        ForeignKey("applicant_drafts.id", ondelete="CASCADE"), index=True
+    )
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -494,6 +497,7 @@ class BrowserSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     application: Mapped[Application | None] = relationship()
+    reconciliation_draft: Mapped[ApplicantDraft | None] = relationship()
     user: Mapped[User | None] = relationship()
 
 

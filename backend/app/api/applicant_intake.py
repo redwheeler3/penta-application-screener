@@ -50,8 +50,11 @@ from app.schemas.applicant_intake import (
     GuestSubmitApplicationRequest,
     GuestSubmitApplicationResponse,
     OpenAccessLinkRequest,
+    PendingCopyOut,
+    PendingCopyResponse,
     PendingDraftRequest,
     PendingDraftResponse,
+    ReconcilePendingCopyRequest,
     RegenerateAccessLinkResponse,
     RequestAccessLinkRequest,
     RequestAccessLinkResponse,
@@ -65,6 +68,8 @@ from app.services.applicant_drafts import (
     draft_is_available,
     latest_pending_draft_for_email,
     pending_draft_for_token,
+    revoke_other_pending_drafts,
+    save_collision_copy,
     save_pending_draft,
 )
 from app.services.email_delivery import cancel_queued_application_emails
@@ -78,6 +83,7 @@ from app.services.magic_link_delivery import (
     EmailSendOutcome,
     send_application_confirmation,
     send_application_deleted,
+    send_application_unavailable,
     send_email_change_notice,
     send_magic_link,
 )
@@ -116,7 +122,8 @@ def check_guest_submission(
     sender: EmailSender = Depends(get_email_sender),
 ) -> GuestSubmissionCheckResponse:
     """Stop an existing application at the pre-review boundary and email its owner."""
-    email = normalize_email(str(body.email))
+    now = datetime.now(UTC)
+    email = normalize_email(str(body.answers.applicant.email))
     application = db.scalar(
         select(Application).where(
             Application.primary_email == email,
@@ -125,14 +132,24 @@ def check_guest_submission(
     )
     if application is None:
         return GuestSubmissionCheckResponse(can_submit=True)
+    validate_working_opening_selection(db, None, body.opening_ids, now=now)
+    draft = save_collision_copy(
+        db,
+        application=application,
+        answers=body.answers,
+        opening_ids=body.opening_ids,
+        now=now,
+    )
+    revoke_other_pending_drafts(db, draft, now=now)
     outcome = send_magic_link(
         db,
         sender,
         identity_kind=PasswordlessIdentityKind.APPLICANT,
         purpose=MagicLinkPurpose.APPLICANT_ACCESS,
         email=email,
-        recipient_id=application.id,
-        application_id=application.id,
+        recipient_id=draft.id,
+        applicant_draft=draft,
+        now=now,
     )
     return GuestSubmissionCheckResponse(
         can_submit=False,
@@ -286,24 +303,42 @@ def request_applicant_access_link(
         )
         target: Application | ApplicantDraft = current
     else:
-        draft = latest_pending_draft_for_email(db, email, now=now)
         application = db.scalar(
             select(Application).where(
                 Application.primary_email == email,
                 Application.deleted_at.is_(None),
             )
         )
+        if application is not None and not application_is_editable(
+            applicant_opening_states(db, application)
+        ):
+            sent = send_application_unavailable(db, sender, application, now=now)
+            return RequestAccessLinkResponse(
+                current_answers_saved=False,
+                email_status="sent" if sent else "failed",
+            )
+        draft = latest_pending_draft_for_email(db, email, now=now)
         if draft is not None:
             target = draft
         elif application is not None:
             target = application
         else:
-            _require_new_applications_open(db)
+            if not _new_applications_are_open(db):
+                return RequestAccessLinkResponse(
+                    current_answers_saved=False,
+                    email_status=EmailSendOutcome.SENT.value,
+                )
             validate_working_opening_selection(db, None, body.opening_ids, now=now)
+            open_ids = [
+                state.opening.id
+                for state in applicant_opening_states(db, None)
+                if state.can_select
+            ]
             saved = save_pending_draft(
                 db,
                 answers=body.answers,
                 opening_ids=body.opening_ids,
+                retention_opening_ids=open_ids,
                 intent=ApplicantDraftIntent.SAVE,
                 now=now,
             )
@@ -392,6 +427,11 @@ def open_applicant_access_link(
         db,
         identity_kind=PasswordlessIdentityKind.APPLICANT,
         application_id=target.id,
+        reconciliation_draft_id=(
+            claimed.reconciliation_draft.id
+            if claimed.reconciliation_draft is not None
+            else None
+        ),
     )
     db.commit()
     set_session_cookie(
@@ -416,7 +456,55 @@ def open_applicant_access_link(
         application_email=target.primary_email,
         application_id=target.id,
         pending_intent=claimed.pending_intent,
+        pending_copy=(
+            _pending_copy(target, claimed.reconciliation_draft)
+            if claimed.reconciliation_draft is not None
+            else None
+        ),
     )
+
+
+@router.get("/application/pending-copy", response_model=PendingCopyResponse)
+def get_pending_copy(
+    request: Request,
+    application: Application = Depends(require_current_application),
+) -> PendingCopyResponse:
+    session: BrowserSession = request.state.passwordless_session
+    draft = session.reconciliation_draft
+    if not _draft_belongs_to_application(draft, application):
+        return PendingCopyResponse()
+    return PendingCopyResponse(pending_copy=_pending_copy(application, draft))
+
+
+@router.post("/application/pending-copy", status_code=status.HTTP_204_NO_CONTENT)
+def reconcile_pending_copy(
+    body: ReconcilePendingCopyRequest,
+    request: Request,
+    application: Application = Depends(require_current_application),
+    db: Session = Depends(get_db),
+) -> Response:
+    session: BrowserSession = request.state.passwordless_session
+    draft = session.reconciliation_draft
+    if not _draft_belongs_to_application(draft, application):
+        raise Problem("pending_copy_not_found", detail="This pending copy is no longer available.")
+    if body.choice == "guest":
+        _require_application_editable(db, application)
+        answers = _draft_answers(draft)
+        if answers is None:
+            raise Problem("pending_copy_invalid", detail="This pending copy cannot be restored.")
+        validate_working_opening_selection(
+            db, application, draft.working_opening_ids or [], now=datetime.now(UTC)
+        )
+        save_working_copy(
+            application,
+            answers,
+            saved_at=datetime.now(UTC),
+            opening_ids=draft.working_opening_ids,
+        )
+    draft.resolved_at = datetime.now(UTC)
+    session.reconciliation_draft_id = None
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
@@ -790,6 +878,7 @@ class _ClaimedApplicantLink:
     application: Application | None
     pending_intent: ApplicantDraftIntent | None = None
     previous_email: str | None = None
+    reconciliation_draft: ApplicantDraft | None = None
     state: str = "valid"
 
 
@@ -810,6 +899,13 @@ def _claim_link_target(db: Session, link: MagicLinkToken) -> _ClaimedApplicantLi
             )
         )
     if application is not None:
+        draft.application_id = application.id
+        if _pending_copy_needed(application, draft):
+            return _ClaimedApplicantLink(
+                application,
+                draft.intent,
+                reconciliation_draft=draft,
+            )
         _resolve_pending_draft(application, draft)
         return _ClaimedApplicantLink(application, draft.intent)
     answers = _draft_answers(draft)
@@ -865,25 +961,52 @@ def _link_targets_other_application(
 
 
 def _resolve_pending_draft(application: Application, draft: ApplicantDraft) -> None:
-    """Keep the newest whole working copy after the email owner claims a draft."""
-    draft_saved_at = as_utc(draft.saved_at)
-    application_saved_at = (
-        as_utc(application.working_saved_at)
-        if application.working_saved_at is not None
-        else None
-    )
+    """Resolve a pending copy that does not require an applicant choice."""
     answers = _draft_answers(draft)
-    if answers is not None and (
-        application_saved_at is None or draft_saved_at >= application_saved_at
-    ):
+    if answers is not None and _stored_answers(application) is None:
         save_working_copy(
             application,
             answers,
-            saved_at=draft_saved_at,
+            saved_at=as_utc(draft.saved_at),
             opening_ids=draft.working_opening_ids,
         )
     draft.application_id = application.id
     draft.resolved_at = datetime.now(UTC)
+
+
+def _pending_copy_needed(application: Application, draft: ApplicantDraft) -> bool:
+    saved = _stored_answers(application)
+    guest = _draft_answers(draft)
+    if saved is None or guest is None:
+        return False
+    return (
+        saved.model_dump(mode="json") != guest.model_dump(mode="json")
+        or set(application.working_opening_ids or []) != set(draft.working_opening_ids or [])
+    )
+
+
+def _pending_copy(application: Application, draft: ApplicantDraft) -> PendingCopyOut:
+    saved = _stored_answers(application)
+    guest = _draft_answers(draft)
+    if saved is None or guest is None:
+        raise ValueError("pending-copy comparison requires two readable working copies")
+    return PendingCopyOut(
+        saved_answers=saved,
+        saved_opening_ids=list(application.working_opening_ids or []),
+        guest_answers=guest,
+        guest_opening_ids=list(draft.working_opening_ids or []),
+    )
+
+
+def _draft_belongs_to_application(
+    draft: ApplicantDraft | None,
+    application: Application,
+) -> bool:
+    return bool(
+        draft is not None
+        and draft.application_id == application.id
+        and draft_is_available(draft)
+    )
 
 
 def _link_target(db: Session, link: MagicLinkToken) -> Application | ApplicantDraft | None:
@@ -943,8 +1066,12 @@ def _applicant_opening(state: ApplicantOpeningState) -> ApplicantOpeningOut:
 
 
 def _require_new_applications_open(db: Session) -> None:
-    if not any(state.can_select for state in applicant_opening_states(db, None)):
+    if not _new_applications_are_open(db):
         raise Problem("applications_closed", detail="Applications are not currently open.")
+
+
+def _new_applications_are_open(db: Session) -> bool:
+    return any(state.can_select for state in applicant_opening_states(db, None))
 
 
 def _require_application_editable(db: Session, application: Application) -> None:

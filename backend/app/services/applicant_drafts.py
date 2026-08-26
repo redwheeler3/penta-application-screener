@@ -34,6 +34,7 @@ def save_pending_draft(
     *,
     answers: WorkingApplicationAnswers,
     opening_ids: list[int],
+    retention_opening_ids: list[int] | None = None,
     intent: ApplicantDraftIntent,
     draft_token: str | None = None,
     now: datetime | None = None,
@@ -44,7 +45,9 @@ def save_pending_draft(
     if record is not None and record.email != email:
         record = None
 
-    retention_due_on = retention_due_for_opening_ids(db, opening_ids)
+    retention_due_on = retention_due_for_opening_ids(
+        db, retention_opening_ids if retention_opening_ids is not None else opening_ids
+    )
     if retention_due_on is None:
         raise ValueError("A pending draft must belong to at least one opening.")
 
@@ -77,6 +80,43 @@ def save_pending_draft(
     return SavedApplicantDraft(token=raw_token, record=record)
 
 
+def save_collision_copy(
+    db: Session,
+    *,
+    application: Application,
+    answers: WorkingApplicationAnswers,
+    opening_ids: list[int],
+    now: datetime | None = None,
+) -> ApplicantDraft:
+    """Preserve the latest guest copy without invalidating an email already in flight."""
+    now = now or datetime.now(UTC)
+    record = latest_pending_draft_for_email(db, application.primary_email, now=now)
+    retention_due_on = retention_due_for_opening_ids(db, opening_ids)
+    if retention_due_on is None:
+        raise ValueError("A pending copy must belong to at least one opening.")
+    if record is None or record.application_id not in {None, application.id}:
+        record = ApplicantDraft(
+            email=application.primary_email,
+            intent=ApplicantDraftIntent.SUBMIT,
+            application_id=application.id,
+            draft_token_hash=token_hash(new_token()),
+            created_at=now,
+            saved_at=now,
+            retention_due_on=retention_due_on,
+        )
+        db.add(record)
+    record.application_id = application.id
+    record.intent = ApplicantDraftIntent.SUBMIT
+    record.working_answers = answers.model_dump(mode="json")
+    record.working_opening_ids = list(opening_ids)
+    record.saved_at = now
+    record.retention_due_on = retention_due_on
+    record.resolved_at = None
+    record.revoked_at = None
+    db.flush()
+    return record
+
+
 def pending_draft_for_token(db: Session, raw_token: str) -> ApplicantDraft | None:
     record = db.scalar(
         select(ApplicantDraft).where(ApplicantDraft.draft_token_hash == token_hash(raw_token))
@@ -105,6 +145,25 @@ def latest_pending_draft_for_email(
         .order_by(ApplicantDraft.saved_at.desc())
         .limit(1)
     )
+
+
+def revoke_other_pending_drafts(
+    db: Session,
+    record: ApplicantDraft,
+    *,
+    now: datetime | None = None,
+) -> None:
+    """Make one pending browser copy the only copy that can still be claimed."""
+    now = now or datetime.now(UTC)
+    for older in db.scalars(
+        select(ApplicantDraft).where(
+            ApplicantDraft.email == record.email,
+            ApplicantDraft.id != record.id,
+            ApplicantDraft.resolved_at.is_(None),
+            ApplicantDraft.revoked_at.is_(None),
+        )
+    ):
+        older.revoked_at = now
 
 
 def draft_is_available(record: ApplicantDraft, *, now: datetime | None = None) -> bool:

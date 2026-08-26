@@ -258,6 +258,7 @@ def create_browser_session(
     *,
     identity_kind: PasswordlessIdentityKind,
     application_id: int | None = None,
+    reconciliation_draft_id: int | None = None,
     user_id: int | None = None,
     now: datetime | None = None,
     idle_lifetime: timedelta | None = None,
@@ -273,6 +274,8 @@ def create_browser_session(
         application_id=application_id,
         user_id=user_id,
     )
+    if reconciliation_draft_id is not None and identity_kind != PasswordlessIdentityKind.APPLICANT:
+        raise ValueError("only applicant sessions can reconcile a pending copy")
     if idle_lifetime > absolute_lifetime:
         raise ValueError("session idle lifetime cannot exceed absolute lifetime")
 
@@ -285,6 +288,7 @@ def create_browser_session(
         idle_expires_at=now + idle_lifetime,
         absolute_expires_at=now + absolute_lifetime,
         recently_authenticated_at=now,
+        reconciliation_draft_id=reconciliation_draft_id,
         **identity_values,
     )
     db.add(record)

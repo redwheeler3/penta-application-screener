@@ -9,10 +9,12 @@ import {
   deletePendingDraft,
   fetchApplicantOpenings,
   fetchApplication,
+  fetchPendingCopy,
   inspectAccessLink,
   logoutApplicant,
   openAccessLink,
   regenerateAccessLink,
+  reconcilePendingCopy as reconcilePendingCopyRequest,
   requestReturnAccessLink,
   revertApplication as revertApplicationRequest,
   requestApplicantReauthentication,
@@ -82,6 +84,13 @@ export type LinkConflict = {
   linkIsValid: boolean;
 };
 
+export type PendingCopy = {
+  savedAnswers: WorkingApplicationAnswers;
+  savedOpeningIds: number[];
+  guestAnswers: WorkingApplicationAnswers;
+  guestOpeningIds: number[];
+};
+
 export function useApplicantPersistence(
   draft: ApplicantDraft,
   setDraft: Dispatch<SetStateAction<ApplicantDraft>>,
@@ -105,6 +114,7 @@ export function useApplicantPersistence(
   const [accessPurpose, setAccessPurpose] = useState<"applicant_access" | "email_change">("applicant_access");
   const [accessApplicationEmail, setAccessApplicationEmail] = useState<string | null>(null);
   const [linkConflict, setLinkConflict] = useState<LinkConflict | null>(null);
+  const [pendingCopy, setPendingCopy] = useState<PendingCopy | null>(null);
   const [lastIntent, setLastIntent] = useState<DraftIntent>("save");
   const [reviewAfterAccess, setReviewAfterAccess] = useState(false);
   const [savedAnswers, setSavedAnswers] = useState<string | null>(null);
@@ -229,6 +239,7 @@ export function useApplicantPersistence(
     onRememberDeviceChange(rememberDevice);
     setApplicationId(body.applicationId);
     setReviewAfterAccess(body.purpose !== "email_change" && body.pendingIntent === "submit");
+    setPendingCopy(body.pendingCopy);
     setLinkConflict(null);
     await restoreApplication(body.applicationId);
     if (body.purpose === "email_change") {
@@ -283,6 +294,14 @@ export function useApplicantPersistence(
     }
     setOpeningIds(restoredOpeningIds);
     setPhase("idle");
+    await restorePendingCopy();
+  }
+
+  async function restorePendingCopy(): Promise<void> {
+    const response = await fetchPendingCopy();
+    if (!response.ok) return;
+    const body = (await response.json()) as { pendingCopy: PendingCopy | null };
+    setPendingCopy(body.pendingCopy);
   }
 
   async function restorePublicOpenings(preserveSelection = false): Promise<void> {
@@ -466,7 +485,10 @@ export function useApplicantPersistence(
     setMessage("");
     setPhase("working");
     const email = draftRef.current.applicant.email.trim().toLowerCase();
-    const response = await checkGuestSubmission(email);
+    const response = await checkGuestSubmission(
+      workingAnswers(draftRef.current),
+      openingIds,
+    );
     if (!response.ok) {
       await fail(response);
       return false;
@@ -565,6 +587,37 @@ export function useApplicantPersistence(
       setSavedAnswers(workingSnapshot(draftRef.current, openingIds));
     }
     return true;
+  }
+
+  async function requestEntryLink(email: string): Promise<boolean> {
+    const answers = workingAnswers(draftRef.current);
+    answers.applicant.email = email.trim().toLowerCase();
+    const response = await requestReturnAccessLink(answers, openingIds, null);
+    if (!response.ok) {
+      await fail(response);
+      return false;
+    }
+    const body = (await response.json()) as { emailStatus: EmailSendStatus };
+    if (body.emailStatus === "failed") {
+      setMessage(TECH_SUPPORT_ERROR_MESSAGE);
+      setPhase("error");
+      return false;
+    }
+    setDraft((current) => ({
+      ...current,
+      applicant: { ...current.applicant, email: email.trim().toLowerCase() },
+    }));
+    setMessage("Check your inbox for an update about your application.");
+    setPhase("access_link_sent");
+    return true;
+  }
+
+  async function reconcilePendingCopy(choice: "saved" | "guest"): Promise<void> {
+    setPhase("working");
+    const response = await reconcilePendingCopyRequest(choice);
+    if (!response.ok) return fail(response);
+    setPendingCopy(null);
+    await restoreApplication(applicationId ?? undefined);
   }
 
   async function emailSessionAccessLink(): Promise<void> {
@@ -795,6 +848,7 @@ export function useApplicantPersistence(
     phase,
     message,
     linkConflict,
+    pendingCopy,
     accessEmail,
     accessPurpose,
     accessApplicationEmail,
@@ -806,6 +860,8 @@ export function useApplicantPersistence(
     prepareGuestReview,
     saveForReview,
     emailReturnLink,
+    requestEntryLink,
+    reconcilePendingCopy,
     emailSessionAccessLink,
     resendCurrentIntent,
     openLinkedApplication,
@@ -867,6 +923,7 @@ type AccessLinkBody = {
   switchRequired: boolean;
   applicationId: number | null;
   pendingIntent: DraftIntent | null;
+  pendingCopy: PendingCopy | null;
 };
 
 function linkBody(response: Response): Promise<AccessLinkBody> {

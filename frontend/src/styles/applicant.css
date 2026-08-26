@@ -274,8 +274,33 @@
 .email-change-actions .applicant-primary-button,
 .email-change-actions .applicant-secondary-button { flex: 1; }
 
-.return-link-field > span { color: #315f45; }
-.return-link-field .applicant-secondary-button { align-self: flex-start; background: transparent; }
+.application-entry,
+.pending-copy-decision { padding: 42px; background: #fff; border: 1px solid #dbe4e0; border-radius: 14px; box-shadow: 0 12px 35px rgb(17 53 39 / 7%); }
+.application-entry { max-width: 620px; margin: 0 auto; text-align: center; }
+.application-entry > svg,
+.pending-copy-decision > svg { color: var(--applicant-green); }
+.application-entry h2,
+.pending-copy-decision h2 { margin: 13px 0 8px; }
+.application-entry > p,
+.pending-copy-decision > p { max-width: 680px; margin: 0 auto 24px; color: #596d7a; line-height: 1.55; }
+.application-entry form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; max-width: 520px; margin: 0 auto; text-align: left; }
+.application-entry form .applicant-primary-button { white-space: nowrap; }
+.application-entry-divider { display: flex; align-items: center; gap: 12px; max-width: 520px; margin: 24px auto 18px; color: #71818c; }
+.application-entry-divider::before,
+.application-entry-divider::after { content: ""; flex: 1; border-top: 1px solid #dbe4e0; }
+.application-entry > small { display: block; margin-top: 12px; color: #647782; }
+.pending-copy-decision { text-align: center; }
+.pending-copy-table { overflow: hidden; margin: 26px 0; text-align: left; border: 1px solid #dbe4e0; border-radius: 10px; }
+.pending-copy-heading,
+.pending-copy-row { display: grid; grid-template-columns: minmax(145px, 0.8fr) repeat(2, minmax(0, 1fr)); }
+.pending-copy-heading { background: #edf7f1; color: #174f35; }
+.pending-copy-heading > *,
+.pending-copy-row > * { padding: 12px 14px; }
+.pending-copy-heading > * + *,
+.pending-copy-row > * + * { border-left: 1px solid #dbe4e0; }
+.pending-copy-row + .pending-copy-row { border-top: 1px solid #dbe4e0; }
+.pending-copy-row > span { color: #354b58; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pending-copy-decision .review-actions { justify-content: center; }
 
 .section-divider { height: 1px; margin: 29px 0; background: #e5ebee; }
 .subheading-row { display: flex; justify-content: space-between; align-items: center; gap: 15px; }
@@ -429,6 +454,17 @@
 .existing-application-choice p { margin: 0 auto 22px; max-width: 580px; color: #596d7a; line-height: 1.55; }
 .existing-application-choice .review-actions { justify-content: center; }
 .existing-application-choice > .remember-device-choice { justify-content: center; align-items: center; margin: 20px auto 24px; }
+
+@media (max-width: 700px) {
+  .application-entry form { grid-template-columns: 1fr; }
+  .application-entry form .applicant-primary-button { width: 100%; }
+  .pending-copy-heading { display: none; }
+  .pending-copy-row { grid-template-columns: 1fr; }
+  .pending-copy-row > * + * { border-left: 0; border-top: 1px solid #e6ede9; }
+  .pending-copy-row > span::before { display: block; margin-bottom: 4px; color: #647782; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+  .pending-copy-row > span:nth-child(2)::before { content: "Saved application"; }
+  .pending-copy-row > span:nth-child(3)::before { content: "Answers just entered"; }
+}
 .access-email { display: block; margin-top: 6px; color: #31526a; font-size: 0.82em; overflow-wrap: anywhere; }
 
 .applicant-footer {

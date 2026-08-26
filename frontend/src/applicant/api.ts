@@ -5,10 +5,13 @@ export function fetchApplicantOpenings() {
   return request("/applicant/openings");
 }
 
-export function checkGuestSubmission(email: string) {
+export function checkGuestSubmission(
+  answers: WorkingApplicationAnswers,
+  openingIds: number[],
+) {
   return request(
     "/applicant/submissions/check",
-    jsonRequest("POST", { email }),
+    jsonRequest("POST", { answers, openingIds }),
   );
 }
 
@@ -63,6 +66,17 @@ export function requestReturnAccessLink(
 
 export function fetchApplication() {
   return request("/applicant/application");
+}
+
+export function fetchPendingCopy() {
+  return request("/applicant/application/pending-copy");
+}
+
+export function reconcilePendingCopy(choice: "saved" | "guest") {
+  return request(
+    "/applicant/application/pending-copy",
+    jsonRequest("POST", { choice }),
+  );
 }
 
 export function requestEmailChange(newEmail: string) {

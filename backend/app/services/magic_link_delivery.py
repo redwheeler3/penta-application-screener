@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.time import pacific_today
 from app.db.models import (
     ApplicantDraft,
     Application,
@@ -18,6 +19,7 @@ from app.db.models import (
 from app.services.auth_email import (
     application_confirmation_email,
     application_deleted_email,
+    application_unavailable_email,
     email_change_notice_email,
     magic_link_email,
 )
@@ -241,5 +243,30 @@ def send_application_deleted(
         application_id=application.id,
         idempotency_key=idempotency_key,
         retry_intent={"type": "application_deleted"},
+        now=now,
+    )
+
+
+def send_application_unavailable(
+    db: Session,
+    sender: EmailSender,
+    application: Application,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    now = now or datetime.now(UTC)
+    return deliver_email(
+        db,
+        sender,
+        application_unavailable_email(
+            application_id=application.id,
+            email=application.primary_email,
+        ),
+        recipient_kind=PasswordlessIdentityKind.APPLICANT,
+        application_id=application.id,
+        idempotency_key=(
+            f"application-unavailable:{application.id}:{pacific_today(now=now).isoformat()}"
+        ),
+        retry_intent={"type": "application_unavailable"},
         now=now,
     )
