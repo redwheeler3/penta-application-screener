@@ -62,6 +62,10 @@ def send_due_unsuccessful_notices(
                 f"application-unsuccessful:{application.id}:"
                 + ",".join(str(opening_id) for opening_id in opening_ids)
             ),
+            retry_intent={
+                "type": "application_unsuccessful",
+                "opening_labels": labels,
+            },
             now=now,
         )
         if not delivered:

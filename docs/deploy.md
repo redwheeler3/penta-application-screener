@@ -234,6 +234,13 @@ Restore by creating a new volume from a snapshot, then attaching it:
 ```
 fly volumes create screener_data --snapshot-id <snap-id> --region iad --size 1
 ```
+Do not open a restored applicant database to traffic until its deletion ledger has been reconciled
+against the pre-restore database. A volume snapshot also rolls back that ledger, so blindly
+attaching an older volume could make already-purged PII visible again. The final M21 cutover runbook
+must pair the bounded snapshot lifetime with a deletion-preserving reconciliation step. The local
+`restore-db` scripts already capture the current hard-purge ledger and reapply it automatically;
+that protection does not extend across a Fly volume replacement by itself.
+
 For a true off-Fly copy (belt and suspenders), pull a consistent snapshot down on demand —
 `VACUUM INTO` gives a clean copy even while the app is live:
 ```

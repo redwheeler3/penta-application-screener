@@ -164,7 +164,9 @@ never be committed).
   before anything risky. The newest ~50 snapshots are kept.
 - **Restore:** `./restore-db.sh` lists snapshots and prompts for one (`--latest` for the
   most recent); `./restore-db.ps1` on Windows. The current DB is snapshotted first (tag
-  `pre-restore`), so a restore is itself reversible. Stop the backend before restoring.
+  `pre-restore`), so a restore is itself reversible. The restore also reapplies the current
+  hard-purge ledger so an older local snapshot cannot resurrect an aggregate already removed by
+  retention. Stop the backend before restoring.
 
 Or run services individually:
 

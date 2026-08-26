@@ -282,8 +282,6 @@ export const fetchDashboard = () =>
     "/dashboard",
   );
 
-export const runDueMaintenance = () => request("/maintenance/due", { method: "POST" });
-
 // The whole pool, unpaginated — the client derives filtering/sorting/facets from it.
 export type ApplicationsResponse = {
   applications: ApplicationSummary[];

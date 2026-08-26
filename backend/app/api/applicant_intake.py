@@ -67,6 +67,7 @@ from app.services.applicant_drafts import (
     pending_draft_for_token,
     save_pending_draft,
 )
+from app.services.email_delivery import cancel_queued_application_emails
 from app.services.email_sender import EmailSender, get_email_sender
 from app.services.intake import (
     create_application,
@@ -658,6 +659,7 @@ def delete_applicant_application(
 ) -> DeleteApplicationResponse:
     """Remove one application and every opening participation from ordinary access."""
     now = datetime.now(UTC)
+    cancel_queued_application_emails(db, application.id)
     if application.submitted_at is None:
         email_sent = send_application_deleted(db, sender, application, now=now)
         _purge_never_submitted_application(db, application)

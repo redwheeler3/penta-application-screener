@@ -363,11 +363,26 @@ address owner to a compromised session.
 Email is a load-bearing part of applicant access. A failed access-link or save-and-return send
 leaves the private pending draft intact and directs the applicant to Penta Tech Support rather than
 asking them to retry an unexpected failure. Confirmation failures are recorded for administrators.
-Sending is rate-limited, repeated requests are
-coalesced, and bounce/complaint state is monitored. Operational records contain the provider
-message ID, message kind, recipient identifier, and delivery state, but never a raw access token,
-email body, or applicant answers. Automated tests and normal local development use a captured fake
-sender and never deliver real email.
+Sending is rate-limited and repeated credential requests supersede older queued requests. A
+provider-temporary failure leaves a semantic request in a durable outbox for the next daily
+maintenance pass. The outbox never stores a rendered message, applicant answers, or a raw access
+token: a credential email receives a fresh token immediately before each provider attempt, and an
+unsuccessful attempt revokes that token. Operational records contain only the provider message ID,
+message kind, recipient identifier, delivery state, and the minimum data needed to rebuild the
+message.
+
+SocketLabs remains the source of truth for bounces, complaints, suppression, and account-level
+reporting; the application does not ingest provider webhooks or duplicate its suppression list.
+The current plan permits 2,000 messages per month, but this server also carries Penta mail sent
+outside the application. SocketLabs does not expose a reliable remaining-plan-quota value for the
+shared server, so the application reacts to a provider quota rejection instead of presenting an
+estimate as fact. Queued mail and quota-blocked mail appear in the administrator action banner and
+retry on the ordinary once-per-Pacific-day maintenance cadence. The banner shows the queue size,
+quota-blocked count, oldest and newest queued times, and latest delivery attempt without exposing
+message contents or credentials. The application cannot email an alert through the same suspended
+account, so SocketLabs' own account notifications are the out-of-band warning.
+Automated tests and normal local development use a captured fake sender and never deliver real
+email.
 
 SocketLabs' normal click-tracking configuration applies to email action links. The provider already
 receives the complete message body to deliver it, while the application-facing credential remains
@@ -589,15 +604,23 @@ Deletion covers the working and submitted answers, dated application versions,
 application participation, AI outputs and caches, eligibility and
 ranking data tied to the applicant, committee notes, sessions and unused login tokens, and
 applicant-identifying delivery records. Backups expire under a bounded backup-retention policy,
-and restoring a backup reapplies the deletion ledger before the restored service is opened. Only
-a non-identifying audit fact that a record was deleted under a named retention rule may remain.
+and the built-in local restore path reapplies the current hard-purge ledger before the restored
+service is opened. The production Fly-volume restore procedure must preserve the same guarantee.
+Only a non-identifying audit fact that a record was deleted under a named retention rule may remain.
 
-The current direction is to enforce retention automatically and opportunistically at application
-startup and at most once per day when the deployed service next receives traffic; M21 does not add
-an external scheduler solely to wake a suspended Fly Machine. A record may therefore remain
-somewhat past its scheduled date while the service is unused, but the first subsequent use would
-perform the due cleanup. Before implementation, we still need to settle whether the one-year purge
-and its deletion notice run automatically or require an administrator review/confirmation step.
+Retention is enforced automatically and opportunistically at most once per Pacific calendar day
+when the deployed service receives ordinary browser or API traffic. Health checks, static assets,
+and CORS preflight requests do not wake the sweep, and M21 does not add an external scheduler solely
+to wake a suspended Fly Machine. A durable lease prevents concurrent requests from running the
+same sweep. The ordered pass retries queued email, processes due unsuccessful notices, and then
+processes due retention deletion. A record may remain somewhat past its scheduled date while the
+service is unused; the first subsequent real use starts the due work in the background.
+
+Scheduled purge sends the deletion notice before physically removing the aggregate. A temporary or
+quota-blocked send leaves both the notice and aggregate available for the next daily attempt and
+surfaces the administrator banner. The explicit deletion of a never-submitted draft is the privacy
+exception: the draft and its email address are removed immediately rather than retained solely to
+retry a confirmation message.
 
 ## Email List Form
 
@@ -627,15 +650,14 @@ failure can be retried without losing the recipient. The notice clearly says tha
 been removed from the list and links to
 the public form so the recipient can create a new one-notice subscription if they want future
 notifications. Resubscribing creates a new record; it does not reactivate or retain the consumed
-one. A hard bounce, complaint, or provider suppression also terminates and removes the record. The
-application does not duplicate SocketLabs' permanent suppression list.
+one. SocketLabs applies hard-bounce, complaint, and unsubscribe suppression to future delivery. The
+application does not ingest those events or duplicate SocketLabs' permanent suppression list.
 
 Every vacancy-list message uses the common SocketLabs unsubscribe footer. Confirming that
 provider-managed link permanently suppresses the address from all Penta email sent through the
-server, including secure sign-in links. The M22 unsubscribe webhook also removes any active vacancy
-subscription for the address so the product does not retain a record that SocketLabs can never
-deliver. A vacancy notice still states that its one-notice subscription has been consumed and
-offers the public sign-up link for recipients who have not permanently unsubscribed.
+server, including secure sign-in links. A vacancy notice still states that its one-notice
+subscription has been consumed and offers the public sign-up link for recipients who have not
+permanently unsubscribed.
 
 ## Prior Email Templates
 
@@ -1049,7 +1071,7 @@ remains deliberately deferred until the end of the milestone.
    selected-applicant confirmation during the closed or archived phase, automatic eligible
    unsuccessful email after archive, seven-year retention for selected members, opening-anchored retention for
    never-submitted drafts, and complete one-year application purge with its deletion notice and vacancy-list invitation
-   (automatic versus administrator-confirmed execution still to be settled).
+   through a credential-safe, quota-aware outbox and once-per-Pacific-day automatic maintenance.
 7. **Between-cycle cutover** — configure the applicant hostname and exercise SocketLabs in
    production with synthetic data and retain existing production records as specified below.
    Application import, Picker, Drive credentials/tokens, and Google data scopes have already been
@@ -1096,8 +1118,9 @@ separate milestone with its own storage, hostname, and isolation decisions.
 - Unsuccessful and withdrawn applications are completely purged one year after their retention
   anchor. Selected-member applications use the seven-year period. Purge notices and unsuccessful
   notices invite the recipient to join the vacancy notification list without subscribing them.
-- SocketLabs send failure, retry, rate-limit, bounce, and complaint paths are observable without
-  logging tokens, email bodies, or applicant content.
+- SocketLabs send failure, retry, rate-limit, and quota-blocked paths are observable without logging
+  tokens, email bodies, or applicant content. SocketLabs owns bounce, complaint, suppression, and
+  account-level reporting.
 - Automated tests and normal local development capture email without sending it. Explicit live
   development tests send only synthetic messages to exact `@jeffo.net` or `@pentacoop.com`
   recipients, enforced before the provider call with no per-message bypass.
@@ -1109,11 +1132,10 @@ separate milestone with its own storage, hostname, and isolation decisions.
   browser submission/edit/collision checks, email delivery checks, and permission/retention checks
   pass before the cycle opens.
 
-**Open decisions before implementation:**
-
-- Exact backup lifetime and the implementation mechanics for complete applicant deletion and the
-  opportunistic retention sweep.
-- SocketLabs event-webhook configuration and administrator delivery-status UI.
+**Remaining cutover decision:** choose the bounded production backup lifetime and finalize the
+deletion-preserving Fly-volume restore procedure before applications open. Complete applicant
+deletion, deletion-ledger-aware local restores, the opportunistic retention sweep, and
+administrator delivery-status banners are implemented in M21.
 
 ### Built-In Vacancy Notifications (M22) — planned
 
@@ -1129,7 +1151,7 @@ one-notice subscription described in [Built-In Vacancy Notification List](#built
 3. Require an administrator to preview the matching audience and exact message, then separately
    confirm **Send vacancy notification**. Creating or opening an offering never sends email
    automatically. Send through a retry-safe outbox, consume the whole subscription after provider
-   acceptance or terminal bounce/complaint, and show delivery outcomes to administrators.
+   acceptance, and show delivery outcomes to administrators.
 4. Import the existing Google list with its recorded unit preferences and available consent
    provenance from its form-response timestamp, verify counts, replace the website link, and
    retire the Google form and sheet.
@@ -1150,9 +1172,8 @@ matching vacancy notice.
   after provider acceptance. The notice explains the removal and offers a link to subscribe again.
 - Application deletion and mailing-list deletion remain independent, and application activity
   never silently subscribes an address.
-- Every vacancy-list message uses the common SocketLabs permanent-unsubscribe footer. An
-  unsubscribe, hard bounce, or complaint removes any active vacancy subscription; SocketLabs owns
-  the durable suppression record.
+- Every vacancy-list message uses the common SocketLabs permanent-unsubscribe footer. SocketLabs
+  owns unsubscribe, hard-bounce, complaint, and durable suppression for all email from the server.
 - The production website uses the built-in form and the Google form/sheet and their operational
   handling are removed after a count-verified migration.
 

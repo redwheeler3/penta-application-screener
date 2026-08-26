@@ -14,7 +14,10 @@ from app.db.models import (
     ApplicationAIResult,
     ApplicationParticipation,
     Base,
+    EmailDelivery,
+    EmailDeliveryState,
     Opening,
+    PasswordlessIdentityKind,
     User,
     UserRole,
 )
@@ -49,6 +52,57 @@ def _logged_in_app(role: UserRole = UserRole.MEMBER) -> tuple:
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[require_current_user] = lambda: user
     return app, db
+
+
+@pytest.mark.anyio
+async def test_admin_dashboard_reports_quota_blocked_email_queue() -> None:
+    app, db = _logged_in_app(UserRole.ADMIN)
+    application = Application(
+        primary_email="applicant@example.com",
+        raw_row={},
+        raw_row_hash="synthetic",
+        normalized={},
+    )
+    db.add(application)
+    db.flush()
+    db.add_all(
+        [
+            EmailDelivery(
+                message_kind="applicant_magic_link",
+                recipient_kind=PasswordlessIdentityKind.APPLICANT,
+                application_id=application.id,
+                state=EmailDeliveryState.QUEUED,
+                retry_intent={"type": "magic_link"},
+                quota_blocked=True,
+                attempt_count=1,
+                created_at=datetime(2026, 8, 24, 10, tzinfo=UTC),
+                last_attempt_at=datetime(2026, 8, 24, 11, tzinfo=UTC),
+            ),
+            EmailDelivery(
+                message_kind="application_confirmation",
+                recipient_kind=PasswordlessIdentityKind.APPLICANT,
+                application_id=application.id,
+                state=EmailDeliveryState.QUEUED,
+                retry_intent={"type": "application_confirmation"},
+                quota_blocked=False,
+                attempt_count=2,
+                created_at=datetime(2026, 8, 25, 12, tzinfo=UTC),
+                last_attempt_at=datetime(2026, 8, 26, 13, tzinfo=UTC),
+            ),
+        ]
+    )
+    db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/dashboard")
+
+    actions = response.json()["adminActions"]
+    assert actions["queuedEmailCount"] == 2
+    assert actions["quotaBlockedEmailCount"] == 1
+    assert actions["oldestQueuedEmailAt"] == "2026-08-24T10:00:00Z"
+    assert actions["newestQueuedEmailAt"] == "2026-08-25T12:00:00Z"
+    assert actions["lastEmailAttemptAt"] == "2026-08-26T13:00:00Z"
 
 
 @pytest.mark.anyio

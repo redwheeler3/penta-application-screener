@@ -36,6 +36,7 @@ primary_region = "iad"   # Ashburn — lower-cost region; Bedrock runs in nearby
   # 1GB is far more than the ~20MB DB needs, at ~$0.15/mo.
   source = "screener_data"
   destination = "/app/backend/data"
+  snapshot_retention = 30
 
 [http_service]
   internal_port = 8080

@@ -202,6 +202,11 @@ export type AdminActions = {
     unitSizeBedrooms: number;
     moveInDate: string;
   }>;
+  queuedEmailCount: number;
+  quotaBlockedEmailCount: number;
+  oldestQueuedEmailAt: string | null;
+  newestQueuedEmailAt: string | null;
+  lastEmailAttemptAt: string | null;
 };
 
 // Faceted counts: each facet reflects the other group's active filter, so the two

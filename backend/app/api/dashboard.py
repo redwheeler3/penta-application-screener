@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,6 +14,7 @@ from app.ai.dimension_scoring import applications_to_score
 from app.ai.screening import applications_for_screening as screening_scope
 from app.ai.screening import screening_prompt_version
 from app.api.dependencies import require_current_user
+from app.core.time import as_utc
 from app.db.models import (
     Analysis,
     ApplicationAIResult,
@@ -33,6 +36,7 @@ from app.services.analysis import (
     ranking_is_current,
 )
 from app.services.application_scope import committee_applications
+from app.services.email_outbox import email_queue_status
 from app.services.opening_selection import archived_openings_needing_selection
 from app.services.settings import get_app_settings
 
@@ -58,6 +62,7 @@ def read_dashboard(
     )
     current_analysis = get_current_analysis(db)
     current_rank_inputs = ranking_is_current(db, current_analysis, settings)
+    email_queue = email_queue_status(db)
 
     return DashboardResponse(
         # Whether each step has work available or has run, from persisted data so
@@ -88,12 +93,22 @@ def read_dashboard(
                         move_in_date=opening.move_in_date,
                     )
                     for opening in archived_openings_needing_selection(db)
-                ]
+                ],
+                queued_email_count=email_queue.count,
+                quota_blocked_email_count=email_queue.quota_blocked,
+                oldest_queued_email_at=_as_utc(email_queue.oldest_queued_at),
+                newest_queued_email_at=_as_utc(email_queue.newest_queued_at),
+                last_email_attempt_at=_as_utc(email_queue.last_attempt_at),
             )
             if user.role == UserRole.ADMIN
             else None
         ),
     )
+
+
+def _as_utc(timestamp: datetime | None) -> datetime | None:
+    return as_utc(timestamp) if timestamp is not None else None
+
 
 def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
     # Coverage is a cache-hit count, so each pass must be probed under the model it

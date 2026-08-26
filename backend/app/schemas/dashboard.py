@@ -5,7 +5,7 @@ The status/source maps and the coverage map are keyed by enum *values* (data, e.
 alias generator, which only renames declared field names.
 """
 
-from datetime import date
+from datetime import date, datetime
 
 from app.schemas.base import ResponseModel
 
@@ -31,6 +31,11 @@ class OpeningSelectionAction(ResponseModel):
 
 class AdminActions(ResponseModel):
     archived_openings_needing_selection: list[OpeningSelectionAction]
+    queued_email_count: int
+    quota_blocked_email_count: int
+    oldest_queued_email_at: datetime | None
+    newest_queued_email_at: datetime | None
+    last_email_attempt_at: datetime | None
 
 
 class DashboardResponse(ResponseModel):

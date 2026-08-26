@@ -4,7 +4,6 @@ import {
   type ReactNode,
   Suspense,
   type SyntheticEvent,
-  useCallback,
   useEffect,
   useRef,
   useState,
@@ -174,30 +173,12 @@ export function App(props: { authRedirect: AuthRedirect }) {
     clearSelectedApplication: () => setSelectedApp(null),
   });
 
-  const maintenanceDay = useRef<string | null>(null);
-  const runMaintenanceIfDue = useCallback(() => {
-    const today = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/Vancouver",
-    }).format(new Date());
-    if (maintenanceDay.current === today) return;
-    maintenanceDay.current = today;
-    void api
-      .runDueMaintenance()
-      .then((response) => {
-        if (response.ok) void Promise.all([refreshDashboard(), reloadApplications()]);
-      })
-      .catch(() => {
-        maintenanceDay.current = null;
-      });
-  }, [refreshDashboard, reloadApplications]);
-
   useEffect(() => {
     if (!user) return;
     void loadSettings();
     void loadInitialDashboard();
     refreshRankingRun();
     void loadInitialApplications();
-    runMaintenanceIfDue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
@@ -208,7 +189,6 @@ export function App(props: { authRedirect: AuthRedirect }) {
     let refreshInFlight = false;
     const refreshIntake = () => {
       if (document.visibilityState !== "visible" || refreshInFlight) return;
-      runMaintenanceIfDue();
       refreshInFlight = true;
       void Promise.all([refreshDashboard(), reloadApplications()]).finally(() => {
         refreshInFlight = false;
@@ -222,7 +202,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
       window.removeEventListener("focus", refreshIntake);
       document.removeEventListener("visibilitychange", refreshIntake);
     };
-  }, [user, refreshDashboard, reloadApplications, runMaintenanceIfDue]);
+  }, [user, refreshDashboard, reloadApplications]);
 
   // A ranking became stale (another member re-ranked) — surface it as a global toast with a
   // Reload action, so it reaches the member wherever they are on the page (not only on the

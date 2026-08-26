@@ -28,6 +28,14 @@ class EmailDeliveryError(RuntimeError):
     pass
 
 
+class EmailRetryableError(EmailDeliveryError):
+    pass
+
+
+class EmailQuotaExceededError(EmailRetryableError):
+    pass
+
+
 @dataclass(frozen=True)
 class OutboundEmail:
     kind: str
@@ -119,11 +127,17 @@ class SocketLabsEmailSender:
                 "Messages": [provider_message],
             },
         )
-        response.raise_for_status()
         try:
-            result = response.json()
-        except ValueError as error:
-            raise EmailDeliveryError("SocketLabs returned invalid JSON.") from error
+            result: object = response.json()
+        except ValueError:
+            result = response.text
+        if _is_quota_rejection(response, result):
+            raise EmailQuotaExceededError("SocketLabs rejected mail at the account limit.")
+        if response.status_code == 429 or response.status_code >= 500:
+            raise EmailRetryableError("SocketLabs is temporarily unavailable.")
+        response.raise_for_status()
+        if not isinstance(result, dict):
+            raise EmailDeliveryError("SocketLabs returned invalid JSON.")
         if result.get("ErrorCode") != "Success":
             raise EmailDeliveryError("SocketLabs rejected the message.")
         return message_id
@@ -206,6 +220,23 @@ def _socketlabs_gateway(value: str) -> str:
     if gateway.scheme != "https" or not gateway.host:
         raise EmailConfigurationError("The SocketLabs gateway must be an HTTPS URL.")
     return str(gateway)
+
+
+def _is_quota_rejection(response: httpx.Response, result: object) -> bool:
+    """Recognize SocketLabs' documented suspension language without retaining it."""
+    provider_text = str(result).lower()
+    quota_markers = (
+        "allotment",
+        "account limit",
+        "monthly limit",
+        "overage",
+        "quota",
+        "suspend",
+        "451 4.7.1",
+    )
+    return response.status_code == 402 or any(
+        marker in provider_text for marker in quota_markers
+    )
 
 
 def _require_allowed_domain(value: str, allowed_domains: frozenset[str]) -> None:

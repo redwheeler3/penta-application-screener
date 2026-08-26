@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTasks
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.allowlist import router as allowlist_router
@@ -18,7 +19,6 @@ from app.api.dashboard import router as dashboard_router
 from app.api.evals import router as evals_router
 from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
-from app.api.maintenance import router as maintenance_router
 from app.api.observability import router as observability_router
 from app.api.openings import router as openings_router
 from app.api.passwordless_auth import router as passwordless_auth_router
@@ -28,6 +28,7 @@ from app.api.screening import router as screening_router
 from app.api.settings import router as settings_router
 from app.api.settings import rules_router as eligibility_rules_router
 from app.core.config import get_settings
+from app.services.maintenance import run_due_maintenance
 
 PROBLEM_JSON = "application/problem+json"
 
@@ -78,7 +79,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-def create_app() -> FastAPI:
+def create_app(*, maintenance_task: Callable[[], None] | None = None) -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="Penta Application Screener API", lifespan=lifespan)
     # Authlib uses this signed cookie only while a browser completes Google OIDC. Successful
@@ -107,6 +108,12 @@ def create_app() -> FastAPI:
         response = await call_next(request)
         if request.url.path.startswith("/applicant"):
             response.headers["Cache-Control"] = "no-store"
+        if maintenance_task is not None and _triggers_maintenance(request):
+            tasks = BackgroundTasks()
+            if response.background is not None:
+                tasks.add_task(response.background)
+            tasks.add_task(maintenance_task)
+            response.background = tasks
         return response
 
     register_error_handlers(app)
@@ -118,7 +125,6 @@ def create_app() -> FastAPI:
     app.include_router(evals_router)
     app.include_router(feedback_router)
     app.include_router(health_router)
-    app.include_router(maintenance_router)
     app.include_router(observability_router)
     app.include_router(openings_router)
     app.include_router(passwordless_auth_router)
@@ -137,4 +143,14 @@ def create_app() -> FastAPI:
     return app
 
 
-app = create_app()
+def _triggers_maintenance(request: Request) -> bool:
+    path = request.url.path
+    return (
+        request.method != "OPTIONS"
+        and path != "/health"
+        and not path.startswith("/assets/")
+        and path not in {"/favicon.ico", "/robots.txt"}
+    )
+
+
+app = create_app(maintenance_task=run_due_maintenance)

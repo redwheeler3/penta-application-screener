@@ -92,6 +92,18 @@ Development delivery permits exactly `jeffo.net` and `pentacoop.com`. The adapte
 sender, reply-to, and every To/CC/BCC address before invoking SocketLabs. Subdomains and lookalike
 domains do not match.
 
+Every provider attempt is reserved in `EmailDelivery` before network I/O. Temporary provider and
+quota failures retain a small semantic retry intent, not the rendered body. Credential intents are
+rebuilt with a fresh, immediately usable token for each attempt; an unsuccessful attempt revokes
+that token. A newer credential request supersedes an older queued one for the same identity and
+purpose.
+
+Ordinary application traffic claims a durable once-per-Pacific-day maintenance lease in a response
+background task. The pass retries queued mail, sends due unsuccessful notices, and performs due
+retention deletion. Health checks, static assets, and CORS preflight requests do not trigger it.
+Administrators see queued and provider-quota-blocked counts in the action banner. SocketLabs, not
+the application, owns bounce, complaint, suppression, plan reporting, and account notifications.
+
 ## Committee workflow
 
 The visible workflow has two paid steps:

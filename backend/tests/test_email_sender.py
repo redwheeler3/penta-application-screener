@@ -6,6 +6,8 @@ from app.services.email_sender import (
     DevelopmentEmailSender,
     EmailConfigurationError,
     EmailDeliveryError,
+    EmailQuotaExceededError,
+    EmailRetryableError,
     OutboundEmail,
     SocketLabsEmailSender,
     build_email_sender,
@@ -13,15 +15,28 @@ from app.services.email_sender import (
 
 
 class FakeResponse:
-    def __init__(self, payload: dict, *, status_error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        payload: object,
+        *,
+        status_code: int = 200,
+        status_error: Exception | None = None,
+        json_error: ValueError | None = None,
+        text: str = "",
+    ) -> None:
         self.payload = payload
+        self.status_code = status_code
         self.status_error = status_error
+        self.json_error = json_error
+        self.text = text
 
     def raise_for_status(self) -> None:
         if self.status_error is not None:
             raise self.status_error
 
-    def json(self) -> dict:
+    def json(self) -> object:
+        if self.json_error is not None:
+            raise self.json_error
         return self.payload
 
 
@@ -113,6 +128,42 @@ def test_socketlabs_adapter_rejects_provider_warning() -> None:
     )
 
     with pytest.raises(EmailDeliveryError):
+        sender.send(_message())
+
+
+def test_socketlabs_adapter_identifies_account_quota_suspension() -> None:
+    sender = SocketLabsEmailSender(
+        FakeHttpClient(
+            {
+                "ErrorCode": "ServerSuspended",
+                "Message": "The monthly message allotment has been reached.",
+            }
+        ),
+        gateway="https://inject.example.test/email",
+        server_id=12345,
+        api_key="synthetic-key",
+    )
+
+    with pytest.raises(EmailQuotaExceededError):
+        sender.send(_message())
+
+
+def test_socketlabs_adapter_retries_non_json_provider_outage() -> None:
+    client = FakeHttpClient()
+    client.response = FakeResponse(
+        {},
+        status_code=503,
+        json_error=ValueError("synthetic invalid JSON"),
+        text="Service unavailable",
+    )
+    sender = SocketLabsEmailSender(
+        client,
+        gateway="https://inject.example.test/email",
+        server_id=12345,
+        api_key="synthetic-key",
+    )
+
+    with pytest.raises(EmailRetryableError):
         sender.send(_message())
 
 

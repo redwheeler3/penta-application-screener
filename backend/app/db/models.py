@@ -78,8 +78,6 @@ class EmailDeliveryState(StrEnum):
     QUEUED = "queued"
     ACCEPTED = "accepted"
     FAILED = "failed"
-    BOUNCED = "bounced"
-    COMPLAINED = "complained"
 
 
 def enum_values(enum_class: type[StrEnum]) -> list[str]:
@@ -500,7 +498,11 @@ class BrowserSession(Base):
 
 
 class EmailDelivery(TimestampMixin, Base):
-    """Provider delivery metadata without an address, body, token, or applicant answers."""
+    """Provider delivery metadata plus a credential-safe retry intent.
+
+    ``retry_intent`` describes how to rebuild a message but never stores a magic-link
+    credential or rendered message body. It is cleared after acceptance or terminal failure.
+    """
 
     __tablename__ = "email_deliveries"
     __table_args__ = (
@@ -534,6 +536,10 @@ class EmailDelivery(TimestampMixin, Base):
     )
     state: Mapped[EmailDeliveryState] = mapped_column(
         Enum(EmailDeliveryState, values_callable=enum_values), nullable=False, index=True
+    )
+    retry_intent: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    quota_blocked: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False, index=True
     )
     provider_message_id: Mapped[str | None] = mapped_column(String(255), index=True)
     attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
