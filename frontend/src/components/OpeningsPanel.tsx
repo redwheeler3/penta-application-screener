@@ -1,9 +1,14 @@
-import { CalendarDays, Pencil, Plus } from "lucide-react";
+import { CalendarDays, Eye, Pencil, Plus, RotateCcw, UserCheck, UserX } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 
 import * as api from "../api";
 import { readProblem } from "../format";
-import type { Opening, OpeningWrite } from "../types";
+import type {
+  Opening,
+  OpeningSelection,
+  OpeningSelectionCandidate,
+  OpeningWrite,
+} from "../types";
 import { NumberInput } from "./NumberInput";
 import { RetryLoadError } from "./RetryLoadError";
 
@@ -23,7 +28,12 @@ const EMPTY_DRAFT: OpeningDraft = {
   moveInDate: "",
 };
 
-export function OpeningsPanel(props: { onError: (message: string) => void }): ReactNode {
+export function OpeningsPanel(props: {
+  onError: (message: string) => void;
+  onPoolChanged: () => void;
+  onOpenApplicant: (id: number) => void;
+  onOpenRetainedApplicant: (id: number) => void;
+}): ReactNode {
   const [openings, setOpenings] = useState<Opening[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [loadVersion, setLoadVersion] = useState(0);
@@ -31,6 +41,10 @@ export function OpeningsPanel(props: { onError: (message: string) => void }): Re
   const [draft, setDraft] = useState<OpeningDraft | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [selection, setSelection] = useState<OpeningSelection | null>(null);
+  const [pendingCandidate, setPendingCandidate] = useState<OpeningSelectionCandidate | null>(null);
+  const [confirmingNoHousehold, setConfirmingNoHousehold] = useState(false);
+  const [confirmingUndo, setConfirmingUndo] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -50,6 +64,7 @@ export function OpeningsPanel(props: { onError: (message: string) => void }): Re
     setEditingId(null);
     setDraft({ ...EMPTY_DRAFT });
     setMessage("");
+    setSelection(null);
   }
 
   function beginEdit(opening: Opening): void {
@@ -62,6 +77,7 @@ export function OpeningsPanel(props: { onError: (message: string) => void }): Re
       moveInDate: opening.moveInDate,
     });
     setMessage("");
+    setSelection(null);
   }
 
   async function save(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -91,6 +107,81 @@ export function OpeningsPanel(props: { onError: (message: string) => void }): Re
     if (!response) return;
     setOpenings(response);
     setMessage("Opening published.");
+  }
+
+  async function manageSelection(opening: Opening): Promise<void> {
+    setBusy(true);
+    setMessage("");
+    setPendingCandidate(null);
+    setConfirmingNoHousehold(false);
+    setConfirmingUndo(false);
+    try {
+      setSelection(await api.fetchOpeningSelection(opening.id));
+    } catch {
+      props.onError("Could not load the opening selection.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmSelection(): Promise<void> {
+    if (!selection || !pendingCandidate || busy) return;
+    setBusy(true);
+    try {
+      const response = await api.confirmOpeningSelection(
+        selection.openingId,
+        pendingCandidate.applicationId,
+      );
+      if (!response.ok) {
+        props.onError((await readProblem(response)) ?? "Could not save the selection.");
+        return;
+      }
+      setSelection((await response.json()) as OpeningSelection);
+      setPendingCandidate(null);
+      setOpenings(await api.fetchOpenings());
+      setMessage("Successful applicant selected.");
+      props.onPoolChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmNoHousehold(): Promise<void> {
+    if (!selection || busy) return;
+    setBusy(true);
+    try {
+      const response = await api.confirmNoHouseholdSelected(selection.openingId);
+      if (!response.ok) {
+        props.onError((await readProblem(response)) ?? "Could not save the decision.");
+        return;
+      }
+      setSelection((await response.json()) as OpeningSelection);
+      setConfirmingNoHousehold(false);
+      setOpenings(await api.fetchOpenings());
+      setMessage("Opening decision recorded.");
+      props.onPoolChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function undoSelection(): Promise<void> {
+    if (!selection || busy) return;
+    setBusy(true);
+    try {
+      const response = await api.undoOpeningSelection(selection.openingId);
+      if (!response.ok) {
+        props.onError((await readProblem(response)) ?? "Could not undo the selection.");
+        return;
+      }
+      setSelection((await response.json()) as OpeningSelection);
+      setConfirmingUndo(false);
+      setOpenings(await api.fetchOpenings());
+      setMessage("Selection undone.");
+      props.onPoolChanged();
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function mutate(request: Promise<Response>): Promise<Opening[] | null> {
@@ -136,6 +227,33 @@ export function OpeningsPanel(props: { onError: (message: string) => void }): Re
         />
       ) : null}
 
+      {selection ? (
+        <OpeningSelectionPanel
+          selection={selection}
+          pendingCandidate={pendingCandidate}
+          confirmingNoHousehold={confirmingNoHousehold}
+          confirmingUndo={confirmingUndo}
+          busy={busy}
+          onChoose={setPendingCandidate}
+          onRequestNoHousehold={() => setConfirmingNoHousehold(true)}
+          onCancelNoHousehold={() => setConfirmingNoHousehold(false)}
+          onConfirmNoHousehold={() => void confirmNoHousehold()}
+          onBack={() => setPendingCandidate(null)}
+          onConfirm={() => void confirmSelection()}
+          onReview={props.onOpenApplicant}
+          onReviewSelected={props.onOpenRetainedApplicant}
+          onRequestUndo={() => setConfirmingUndo(true)}
+          onCancelUndo={() => setConfirmingUndo(false)}
+          onUndo={() => void undoSelection()}
+          onClose={() => {
+            setSelection(null);
+            setPendingCandidate(null);
+            setConfirmingNoHousehold(false);
+            setConfirmingUndo(false);
+          }}
+        />
+      ) : null}
+
       {message ? <p className="opening-message" role="status">{message}</p> : null}
       {loadError ? (
         <RetryLoadError
@@ -159,6 +277,12 @@ export function OpeningsPanel(props: { onError: (message: string) => void }): Re
               busy={busy}
               onEdit={() => beginEdit(opening)}
               onPublish={() => void publish(opening)}
+              onManageSelection={() => void manageSelection(opening)}
+              onReviewSelected={() => {
+                if (opening.selectedApplicationId !== null) {
+                  props.onOpenRetainedApplicant(opening.selectedApplicationId);
+                }
+              }}
             />
           ))}
         </div>
@@ -226,6 +350,8 @@ function OpeningCard(props: {
   busy: boolean;
   onEdit: () => void;
   onPublish: () => void;
+  onManageSelection: () => void;
+  onReviewSelected: () => void;
 }): ReactNode {
   const { opening } = props;
   return (
@@ -243,6 +369,27 @@ function OpeningCard(props: {
           <div><dt>Move-in</dt><dd>{formatDateOnly(opening.moveInDate)}</dd></div>
           <div><dt>Submissions</dt><dd>{opening.submissionCount}</dd></div>
         </dl>
+        {opening.selectedApplicationId !== null ? (
+          <div className="opening-selection-summary">
+            <UserCheck size={17} />
+            <span>
+              Selected applicant
+              <strong>{opening.selectedApplicantName ?? "Application selected"}</strong>
+            </span>
+            {opening.decisionPermanent ? <small>Permanent</small> : <small>Can be undone until move-in</small>}
+          </div>
+        ) : opening.noHouseholdSelected ? (
+          <div className="opening-selection-summary opening-no-selection-summary">
+            <UserX size={17} />
+            <span>
+              Opening decision
+              <strong>No household selected</strong>
+            </span>
+            {opening.decisionPermanent ? <small>Permanent</small> : <small>Can be undone until move-in</small>}
+          </div>
+        ) : opening.needsDecision ? (
+          <p className="opening-selection-needed">An opening decision is required.</p>
+        ) : null}
       </div>
       <div className="opening-card-actions">
         <button className="secondary-button" type="button" onClick={props.onEdit} disabled={props.busy}>
@@ -253,8 +400,162 @@ function OpeningCard(props: {
             Publish opening
           </button>
         ) : null}
+        {opening.selectedApplicationId !== null ? (
+          <button className="secondary-button" type="button" onClick={props.onReviewSelected} disabled={props.busy}>
+            <Eye size={15} /> Review application
+          </button>
+        ) : null}
+        {opening.phase === "closed" || opening.phase === "archived" ? (
+          <button className={opening.needsDecision ? "primary-button" : "secondary-button"} type="button" onClick={props.onManageSelection} disabled={props.busy}>
+            <UserCheck size={15} /> {opening.selectedApplicationId === null && !opening.noHouseholdSelected ? "Record decision" : "Manage decision"}
+          </button>
+        ) : null}
       </div>
     </article>
+  );
+}
+
+function OpeningSelectionPanel(props: {
+  selection: OpeningSelection;
+  pendingCandidate: OpeningSelectionCandidate | null;
+  confirmingNoHousehold: boolean;
+  confirmingUndo: boolean;
+  busy: boolean;
+  onChoose: (candidate: OpeningSelectionCandidate) => void;
+  onRequestNoHousehold: () => void;
+  onCancelNoHousehold: () => void;
+  onConfirmNoHousehold: () => void;
+  onBack: () => void;
+  onConfirm: () => void;
+  onReview: (id: number) => void;
+  onReviewSelected: (id: number) => void;
+  onRequestUndo: () => void;
+  onCancelUndo: () => void;
+  onUndo: () => void;
+  onClose: () => void;
+}): ReactNode {
+  const selected = props.selection.selectedApplicationId;
+  if (props.confirmingUndo && (selected !== null || props.selection.noHouseholdSelected)) {
+    return (
+      <section className="opening-selection-panel">
+        <h4>Undo this selection?</h4>
+        <p>
+          {selected !== null
+            ? `${props.selection.selectedApplicantName ?? "The selected applicant"} will return to the committee workflow.`
+            : "The opening will return to awaiting a decision."}
+          {" "}No unsuccessful emails have been sent while this opening is closed.
+        </p>
+        <div className="opening-form-actions">
+          <button className="secondary-button" type="button" onClick={props.onCancelUndo} disabled={props.busy}>Keep selection</button>
+          <button className="danger-button" type="button" onClick={props.onUndo} disabled={props.busy}>
+            <RotateCcw size={15} /> Undo selection
+          </button>
+        </div>
+      </section>
+    );
+  }
+  if (props.confirmingNoHousehold) {
+    const count = props.selection.activeParticipantCount;
+    return (
+      <section className="opening-selection-panel">
+        <h4>Confirm no household selected</h4>
+        <p>
+          No household will be selected for this opening. {count} {count === 1 ? "application" : "applications"} will be recorded as unsuccessful.
+        </p>
+        <p className="panel-hint">
+          {props.selection.phase === "closed"
+            ? "No unsuccessful email will be sent until the opening becomes archived. You can undo this decision before then."
+            : "This archived decision is permanent. Eligible unsuccessful applicants will now be notified."}
+        </p>
+        <div className="opening-form-actions">
+          <button className="secondary-button" type="button" onClick={props.onCancelNoHousehold} disabled={props.busy}>Back</button>
+          <button className="primary-button" type="button" onClick={props.onConfirmNoHousehold} disabled={props.busy}>
+            <UserX size={15} /> Confirm decision
+          </button>
+        </div>
+      </section>
+    );
+  }
+  if (props.pendingCandidate) {
+    const unsuccessfulCount = props.selection.activeParticipantCount - 1;
+    return (
+      <section className="opening-selection-panel">
+        <h4>Confirm the successful applicant</h4>
+        <p>
+          <strong>{props.pendingCandidate.applicantName ?? props.pendingCandidate.primaryEmail}</strong>
+          {" "}will be selected. {unsuccessfulCount} other {unsuccessfulCount === 1 ? "application" : "applications"} will be recorded as unsuccessful.
+        </p>
+        <p className="panel-hint">
+          {props.selection.phase === "closed"
+            ? "No unsuccessful email will be sent until the opening becomes archived. You can undo this selection before then."
+            : "This archived selection is permanent. Eligible unsuccessful applicants will now be notified."}
+        </p>
+        <div className="opening-form-actions">
+          <button className="secondary-button" type="button" onClick={props.onBack} disabled={props.busy}>Back</button>
+          <button className="primary-button" type="button" onClick={props.onConfirm} disabled={props.busy}>
+            <UserCheck size={15} /> Confirm selection
+          </button>
+        </div>
+      </section>
+    );
+  }
+  return (
+    <section className="opening-selection-panel">
+      <div className="opening-form-heading">
+        <div>
+          <h4>Opening decision</h4>
+          <span>Record the committee's decision for this opening.</span>
+        </div>
+        <button className="secondary-button" type="button" onClick={props.onClose}>Close</button>
+      </div>
+      {selected !== null ? (
+        <div className="opening-selected-detail">
+          <div>
+            <strong>{props.selection.selectedApplicantName ?? "Selected application"}</strong>
+            <span>{props.selection.decisionPermanent ? "Permanent archived selection" : "Confirmed for this closed opening"}</span>
+          </div>
+          <button className="secondary-button" type="button" onClick={() => props.onReviewSelected(selected)}>
+            <Eye size={15} /> Review application
+          </button>
+          {!props.selection.decisionPermanent ? (
+            <button className="text-danger-button" type="button" onClick={props.onRequestUndo}>Undo selection</button>
+          ) : null}
+        </div>
+      ) : props.selection.noHouseholdSelected ? (
+        <div className="opening-selected-detail">
+          <div>
+            <strong>No household selected</strong>
+            <span>{props.selection.decisionPermanent ? "Permanent archived decision" : "Confirmed for this closed opening"}</span>
+          </div>
+          {!props.selection.decisionPermanent ? (
+            <button className="text-danger-button" type="button" onClick={props.onRequestUndo}>Undo decision</button>
+          ) : null}
+        </div>
+      ) : (
+        <div>
+          {props.selection.candidates.length === 0 ? (
+            <p className="panel-hint">There are no available applicants to select.</p>
+          ) : (
+            <div className="opening-candidate-list">
+              {props.selection.candidates.map((candidate) => (
+                <div key={candidate.applicationId} className="opening-candidate-row">
+                  <button className="opening-candidate-name" type="button" onClick={() => props.onReview(candidate.applicationId)}>
+                    <strong>{candidate.applicantName ?? candidate.primaryEmail}</strong>
+                    <span>{candidate.primaryEmail}</span>
+                  </button>
+                  <button className="secondary-button" type="button" onClick={() => props.onChoose(candidate)}>
+                    Select
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <button className="opening-no-selection-button" type="button" onClick={props.onRequestNoHousehold}>
+            No household selected
+          </button>
+        </div>
+      )}
+    </section>
   );
 }
 

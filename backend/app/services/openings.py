@@ -9,7 +9,10 @@ from app.api.problems import Problem
 from app.core.time import pacific_today
 from app.db.models import Application, ApplicationParticipation, Opening, OpeningPhase
 from app.schemas.openings import OpeningWrite
-from app.services.retention import one_year_after
+from app.services.retention import (
+    refresh_application_retention,
+    refresh_draft_retention_for_opening,
+)
 
 
 def opening_phase(opening: Opening, *, today: date | None = None) -> OpeningPhase:
@@ -65,6 +68,7 @@ def update_opening(db: Session, opening: Opening, values: OpeningWrite) -> Openi
         setattr(opening, field, value)
     db.flush()
     _refresh_participant_retention(db, opening.id)
+    refresh_draft_retention_for_opening(db, opening.id)
     db.commit()
     db.refresh(opening)
     return opening
@@ -79,17 +83,9 @@ def _refresh_participant_retention(db: Session, opening_id: int) -> None:
         )
     )
     for application_id in set(application_ids):
-        latest_move_in = db.scalar(
-            select(func.max(Opening.move_in_date))
-            .join(
-                ApplicationParticipation,
-                ApplicationParticipation.opening_id == Opening.id,
-            )
-            .where(ApplicationParticipation.application_id == application_id)
-        )
         application = db.get(Application, application_id)
-        if application is not None and latest_move_in is not None:
-            application.retention_due_on = one_year_after(latest_move_in)
+        if application is not None:
+            refresh_application_retention(db, application)
 
 
 def publish_opening(

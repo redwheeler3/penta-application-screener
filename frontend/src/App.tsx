@@ -4,6 +4,7 @@ import {
   type ReactNode,
   Suspense,
   type SyntheticEvent,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -17,7 +18,8 @@ import type {
   AppStatus,
   ViewTab,
 } from "./types";
-import { AdminSettingsPanel } from "./components/AdminSettingsPanel";
+import { AdminSettingsPanel, type AdminSubtab } from "./components/AdminSettingsPanel";
+import { AdminActionBanner } from "./components/AdminActionBanner";
 import { ApplicationsList } from "./components/ApplicationsList";
 import { CandidateDetail } from "./components/CandidateDetail";
 import { CommitteeSignIn } from "./components/CommitteeSignIn";
@@ -67,6 +69,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
   const {
     workflow,
     coverage,
+    adminActions,
     loadState: dashboardLoadState,
     refresh: refreshDashboard,
     loadInitial: loadInitialDashboard,
@@ -119,11 +122,14 @@ export function App(props: { authRedirect: AuthRedirect }) {
   const {
     activeTab,
     selectedApplication: selectedApp,
+    selectedApplicationReadOnly,
     setSelectedApplication: setSelectedApp,
     viewApplication,
+    viewRetainedApplication,
     backToList,
     navigateToView,
   } = useNavigation({ loadRanking, onError: showError });
+  const [adminSubtab, setAdminSubtab] = useState<AdminSubtab>("configuration");
   const {
     draft,
     setDraft,
@@ -168,12 +174,30 @@ export function App(props: { authRedirect: AuthRedirect }) {
     clearSelectedApplication: () => setSelectedApp(null),
   });
 
+  const maintenanceDay = useRef<string | null>(null);
+  const runMaintenanceIfDue = useCallback(() => {
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Vancouver",
+    }).format(new Date());
+    if (maintenanceDay.current === today) return;
+    maintenanceDay.current = today;
+    void api
+      .runDueMaintenance()
+      .then((response) => {
+        if (response.ok) void Promise.all([refreshDashboard(), reloadApplications()]);
+      })
+      .catch(() => {
+        maintenanceDay.current = null;
+      });
+  }, [refreshDashboard, reloadApplications]);
+
   useEffect(() => {
     if (!user) return;
     void loadSettings();
     void loadInitialDashboard();
     refreshRankingRun();
     void loadInitialApplications();
+    runMaintenanceIfDue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
@@ -184,6 +208,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
     let refreshInFlight = false;
     const refreshIntake = () => {
       if (document.visibilityState !== "visible" || refreshInFlight) return;
+      runMaintenanceIfDue();
       refreshInFlight = true;
       void Promise.all([refreshDashboard(), reloadApplications()]).finally(() => {
         refreshInFlight = false;
@@ -197,7 +222,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
       window.removeEventListener("focus", refreshIntake);
       document.removeEventListener("visibilitychange", refreshIntake);
     };
-  }, [user, refreshDashboard, reloadApplications]);
+  }, [user, refreshDashboard, reloadApplications, runMaintenanceIfDue]);
 
   // A ranking became stale (another member re-ranked) — surface it as a global toast with a
   // Reload action, so it reaches the member wherever they are on the page (not only on the
@@ -368,6 +393,15 @@ export function App(props: { authRedirect: AuthRedirect }) {
         />
       ) : (
         <>
+          {isAdmin ? (
+            <AdminActionBanner
+              actions={adminActions}
+              onReviewOpenings={() => {
+                setAdminSubtab("openings");
+                navigateToView("adminSettings");
+              }}
+            />
+          ) : null}
           {/* Global actions first (workflow acts on the whole dataset regardless of
               tab), then the tab row, then the active tab's content. */}
           <WorkflowBar
@@ -428,6 +462,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
                 onClearOverride={clearStatusOverride}
                 onSavePrivateNote={savePrivateNote}
                 onToggleStar={toggleStar}
+                readOnly={selectedApplicationReadOnly}
               />
             ) : activeTab === "eligibilitySettings" ? (
               <EligibilitySettingsPanel onError={showError} onRulesUpdated={refreshEligibilityViews} />
@@ -448,6 +483,10 @@ export function App(props: { authRedirect: AuthRedirect }) {
                   onOpenApplicant={viewApplication}
                   onOpenView={navigateToView}
                   currentUser={user}
+                  subtab={adminSubtab}
+                  onSubtabChange={setAdminSubtab}
+                  onPoolChanged={refreshEligibilityViews}
+                  onOpenRetainedApplicant={viewRetainedApplication}
                 />
               ) : (
                 <div className="settings-load-state" role={settingsLoadFailed ? "alert" : "status"}>

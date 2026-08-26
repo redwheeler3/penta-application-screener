@@ -6,18 +6,20 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai.model_catalog import supports_reasoning_effort
-from app.api.dependencies import require_current_user
+from app.api.dependencies import require_admin, require_current_user
 from app.api.problems import Problem
 from app.core.time import as_utc, pacific_date, pacific_today, utc_isoformat
 from app.db.models import (
     Application,
     ApplicationAIResult,
     ApplicationNote,
+    ApplicationParticipation,
     ApplicationStar,
     ApplicationStatus,
     ApplicationVersion,
     MemberEligibility,
     Opening,
+    OpeningOutcome,
     User,
 )
 from app.db.session import get_db
@@ -136,6 +138,25 @@ def get_application(
 ) -> ApplicationEnvelope:
     application = _get_application_or_404(db, application_id)
     return ApplicationEnvelope(application=_serialize_detail(application, db, user))
+
+
+@router.get("/{application_id}/retained", response_model=ApplicationEnvelope)
+def get_retained_application(
+    application_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> ApplicationEnvelope:
+    """Read an audit-only selected-member application outside committee workflow scope."""
+    application = db.get(Application, application_id)
+    selected = db.scalar(
+        select(ApplicationParticipation.id).where(
+            ApplicationParticipation.application_id == application_id,
+            ApplicationParticipation.outcome == OpeningOutcome.SELECTED,
+        )
+    )
+    if application is None or selected is None:
+        raise Problem("not_found", detail="Retained application not found.")
+    return ApplicationEnvelope(application=_serialize_detail(application, db, admin))
 
 
 class StatusOverride(RequestModel):

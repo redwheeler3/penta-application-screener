@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
@@ -7,11 +7,14 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies import require_current_user
+from app.core.time import pacific_today
 from app.db.models import (
     Analysis,
     Application,
     ApplicationAIResult,
+    ApplicationParticipation,
     Base,
+    Opening,
     User,
     UserRole,
 )
@@ -31,7 +34,7 @@ async def test_dashboard_requires_login() -> None:
     assert response.status_code == 401
 
 
-def _logged_in_app() -> tuple:
+def _logged_in_app(role: UserRole = UserRole.MEMBER) -> tuple:
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -39,13 +42,64 @@ def _logged_in_app() -> tuple:
     )
     Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine, autoflush=False, autocommit=False)()
-    user = User(email="m@x.com", display_name="M", role=UserRole.MEMBER, is_active=True)
+    user = User(email="m@x.com", display_name="M", role=role, is_active=True)
     db.add(user)
     db.commit()
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[require_current_user] = lambda: user
     return app, db
+
+
+@pytest.mark.anyio
+async def test_admin_dashboard_flags_archived_opening_without_selection() -> None:
+    app, db = _logged_in_app(UserRole.ADMIN)
+    today = pacific_today()
+    opening = Opening(
+        unit_size_bedrooms=2,
+        housing_charge_cents=125_000,
+        application_open_date=today - timedelta(days=30),
+        application_close_date=today - timedelta(days=10),
+        move_in_date=today,
+        published_at=datetime.now(UTC),
+    )
+    application = Application(
+        primary_email="candidate@example.com",
+        raw_row={},
+        raw_row_hash="candidate",
+        normalized={},
+        submitted_at=datetime.now(UTC),
+    )
+    db.add_all([opening, application])
+    db.flush()
+    db.add(
+        ApplicationParticipation(
+            application_id=application.id,
+            opening_id=opening.id,
+            applied_at=datetime.now(UTC),
+        )
+    )
+    db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/dashboard")
+
+    actions = response.json()["adminActions"]["archivedOpeningsNeedingSelection"]
+    assert actions == [
+        {
+            "openingId": opening.id,
+            "unitSizeBedrooms": 2,
+            "moveInDate": today.isoformat(),
+        }
+    ]
+
+    opening.no_household_selected_at = datetime.now(UTC)
+    opening.no_household_selected_by_user_id = db.query(User).one().id
+    db.commit()
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        finalized = await client.get("/dashboard")
+    assert finalized.json()["adminActions"]["archivedOpeningsNeedingSelection"] == []
 
 
 @pytest.mark.anyio

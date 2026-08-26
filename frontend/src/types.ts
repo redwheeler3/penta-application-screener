@@ -51,11 +51,33 @@ export type Opening = OpeningDetails & {
   phase: OpeningPhase;
   publishedAt: string | null;
   submissionCount: number;
+  selectedApplicationId: number | null;
+  selectedApplicantName: string | null;
+  noHouseholdSelected: boolean;
+  decisionPermanent: boolean;
+  needsDecision: boolean;
   createdAt: string;
   updatedAt: string;
 };
 
 export type OpeningWrite = Omit<OpeningDetails, "id">;
+
+export type OpeningSelectionCandidate = {
+  applicationId: number;
+  applicantName: string | null;
+  primaryEmail: string;
+};
+
+export type OpeningSelection = {
+  openingId: number;
+  phase: OpeningPhase;
+  selectedApplicationId: number | null;
+  selectedApplicantName: string | null;
+  noHouseholdSelected: boolean;
+  decisionPermanent: boolean;
+  activeParticipantCount: number;
+  candidates: OpeningSelectionCandidate[];
+};
 
 // A member's feedback item. Members submit body + context; identity/version/time are
 // server-stamped. The admin Feedback subtab reads the full shape.
@@ -173,6 +195,14 @@ export type WorkflowState = {
 export type Coverage = Partial<
   Record<"screened" | "candidatesScored", { cached: number; inScope: number }>
 >;
+
+export type AdminActions = {
+  archivedOpeningsNeedingSelection: Array<{
+    openingId: number;
+    unitSizeBedrooms: number;
+    moveInDate: string;
+  }>;
+};
 
 // Faceted counts: each facet reflects the other group's active filter, so the two
 // filter groups stay consistent.

@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
@@ -7,16 +7,22 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies import require_current_user, require_recent_admin
+from app.core.time import pacific_today
 from app.db.models import (
+    ApplicantDraft,
+    ApplicantDraftIntent,
     Application,
     ApplicationParticipation,
     Base,
     Opening,
+    OpeningOutcome,
     User,
     UserRole,
 )
 from app.db.session import get_db
 from app.main import create_app
+from app.services.application_scope import committee_applications
+from app.services.email_sender import CapturedEmailSender, get_email_sender
 from app.services.openings import opening_phase
 
 
@@ -219,3 +225,269 @@ async def test_changing_move_in_date_updates_participant_retention() -> None:
 
     assert response.status_code == 200
     assert application.retention_due_on == date(2027, 11, 1)
+
+
+@pytest.mark.anyio
+async def test_changing_move_in_date_updates_private_draft_retention() -> None:
+    app, db = _app_and_db(UserRole.ADMIN)
+    opening = Opening(
+        unit_size_bedrooms=2,
+        housing_charge_cents=125_000,
+        application_open_date=date(2026, 9, 1),
+        application_close_date=date(2026, 9, 15),
+        move_in_date=date(2026, 10, 1),
+        published_at=datetime.now(UTC),
+    )
+    application = Application(
+        primary_email="claimed-draft@example.com",
+        raw_row={},
+        raw_row_hash="claimed-draft",
+        normalized={},
+        working_opening_ids=[],
+        retention_due_on=date(2027, 10, 1),
+    )
+    db.add_all([opening, application])
+    db.flush()
+    application.working_opening_ids = [opening.id]
+    pending = ApplicantDraft(
+        email="pending-draft@example.com",
+        intent=ApplicantDraftIntent.SAVE,
+        draft_token_hash="pending-draft-token-hash",
+        working_opening_ids=[opening.id],
+        created_at=datetime.now(UTC),
+        saved_at=datetime.now(UTC),
+        retention_due_on=date(2027, 10, 1),
+    )
+    db.add(pending)
+    db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.put(
+            f"/openings/{opening.id}",
+            json=_opening_payload(moveInDate="2026-11-01"),
+        )
+
+    assert response.status_code == 200
+    assert application.retention_due_on == date(2027, 11, 1)
+    assert pending.retention_due_on == date(2027, 11, 1)
+
+
+def _opening_with_candidates(db, *, archived: bool = False) -> tuple[Opening, list[Application]]:
+    today = pacific_today()
+    opening = Opening(
+        unit_size_bedrooms=2,
+        housing_charge_cents=125_000,
+        application_open_date=today - timedelta(days=30),
+        application_close_date=today - timedelta(days=10),
+        move_in_date=today if archived else today + timedelta(days=10),
+        published_at=datetime.now(UTC),
+    )
+    applications = [
+        Application(
+            primary_email=f"candidate-{index}@example.com",
+            applicant_name=f"Candidate {index}",
+            raw_row={},
+            raw_row_hash=f"candidate-{index}",
+            normalized={},
+            submitted_at=datetime.now(UTC),
+        )
+        for index in range(1, 4)
+    ]
+    db.add_all([opening, *applications])
+    db.flush()
+    db.add_all(
+        ApplicationParticipation(
+            application_id=application.id,
+            opening_id=opening.id,
+            applied_at=datetime.now(UTC),
+        )
+        for application in applications
+    )
+    db.commit()
+    return opening, applications
+
+
+@pytest.mark.anyio
+async def test_closed_selection_is_reversible_and_changes_committee_scope() -> None:
+    app, db = _app_and_db(UserRole.ADMIN)
+    opening, applications = _opening_with_candidates(db)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        selected = await client.post(
+            f"/openings/{opening.id}/selection",
+            json={"applicationId": applications[0].id},
+        )
+        picker_after_selection = await client.get(f"/openings/{opening.id}/selection")
+        undone = await client.delete(f"/openings/{opening.id}/selection")
+
+    participations = db.query(ApplicationParticipation).order_by(
+        ApplicationParticipation.application_id
+    ).all()
+    assert selected.status_code == 200
+    assert selected.json()["decisionPermanent"] is False
+    assert [candidate["applicationId"] for candidate in picker_after_selection.json()["candidates"]] == [
+        applications[1].id,
+        applications[2].id,
+    ]
+    assert undone.json()["selectedApplicationId"] is None
+    assert all(participation.outcome is None for participation in participations)
+    assert [item.id for item in committee_applications(db)] == [
+        application.id for application in applications
+    ]
+
+
+@pytest.mark.anyio
+async def test_archived_selection_is_permanent() -> None:
+    app, db = _app_and_db(UserRole.ADMIN)
+    opening, applications = _opening_with_candidates(db, archived=True)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        selected = await client.post(
+            f"/openings/{opening.id}/selection",
+            json={"applicationId": applications[0].id},
+        )
+        undone = await client.delete(f"/openings/{opening.id}/selection")
+        replaced = await client.post(
+            f"/openings/{opening.id}/selection",
+            json={"applicationId": applications[1].id},
+        )
+
+    outcomes = db.query(ApplicationParticipation).order_by(
+        ApplicationParticipation.application_id
+    ).all()
+    assert selected.json()["decisionPermanent"] is True
+    assert undone.status_code == 422
+    assert replaced.status_code == 422
+    assert [participation.outcome for participation in outcomes] == [
+        OpeningOutcome.SELECTED,
+        OpeningOutcome.UNSUCCESSFUL,
+        OpeningOutcome.UNSUCCESSFUL,
+    ]
+    assert [item.id for item in committee_applications(db)] == [
+        applications[1].id,
+        applications[2].id,
+    ]
+
+
+@pytest.mark.anyio
+async def test_closed_no_household_decision_is_explicit_and_reversible() -> None:
+    app, db = _app_and_db(UserRole.ADMIN)
+    opening, applications = _opening_with_candidates(db)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        decided = await client.post(f"/openings/{opening.id}/selection/no-household")
+        undone = await client.delete(f"/openings/{opening.id}/selection")
+
+    assert decided.status_code == 200
+    assert decided.json()["selectedApplicationId"] is None
+    assert decided.json()["noHouseholdSelected"] is True
+    assert decided.json()["decisionPermanent"] is False
+    assert undone.json()["noHouseholdSelected"] is False
+    assert opening.no_household_selected_at is None
+    assert all(
+        participation.outcome is None
+        for participation in db.query(ApplicationParticipation).all()
+    )
+    assert [item.id for item in committee_applications(db)] == [
+        application.id for application in applications
+    ]
+
+
+@pytest.mark.anyio
+async def test_archived_no_household_decision_is_permanent_and_sends_notices() -> None:
+    app, db = _app_and_db(UserRole.ADMIN)
+    sender = CapturedEmailSender()
+    app.dependency_overrides[get_email_sender] = lambda: sender
+    opening, applications = _opening_with_candidates(db, archived=True)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        decided = await client.post(f"/openings/{opening.id}/selection/no-household")
+        undone = await client.delete(f"/openings/{opening.id}/selection")
+
+    assert decided.status_code == 200
+    assert decided.json()["noHouseholdSelected"] is True
+    assert decided.json()["decisionPermanent"] is True
+    assert undone.status_code == 422
+    assert len(sender.messages) == len(applications)
+    assert all(
+        participation.outcome == OpeningOutcome.UNSUCCESSFUL
+        and participation.unsuccessful_notified_at is not None
+        for participation in db.query(ApplicationParticipation).all()
+    )
+
+
+@pytest.mark.anyio
+async def test_selected_household_is_excluded_from_other_opening_picker() -> None:
+    app, db = _app_and_db(UserRole.ADMIN)
+    first, applications = _opening_with_candidates(db)
+    today = pacific_today()
+    second = Opening(
+        unit_size_bedrooms=3,
+        housing_charge_cents=150_000,
+        application_open_date=today - timedelta(days=30),
+        application_close_date=today - timedelta(days=10),
+        move_in_date=today + timedelta(days=10),
+        published_at=datetime.now(UTC),
+    )
+    db.add(second)
+    db.flush()
+    db.add_all(
+        ApplicationParticipation(
+            application_id=application.id,
+            opening_id=second.id,
+            applied_at=datetime.now(UTC),
+        )
+        for application in applications
+    )
+    db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.post(
+            f"/openings/{first.id}/selection",
+            json={"applicationId": applications[0].id},
+        )
+        second_picker = await client.get(f"/openings/{second.id}/selection")
+
+    assert [candidate["applicationId"] for candidate in second_picker.json()["candidates"]] == [
+        applications[1].id,
+        applications[2].id,
+    ]
+
+
+@pytest.mark.anyio
+async def test_admin_can_review_selected_application_only_through_retained_route() -> None:
+    app, db = _app_and_db(UserRole.ADMIN)
+    opening, applications = _opening_with_candidates(db, archived=True)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.post(
+            f"/openings/{opening.id}/selection",
+            json={"applicationId": applications[0].id},
+        )
+        live_detail = await client.get(f"/applications/{applications[0].id}")
+        retained_detail = await client.get(
+            f"/applications/{applications[0].id}/retained"
+        )
+
+    assert live_detail.status_code == 404
+    assert retained_detail.status_code == 200
+    assert retained_detail.json()["application"]["id"] == applications[0].id
+
+
+@pytest.mark.anyio
+async def test_member_cannot_review_retained_selected_application() -> None:
+    app, db = _app_and_db(UserRole.MEMBER)
+    _, applications = _opening_with_candidates(db, archived=True)
+    participation = db.query(ApplicationParticipation).filter_by(
+        application_id=applications[0].id
+    ).one()
+    participation.outcome = OpeningOutcome.SELECTED
+    db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get(f"/applications/{applications[0].id}/retained")
+
+    assert response.status_code == 403

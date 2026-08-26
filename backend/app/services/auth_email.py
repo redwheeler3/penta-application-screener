@@ -8,6 +8,7 @@ from app.db.models import MagicLinkPurpose, PasswordlessIdentityKind
 from app.services.email_sender import OutboundEmail
 
 BRAND_LOGO_URL = "https://www.pentacoop.com/email-house.png"
+VACANCY_LIST_URL = "https://www.pentacoop.com/apply.html"
 COMMON_FOOTER_TEXT = """Click here to permanently unsubscribe this email address:
 {{HsUnsubscribe}}
 
@@ -158,22 +159,67 @@ def email_change_notice_email(
 def application_deleted_email(*, application_id: int, email: str) -> OutboundEmail:
     heading = "Your application has been deleted"
     introduction = (
-        "Your Penta housing application has been removed from consideration. "
-        "You no longer need to take any action."
+        "We're writing to let you know that your Penta housing application has been "
+        "deleted from our system, in line with our privacy policy."
+    )
+    invitation = (
+        "Penta doesn't keep a waitlist. If you'd like to hear when another unit becomes "
+        "available, you're welcome to join our vacancy notification list."
     )
     text = _with_common_footer(f"""{heading}.
 
-{introduction}""")
+{introduction}
+
+{invitation}
+
+{VACANCY_LIST_URL}""")
     html = _email_shell(
         eyebrow="Application update",
         heading=heading,
         introduction=introduction,
-        action_url=None,
-        action_label=None,
-        link_notice=None,
+        action_url=VACANCY_LIST_URL,
+        action_label="Join the vacancy notification list",
+        link_notice=invitation,
     )
     return OutboundEmail(
         kind="application_deleted",
+        recipient_id=f"application:{application_id}",
+        to=(email,),
+        subject=heading,
+        text_body=text,
+        html_body=html,
+    )
+
+
+def unsuccessful_application_email(
+    *, application_id: int, email: str, opening_labels: list[str]
+) -> OutboundEmail:
+    heading = "An update on your Penta application"
+    introduction = (
+        "Thank you for the time you took to apply. We're sorry to let you know that "
+        f"your household was not selected for {', '.join(opening_labels)}."
+    )
+    notice = (
+        "If you'd like to hear when another unit becomes available, you're welcome "
+        "to join our vacancy notification list."
+    )
+    text = _with_common_footer(f"""{heading}.
+
+{introduction}
+
+{notice}
+
+{VACANCY_LIST_URL}""")
+    html = _email_shell(
+        eyebrow="Application update",
+        heading=heading,
+        introduction=introduction,
+        action_url=VACANCY_LIST_URL,
+        action_label="Join the vacancy notification list",
+        link_notice=notice,
+    )
+    return OutboundEmail(
+        kind="application_unsuccessful",
         recipient_id=f"application:{application_id}",
         to=(email,),
         subject=heading,

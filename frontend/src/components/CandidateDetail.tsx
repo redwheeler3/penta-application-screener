@@ -46,6 +46,7 @@ export function CandidateDetail(props: {
   onClearOverride: (id: number) => void;
   onSavePrivateNote: (id: number, note: string) => Promise<boolean>;
   onToggleStar: (id: number, starred: boolean) => void;
+  readOnly?: boolean;
 }): ReactNode {
   const { app } = props;
   const [privateNote, setPrivateNote] = useState(app.privateNote);
@@ -141,7 +142,7 @@ export function CandidateDetail(props: {
       <div className="app-detail-actions no-print">
         <button type="button" className="secondary-button" onClick={props.onBack}>
           <ChevronLeft size={16} />
-          <span>Back to list</span>
+          <span>{props.readOnly ? "Back to openings" : "Back to list"}</span>
         </button>
         <button type="button" className="secondary-button" onClick={() => window.print()}>
           <Printer size={16} />
@@ -149,11 +150,13 @@ export function CandidateDetail(props: {
         </button>
       </div>
       <div className="app-detail-identity">
-        <StarButton
-          starred={app.starredByMe}
-          onToggle={(next) => props.onToggleStar(app.id, next)}
-          size="md"
-        />
+        {props.readOnly ? <span className="app-detail-star-spacer" /> : (
+          <StarButton
+            starred={app.starredByMe}
+            onToggle={(next) => props.onToggleStar(app.id, next)}
+            size="md"
+          />
+        )}
         <div className="app-detail-identity-content">
           <div className="app-detail-header">
             <h3>{app.applicantName || app.primaryEmail}</h3>
@@ -177,7 +180,7 @@ export function CandidateDetail(props: {
         </div>
       </div>
 
-      <div className="detail-review-row">
+      {!props.readOnly ? <div className="detail-review-row">
         <div className="status-panel">
           <p className="status-source-line">{SOURCE_DESCRIPTIONS[app.statusSource]}</p>
           {app.stale ? (
@@ -242,7 +245,7 @@ export function CandidateDetail(props: {
             <p>{noteStatus === "saving" ? "Saving…" : "Could not save — try again."}</p>
           ) : null}
         </section>
-      </div>
+      </div> : null}
       {ruleReasons.length > 0 ? (
         <div className="filter-reasons">
           <strong>Deterministic rules</strong>

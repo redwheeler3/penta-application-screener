@@ -16,11 +16,14 @@ from app.db.models import (
     Analysis,
     ApplicationAIResult,
     User,
+    UserRole,
 )
 from app.db.session import get_db
 from app.schemas.dashboard import (
+    AdminActions,
     CoverageEntry,
     DashboardResponse,
+    OpeningSelectionAction,
     WorkflowState,
 )
 from app.schemas.settings import effective_reasoning_effort
@@ -30,6 +33,7 @@ from app.services.analysis import (
     ranking_is_current,
 )
 from app.services.application_scope import committee_applications
+from app.services.opening_selection import archived_openings_needing_selection
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -37,7 +41,7 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 @router.get("", response_model=DashboardResponse)
 def read_dashboard(
-    _user: User = Depends(require_current_user),
+    user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> DashboardResponse:
     settings = get_app_settings(db)
@@ -75,6 +79,20 @@ def read_dashboard(
         # Per-AI-step coverage of the current scope. Applicant edits make the cached
         # content key stale, so the UI warns instead of showing a misleading check.
         coverage=coverage,
+        admin_actions=(
+            AdminActions(
+                archived_openings_needing_selection=[
+                    OpeningSelectionAction(
+                        opening_id=opening.id,
+                        unit_size_bedrooms=opening.unit_size_bedrooms,
+                        move_in_date=opening.move_in_date,
+                    )
+                    for opening in archived_openings_needing_selection(db)
+                ]
+            )
+            if user.role == UserRole.ADMIN
+            else None
+        ),
     )
 
 def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:

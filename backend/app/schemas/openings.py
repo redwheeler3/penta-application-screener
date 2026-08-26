@@ -37,9 +37,35 @@ class OpeningOut(OpeningDetailsOut):
     phase: OpeningPhase
     published_at: datetime | None
     submission_count: int
+    selected_application_id: int | None
+    selected_applicant_name: str | None
+    no_household_selected: bool
+    decision_permanent: bool
+    needs_decision: bool
     created_at: datetime
     updated_at: datetime
 
 
 class OpeningsResponse(ResponseModel):
     openings: list[OpeningOut]
+
+
+class OpeningSelectionRequest(RequestModel):
+    application_id: int = Field(gt=0)
+
+
+class OpeningSelectionCandidateOut(ResponseModel):
+    application_id: int
+    applicant_name: str | None
+    primary_email: str
+
+
+class OpeningSelectionOut(ResponseModel):
+    opening_id: int
+    phase: OpeningPhase
+    selected_application_id: int | None
+    selected_applicant_name: str | None
+    no_household_selected: bool
+    decision_permanent: bool
+    active_participant_count: int
+    candidates: list[OpeningSelectionCandidateOut]

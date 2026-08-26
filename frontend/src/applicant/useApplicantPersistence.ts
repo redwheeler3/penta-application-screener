@@ -445,8 +445,8 @@ export function useApplicantPersistence(
     } else {
       setMessage(
         body.emailSent
-          ? "Your draft is saved for 30 days. Use the secure link in your email to return."
-          : "Your draft is saved for 30 days. A link was requested recently; check your inbox.",
+          ? "Your application is saved. Use the secure link in your email to return."
+          : "Your application is saved. A link was requested recently; check your inbox.",
       );
       setPhase("email_sent");
     }

@@ -2,7 +2,6 @@ import { emptyApplicantDraft, type ApplicantDraft } from "./types";
 
 const DRAFTS_KEY = "penta-application-drafts-v4";
 const REMEMBER_DEVICE_KEY = "penta-application-remember-device-v1";
-const MAX_INACTIVE_MS = 30 * 24 * 60 * 60 * 1000;
 
 type StoredDraft = {
   savedAt: string;
@@ -26,12 +25,12 @@ export function setRememberDevice(remember: boolean): void {
   }
 }
 
-export function loadApplicationDraft(applicationId: number, now = new Date()): LoadedDraft | null {
+export function loadApplicationDraft(applicationId: number): LoadedDraft | null {
   const drafts = readDrafts();
   const stored = drafts[String(applicationId)];
   if (!stored) return null;
   const savedAt = new Date(stored.savedAt);
-  if (!Number.isFinite(savedAt.getTime()) || now.getTime() - savedAt.getTime() > MAX_INACTIVE_MS) {
+  if (!Number.isFinite(savedAt.getTime())) {
     clearApplicationDraft(applicationId);
     return null;
   }

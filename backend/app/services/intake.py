@@ -18,6 +18,7 @@ from app.db.models import (
 from app.domain.ages import age_on
 from app.schemas.intake import CanonicalApplicationAnswers, WorkingApplicationAnswers
 from app.services.opening_participation import apply_opening_selection
+from app.services.retention import retention_due_for_opening_ids
 
 
 def stored_answers(answers: BaseModel) -> dict[str, Any]:
@@ -71,6 +72,8 @@ def create_application(
         synthetic_data=get_settings().application_data_is_synthetic,
     )
     db.add(application)
+    if opening_ids:
+        application.retention_due_on = retention_due_for_opening_ids(db, opening_ids)
     save_working_copy(
         application,
         answers,

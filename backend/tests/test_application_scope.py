@@ -4,11 +4,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.core.time import pacific_today
-from app.db.models import Application, ApplicationParticipation, Base, Opening
+from app.db.models import (
+    Application,
+    ApplicationParticipation,
+    Base,
+    Opening,
+    OpeningOutcome,
+)
 from app.services.application_scope import committee_applications
 
 
-def test_committee_scope_contains_only_active_submissions() -> None:
+def test_committee_scope_keeps_retained_applications_live_except_selected() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     db = Session(engine)
@@ -55,6 +61,14 @@ def test_committee_scope_contains_only_active_submissions() -> None:
                 submitted_at=submitted_at,
         ),
         Application(
+                primary_email="selected@example.com",
+                applicant_name="Selected",
+                raw_row={},
+                raw_row_hash="selected",
+                normalized={},
+                submitted_at=submitted_at,
+        ),
+        Application(
                 primary_email="withdrawn@example.com",
                 applicant_name="Withdrawn",
                 raw_row={},
@@ -85,15 +99,24 @@ def test_committee_scope_contains_only_active_submissions() -> None:
                 application_id=applications[2].id,
                 opening_id=archived_opening.id,
                 applied_at=submitted_at,
+                outcome=OpeningOutcome.UNSUCCESSFUL,
+                outcome_decided_at=submitted_at,
             ),
             ApplicationParticipation(
                 application_id=applications[3].id,
+                opening_id=archived_opening.id,
+                applied_at=submitted_at,
+                outcome=OpeningOutcome.SELECTED,
+                outcome_decided_at=submitted_at,
+            ),
+            ApplicationParticipation(
+                application_id=applications[4].id,
                 opening_id=current_opening.id,
                 applied_at=submitted_at,
                 withdrawn_at=submitted_at,
             ),
             ApplicationParticipation(
-                application_id=applications[4].id,
+                application_id=applications[5].id,
                 opening_id=current_opening.id,
                 applied_at=submitted_at,
             ),
@@ -102,5 +125,6 @@ def test_committee_scope_contains_only_active_submissions() -> None:
     db.commit()
 
     assert [application.primary_email for application in committee_applications(db)] == [
-        "submitted@example.com"
+        "submitted@example.com",
+        "archived@example.com",
     ]

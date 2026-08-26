@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 
 import * as api from "../api";
 import { retryWithBackoff } from "../retry";
-import type { Coverage, WorkflowState } from "../types";
+import type { AdminActions, Coverage, WorkflowState } from "../types";
 
 const EMPTY_WORKFLOW: WorkflowState = {
   applicationsAvailable: false,
@@ -15,14 +15,17 @@ const EMPTY_WORKFLOW: WorkflowState = {
 export function useDashboard() {
   const [workflow, setWorkflow] = useState<WorkflowState>(EMPTY_WORKFLOW);
   const [coverage, setCoverage] = useState<Coverage>({});
+  const [adminActions, setAdminActions] = useState<AdminActions | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
 
   const apply = useCallback((payload: {
     workflow: WorkflowState;
     coverage?: Coverage;
+    adminActions?: AdminActions | null;
   }) => {
     setWorkflow(payload.workflow);
     setCoverage(payload.coverage ?? {});
+    setAdminActions(payload.adminActions ?? null);
     setLoadState("ready");
   }, []);
 
@@ -39,5 +42,5 @@ export function useDashboard() {
     }
   }, [apply]);
 
-  return { workflow, coverage, loadState, refresh, loadInitial };
+  return { workflow, coverage, adminActions, loadState, refresh, loadInitial };
 }

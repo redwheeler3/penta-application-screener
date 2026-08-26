@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.core.time import as_utc
+from app.core.time import as_utc, pacific_today
 from app.db.models import (
     ApplicantDraft,
     Application,
@@ -704,7 +704,7 @@ async def test_claim_keeps_newest_private_working_copy(
 
 
 @pytest.mark.anyio
-async def test_abandoned_30_day_draft_cannot_be_opened_or_regenerated() -> None:
+async def test_draft_past_its_opening_retention_date_cannot_be_opened_or_regenerated() -> None:
     app, db, sender = _app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -712,7 +712,7 @@ async def test_abandoned_30_day_draft_cannot_be_opened_or_regenerated() -> None:
         token = _link(sender)
         draft = db.scalar(select(ApplicantDraft))
         assert draft is not None
-        draft.abandon_after = datetime.now(UTC) - timedelta(seconds=1)
+        draft.retention_due_on = pacific_today() - timedelta(days=1)
         db.commit()
         inspected = await client.post("/applicant/access-links/inspect", json={"token": token})
         regenerated = await client.post(
@@ -947,6 +947,9 @@ async def test_delete_physically_removes_a_never_submitted_application() -> None
     assert db.scalar(select(MagicLinkToken)) is None
     assert db.scalar(select(BrowserSession)) is None
     assert sender.messages[-1].kind == "application_deleted"
+    assert "deleted from our system" in sender.messages[-1].text_body
+    assert "removed from consideration" not in sender.messages[-1].text_body
+    assert "https://www.pentacoop.com/apply.html" in sender.messages[-1].text_body
 
 
 @pytest.mark.anyio

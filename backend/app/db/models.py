@@ -46,6 +46,11 @@ class OpeningPhase(StrEnum):
     ARCHIVED = "archived"
 
 
+class OpeningOutcome(StrEnum):
+    SELECTED = "selected"
+    UNSUCCESSFUL = "unsuccessful"
+
+
 class StatusSource(StrEnum):
     UNTOUCHED = "untouched"  # passed rules, AI didn't flag (or hasn't run)
     RULES = "rules"  # deterministic filters set it ineligible (high trust)
@@ -287,13 +292,33 @@ class Opening(TimestampMixin, Base):
     # Publication is the sole manual lifecycle action. Once published, Pacific calendar dates
     # determine whether this opening is upcoming, open, closed, or archived.
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    no_household_selected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    no_household_selected_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id")
+    )
 
 
 class ApplicationParticipation(TimestampMixin, Base):
     """An applicant's explicit entry into one opening, separate from their durable answers."""
 
     __tablename__ = "application_participations"
-    __table_args__ = (UniqueConstraint("application_id", "opening_id"),)
+    __table_args__ = (
+        UniqueConstraint("application_id", "opening_id"),
+        Index(
+            "uq_participations_selected_application",
+            "application_id",
+            unique=True,
+            sqlite_where=text("outcome = 'selected'"),
+        ),
+        Index(
+            "uq_participations_selected_opening",
+            "opening_id",
+            unique=True,
+            sqlite_where=text("outcome = 'selected'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(
@@ -302,9 +327,18 @@ class ApplicationParticipation(TimestampMixin, Base):
     opening_id: Mapped[int] = mapped_column(ForeignKey("openings.id"), index=True, nullable=False)
     applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    outcome: Mapped[OpeningOutcome | None] = mapped_column(
+        Enum(OpeningOutcome, values_callable=enum_values), index=True
+    )
+    outcome_decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    outcome_decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    unsuccessful_notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
 
     application: Mapped[Application] = relationship()
     opening: Mapped[Opening] = relationship()
+    outcome_decided_by: Mapped[User | None] = relationship()
 
 
 class ApplicationVersion(Base):
@@ -345,7 +379,7 @@ class ApplicantDraft(Base):
     working_opening_ids: Mapped[list[int] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    abandon_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    retention_due_on: Mapped[date] = mapped_column(Date, nullable=False)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -449,6 +483,9 @@ class EmailDelivery(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(120), unique=True, index=True
+    )
     message_kind: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     recipient_kind: Mapped[PasswordlessIdentityKind] = mapped_column(
         Enum(PasswordlessIdentityKind, values_callable=enum_values), nullable=False, index=True

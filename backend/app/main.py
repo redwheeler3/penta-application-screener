@@ -18,6 +18,7 @@ from app.api.dashboard import router as dashboard_router
 from app.api.evals import router as evals_router
 from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
+from app.api.maintenance import router as maintenance_router
 from app.api.observability import router as observability_router
 from app.api.openings import router as openings_router
 from app.api.passwordless_auth import router as passwordless_auth_router
@@ -117,6 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(evals_router)
     app.include_router(feedback_router)
     app.include_router(health_router)
+    app.include_router(maintenance_router)
     app.include_router(observability_router)
     app.include_router(openings_router)
     app.include_router(passwordless_auth_router)

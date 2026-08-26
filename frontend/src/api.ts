@@ -2,6 +2,7 @@
 // own state, toasts, and streaming orchestration.
 import { apiBaseUrl } from "./constants";
 import type {
+  AdminActions,
   AllowlistEntry,
   DeniedSignInAttempt,
   AppSettings,
@@ -29,6 +30,7 @@ import type {
   MatchAuditResponse,
   MetricsReport,
   Opening,
+  OpeningSelection,
   OpeningWrite,
   RankEstimateResponse,
   RankingResponse,
@@ -165,6 +167,23 @@ export function updateOpening(id: number, opening: OpeningWrite): Promise<Respon
 export const publishOpening = (id: number) =>
   request(`/openings/${id}/publish`, { method: "POST" });
 
+export const fetchOpeningSelection = (id: number) =>
+  getJson<OpeningSelection>(`/openings/${id}/selection`);
+
+export function confirmOpeningSelection(id: number, applicationId: number): Promise<Response> {
+  return request(`/openings/${id}/selection`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ applicationId }),
+  });
+}
+
+export const confirmNoHouseholdSelected = (id: number) =>
+  request(`/openings/${id}/selection/no-household`, { method: "POST" });
+
+export const undoOpeningSelection = (id: number) =>
+  request(`/openings/${id}/selection`, { method: "DELETE" });
+
 // --- Access allowlist (admin only) -----------------------------------------
 
 export const fetchAllowlist = () =>
@@ -259,7 +278,11 @@ export function saveCommitteeDefaultRules(rules: EligibilityRules): Promise<Resp
 }
 
 export const fetchDashboard = () =>
-  getJson<{ workflow: WorkflowState; coverage: Coverage }>("/dashboard");
+  getJson<{ workflow: WorkflowState; coverage: Coverage; adminActions?: AdminActions | null }>(
+    "/dashboard",
+  );
+
+export const runDueMaintenance = () => request("/maintenance/due", { method: "POST" });
 
 // The whole pool, unpaginated — the client derives filtering/sorting/facets from it.
 export type ApplicationsResponse = {
@@ -310,6 +333,11 @@ export const fetchScreeningEstimate = (signal?: AbortSignal) =>
 // active stream.
 function streamRequest(path: string): Promise<Response> {
   return request(path, { method: "POST" });
+}
+
+export function fetchRetainedApplication(id: number): Promise<ApplicationDetail> {
+  return getJson<{ application: ApplicationDetail }>(`/applications/${id}/retained`)
+    .then((payload) => payload.application);
 }
 
 export const runScreening = () => streamRequest("/screening/run");

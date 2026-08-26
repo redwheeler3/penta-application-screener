@@ -7,6 +7,7 @@ type BrowserLocation = {
   screenerLocation: true;
   tab: ViewTab;
   applicantId?: number;
+  retainedApplicant?: boolean;
 };
 
 function isBrowserLocation(value: unknown): value is BrowserLocation {
@@ -33,6 +34,7 @@ export function useNavigation(options: {
 }) {
   const [activeTab, setActiveTab] = useState<ViewTab>("applications");
   const [selectedApplication, setSelectedApplication] = useState<ApplicationDetail | null>(null);
+  const [selectedApplicationReadOnly, setSelectedApplicationReadOnly] = useState(false);
   const loadRankingRef = useRef(options.loadRanking);
   const onErrorRef = useRef(options.onError);
   loadRankingRef.current = options.loadRanking;
@@ -56,12 +58,15 @@ export function useNavigation(options: {
       if (!isBrowserLocation(event.state)) return;
       const location = event.state;
       setSelectedApplication(null);
+      setSelectedApplicationReadOnly(Boolean(location.retainedApplicant));
       setActiveTab(location.tab);
       if (location.tab === "ranking") void loadRankingRef.current();
       if (!location.applicantId) return;
 
-      void api
-        .fetchApplication(location.applicantId)
+      const loadApplication = location.retainedApplicant
+        ? api.fetchRetainedApplication
+        : api.fetchApplication;
+      void loadApplication(location.applicantId)
         .then(setSelectedApplication)
         .catch(() => onErrorRef.current("Couldn't load that applicant. Please try again."));
     };
@@ -79,8 +84,25 @@ export function useNavigation(options: {
       }
       pushLocation({ screenerLocation: true, tab: activeTab, applicantId: id });
       setSelectedApplication(application);
+      setSelectedApplicationReadOnly(false);
     } catch {
       options.onError("Couldn't load that applicant. Please try again.");
+    }
+  }
+
+  async function viewRetainedApplication(id: number) {
+    try {
+      const application = await api.fetchRetainedApplication(id);
+      pushLocation({
+        screenerLocation: true,
+        tab: "adminSettings",
+        applicantId: id,
+        retainedApplicant: true,
+      });
+      setSelectedApplication(application);
+      setSelectedApplicationReadOnly(true);
+    } catch {
+      options.onError("Couldn't load that retained application.");
     }
   }
 
@@ -108,8 +130,10 @@ export function useNavigation(options: {
   return {
     activeTab,
     selectedApplication,
+    selectedApplicationReadOnly,
     setSelectedApplication,
     viewApplication,
+    viewRetainedApplication,
     backToList,
     navigateToView,
     openAdminSetup,

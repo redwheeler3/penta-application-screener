@@ -1,4 +1,4 @@
-import { type ReactNode, type SyntheticEvent, useState } from "react";
+import { type ReactNode, type SyntheticEvent } from "react";
 
 import type { AppSettings, CurrentUser, SettingsResponse, ViewTab } from "../types";
 import { AccessPanel } from "./AccessPanel";
@@ -7,7 +7,7 @@ import { CommitteeDefaultsPanel } from "./CommitteeDefaultsPanel";
 import { FeedbackPanel } from "./FeedbackPanel";
 import { OpeningsPanel } from "./OpeningsPanel";
 
-type AdminSubtab = "configuration" | "openings" | "defaults" | "access" | "feedback";
+export type AdminSubtab = "configuration" | "openings" | "defaults" | "access" | "feedback";
 
 const ADMIN_SUBTABS: Array<{ id: AdminSubtab; label: string }> = [
   { id: "configuration", label: "Configuration" },
@@ -28,8 +28,12 @@ export function AdminSettingsPanel(props: {
   onOpenApplicant: (id: number) => void;
   onOpenView: (tab: ViewTab) => void;
   currentUser: CurrentUser;
+  subtab: AdminSubtab;
+  onSubtabChange: (subtab: AdminSubtab) => void;
+  onPoolChanged: () => void;
+  onOpenRetainedApplicant: (id: number) => void;
 }): ReactNode {
-  const [subtab, setSubtab] = useState<AdminSubtab>("configuration");
+  const subtab = props.subtab;
 
   return (
     <section className="settings-panel no-print" aria-label="Admin settings">
@@ -48,7 +52,7 @@ export function AdminSettingsPanel(props: {
             role="tab"
             aria-selected={subtab === tab.id}
             className={`subtab${subtab === tab.id ? " active" : ""}`}
-            onClick={() => setSubtab(tab.id)}
+            onClick={() => props.onSubtabChange(tab.id)}
           >
             {tab.label}
           </button>
@@ -64,7 +68,12 @@ export function AdminSettingsPanel(props: {
       ) : subtab === "access" ? (
         <AccessPanel currentUser={props.currentUser} onError={props.onError} />
       ) : subtab === "openings" ? (
-        <OpeningsPanel onError={props.onError} />
+        <OpeningsPanel
+          onError={props.onError}
+          onPoolChanged={props.onPoolChanged}
+          onOpenApplicant={props.onOpenApplicant}
+          onOpenRetainedApplicant={props.onOpenRetainedApplicant}
+        />
       ) : subtab === "defaults" ? (
         <CommitteeDefaultsPanel
           onError={props.onError}

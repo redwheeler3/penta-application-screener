@@ -1034,7 +1034,7 @@ function PersistenceActionStatus(props: {
     return (
       <div className="persistence-action-status" role="status">
         <span className="persistence-action-confirmation">
-          <Mail size={16} /> Application saved for 30 days
+          <Mail size={16} /> Application saved
         </span>
         <span>Check your email for a secure link to your application.</span>
         <span>
@@ -1047,7 +1047,7 @@ function PersistenceActionStatus(props: {
   if (props.phase === "email_failed") {
     return (
       <div className="persistence-action-status error" role="alert">
-        <strong>Application saved for 30 days</strong>
+        <strong>Application saved</strong>
         <span>We couldn’t email the secure link.</span>
         <ApplicantErrorMessage message={TECH_SUPPORT_ERROR_MESSAGE} />
       </div>
@@ -1326,7 +1326,7 @@ function InvalidAccessLink() {
     <section className="existing-application-choice">
       <ShieldCheck size={28} />
       <h2>This link cannot open an application</h2>
-      <p>It may be incomplete, or its private draft may have passed the 30-day retention period.</p>
+      <p>The application may be incomplete or no longer available.</p>
       <a className="applicant-secondary-button" href={window.location.pathname}>
         Go to the application form
       </a>
