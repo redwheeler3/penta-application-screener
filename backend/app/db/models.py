@@ -227,6 +227,38 @@ class AdminSetting(TimestampMixin, Base):
     value: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
 
 
+class DailyMaintenanceRun(TimestampMixin, Base):
+    """One durable lease for one maintenance task on one Pacific calendar day."""
+
+    __tablename__ = "daily_maintenance_runs"
+    __table_args__ = (UniqueConstraint("task", "pacific_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    pacific_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    lease_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_code: Mapped[str | None] = mapped_column(String(120))
+
+
+class RetentionDeletion(Base):
+    """Non-identifying proof that one aggregate was removed under a retention rule."""
+
+    __tablename__ = "retention_deletions"
+    __table_args__ = (UniqueConstraint("record_kind", "record_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    record_kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    record_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    retention_rule: Mapped[str] = mapped_column(String(50), nullable=False)
+    due_on: Mapped[date] = mapped_column(Date, nullable=False)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class Application(TimestampMixin, Base):
     __tablename__ = "applications"
     __table_args__ = (
@@ -322,7 +354,7 @@ class ApplicationParticipation(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(
-        ForeignKey("applications.id"), index=True, nullable=False
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True, nullable=False
     )
     opening_id: Mapped[int] = mapped_column(ForeignKey("openings.id"), index=True, nullable=False)
     applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -348,7 +380,7 @@ class ApplicationVersion(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(
-        ForeignKey("applications.id"), index=True, nullable=False
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True, nullable=False
     )
     answers: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     normalized: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
@@ -370,7 +402,7 @@ class ApplicantDraft(Base):
         Enum(ApplicantDraftIntent, values_callable=enum_values), nullable=False
     )
     application_id: Mapped[int | None] = mapped_column(
-        ForeignKey("applications.id"), index=True
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True
     )
     draft_token_hash: Mapped[str] = mapped_column(
         String(64), unique=True, index=True, nullable=False
@@ -407,10 +439,10 @@ class MagicLinkToken(Base):
     )
     email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
     application_id: Mapped[int | None] = mapped_column(
-        ForeignKey("applications.id"), index=True
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True
     )
     applicant_draft_id: Mapped[int | None] = mapped_column(
-        ForeignKey("applicant_drafts.id"), index=True
+        ForeignKey("applicant_drafts.id", ondelete="CASCADE"), index=True
     )
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
     initiating_session_id: Mapped[int | None] = mapped_column(
@@ -450,7 +482,7 @@ class BrowserSession(Base):
         Enum(PasswordlessIdentityKind, values_callable=enum_values), nullable=False, index=True
     )
     application_id: Mapped[int | None] = mapped_column(
-        ForeignKey("applications.id"), index=True
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True
     )
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
@@ -491,14 +523,14 @@ class EmailDelivery(TimestampMixin, Base):
         Enum(PasswordlessIdentityKind, values_callable=enum_values), nullable=False, index=True
     )
     application_id: Mapped[int | None] = mapped_column(
-        ForeignKey("applications.id"), index=True
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True
     )
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
     magic_link_token_id: Mapped[int | None] = mapped_column(
-        ForeignKey("magic_link_tokens.id"), index=True
+        ForeignKey("magic_link_tokens.id", ondelete="CASCADE"), index=True
     )
     applicant_draft_id: Mapped[int | None] = mapped_column(
-        ForeignKey("applicant_drafts.id"), index=True
+        ForeignKey("applicant_drafts.id", ondelete="CASCADE"), index=True
     )
     state: Mapped[EmailDeliveryState] = mapped_column(
         Enum(EmailDeliveryState, values_callable=enum_values), nullable=False, index=True
@@ -529,7 +561,7 @@ class MemberEligibility(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(
-        ForeignKey("applications.id"), index=True, nullable=False
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True, nullable=False
     )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
     status: Mapped[ApplicationStatus] = mapped_column(
@@ -577,7 +609,7 @@ class ApplicationNote(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(
-        ForeignKey("applications.id"), index=True, nullable=False
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True, nullable=False
     )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
     note: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -600,7 +632,7 @@ class ApplicationStar(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(
-        ForeignKey("applications.id"), index=True, nullable=False
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True, nullable=False
     )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
 
@@ -622,7 +654,7 @@ class ApplicationAIResult(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(
-        ForeignKey("applications.id"), index=True, nullable=False
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True, nullable=False
     )
     kind: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     cache_key: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)

@@ -80,6 +80,51 @@ def test_restore_rejects_a_corrupt_backup(temp_engine, tmp_path):
         backup.restore_backup(bogus, engine=temp_engine)
 
 
+def test_restore_does_not_resurrect_a_retention_deletion(temp_engine):
+    with temp_engine.begin() as conn:
+        conn.execute(text("CREATE TABLE applications (id INTEGER PRIMARY KEY)"))
+        conn.execute(
+            text(
+                "CREATE TABLE application_notes (id INTEGER PRIMARY KEY, "
+                "application_id INTEGER NOT NULL)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE TABLE retention_deletions (id INTEGER PRIMARY KEY, "
+                "record_kind VARCHAR(30) NOT NULL, record_id INTEGER NOT NULL, "
+                "retention_rule VARCHAR(50) NOT NULL, due_on DATE NOT NULL, "
+                "deleted_at DATETIME NOT NULL, UNIQUE(record_kind, record_id))"
+            )
+        )
+        conn.execute(text("INSERT INTO applications (id) VALUES (42)"))
+        conn.execute(
+            text("INSERT INTO application_notes (application_id) VALUES (42)")
+        )
+    before_deletion = backup.create_backup(engine=temp_engine, tag="before-deletion")
+
+    with temp_engine.begin() as conn:
+        conn.execute(text("DELETE FROM application_notes WHERE application_id = 42"))
+        conn.execute(text("DELETE FROM applications WHERE id = 42"))
+        conn.execute(
+            text(
+                "INSERT INTO retention_deletions "
+                "(record_kind, record_id, retention_rule, due_on, deleted_at) "
+                "VALUES ('application', 42, 'one_year', '2026-08-26', "
+                "'2026-08-26 12:00:00')"
+            )
+        )
+
+    backup.restore_backup(before_deletion, engine=temp_engine)
+
+    db_path = backup._sqlite_path(temp_engine)
+    restored = create_engine(f"sqlite:///{db_path}")
+    with restored.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM applications")).scalar() == 0
+        assert conn.execute(text("SELECT count(*) FROM application_notes")).scalar() == 0
+        assert conn.execute(text("SELECT count(*) FROM retention_deletions")).scalar() == 1
+
+
 def test_in_memory_session_snapshot_is_a_noop_not_a_cwd_dump(tmp_path, monkeypatch):
     # Regression: the auto post-Rank snapshot uses the request session's engine. The test
     # suite binds an in-memory engine (:memory:), whose path used to resolve to

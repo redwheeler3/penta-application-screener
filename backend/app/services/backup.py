@@ -15,6 +15,7 @@ post-Rank snapshot (see ``ranking.py``), so the snapshot logic lives in one plac
 from __future__ import annotations
 
 import re
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
@@ -32,6 +33,16 @@ _TS_FMT = "%Y%m%d_%H%M%S"
 # tag is a short human label ("rank", "manual", "pre-restore"); constrained so it can't
 # inject path separators into the filename.
 _TAG_RE = re.compile(r"[^a-z0-9-]+")
+
+_APPLICATION_CHILD_TABLES = (
+    "application_participations",
+    "application_versions",
+    "browser_sessions",
+    "member_eligibility",
+    "application_notes",
+    "application_stars",
+    "application_ai_results",
+)
 
 
 def _sqlite_path(engine: Engine) -> Path:
@@ -138,8 +149,6 @@ def restore_backup(source: Path, *, engine: Engine | None = None) -> Path:
     ``source`` passes an integrity check before overwriting, so a corrupt backup can't
     clobber a good DB. The caller (CLI) is responsible for user confirmation."""
     import shutil
-    import sqlite3
-
     eng = _resolve(engine)
     source = source.resolve()
     if not source.exists():
@@ -151,10 +160,146 @@ def restore_backup(source: Path, *, engine: Engine | None = None) -> Path:
         raise RuntimeError(f"Backup failed integrity check ({result}): {source}")
 
     db_path = _sqlite_path(eng)
+    deletion_ledger = _read_deletion_ledger(db_path)
     if db_path.exists():
         create_backup(engine=eng, tag="pre-restore")  # recoverable after the restore
     shutil.copy2(source, db_path)
+    _reapply_deletion_ledger(db_path, deletion_ledger)
     return db_path
+
+
+def _read_deletion_ledger(db_path: Path) -> list[tuple[str, int, str, str, str]]:
+    """Capture the current non-identifying ledger before replacing the main DB file."""
+    if not db_path.exists():
+        return []
+    with sqlite3.connect(str(db_path)) as conn:
+        if not _table_exists(conn, "retention_deletions"):
+            return []
+        return list(
+            conn.execute(
+                "SELECT record_kind, record_id, retention_rule, due_on, deleted_at "
+                "FROM retention_deletions"
+            )
+        )
+
+
+def _reapply_deletion_ledger(
+    db_path: Path, ledger: list[tuple[str, int, str, str, str]]
+) -> None:
+    """Prevent an older backup from resurrecting aggregates already purged later."""
+    if not ledger:
+        return
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute("PRAGMA foreign_keys=ON")
+        _ensure_deletion_ledger(conn)
+        restored_ledger = list(
+            conn.execute(
+                "SELECT record_kind, record_id, retention_rule, due_on, deleted_at "
+                "FROM retention_deletions"
+            )
+        )
+        entries = {(row[0], row[1]): row for row in restored_ledger}
+        entries.update({(row[0], row[1]): row for row in ledger})
+        for row in entries.values():
+            kind, record_id, retention_rule, due_on, deleted_at = row
+            if kind == "application":
+                _delete_restored_application(conn, record_id)
+            elif kind == "applicant_draft":
+                _delete_restored_draft(conn, record_id)
+            conn.execute(
+                "INSERT OR IGNORE INTO retention_deletions "
+                "(record_kind, record_id, retention_rule, due_on, deleted_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (kind, record_id, retention_rule, due_on, deleted_at),
+            )
+
+
+def _delete_restored_application(conn: sqlite3.Connection, application_id: int) -> None:
+    if not _table_exists(conn, "applications"):
+        return
+    if _table_exists(conn, "feedback"):
+        conn.execute(
+            "UPDATE feedback SET applicant_id = NULL WHERE applicant_id = ?",
+            (application_id,),
+        )
+    draft_ids = _ids_for(conn, "applicant_drafts", "application_id", application_id)
+    token_ids = _ids_for(conn, "magic_link_tokens", "application_id", application_id)
+    for draft_id in draft_ids:
+        token_ids.extend(_ids_for(conn, "magic_link_tokens", "applicant_draft_id", draft_id))
+    _delete_delivery_references(conn, application_id, draft_ids, token_ids)
+    _delete_ids(conn, "magic_link_tokens", token_ids)
+    _delete_ids(conn, "applicant_drafts", draft_ids)
+    for table in _APPLICATION_CHILD_TABLES:
+        _delete_where(conn, table, "application_id", application_id)
+    conn.execute("DELETE FROM applications WHERE id = ?", (application_id,))
+
+
+def _delete_restored_draft(conn: sqlite3.Connection, draft_id: int) -> None:
+    token_ids = _ids_for(conn, "magic_link_tokens", "applicant_draft_id", draft_id)
+    _delete_delivery_references(conn, None, [draft_id], token_ids)
+    _delete_ids(conn, "magic_link_tokens", token_ids)
+    _delete_where(conn, "applicant_drafts", "id", draft_id)
+
+
+def _delete_delivery_references(
+    conn: sqlite3.Connection,
+    application_id: int | None,
+    draft_ids: list[int],
+    token_ids: list[int],
+) -> None:
+    if not _table_exists(conn, "email_deliveries"):
+        return
+    if application_id is not None:
+        _delete_where(conn, "email_deliveries", "application_id", application_id)
+    for draft_id in draft_ids:
+        _delete_where(conn, "email_deliveries", "applicant_draft_id", draft_id)
+    for token_id in token_ids:
+        _delete_where(conn, "email_deliveries", "magic_link_token_id", token_id)
+
+
+def _ids_for(
+    conn: sqlite3.Connection, table: str, column: str, value: int
+) -> list[int]:
+    if not _column_exists(conn, table, column):
+        return []
+    return [row[0] for row in conn.execute(f"SELECT id FROM {table} WHERE {column} = ?", (value,))]
+
+
+def _delete_ids(conn: sqlite3.Connection, table: str, ids: list[int]) -> None:
+    for record_id in set(ids):
+        _delete_where(conn, table, "id", record_id)
+
+
+def _delete_where(
+    conn: sqlite3.Connection, table: str, column: str, value: int
+) -> None:
+    if _column_exists(conn, table, column):
+        conn.execute(f"DELETE FROM {table} WHERE {column} = ?", (value,))
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+        ).fetchone()
+        is not None
+    )
+
+
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    return _table_exists(conn, table) and column in {
+        row[1] for row in conn.execute(f"PRAGMA table_info({table})")
+    }
+
+
+def _ensure_deletion_ledger(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS retention_deletions ("
+        "id INTEGER PRIMARY KEY, record_kind VARCHAR(30) NOT NULL, "
+        "record_id INTEGER NOT NULL, retention_rule VARCHAR(50) NOT NULL, "
+        "due_on DATE NOT NULL, deleted_at DATETIME NOT NULL, "
+        "UNIQUE (record_kind, record_id))"
+    )
 
 
 def main() -> None:
