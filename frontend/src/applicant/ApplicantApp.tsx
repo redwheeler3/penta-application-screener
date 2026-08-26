@@ -212,6 +212,7 @@ export function ApplicantApp() {
       "link_invalid",
       "access_link_sent",
       "load_error",
+      "submitted",
     ].includes(persistence.phase);
 
   return (
@@ -230,10 +231,7 @@ export function ApplicantApp() {
       <main className="applicant-main">
         <div className="applicant-title-row">
           <div>
-            <h1>{reviewing ? "Review your application" : "Application for Membership"}</h1>
-            {reviewing ? (
-              <p>Check your answers before continuing to the secure submission step.</p>
-            ) : null}
+            <h1>Application for Membership</h1>
           </div>
           {persistence.authenticated && rememberDevice ? (
             <DraftStatus savedAt={savedAt} hasContent={hasDraftContent(draft)} />
@@ -899,6 +897,7 @@ function ApplicationReview(props: {
         <div>
           <strong>{props.authenticated ? "Your application is ready to submit." : "This is still a private draft."}</strong>
           <span>Nothing has been sent to the membership committee.</span>
+          <span>Review your answers before submitting.</span>
         </div>
       </div>
       <ReviewSection title="Openings">

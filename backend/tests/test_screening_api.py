@@ -250,7 +250,6 @@ async def test_list_and_detail_expose_opening_participation() -> None:
     )
     submitted_at = datetime(2026, 2, 3, 4, 5, tzinfo=UTC)
     application.submitted_at = submitted_at
-    application.declaration_accepted_at = submitted_at
     db.add(
         ApplicationVersion(
             application_id=application.id,
@@ -259,7 +258,6 @@ async def test_list_and_detail_expose_opening_participation() -> None:
             selected_opening_ids=[opening.id],
             content_hash=application.raw_row_hash,
             submitted_at=submitted_at,
-            declaration_accepted_at=submitted_at,
         )
     )
     db.commit()
@@ -276,7 +274,7 @@ async def test_list_and_detail_expose_opening_participation() -> None:
     assert detail["openingIds"] == [opening.id]
     assert detail["firstSubmittedAt"] == "2026-02-03T04:05:00+00:00"
     assert detail["lastSubmittedAt"] == "2026-02-03T04:05:00+00:00"
-    assert detail["declarationAcceptedAt"] == "2026-02-03T04:05:00+00:00"
+    assert "declarationAcceptedAt" not in detail
     assert detail["submissionVersionCount"] == 1
 
 

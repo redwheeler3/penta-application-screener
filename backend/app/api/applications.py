@@ -415,7 +415,6 @@ def _serialize_detail(app: Application, db: Session, user: User) -> ApplicationD
         auto_status_source=auto_source.value,
         first_submitted_at=utc_isoformat(first_submitted_at or app.submitted_at),
         last_submitted_at=utc_isoformat(app.submitted_at),
-        declaration_accepted_at=utc_isoformat(app.declaration_accepted_at),
         submission_version_count=submission_version_count,
         normalized=normalized_with_ages(
             app.normalized or {},

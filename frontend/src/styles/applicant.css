@@ -243,8 +243,9 @@
   box-shadow: 0 0 0 3px rgb(19 166 83 / 13%);
 }
 
-.verified-email-control { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
-.authenticated-email-field.wide .verified-email-control { width: calc((100% - 20px) / 2); }
+.verified-email-control { display: flex; align-items: center; gap: 12px; }
+.authenticated-email-field.wide .verified-email-control { width: 100%; }
+.authenticated-email-field.wide .verified-email-control input { flex: 0 0 calc((100% - 20px) / 2); width: calc((100% - 20px) / 2); }
 .verified-email-control input[readonly] { color: #526774; background: #f5f7f6; }
 .verified-email-control .text-button { padding-left: 1px; color: var(--applicant-green-dark); }
 .email-reauthentication-button { align-self: flex-start; padding-left: 0; color: var(--applicant-green-dark); text-decoration: underline; }
@@ -458,7 +459,8 @@
   .field-grid,
   .field-grid.three-column,
   .income-grid { grid-template-columns: 1fr; }
-  .authenticated-email-field.wide .verified-email-control { width: 100%; }
+  .verified-email-control { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .authenticated-email-field.wide .verified-email-control input { flex-basis: auto; width: 100%; }
   .email-change-actions { align-items: stretch; flex-direction: column-reverse; }
   .email-change-actions.confirmation-actions { flex-direction: column; }
   .application-intro { padding: 20px; }

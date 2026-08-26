@@ -484,7 +484,7 @@ while visible. There is no import, acknowledgement, or manual synchronization ac
 
 A newly submitted application or version makes **Screen** and **Rank** amber when their
 content-addressed state no longer covers the submitted pool. The list stays compact;
-submission/version/declaration timestamps belong on the application detail page. Routine
+submission and version timestamps belong on the application detail page. Routine
 applicant updates do not email the committee.
 
 ### Primary email changes

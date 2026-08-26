@@ -114,7 +114,6 @@ def publish_working_copy(
         as_of_date=pacific_today(now=submitted_at),
     )
     application.submitted_at = submitted_at
-    application.declaration_accepted_at = submitted_at
     db.add(
         ApplicationVersion(
             application_id=application.id,
@@ -123,7 +122,6 @@ def publish_working_copy(
             selected_opening_ids=selected_opening_ids,
             content_hash=application.raw_row_hash,
             submitted_at=submitted_at,
-            declaration_accepted_at=submitted_at,
         )
     )
 

@@ -305,11 +305,6 @@ function buildCanonicalDetailSections(
           "Submitted versions",
           app.submissionVersionCount,
         ),
-        detailField(
-          "declaration_accepted_at",
-          "Declaration accepted",
-          app.declarationAcceptedAt ? formatPacificDateTime(app.declarationAcceptedAt) : null,
-        ),
       ]),
     },
   ];

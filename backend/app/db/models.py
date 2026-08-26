@@ -251,7 +251,6 @@ class Application(TimestampMixin, Base):
     # Null means a never-submitted draft. Retained externally collected rows are
     # submitted; built-in drafts start null.
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
-    declaration_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     retention_due_on: Mapped[date | None] = mapped_column(Date)
     # Provenance for evidence-bearing eval exports. Production form submissions are
@@ -322,7 +321,6 @@ class ApplicationVersion(Base):
     selected_opening_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    declaration_accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     application: Mapped[Application] = relationship()
 

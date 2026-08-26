@@ -251,7 +251,6 @@ export type ApplicationDetail = ApplicationSummary & {
   autoStatusSource: StatusSource;
   firstSubmittedAt: string | null;
   lastSubmittedAt: string | null;
-  declarationAcceptedAt: string | null;
   submissionVersionCount: number;
   normalized: Record<string, unknown>;
   essays: Essay[];

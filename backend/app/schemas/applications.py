@@ -126,7 +126,6 @@ class ApplicationDetail(ApplicationSummary):
     auto_status_source: str
     first_submitted_at: str | None = None
     last_submitted_at: str | None = None
-    declaration_accepted_at: str | None = None
     submission_version_count: int = 0
     normalized: dict[str, Any] | None = None
     essays: list[Essay] = []
