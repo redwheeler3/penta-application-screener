@@ -148,29 +148,33 @@ export function CandidateDetail(props: {
           Print
         </button>
       </div>
-      <div className="app-detail-header">
+      <div className="app-detail-identity">
         <StarButton
           starred={app.starredByMe}
           onToggle={(next) => props.onToggleStar(app.id, next)}
           size="md"
         />
-        <h3>{app.applicantName || app.primaryEmail}</h3>
-        <span className={`status-badge status-${app.status}`}>{STATUS_LABELS[app.status]}</span>
-        {app.statusSource !== "untouched" ? (
-          <span className={`source-badge source-${app.statusSource}`}>{SOURCE_LABELS[app.statusSource]}</span>
-        ) : null}
-      </div>
-      {app.coApplicantName ? <p className="co-applicant-line">Co-applicant: {app.coApplicantName}</p> : null}
-      <div className="application-openings" aria-label="Applied openings">
-        <span>Applied for</span>
-        {app.openingIds.length ? (
-          app.openingIds.map((openingId) => {
-            const opening = props.openings.find((candidate) => candidate.id === openingId);
-            return opening ? <strong key={opening.id}>{openingLabel(opening)}</strong> : null;
-          })
-        ) : (
-          <strong>No current opening</strong>
-        )}
+        <div className="app-detail-identity-content">
+          <div className="app-detail-header">
+            <h3>{app.applicantName || app.primaryEmail}</h3>
+            <span className={`status-badge status-${app.status}`}>{STATUS_LABELS[app.status]}</span>
+            {app.statusSource !== "untouched" ? (
+              <span className={`source-badge source-${app.statusSource}`}>{SOURCE_LABELS[app.statusSource]}</span>
+            ) : null}
+          </div>
+          {app.coApplicantName ? <p className="co-applicant-line">Co-applicant: {app.coApplicantName}</p> : null}
+          <div className="application-openings" aria-label="Applied openings">
+            <span>Applied for</span>
+            {app.openingIds.length ? (
+              app.openingIds.map((openingId) => {
+                const opening = props.openings.find((candidate) => candidate.id === openingId);
+                return opening ? <strong key={opening.id}>{openingLabel(opening)}</strong> : null;
+              })
+            ) : (
+              <strong>No current opening</strong>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="detail-review-row">
