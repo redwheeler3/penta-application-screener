@@ -197,7 +197,8 @@ def unsuccessful_application_email(
     heading = "An update on your Penta application"
     introduction = (
         "Thank you for the time you took to apply. We're sorry to let you know that "
-        f"your household was not selected for {', '.join(opening_labels)}."
+        f"your household was not selected for {', '.join(opening_labels)}. We wish "
+        "you all the best in your housing search."
     )
     notice = (
         "If you'd like to hear when another unit becomes available, you're welcome "
