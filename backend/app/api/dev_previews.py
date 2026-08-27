@@ -3,8 +3,8 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from app.api.problems import Problem
 from app.core.config import Settings, get_settings
+from app.core.problems import Problem
 from app.db.models import MagicLinkPurpose, PasswordlessIdentityKind
 from app.services.auth_email import (
     application_confirmation_email,

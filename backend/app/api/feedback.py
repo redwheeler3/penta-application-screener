@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin, require_current_user
-from app.api.problems import Problem
+from app.core.problems import Problem
 from app.db.models import Feedback, User
 from app.db.session import get_db
 from app.schemas.feedback import FeedbackCreate, FeedbackListResponse, FeedbackOut

@@ -8,7 +8,7 @@ from sqlalchemy import delete as sql_delete
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.api.problems import Problem
+from app.core.problems import Problem
 from app.core.text import normalize_email
 from app.core.time import as_utc
 from app.db.models import (

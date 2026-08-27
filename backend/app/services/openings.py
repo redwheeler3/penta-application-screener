@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
-from app.api.problems import Problem
+from app.core.problems import Problem
 from app.core.time import pacific_today
 from app.db.models import Application, ApplicationParticipation, Opening, OpeningPhase
 from app.schemas.openings import OpeningWrite

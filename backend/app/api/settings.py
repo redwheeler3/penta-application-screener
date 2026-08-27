@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 from app.ai.model_catalog import MODEL_CATALOG, model_spec, provider_is_configured
 from app.ai.pass_catalog import AI_PASS_CATALOG
 from app.api.dependencies import require_admin, require_current_user
-from app.api.problems import Problem
 from app.core.config import get_settings
+from app.core.problems import Problem
 from app.db.models import User
 from app.db.session import get_db
 from app.schemas.settings import (

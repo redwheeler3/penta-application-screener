@@ -6,7 +6,7 @@ from datetime import date, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.problems import Problem
+from app.core.problems import Problem
 from app.core.time import pacific_today
 from app.db.models import Application, ApplicationParticipation, Opening, OpeningPhase
 from app.services.openings import opening_phase

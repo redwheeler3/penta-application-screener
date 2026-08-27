@@ -18,8 +18,8 @@ from app.api.applicant.support import (
     _require_matching_email,
     _require_new_applications_open,
 )
-from app.api.problems import Problem
 from app.core.config import get_settings
+from app.core.problems import Problem
 from app.core.text import normalize_email
 from app.db.models import (
     ApplicantDraft,

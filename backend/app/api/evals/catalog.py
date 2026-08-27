@@ -18,7 +18,7 @@ from app.api.evals._shared import (
     result_model,
     result_reasoning_effort,
 )
-from app.api.problems import Problem
+from app.core.problems import Problem
 from app.core.time import utc_isoformat
 from app.db.models import EvalRun, User
 from app.db.session import get_db

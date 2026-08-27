@@ -16,7 +16,7 @@ from app.ai.screening import (
     run_screening,
 )
 from app.api.dependencies import get_ai_provider, require_current_user
-from app.api.problems import Problem
+from app.core.problems import Problem
 from app.db.models import User
 from app.db.session import get_db
 from app.schemas.events import (

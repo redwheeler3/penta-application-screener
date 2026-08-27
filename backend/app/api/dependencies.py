@@ -3,9 +3,9 @@ from sqlalchemy.orm import Session
 
 from app.ai.provider import AIProvider
 from app.ai.strands_provider import StrandsProvider
-from app.api.problems import Problem
 from app.api.session_cookie import clear_session_cookie, session_token
 from app.core.config import get_settings
+from app.core.problems import Problem
 from app.db.models import PasswordlessIdentityKind, User, UserRole
 from app.db.session import get_db
 from app.services.committee_auth import authenticate_committee_user

@@ -8,7 +8,7 @@ from collections import Counter
 from fastapi import APIRouter, Depends
 
 from app.api.dependencies import require_current_user
-from app.api.problems import Problem
+from app.core.problems import Problem
 from app.db.models import User
 from app.evals.case_store import (
     CaseValidationError,

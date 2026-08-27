@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin, require_recent_admin
-from app.api.problems import Problem
+from app.core.problems import Problem
 from app.core.text import normalize_email
 from app.db.models import User, UserRole
 from app.db.session import get_db

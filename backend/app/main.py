@@ -23,12 +23,12 @@ from app.api.health import router as health_router
 from app.api.observability import router as observability_router
 from app.api.openings import router as openings_router
 from app.api.passwordless_auth import router as passwordless_auth_router
-from app.api.problems import Problem
 from app.api.ranking import router as ranking_router
 from app.api.screening import router as screening_router
 from app.api.settings import router as settings_router
 from app.api.settings import rules_router as eligibility_rules_router
 from app.core.config import get_settings
+from app.core.problems import Problem
 from app.services.maintenance import run_due_maintenance
 
 PROBLEM_JSON = "application/problem+json"

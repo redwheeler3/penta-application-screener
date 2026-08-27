@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin, require_recent_admin
-from app.api.problems import Problem
+from app.core.problems import Problem
 from app.db.models import Application, Opening, User
 from app.db.session import get_db
 from app.schemas.openings import (

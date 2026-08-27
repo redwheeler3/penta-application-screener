@@ -22,11 +22,11 @@ from app.api.applicant.support import (
     _require_matching_email,
     _stored_answers,
 )
-from app.api.problems import Problem
 from app.api.session_cookie import (
     clear_session_cookie,
 )
 from app.core.config import get_settings
+from app.core.problems import Problem
 from app.core.text import normalize_email
 from app.core.time import as_utc, pacific_today
 from app.db.models import (

@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.api.problems import Problem
+from app.core.problems import Problem
 from app.db.models import Application, ApplicationParticipation, Base, Opening
 from app.services.opening_participation import (
     applicant_opening_states,

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.model_catalog import supports_reasoning_effort
 from app.api.dependencies import require_admin, require_current_user
-from app.api.problems import Problem
+from app.core.problems import Problem
 from app.core.time import as_utc, pacific_date, pacific_today, utc_isoformat
 from app.db.models import (
     Application,
@@ -24,12 +24,6 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.domain.ranking import rank_candidates
-from app.domain.status import (
-    effective_status,
-    findings_fingerprint,
-    override_is_stale,
-    resolve_machine_status,
-)
 from app.schemas.applications import (
     AIModelTraceOut,
     AIResultTraceOut,
@@ -70,6 +64,12 @@ from app.services.rules import (
     rules_config_for,
 )
 from app.services.stars import is_starred, starred_ids
+from app.services.status_resolution import (
+    effective_status,
+    findings_fingerprint,
+    override_is_stale,
+    resolve_machine_status,
+)
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 

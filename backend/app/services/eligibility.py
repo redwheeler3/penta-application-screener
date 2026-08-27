@@ -4,7 +4,7 @@ Eligibility is never stored on the applicant. The *machine verdict* is derived f
 applicant's shared findings (deterministic rule reasons + cached AI flags) and is the same
 for everyone; a member's *human override* of that verdict lives in a ``MemberEligibility``
 row. This module is the read side of that model: it loads a member's override, resolves
-their effective status via ``app.domain.status``, and computes the two eligible sets the
+their effective status via ``app.services.status_resolution``, and computes the two eligible sets the
 ranking/discovery/scoring passes work over:
 
   - the UNION pool — every applicant eligible for at least one member (what the shared AI
@@ -30,7 +30,6 @@ from app.db.models import (
     User,
 )
 from app.domain.hard_filters import PetFacts, RulesConfig
-from app.domain.status import effective_status
 from app.schemas.settings import EligibilityRules
 from app.services.application_scope import committee_applications
 from app.services.rules import (
@@ -40,6 +39,7 @@ from app.services.rules import (
     rules_config_for,
     rules_config_from,
 )
+from app.services.status_resolution import effective_status
 
 
 def active_flags(

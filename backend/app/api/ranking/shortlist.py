@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_current_user
-from app.api.problems import Problem
+from app.core.problems import Problem
 from app.db.models import MemberRanking, User
 from app.db.session import get_db
 from app.domain.ranking import rank_candidates

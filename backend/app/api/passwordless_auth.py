@@ -8,13 +8,13 @@ from sqlalchemy.orm import Session
 from app.api.applicant.dependencies import optional_current_application
 from app.api.auth import serialize_user
 from app.api.dependencies import optional_current_user
-from app.api.problems import Problem
 from app.api.session_cookie import (
     clear_session_cookie,
     session_token,
     set_session_cookie,
 )
 from app.core.config import get_settings
+from app.core.problems import Problem
 from app.core.text import normalize_email
 from app.core.time import as_utc
 from app.db.models import (

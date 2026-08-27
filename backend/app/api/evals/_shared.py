@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.model_catalog import ReasoningEffort
 from app.ai.provider import AIProvider
-from app.api.problems import Problem
+from app.core.problems import Problem
 from app.db.models import EvalRun
 from app.evals.case_store import UnknownEvalError, list_cases
 from app.schemas.base import ResponseModel

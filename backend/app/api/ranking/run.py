@@ -62,8 +62,8 @@ from app.ai.pricing import PassCost
 from app.ai.provider import AIProvider
 from app.ai.schemas import DecompositionReport, PoolDimension, PoolDimensionReport
 from app.api.dependencies import get_ai_provider, require_current_user
-from app.api.problems import Problem
 from app.core.config import get_settings
+from app.core.problems import Problem
 from app.db.models import Analysis, Application, MemberRanking, User
 from app.db.session import get_db
 from app.schemas.events import ErrorEvent as StreamErrorEvent
