@@ -1,0 +1,523 @@
+/* Application controls */
+/* View title, aligned with .app-controls' horizontal inset. Mirrors .settings-header /
+   .observability-header so Applications opens with its name like every other view. */
+.applications-header {
+  padding: 20px 1.25rem 0;
+  margin-bottom: 1rem;
+}
+
+.applications-header h3 {
+  margin: 0;
+}
+
+.app-controls {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.app-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* The view tab row sits between the workflow card and the content panel. The tabs
+   are folder tabs: the active one is flush with the panel below (no gap, shared
+   bottom edge) so it reads as connected to its content. */
+.view-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.25rem;
+  margin: 1rem 0 0;
+  padding: 0 0.5rem;
+  /* Overlap the panel's top border so the active tab can paint over it. */
+  position: relative;
+  z-index: 1;
+}
+
+/* The view tabs are folder tabs: square bottom corners, no bottom border, and they
+   sit on the panel's top edge. (Scoped to .view-tabs so the filter pills elsewhere
+   keep their pill look.) */
+.view-tabs .tab-button {
+  margin-bottom: -1px;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  /* Larger than the filter pills below so the primary navigation reads as primary,
+     not on a par with the busy filter row. */
+  padding: 0.5rem 0.95rem;
+  font-size: 0.9rem;
+}
+
+/* Active view tab: white like the panel, no bottom border, so it merges into the
+   content card below. A green top bar keeps the "selected" signal. */
+.view-tabs .tab-button.active {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+  font-weight: 600;
+  border-top: 2px solid var(--penta-green);
+  border-bottom-color: var(--surface);
+}
+
+/* Settings is config, not a third data view — push it to the right, set apart from
+   the data tabs, with the gear icon flagging its different nature. */
+.tab-button-settings {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+}
+
+/* Filter group: a labeled axis (Status / Decided by) of combinable tabs */
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.filter-group-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.filter-group + .filter-group {
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--line);
+}
+
+.tab-button {
+  padding: 0.375rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.tab-button.active {
+  background: var(--penta-green);
+  color: white;
+  border-color: var(--penta-green);
+}
+
+.app-search {
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  /* Reset the native search-input chrome: WebKit reserves space on the right for its own
+     search decoration, which narrows the text area and clips the placeholder even when the
+     box looks roomy. appearance:none reclaims that space for the text. */
+  appearance: none;
+  -webkit-appearance: none;
+  /* Fill the space left on the controls row after the (now condensed) filter groups, growing
+     into it. min-width holds the placeholder ("Search by name / email") so it never shrinks to
+     an unusable sliver — because flex-wrap respects min-width, hitting that floor makes the
+     field WRAP to its own full-width line instead of clipping. Best of both: inline+roomy when
+     there's space, a proper full-width bar when there isn't. */
+  flex: 1 1 9rem;
+  min-width: 9rem;
+}
+
+/* Drop WebKit's search decoration/cancel pseudo-elements — they reserve right-side space
+   that clips the placeholder. */
+.app-search::-webkit-search-decoration,
+.app-search::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Application table */
+.app-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.workflow-opening-scope {
+  display: flex;
+  flex: 1 0 100%;
+  align-items: center;
+  gap: 0.55rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.workflow-opening-label {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.workflow-opening-scope .segmented {
+  flex-wrap: wrap;
+}
+
+.denied-sign-ins {
+  display: grid;
+  gap: 0.85rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--line);
+}
+
+.app-table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.app-table thead {
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.app-table th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.app-table td {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.clickable-row {
+  cursor: pointer;
+}
+
+.clickable-row:hover {
+  background: var(--penta-green-soft);
+}
+
+/* The applicant-name cell (now the second cell — a star column leads the row). */
+.clickable-row td.applicant-cell {
+  font-weight: 600;
+  color: var(--penta-green-dark);
+}
+
+/* Star column: narrow, centered, and quiet so the name stays the row's anchor. */
+.app-table th.star-col,
+.app-table td.star-col {
+  width: 40px;
+  padding-left: 0.5rem;
+  padding-right: 0;
+  text-align: center;
+}
+
+/* The favourite toggle itself — a gold star that fills when active. Ghost button:
+   no chrome until hover, so a table of them reads calm. */
+.star-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #cbd5e1; /* slate-300: an empty star is a faint hint, not a demand */
+  transition:
+    color 0.12s ease,
+    background 0.12s ease,
+    transform 0.08s ease;
+}
+
+.star-button:hover {
+  color: var(--penta-green); /* preview the green fill on hover */
+  background: var(--penta-green-soft);
+}
+
+.star-button:active {
+  transform: scale(0.88);
+}
+
+.star-button.is-starred {
+  color: var(--penta-green); /* filled green */
+}
+
+.star-button.is-starred:hover {
+  color: var(--penta-green-dark); /* darken slightly to signal "click to remove" */
+}
+
+.star-button:focus-visible {
+  outline: 2px solid var(--penta-green);
+  outline-offset: 1px;
+}
+
+/* The "Favourites" filter/view toggle matches the other secondary actions while
+   aligning its leading star icon with the label. */
+.favourites-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.favourites-toggle.active {
+  background: var(--penta-green);
+  border-color: var(--penta-green);
+  color: white;
+}
+
+.favourites-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Sortable headers */
+.sort-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.sort-header:hover {
+  color: var(--penta-green-dark);
+}
+
+.sort-header.active {
+  color: var(--penta-green-dark);
+}
+
+.reason-cell {
+  max-width: 300px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* Status badges */
+.status-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.status-eligible {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.status-ineligible {
+  background: #fee2e2;
+  color: var(--danger-text);
+}
+
+/* "Decided by" source badges — secondary info, lighter than status badges */
+.source-badge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.source-rules {
+  background: #f3f4f6;
+  color: #374151;
+  border-color: #e5e7eb;
+}
+
+.source-ai {
+  background: #fef3c7;
+  color: var(--warning-text-strong);
+  border-color: var(--warning-border);
+}
+
+.source-human {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: var(--info-border);
+}
+
+.stale-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: var(--warning-border-soft);
+  color: var(--warning-text-strong);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Status panel (candidate detail): source line, staleness, human override */
+.detail-review-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0 0 1.25rem;
+}
+
+.status-panel {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.status-source-line {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.stale-note {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  border-left: 3px solid #d97706;
+  background: var(--warning-bg);
+  color: var(--warning-text-strong);
+  font-size: 0.82rem;
+}
+
+.status-decider {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.65rem;
+}
+
+.status-decider-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* Segmented control over who owns the status: Automatic | Eligible | Ineligible.
+   The pressed (aria-pressed) segment is the current owner and is disabled. */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segment {
+  min-height: 32px;
+  padding: 0 0.85rem;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segment:first-child {
+  border-left: 0;
+}
+
+/* Filter-row segments are a compact use of the segmented control (vs the detail page's
+   status override): match the old filter pills' lighter weight + size so they don't eat
+   the row width the search needs. Scoped to .app-controls, so the detail control is
+   unaffected. */
+.app-controls .segment {
+  min-height: 30px;
+  padding: 0 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.segment:hover:not([aria-pressed="true"]) {
+  background: var(--page);
+}
+
+.segment[aria-pressed="true"] {
+  background: var(--penta-green);
+  color: #ffffff;
+  cursor: default;
+}
+
+.status-decider-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* Reviewer-owned context stays beside the decision controls, but is visually and
+   semantically separate from shared application data and AI findings. */
+.private-note-panel {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.private-note-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.private-note-heading h4 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.private-note-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.private-note-panel textarea {
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: 0.35rem;
+  overflow-y: hidden;
+  resize: none;
+}
+
+.private-note-print {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .detail-review-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* Pagination */

@@ -1,0 +1,320 @@
+/* Access allowlist (admin-only tab) */
+.access-panel {
+  display: grid;
+  gap: 1.1rem;
+  padding: 1.25rem;
+}
+
+.access-panel-head h3 {
+  margin: 0 0 0.25rem;
+}
+
+/* Consistent header block for every Admin Settings subtab (Configuration, Committee Defaults,
+   Access, Feedback): an <h3> title with a hint beneath, and clear spacing so the hint/body
+   isn't crammed under the heading. Access already used this shape; the others now match. */
+.settings-subtab-head {
+  /* Span the full width when it's a child of the .settings-form 2-col grid (Configuration
+     tab); harmless in the non-grid panel bodies (Committee Defaults / Feedback). */
+  grid-column: 1 / -1;
+  margin-bottom: 1.1rem;
+}
+.settings-subtab-head h3 {
+  margin: 0 0 0.35rem;
+}
+.settings-subtab-head .panel-hint {
+  margin: 0;
+}
+
+.access-add {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.access-add input[type="email"] {
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.access-add select,
+.access-role-select {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.access-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.access-role-select-admin {
+  background: var(--success-bg);
+  border-color: #86efac;
+  color: var(--success-text);
+}
+
+.access-role-select-member {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
+.access-role-select:disabled {
+  opacity: 1;
+}
+
+.access-table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.access-table th {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.access-table td {
+  padding: 0.55rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.access-remove-cell {
+  text-align: right;
+  width: 48px;
+}
+
+/* Mirror the .panel structure so the header gets the same edge-to-edge green
+   row: no padding on the container (overflow clips the header to the radius),
+   padding lives on the header and body sections. */
+/* Settings is now the content of the Settings tab; the surrounding .panel supplies
+   the card, so this is just a body wrapper. */
+/* Tab title at the top of each settings tab, matching the Observability/Evals heading
+   (.observability-header) so every tab opens with its name. Left-padded to align with the
+   settings body content (20px). */
+.settings-header {
+  padding: 20px 20px 0;
+  /* Breathing room before the subtabs/form below — matches .observability-header's 1rem gap
+     so the heading doesn't sit flush against what follows. */
+  margin-bottom: 1rem;
+}
+
+.settings-header h3 {
+  margin: 0;
+}
+
+.settings-panel-body {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+/* Sub-tab bar inside the Admin Settings panel (Configuration / Access). Sits at the
+   top of the panel, above the active section. Reuses the .tab-button pill look; a
+   simple bottom rule separates the bar from the content below it. */
+/* Admin Settings' sub-tabs reuse .subtabs (see Observability/Evals). The tab
+   heading sits above them; this just aligns them horizontally with the body content. */
+.admin-settings-subtabs {
+  padding: 0 1.25rem;
+}
+
+/* Opening management */
+.openings-panel { display: block; }
+.openings-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.openings-header > div { min-width: 0; }
+.openings-header .primary-button { flex: 0 0 auto; }
+.opening-message { margin: 0 0 1rem; color: var(--success-text); font-weight: 650; }
+.openings-empty { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; padding: 2.5rem 1rem; color: var(--muted); text-align: center; border: 1px dashed var(--line); border-radius: 10px; }
+.openings-empty strong { color: var(--ink); }
+.opening-list { display: grid; gap: 0.85rem; }
+.opening-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.opening-card-main { flex: 1; min-width: 0; }
+.opening-card-title { display: flex; align-items: center; gap: 0.65rem; }
+.opening-card-title h4 { margin: 0; }
+.opening-card-main > p { margin: 0.55rem 0 0; color: var(--muted); line-height: 1.45; }
+.opening-status { padding: 0.18rem 0.48rem; border-radius: 999px; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.opening-status-draft { color: #475569; background: #e2e8f0; }
+.opening-status-upcoming { color: #1e40af; background: #dbeafe; }
+.opening-status-open { color: var(--success-text); background: var(--success-bg); }
+.opening-status-closed { color: #92400e; background: #fef3c7; }
+.opening-status-archived { color: #6b7280; background: #f3f4f6; }
+.opening-facts { display: flex; flex-wrap: wrap; gap: 0.8rem 1.5rem; margin: 0.9rem 0 0; }
+.opening-facts div { display: grid; gap: 0.08rem; }
+.opening-facts dt { color: var(--muted); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; }
+.opening-facts dd { margin: 0; font-size: 0.88rem; font-weight: 650; }
+.opening-card-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; }
+.opening-form { margin-bottom: 1rem; padding: 1rem; border: 1px solid #bfe5ce; border-radius: 10px; background: #f5fbf7; }
+.opening-form-heading h4 { margin: 0 0 0.2rem; }
+.opening-form-heading > span { color: var(--muted); font-size: 0.82rem; }
+.opening-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem 1rem; margin-top: 1rem; }
+.opening-form-grid label { display: grid; align-content: start; gap: 0.35rem; color: var(--ink); font-size: 0.82rem; font-weight: 700; }
+.opening-form-grid input,
+.opening-form-grid select,
+.opening-form-grid textarea { width: 100%; min-width: 0; padding: 0.55rem 0.65rem; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink); font: inherit; font-weight: 450; }
+.opening-money-input { display: flex; align-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+.opening-money-input > span { padding-left: 0.65rem; color: var(--muted); }
+.opening-money-input input { border: 0; }
+.opening-form-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1rem; }
+.opening-selection-summary { display: flex; align-items: center; gap: 0.65rem; margin-top: 0.9rem; padding: 0.65rem 0.75rem; border: 1px solid #bfe5ce; border-radius: 8px; background: #f5fbf7; color: var(--success-text); }
+.opening-selection-summary > span { display: grid; gap: 0.08rem; font-size: 0.75rem; }
+.opening-selection-summary strong { color: var(--ink); font-size: 0.88rem; }
+.opening-selection-summary small { margin-left: auto; color: var(--muted); }
+.opening-no-selection-summary { border-color: var(--line); background: #fff; color: var(--muted); }
+.opening-selection-needed { color: #92400e !important; font-weight: 700; }
+.opening-selection-panel { margin-bottom: 1rem; padding: 1rem; border: 1px solid #bfe5ce; border-radius: 10px; background: #f5fbf7; }
+.opening-selection-panel h4 { margin: 0 0 0.35rem; }
+.opening-selection-panel > p { margin: 0.35rem 0; line-height: 1.5; }
+.opening-selection-panel .opening-form-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.opening-selected-detail { display: flex; align-items: center; gap: 0.65rem; margin-top: 1rem; padding: 0.75rem; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.opening-selected-detail > div { display: grid; flex: 1; gap: 0.12rem; }
+.opening-selected-detail span { color: var(--muted); font-size: 0.8rem; }
+.opening-candidate-list { display: grid; gap: 0.5rem; margin-top: 1rem; }
+.opening-candidate-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.65rem 0.75rem; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.opening-candidate-name { display: grid; flex: 1; gap: 0.08rem; padding: 0; border: 0; background: none; color: var(--ink); text-align: left; cursor: pointer; }
+.opening-candidate-name:hover strong { color: var(--penta-green-dark); text-decoration: underline; }
+.opening-candidate-name span { color: var(--muted); font-size: 0.78rem; }
+.opening-no-selection-button { margin-top: 0.8rem; padding: 0.45rem 0; border: 0; background: none; color: var(--muted); font-weight: 700; cursor: pointer; }
+.opening-no-selection-button:hover { color: var(--ink); text-decoration: underline; }
+.danger-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; padding: 0.55rem 0.8rem; border: 1px solid #fca5a5; border-radius: 7px; background: #fff1f2; color: #b91c1c; font-weight: 700; cursor: pointer; }
+.text-danger-button { padding: 0.4rem; border: 0; background: none; color: #b91c1c; font-weight: 700; cursor: pointer; }
+.app-detail-star-spacer { flex: 0 0 1.65rem; }
+
+@media (max-width: 760px) {
+  .openings-header,
+  .opening-card { flex-direction: column; }
+  .opening-card-actions { width: 100%; }
+  .opening-card-actions button { flex: 1; }
+  .opening-form-grid { grid-template-columns: 1fr; }
+  .opening-selected-detail,
+  .opening-candidate-row { align-items: stretch; flex-direction: column; }
+}
+
+/* A saving-forks-the-default note above the eligibility form; spans both form columns
+   so it reads as a full-width banner rather than a field label. */
+.eligibility-default-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+/* Intro paragraph at the top of the Committee Defaults subtab — above the form, so it
+   reads as a section lede rather than landing in a form column. */
+/* The "compared to committee default" divergence panel, full-width above the
+   member's own rule fields. Shows only the fields that differ + a Reset action. */
+.divergence-panel {
+  grid-column: 1 / -1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin: 0 0 0.5rem;
+  background: var(--surface-muted, rgba(0, 0, 0, 0.02));
+}
+
+.divergence-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.divergence-head .panel-hint {
+  margin: 0;
+}
+
+.divergence-diff {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.6rem;
+  font-size: 0.82rem;
+}
+
+.divergence-diff th,
+.divergence-diff td {
+  text-align: left;
+  padding: 0.25rem 0.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.divergence-diff th {
+  font-weight: 600;
+  color: var(--muted);
+  border-top: none;
+}
+
+.divergence-mine {
+  font-weight: 600;
+}
+
+.divergence-default {
+  color: var(--muted);
+}
+
+.settings-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 6px;
+}
+
+/* Explicit wide fields span both settings columns without relying on position. */
+.settings-form label.settings-field-wide {
+  grid-column: 1 / -1;
+}
+
+.settings-form label span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.settings-form label > small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.settings-form input:not([type="checkbox"]),
+.settings-form select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.settings-form input:not([type="checkbox"]):focus,
+.settings-form select:focus {
+  outline: 2px solid var(--success-border);
+  outline-offset: 1px;
+  border-color: var(--penta-green);
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  grid-column: 1 / -1;
+  gap: 12px;
+}
+
+.settings-actions span {
+  color: var(--muted);
+  font-size: 0.92rem;
+}

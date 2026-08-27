@@ -1,0 +1,423 @@
+:root {
+  --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --penta-green: #16a34a;
+  --penta-green-dark: #15803d;
+  --penta-green-soft: #f0fdf4;
+  --ink: #111827;
+  --muted: #4b5563;
+  --line: #e5e7eb;
+  --surface: #ffffff;
+  --page: #f9fafb;
+  --success-text: #166534;
+  --success-bg: #dcfce7;
+  --success-border: #bbf7d0;
+  --warning-text: #b45309;
+  --warning-text-strong: #92400e;
+  --warning-bg: #fffbeb;
+  --warning-border: #fcd34d;
+  --warning-border-soft: #fde68a;
+  --danger-text: #991b1b;
+  --danger-bg: #fef2f2;
+  --danger-border: #fecaca;
+  --info-bg: #eff6ff;
+  --info-border: #bfdbfe;
+
+  color: var(--ink);
+  /* Warm green page wash. It stays pale (and paler than the panel header
+     green below it) so the header rows read as distinct raised surfaces
+     rather than blending into a matching background. */
+  background:
+    linear-gradient(180deg, #f3faf6 0, rgba(243, 250, 246, 0) 320px),
+    var(--page);
+  font-family: var(--font-sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  width: min(1120px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 0 0 40px;
+}
+
+/* Full-bleed white nav bar that breaks out of the centered content column. */
+.topnav {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  background: var(--surface);
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.topnav-inner {
+  height: 64px;
+}
+
+.penta-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  width: 100%;
+  max-width: 1280px;
+  height: 64px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.penta-brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 4px 8px;
+  color: var(--penta-green);
+  font-family: var(--font-sans);
+}
+
+.penta-brand-lockup > span {
+  color: var(--ink);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.brand-name-short {
+  display: none;
+}
+
+.page-heading {
+  margin: 28px 0 24px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: clamp(1.9rem, 4vw, 3rem);
+  letter-spacing: 0;
+  line-height: 1.05;
+}
+
+.header-account {
+  align-items: center;
+  color: var(--ink);
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.header-account-identity {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.header-account-email {
+  flex: 1 1 auto;
+  max-width: 220px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-account-role {
+  color: var(--penta-green-dark);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.icon-button {
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
+}
+
+.icon-button:not(:disabled):hover {
+  border-color: #86efac;
+  color: var(--penta-green-dark);
+}
+
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* Shared button family. The neutral white-card look is the default; .primary-button
+   overrides to a green CTA fill, .workflow-step-button opts out of centering.
+   (.workflow-step-button lives in the workflow section below but shares this base.) */
+.primary-button,
+.secondary-button,
+.workflow-step-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  /* Anchors are underlined globally; link-buttons retain the button treatment. */
+  text-decoration: none;
+  transition: border-color 0.12s, background-color 0.12s, box-shadow 0.12s, transform 0.12s;
+}
+
+/* The family lifts on hover and settles on press. */
+.primary-button:hover:not(:disabled),
+.secondary-button:hover:not(:disabled),
+.workflow-step-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.primary-button:active:not(:disabled),
+.secondary-button:active:not(:disabled),
+.workflow-step-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Primary CTA: the strong "do it" action, set apart by its solid green fill. */
+.primary-button {
+  padding: 0.5rem 0.95rem;
+  border-color: var(--penta-green);
+  background: var(--penta-green);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(22, 163, 74, 0.18);
+}
+
+.primary-button:hover:not(:disabled) {
+  border-color: var(--penta-green-dark);
+  background: var(--penta-green-dark);
+}
+
+.primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.primary-button.is-busy:disabled {
+  cursor: wait;
+}
+
+.sign-in-retry-spinner {
+  animation: sign-in-retry-spin 0.8s linear infinite;
+}
+
+@keyframes sign-in-retry-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Neutral/secondary action: green-tint hover-lift. */
+.secondary-button:hover:not(:disabled) {
+  border-color: var(--penta-green);
+  background: var(--penta-green-soft);
+  color: var(--penta-green-dark);
+  box-shadow: 0 1px 4px rgba(22, 163, 74, 0.18);
+}
+
+.secondary-button:active:not(:disabled) {
+  box-shadow: none;
+}
+
+.secondary-button:disabled,
+.secondary-button:disabled:hover {
+  border-color: #d1d5db;
+  background: #f3f4f6;
+  color: #6b7280;
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.secondary-button.is-busy:disabled {
+  cursor: wait;
+}
+
+.login-panel {
+  display: grid;
+  gap: 14px;
+  max-width: 480px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 20px 40px rgba(17, 24, 39, 0.08);
+}
+
+.login-panel p {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.login-form {
+  display: grid;
+  gap: 14px;
+}
+
+.login-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.login-form label span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.login-panel .remember-device-choice {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 9px;
+  color: #40566a;
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.login-panel .remember-device-choice input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 1px 0 0;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
+.login-panel .remember-device-choice span { font: inherit; }
+
+.login-form input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.login-form input:focus {
+  outline: 2px solid var(--success-border);
+  outline-offset: 1px;
+  border-color: var(--penta-green);
+}
+
+.login-form .primary-button {
+  min-height: 42px;
+}
+
+.login-google-button {
+  min-height: 42px;
+}
+
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
+
+.login-legal {
+  font-size: 0.82rem;
+}
+
+.login-message {
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+}
+
+.login-panel .login-message-error {
+  background: var(--danger-bg); /* red-50 */
+  border: 1px solid var(--danger-border); /* red-200 */
+  color: var(--danger-text); /* red-800 */
+  font-size: 0.9rem;
+}
+
+.login-panel .login-message-success {
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+  color: var(--success-text);
+}
+
+.committee-account-choice {
+  max-width: 620px;
+}
+
+.committee-account-choice > svg {
+  color: var(--penta-green-dark);
+}
+
+.login-identity-list {
+  margin: 0;
+}
+
+.login-identity-list > div {
+  display: grid;
+  grid-template-columns: 145px minmax(0, 1fr);
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.login-identity-list dt {
+  color: var(--muted);
+}
+
+.login-identity-list dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.login-choice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.login-choice-actions > button {
+  flex: 1 1 220px;
+}

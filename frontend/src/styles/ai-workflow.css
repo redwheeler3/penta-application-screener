@@ -1,0 +1,372 @@
+/* Ordered screening workflow, inline in the panel header */
+.workflow-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.workflow-step {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* Shares the button-family base above; only its left-aligned layout differs
+   (steps read left-to-right with a leading badge, not centered like a CTA). */
+.workflow-step-button {
+  justify-content: flex-start;
+}
+
+/* Reinforce clickability on hover for any enabled step, including completed
+   ones (which stay clickable so a step can be re-run). */
+.workflow-step-button:hover:not(:disabled) {
+  border-color: var(--penta-green);
+  background: var(--penta-green-soft);
+  box-shadow: 0 1px 4px rgba(22, 163, 74, 0.18);
+}
+
+.workflow-step-button:active:not(:disabled) {
+  box-shadow: none;
+}
+
+.workflow-step-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* A completed step reads as quietly done (green tint + check badge). */
+/* A completed step recedes: white button, a green check, green text. It reads
+   as quietly done rather than as a primary action competing in the header. */
+.workflow-step-button.is-done {
+  border-color: var(--success-border);
+  color: var(--penta-green-dark);
+}
+
+/* On hover a done step picks up the soft green tint so the re-run affordance is
+   clear (and stays distinct from the deeper-green header it sits in). */
+.workflow-step-button.is-done:hover:not(:disabled) {
+  background: var(--penta-green-soft);
+  border-color: var(--penta-green);
+}
+
+.workflow-step-button.is-busy {
+  border-color: var(--penta-green);
+}
+
+/* Stale: the step ran but no longer covers the current eligible set (e.g. after
+   an application edit). Amber so it reads as "needs attention," distinct from done-green
+   and from the neutral not-yet-run state. */
+.workflow-step-button.is-stale {
+  border-color: var(--warning-border);
+  color: var(--warning-text);
+}
+
+.workflow-step-button.is-stale:hover:not(:disabled) {
+  background: var(--warning-bg);
+  border-color: #f59e0b;
+}
+
+.workflow-step-button.is-stale .workflow-step-badge {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: var(--warning-text);
+}
+
+/* The label stacks the title over a small coverage fraction, so the count is
+   visible at a glance without widening the button (mockup: badge + fraction). */
+.workflow-step-text {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.15;
+}
+
+.workflow-step-fraction {
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+/* On a stale step the fraction inherits the amber tone for emphasis. */
+.workflow-step-button.is-stale .workflow-step-fraction {
+  color: var(--warning-text);
+}
+
+/* A fully-covered (done) step's fraction recedes into the done-green. */
+.workflow-step-button.is-done .workflow-step-fraction {
+  color: var(--penta-green-dark);
+}
+
+.workflow-step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  background: var(--page);
+  border: 1px solid var(--line);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+/* Done badge: green check on a soft tint, no solid fill — understated. */
+.workflow-step-button.is-done .workflow-step-badge {
+  background: var(--penta-green-soft);
+  border-color: var(--success-border);
+  color: var(--penta-green-dark);
+}
+
+.workflow-step-arrow {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.run-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--info-bg);
+}
+
+.run-confirm-body {
+  font-size: 0.85rem;
+  min-width: 0;
+}
+
+.run-confirm-body p {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+}
+
+.run-confirm-warn {
+  color: var(--danger-text) !important;
+}
+
+.run-confirm-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Screening run progress */
+.run-progress {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.7rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--penta-green-soft);
+}
+
+.run-progress-label {
+  font-size: 0.85rem;
+  color: var(--penta-green-dark);
+  font-weight: 600;
+}
+
+.run-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--success-bg);
+  overflow: hidden;
+}
+
+.run-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--penta-green);
+  transition: width 0.3s ease;
+}
+
+/* Shown before the first progress event: a narrow fill sliding back and forth to
+   signal the run has started while we wait on the first application to finish. */
+.run-progress-fill-indeterminate {
+  width: 30%;
+  transition: none;
+  animation: run-progress-slide 1.1s ease-in-out infinite;
+}
+
+/* Live "thinking" panel for the criteria phase (streamed model reasoning). */
+.criteria-thinking {
+  margin-top: 0.6rem;
+}
+
+/* Descriptive caption under the rank progress bar; tracks the current stage. */
+.run-progress-caption {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin-top: 0.4rem;
+}
+
+.criteria-thinking-stream {
+  max-height: 9rem;
+  overflow-y: auto;
+  padding: 0.5rem 0.65rem;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #334155;
+  word-break: break-word;
+}
+
+/* Compact the streamed markdown so headers/lists/paragraphs don't balloon the
+   small panel with default block margins. */
+.criteria-thinking-stream > :first-child {
+  margin-top: 0;
+}
+.criteria-thinking-stream > :last-child {
+  margin-bottom: 0;
+}
+.criteria-thinking-stream p,
+.criteria-thinking-stream ul,
+.criteria-thinking-stream ol {
+  margin: 0.3rem 0;
+}
+.criteria-thinking-stream ul,
+.criteria-thinking-stream ol {
+  padding-left: 1.1rem;
+}
+.criteria-thinking-stream h1,
+.criteria-thinking-stream h2,
+.criteria-thinking-stream h3,
+.criteria-thinking-stream h4 {
+  font-size: 0.82rem;
+  margin: 0.5rem 0 0.2rem;
+}
+/* The rule the backend streams between sections (each criteria sub-stage, and
+   consolidation). Flat and hairline, not the beveled browser default, so it reads
+   as a quiet divider in the compact panel. */
+.criteria-thinking-stream hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 0.55rem 0;
+}
+
+@keyframes run-progress-slide {
+  0% {
+    margin-left: -30%;
+  }
+  100% {
+    margin-left: 100%;
+  }
+}
+
+.detail-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1.25rem 0 0.75rem;
+}
+
+.application-openings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.application-openings strong {
+  padding: 0.2rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.detail-section-heading h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.app-detail-fields h5 {
+  font-size: 0.85rem;
+  margin: 1rem 0 0.5rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.app-detail-field-group {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid #0ea5e9;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.app-detail-field-group h6 {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.app-detail-fields dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.app-detail-fields dl > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.app-detail-fields dt {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.app-detail-fields dd {
+  margin: 0;
+  font-size: 0.85rem;
+  word-break: break-word;
+}
+
+.field-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.field-list li {
+  margin-bottom: 0.25rem;
+}
+
+.field-flagged {
+  padding: 0.35rem 0.5rem;
+  margin: 0 -0.5rem;
+  border-radius: 6px;
+  background: var(--danger-bg);
+  box-shadow: inset 2px 0 0 #ef4444;
+}
+
+.field-flagged dt {
+  color: var(--danger-text);
+}
+.field-flagged dd {
+  font-weight: 600;
+  color: var(--danger-text);
+}

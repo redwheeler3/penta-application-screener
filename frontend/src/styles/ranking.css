@@ -1,0 +1,271 @@
+/* Pattern discovery and dimension scoring */
+/* Criteria header above the tier-list: the framing line + the "Add your own"
+   toggle. The criteria themselves now live as the tier chips below, so there's no
+   separate criteria card — just this slim header introducing them. */
+.criteria-head-title {
+  margin: 0.5rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+/* The AI summary, clamped to two lines by default with a "More…" affordance at the
+   end of the second line so people know it's clickable (the whole block is the
+   button). Clamping keeps the tiers high on the page instead of pushed down by six
+   lines of grey text. */
+/* Description-panel title: the criterion name as a small heading. */
+.dimension-name {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+
+/* Tier list + description side by side. The tier column flexes to fill; the
+   description takes a fixed-ish right column. Collapses to a single column on
+   narrow viewports (description drops below). */
+.criteria-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  /* Breathing room between the summary text above and the tiers box. */
+  margin-top: 0.85rem;
+}
+
+.criteria-layout-tiers {
+  flex: 1;
+  min-width: 0;
+}
+
+/* On-demand description pane for the chip the user tapped. The bulky text lives
+   here, shown one at a time, rather than inline on every chip. In the side-by-side
+   layout it's the right column and sticks in view as the tier list scrolls. */
+.criteria-detail {
+  flex: 0 0 15rem;
+  /* Content-height (not stretched to the tier list), so a short description doesn't
+     leave a tall empty white panel — and sticky keeps it in view while scrolling. */
+  align-self: flex-start;
+  position: sticky;
+  top: 1rem;
+  padding: 0.75rem 0.85rem;
+  background: #fff;
+  border: 1px solid #ddd6fe;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+/* Resting state of the always-visible panel (nothing selected): quieter than a
+   filled card — dashed border, no fill — so it reads as a prompt, not content. */
+.criteria-detail-empty {
+  background: none;
+  border-style: dashed;
+  border-color: var(--line);
+}
+
+.criteria-detail-placeholder {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .criteria-layout {
+    flex-direction: column;
+    margin-bottom: 0.75rem;
+  }
+  .criteria-detail {
+    flex-basis: auto;
+    width: 100%;
+    position: static;
+  }
+}
+
+/* The "add your own" composer, revealed by the header toggle. */
+.criteria-composer {
+  /* Sits between the tier-list head and the first tier row when "Add criterion" is
+     open; needs symmetric breathing room so the input isn't cramped against the
+     first tier below it. */
+  margin: 0.25rem 0 1.1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #ddd6fe;
+}
+
+.criteria-composer-hint {
+  margin: 0 0 0.6rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.criteria-composer-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.criteria-composer-row input {
+  flex: 1;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.criteria-proposals {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.criteria-proposals li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  border-radius: 6px;
+  font-size: 0.82rem;
+}
+
+.criteria-proposal-remove {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--muted);
+  line-height: 0;
+}
+
+.criteria-proposal-remove:hover {
+  color: #dc2626;
+}
+
+/* Description-panel definition body: what the criterion measures. Inherits the
+   panel's 0.85rem so the title/body sizes feel intentional, not mismatched. */
+.dimension-def {
+  margin: 0.35rem 0 0;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* Per-candidate scores on the detail page */
+.dimension-scores {
+  margin-bottom: 1.25rem;
+}
+
+.detail-section-scroll-link {
+  padding: 0.35rem 0.55rem;
+  font-size: 0.78rem;
+}
+
+.dimension-scores ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.dimension-score {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+}
+
+.dimension-score-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.dimension-score-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  min-width: 9rem;
+}
+
+.dimension-score-bar {
+  flex: 1;
+  height: 0.5rem;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.dimension-score-fill {
+  display: block;
+  height: 100%;
+  /* The bar maps the signed -1..+1 score onto 0..100% width, so 0 (neutral) sits at
+     the halfway mark. A floor width keeps even a -1 showing a sliver of its band hue. */
+  min-width: 0.5rem;
+  background: var(--penta-green);
+  border-radius: 999px;
+}
+
+/* Bar fill coloured by score band so the bar's length AND hue both read standing:
+   top quarter green (strong), middle halves blue (neutral), bottom quarter red (weak)
+   — matching the ranked-row labels. */
+.dimension-score-fill.score-strong {
+  background: #16a34a;
+}
+
+.dimension-score-fill.score-neutral {
+  background: #0284c7;
+}
+
+.dimension-score-fill.score-weak {
+  background: #dc2626;
+}
+
+/* An exactly-neutral score (0.0) shows no bar at all — the fill matches the
+   track colour so only the empty background reads, visually distinct from a
+   mild lean that still falls inside the neutral band. */
+.dimension-score-fill.is-zero {
+  background: var(--line);
+}
+
+/* The standing verdict in words, coloured to match the bar. This is the signal; the
+   confidence beside it is deliberately neutral so colour never implies a standing it
+   doesn't have (a confidently-low score must not read green). */
+.dimension-score-band {
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dimension-score-band.score-strong {
+  color: var(--success-text);
+}
+
+.dimension-score-band.score-neutral {
+  color: #075985;
+}
+
+.dimension-score-band.score-weak {
+  color: #b91c1c;
+}
+
+.dimension-score-confidence {
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.dimension-score-rationale {
+  margin: 0.4rem 0 0;
+  font-size: 0.83rem;
+  line-height: 1.45;
+}
+
+.dimension-score-evidence {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-style: italic;
+}

@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { request } from "../api";
 import { APPLICATION_ACCESS_EMAIL_MESSAGE } from "../applicant/accessMessages";
+import type { PendingCopy } from "../applicant/applicantPersistence";
 import {
   AccessLinkDecision,
   AccessLinkReady,
@@ -15,7 +16,6 @@ import {
   PendingCopyDecision,
 } from "../applicant/ApplicantAccessScreens";
 import { emptyApplicantDraft, type ApplicantOpening, workingAnswers } from "../applicant/types";
-import type { PendingCopy } from "../applicant/useApplicantPersistence";
 import { BrandLockup } from "../BrandLockup";
 import { CommitteeSignIn } from "../components/CommitteeSignIn";
 import type { CommitteeLinkConflict, SignInState } from "../hooks/useSession";

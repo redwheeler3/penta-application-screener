@@ -1,0 +1,105 @@
+/* Application detail */
+.app-detail {
+  padding: 1.25rem;
+}
+
+.app-detail-identity {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.app-detail-identity-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-detail-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.app-detail-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.co-applicant-line {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0 0 0.65rem;
+}
+
+.filter-reasons {
+  background: #fef3c7;
+  border: 1px solid var(--warning-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.85rem;
+}
+
+.filter-reasons ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.filter-reasons li {
+  margin-bottom: 0.25rem;
+}
+
+/* AI screening flags (informational, on candidate detail) */
+.flags-panel {
+  background: var(--info-bg);
+  border: 1px solid var(--info-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.85rem;
+}
+
+.flags-hint {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.flags-panel ul {
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.flag {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.5rem 0.65rem;
+  background: #fff;
+  border: 1px solid #dbeafe;
+  border-left: 3px solid #3b82f6;
+  border-radius: 6px;
+}
+
+.flag-category {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.flag-summary {
+  color: var(--ink);
+}
+
+.flag-evidence {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-style: italic;
+}

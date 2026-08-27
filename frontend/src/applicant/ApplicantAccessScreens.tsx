@@ -2,9 +2,9 @@ import { CalendarDays, Mail, ShieldCheck } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
 import { TECH_SUPPORT_EMAIL, TECH_SUPPORT_ERROR_MESSAGE } from "../support";
+import type { PendingCopy } from "./applicantPersistence";
 import { pendingCopyDifferences } from "./pendingCopyDiff";
 import type { ApplicantOpening } from "./types";
-import type { PendingCopy } from "./useApplicantPersistence";
 import { EMAIL_INVALID_MESSAGE, EMAIL_PATTERN } from "./validation";
 
 export function ApplicationEntry(props: {

@@ -1,0 +1,295 @@
+/* Muted explanatory line shared by every Observability/Evals panel (loading + error
+   states, empty-state notes, section intros) — not match-specific despite living next
+   to the match-audit rules. */
+.panel-hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  margin: 0 0 0.75rem;
+}
+
+/* D9 committee-request folds: a left accent bar so "your proposal was folded in"
+   reads as a callout, not just another hint line. */
+.decompose-folded-note {
+  border-left: 3px solid var(--accent, #6366f1);
+  padding-left: 0.6rem;
+  color: var(--text, inherit);
+}
+
+.match-audit-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin: 0 0 0.75rem;
+}
+
+.match-audit-stats div {
+  display: flex;
+  flex-direction: column;
+}
+
+.match-audit-stats dt {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.match-audit-stats dd {
+  margin: 0.1rem 0 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+
+.match-audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.match-audit-table th,
+.match-audit-table td {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.match-audit-table th {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.match-audit-key {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.match-audit-new {
+  color: var(--warning-text);
+  font-weight: 600;
+}
+
+/* The unifying "inputs → keeper" arrow between the two dimension columns on every
+   Observability relationship tab (Matching, Decomposition, Consolidation): candidates on the
+   left flow into the surviving/settled dimension on the right. A narrow, centred,
+   non-wrapping cell so the arrow sits mid-row and reads as the flow direction. */
+.match-audit-arrow {
+  width: 1.5rem;
+  text-align: center;
+  color: var(--muted);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* Inline tags after a settled dimension's name (merge / requested / folded-in): space
+   them off the name so they don't butt against it (.match-audit-new and
+   .match-audit-key-unnamed carry no margin of their own). */
+.decompose-tag {
+  margin-left: 0.4rem;
+}
+
+/* Committee-requested axis: the one provenance signal on this row worth surfacing, so
+   it gets a lightly tinted green pill (not the muted italic the neutral tags use) plus a
+   leading ★ anchor the eye can scan for. Borderless on the soft green wash with the ★
+   carrying the green accent — a quiet highlight, not a badge that shouts. */
+.decompose-requested-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--penta-green-dark);
+  background: var(--penta-green-soft);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  /* Nudge up ~0.07em: an inline-flex pill with padding sits ~1.5px below the name text's
+     optical center under `vertical-align: middle`, so raise it to sit on the text line. */
+  vertical-align: 0.07em;
+  white-space: nowrap;
+}
+
+.decompose-requested-glyph {
+  font-size: 0.72rem;
+  line-height: 1;
+  color: var(--penta-green);
+}
+
+/* One source axis in a settled merge's "From" cell: its name (plain) over its key
+   (.match-audit-key). Space consecutive sources apart so a multi-source merge reads as
+   a stacked list, not one run-on block. */
+.decompose-source + .decompose-source {
+  margin-top: 0.4rem;
+}
+
+/* The "(R0, R3)" discoverer labels after a source key on the Decomposition tab —
+   dimmer than the key so they read as provenance, not part of the name. */
+.decompose-source-reports {
+  color: #9ca3af;
+}
+
+/* Fallback when a matched prior dimension's name is unknown (audit written before
+   the prior-names capture) — the key still shows below it. */
+.match-audit-key-unnamed {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.match-audit-tag {
+  margin-left: 0.4rem;
+  font-size: 0.68rem;
+  color: var(--penta-green-dark);
+  border: 1px solid var(--penta-green);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+}
+
+/* Small uppercase sub-label used across the Observability panels (Pool summary, Model
+   reasoning, Match reasoning). Sits above its content; the .ai-narrative box (when
+   present) owns its own border/padding, so this wrapper stays unstyled. */
+.observability-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.observability-narrative {
+  margin-top: 1rem;
+}
+
+/* One collapsible per fan-out discoverer in the Discovery panel. */
+.discovery-pass {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-top: 0.6rem;
+  background: #fff;
+}
+
+.discovery-pass-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.discovery-pass-summary::-webkit-details-marker {
+  display: none;
+}
+
+/* A caret that rotates when the collapsible opens, so the affordance is obvious. */
+.discovery-pass-summary::before {
+  content: "▸";
+  color: var(--muted);
+  margin-right: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.discovery-pass[open] > .discovery-pass-summary::before {
+  content: "▾";
+}
+
+.discovery-pass-count {
+  margin-left: auto;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+
+.discovery-pass-body {
+  padding: 0 0.8rem 0.8rem;
+}
+
+.discovery-pass-dims {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.discovery-pass-dims li {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.35rem 0.5rem;
+  border-left: 2px solid var(--line);
+}
+
+.discovery-pass-dim-name {
+  font-weight: 600;
+  font-size: 0.84rem;
+}
+
+.discovery-pass-dim-def {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.discovery-pass-no-reasoning {
+  margin-top: 0.75rem;
+  font-style: italic;
+}
+
+/* A second concern within one Observability subtab, set off with a rule + heading so two
+   related-but-distinct audits read cleanly stacked. */
+.observability-subsection {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.observability-subsection-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* Rendered markdown for the AI narrative. Same boxed container as the raw
+   sections, but prose typography instead of monospace. */
+.ai-narrative {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.25rem 1rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  overflow-y: auto;
+  max-height: 400px;
+}
+
+.ai-narrative h1,
+.ai-narrative h2,
+.ai-narrative h3 {
+  font-size: 0.9rem;
+  margin: 0.9rem 0 0.4rem;
+}
+
+.ai-narrative ul {
+  padding-left: 1.2rem;
+  margin: 0.4rem 0;
+}
+
+.ai-narrative li {
+  margin: 0.15rem 0;
+}
+
+.ai-narrative hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 0.8rem 0;
+}
