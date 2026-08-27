@@ -31,7 +31,7 @@ POST /screening/run
         provider.structured_output  app/ai/strands_provider.py  (Strands routes)
       as each call returns:
         price + store the result     app/ai/analysis.py  (DB write)
-        set the application status    app/domain/status.py
+        set the application status    app/services/status_resolution.py
       yield one result at a time
     stream NDJSON progress back to the browser
 ```
@@ -54,7 +54,7 @@ The AI code lives in `backend/app/ai/`:
 Plus HTTP route modules and one domain module:
 
 - `app/api/screening.py` (the `/screening/run` + `/screening/run/estimate` "Screen" endpoints) and `app/api/ranking/` (the `/ranking/*` chain package: `run`, `current`, `shortlist`). Both depend on the shared `get_ai_provider` in `app/api/dependencies.py`. The discovery, decomposition, matching, and scoring passes have no standalone endpoints — they run only as phases of `POST /ranking/run`.
-- `app/domain/status.py` — how screening flags translate into an application's eligibility status (the Rank-chain passes do not touch status).
+- `app/services/status_resolution.py` — how screening flags translate into an application's eligibility status (the Rank-chain passes do not touch status).
 
 ## The Provider Boundary
 
@@ -144,7 +144,7 @@ The estimate feeds a pre-run confirmation in the UI, so a screener sees the proj
 
 ## From Flags To Status
 
-A flagged application is not silently flagged — it moves into a review bucket. `app/domain/status.py` resolves what a machine actor would assign:
+A flagged application is not silently flagged — it moves into a review bucket. `app/services/status_resolution.py` resolves what a machine actor would assign:
 
 ```text
 has hard-filter reasons  ->  ineligible, source = rules   (rules outrank AI)

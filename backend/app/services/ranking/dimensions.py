@@ -9,5 +9,3 @@ def current_dimension_report(analysis: Analysis) -> PoolDimensionReport | None:
     if not analysis.dimension_report:
         return None
     return PoolDimensionReport.model_validate(analysis.dimension_report)
-
-

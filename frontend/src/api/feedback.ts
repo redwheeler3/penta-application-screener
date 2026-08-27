@@ -27,4 +27,3 @@ export const resolveFeedback = (id: number) =>
 
 export const reopenFeedback = (id: number) =>
   request(`/feedback/${id}/reopen`, { method: "POST" });
-

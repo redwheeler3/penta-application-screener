@@ -20,7 +20,7 @@ class FailingEmailSender:
         raise TimeoutError("synthetic provider timeout")
 
 
-def _app_and_db() -> tuple:
+def app_and_db() -> tuple:
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -48,7 +48,7 @@ def _app_and_db() -> tuple:
     return app, db, sender
 
 
-def _answers(email: str = "avery@example.com", introduction: str = "Synthetic introduction") -> dict:
+def sample_answers(email: str = "avery@example.com", introduction: str = "Synthetic introduction") -> dict:
     reference = {
         "name": "Synthetic Reference",
         "email": "reference@example.com",
@@ -99,14 +99,14 @@ def _answers(email: str = "avery@example.com", introduction: str = "Synthetic in
     }
 
 
-def _link(sender: CapturedEmailSender) -> str:
+def link_from_email(sender: CapturedEmailSender) -> str:
     match = re.search(r"#applicant-link=([^\s]+)", sender.messages[-1].text_body)
     assert match is not None
     return match.group(1)
 
 
-async def _save_draft(client: AsyncClient, *, email: str = "avery@example.com", intent: str = "save"):
+async def save_draft(client: AsyncClient, *, email: str = "avery@example.com", intent: str = "save"):
     return await client.post(
         "/applicant/drafts",
-        json={"answers": _answers(email), "intent": intent},
+        json={"answers": sample_answers(email), "intent": intent},
     )

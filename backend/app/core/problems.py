@@ -12,8 +12,7 @@ it as ``application/problem+json``:
 ``type`` is a relative slug derived from ``code`` — a stable identifier, not a live
 URL (no doc to host for a first-party SPA). The frontend branches on ``code``.
 
-This replaced ad-hoc ``HTTPException(detail="string")`` so there is exactly one
-error format across the surface — the consistency the API redesign exists to land.
+The single contract keeps error handling consistent across the API surface.
 """
 
 from __future__ import annotations

@@ -15,16 +15,21 @@ from app.db.models import (
 )
 from app.schemas.applicant.answers import WorkingApplicationAnswers
 from app.services.intake import save_working_copy
-from tests.applicant.support import _answers, _app_and_db, _link, _save_draft
+from tests.applicant.support import (
+    app_and_db,
+    link_from_email,
+    sample_answers,
+    save_draft,
+)
 
 
 @pytest.mark.anyio
 async def test_pending_draft_cannot_be_reopened_after_applications_archive() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await _save_draft(client)
-        token = _link(sender)
+        await save_draft(client)
+        token = link_from_email(sender)
         opening = db.scalar(select(Opening))
         assert opening is not None
         opening.application_close_date = pacific_today() - timedelta(days=2)
@@ -34,7 +39,7 @@ async def test_pending_draft_cannot_be_reopened_after_applications_archive() -> 
 
         requested = await client.post(
             "/applicant/access-links/request",
-            json={"answers": _answers()},
+            json={"answers": sample_answers()},
         )
         inspected = await client.post(
             "/applicant/access-links/inspect",
@@ -55,7 +60,7 @@ async def test_pending_draft_cannot_be_reopened_after_applications_archive() -> 
 
 @pytest.mark.anyio
 async def test_application_link_cannot_start_a_session_after_openings_archive() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     opening = db.scalar(select(Opening))
     assert opening is not None
     transport = ASGITransport(app=app)
@@ -63,13 +68,13 @@ async def test_application_link_cannot_start_a_session_after_openings_archive() 
         submitted = await client.post(
             "/applicant/submissions",
             json={
-                "answers": _answers(),
+                "answers": sample_answers(),
                 "openingIds": [opening.id],
                 "declarationAccepted": True,
             },
         )
         assert submitted.status_code == 201
-        token = _link(sender)
+        token = link_from_email(sender)
         opening.application_close_date = pacific_today() - timedelta(days=2)
         opening.move_in_date = pacific_today() - timedelta(days=1)
         db.commit()
@@ -90,13 +95,13 @@ async def test_application_link_cannot_start_a_session_after_openings_archive() 
 
 @pytest.mark.anyio
 async def test_authenticated_return_link_saves_current_answers_before_emailing() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await _save_draft(client)
+        await save_draft(client)
         await client.post(
             "/applicant/access-links/open",
-            json={"token": _link(sender), "switchCurrent": False},
+            json={"token": link_from_email(sender), "switchCurrent": False},
         )
         original_link = db.scalar(select(MagicLinkToken))
         assert original_link is not None
@@ -107,7 +112,7 @@ async def test_authenticated_return_link_saves_current_answers_before_emailing()
         response = await client.post(
             "/applicant/access-links/request",
             json={
-                "answers": _answers(introduction="Authenticated saved answers"),
+                "answers": sample_answers(introduction="Authenticated saved answers"),
                 "baseRevision": restored.json()["workingRevision"],
             },
         )
@@ -128,11 +133,11 @@ async def test_authenticated_return_link_saves_current_answers_before_emailing()
 
 @pytest.mark.anyio
 async def test_valid_link_claims_draft_without_submitting_and_uses_session_cookie_by_default() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await _save_draft(client, intent="submit")
-        token = _link(sender)
+        await save_draft(client, intent="submit")
+        token = link_from_email(sender)
         opened = await client.post(
             "/applicant/access-links/open",
             json={"token": token, "switchCurrent": False},
@@ -148,13 +153,13 @@ async def test_valid_link_claims_draft_without_submitting_and_uses_session_cooki
 
 @pytest.mark.anyio
 async def test_remembered_device_receives_persistent_cookie() -> None:
-    app, _db, sender = _app_and_db()
+    app, _db, sender = app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await _save_draft(client)
+        await save_draft(client)
         opened = await client.post(
             "/applicant/access-links/open",
-            json={"token": _link(sender), "switchCurrent": False, "rememberDevice": True},
+            json={"token": link_from_email(sender), "switchCurrent": False, "rememberDevice": True},
         )
 
     assert "Max-Age=" in opened.headers["set-cookie"]
@@ -162,11 +167,11 @@ async def test_remembered_device_receives_persistent_cookie() -> None:
 
 @pytest.mark.anyio
 async def test_expired_link_can_send_a_replacement_without_retyping_email() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await _save_draft(client)
-        token = _link(sender)
+        await save_draft(client)
+        token = link_from_email(sender)
         original = db.scalar(select(MagicLinkToken))
         assert original is not None
         original.expires_at = datetime.now(UTC) - timedelta(seconds=1)
@@ -182,22 +187,22 @@ async def test_expired_link_can_send_a_replacement_without_retyping_email() -> N
     assert regenerated.status_code == 202
     assert regenerated.json()["emailSent"] is True
     assert len(sender.messages) == 2
-    assert _link(sender) != token
+    assert link_from_email(sender) != token
 
 
 @pytest.mark.anyio
 async def test_different_active_applicant_must_confirm_before_link_is_consumed() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await _save_draft(client, email="first@example.com")
-        first_token = _link(sender)
+        await save_draft(client, email="first@example.com")
+        first_token = link_from_email(sender)
         await client.post(
             "/applicant/access-links/open",
             json={"token": first_token, "switchCurrent": False},
         )
-        await _save_draft(client, email="second@example.com")
-        second_token = _link(sender)
+        await save_draft(client, email="second@example.com")
+        second_token = link_from_email(sender)
         inspected = await client.post(
             "/applicant/access-links/inspect", json={"token": second_token}
         )
@@ -224,16 +229,16 @@ async def test_different_active_applicant_must_confirm_before_link_is_consumed()
 
 @pytest.mark.anyio
 async def test_stale_link_for_another_applicant_offers_resend_without_switching() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await _save_draft(client, email="first@example.com")
+        await save_draft(client, email="first@example.com")
         await client.post(
             "/applicant/access-links/open",
-            json={"token": _link(sender), "switchCurrent": False},
+            json={"token": link_from_email(sender), "switchCurrent": False},
         )
-        await _save_draft(client, email="second@example.com")
-        second_token = _link(sender)
+        await save_draft(client, email="second@example.com")
+        second_token = link_from_email(sender)
         second_link = db.scalar(
             select(MagicLinkToken).where(MagicLinkToken.email == "second@example.com")
         )
@@ -259,7 +264,7 @@ async def test_stale_link_for_another_applicant_offers_resend_without_switching(
 @pytest.mark.anyio
 @pytest.mark.parametrize("choice", ["saved", "guest"])
 async def test_claim_asks_owner_which_private_copy_to_keep(choice: str) -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     existing = Application(
         primary_email="avery@example.com",
         applicant_name="Existing Applicant",
@@ -272,20 +277,20 @@ async def test_claim_asks_owner_which_private_copy_to_keep(choice: str) -> None:
     db.commit()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await _save_draft(client)
+        await save_draft(client)
         draft = db.scalar(select(ApplicantDraft))
         assert draft is not None
         save_working_copy(
             existing,
             WorkingApplicationAnswers.model_validate(
-                _answers(introduction="Existing working answers")
+                sample_answers(introduction="Existing working answers")
             ),
             saved_at=as_utc(draft.saved_at) + timedelta(minutes=1),
         )
         db.commit()
         opened = await client.post(
             "/applicant/access-links/open",
-            json={"token": _link(sender), "switchCurrent": False},
+            json={"token": link_from_email(sender), "switchCurrent": False},
         )
         pending = await client.get("/applicant/application/pending-copy")
         reconciled = await client.post(
@@ -311,11 +316,11 @@ async def test_claim_asks_owner_which_private_copy_to_keep(choice: str) -> None:
 
 @pytest.mark.anyio
 async def test_draft_past_its_opening_retention_date_cannot_be_opened_or_regenerated() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await _save_draft(client)
-        token = _link(sender)
+        await save_draft(client)
+        token = link_from_email(sender)
         draft = db.scalar(select(ApplicantDraft))
         assert draft is not None
         draft.retention_due_on = pacific_today() - timedelta(days=1)

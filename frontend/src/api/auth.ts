@@ -9,7 +9,6 @@ export type AuthState = {
 export function fetchAuthState(): Promise<AuthState> {
   return getJson<AuthState>("/auth/me");
 }
-
 export function googleSignInUrl(rememberDevice = false): string {
   return url(`/auth/google/login?remember_device=${rememberDevice}`);
 }
@@ -49,4 +48,3 @@ export function regenerateCommitteeMagicLink(token: string): Promise<Response> {
 export function logout(): Promise<Response> {
   return request("/auth/logout", { method: "POST" });
 }
-

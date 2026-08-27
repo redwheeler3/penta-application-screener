@@ -2,7 +2,7 @@
 
 Complete field-by-field reference for the Penta Co-operative Housing built-in application. This
 document records the product fields and validation intent; the canonical stored contract is
-`backend/app/schemas/intake.py`.
+`backend/app/schemas/applicant/answers.py`.
 
 Form ID: `1fxl3CP_DIK05I_HwTSQBQ_M7j7gNh2nCBZzl16aUTWg`
 

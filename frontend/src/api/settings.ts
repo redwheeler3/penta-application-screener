@@ -16,7 +16,6 @@ export function saveSettings(draft: AppSettings): Promise<Response> {
     body: JSON.stringify(draft),
   });
 }
-
 // --- Eligibility rules (per member) ----------------------------------------
 // The numeric screening rules each member tunes for themselves. A member reads the
 // shared committee default until they save their own (see EligibilityRulesResponse).
@@ -52,4 +51,3 @@ export function saveCommitteeDefaultRules(rules: EligibilityRules): Promise<Resp
     body: JSON.stringify(rules),
   });
 }
-

@@ -57,7 +57,6 @@ export function saveTiers(
     body: JSON.stringify({ analysisId, tiers: next, acknowledgedKeys, acknowledgedRequestedKeys }),
   });
 }
-
 // Persist pending free-text proposals for the current analysis. The next Rank reads these,
 // so they take effect on its discovery pass. (Keeping an existing axis across re-runs is
 // tier placement — see saveTiers — not a seed.) analysisId guards against a stale save.
@@ -71,4 +70,3 @@ export function saveSeeds(
     body: JSON.stringify({ analysisId, ...seeds }),
   });
 }
-

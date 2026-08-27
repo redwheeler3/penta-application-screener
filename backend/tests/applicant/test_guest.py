@@ -16,20 +16,20 @@ from app.db.models import (
 from app.services.email_sender import get_email_sender
 from tests.applicant.support import (
     FailingEmailSender,
-    _answers,
-    _app_and_db,
-    _link,
-    _save_draft,
+    app_and_db,
+    link_from_email,
+    sample_answers,
+    save_draft,
 )
 
 
 @pytest.mark.anyio
 async def test_save_immediately_persists_private_draft_and_sends_access_link() -> None:
-    app, db, _sender = _app_and_db()
+    app, db, _sender = app_and_db()
     transport = ASGITransport(app=app)
     before = datetime.now(UTC)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await _save_draft(client)
+        response = await save_draft(client)
 
     assert response.status_code == 202
     assert response.headers["cache-control"] == "no-store"
@@ -47,11 +47,11 @@ async def test_save_immediately_persists_private_draft_and_sends_access_link() -
 
 @pytest.mark.anyio
 async def test_delivery_failure_never_discards_the_saved_pending_draft() -> None:
-    app, db, _sender = _app_and_db()
+    app, db, _sender = app_and_db()
     app.dependency_overrides[get_email_sender] = lambda: FailingEmailSender()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await _save_draft(client)
+        response = await save_draft(client)
 
     draft = db.scalar(select(ApplicantDraft))
     assert response.status_code == 202
@@ -63,13 +63,13 @@ async def test_delivery_failure_never_discards_the_saved_pending_draft() -> None
 
 @pytest.mark.anyio
 async def test_delivery_failure_does_not_suppress_an_immediate_retry() -> None:
-    app, db, _sender = _app_and_db()
+    app, db, _sender = app_and_db()
     app.dependency_overrides[get_email_sender] = lambda: FailingEmailSender()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         opening = db.scalar(select(Opening))
         assert opening is not None
-        request = {"answers": _answers(), "openingIds": [opening.id]}
+        request = {"answers": sample_answers(), "openingIds": [opening.id]}
         first = await client.post("/applicant/access-links/request", json=request)
         second = await client.post("/applicant/access-links/request", json=request)
 
@@ -80,8 +80,8 @@ async def test_delivery_failure_does_not_suppress_an_immediate_retry() -> None:
 
 @pytest.mark.anyio
 async def test_save_and_return_later_accepts_an_incomplete_application() -> None:
-    app, db, sender = _app_and_db()
-    answers = _answers()
+    app, db, sender = app_and_db()
+    answers = sample_answers()
     answers["applicant"]["firstName"] = ""
     answers["applicant"]["birthDate"] = "1974-"
     answers["essays"] = {
@@ -105,7 +105,7 @@ async def test_save_and_return_later_accepts_an_incomplete_application() -> None
 
 @pytest.mark.anyio
 async def test_guest_can_submit_directly_and_receives_application_access() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     opening = db.scalar(select(Opening))
     assert opening is not None
     transport = ASGITransport(app=app)
@@ -113,7 +113,7 @@ async def test_guest_can_submit_directly_and_receives_application_access() -> No
         response = await client.post(
             "/applicant/submissions",
             json={
-                "answers": _answers(),
+                "answers": sample_answers(),
                 "openingIds": [opening.id],
                 "declarationAccepted": True,
             },
@@ -135,18 +135,18 @@ async def test_guest_can_submit_directly_and_receives_application_access() -> No
 
 @pytest.mark.anyio
 async def test_guest_with_existing_email_is_stopped_before_review_and_sent_access() -> None:
-    app, _db, sender = _app_and_db()
+    app, _db, sender = app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await _save_draft(client)
+        await save_draft(client)
         await client.post(
             "/applicant/access-links/open",
-            json={"token": _link(sender), "switchCurrent": False},
+            json={"token": link_from_email(sender), "switchCurrent": False},
         )
         await client.post("/applicant/auth/logout")
         response = await client.post(
             "/applicant/submissions/check",
-            json={"answers": _answers(introduction="Guest answers"), "openingIds": [1]},
+            json={"answers": sample_answers(introduction="Guest answers"), "openingIds": [1]},
         )
 
     assert response.status_code == 200
@@ -165,24 +165,24 @@ async def test_guest_with_existing_email_is_stopped_before_review_and_sent_acces
 
 @pytest.mark.anyio
 async def test_repeated_guest_collision_updates_the_copy_for_the_link_already_sent() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await _save_draft(client)
+        await save_draft(client)
         await client.post(
             "/applicant/access-links/open",
-            json={"token": _link(sender), "switchCurrent": False},
+            json={"token": link_from_email(sender), "switchCurrent": False},
         )
         await client.post("/applicant/auth/logout")
         sender.messages.clear()
         first = await client.post(
             "/applicant/submissions/check",
-            json={"answers": _answers(introduction="First guest copy"), "openingIds": [1]},
+            json={"answers": sample_answers(introduction="First guest copy"), "openingIds": [1]},
         )
-        token = _link(sender)
+        token = link_from_email(sender)
         second = await client.post(
             "/applicant/submissions/check",
-            json={"answers": _answers(introduction="Latest guest copy"), "openingIds": [1]},
+            json={"answers": sample_answers(introduction="Latest guest copy"), "openingIds": [1]},
         )
         opened = await client.post(
             "/applicant/access-links/open",
@@ -201,7 +201,7 @@ async def test_repeated_guest_collision_updates_the_copy_for_the_link_already_se
 
 @pytest.mark.anyio
 async def test_return_link_request_does_not_reveal_whether_application_exists() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     existing_application = Application(
         primary_email="returning@example.com",
         applicant_name="Synthetic Returning Applicant",
@@ -215,11 +215,11 @@ async def test_return_link_request_does_not_reveal_whether_application_exists() 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         existing = await client.post(
             "/applicant/access-links/request",
-            json={"answers": _answers("returning@example.com", "Ignored browser answers")},
+            json={"answers": sample_answers("returning@example.com", "Ignored browser answers")},
         )
         missing = await client.post(
             "/applicant/access-links/request",
-            json={"answers": _answers("missing@example.com", "New saved draft")},
+            json={"answers": sample_answers("missing@example.com", "New saved draft")},
         )
 
     assert existing.status_code == missing.status_code == 202
@@ -241,10 +241,10 @@ async def test_return_link_request_does_not_reveal_whether_application_exists() 
 
 @pytest.mark.anyio
 async def test_return_link_request_finds_an_unclaimed_pending_draft() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await _save_draft(client)
+        await save_draft(client)
         original_link = db.scalar(select(MagicLinkToken))
         assert original_link is not None
         original_link.created_at = datetime.now(UTC) - timedelta(minutes=10)
@@ -253,7 +253,7 @@ async def test_return_link_request_finds_an_unclaimed_pending_draft() -> None:
 
         response = await client.post(
             "/applicant/access-links/request",
-            json={"answers": _answers(introduction="Ignored replacement")},
+            json={"answers": sample_answers(introduction="Ignored replacement")},
         )
 
     links = list(db.scalars(select(MagicLinkToken).order_by(MagicLinkToken.id)))
@@ -268,7 +268,7 @@ async def test_return_link_request_finds_an_unclaimed_pending_draft() -> None:
 
 @pytest.mark.anyio
 async def test_email_entry_with_multiple_openings_does_not_preselect_one() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     opening = db.scalar(select(Opening))
     assert opening is not None
     db.add(
@@ -286,7 +286,7 @@ async def test_email_entry_with_multiple_openings_does_not_preselect_one() -> No
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.post(
             "/applicant/access-links/request",
-            json={"answers": _answers("new@example.com"), "openingIds": []},
+            json={"answers": sample_answers("new@example.com"), "openingIds": []},
         )
 
     draft = db.scalar(select(ApplicantDraft))
@@ -299,7 +299,7 @@ async def test_email_entry_with_multiple_openings_does_not_preselect_one() -> No
 
 @pytest.mark.anyio
 async def test_existing_applicant_without_an_actionable_opening_receives_public_update() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     opening = db.scalar(select(Opening))
     assert opening is not None
     opening.application_close_date = pacific_today() - timedelta(days=2)
@@ -307,10 +307,10 @@ async def test_existing_applicant_without_an_actionable_opening_receives_public_
     application = Application(
         primary_email="returning@example.com",
         applicant_name="Synthetic Returning Applicant",
-        raw_row=_answers("returning@example.com"),
+        raw_row=sample_answers("returning@example.com"),
         raw_row_hash="synthetic-submitted",
         normalized={},
-        working_answers=_answers("returning@example.com"),
+        working_answers=sample_answers("returning@example.com"),
         working_content_hash="synthetic-working",
         working_saved_at=datetime.now(UTC),
     )
@@ -320,7 +320,7 @@ async def test_existing_applicant_without_an_actionable_opening_receives_public_
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.post(
             "/applicant/access-links/request",
-            json={"answers": _answers("returning@example.com")},
+            json={"answers": sample_answers("returning@example.com")},
         )
 
     assert response.status_code == 202
@@ -333,7 +333,7 @@ async def test_existing_applicant_without_an_actionable_opening_receives_public_
 
 @pytest.mark.anyio
 async def test_unknown_address_without_an_actionable_opening_receives_public_update() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     opening = db.scalar(select(Opening))
     assert opening is not None
     opening.application_close_date = pacific_today() - timedelta(days=2)
@@ -344,7 +344,7 @@ async def test_unknown_address_without_an_actionable_opening_receives_public_upd
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.post(
             "/applicant/access-links/request",
-            json={"answers": _answers("unknown@example.com")},
+            json={"answers": sample_answers("unknown@example.com")},
         )
 
     assert response.status_code == 202

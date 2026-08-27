@@ -56,7 +56,6 @@ def get_or_create_member_ranking(
     return member_ranking
 
 
-
 def dimension_weights(member_ranking: MemberRanking) -> dict[str, float]:
     """The member's per-dimension weights — a complete map, DERIVED from their tier layout
     (never stored; tiers are the source of truth). Empty before any dimensions exist.
@@ -455,4 +454,3 @@ def set_tiers(
     db.commit()
     db.refresh(member_ranking)
     return member_ranking
-

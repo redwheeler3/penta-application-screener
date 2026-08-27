@@ -10,24 +10,24 @@ from app.db.models import (
     MagicLinkPurpose,
     MagicLinkToken,
 )
-from tests.applicant.support import _app_and_db, _link, _save_draft
+from tests.applicant.support import app_and_db, link_from_email, save_draft
 
 
 @pytest.mark.anyio
 async def test_verified_email_change_updates_identity_and_private_answers() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await _save_draft(client)
+        await save_draft(client)
         await client.post(
             "/applicant/access-links/open",
-            json={"token": _link(sender), "switchCurrent": False},
+            json={"token": link_from_email(sender), "switchCurrent": False},
         )
         requested = await client.post(
             "/applicant/application/email-change",
             json={"newEmail": "new-address@example.com"},
         )
-        token = _link(sender)
+        token = link_from_email(sender)
         inspected = await client.post(
             "/applicant/access-links/inspect", json={"token": token}
         )
@@ -67,13 +67,13 @@ async def test_verified_email_change_updates_identity_and_private_answers() -> N
 
 @pytest.mark.anyio
 async def test_email_change_never_merges_with_an_existing_application() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await _save_draft(client)
+        await save_draft(client)
         await client.post(
             "/applicant/access-links/open",
-            json={"token": _link(sender), "switchCurrent": False},
+            json={"token": link_from_email(sender), "switchCurrent": False},
         )
         original = db.scalar(select(Application))
         assert original is not None
@@ -93,7 +93,7 @@ async def test_email_change_never_merges_with_an_existing_application() -> None:
         )
         opened = await client.post(
             "/applicant/access-links/open",
-            json={"token": _link(sender), "switchCurrent": False},
+            json={"token": link_from_email(sender), "switchCurrent": False},
         )
 
     db.refresh(original)
@@ -104,13 +104,13 @@ async def test_email_change_never_merges_with_an_existing_application() -> None:
 
 @pytest.mark.anyio
 async def test_email_change_requires_recent_authentication() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await _save_draft(client)
+        await save_draft(client)
         await client.post(
             "/applicant/access-links/open",
-            json={"token": _link(sender), "switchCurrent": False},
+            json={"token": link_from_email(sender), "switchCurrent": False},
         )
         session = db.scalar(
             select(BrowserSession).where(BrowserSession.revoked_at.is_(None))
@@ -137,13 +137,13 @@ async def test_email_change_requires_recent_authentication() -> None:
 
 @pytest.mark.anyio
 async def test_different_email_change_request_immediately_replaces_the_first() -> None:
-    app, db, sender = _app_and_db()
+    app, db, sender = app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await _save_draft(client)
+        await save_draft(client)
         await client.post(
             "/applicant/access-links/open",
-            json={"token": _link(sender), "switchCurrent": False},
+            json={"token": link_from_email(sender), "switchCurrent": False},
         )
         first = await client.post(
             "/applicant/application/email-change",

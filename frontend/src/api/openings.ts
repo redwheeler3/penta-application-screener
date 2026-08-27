@@ -41,4 +41,3 @@ export const confirmNoHouseholdSelected = (id: number) =>
 
 export const undoOpeningSelection = (id: number) =>
   request(`/openings/${id}/selection`, { method: "DELETE" });
-

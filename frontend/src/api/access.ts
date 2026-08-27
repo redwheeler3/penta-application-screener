@@ -16,10 +16,8 @@ export function upsertAllowlistEntry(email: string, role: "admin" | "member"): P
     body: JSON.stringify({ email, role }),
   });
 }
-
 export function removeAllowlistEntry(email: string): Promise<Response> {
   return request(`/allowlist/${encodeURIComponent(email)}`, {
     method: "DELETE",
   });
 }
-

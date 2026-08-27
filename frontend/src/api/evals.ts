@@ -20,7 +20,6 @@ export const fetchEvalInvariants = () => getJson<InvariantsResult>("/evals/invar
 export function rebaselineEval(): Promise<Response> {
   return request("/evals/baseline", { method: "POST" });
 }
-
 // The eval's cases, straight from its committed JSON fixture (free).
 export const fetchEvalCases = (evalKey: string) =>
   getJson<{ cases: Record<string, unknown>[] }>(`/evals/cases/${evalKey}`);
@@ -75,5 +74,4 @@ export function runEval(
   const q = params.toString() ? `?${params}` : "";
   return streamRequest(`/evals/${basePass}${q}`);
 }
-
 

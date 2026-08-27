@@ -441,5 +441,3 @@ def committee_proposed_dimensions(db: Session, analysis: Analysis | None) -> lis
                 seen.add(fold)
                 union.append(text)
     return union
-
-
