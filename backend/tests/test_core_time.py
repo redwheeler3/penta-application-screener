@@ -1,8 +1,7 @@
 """utc_isoformat: DB timestamps must serialize with a zone suffix.
 
-Regression net for the "just now" bug — a naive UTC timestamp (what SQLite hands back from
-``func.now()``) serialized without an offset is read as LOCAL by the browser, shifting a UTC
-row into the future. The suffix is what stops that."""
+SQLite may return a naive UTC timestamp; the browser needs an explicit offset to avoid
+interpreting it as local time."""
 
 from datetime import UTC, datetime, timedelta, timezone
 

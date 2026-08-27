@@ -110,12 +110,7 @@
   box-shadow: 0 12px 28px rgba(17, 24, 39, 0.06);
 }
 
-/* The ordered screening workflow, in its own full-width band below the title.
-   At five steps it no longer fits beside the heading, so it gets a dedicated
-   row where the steps lay out left-to-right (wrapping as a group only when the
-   viewport is genuinely narrow). */
-/* Standalone global-actions card, directly under the title and above the tab row.
-   Its own rounded/bordered card (was previously the top band of the results panel). */
+/* Full-width workflow card below the title; steps wrap only on narrow viewports. */
 .workflow-bar {
   padding: 14px 20px;
   border: 1px solid var(--line);

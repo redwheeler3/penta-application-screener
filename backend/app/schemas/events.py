@@ -101,7 +101,7 @@ class PingEvent(ResponseModel):
     """A keepalive heartbeat emitted during an otherwise-silent opaque pass (the rank
     criteria/consolidation model calls, which can go >60s without streaming a token).
     Carries no state — its only job is to put a byte on the wire so a proxy's idle
-    timeout (Fly's is 60s; see ADR 0012) doesn't sever a multi-minute stream. The
+    timeout (Fly's is 60s) doesn't sever a multi-minute stream. The
     frontend's event switch has no branch for it, so it's silently ignored by design."""
 
     type: Literal["ping"] = "ping"

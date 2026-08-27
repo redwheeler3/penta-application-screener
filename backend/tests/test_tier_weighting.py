@@ -31,7 +31,7 @@ def tier(tier_id: str, keys: list[str]) -> dict:
 
 
 def test_single_tier_is_equal_weight_baseline() -> None:
-    # One working tier with everything = the M8 equal-weight baseline.
+    # One working tier containing every dimension produces equal weights.
     layout = [tier("t1", KEYS)]
     assert weights_from_tiers(KEYS, layout) == {"a": 1.0, "b": 1.0, "c": 1.0, "d": 1.0}
 

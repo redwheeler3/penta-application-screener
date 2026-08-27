@@ -1,8 +1,6 @@
 """Unit tests for the "revived" dimension label (``revived_flag_keys``).
 
-The badge is presence-derived and reconcile-independent (the reconcile pass was
-removed in the fan-out redesign; discovery re-surfacing a dropped axis is now the
-route to revival). These pin that "revived" means seen-in-an-earlier-run AND
+The badge is presence-derived: a dimension is "revived" when it was seen earlier and
 absent-from-the-immediately-prior-run — a genuine gap, not merely "seen before".
 """
 

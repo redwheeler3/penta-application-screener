@@ -9,9 +9,7 @@
   margin: 0 0 0.25rem;
 }
 
-/* Consistent header block for every Admin Settings subtab (Configuration, Committee Defaults,
-   Access, Feedback): an <h3> title with a hint beneath, and clear spacing so the hint/body
-   isn't crammed under the heading. Access already used this shape; the others now match. */
+/* Shared header block for every Admin Settings subtab. */
 .settings-subtab-head {
   /* Span the full width when it's a child of the .settings-form 2-col grid (Configuration
      tab); harmless in the non-grid panel bodies (Committee Defaults / Feedback). */
@@ -97,14 +95,7 @@
   width: 48px;
 }
 
-/* Mirror the .panel structure so the header gets the same edge-to-edge green
-   row: no padding on the container (overflow clips the header to the radius),
-   padding lives on the header and body sections. */
-/* Settings is now the content of the Settings tab; the surrounding .panel supplies
-   the card, so this is just a body wrapper. */
-/* Tab title at the top of each settings tab, matching the Observability/Evals heading
-   (.observability-header) so every tab opens with its name. Left-padded to align with the
-   settings body content (20px). */
+/* Settings-tab heading aligned with the panel body. */
 .settings-header {
   padding: 20px 20px 0;
   /* Breathing room before the subtabs/form below — matches .observability-header's 1rem gap

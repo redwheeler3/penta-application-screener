@@ -1,6 +1,4 @@
-"""Dimension scoring: the per-candidate pass that rates each eligible applicant
-against the run's discovered dimensions (SPEC "Pattern Discovery And Dimension
-Scoring").
+"""Rate each eligible applicant against the run's discovered dimensions.
 
 Scores are cached per (candidate, dimension), under
 ``kind = "dimension_scoring:<dimension_key>"``. A re-discovered dimension the match

@@ -1,4 +1,4 @@
-"""The run lease serializing AI runs across members (M16 concurrency hardening)."""
+"""The run lease serializing AI runs across members."""
 
 from __future__ import annotations
 

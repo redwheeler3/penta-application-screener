@@ -135,8 +135,7 @@
   color: #9ca3af;
 }
 
-/* Fallback when a matched prior dimension's name is unknown (audit written before
-   the prior-names capture) — the key still shows below it. */
+/* Fallback when a matched prior dimension's name is unavailable. */
 .match-audit-key-unnamed {
   color: var(--muted);
   font-style: italic;

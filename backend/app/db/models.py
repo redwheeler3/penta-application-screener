@@ -157,16 +157,15 @@ class AccessAllowlistEntry(TimestampMixin, Base):
 
 
 class RunLock(TimestampMixin, Base):
-    """A single-row advisory lease serializing the expensive AI runs across members (M16).
+    """A single-row advisory lease serializing expensive AI runs across members.
 
     Screen / full Rank / score-current all write shared state; two overlapping runs waste
     spend and — for a full Rank — strand a MemberRanking (last-writer-wins on the current
     ``Analysis``). There is no in-process lock that would survive multiple web workers, so the
     serialization lives in the DB: one fixed row (``id=1``, seeded by migration), claimed by an
     atomic conditional UPDATE and released in the run stream's ``finally``. ``held_since`` backs
-    a TTL steal so a crashed run can't wedge the system forever. Portable to Postgres (the M17
-    hosting move can swap the conditional-UPDATE claim for a real advisory lock unchanged in
-    spirit)."""
+    a TTL steal so a crashed run can't wedge the system forever. A Postgres deployment can
+    use the same lease or replace it with a native advisory lock."""
 
     __tablename__ = "run_lock"
 
@@ -180,8 +179,8 @@ class RunLock(TimestampMixin, Base):
 
 
 class Feedback(TimestampMixin, Base):
-    """A member's free-text feedback, captured from any page and surfaced to admins
-    (M15 "Future UX Enhancements" #2). The point is to let an admin act on real member
+    """A member's free-text feedback, captured from any page and surfaced to admins.
+    The point is to let an admin act on real member
     friction without a back-and-forth, so each row carries the context the member had
     when they hit it — the route/tab they were on and the ranking they were viewing —
     stamped server-side alongside identity, app version, and time so it can't be omitted.
@@ -293,9 +292,8 @@ class Application(TimestampMixin, Base):
     synthetic_data: Mapped[bool] = mapped_column(
         default=False, server_default="0", nullable=False
     )
-    # NB: no eligibility columns. Eligibility is a pure derivation computed on read per member
-    # (M15 1c–1d): the deterministic hard-filter reasons come from ``evaluate_hard_filters`` over
-    # ``normalized`` + the member's rules (per-member as of 1d); the AI half from the cached
+    # Eligibility is derived on read per member: deterministic reasons come from
+    # ``evaluate_hard_filters`` over ``normalized`` and the member's rules; AI findings from cached
     # screening flags; a member's human override from ``MemberEligibility``. Intake stores no
     # verdict. See ``services/eligibility`` + ``services/rules``.
 
@@ -560,7 +558,7 @@ class EmailDelivery(TimestampMixin, Base):
 
 
 class MemberEligibility(TimestampMixin, Base):
-    """One member's human override of an applicant's eligibility (M15 1c).
+    """One member's human override of an applicant's eligibility.
 
     Sparse by design: a row exists ONLY where a member has overridden the computed machine
     verdict — there is no per-member machine row, because the machine status is derived on read
@@ -589,14 +587,14 @@ class MemberEligibility(TimestampMixin, Base):
 
 
 class MemberRules(TimestampMixin, Base):
-    """One member's diverged eligibility thresholds (M15 1d).
+    """One member's diverged eligibility thresholds.
 
     Sparse copy-on-write: a row exists ONLY once a member customizes their rules away from the
     shared committee default (stored in ``AdminSetting`` under ``committee_default_rules``).
     Until then the member reads the default — most members never diverge, so most have no row.
     ``rules`` is the ``EligibilityRules`` blob: numeric thresholds (income/age/children), pet
-    limits (as of 1e), and ``disabled_checks`` — the flat set of switched-off checks spanning
-    both deterministic reason codes and AI flag categories (as of 1g).
+    limits, and ``disabled_checks`` — the flat set of switched-off checks spanning both
+    deterministic reason codes and AI flag categories.
     """
 
     __tablename__ = "member_rules"
@@ -691,7 +689,7 @@ class ApplicationAIResult(TimestampMixin, Base):
 
 class RunCostLedger(TimestampMixin, Base):
     """One row per completed AI run (a Screen, full Rank, or score-current update) — the
-    header (M13). This is the only honest source of *per-run* cost:
+    header. This is the authoritative source of *per-run* cost:
     ``ApplicationAIResult`` is a reuse cache with no
     run-id stamp, so a run's fresh vs. cached split can't be reconstructed after the fact —
     it must be recorded as the run completes. The per-pass breakdown (tokens, cost, cache)
@@ -706,16 +704,13 @@ class RunCostLedger(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     kind: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # screen | rank | rank_scores
     # The pre-run cost projection (the number the confirmation card showed the committee),
-    # captured so estimate-vs-actual drift is queryable after the fact — the project has
-    # been bitten by an estimate that disagreed with reality (SPEC Pillar 1). 0.0 on runs
-    # recorded before this column existed (server_default), and on kinds that had no
-    # pre-run estimate surface.
+    # captured so estimate-vs-actual drift is queryable. 0.0 means no estimate is available.
     estimated_usd: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
-    # The member who triggered this run (M15 Phase 4; ADR 0011). Runs are SHARED committee
+    # Runs are shared committee
     # spend, so Observability stays committee-wide — this only makes the shared cost
     # attributable ("who kicked off this Rank"). Nullable + no cascade: a run's cost history
-    # must outlive a removed member (the stamp just reads blank), and pre-Phase-4 rows are
-    # NULL. Not a per-member scope — purely attributive metadata on a shared run.
+    # must outlive a removed member, so the relationship is nullable. This is attribution,
+    # not per-member scope.
     triggered_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"), nullable=True, index=True
     )
@@ -727,7 +722,7 @@ class RunCostLedger(TimestampMixin, Base):
 
 
 class RunPassCost(TimestampMixin, Base):
-    """One pass's spend within a completed run (M13) — the single source of per-pass cost
+    """One pass's spend within a completed run — the single source of per-pass cost
     for BOTH pool-level passes (discovery, decompose, match, consolidate) and per-
     application passes (screening, scoring). Every pass writes the same shape here, so the
     Observability cost surfaces read one table instead of stitching together criteria keys,
@@ -740,7 +735,7 @@ class RunPassCost(TimestampMixin, Base):
     ``model_id`` is the model the pass ran on ("" when the pass made no call this run,
     e.g. a skipped match on a first run).
 
-    ``duration_ms`` is the pass's wall-clock (M13 Pillar 3) — measured at the pass level,
+    ``duration_ms`` is the pass's wall-clock, measured at the pass level,
     NOT summed from parallel calls (that would be CPU time). ``failed_calls`` counts model
     calls that errored: real for the per-application passes (a failure is non-fatal, the
     run continues), ~always 0 for the pool passes (a failure aborts the run before it
@@ -771,7 +766,7 @@ class RunPassCost(TimestampMixin, Base):
 class Analysis(TimestampMixin, Base):
     """One Rank's shared AI output: the discovered dimensions (``dimension_report``) and the
     pool+prompt fingerprint that flags it out-of-date. This is the compute-once substrate —
-    shared across all committee members (M15). Each member's *view* of these dimensions
+    shared across all committee members. Each member's *view* of these dimensions
     (tiers, badges, proposals) lives in a per-member ``MemberRanking`` child, NOT here, so one
     member's tiering never becomes everyone's. The AI-legibility audits (discovery narrative +
     the four pass audits) are large and read one-at-a-time, so they live in a 1:1
@@ -798,7 +793,7 @@ class Analysis(TimestampMixin, Base):
 
 
 class MemberRanking(TimestampMixin, Base):
-    """One committee member's private view of an ``Analysis`` (M15): their importance tiers,
+    """One committee member's private view of an ``Analysis``: their importance tiers,
     new/revived-dimension flags, proposals, and requested-pill dismissals — all in ``run_state``.
     Tier weights are always DERIVED from ``run_state.tiers`` (see ``dimension_weights``), never
     stored. Keyed per (analysis, member): a re-rank creates a new Analysis and seeds each
@@ -823,9 +818,9 @@ class MemberRanking(TimestampMixin, Base):
 
 
 class AnalysisAudit(TimestampMixin, Base):
-    """The AI-legibility trail for one Analysis (M13), split off so the hot read path
+    """The AI-legibility trail for one Analysis, split off so the hot read path
     (dimensions + tiers) never pulls these large blobs. One row per analysis, populated as the
-    chain runs; each field is null on analyses that predate its capture. The ``/ranking/current/
+    chain runs; each field is nullable when that audit was not captured. The ``/ranking/current/
     *-audit`` endpoints are the only readers. ``consolidate`` carries the pass's per-pair
     reasoning (definitions + narrative) — the *merge map* is NOT duplicated here, it lives once
     in ``dimension_aliases`` (the sole merge-truth).

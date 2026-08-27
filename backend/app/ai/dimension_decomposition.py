@@ -1,9 +1,8 @@
-"""Dimension decomposition: distil K parallel discovery reports into the finest set
-of axes that are each genuinely differentiating AND mutually non-overlapping
-(SPEC "Fan-Out Redesign", Phase 3 — the single-call baseline variant).
+"""Distil parallel discovery reports into the finest set of axes that are both
+genuinely differentiating and mutually non-overlapping.
 
 K fresh-context discovery calls carve the same pool at different, overlapping
-granularities (the diversity Phase 2 produces). This step sees all K at once and
+granularities. This step sees all K at once and
 settles ONE non-overlapping set. Seeing every carving together is what lets it answer
 "is this axis redundant with one we already have?" — decidable by comparison, unlike
 "does the pool vary on this?", which is unfalsifiable (discovery only ever coins an
@@ -22,7 +21,7 @@ same applicant the same way AND with agreeing desirable ends; to KEEP two apart 
 able to name an applicant high on one and low on the other. Axes with OPPOSING desirable ends
 (high-fit on one = low-fit on the other) are KEEP even when they cannot diverge or one
 subsumes the other — folding flips one axis's fit direction and buries any committee ask on
-it. Committee-requested axes get extra protection (D9): never merged away silently — the flag
+it. Committee-requested axes are never merged away silently — the flag
 rides through and the decision must say so.
 
 This single structured call is the decomposition step, wired into ``rank_run``.
@@ -85,8 +84,7 @@ For each settled axis: `key` (reuse an input key when it's essentially that axis
 - Do NOT assign importance or weight — discovering the settled axes is your job; weighting is the committee's, done later. Treat every axis as equally important here.
 - Do not score or name individual applicants. Describe the axes."""
 
-# Prompt identity, derived from the static prompt text (folded into the rank-inputs
-# fingerprint once wired in Phase 4, like the other rank-chain passes).
+# Prompt identity is derived from the static prompt text and included in rank freshness.
 PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 
 
@@ -181,8 +179,7 @@ def to_pool_report(
     shape the rest of the rank chain (match pass, scoring, storage) already speaks. The
     decomposition-only fields (``source_keys``, ``decision``) are dropped here; they are
     preserved separately in the decompose audit (see ``decompose_audit_payload``). The
-    ``from_committee_request`` flag rides through, since it drives the D9
-    committee-request protection downstream.
+    ``from_committee_request`` flag carries the committee-request protection downstream.
 
     ``why_it_differentiates`` is NOT taken from the decomposition (it doesn't produce
     one — see ``DecomposedDimension``). Instead it is carried forward from the PRIMARY
@@ -228,36 +225,14 @@ def enforce_committee_requests(
     input_reports: list[PoolDimensionReport],
     kept: list[PoolDimension] | None = None,
 ) -> tuple[DecompositionReport, list[dict]]:
-    """D9 guard (SPEC "Fan-Out Redesign", D9): a committee ask must never be silently
-    merged away. Deterministic backstop for the prompt instruction — prompts guide, they
-    don't guarantee.
+    """Guarantee that proposed and kept axes survive decomposition.
 
-    Two sources of "committee ask" are guarded — both get the same never-vanish
-    guarantee, but they mean DIFFERENT things for the ``from_committee_request`` flag:
-      - **Proposals**, which entered via a discovery report and are marked
-        ``from_committee_request`` on their input dimension. This flag is THIS run's
-        provenance — "a member asked for this axis on this run" — and it drives the
-        audit badge + D9 trail. It must be authoritative: true iff a fresh proposal was
-        absorbed, so it clears on the next run (when the proposal is gone).
-      - **Kept axes** (``kept``), prior dimensions injected at decomposition (NOT into
-        discovery) because the committee tiered them. They are never in ``input_reports``,
-        so they are folded into the survive set here by their own key. A kept axis is an
-        ordinary carried dimension: it must never vanish, but it carries NO request flag
-        (the committee tiered it on some prior run; that isn't a fresh ask this run).
+    Proposal flags are current-run provenance and are recomputed from absorbed proposal
+    keys. Kept axes receive the survival guarantee without a proposal flag. Any protected
+    key absent from every settled ``source_keys`` is restored as its own axis.
 
-    Failure modes repaired here, computed from the survive set vs. what decomposition
-    returned:
-      - **Flag drift:** the flag on each settled axis is recomputed from scratch — true
-        iff it absorbed a proposal source key, false otherwise — so neither a model that
-        dropped it on a merge nor one that stamped it on a kept/plain axis can make it lie.
-      - **Silent drop:** an asked-for key (proposal OR kept) appears in NO settled axis's
-        ``source_keys`` — decomposition dropped it. We re-add it as its own settled axis
-        (restoring the input/kept text), flagged only if it was a proposal.
-
-    Returns the corrected report and a ``folded`` list — the asked-for axes merged INTO
-    another axis (not kept standalone), each ``{request_key, into_key}`` — so the caller
-    can surface "your proposal/kept axis X was folded into Y" (never a silent
-    disappearance). An axis kept under its own key is not "folded" and isn't listed.
+    Returns the corrected report and ``{request_key, into_key}`` entries for proposals
+    folded into another axis.
     """
     # Proposals (flagged in the reports) carry the request flag; kept axes (injected
     # separately) get the survival guarantee only. Both share the never-vanish repair.

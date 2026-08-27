@@ -40,28 +40,10 @@ class AISettings(BridgeModel):
     supported combinations live in ``model_catalog``; defaults remain on Bedrock so
     adding direct-provider credentials cannot change a deployed workload by itself.
 
-    One model per AI pass, named by the JOB rather than a tier ("first pass" /
-    "synthesis"), so each pass can be tuned independently and the mapping is
-    self-documenting. The high-volume per-applicant passes (screening and dimension
-    scoring) default to cheap-and-fast Haiku because call count drives their cost (scoring
-    alone is candidates × dimensions). The higher-judgment discovery, decomposition,
-    matching, and consolidation passes default to Sonnet. Evaluated direct Luna and Terra
-    routes are available in production; moving a pass remains an explicit admin decision.
-
-    ``match_model`` earned its own tier from evidence: on Haiku the identity-match
-    pass over-matched genuinely-drifted concepts (freezing the wrong prior
-    definition onto a reused score, carrying tier intent onto the wrong axis), so it
-    runs on the stronger Sonnet tier rather than the high-volume Haiku tier. Any pass can
-    move if representative evals and production availability justify the change.
-
-    ``decompose_model`` (settles the K fan-out reports into one set) gets its own field
-    for consistency and independent tunability — every pass has one. It's a genuinely
-    different task (reasoning over K reports vs. reading the pool), so being able to move it
-    without dragging discovery along is worth the one knob.
-
-    ``consolidate_model`` (the post-score duplicate-merge confirm) defaults to Sonnet: it's
-    the same high-stakes identity judgment as matching (a wrong merge is unrecoverable), so
-    it wants the stronger model, not cheap Haiku.
+    Each pass has an independent model setting. High-volume per-applicant passes default
+    to Haiku; higher-judgment discovery, decomposition, matching, and consolidation default
+    to Sonnet. Matching and consolidation need the stronger default because an incorrect
+    identity decision can misapply cached scores or committee tier intent.
     """
 
     region: str = Field(default="us-east-1")
@@ -79,15 +61,13 @@ class AISettings(BridgeModel):
     match_reasoning_effort: ReasoningEffort = "low"
     consolidate_model: str = Field(default=_SONNET)
     consolidate_reasoning_effort: ReasoningEffort = "low"
-    # Fan-Out Redesign (SPEC "Fan-Out Redesign", D6): how many parallel, fresh-context
-    # discovery calls one Rank runs. Their cross-call variation is the diversity a later
+    # Parallel, fresh-context discovery calls per Rank. Their cross-call variation is the diversity a later
     # decomposition step pares to the finest non-overlapping set. Discovery is uncached,
     # so K carries a real linear cost (see the cost model note); kept small and fixed,
     # not adaptive. K=1 degenerates to the single-discovery behaviour. Default 5: the 5th
     # fresh context is worth its modest cost for coverage (see the marginal-coverage note).
     discovery_fan_out: int = Field(default=5, ge=1, le=10)
-    # Post-score consolidation (SPEC "Post-score consolidation"): the Pearson r at/above
-    # which two dimensions' score vectors nominate the pair as a suspected duplicate for
+    # Pearson r at/above which two dimensions' score vectors nominate the pair as a suspected duplicate for
     # the LLM confirm. Default 0.8 catches subtler forks; lowering further nominates more
     # pairs and hands the
     # merge-biased confirm more confounds to reject), raising nominates fewer. Tunable

@@ -43,8 +43,7 @@ from app.services.ranking.dimensions import current_dimension_report
 @dataclass(frozen=True)
 class Provenance:
     """What produced a recorded Rank — the metadata an honest eval needs to attribute a
-    verdict to the exact prompt+model that generated the output under review (SPEC M13:
-    "a change in the judge can be mistaken for a change in production quality").
+    verdict to the exact prompt and model that generated the output under review.
 
     ``pass_models`` is EXACT: read from the run's rank ledger (`RunPassCost.model_id`), so
     it's the model each pass actually ran on. ``pass_prompt_versions`` is
@@ -153,8 +152,7 @@ def build_fixture(db: Session, analysis: Analysis) -> EvalFixture:
     )
 
 
-# Narrative keys carried by the audits — free-text reasoning that cites applicant
-# specifics. Dropped from the fixture (no property reads them); see the module docstring.
+# Free-text audit fields are excluded because they may cite applicant specifics.
 _NARRATIVE_KEYS = ("narrative", "match_narrative")
 
 

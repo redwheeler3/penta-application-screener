@@ -23,7 +23,7 @@ class EmploymentRequirement(StrEnum):
     ALL = "all"
 
 # The reason code for a pet-limit violation. Named because it is load-bearing beyond this
-# module: status resolution treats it specially (M15 1g) — a pet verdict needs the AI to
+# module: status resolution treats it specially because a pet verdict needs the AI to
 # extract pet counts from free text first, so it can only land at Screen, and it attributes
 # to the AI status source, not Rules. Every other hard-filter reason comes directly from
 # structured application fields (Rules).
@@ -47,8 +47,7 @@ class RulesConfig:
     max_cats: int = DEFAULT_MAX_CATS
     allow_other_pets: bool = DEFAULT_ALLOW_OTHER_PETS
     employment_requirement: EmploymentRequirement = EmploymentRequirement.NONE
-    # Checks the member has switched off (M15 1g Move 3, renamed from disabled_rules). ONE
-    # flat set spanning both kinds of eligibility check: deterministic hard-filter reason
+    # One flat set spans deterministic reason codes and AI screening categories. The
     # codes (income_below_range, …) AND AI screening flag categories (fake_contact, …). The
     # two namespaces are disjoint, so this filter drops the matching REASON codes and harmlessly
     # ignores any flag-category strings — the flag half is applied separately (see
@@ -61,7 +60,7 @@ class RulesConfig:
 @dataclass(frozen=True)
 class PetFacts:
     """The extracted pet inventory the pet hard filter reads — the domain mirror of the
-    AI ``PetFacts`` schema (M15 1e). Kept in the domain layer (no pydantic) so
+    AI ``PetFacts`` schema. Kept in the domain layer (no pydantic) so
     ``evaluate_hard_filters`` stays a pure function with no schema/AI import."""
 
     dogs: int = 0
@@ -93,7 +92,7 @@ def evaluate_hard_filters(
 
     ``pet_facts`` is the one input that does NOT come from ``application`` (normalized): pet
     counts are extracted by the screening AI pass, not derived from the raw row, so they ride
-    in separately and are OPTIONAL (M15 1e). When ``None`` the pet check is skipped entirely
+    in separately and are optional. When ``None`` the pet check is skipped entirely
     — deliberately, so the pre-screen callers (import; the screening-eligibility gate) don't
     gate on facts that only exist AFTER screening. The on-read eligibility path loads the
     screening result and passes ``pet_facts`` in, so pets gate per member there.
@@ -330,8 +329,8 @@ def _income_arithmetic_mismatch(application: dict[str, Any]) -> list[FilterReaso
 
 
 def _pets_over_limit(pet_facts: PetFacts, rules: RulesConfig) -> list[FilterReason]:
-    """The per-member pet policy, applied deterministically to extracted pet counts (M15
-    1e). One reason per violated category (too many dogs, too many cats, a disallowed other
+    """The per-member pet policy, applied deterministically to extracted pet counts.
+    One reason per violated category (too many dogs, too many cats, a disallowed other
     pet) — all under the single ``pets_over_limit`` code so the detail view maps them to the
     pets field uniformly. Pets are judged HERE, not by the screening AI, because the limits
     are per-member: the same household is within one member's policy and over another's."""

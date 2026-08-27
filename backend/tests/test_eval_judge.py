@@ -97,8 +97,7 @@ def test_stability_reports_perfect_agreement_when_verdict_is_steady() -> None:
     assert report.majority == case.expected
     assert report.total_cost_usd > 0
     assert "[stable]" in format_stability([report])
-    # Every run keeps its reasoning (parallel to labels), so a stable run shows its K reasonings
-    # too — the judge stability was dropping this while the other passes retained it.
+    # Every run retains reasoning parallel to its outcome label.
     assert len(report.runs) == 5
     assert all(r.outcome == case.expected for r in report.runs)
     assert all(isinstance(r.detail, str) for r in report.runs)
@@ -137,10 +136,7 @@ def test_stability_marks_a_contested_flip_as_split_not_unstable() -> None:
 
 
 def test_scoring_stability_tokens_by_in_band_not_raw_score() -> None:
-    """A CONTINUOUS pass: different in-band scores are the SAME stability outcome. Three distinct
-    scores that all land in the band must read [stable] (100% agree), not [UNSTABLE] from tallying
-    the raw score strings — the bug that showed 60% on modest_evidence_scores_mid even though every
-    run agreed. A score that leaves the band is a real flip."""
+    """Different in-band scores are the same stable outcome; leaving the band is a flip."""
     from app.ai.schemas import DimensionScore, DimensionScoringReport, ScoreConfidence
 
     case = next(c for c in load_cases() if c.pass_name == "scoring")
@@ -179,11 +175,7 @@ def test_scoring_stability_tokens_by_in_band_not_raw_score() -> None:
 
 
 def test_screening_stability_tokens_by_graded_outcome_not_raw_flag_set() -> None:
-    """Screening grades a FLAG SET per-category. Runs that all satisfy the case but differ in an
-    UNGRADED incidental flag are the SAME graded outcome — they must read [stable], not [UNSTABLE]
-    from tallying the raw flag-set string. (The original bug: a fires-case flipped because some
-    runs added an ungraded internal_inconsistency flag alongside the required category.) Dropping
-    a REQUIRED flag is a real flip."""
+    """Incidental ungraded flags do not affect stability; dropping a required flag does."""
     from app.ai.schemas import FlagCategory, ScreeningFlag, ScreeningReport
 
     case = next(c for c in load_cases() if c.pass_name == "screening" and c.expected.get("fires"))

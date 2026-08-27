@@ -1,4 +1,4 @@
-"""Structural guard + plumbing test for the live decomposition eval (M13).
+"""Structural guard and plumbing test for the live decomposition eval.
 
 The live eval makes real model calls (opt-in, not CI). These are the cheap CI half: the
 golden fixture loads and is well-formed, and run_case derives merge/keep from the settled set

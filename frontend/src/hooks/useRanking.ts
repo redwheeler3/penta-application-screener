@@ -61,11 +61,8 @@ export function useRanking(onError: (message: string) => void): RankingState {
   const [rankingLoadState, setRankingLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [staleAnalysis, setStaleAnalysis] = useState(false);
 
-  // A save failed. Reads the problem body ONCE (the body is single-use — a caller must not
-  // read it again). stale_analysis routes to the reload toast (the edit targeted a superseded
-  // analysis; reloading is the fix). Returns { handled, message }: handled=true means it was
-  // stale and the caller stays quiet; otherwise the caller shows `message` (the server's
-  // reason, e.g. "a ranking is in progress") — passed back so the caller needn't re-read.
+  // Read the single-use problem body once. A stale analysis opens the reload toast;
+  // other failures return their message to the caller.
   async function handleSaveFailure(
     response: Response,
   ): Promise<{ handled: boolean; message: string | null }> {
@@ -77,8 +74,7 @@ export function useRanking(onError: (message: string) => void): RankingState {
     return { handled: false, message: problemMessage(body) };
   }
 
-  // The toast's Reload action: pull the new current analysis + ranking + tiers, then clear
-  // the flag. Everything the member sees is replaced with the up-to-date board.
+  // Refresh the complete board before clearing the stale flag.
   async function reloadStaleRanking(): Promise<boolean> {
     await refreshRankingRun();
     const ok = await loadRanking();

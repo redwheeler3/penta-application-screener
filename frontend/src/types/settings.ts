@@ -16,7 +16,7 @@ export type AISettings = {
   matchReasoningEffort: ReasoningEffort;
   consolidateModel: string;
   consolidateReasoningEffort: ReasoningEffort;
-  // Fan-out width: parallel discovery calls per Rank (SPEC "Fan-Out Redesign", D6).
+  // Parallel discovery calls per Rank.
   discoveryFanOut: number;
   // Pearson r at/above which post-score consolidation nominates a duplicate pair (0–1).
   consolidateCorrelationThreshold: number;

@@ -5,23 +5,14 @@ import { useFetchResource } from "../../hooks/useFetchResource";
 import type { CurrentRunResponse } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
-// The discovery half of the run-level axis: what the K
-// parallel discoverers each found and why. Each pass is one fresh-context discovery;
-// their cross-call variation is the diversity the decomposition step later settles, so
-// seeing all K side by side (not just the one that streamed live) is what makes the
-// fan-out — and the merges it feeds — legible.
-//
-// One collapsible per discoverer: its dimensions (the comparison signal — who found
-// what) plus its reasoning. Self-fetches the fan-out audit via useFetchResource;
-// the caller keys this by analysisId so an analysis change remounts and re-fetches). Falls back to the
-// single run-level narrative for runs that predate the fan-out (no per-pass audit).
+// Show each independent discovery pass and its reasoning. When per-pass data is absent,
+// fall back to the run-level narrative.
 export function DiscoveryPanel(props: { run: CurrentRunResponse }): ReactNode {
   const { data: audit, state, reload } = useFetchResource(fetchFanOutAudit);
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;
   if (state === "error") return <RetryLoadError message="Couldn’t load discovery." onRetry={() => void reload()} />;
 
-  // Legacy runs (pre fan-out) have no per-pass audit — fall back to the single narrative.
   if (audit === null || audit.passes.length === 0) {
     if (!props.run.discoveryNarrative) {
       return <p className="panel-hint">No discovery reasoning recorded for this run.</p>;

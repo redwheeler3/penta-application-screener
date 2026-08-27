@@ -40,12 +40,8 @@ SCORING_FALLBACK_OUTPUT_TOKENS = 160
 SCORING_FALLBACK_INPUT_TOKENS_PER_CANDIDATE = 2900
 
 # Dimensions assumed per candidate before any discovery, so the first-Rank estimate has a
-# count to multiply by. Only used for the FIRST-EVER Rank (no history); every later run learns
-# the real count from prior analyses. Set from observed behaviour: since the M15/M16 prompt +
-# fan-out changes, discovery consistently settles on ~30–35 dimensions (was 15 under the older
-# architecture — a stale value that made the first prod Rank under-estimate ~2x, since scoring
-# is priced per-dimension). 35 is the top of the observed range: for a cost estimate, leaning
-# slightly high is better than surprising someone with an under-estimate.
+# count to multiply by. Only used for the first Rank; later runs use observed dimensions.
+# The upper end of the observed 30–35 range avoids surprising users with an underestimate.
 ASSUMED_DIMENSIONS_FIRST_RUN = 35
 
 # Token approximation for a built prompt when we have one but no tokenizer: ~4 chars
@@ -102,34 +98,13 @@ def estimate_dimension_scoring(
 ) -> ScoringEstimate:
     """Pre-run scoring estimate that respects the per-dimension cache.
 
-    Models the real cost shape of a scoring call: a per-candidate INPUT cost (the
-    shared facts + essays, sent once per call — measured from a real prompt) plus a
-    per-DIMENSION OUTPUT cost (each dimension's score + rationale + evidence, learned
-    from usage). Input is immune to carry-forward skew because it's measured from a
-    real built prompt, not the split per-dimension rows.
+    Input cost is per candidate; output cost is per dimension. Estimate in priority order:
+    recent measured scoring spend, current uncached candidate/dimension pairs, then a
+    first-run ceiling when no dimension report exists.
 
-    History-first, cache-aware. Pricing the whole pool as if nothing were cached would be
-    a ~10× over-estimate on a stable-pool re-run (the per-(candidate,dimension) cache
-    reuses almost everything) and could wrongly trip the spending cap, so the estimate
-    uses two cache-aware signals, in priority order:
-
-    1. **Measured (preferred):** a recency-weighted average of what recent Rank runs
-       *actually spent* on fresh scoring (``recent_pass_fresh_usd``). A past run's
-       stored scoring ``fresh_usd`` already captures the true re-run shape — reuse plus
-       whatever discovery newly minted and scored — so history is the honest predictor,
-       no invented churn constant. Used whenever any prior Rank recorded a scoring pass.
-    2. **Cache-aware count (fallback, no history yet):** count the actually-uncached
-       (candidate, dimension) pairs against the current run's dimensions, exactly as
-       ``_to_score_dimensions`` does at run time (the same count-the-uncached approach
-       the shared ``estimate_cost`` engine uses for per-application passes).
-    3. **First-run ceiling (no report at all):** every candidate × assumed dims, nothing
-       cached — the genuine worst case before discovery has run once.
-
-    Caveat on the measured path: it reads only the ledger, so it can't see a *current*
-    cache change (e.g. a just-synced batch of new applicants that will score fresh) —
-    it under-predicts until the next run records the new cost. Fine for the dominant
-    locked-pool re-run case; if the pool-changed case proves to underestimate in
-    practice, blend in the cache-aware count then (measure-first).
+    The measured path reflects stable-pool reruns accurately but cannot see a newly changed
+    cache until another run reaches the ledger. Callers that need exact current coverage use
+    ``include_coverage`` and the cache-aware path.
     """
     model_id = settings.ai.dimension_scoring_model
     reasoning_effort = effective_reasoning_effort(

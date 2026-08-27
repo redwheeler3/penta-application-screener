@@ -5,7 +5,7 @@ stored on the applicant. The *machine verdict* comes from the shared findings (d
 rule reasons + cached AI flags); a *member's human override* of that verdict lives in a
 ``MemberEligibility`` row. Effective status for a member = their override if present, else the
 machine verdict. Machine actors (rules, AI) only refresh the underlying findings — they never
-overwrite a member's override. See SPEC "Application Status Model" + M15 1c.
+overwrite a member's override.
 """
 
 from __future__ import annotations
@@ -27,8 +27,7 @@ def resolve_machine_status(
     """The status the machine assigns given the current findings — the shared baseline
     every member sees unless they override it.
 
-    Attribution follows WHEN a finding could be known, so the source badge never implies a
-    verdict was knowable earlier than it was (M15 1g):
+    Attribution follows when a finding becomes knowable:
 
       - a NON-pet deterministic reason (income/age/children/real-estate) comes directly from
         submitted form fields and is high-trust → ``RULES``;

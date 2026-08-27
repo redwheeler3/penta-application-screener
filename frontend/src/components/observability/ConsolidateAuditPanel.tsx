@@ -12,9 +12,8 @@ import { RetryLoadError } from "../shared/RetryLoadError";
 // kept, the newer aliased into it so future runs adopt it too). Distinct axes that merely
 // correlate — a confound — are kept apart.
 //
-// This surfaces every nominated pair, its correlation, the merge/keep verdict + reason,
-// and the confirm call's reasoning. A null audit (a run from before the pass) shows an
-// explicit empty state; a run where correlation nominated nothing shows the no-op state.
+// This surfaces every nominated pair, correlation, verdict, and reason. Missing audit
+// data and a run with no nominations have distinct empty states.
 export function ConsolidateAuditPanel(): ReactNode {
   const { data: audit, state, reload } = useFetchResource(fetchConsolidateAudit);
 

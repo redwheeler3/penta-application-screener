@@ -1,4 +1,4 @@
-"""Eval INVARIANTS as the CI gate (M13 Pillar 4).
+"""Eval invariants as the CI gate.
 
 Each invariant runs over the committed fixture (a blessed real Rank) and hard-fails on
 any breach — a prompt or schema regression that (e.g.) drops a pole, names a protected

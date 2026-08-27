@@ -108,8 +108,7 @@ def test_forced_eligible_override_is_screened_despite_rules() -> None:
 
 
 def test_build_prompt_surfaces_pets_and_essays_and_asks_for_extraction() -> None:
-    # M15 1e: the prompt no longer cites a pet POLICY (no threshold interpolated); it
-    # surfaces the free-text pets field and asks the model to EXTRACT a neutral inventory.
+    # The prompt asks for neutral pet facts, never a policy verdict.
     db = make_session()
     app = add_application(
         db,
@@ -127,16 +126,13 @@ def test_build_prompt_surfaces_pets_and_essays_and_asks_for_extraction() -> None
     assert "Two dogs and a cat" in prompt  # pets text surfaced for extraction
     assert "We are a family." in prompt  # essay surfaced
     assert "How to extract pets" in prompt  # instructs neutral extraction
-    # The prompt must NOT cite a threshold or ask the model to judge policy (that moved to
-    # the deterministic per-member hard filter).
+    # Policy thresholds belong to the deterministic per-member hard filter.
     assert "at most 1 dog" not in prompt
     assert "only dogs and cats are allowed" not in prompt
 
 
 def test_screening_version_is_stable_and_settings_independent() -> None:
-    # M15 1e: pets left the prompt for a deterministic per-member filter, so the version is
-    # now a pure function of the prompt text — no settings argument, and a pet-limit change
-    # (which is a hard-filter change, judged on read) no longer invalidates the cache.
+    # Pet limits are evaluated outside the prompt, so they do not affect prompt identity.
     from app.ai.screening import screening_prompt_version
 
     assert screening_prompt_version() == screening_prompt_version()

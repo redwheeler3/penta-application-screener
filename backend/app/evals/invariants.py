@@ -3,11 +3,8 @@ regardless of pool (a dimension missing a pole, a criterion keyed on a protected
 Pure and discovered-green: they pass on a blessed fixture because the output is genuinely
 good, NOT because the assertion was tuned around the data. These hard-fail pytest.
 
-Only invariants live here. Judgement observations that can't honestly pass/fail (high-r
-dimension pairs, carry-forward rate) were once "signals" reported alongside these, but
-they duplicate — worse — what the Observability tab (Consolidation, Matching) shows over the
-live run, so they were dropped. An invariant you'd have to soften to keep green isn't an
-invariant; if one appears, it belongs in the LLM-judge evals, not here.
+Judgement observations that cannot honestly pass or fail belong in Observability or the
+LLM-judge evals, not in this invariant suite.
 """
 
 from __future__ import annotations

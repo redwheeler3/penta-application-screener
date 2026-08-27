@@ -22,10 +22,7 @@ const tok = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
 const tokensCell = (input: number, output: number) =>
   input || output ? `${tok(input)} → ${tok(output)}` : "—";
 
-// Estimate-vs-actual reconciliation: the pre-run projection next to what the run actually
-// spent, with drift %. Only shown when an estimate was captured (0 on pre-capture runs).
-// The estimate is an upper-bound ceiling (see _rank_estimate), so actual under estimate is
-// the expected, healthy case; actual OVER estimate is the one worth flagging (amber).
+// Compare the pre-run ceiling with actual spend; only overruns need emphasis.
 function reconciliation(run: LastRunCost): ReactNode {
   if (run.estimatedUsd <= 0) return null;
   const drift = run.freshUsd - run.estimatedUsd;
@@ -38,8 +35,7 @@ function reconciliation(run: LastRunCost): ReactNode {
   );
 }
 
-// Who kicked off this shared run. Omitted when unknown or when a
-// since-removed member) — runs stay committee-wide; this only attributes the shared spend.
+// Attribution only; the run remains committee-wide. Omit when the member is unknown.
 function triggeredByStamp(run: LastRunCost): ReactNode {
   if (!run.triggeredBy) return null;
   return <span className="cost-triggered-by">{` · triggered by ${run.triggeredBy}`}</span>;

@@ -72,7 +72,7 @@ export type CurrentRunResponse = {
   analysisId: number;
   dimensions: PoolDimension[];
   // The model's streamed reasoning from the discovery pass (markdown), shown on the
-  // Observability tab. Null for runs from before it was captured.
+  // Observability tab. Null when no narrative was captured.
   discoveryNarrative: string | null;
   // Flagged dimensions (new OR revived) absent from the immediately-prior run — they
   // are badged until the committee triages them. Empty on a first run.
@@ -93,12 +93,11 @@ export type CurrentRunResponse = {
 // GET /ranking/current/match-audit — the carry-forward trace for the current run.
 // What discovery emitted before matched keys
 // were rewritten, how the match pass mapped it onto prior dimensions, and the
-// derived carry-forward rate. Null when no run exists or the run predates capture.
+// derived carry-forward rate. Null when no run or audit exists.
 export type MatchAuditResponse = {
   analysisId: number;
   rawDiscoveryDimensions: { key: string; name: string; fromCommitteeRequest: boolean }[];
-  // new dimension key → the prior dimension it adopted (key + prior user-facing name;
-  // name is null for audits written before the prior-names capture).
+  // new dimension key → adopted prior dimension; name is null when unavailable.
   newToOld: Record<string, { key: string; name: string | null }>;
   matchNarrative: string | null;
   priorDimensionCount: number;
@@ -110,9 +109,8 @@ export type MatchAuditResponse = {
   carryForwardRate: number | null;
 };
 
-// GET /ranking/current/decompose-audit — how the K fan-out discovery reports were
-// settled into one non-overlapping dimension set for the current run. Null on runs
-// that predate the fan-out redesign (single-discovery runs).
+// GET /ranking/current/decompose-audit — how the parallel discovery reports were
+// settled into one non-overlapping dimension set. Null when no audit was recorded.
 export type DecomposeAuditResponse = {
   analysisId: number;
   inputReportCount: number;
@@ -168,9 +166,8 @@ export type ConsolidateAuditResponse = {
   narrative: string | null;
 };
 
-// GET /ranking/current/fan-out-audit — the K parallel discoverers that fed
-// decomposition. Each pass is one fresh-context discovery: the dimensions it found +
-// its own reasoning. Null on runs that predate the fan-out redesign.
+// GET /ranking/current/fan-out-audit — the parallel discoverers that fed
+// decomposition. Each pass includes its dimensions and reasoning. Null when absent.
 export type FanOutAuditResponse = {
   analysisId: number;
   k: number;

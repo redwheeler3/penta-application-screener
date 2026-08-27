@@ -104,7 +104,7 @@ async def test_run_requires_login() -> None:
 
 @pytest.mark.anyio
 async def test_run_blocked_while_another_run_holds_the_lease() -> None:
-    """A Screen 409s when another member's run already holds the run lease (M16). Simulate
+    """A Screen 409s when another member's run already holds the lease. Simulate
     the in-flight run by pre-acquiring the lease as a different member."""
     from app.services.run_lock import acquire_run_lock
 
@@ -345,8 +345,7 @@ async def test_fully_cached_rerun_is_blocked() -> None:
 @pytest.mark.anyio
 async def test_partial_cache_run_counts_only_uncached_cost() -> None:
     # A run with a mix of cached and new applicants must report only the NEW
-    # ones' cost. A cache hit estimates avoided cost at the selected route's price,
-    # but that is not money spent now. (Regression: the tally summed cached cost.)
+    # ones' cost. A cache hit estimates avoided cost but is not fresh spend.
     app, db, provider = setup_app(role=UserRole.ADMIN)
     add_eligible(db, email="a@x.com", raw_hash="h1")
     add_eligible(db, email="b@x.com", raw_hash="h2")
@@ -576,8 +575,7 @@ async def test_member_can_override_status() -> None:
 
 @pytest.mark.anyio
 async def test_status_overrides_are_scoped_to_the_current_member() -> None:
-    """One member's status override is invisible to another — the endpoint analogue of the
-    per-member override isolation (M15 1c). A member overriding an applicant ineligible must
+    """One member's status override is invisible to another. An ineligible override must
     not change what anyone else sees; the other member still reads the machine verdict and can
     hold the opposite override on the same applicant at the same time."""
     app, db, _ = setup_app(role=UserRole.MEMBER)

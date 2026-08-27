@@ -118,7 +118,7 @@
      box looks roomy. appearance:none reclaims that space for the text. */
   appearance: none;
   -webkit-appearance: none;
-  /* Fill the space left on the controls row after the (now condensed) filter groups, growing
+  /* Fill the space left on the controls row after the filter groups, growing
      into it. min-width holds the placeholder ("Search by name / email") so it never shrinks to
      an unusable sliver — because flex-wrap respects min-width, hitting that floor makes the
      field WRAP to its own full-width line instead of clipping. Best of both: inline+roomy when
@@ -203,7 +203,7 @@
   background: var(--penta-green-soft);
 }
 
-/* The applicant-name cell (now the second cell — a star column leads the row). */
+/* Applicant-name cell following the star column. */
 .clickable-row td.applicant-cell {
   font-weight: 600;
   color: var(--penta-green-dark);
@@ -444,10 +444,7 @@
   border-left: 0;
 }
 
-/* Filter-row segments are a compact use of the segmented control (vs the detail page's
-   status override): match the old filter pills' lighter weight + size so they don't eat
-   the row width the search needs. Scoped to .app-controls, so the detail control is
-   unaffected. */
+/* Keep filter-row segments compact so search retains enough width. */
 .app-controls .segment {
   min-height: 30px;
   padding: 0 0.6rem;

@@ -6,9 +6,7 @@ STAYS in Ignore across re-ranks (a recent Ignore beats an older working placemen
 while a key that genuinely faded from the pool and returns restores to its last-seen
 tier + the revived flag.
 
-These pin the fix for the bug where an all-Ignore board silently resurrected
-dimensions into their old working tiers on the next re-rank (Ignore was modelled as
-absence, so an older Critical placement won).
+An all-Ignore board must therefore remain all-Ignore after a re-rank.
 """
 
 from __future__ import annotations

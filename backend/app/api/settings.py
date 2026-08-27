@@ -143,8 +143,8 @@ def reset_eligibility_rules(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> EligibilityRulesResponse:
-    """Reset this member to the committee default — drop their copy-on-write divergence (M15
-    1f). Idempotent: a no-op if they never diverged. Returns the now-effective rules, which
+    """Reset this member to the committee default. Idempotent if they never diverged.
+    Returns the now-effective rules, which
     are the committee default (``is_default`` True)."""
     reset_member_rules(db, user.id)
     return EligibilityRulesResponse(rules=committee_default_rules(db), is_default=True)
@@ -157,7 +157,7 @@ def read_committee_default_rules(
 ) -> EligibilityRules:
     """The shared committee-default rules. Any member may read it — it's the baseline they
     follow until they diverge, and the Eligibility Settings page shows it as the "compared to
-    committee default" reference (M15 1f lazy divergence diff)."""
+    committee default" reference."""
     return committee_default_rules(db)
 
 
@@ -167,7 +167,7 @@ def update_committee_default_rules(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> EligibilityRules:
-    """Admin-gated edit of the shared committee-default rules (M15 1f). Editing the default has
+    """Admin-gated edit of the shared committee-default rules. Editing the default has
     ZERO side effects on member rows (Model A — no reconciliation, no write-fanout): a diverged
     member keeps their own rules until they reset; every non-diverged member reads the new
     default on their next read."""

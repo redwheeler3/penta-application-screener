@@ -174,14 +174,14 @@ def fan_out_audit_view(analysis: Analysis) -> dict | None:
     (single-discovery runs have no ``analysis.audit.fan_out``, or an older shape).
 
     Returns ``{k, passes: [{dimensions: [{key,name,definition,why...}], narrative}]}``.
-    Older audits stored ``reports`` without per-pass narratives; those are tolerated
-    (narrative comes back null) so the panel still renders their dimensions. Any extra
+    The stored audit may contain ``reports`` without per-pass narratives; those return a
+    null narrative so the panel can still render their dimensions. Any extra
     keys in a stored report are ignored — only the fields above are projected.
     """
     audit = analysis.audit.fan_out if analysis.audit else None
     if not audit:
         return None
-    # Current shape: passes = [{report, narrative}]. Legacy shape: reports = [report].
+    # Prefer per-pass narratives; tolerate report-only stored audits.
     raw_passes = audit.get("passes")
     if raw_passes is None:
         raw_passes = [{"report": r, "narrative": None} for r in audit.get("reports", [])]

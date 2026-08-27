@@ -1,8 +1,7 @@
 """Read committee-facing content from stored application answers.
 
-Built-in applications store essays under a stable nested schema. Rows retained from the
-pre-M21 intake system keep their original question headings, so this reader supports both
-stored shapes until those records reach retention. It does not import or mutate source data.
+Built-in applications use a nested essay schema; retained imported rows use their original
+question headings. This reader supports both stored shapes without mutating source data.
 """
 
 from typing import Any

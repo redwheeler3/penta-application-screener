@@ -218,18 +218,17 @@ def last_run(
         result = dict(newest.result or {})
         model = result_model(result)
         reasoning_effort = result_reasoning_effort(result)
-        # Only merge cases whose key still exists in the pass's current golden set, so a merged
-        # historical run can't resurrect a since-renamed/removed case (which would inflate the
-        # count past the dots). None ⇒ this key has no editable case set; keep all.
+        # Only merge cases still present in the current golden set. None means this key has
+        # no editable case set, so retain every stored case.
         keys_now = live_case_keys(key)
         merged: dict[str, dict] = {}
         for row in rows:
             if (row.prompt_version or "") != (newest.prompt_version or ""):
-                break  # older prompt version — don't mix it into the accumulation
+                break  # a different prompt version is a different system
             if result_model(row.result) != model:
-                break  # older model — its cases did not exercise the same system
+                break  # a different model is a different system
             if result_reasoning_effort(row.result) != reasoning_effort:
-                break  # older reasoning configuration is a different system
+                break  # a different reasoning configuration is a different system
             for case in (row.result or {}).get("cases", []):
                 if not (isinstance(case, dict) and "key" in case) or case["key"] in merged:
                     continue

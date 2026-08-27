@@ -131,7 +131,7 @@ function chipTintClass(badge: ChipBadge, requested?: boolean): string {
 }
 
 // A dimension's badge kind from the flag sets. Revived (seen before, back after a gap)
-// takes the label over plain new; both now show in any tier. Shared by the in-place chip
+// takes the label over plain new. Shared by the in-place chip
 // and the drag overlay so the floating copy keeps its badge while dragging.
 function badgeFor(key: string, newKeys: Set<string>, revivedKeys: Set<string>): ChipBadge {
   if (revivedKeys.has(key)) return "revived";
@@ -157,9 +157,8 @@ function ChipBody(props: {
   );
 }
 
-// An interactive dimension chip: the ONE place a criterion lives now (the separate
-// criteria cloud is gone). The WHOLE chip is draggable (as it was originally); a
-// plain click — which the drag sensor's 4px activation distance lets through without
+// An interactive, draggable criterion chip. A plain click, which the drag sensor's
+// 4px activation distance lets through without
 // starting a drag — opens its description. Picking it up to drag also opens the
 // description (see handleDragStart). Placing it in any working tier keeps it across
 // re-runs (Ignore is the only droppable bucket). While dragging, the original is
@@ -278,10 +277,7 @@ function TierRow(props: {
             <span className="tier-empty">Drag criteria here</span>
           ) : (
             sortedKeys.map((key) => {
-              // Badge from the flag sets. Both show in ANY tier (not gated to Ignore): a
-              // flag now rides until the member dismisses it with the ✕ or the next Rank
-              // recomputes it — moving a chip no longer clears it, so all three badges
-              // (new/revived/requested) behave alike.
+              // Badges persist across tier moves until dismissal or the next Rank.
               const badge = badgeFor(key, props.newKeys, props.revivedKeys);
               const requested = props.requestedKeys.has(key);
               return (
@@ -396,9 +392,7 @@ export function TierList(props: {
   const ignore = tiers.find((t) => t.ignore);
   const activeLabel = activeKey ? props.labelFor(activeKey) : null;
 
-  // Every flagged dimension, across ALL tiers — not just Ignore. Flags (new OR revived)
-  // now surface in whatever tier carry-forward placed them, so the bulk "clear all"
-  // acts on the whole layout, not one row. props.newKeys is the full flagged set;
+  // Bulk acknowledgement covers flagged dimensions in every tier. props.newKeys is the full set;
   // revived is a subset, so this covers both badge kinds wherever they sit.
   const flaggedKeys = tiers.flatMap((t) => t.dimensionKeys.filter((k) => props.newKeys.has(k)));
 

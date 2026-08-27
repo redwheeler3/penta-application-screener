@@ -1,4 +1,4 @@
-"""Response shapes for the Observability tab's run-level observability (M13)."""
+"""Response shapes for the Observability tab's run-level data."""
 
 from app.schemas.base import ResponseModel
 
@@ -75,10 +75,9 @@ class LastRunCost(ResponseModel):
     fresh_usd: float
     cached_saved_usd: float
     # The pre-run projection shown at the confirmation card, for estimate-vs-actual
-    # reconciliation. 0.0 on runs recorded before this was captured (renders as "—").
+    # reconciliation. 0.0 means unavailable and renders as "—".
     estimated_usd: float
-    # The member who triggered this shared run (M15 Phase 4). None on pre-Phase-4 runs or a
-    # since-removed member — the UI omits the stamp then. Attribution only; runs stay shared.
+    # The member who triggered this shared run. None when unknown or no longer present.
     triggered_by: str | None = None
     passes: list[LastRunPass]
 
@@ -92,7 +91,7 @@ class LastRunsReport(ResponseModel):
     rank_scores: LastRunCost | None = None
 
 
-# --- Operational metrics / trends (M13 Pillar 3) ------------------------------------
+# --- Operational metrics / trends ----------------------------------------------------
 
 
 class TrendPoint(ResponseModel):
@@ -129,8 +128,8 @@ class PassTrendPoint(ResponseModel):
 
 
 class MetricsReport(ResponseModel):
-    """GET /observability/metrics — operational trends across all completed runs
-    (M13 Pillar 3). ``runs`` is the per-run rollup (both kinds, oldest→newest);
+    """GET /observability/metrics — operational trends across all completed runs.
+    ``runs`` is the per-run rollup (both kinds, oldest→newest);
     ``passes`` is the flattened per-(run, pass) series for the per-pass breakdown.
     Empty lists when no run has completed since ledgering began."""
 

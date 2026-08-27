@@ -5,16 +5,8 @@ import { useFetchResource } from "../../hooks/useFetchResource";
 import type { MatchAuditResponse } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
-// The reuse audit for the current run. Surfaces the
-// settled dimensions (post-decomposition, pre key-adoption), how the match pass mapped
-// each onto a prior-run dimension it reuses, and the derived reuse rate. Under the fan-out
-// redesign a high rate is EXPECTED (the dimension set has stabilised); the audit's real
-// job is letting a human eyeball individual matches for a wrong mapping, without a
-// SQLite spelunk.
-//
-// Self-fetches on mount. Rendered as the active Observability subtab, so an absent audit
-// (a first run, or a run from before capture) shows an explicit empty state rather
-// than vanishing — "nothing carried forward" is information, not a broken panel.
+// Show how settled dimensions map onto prior dimensions. A high reuse rate is expected;
+// individual incorrect mappings are the actionable signal.
 export function MatchAuditPanel(): ReactNode {
   const { data: audit, state, reload } = useFetchResource(fetchMatchAudit);
 
@@ -35,11 +27,8 @@ function MatchAuditBody(props: { audit: MatchAuditResponse }): ReactNode {
   const { audit } = props;
   const firstRun = audit.priorDimensionCount === 0;
   const rate = audit.carryForwardRate;
-  // No alarm colouring on the rate: under the fan-out redesign a HIGH reuse rate is
-  // expected and good — it means the settled dimension set has stabilised run-to-run
-  // (and re-ranks stay cheap, reusing tiers + scores). The thing that would signal
-  // over-matching is a WRONG match — visible in the table/narrative below, not in the
-  // aggregate rate, which can't tell "correctly stable" from "wrongly matched".
+  // The aggregate rate cannot distinguish stable reuse from an incorrect match, so it
+  // deliberately has no alarm colour; inspect individual mappings instead.
 
   // New dimensions first: the actionable rows (scored from scratch this run) are the
   // few worth reading; reused rows follow. Stable sort preserves discovery order within

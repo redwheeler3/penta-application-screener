@@ -99,8 +99,8 @@ def current_match_audit(
     db: Session = Depends(get_db),
 ) -> MatchAuditResponse | None:
     """The current analysis's carry-forward audit — what discovery emitted, how the match
-    pass mapped it onto prior dimensions, and the derived carry-forward rate (M13
-    per-run AI legibility). Null when no analysis exists or it predates the capture.
+    pass mapped it onto prior dimensions, and the derived carry-forward rate. Null when
+    no analysis or audit exists.
     """
     analysis = get_current_analysis(db)
     if analysis is None:
@@ -118,8 +118,7 @@ def current_decompose_audit(
 ) -> DecomposeAuditResponse | None:
     """The current analysis's decomposition audit — how the K fan-out discovery reports were
     settled into one non-overlapping set: each settled axis's source keys + merge/keep
-    reasoning, the settle-down counts, and the D9 folded-committee-request trail. Null on
-    analyses that predate the fan-out redesign (single-discovery runs).
+    reasoning, settle-down counts, and folded committee requests. Null when no audit exists.
     """
     analysis = get_current_analysis(db)
     if analysis is None:
@@ -137,7 +136,7 @@ def current_consolidate_audit(
 ) -> ConsolidateAuditResponse | None:
     """The current analysis's consolidation audit — the post-score duplicate-merge pass:
     which correlated pairs were nominated and, per pair, whether the confirm call merged
-    them (with its reasoning). Null on analyses that predate the pass.
+    them (with its reasoning). Null when no audit exists.
     """
     analysis = get_current_analysis(db)
     if analysis is None:
@@ -155,7 +154,7 @@ def current_fan_out_audit(
 ) -> FanOutAuditResponse | None:
     """The current analysis's fan-out audit — each of the K parallel discoverers' dimensions
     + reasoning, so the discovery panel can show every discoverer, not just the one that
-    streamed live. Null on analyses that predate the fan-out redesign.
+    streamed live. Null when no audit exists.
     """
     analysis = get_current_analysis(db)
     if analysis is None:

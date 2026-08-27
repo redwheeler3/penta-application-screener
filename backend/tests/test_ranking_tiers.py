@@ -319,11 +319,7 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
 
 @pytest.mark.anyio
 async def test_dropped_prior_dimension_is_not_revived() -> None:
-    """Reconcile was REMOVED in the fan-out redesign (SPEC D2/D8): a prior dimension the
-    latest discovery drops is NOT dragged back. A valued axis that still varies is
-    expected to re-surface in one of the K fresh discoveries and survive the
-    decomposition, not be revived from history by a separate pass. So a dropped prior
-    stays gone."""
+    """A prior dimension omitted by discovery stays absent unless explicitly kept."""
     app, db, provider = setup_app(role=UserRole.ADMIN)
     add_eligible(db, email="a@x.com", raw_hash="h1")
 
@@ -350,7 +346,7 @@ async def test_dropped_prior_dimension_is_not_revived() -> None:
 
         # Run 2 (pool changes): discovery returns ONLY participation_commitment —
         # skills_offered dropped out. Match maps participation_commitment to its prior
-        # key; skills_offered is the dropped prior. With reconcile disabled it stays gone.
+        # key; skills_offered stays gone because it was not kept.
         # route_criteria re-routes BOTH discovery and the decomposition (a pass-through of
         # the same single dim), overriding run 1's routes so the run-2 settled set is
         # participation-only.
@@ -454,9 +450,7 @@ async def test_three_run_gap_flags_dimension_as_revived_not_new() -> None:
         current2 = (await client.get("/ranking/current")).json()
         assert "skills_offered" not in {d["key"] for d in current2["dimensions"]}
 
-        # Run 3 (pool changes again): DISCOVERY itself re-surfaces skills_offered after
-        # the gap (the fan-out route to revival now that reconcile is gone — a fresh
-        # discovery names it again). The "revived" badge is presence-driven and route-
+        # Run 3: discovery re-surfaces skills_offered after the gap. The badge is presence-driven and route-
         # agnostic: seen in run 1, absent run 2, back run 3 → revived, not new.
         add_eligible(db, email="c@x.com", raw_hash="h3")
         route_criteria(provider, a_pattern_report())  # both dims — skills_offered returns
@@ -532,5 +526,3 @@ async def test_tiers_before_run_is_409() -> None:
         assert (
             await client.put("/ranking/tiers", json={"analysisId": 1, "tiers": []})
         ).status_code == 409
-
-

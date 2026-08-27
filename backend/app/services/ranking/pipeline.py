@@ -190,8 +190,7 @@ def _stream_criteria(
     # Capture prior state before discovery. Matching looks across ALL prior analyses (shared
     # dimension history); tier carry-forward looks across the TRIGGERING member's prior
     # rankings — a concept that fell out and re-surfaces should re-adopt its existing key
-    # (reusing its cached scores) and restore THAT member's last tier placement. See SPEC
-    # "Matching scope".
+    # (reusing its cached scores) and restore that member's last tier placement.
     prior_analysis = get_current_analysis(db)
     prior_report = current_dimension_report(prior_analysis) if prior_analysis else None
     match_history = all_known_dimensions(db)  # every dimension ever, one per key
@@ -200,8 +199,8 @@ def _stream_criteria(
     # the committee's view (never flagged); one absent-then-present is a presence
     # gap to flag (new or revived). See carry_forward_layout.
     immediately_prior_keys = {d.key for d in prior_report.dimensions} if prior_report else set()
-    # Committee asks split by what each needs (SPEC "Fan-Out Redesign", committee-axis
-    # injection). PROPOSALS are untested free-text hypotheses → seeded into discovery
+    # Committee asks split by what each needs. Proposals are untested free-text hypotheses,
+    # so they are seeded into discovery
     # (worker 0 only) so it grounds them in the pool and gates on variance. KEPT axes
     # (those the committee placed in a working tier) are prior dimensions already
     # grounded + scored → injected at DECOMPOSITION, not discovery, so all K
@@ -234,8 +233,8 @@ def _stream_criteria(
     durations: dict[str, int] = {}
 
     def run_criteria_passes(put: Callable[[str | _Stage], None]) -> _CriteriaWork:
-            # Pass 1: K-parallel fresh-context re-discovery (SPEC "Fan-Out
-            # Redesign", D6), blind except for the committee's seeds. The K reports'
+            # Pass 1: K-parallel fresh-context discovery, blind except for committee seeds.
+            # The K reports'
             # cross-call variation is the diversity the decomposition step (pass 1b)
             # settles — measured to buy +36% real coverage vs. a single run (see the
             # coverage gate). All K are persisted as an audit trail.
@@ -468,7 +467,7 @@ def _stream_consolidate(
     db: Session, provider: AIProvider, settings: AppSettings,
     analysis: Analysis, member_ranking: MemberRanking, report: PoolDimensionReport,
 ) -> Generator[str, None, tuple[Consolidation, int]]:
-    """Phase 2b — consolidate duplicate dimensions (SPEC "Post-score consolidation").
+    """Phase 2b — consolidate duplicate dimensions.
     Now that every dimension is scored, score-vector correlation can nominate duplicates
     the definition-only match pass missed; one LLM call confirms by definition and merges
     genuine duplicates (loser aliased to the older key, which heals the fork on future

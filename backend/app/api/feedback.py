@@ -4,7 +4,7 @@ The write route is open to every member — it's their channel to flag friction.
 are admin-only because the free text is potentially sensitive (a member may paste
 applicant specifics). Identity, app version, and time are stamped server-side, never
 taken from the request body, so a feedback row is always attributable to a real member
-and build. (M15 "Future UX Enhancements" #2.)
+and build.
 """
 
 from fastapi import APIRouter, Depends, Query

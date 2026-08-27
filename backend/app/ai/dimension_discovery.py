@@ -1,8 +1,6 @@
-"""Pattern discovery: the pool-level pass that finds how THIS applicant pool varies
-(SPEC "Pattern Discovery And Dimension Scoring").
+"""Pool-level pattern discovery finds how this applicant pool varies.
 
-K parallel synthesis calls over the whole eligible pool (``discover_patterns_fanout``,
-SPEC "Fan-Out Redesign"), producing run-scoped output (the differentiating dimensions),
+K parallel synthesis calls over the whole eligible pool produce run-scoped dimensions,
 so it bypasses the ``screen_applications`` engine and the per-application cache. Each
 reads every candidate's structured facts plus their raw essays, on the synthesis model.
 K=1 is a single call; the K reports' cross-call variation is the diversity a later
@@ -37,15 +35,14 @@ class DiscoverySeeds:
     each in the applicants' own words, sharpen it into a measurable axis, and apply
     the pool-variance gate (omit it if the pool genuinely doesn't vary on it). The
     model flags each dimension it creates from a proposal with
-    ``from_committee_request`` so the D9 backstop guarantees it survives decomposition.
+    ``from_committee_request`` so it survives decomposition.
 
     Only proposals ride here. KEPT axes are NOT seeded into discovery: a kept axis
     is a prior dimension (one the committee tiered) that already has a pool-grounded
     definition and cached scores, so it needs a *guarantee it stays on the table*, not
     re-discovery. It is injected at the decomposition step instead (see
     ``dimension_decomposition``), which keeps all K discoverers blind — seeding all K on the
-    same axes would correlate the samples and dent the coverage the fan-out exists to buy
-    (SPEC "Fan-Out Redesign", committee-axis injection).
+    same axes would correlate the samples and reduce discovery coverage.
     """
 
     proposed: list[str] = field(default_factory=list)
@@ -144,8 +141,7 @@ _DISCOVERY_OUTPUT_TOKENS = 4900
 
 # A discovery call is the same heavy pool-wide synthesis as decomposition, and under the
 # K-parallel fan-out several run at once — so it needs the same headroom over the
-# provider's 120s default, not the default. A real run timed out at 120s here (2026-07-16);
-# decomposition already raises its own (DECOMPOSE_READ_TIMEOUT). Kept per-pass, not global,
+# provider's 120s default. Decomposition has the same per-pass allowance. Kept local, not global,
 # so the per-applicant passes keep the tight default.
 DISCOVERY_READ_TIMEOUT = 600
 
@@ -200,7 +196,7 @@ class DiscoveryPass:
 
 @dataclass(frozen=True)
 class FanOutDiscovery:
-    """The result of K parallel discovery calls (SPEC "Fan-Out Redesign", D6).
+    """The result of K parallel discovery calls.
 
     ``passes`` are the K fresh-context discoveries (report + its narrative) whose
     cross-call variation is the diversity a later decomposition step pares to the finest
@@ -243,13 +239,13 @@ def discover_patterns_fanout(
     the same axes would correlate the samples and dent the coverage the fan-out exists
     to buy. So worker 0 grounds the proposal; workers 1..K-1 stay blind, preserving
     K-1 independent samples. (Kept axes don't come through here at all — they inject
-    at decomposition; see ``DiscoverySeeds`` and the redesign notes.)
+    at decomposition; see ``DiscoverySeeds``.)
 
     ``k`` ≥ 1; k=1 is a single call (degenerate fan-out) and, being worker 0, still
     grounds any proposal. ``on_delta`` streams only the first call's reasoning as the
     live "thinking"; the rest are silent to keep the stream coherent.
 
-    **Partial-failure tolerant (2026-07-16):** the fan-out is redundant by design —
+    The fan-out is partial-failure tolerant: its calls are redundant, so
     decomposition settles however many reports come back — so a worker that raises
     (e.g. a Bedrock read timeout under parallel load) is collected, not propagated, and
     the run proceeds on the survivors with ``failed_count`` set. Only when ALL K fail is

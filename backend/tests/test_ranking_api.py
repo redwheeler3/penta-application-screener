@@ -252,10 +252,7 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
 
 @pytest.mark.anyio
 async def test_cost_surfaces_agree_on_rank_passes() -> None:
-    # Drift guard: the two cost surfaces read from different stores (cumulative from
-    # RankingRun/ApplicationAIResult, last-run from the ledger) and are easy to update
-    # in one but not the other — the bug that once let consolidation show in last-run
-    # but not cumulative. After a real Rank, both must cover exactly RANK_PASS_LABELS.
+    # Both cost surfaces must cover the same pass labels despite reading different stores.
     app, db, provider = setup_app(role=UserRole.MEMBER)
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
@@ -277,8 +274,7 @@ async def test_cost_surfaces_agree_on_rank_passes() -> None:
 
 @pytest.mark.anyio
 async def test_observability_metrics_trends_after_a_rank() -> None:
-    # Pillar 3: after a Rank, the metrics endpoint reports a per-run trend point with
-    # captured latency, the live dimension count, and a per-pass breakdown.
+    # Metrics include run latency, live dimensions, and a per-pass breakdown.
     app, db, provider = setup_app(role=UserRole.MEMBER)
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
@@ -401,11 +397,8 @@ async def test_rank_criteria_failure_aborts_before_scoring() -> None:
 
 @pytest.mark.anyio
 async def test_rank_runs_k_parallel_discoveries_and_persists_reports() -> None:
-    # Fan-Out Redesign Phase 2: a Rank runs K (default 4) parallel discovery calls and
-    # persists all K raw reports under criteria.fan_out_audit — the input Phase 3's
-    # decomposition step consumes. MockProvider returns the routed report for every
-    # discovery call (same prompt), so we verify the COUNT and persistence here;
-    # cross-call diversity needs real Bedrock (the Phase 3 bake-off).
+    # Rank persists every parallel discovery report for decomposition and audit. The mock
+    # verifies call count and persistence; cross-call diversity requires a real model.
     from app.schemas.settings import AISettings
     from app.services.ranking.analysis import get_current_analysis
 

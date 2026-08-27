@@ -115,10 +115,8 @@ def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
     # actually runs on — a cache row's key includes the model. These are separate
     # settings now, so don't share one variable across passes.
 
-    # Screening's version is a pure function of the prompt text (M15 1e: pets left the
-    # prompt for a deterministic per-member filter), so pet-limit changes no longer drop
-    # Screen coverage — they're a hard-filter change, judged on read. Only a prompt/model
-    # change shows Screen out of date now.
+    # Screening freshness depends only on its prompt and model. Pet limits are evaluated
+    # deterministically on read and therefore do not invalidate screening coverage.
     screening_apps = screening_scope(db)
     screening_keys = {
         app.id: cache_key(

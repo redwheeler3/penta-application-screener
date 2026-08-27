@@ -1,9 +1,9 @@
-"""Structural guard + plumbing test for the live screening eval (M13).
+"""Structural guard and plumbing tests for the live screening eval.
 
 The live eval makes real model calls (opt-in, not CI). These are the cheap CI half: the
 golden fixture loads and is well-formed, and run_case grades the produced flag categories
 per-case (expected fires present, guarded categories absent, clean applicants flag-free) plus
-the extracted pet facts (M15 1e). A MockProvider stands in for Bedrock.
+the extracted pet facts. A MockProvider stands in for Bedrock.
 """
 
 from app.ai.mock_provider import MockProvider
@@ -84,7 +84,7 @@ def test_clean_case_fails_on_any_flag() -> None:
 
 
 def test_pet_extraction_case_grades_facts_not_flags() -> None:
-    """A pet case grades the EXTRACTED inventory (M15 1e): correct counts pass even with no
+    """A pet case grades the extracted inventory: correct counts pass even with no
     flag; wrong counts fail even with the right flags absent."""
     case = next(c for c in load_cases() if c.expected_pets is not None)
     expected = PetFacts(

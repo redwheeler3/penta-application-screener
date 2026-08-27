@@ -30,7 +30,7 @@ class ScreeningFlag(BaseModel):
 
 class PetFacts(BaseModel):
     """Neutral pet COUNTS extracted from the free-text pets field — a fact the model can
-    ground, never a policy verdict (M15 1e). The pet limits are per-member, so the model
+    ground, never a policy verdict. The pet limits are per-member, so the model
     must NOT judge whether the household is within policy; it only reports what animals are
     present. A deterministic per-member hard filter (``evaluate_hard_filters``) decides
     pass/fail from these counts + that member's limits. Absence of pets is 0/0/[], not a
@@ -64,7 +64,7 @@ class ScreeningReport(BaseModel):
 
     Empty ``flags`` means the integrity pass found nothing of concern; flags are never
     disqualifying — they only surface things for the screener to review. ``pets`` carries the
-    neutral pet inventory the per-member pet hard filter reads (M15 1e); it is a fact, not a
+    neutral pet inventory the per-member pet hard filter reads; it is a fact, not a
     verdict — pet eligibility is decided deterministically per member, not here.
     """
 
@@ -303,7 +303,7 @@ class ConsolidationReport(BaseModel):
     )
 
 
-# --- Fan-out decomposition (SPEC "Fan-Out Redesign", Phase 3) ----------------
+# --- Parallel discovery decomposition ---------------------------------------
 #
 # K parallel discovery calls produce K reports that carve the same pool at
 # different, overlapping granularities. The decomposition step sees all K at once
@@ -383,8 +383,8 @@ class DecomposedDimension(BaseModel):
 
 
 class DecompositionReport(BaseModel):
-    """The settled, finest-non-overlapping dimension set distilled from K discovery
-    reports (SPEC "Fan-Out Redesign", Phase 3), with the reasoning behind every merge.
+    """The finest non-overlapping dimension set distilled from K discovery reports,
+    with the reasoning behind every merge.
 
     Every input dimension key across the K reports MUST appear in exactly one settled
     dimension's ``source_keys`` — nothing is silently dropped; a genuinely redundant

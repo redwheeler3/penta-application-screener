@@ -190,9 +190,7 @@ def test_adopt_matched_keys_collapses_two_twins_onto_one_prior() -> None:
 
 
 def test_match_dimensions_allows_many_new_onto_one_prior() -> None:
-    # The sanitizer keeps several new->same-old pairs (a re-carved prior axis), dropping
-    # only a repeated NEW key or an unknown key. (Previously it forced strict one-to-one,
-    # silently discarding the second twin -> a double-counted concept downstream.)
+    # Several new keys may map to the same prior axis; only duplicate new or unknown keys drop.
     from unittest.mock import MagicMock
 
     from app.ai.dimension_matching import match_dimensions
@@ -333,4 +331,3 @@ def test_settled_why_is_carried_from_source_not_decomposer() -> None:
     dim = out.dimensions[0]
     # The primary source's real why is carried forward — NOT an empty/decomposer string.
     assert dim.why_it_differentiates == "Applicants range from eager volunteers to vague."
-

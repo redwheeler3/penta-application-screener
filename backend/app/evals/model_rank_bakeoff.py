@@ -1,4 +1,4 @@
-"""Run one full synthetic Rank on an isolated copy of the local database for M20."""
+"""Run one full synthetic Rank on an isolated copy of the local database."""
 
 from __future__ import annotations
 

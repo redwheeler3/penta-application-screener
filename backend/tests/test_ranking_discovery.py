@@ -311,8 +311,7 @@ async def test_match_audit_first_run_has_null_carry_forward_rate() -> None:
 @pytest.mark.anyio
 async def test_match_audit_reports_carry_forward_rate_on_rerun() -> None:
     # On a re-run the match pass maps one of two new dimensions onto a prior one,
-    # so the carry-forward rate is 1/2 and the audit exposes the raw discovery keys
-    # and the new->old map — the over-matching signal M13 exists to surface.
+    # so the carry-forward rate is 1/2 and the audit exposes the raw keys and match map.
     app, db, provider = setup_app(role=UserRole.MEMBER)
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)

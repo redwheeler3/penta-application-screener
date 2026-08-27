@@ -1,8 +1,7 @@
-"""Operational-metrics trends for the Observability tab (M13 Pillar 3).
+"""Operational-metrics trends for the Observability tab.
 
 Every completed run persisted a ``RunCostLedger`` + child ``RunPassCost`` rows (see
-``cost_report``). Pillar 1 reads those for *spend*; this reads the same rows for
-*operational trends over runs* — cost, tokens, latency, cache-hit rate, and failure
+``cost_report``). This module reads those rows for cost, tokens, latency, cache-hit rate, and failure
 counts per run and per pass, plus dimension-count-over-time for Rank. Pure aggregation:
 no new capture beyond the ``duration_ms``/``failed_calls`` columns the passes already
 record. Also the surface a later LLM-judge score would accrue on.

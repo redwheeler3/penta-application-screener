@@ -1,6 +1,5 @@
-"""Dimension identity matching: map a freshly-discovered dimension set onto the
-prior run's, so tier placements and cached scores carry forward across a re-rank
-(SPEC "Tier Carry-Forward On Re-Rank").
+"""Map freshly discovered dimensions onto prior ones so tier placements and cached
+scores carry forward across a re-rank.
 
 Discovery re-discovers dimensions *blind*; this pass then answers a narrow identity
 question: which new dimension is the same concept as which old one? It recognizes

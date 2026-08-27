@@ -8,7 +8,7 @@ completed run. That single table is the source for both cost surfaces here:
   - **last-run** — the most recent Screen, full Rank, and score-current update, each
     pass's fresh-vs-cached split.
 
-Both are exact and now carry a token + model breakdown, because the ledger is written as
+Both are exact and carry a token and model breakdown because the ledger is written as
 each run completes (the only point the fresh/cached split is known) — ``ApplicationAIResult``
 is a reuse cache with no run-id stamp, so per-run cost can't be reconstructed from it
 after the fact. (This is unrelated to the spending cap, which bounds each individual run
@@ -193,10 +193,7 @@ def _last_run(db: Session, kind: str) -> LastRunCost | None:
         fresh_usd=round(sum(p.fresh_usd for p in passes), 6),
         cached_saved_usd=round(sum(p.cached_saved_usd for p in passes), 6),
         estimated_usd=round(row.estimated_usd, 6),
-        # The email of the member who kicked off this shared run. None on pre-Phase-4 rows or
-        # when the member was since removed (the relationship resolves to None) — the UI omits
-        # the stamp rather than showing a placeholder. Observability stays committee-wide; this
-        # is attribution, not scoping.
+        # Attribution only; omit the stamp when the member relationship is unavailable.
         triggered_by=row.triggered_by.email if row.triggered_by else None,
         passes=passes,
     )

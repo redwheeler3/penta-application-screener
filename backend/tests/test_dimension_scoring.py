@@ -1,4 +1,4 @@
-"""Unit tests for per-dimension dimension scoring (M9 carry-forward Phase 4).
+"""Unit tests for per-dimension scoring.
 
 Scores are cached per (candidate, dimension key); a candidate's uncached
 dimensions are sent to the model in one batched call, stored as per-key rows, and
@@ -254,8 +254,7 @@ def test_persistently_omitted_dimension_fails_the_candidate_loudly() -> None:
 def test_ceiling_estimate_prices_per_candidate_call() -> None:
     # The pre-discovery estimate models one scoring CALL per candidate: a per-call
     # input (shared facts+essays, the fallback constant before a prompt exists) plus
-    # per-dimension output × the assumed dimension count. NOT a per-(candidate,
-    # dimension) input cost — that was the carry-forward-skew bug.
+    # per-dimension output × the assumed dimension count. Input is not charged per dimension.
     from app.ai.dimension_scoring_cost import (
         ASSUMED_DIMENSIONS_FIRST_RUN,
         SCORING_FALLBACK_INPUT_TOKENS_PER_CANDIDATE,
@@ -286,10 +285,7 @@ def test_ceiling_estimate_prices_per_candidate_call() -> None:
 
 
 def test_rerun_estimate_cache_aware_fallback_when_no_history() -> None:
-    # Regression for the cap-tripping bug. With a current run whose dimensions are all
-    # cached but NO cost-ledger history yet, the estimate falls back to the cache-aware
-    # count: fully-cached candidates cost 0, so it's far below the old whole-pool
-    # ceiling (which priced every candidate × every dim as if nothing were cached).
+    # Without ledger history, the estimate still respects current cache coverage.
     from app.ai.dimension_scoring_cost import (
         ASSUMED_DIMENSIONS_FIRST_RUN,
         _avg_output_tokens_per_dimension,
@@ -324,7 +320,7 @@ def test_rerun_estimate_cache_aware_fallback_when_no_history() -> None:
     assert est["cached"] == 2
     assert est["to_analyze"] == 0
     assert est["estimated_usd"] == 0.0
-    # And strictly below the old ceiling (every candidate × assumed dims, none cached).
+    # A whole-pool, no-cache ceiling would be strictly higher.
     out_per_dim = _avg_output_tokens_per_dimension(db, settings.ai.dimension_scoring_model)
     inp = _per_candidate_input_tokens(db, report)
     ceiling = cost_usd(
@@ -367,9 +363,7 @@ def test_rerun_estimate_prefers_measured_history() -> None:
 
 
 def test_estimate_is_recorded_and_surfaced_for_reconciliation() -> None:
-    # Pillar 1 reconciliation: the pre-run estimate passed to record_run_cost is stored on
-    # the ledger and surfaces on the last-run report next to the actual fresh spend, so
-    # estimate-vs-actual drift is visible after the fact.
+    # The ledger retains both the estimate and actual spend for reconciliation.
     from app.ai.pricing import PassCost
     from app.services.cost_report import last_runs_report, record_run_cost
 
@@ -387,7 +381,7 @@ def test_estimate_is_recorded_and_surfaced_for_reconciliation() -> None:
 
 
 def test_estimate_defaults_to_zero_when_not_provided() -> None:
-    # A record without an estimate (or a pre-capture run) reports 0.0 — the UI renders "—".
+    # A record without an estimate reports 0.0, which the UI renders as "—".
     from app.ai.pricing import PassCost
     from app.services.cost_report import last_runs_report, record_run_cost
 
@@ -398,8 +392,7 @@ def test_estimate_defaults_to_zero_when_not_provided() -> None:
 
 
 def test_triggering_member_is_recorded_and_surfaced() -> None:
-    # M15 Phase 4: the member who kicked off a shared run is stamped on the ledger and
-    # surfaces on the last-run report, so Observability can attribute the shared spend.
+    # Shared run spend is attributed to the member who started it.
     from app.ai.pricing import PassCost
     from app.services.cost_report import last_runs_report, record_run_cost
 

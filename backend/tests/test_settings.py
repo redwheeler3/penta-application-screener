@@ -27,10 +27,7 @@ def test_get_app_settings_returns_defaults_when_none_saved() -> None:
 
 
 def test_get_app_settings_ignores_pre_split_rule_keys() -> None:
-    """A stored app_settings blob written before the M15 rule split still carries keys that
-    have since moved off AppSettings — the numeric rules (income_min, etc.; moved in 1d) and
-    the pet limits (max_dogs, etc.; moved in 1e to committee_default_rules). Those old keys
-    must not break load — AppSettings ignores unknown keys."""
+    """Unknown keys in a stored app_settings blob do not break loading."""
     db = make_session()
     db.add(
         AdminSetting(
@@ -146,7 +143,7 @@ async def test_unconfigured_direct_provider_cannot_be_saved(monkeypatch) -> None
     assert response.json()["code"] == "ai_provider_not_configured"
 
 
-# --- Per-member eligibility rules (M15 1d) --------------------------------------------
+# --- Per-member eligibility rules -----------------------------------------------------
 
 
 def test_member_rules_defaults_to_committee_default_then_diverges() -> None:
@@ -248,7 +245,7 @@ async def test_put_eligibility_rules_rejects_inverted_income_range() -> None:
         assert resp.json()["code"] == "invalid_settings"
 
 
-# --- Committee-default edit + member reset (M15 1f) -----------------------------------
+# --- Committee-default edit and member reset ------------------------------------------
 
 
 @pytest.mark.anyio

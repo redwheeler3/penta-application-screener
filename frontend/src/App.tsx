@@ -445,10 +445,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
             ) : activeTab === "eligibilitySettings" ? (
               <EligibilitySettingsPanel onError={showError} onRulesUpdated={refreshEligibilityViews} />
             ) : activeTab === "adminSettings" && isAdmin ? (
-              // Never fall through to the Applications view when the admin tab is selected but
-              // settings haven't loaded — that silent mismatch (selected tab, wrong body) was a
-              // real cold-start bug. Show the panel once `draft` is ready, else a loading/error
-              // state that can retry the settings load in place.
+              // Keep the selected admin tab visible while settings load or fail.
               draft ? (
                 <AdminSettingsPanel
                   draft={draft}

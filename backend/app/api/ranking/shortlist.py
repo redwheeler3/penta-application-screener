@@ -9,8 +9,8 @@ re-sorted list in the same round-trip; seeds take effect on the next ``/ranking/
 Every endpoint here resolves the current shared ``Analysis`` plus the signed-in member's view
 of it (``get_or_create_member_ranking``), so a member sees and edits their own tiering over the
 shared dimensions. Tier/seed saves carry the viewed ``analysisId`` and are rejected with
-``409 stale_analysis`` if it isn't current (another member re-ranked since) — inert at one
-member, but keeps the contract honest for real concurrency (SPEC M15 1b).
+``409 stale_analysis`` if it isn't current, protecting concurrent members from writing to a
+superseded analysis.
 """
 
 from dataclasses import asdict

@@ -126,16 +126,11 @@ def test_restore_does_not_resurrect_a_retention_deletion(temp_engine):
 
 
 def test_in_memory_session_snapshot_is_a_noop_not_a_cwd_dump(tmp_path, monkeypatch):
-    # Regression: the auto post-Rank snapshot uses the request session's engine. The test
-    # suite binds an in-memory engine (:memory:), whose path used to resolve to
-    # <cwd>/:memory: — so backups_dir landed under backend/ and every rank test dumped a
-    # real backup there (50 leaked files from one afternoon). create_from_session must
-    # cleanly NO-OP (return None) for a non-file-backed DB, writing nothing.
+    # In-memory engines have no file to snapshot and must not create a backup directory.
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
 
-    # Run from a temp cwd so a regression (writing to <cwd>/backups) is caught here, not
-    # silently under the repo.
+    # A temporary cwd makes any accidental backup write observable to this test.
     monkeypatch.chdir(tmp_path)
     mem = create_engine("sqlite:///:memory:")
     with Session(mem) as session:

@@ -52,8 +52,7 @@ def create_analysis(
     There is no stored "kept" set: an axis is kept iff the member placed it in a working
     (non-Ignore) tier, and ``tier_layout`` already carries those placements forward across
     re-runs. ``kept_keys`` derives the set from the tiers at read time, so it can't drift.
-    Pending ``proposed_dimensions`` are consumed by the run, so the new view stores an empty
-    list (they are now real dimensions).
+    The run consumes pending ``proposed_dimensions``, so the new view starts with an empty list.
     """
     layout = tier_layout if tier_layout is not None else default_tier_layout()
     applications = committee_applications(db)
@@ -113,7 +112,7 @@ def apply_consolidation(
     narrative: str | None,
 ) -> Analysis:
     """Fold confirmed duplicate keys into their canonical key on an already-persisted
-    analysis (the post-score consolidation pass; SPEC "Post-score consolidation").
+    analysis during post-score consolidation.
 
     Consolidation is committee-wide: the model call ran once over the shared pool, so the
     merge is a fact about the shared ``analysis``. Two kinds of write happen here:
@@ -194,7 +193,7 @@ def apply_consolidation(
             report_dims.extend(mint_by_key[k].model_dump(mode="json") for k in resurfaced)
         report_json["dimensions"] = report_dims
 
-        # Placement is now the sole "keep" signal (and the weight source), so a merge
+        # Placement is the sole "keep" signal and weight source, so a merge
         # must carry the member's tier intent from the DROPPED twin to the survivor —
         # otherwise a "Critical" placement on the dropped key would silently vanish. The
         # survivor inherits the HIGHEST-priority working tier among the keys collapsing
@@ -298,23 +297,17 @@ def all_known_dimensions(db: Session) -> PoolDimensionReport | None:
 
     The match pass matches a fresh discovery against this whole history, not just the
     last run — so a concept that fell out of a run and re-surfaced is recognized and
-    RE-ADOPTS its existing key, instead of minting a new one. That keeps the distinct
+    re-adopts its existing key instead of minting a new one. That keeps the distinct
     key count converging on the true number of concepts (~20-25) rather than growing a
-    few per run, and (because the score cache is keyed by dimension key) lets those
-    re-adopted keys reuse their cached scores. See SPEC "Matching scope".
+    few per run and lets those keys reuse cached scores.
 
     **Key/text immutability invariant.** A key's descriptive text (definition, poles,
     why-it-differentiates) is FROZEN when the key is minted and never changes, because
     the score cache is keyed by key and every cached score was computed against that
     frozen text. Different text ⇒ a different key. So this returns each key's *own mint*
     definition (its earliest appearance), and a retired alias key NEVER donates its
-    wording to the canonical key it merged into: the canonical's text was frozen at its
-    own mint and its scores match THAT text, so overwriting it with a duplicate's
-    (differently-scoped) wording would silently divorce the definition from the scores.
-    (This bug did occur: a run-6 merge aliased a broad `hands_on_trade_skills` onto the
-    narrow-minted `licensed_trade_skills`; the donation made match+adopt carry the broad
-    text forward onto run-1's narrow scores. Freezing to the mint prevents it and
-    self-heals — the narrow mint is what the cached scores were computed against.)
+    wording to the canonical key it merged into: the canonical's text and cached scores
+    must remain aligned.
 
     Consolidation aliases are still resolved to their canonical key, so a key a prior run
     retired as a duplicate never re-enters the match target set — but only the canonical's

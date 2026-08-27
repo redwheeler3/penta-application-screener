@@ -1,5 +1,4 @@
-"""Screening: the informational AI integrity pass over eligible
-applications (SPEC "AI Screening (Integrity Flags)").
+"""The informational AI integrity pass over eligible applications.
 
 Flags are never disqualifying — they surface things a human screener should be aware
 of. Builds the per-application prompt and runs it via the shared engine.

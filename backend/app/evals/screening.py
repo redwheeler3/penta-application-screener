@@ -8,7 +8,7 @@ applicant (an exact slice of the pool), and the grade has two parts:
     e.g. fake_contact); ``absent`` = categories that must NOT (the OVER-REACH guards: flagging
     a benign thing is the costly error, since a flag gates eligibility — e.g. a child's
     differing surname must not raise internal_inconsistency).
-  - pets, when ``expected_pets`` is set (M15 1e): the EXTRACTED inventory must match (dogs/cats
+  - pets, when ``expected_pets`` is set: the extracted inventory must match (dogs/cats
     exact; each other-pet noun present). Pets are no longer a flag — the model extracts neutral
     facts and a deterministic per-member hard filter judges the limits downstream.
 A clean applicant (no fires/absent, no pets expectation) produces zero flags; any flag fails it.
@@ -59,7 +59,7 @@ class ScreeningCase:
     # for a genuine judgment call reasonable screeners split on (e.g. is a vapid-but-grammatical
     # essay a spam/minimal/ai_generated flag — expected here — or a weak-but-sincere answer?).
     contested: bool = False
-    # Expected EXTRACTED pet facts (M15 1e), or None to skip pet grading. When set, e.g.
+    # Expected extracted pet facts, or None to skip pet grading. When set, e.g.
     # {"dogs": 2, "cats": 1, "other_pets": ["rabbit"]}, the case grades the model's neutral
     # pet extraction — dogs/cats counted exactly, each expected other-pet noun present — NOT
     # any policy verdict (pets are no longer a flag; per-member limits are judged downstream).
@@ -132,7 +132,7 @@ def _screen(
     """Run the REAL screening prompt once and return ``(categories, pets, detail)``.
     ``categories`` are the produced flag categories (in order, duplicates kept — a pass may
     raise the same twice); ``pets`` is the extracted neutral inventory the case's pet-fact
-    grade checks (M15 1e); ``detail`` is the per-flag cited evidence + the extracted pets +
+    grade checks; ``detail`` is the per-flag cited evidence + the extracted pets +
     the model's own free-form reasoning (``result.narrative``) when it emits any — the only
     place the rationale for a flag it chose NOT to raise could appear, so a MISS is
     explainable, not just a flip. Shared by the graded run and stability."""
@@ -162,7 +162,7 @@ def _screen(
 def _check(case: ScreeningCase, categories: list[str], pets: PetFacts | None = None) -> list[str]:
     """Per-category grade: every ``fires`` requirement met, every ``absent`` gone, and for a
     clean case (no fires) NO flag at all — plus, when the case sets ``expected_pets``, the
-    extracted pet inventory matches (M15 1e). Returns human-readable failures.
+    extracted pet inventory matches. Returns human-readable failures.
 
     A ``fires`` entry is either a category string (that exact category must fire) OR a list of
     categories meaning "at least ONE of these must fire" — for a concern the model may

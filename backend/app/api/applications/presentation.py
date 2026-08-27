@@ -67,7 +67,7 @@ def serialize_summary(
     """One application as the signed-in member sees it. ``status``/``status_source``/``stale``
     are that member's effective view: their override if present, else the machine verdict
     computed from the current findings — where ``reasons`` are the deterministic hard-filter
-    reasons under THIS member's rules (computed on read, no longer stored)."""
+    reasons derived on read under this member's rules."""
     normalized = app.normalized or {}
     status, source = effective_status(
         override,
@@ -154,8 +154,7 @@ def serialize_detail(app: Application, db: Session, user: User) -> ApplicationDe
     # trusted screeners, and these just back the data the member already sees.
     rules_config = rules_config_for(db, user.id)
     flag_result = _latest_results(db, "screening", [app.id]).get(app.id)
-    # Muted categories are hidden AND non-gating for this member (1g Move 2): show only the
-    # active flags, and use them for the verdict.
+    # Active flags drive both the displayed findings and the member's verdict.
     flags = active_flags(
         (flag_result.output or {}).get("flags", []) if flag_result else None,
         rules_config.disabled_checks,

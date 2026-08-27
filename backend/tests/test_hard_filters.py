@@ -362,7 +362,7 @@ def test_disabled_rule_skips_filtered_out() -> None:
 
 
 
-# --- Pet policy (M15 1e) -----------------------------------------------------
+# --- Pet policy --------------------------------------------------------------
 #
 # Pets are the one hard filter whose input is NOT derived from `normalized`: the counts are
 # AI-extracted from the free-text pets field and passed in as `pet_facts` (see PetFacts).

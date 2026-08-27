@@ -1,4 +1,4 @@
-"""Structural guard for the live scoring eval's golden fixture (M13).
+"""Structural guard for the live scoring eval's golden fixture.
 
 The live eval itself (``app/evals/scoring.py``) makes real model calls, so it is an
 opt-in run, NOT part of CI. These tests are the cheap CI half: they confirm the golden
@@ -51,9 +51,7 @@ def _score(value: float, confidence: ScoreConfidence) -> DimensionScore:
 
 
 def test_confidence_any_of_accepts_either_and_rejects_others() -> None:
-    """A `"medium | high"` expectation accepts EITHER produced level (any-of, like screening's
-    fire groups) but still rejects a value outside the set — the fix for a `|` band that used to
-    be compared as one literal string (so it could never match)."""
+    """A `"medium | high"` expectation accepts either level and rejects values outside it."""
     from app.evals.scoring import _check_expectations
 
     expected = {"score_min": 0.2, "score_max": 0.7, "confidence": "medium | high"}
@@ -74,8 +72,7 @@ def test_confidence_single_value_still_exact() -> None:
 def test_run_case_narrates_score_to_the_sink() -> None:
     """The Evals tab shows a live "thinking" box; scoring one item is a tight structured_output
     call that emits no free-form reasoning, so run_case EMULATES the narration from the real
-    output. This pins that the score's grounding and the band-check outcome reach the sink (the
-    regression: an empty thinking box)."""
+    output. The score's grounding and band-check outcome must still reach the sink."""
     case = load_golden()[0]
     provider = MockProvider()
     provider.route(

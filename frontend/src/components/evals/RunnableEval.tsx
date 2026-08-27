@@ -465,7 +465,7 @@ function RestoredMarker(props: { run: LastEvalRun; totalCases: number }): ReactN
   );
 }
 
-// A compact "2h ago" / "3d ago" from an ISO timestamp; falls back to the date for old runs.
+// Compact relative time, falling back to the date for older timestamps.
 function relativeTime(iso: string): string {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "earlier";

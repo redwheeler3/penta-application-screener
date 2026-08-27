@@ -1,4 +1,4 @@
-"""The per-member eligibility model and the union pool (M15 1c + per-member rules 1d)."""
+"""The per-member eligibility model and committee union pool."""
 
 from datetime import UTC, datetime
 
@@ -84,7 +84,7 @@ def screen_flagged(db: Session, application_id: int) -> None:
 def screen_pets(db: Session, application_id: int, *, dogs: int = 0, cats: int = 0,
                 other_pets: list[str] | None = None) -> None:
     """Cache a screening result carrying only extracted pet facts (no flags), so the pet hard
-    filter has facts to judge on read (M15 1e)."""
+    filter has facts to judge on read."""
     db.add(
         ApplicationAIResult(
             application_id=application_id,
@@ -181,7 +181,7 @@ def test_per_member_view_reflects_only_that_members_overrides() -> None:
 
 
 def test_per_member_rules_change_who_each_member_sees_eligible() -> None:
-    """M15 1d: two members with different income_min see different eligibility for the SAME
+    """Two members with different income floors see different eligibility for the same
     borderline applicant, and the union includes an app eligible under EITHER member's rules.
     """
     db = make_session()
@@ -212,7 +212,7 @@ def test_per_member_rules_change_who_each_member_sees_eligible() -> None:
 
 
 def test_per_member_pet_limit_changes_eligibility_from_extracted_facts() -> None:
-    """M15 1e: pets diverge per member exactly like income. An applicant screened as having 2
+    """Pet eligibility diverges per member like income. An applicant with two
     dogs is rules-ineligible for a member on the default max_dogs=1, but eligible for a member
     who raised max_dogs to 2 — driven purely by the AI-extracted pet facts + each member's
     limit. The union includes them (eligible under the lenient member's rules)."""
@@ -260,7 +260,7 @@ def test_pet_facts_absent_before_screening_do_not_gate() -> None:
 
 
 def test_pet_only_ineligible_attributes_to_ai_source(monkeypatch) -> None:
-    """M15 1g: a pet-limit verdict shows source AI, not Rules — pets need the AI to extract
+    """A pet-limit verdict shows source AI, not Rules, because AI extracts the
     counts from free text first, so they land at Screen. The applicant is otherwise clean, so
     pets are the sole reason."""
     db = make_session()
@@ -306,9 +306,8 @@ def test_mixed_pet_and_numeric_ineligible_stays_rules_source(monkeypatch) -> Non
 
 
 def test_member_muting_a_flag_category_makes_them_eligible() -> None:
-    """M15 1g Move 2: a member who disables an AI flag category (via disabled_checks) is no
-    longer gated by that flag — it stops counting AND stops showing for them — while a member
-    who hasn't muted it still sees the applicant ineligible."""
+    """A member who disables an AI flag category is not gated by it, while a member
+    who has not muted it still sees the applicant as ineligible."""
     db = make_session()
     picky = add_user(db, "picky@x.com")
     lenient = add_user(db, "lenient@x.com")

@@ -1,4 +1,4 @@
-"""Offline evals for the AI pipeline (M13 Pillar 4).
+"""Offline evals for the AI pipeline.
 
 Evals answer a different question than the unit tests: not "does the code run" (the
 mock-provider suite covers that) but "is the model's JUDGMENT any good, and does it

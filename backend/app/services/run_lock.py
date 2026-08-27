@@ -1,5 +1,5 @@
 """The run lease: serialize the expensive AI runs (Screen / Rank / score-current) across
-members (M16 concurrency hardening).
+members.
 
 One fixed row (``RunLock`` id=1, seeded by migration). ``acquire_run_lock`` claims it with an
 atomic conditional UPDATE — free, held-by-nobody, or a stale lease past the TTL — and returns

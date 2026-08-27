@@ -2,10 +2,8 @@ import type { ReactNode } from "react";
 import { Info } from "lucide-react";
 
 // The screening-check toggle group, shared by the member's Eligibility Settings and the
-// admin's Committee Defaults — the two surfaces edit the SAME `disabledChecks` list (a
-// member's own vs. the shared default), so they render identically. Both were near-duplicate
-// components before; unified here. The only per-surface difference is how a toggle persists,
-// passed as `onToggle(id, on)`.
+// admin's Committee Defaults. Both edit `disabledChecks`; `onToggle` supplies the
+// surface-specific persistence behavior.
 
 // A compact info icon carrying a check's plain-language description. Rendered as a CSS
 // tooltip (not native title=) so the show delay is ours — native title sits at a

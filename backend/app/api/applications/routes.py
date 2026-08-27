@@ -92,8 +92,7 @@ def list_applications(
                     pet_facts=facts.get(app.id),
                 ),
                 override=overrides.get(app.id),
-                # Muted categories are hidden AND non-gating for this member (1g Move 2),
-                # so pass only the active flags — they drive both status and display.
+                # Active flags drive both status and display; muted categories do neither.
                 flags=active_flags(flags.get(app.id), rules_config.disabled_checks),
                 starred=app.id in starred,
                 opening_ids=opening_ids[app.id],

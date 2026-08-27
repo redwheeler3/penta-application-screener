@@ -312,9 +312,7 @@ def union_eligible_application_ids(db: Session) -> set[int]:
         # hard-filter reason AND no ACTIVE AI flag (a flag whose category the member hasn't
         # muted). Both halves are per-ruleset: disabled_checks is part of
         # RulesConfig, so members with different mutes are already distinct rulesets. The app
-        # enters the union if any member WITHOUT an override on it uses such a ruleset. (Before
-        # 1g, any flag blocked everyone; now a member who muted the flagged category isn't
-        # blocked by it.)
+        # enters the union if any member without an override uses such a ruleset.
         override_users = override_users_by_app.get(app.id, set())
         override_counts_by_ruleset: dict[RulesConfig, int] = defaultdict(int)
         for user_id in override_users:

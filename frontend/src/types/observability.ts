@@ -54,9 +54,8 @@ export type LastRunCost = {
   at: string; // ISO timestamp
   freshUsd: number;
   cachedSavedUsd: number;
-  estimatedUsd: number; // pre-run projection; 0 on runs recorded before capture (show "—")
-  // The triggering member's email. Null on pre-Phase-4 runs or a
-  // since-removed member — omit the stamp then.
+  estimatedUsd: number; // pre-run projection; 0 when unavailable (show "—")
+  // Null when the triggering member is unknown or no longer exists.
   triggeredBy: string | null;
   passes: LastRunPass[];
 };

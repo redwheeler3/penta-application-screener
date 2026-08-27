@@ -1,4 +1,4 @@
-"""Committee-union of kept axes + proposals (M15 Phase 2; ADR 0011).
+"""Committee union of kept axes and proposals.
 
 A re-rank must respect the WHOLE committee, not just whoever triggered it:
   - an axis survives if ANY member placed it in a working tier ("keep-if-any-member-tiered"),

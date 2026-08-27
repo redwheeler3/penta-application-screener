@@ -28,8 +28,7 @@ class CurrentRunResponse(ResponseModel):
     analysis_id: int
     dimensions: list[PoolDimensionOut]
     # The model's streamed reasoning from the discovery pass (markdown), for the
-    # Observability trace. Null for runs from before it was captured / if the provider
-    # surfaced none.
+    # Observability trace. Null when no narrative was captured.
     discovery_narrative: str | None = None
     new_dimension_keys: list[str] = []
     # Subset of new_dimension_keys that are "revived" (seen in an earlier run, dropped,
@@ -53,18 +52,15 @@ class RawDiscoveryDimensionOut(ResponseModel):
 
 
 class PriorDimensionRef(ResponseModel):
-    """The prior dimension a matched new dimension carried forward from: its key and
-    (when known) its user-facing name. ``name`` is null for audits written before the
-    prior-names capture existed."""
+    """The prior dimension a match carried forward. ``name`` is null when unavailable."""
 
     key: str
     name: str | None = None
 
 
 class MatchAuditResponse(ResponseModel):
-    """GET /ranking/current/match-audit — the carry-forward trace for the current
-    run (M13 per-run AI legibility). Null when no run exists or the run predates
-    match-audit capture.
+    """GET /ranking/current/match-audit — the carry-forward trace for the current run.
+    Null when no run or audit exists.
 
     ``carryForwardRate`` is null on a first run (no prior dimensions to match); a
     persistently near-1.0 rate on re-runs is the over-matching smell.
@@ -176,7 +172,7 @@ class FanOutPassOut(ResponseModel):
 class FanOutAuditResponse(ResponseModel):
     """GET /ranking/current/fan-out-audit — the K fresh-context discovery passes that
     fed decomposition, so the committee can see each discoverer (not just the one whose
-    reasoning streamed live). Null on runs that predate the fan-out redesign."""
+    reasoning streamed live). Null when no audit exists."""
 
     analysis_id: int
     k: int

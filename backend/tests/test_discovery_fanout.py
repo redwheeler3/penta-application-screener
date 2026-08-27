@@ -1,4 +1,4 @@
-"""Fan-out discovery resilience (added after a real Bedrock read-timeout on 2026-07-16).
+"""Fan-out discovery resilience.
 
 The K parallel discovery workers are redundant by design — decomposition settles however
 many reports survive — so a minority failing must NOT abort the run; only ALL K failing

@@ -1,7 +1,4 @@
-/* Pattern discovery and dimension scoring */
-/* Criteria header above the tier-list: the framing line + the "Add your own"
-   toggle. The criteria themselves now live as the tier chips below, so there's no
-   separate criteria card — just this slim header introducing them. */
+/* Criteria heading and proposal toggle above the tier list. */
 .criteria-head-title {
   margin: 0.5rem 0 0;
   font-size: 0.95rem;

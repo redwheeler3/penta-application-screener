@@ -5,19 +5,8 @@ import { useFetchResource } from "../../hooks/useFetchResource";
 import type { DecomposeAuditResponse } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
-// Fan-Out Redesign observability: how the K parallel discovery reports were settled
-// into one non-overlapping dimension set for the current run. K fresh-context
-// discoveries carve the pool at different, overlapping granularities; decomposition
-// distils them into the finest set of axes that each differentiate AND don't overlap —
-// collapsing re-carvings of one concept, keeping genuinely distinct axes apart.
-//
-// This surfaces the settle-down (how many input axes → how many settled), which settled
-// axes are MERGES (more than one source), the model's per-axis reasoning, and the D9
-// trail: any committee-requested axis folded into another is shown explicitly, so a
-// fold is visible, never a silent disappearance.
-//
-// Self-fetches on mount. A null audit (a run from before the fan-out redesign) shows an
-// explicit empty state, not a broken panel.
+// Show how parallel discovery reports were settled into non-overlapping dimensions,
+// including merge reasoning and any committee request folded into another axis.
 export function DecomposeAuditPanel(): ReactNode {
   const { data: audit, state, reload } = useFetchResource(fetchDecomposeAudit);
 
@@ -28,8 +17,7 @@ export function DecomposeAuditPanel(): ReactNode {
   if (audit === null) {
     return (
       <p className="panel-hint">
-        No decomposition audit for this run — it predates the fan-out redesign (a single
-        discovery run, not K parallel reports settled into one set). Re-rank to populate it.
+        No decomposition audit was recorded for this run. Re-rank to populate it.
       </p>
     );
   }

@@ -90,8 +90,7 @@ export type FeedbackItem = {
   activeTab: string | null;
   analysisId: number | null;
   applicantId: number | null;
-  // The applicant's current name, resolved on read; null if no applicant context or the
-  // applicant was since removed.
+  // Current name resolved on read; null without applicant context or after deletion.
   applicantName: string | null;
   appVersion: string;
   createdAt: string;

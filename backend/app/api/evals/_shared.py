@@ -258,10 +258,9 @@ def current_model(eval_key: str, db: Session) -> str:
 
 
 def live_case_keys(run_key: str) -> set[str] | None:
-    """The case keys that CURRENTLY exist for a run key's pass, for filtering a merged
-    historical last-run (so a renamed/removed case can't resurrect). ``run_key`` may be a live
+    """Current case keys for filtering a merged last-run result. ``run_key`` may be a live
     eval or its ``_stability`` sibling (same golden set), or judge/stability (the aggregated
-    set). None ⇒ no editable case set for this key (don't filter)."""
+    set). None means no editable case set for this key, so no filtering is needed."""
     base = run_key.removesuffix("_stability")
     case_key = "judge" if base in ("judge", "stability") else base
     try:

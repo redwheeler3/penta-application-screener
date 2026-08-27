@@ -64,10 +64,7 @@ async def _stream_events(client: AsyncClient, url: str) -> list[dict]:
 
 
 def test_seed_str_renders_any_of_fires_group() -> None:
-    """_seed_str feeds the judge-stability `seed` field for every case. A screening `fires`
-    entry can be a nested 'at least one of' list (e.g. [["pet_policy", "other"]]) — joining it
-    as a bare str used to throw 'expected str instance, list found' when Run Stability hit the
-    velociraptor case. It must render the group as 'a | b'."""
+    """Nested any-of fire groups render as pipe-delimited seed text."""
     from app.api.evals._shared import seed_str
 
     assert seed_str({"fires": [["pet_policy", "other"]], "absent": []}) == "fires: pet_policy | other"
@@ -79,9 +76,8 @@ def test_seed_str_renders_any_of_fires_group() -> None:
 
 
 def test_over_cases_flushes_as_completed_no_interleave() -> None:
-    """Narration must reach the stream as each case FINISHES (not batched to the very end — the
-    'thinking box stays empty until everything's done' bug), and a fast case must not wait behind
-    a slow predecessor. Case 0 lingers while case 1 finishes first: case 1's block should flush
+    """Narration streams as each case finishes, without waiting for slower predecessors.
+    Case 0 lingers while case 1 finishes first: case 1's block should flush
     first, each case's lines stay contiguous (no interleave), and RESULTS still come back in case
     order (the one ordering guarantee callers keep)."""
     import threading
@@ -234,8 +230,7 @@ async def test_categorical_registry_route_runs_end_to_end() -> None:
 
 
 async def test_stability_mode_param_routes_to_the_k_repeat_run() -> None:
-    """One route per pass now; ``?mode=stability`` selects the K-repeat run (collapsed from the
-    old ``/{pass}-stability`` route). Exercise the consolidation pass in stability mode and prove
+    """``?mode=stability`` selects the K-repeat run for a pass. Exercise consolidation and prove
     it ran K times and persisted under the ``<pass>_stability`` eval key (not the run key)."""
     from app.ai.schemas import ConsolidationReport, ConsolidationVerdict
     from app.evals.consolidate import load_cases

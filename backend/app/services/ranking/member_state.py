@@ -243,10 +243,8 @@ def revived_flag_keys(db: Session, member_ranking: MemberRanking) -> list[str]:
     before, dropped for at least the immediately-prior analysis, now back); the rest are
     genuinely "new" (never seen in any prior analysis).
 
-    Label only, derived at read time — both kinds share the one stored flagged set,
-    so there is no second field to keep in sync (SPEC "badge is presence-driven,
-    reuses the one existing flags set"). New = flagged − revived, computed by the
-    caller/frontend.
+    The label is derived at read time; both kinds share one stored flagged set.
+    New = flagged − revived, computed by the caller or frontend.
 
     "Seen before" is a fact about the shared dimension history (the analyses), not about this
     member's tiering — a key counts as seen once any earlier analysis discovered it. A flagged
@@ -312,8 +310,8 @@ def carry_forward_layout(
 
     Two flag states ride on the returned ``flagged_keys`` (the single mutable triage
     set the UI badges — stored as ``new_dimension_keys``). A key is flagged when it
-    needs the committee's attention, which is a *presence-gap* fact (SPEC "badge is
-    presence-driven"): flag it when it is **absent from the immediately-prior run but
+    needs the committee's attention, which is a *presence-gap* fact: flag it when it is
+    **absent from the immediately-prior run but
     present now** — whether it was never seen (a genuinely new axis) OR seen in an
     earlier run, dropped, and now back (revived). A key that was in the immediately-
     prior run is continuous in the committee's view → never flagged, however it

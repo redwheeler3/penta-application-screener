@@ -1,4 +1,4 @@
-"""M20 model bake-off over the committed, synthetic per-pass golden cases.
+"""Model bake-off over the committed, synthetic per-pass golden cases.
 
 This is an operator-run experiment, not an API route or production model switch. It runs
 each selected pass's existing production prompt and deterministic grader against its current

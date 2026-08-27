@@ -25,8 +25,8 @@ from tests.ranking_support import (
 
 @pytest.mark.anyio
 async def test_decomposition_merges_axes_and_records_the_merge() -> None:
-    # Fan-Out Redesign Phase 4a: the decomposition step settles the K discovery reports
-    # into one set BEFORE scoring. Here discovery emits 3 axes but decomposition merges
+    # Decomposition settles parallel discovery reports before scoring. Here discovery emits
+    # three axes but decomposition merges
     # two into one, so the run must end with 2 settled dims (not 3), score against those,
     # and record the merge (source_keys + reasoning) in criteria.decompose_audit.
     from app.services.ranking.analysis import get_current_analysis
@@ -290,9 +290,7 @@ def test_apply_consolidation_transfers_tier_placement_off_a_merged_key() -> None
 
 
 def test_apply_consolidation_reconfirming_an_existing_alias_is_idempotent() -> None:
-    # Matching is high-bar, so a merged key can be re-minted and re-nominated on a later
-    # run. Re-confirming the SAME merge must upsert the alias, not crash on the UNIQUE
-    # constraint (the bug that 500'd a real rank).
+    # Re-confirming the same merge must upsert the alias without violating uniqueness.
     from sqlalchemy import select
 
     from app.db.models import DimensionAlias
@@ -325,7 +323,7 @@ def test_apply_consolidation_reconfirming_an_existing_alias_is_idempotent() -> N
         )
 
     run_with_merge("first time")
-    run_with_merge("re-minted and re-confirmed")  # would UNIQUE-crash before the upsert fix
+    run_with_merge("re-minted and re-confirmed")
 
     aliases = list(db.scalars(select(DimensionAlias).where(
         DimensionAlias.alias_key == "financial_stewardship")))
@@ -390,9 +388,7 @@ def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
     # the definition-match pass missed the fork, so the surviving canonical key
     # (child_age_profile_community_fit, a PRIOR-run key) is NOT in this run's report.
     # Consolidation must drop the newer twin AND surface the canonical prior key with its
-    # frozen MINT record, restored to the tier the committee last placed it in — never
-    # rename the twin (keys must not be mixed up). Regression for the bug where the axis
-    # vanished from the report entirely while the Observability panel showed the merge.
+    # frozen mint record, restored to the tier the committee last placed it in.
     from sqlalchemy import select
 
     from app.db.models import DimensionAlias
@@ -496,7 +492,7 @@ def test_consolidate_audit_view_resolves_pair_names() -> None:
     }
     run.audit.consolidate = {
         "pairs": [
-            # No name_keep/name_drop — the old audit shape.
+            # Stored audit without captured names.
             {"keep": "survivor", "drop": "retired_within_run", "r": 0.9, "merged": True, "reason": "same"},
             {"keep": "survivor", "drop": "traceless", "r": 0.87, "merged": False, "reason": "confound"},
         ],
@@ -547,14 +543,8 @@ def test_consolidate_audit_view_prefers_the_snapshotted_name() -> None:
 
 
 def test_merged_alias_does_not_donate_its_definition_to_the_canonical_key() -> None:
-    # Key/text immutability: a key's descriptive text is frozen at mint, because the
-    # score cache is keyed by key and scores were computed against that text. Regression
-    # for the real leak: a broad hands_on_trade was aliased onto narrow licensed_trade,
-    # then a LATER run re-surfaced only the broad concept — so history built newest-first
-    # (and keyed by mint definition oldest-first) must still report licensed_trade with
-    # its NARROW mint text, never the broad donation, else the definition divorces from
-    # the narrow-computed cached scores. Both history builders (all_known_dimensions for
-    # match, key_history for consolidation) must hold the invariant.
+    # Key text is frozen at mint because cached scores were computed against it. Aliases
+    # must not donate differently scoped text to the canonical key.
     from app.schemas.settings import AppSettings
     from app.services.ranking.analysis import (
         all_known_dimensions,
@@ -769,4 +759,3 @@ async def test_d9_silently_dropped_committee_request_is_re_added() -> None:
         d for d in run.audit.decompose["settled"] if d["key"] == "playground_use"
     )
     assert readded["from_committee_request"] is True
-

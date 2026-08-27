@@ -1,5 +1,4 @@
-"""Post-score dimension consolidation: heal duplicate dimension keys the match pass
-can't (SPEC "Matching scope" → "Post-score consolidation").
+"""Heal duplicate dimension keys that definition-only matching cannot resolve.
 
 Matching runs *before* scoring and decides on definitions alone, at a high bar — so it
 occasionally lets a re-worded concept through as a fresh key next to an established one.

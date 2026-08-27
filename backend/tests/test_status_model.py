@@ -44,7 +44,7 @@ def test_resolve_clean_is_untouched() -> None:
 
 
 def test_resolve_pet_only_reason_attributes_to_ai() -> None:
-    # M15 1g: a pet verdict is deterministic, but it needs the AI to extract pet counts from
+    # A pet verdict is deterministic, but it needs AI-extracted counts from
     # free text first, so it lands at Screen and attributes to AI — not Rules (which would
     # imply it was knowable directly from submitted fields).
     assert resolve_machine_status(reasons=_reasons("pets_over_limit"), has_ai_flags=False) == (
