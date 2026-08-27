@@ -11,7 +11,8 @@ import {
   fetchScreeningEstimate,
   runScreening as startScreeningRequest,
 } from "../api/screening";
-import { money, readProblem } from "../format";
+import { readProblem } from "../api/problems";
+import { money } from "../format";
 import type {
   CurrentRunResponse,
   RankEstimateResponse,

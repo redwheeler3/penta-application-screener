@@ -1,4 +1,5 @@
 import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
+import { problemMessage, readProblemBody } from "../api/problems";
 import type { DraftIntent } from "./api";
 import {
   type ApplicantDraft,
@@ -86,15 +87,11 @@ export async function responseProblem(response: Response): Promise<{ code: strin
   if (response.status >= 500) {
     return { code: null, detail: TECH_SUPPORT_ERROR_MESSAGE };
   }
-  try {
-    const body = (await response.json()) as { code?: string; detail?: string };
-    return {
-      code: body.code ?? null,
-      detail: body.detail ?? TECH_SUPPORT_ERROR_MESSAGE,
-    };
-  } catch {
-    return { code: null, detail: TECH_SUPPORT_ERROR_MESSAGE };
-  }
+  const body = await readProblemBody(response);
+  return {
+    code: body?.code ?? null,
+    detail: problemMessage(body) ?? TECH_SUPPORT_ERROR_MESSAGE,
+  };
 }
 
 export function workingSnapshot(draft: ApplicantDraft, openingIds: number[]): string {

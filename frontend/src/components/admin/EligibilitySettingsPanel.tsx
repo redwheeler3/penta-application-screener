@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { ELIGIBILITY_GENERAL_NUMERIC_FIELDS, ELIGIBILITY_NUMERIC_FIELDS } from "../../constants";
 import * as api from "../../api/settings";
-import { readProblem } from "../../format";
+import { readProblem } from "../../api/problems";
 import { CheckGroup } from "./CheckToggles";
 import { EmploymentRequirementField } from "./EmploymentRequirementField";
 import { NumberInput } from "../shared/NumberInput";

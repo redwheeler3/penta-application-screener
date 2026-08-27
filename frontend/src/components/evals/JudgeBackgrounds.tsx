@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 
 import { fetchJudgeBackgrounds, saveJudgeBackground } from "../../api/evals";
-import { readProblem } from "../../format";
+import { readProblem } from "../../api/problems";
 import type { JudgeBackground } from "../../types";
 
 // The Judge tab's per-pass background editors. The blind judge reproduces each pass's output

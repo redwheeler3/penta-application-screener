@@ -2,7 +2,7 @@ import { type ReactNode, type SyntheticEvent, useEffect, useState } from "react"
 
 import * as api from "../../api/settings";
 import { ELIGIBILITY_GENERAL_NUMERIC_FIELDS } from "../../constants";
-import { readProblem } from "../../format";
+import { readProblem } from "../../api/problems";
 import { useFetchResource } from "../../hooks/useFetchResource";
 import type { EligibilityRules } from "../../types";
 import { CheckGroup } from "./CheckToggles";

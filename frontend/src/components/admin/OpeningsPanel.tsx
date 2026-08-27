@@ -2,7 +2,7 @@ import { CalendarDays, Eye, Pencil, Plus, RotateCcw, UserCheck, UserX } from "lu
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 
 import * as api from "../../api/openings";
-import { readProblem } from "../../format";
+import { readProblem } from "../../api/problems";
 import type {
   Opening,
   OpeningSelection,

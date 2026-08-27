@@ -116,39 +116,3 @@ export function formatFieldValue(value: unknown, key?: string): ReactNode {
   }
   return String(value);
 }
-
-// An RFC 9457 problem+json body (the backend's one error shape). `code` is the
-// stable machine identifier the UI can branch on; `detail`/`title` are human text.
-export type Problem = {
-  type: string;
-  title: string;
-  status: number;
-  code: string;
-  detail?: string;
-  instance?: string;
-  [key: string]: unknown; // extension members, e.g. capUsd
-};
-
-// Parse a problem+json error body ONCE. A Response body is a single-use stream, so a caller
-// that needs BOTH the code and the message must read it here once — calling readProblem after
-// readProblemCode (or vice versa) throws on the second read and silently loses the message.
-// Returns null if the body isn't a problem (network/HTML error).
-export async function readProblemBody(response: Response): Promise<Partial<Problem> | null> {
-  try {
-    return (await response.json()) as Partial<Problem>;
-  } catch {
-    return null;
-  }
-}
-
-// The human message from a problem body (detail, falling back to title), or null.
-export function problemMessage(body: Partial<Problem> | null): string | null {
-  return body?.detail ?? body?.title ?? null;
-}
-
-// Read a problem+json error body off a failed Response, returning a human message
-// (detail, falling back to title). Returns null if the body isn't a problem (e.g.
-// a network/HTML error), so callers can fall back to a status-based message.
-export async function readProblem(response: Response): Promise<string | null> {
-  return problemMessage(await readProblemBody(response));
-}

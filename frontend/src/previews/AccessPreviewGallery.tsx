@@ -16,7 +16,7 @@ import {
   PendingCopyDecision,
 } from "../applicant/ApplicantAccessScreens";
 import { emptyApplicantDraft, type ApplicantOpening, workingAnswers } from "../applicant/types";
-import { BrandLockup } from "../BrandLockup";
+import { BrandLockup } from "../components/shared/BrandLockup";
 import { CommitteeSignIn } from "../components/auth/CommitteeSignIn";
 import type { CommitteeLinkConflict, SignInState } from "../hooks/useSession";
 import "../styles/access-preview.css";

@@ -8,8 +8,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { BrandLockup } from "./BrandLockup";
-import { HeaderAccount } from "./HeaderAccount";
+import { BrandLockup } from "./components/shared/BrandLockup";
+import { HeaderAccount } from "./components/shared/HeaderAccount";
 import * as api from "./api/applications";
 import type { AuthRedirect } from "./authRedirect";
 import type {

@@ -1,7 +1,8 @@
 import { type ReactNode, useEffect, useState } from "react";
 
 import * as api from "../../api/feedback";
-import { formatPacificDateTime, readProblem } from "../../format";
+import { readProblem } from "../../api/problems";
+import { formatPacificDateTime } from "../../format";
 import type { FeedbackItem, ViewTab } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 

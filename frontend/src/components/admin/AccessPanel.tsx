@@ -1,7 +1,8 @@
 import { Trash2, UserPlus } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import * as api from "../../api/access";
-import { formatPacificDateTime, readProblem } from "../../format";
+import { readProblem } from "../../api/problems";
+import { formatPacificDateTime } from "../../format";
 import type { AllowlistEntry, CurrentUser, DeniedSignInAttempt } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 

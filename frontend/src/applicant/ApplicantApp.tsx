@@ -1,8 +1,8 @@
 import { ChevronLeft, FileCheck2, Save, Trash2 } from "lucide-react";
 import { type FormEvent, type InvalidEvent, useEffect, useRef, useState } from "react";
 
-import { BrandLockup } from "../BrandLockup";
-import { HeaderAccount } from "../HeaderAccount";
+import { BrandLockup } from "../components/shared/BrandLockup";
+import { HeaderAccount } from "../components/shared/HeaderAccount";
 import {
   AccessLinkDecision,
   AccessLinkReady,

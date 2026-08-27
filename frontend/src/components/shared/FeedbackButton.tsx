@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { MessageSquarePlus } from "lucide-react";
 import * as api from "../../api/feedback";
-import { readProblem } from "../../format";
+import { readProblem } from "../../api/problems";
 
 // A persistent, low-key corner button available on every page: the member's channel to
 // flag friction. Clicking opens an inline composer —

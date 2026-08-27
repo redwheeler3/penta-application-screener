@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { fetchEvalInvariants, rebaselineEval } from "../../api/evals";
-import { readProblem } from "../../format";
+import { readProblem } from "../../api/problems";
 import type { InvariantsResult } from "../../types";
 import { InlineConfirm } from "./InlineConfirm";
 
