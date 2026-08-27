@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.db.models import Analysis, Base, MemberRanking, User, UserRole
-from app.services.member_ranking import revived_flag_keys
+from app.services.ranking.member_state import revived_flag_keys
 
 
 def make_db() -> Session:

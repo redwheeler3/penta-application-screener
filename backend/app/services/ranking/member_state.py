@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.schemas import PoolDimensionReport
 from app.db.models import Analysis, MemberRanking, User
-from app.services.ranking_dimensions import current_dimension_report
+from app.services.ranking.dimensions import current_dimension_report
 
 
 def get_or_create_member_ranking(

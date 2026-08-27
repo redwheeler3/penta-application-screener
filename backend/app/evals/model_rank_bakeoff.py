@@ -21,7 +21,7 @@ from app.core.config import get_settings
 from app.db.models import Application, RunCostLedger, User, UserRole
 from app.evals.fixture import _to_json, build_fixture, load
 from app.evals.invariants import run_invariants
-from app.services.ranking_analysis import get_current_analysis
+from app.services.ranking.analysis import get_current_analysis
 from app.services.settings import get_app_settings, save_app_settings
 
 CONFIGURATIONS = {

@@ -34,7 +34,9 @@ from app.schemas.ranking import (
     TiersResponse,
 )
 from app.services.eligibility import eligible_application_ids_for
-from app.services.member_ranking import (
+from app.services.ranking.analysis import get_current_analysis
+from app.services.ranking.dimensions import current_dimension_report
+from app.services.ranking.member_state import (
     dimension_weights,
     display_tiers,
     get_or_create_member_ranking,
@@ -45,9 +47,7 @@ from app.services.member_ranking import (
     set_proposals,
     set_tiers,
 )
-from app.services.ranking_analysis import get_current_analysis
-from app.services.ranking_dimensions import current_dimension_report
-from app.services.ranking_view import candidate_scores
+from app.services.ranking.view import candidate_scores
 from app.services.run_lock import rank_run_in_progress
 from app.services.stars import starred_ids
 

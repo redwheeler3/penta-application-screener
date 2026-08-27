@@ -245,9 +245,9 @@ Safe placeholders belong in `.env.example`; actual `.env.local` files are ignore
 - `frontend/src/api/`: browser HTTP boundary, split by backend domain over one shared client;
 - `backend/tests/`: behavior and contract coverage.
 
-Ranking routes are grouped under `backend/app/api/ranking/`. Cost and cache projections live in
-`backend/app/services/ranking_estimates.py`; shared-analysis state and per-member tier state live
-in `ranking_analysis.py` and `member_ranking.py`, respectively.
+Ranking routes are grouped under `backend/app/api/ranking/`. The corresponding service package
+at `backend/app/services/ranking/` owns the streamed pipeline, cost projections, shared-analysis
+state, per-member tier state, audits, freshness, and ranked presentation.
 
 Route handlers should stay thin. Business rules belong in services or domain modules, and a rule
 should have one named implementation rather than parallel frontend/backend copies whenever the

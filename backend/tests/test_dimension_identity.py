@@ -136,7 +136,7 @@ def test_adopt_matched_keys_dedupes_a_d9_readd_colliding_with_a_matched_key() ->
     # must be unique (cache identity), so the matched dimension wins and the redundant
     # re-add is dropped — never two dims sharing a key (which would 500 on the cache's
     # UNIQUE constraint).
-    from app.services.dimension_identity import adopt_matched_keys
+    from app.services.ranking.identity import adopt_matched_keys
 
     prior = PoolDimensionReport(dimensions=[
         PoolDimension(key="participation_commitment", name="Participation commitment",
@@ -164,7 +164,7 @@ def test_adopt_matched_keys_collapses_two_twins_onto_one_prior() -> None:
     # matcher recognized both as that prior concept. They must collapse into a SINGLE
     # dimension under the prior key (reusing its cached score), not survive as two axes
     # that double-weight one concept.
-    from app.services.dimension_identity import adopt_matched_keys
+    from app.services.ranking.identity import adopt_matched_keys
 
     prior = PoolDimensionReport(dimensions=[
         PoolDimension(key="participation_commitment", name="Participation commitment",
@@ -270,7 +270,7 @@ def test_adopt_self_matched_key_restores_frozen_prior_text() -> None:
     # FROZEN prior text wholesale — the cached score was computed against the prior text,
     # so name/definition/poles must all revert. (Self-match => adopt_matched_keys pulls the
     # prior dimension entirely; the decomposer's rewording is discarded.)
-    from app.services.dimension_identity import adopt_matched_keys
+    from app.services.ranking.identity import adopt_matched_keys
 
     prior = PoolDimensionReport(dimensions=[
         PoolDimension(key="participation_commitment", name="Participation commitment",

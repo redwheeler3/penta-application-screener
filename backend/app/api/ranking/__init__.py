@@ -15,9 +15,13 @@ one Rank step; the passes stay separate underneath (distinct schemas, cache kind
 status behavior).
 
 Split by what each file owns (all under the ``/ranking`` prefix):
-  - run.py       — the Rank chain + its cost estimates (the streaming ``rank_run``).
-  - current.py   — the current run's criteria + the AI-legibility audits.
-  - shortlist.py — the deterministic ranked list + tiers + discovery seeds.
+  - run.py           — estimate and start a full Rank run;
+  - score_current.py — estimate and fill only missing scores;
+  - current.py       — current criteria + the AI-legibility audits;
+  - shortlist.py     — deterministic ranked list + tiers + discovery seeds.
+
+The streamed criteria → scoring → consolidation orchestration lives in
+``app/services/ranking/pipeline.py``.
 
 Cross-run Observability reads (cost / last-runs / metrics) are NOT here — they span Screen,
 Rank, and score-current, so they live at top-level ``/observability`` (``app/api/observability.py``).
@@ -25,11 +29,12 @@ Rank, and score-current, so they live at top-level ``/observability`` (``app/api
 
 from fastapi import APIRouter
 
-from app.api.ranking import current, run, shortlist
+from app.api.ranking import current, run, score_current, shortlist
 
 # The tag is set here; each sub-router carries the full ``/ranking`` prefix itself
 # (FastAPI won't let a prefix-less child hold the empty-path root route ``GET /ranking``).
 router = APIRouter(tags=["ranking"])
 router.include_router(run.router)
+router.include_router(score_current.router)
 router.include_router(current.router)
 router.include_router(shortlist.router)

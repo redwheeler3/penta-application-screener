@@ -31,13 +31,13 @@ from sqlalchemy.orm import Session
 from app.ai.score_vectors import load_score_vectors
 from app.db.models import Analysis, RunCostLedger
 from app.evals.paths import FIXTURE_PATH
-from app.services.analysis_audit import (
+from app.services.ranking.analysis import get_current_analysis
+from app.services.ranking.audit import (
     consolidate_audit_view,
     decompose_audit_view,
     match_audit_view,
 )
-from app.services.ranking_analysis import get_current_analysis
-from app.services.ranking_dimensions import current_dimension_report
+from app.services.ranking.dimensions import current_dimension_report
 
 
 @dataclass(frozen=True)

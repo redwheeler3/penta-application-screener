@@ -18,8 +18,8 @@ from app.core.problems import Problem
 from app.db.models import Application
 from app.schemas.settings import AppSettings
 from app.services.cost_report import recent_pass_fresh_usd
-from app.services.ranking_analysis import get_current_analysis
-from app.services.ranking_dimensions import current_dimension_report
+from app.services.ranking.analysis import get_current_analysis
+from app.services.ranking.dimensions import current_dimension_report
 
 
 def build_rank_estimate(

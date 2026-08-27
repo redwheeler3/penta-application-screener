@@ -29,7 +29,7 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
     # into one set BEFORE scoring. Here discovery emits 3 axes but decomposition merges
     # two into one, so the run must end with 2 settled dims (not 3), score against those,
     # and record the merge (source_keys + reasoning) in criteria.decompose_audit.
-    from app.services.ranking_analysis import get_current_analysis
+    from app.services.ranking.analysis import get_current_analysis
 
     app, db, provider = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
@@ -121,7 +121,7 @@ async def test_post_score_consolidation_merges_correlated_duplicate() -> None:
     from sqlalchemy import select
 
     from app.db.models import DimensionAlias
-    from app.services.ranking_analysis import get_current_analysis
+    from app.services.ranking.analysis import get_current_analysis
 
     app, db, provider = setup_app(role=UserRole.MEMBER)
     apps = [add_eligible(db, email=f"a{i}@x.com", raw_hash=f"h{i}") for i in range(4)]
@@ -169,7 +169,7 @@ async def test_post_score_consolidation_merges_correlated_duplicate() -> None:
     assert keys == {"financial_literacy"}
 
     # merges isn't stored on the audit; the view derives it from the merged pairs.
-    from app.services.analysis_audit import consolidate_audit_view
+    from app.services.ranking.audit import consolidate_audit_view
     view = consolidate_audit_view(db, run)
     assert view["merges"] == {"financial_stewardship": "financial_literacy"}
 
@@ -249,14 +249,14 @@ def test_apply_consolidation_transfers_tier_placement_off_a_merged_key() -> None
     # intent from the dropped twin to the survivor — otherwise a member's placement (and
     # the keep guarantee it confers) would silently vanish with the dropped key.
     from app.schemas.settings import AppSettings
-    from app.services.member_ranking import (
+    from app.services.ranking.analysis import (
+        apply_consolidation,
+        create_analysis,
+    )
+    from app.services.ranking.member_state import (
         get_or_create_member_ranking,
         kept_keys,
         set_tiers,
-    )
-    from app.services.ranking_analysis import (
-        apply_consolidation,
-        create_analysis,
     )
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
@@ -297,12 +297,12 @@ def test_apply_consolidation_reconfirming_an_existing_alias_is_idempotent() -> N
 
     from app.db.models import DimensionAlias
     from app.schemas.settings import AppSettings
-    from app.services.member_ranking import (
-        get_or_create_member_ranking,
-    )
-    from app.services.ranking_analysis import (
+    from app.services.ranking.analysis import (
         apply_consolidation,
         create_analysis,
+    )
+    from app.services.ranking.member_state import (
+        get_or_create_member_ranking,
     )
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
@@ -343,14 +343,14 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
 
     from app.db.models import DimensionAlias
     from app.schemas.settings import AppSettings
-    from app.services.member_ranking import (
+    from app.services.ranking.analysis import (
+        apply_consolidation,
+        create_analysis,
+    )
+    from app.services.ranking.member_state import (
         get_or_create_member_ranking,
         kept_keys,
         set_tiers,
-    )
-    from app.services.ranking_analysis import (
-        apply_consolidation,
-        create_analysis,
     )
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
@@ -397,13 +397,13 @@ def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
 
     from app.db.models import DimensionAlias
     from app.schemas.settings import AppSettings
-    from app.services.member_ranking import (
-        dimension_weights,
-        get_or_create_member_ranking,
-    )
-    from app.services.ranking_analysis import (
+    from app.services.ranking.analysis import (
         apply_consolidation,
         create_analysis,
+    )
+    from app.services.ranking.member_state import (
+        dimension_weights,
+        get_or_create_member_ranking,
     )
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
@@ -473,8 +473,8 @@ def test_consolidate_audit_view_resolves_pair_names() -> None:
     # and a key minted-and-retired within this run (never in any report) resolves via the
     # run's own decompose artifacts. Only a truly traceless key stays a bare key.
     from app.schemas.settings import AppSettings
-    from app.services.analysis_audit import consolidate_audit_view
-    from app.services.ranking_analysis import create_analysis
+    from app.services.ranking.analysis import create_analysis
+    from app.services.ranking.audit import consolidate_audit_view
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
 
@@ -519,8 +519,8 @@ def test_consolidate_audit_view_prefers_the_snapshotted_name() -> None:
     # When a pair DOES carry a snapshotted name (the current write path), the view uses it
     # verbatim — the snapshot is the frozen mint name and must win over any later re-name.
     from app.schemas.settings import AppSettings
-    from app.services.analysis_audit import consolidate_audit_view
-    from app.services.ranking_analysis import create_analysis
+    from app.services.ranking.analysis import create_analysis
+    from app.services.ranking.audit import consolidate_audit_view
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
     run = create_analysis(
@@ -556,14 +556,14 @@ def test_merged_alias_does_not_donate_its_definition_to_the_canonical_key() -> N
     # the narrow-computed cached scores. Both history builders (all_known_dimensions for
     # match, key_history for consolidation) must hold the invariant.
     from app.schemas.settings import AppSettings
-    from app.services.member_ranking import (
-        get_or_create_member_ranking,
-    )
-    from app.services.ranking_analysis import (
+    from app.services.ranking.analysis import (
         all_known_dimensions,
         apply_consolidation,
         create_analysis,
         key_history,
+    )
+    from app.services.ranking.member_state import (
+        get_or_create_member_ranking,
     )
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
@@ -616,7 +616,7 @@ async def test_post_score_consolidation_keeps_confound_apart() -> None:
     from sqlalchemy import select
 
     from app.db.models import DimensionAlias
-    from app.services.ranking_analysis import get_current_analysis
+    from app.services.ranking.analysis import get_current_analysis
 
     app, db, provider = setup_app(role=UserRole.MEMBER)
     apps = [add_eligible(db, email=f"b{i}@x.com", raw_hash=f"hb{i}") for i in range(4)]
@@ -684,7 +684,7 @@ async def test_d9_committee_request_folded_into_merge_is_surfaced_not_lost() -> 
     # do) drops the from_committee_request flag, the guard restores the flag AND records
     # the fold in decompose_audit.folded_requests — surfaced to the committee, never a
     # silent disappearance.
-    from app.services.ranking_analysis import get_current_analysis
+    from app.services.ranking.analysis import get_current_analysis
 
     app, db, provider = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
@@ -730,7 +730,7 @@ async def test_d9_silently_dropped_committee_request_is_re_added() -> None:
     # D9: if decomposition drops a committee-requested axis entirely (its key appears in
     # NO settled source_keys), the guard re-adds it as its own settled axis so it cannot
     # vanish.
-    from app.services.ranking_analysis import get_current_analysis
+    from app.services.ranking.analysis import get_current_analysis
 
     app, db, provider = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")

@@ -19,7 +19,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.db.models import Analysis, Base, MemberRanking, User, UserRole
-from app.services.member_ranking import (
+from app.services.ranking.member_state import (
     IGNORE_TIER_ID,
     carry_forward_layout,
     kept_keys,

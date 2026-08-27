@@ -23,21 +23,21 @@ from app.schemas.ranking import (
     MatchAuditResponse,
     PoolDimensionOut,
 )
-from app.services.analysis_audit import (
+from app.services.ranking.analysis import get_current_analysis
+from app.services.ranking.audit import (
     consolidate_audit_view,
     decompose_audit_view,
     fan_out_audit_view,
     match_audit_view,
 )
-from app.services.member_ranking import (
+from app.services.ranking.dimensions import current_dimension_report
+from app.services.ranking.member_state import (
     get_or_create_member_ranking,
     kept_keys,
     proposed_dimensions,
     requested_flag_keys,
     revived_flag_keys,
 )
-from app.services.ranking_analysis import get_current_analysis
-from app.services.ranking_dimensions import current_dimension_report
 
 router = APIRouter(prefix="/ranking")
 

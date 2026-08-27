@@ -15,16 +15,16 @@ from app.db.models import (
     User,
 )
 from app.schemas.settings import AppSettings
-from app.services.analysis_freshness import rank_inputs_fingerprint
 from app.services.application_scope import committee_applications
-from app.services.dimension_identity import flatten_merges, transfer_merged_tiers
-from app.services.member_ranking import (
+from app.services.ranking.dimensions import current_dimension_report
+from app.services.ranking.freshness import rank_inputs_fingerprint
+from app.services.ranking.identity import flatten_merges, transfer_merged_tiers
+from app.services.ranking.member_state import (
     IGNORE_TIER_ID,
     default_tier_layout,
     proposed_dimensions,
     tier_history,
 )
-from app.services.ranking_dimensions import current_dimension_report
 
 
 def create_analysis(

@@ -25,7 +25,7 @@ def main() -> None:
     from sqlalchemy import select
 
     from app.db.models import Application, ApplicationAIResult
-    from app.services.ranking_dimensions import current_dimension_report
+    from app.services.ranking.dimensions import current_dimension_report
 
     db, run, source_label = open_synthetic_run()
     try:
