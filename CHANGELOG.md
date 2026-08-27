@@ -6,6 +6,25 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/). 
 
 ---
 
+## Milestone 21 — Built-In Applications And Committee Access
+
+Replaced the external Google Form/Sheet intake path with the first-party applicant experience at
+`applications.pentacoop.com`. One retained application can participate in multiple current or later
+openings, while private drafts and archived-only applications remain outside ordinary committee and
+AI workflows. Applicant and committee access use revocable server-side sessions, transactional
+email is provider-neutral and retry-aware, and opening closeout drives unsuccessful notices and
+retention.
+
+All seven delivery stages are complete: canonical intake, email and sessions, the applicant form,
+publication and opening participation, committee intake, retention and closeout, and production
+cutover. Production relies on daily Fly volume snapshots retained for 30 days. A separate
+deletion-preserving Fly restore procedure was deliberately declined because restore-only
+reconciliation state and ordering rules would make the disaster path more fragile. Restoring a
+snapshot can reintroduce deletions made after it was taken, bounded by the backup window. Local
+restores retain their deletion-ledger safeguard.
+
+---
+
 ## Milestone 20 — Multi-Provider AI Routing And Model Bake-Off
 
 Evaluated GPT-5.6 Luna and Terra against the existing Claude Haiku and Sonnet controls using

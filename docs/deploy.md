@@ -225,7 +225,7 @@ stays on for local dev with no config.
 
 ### Fly volume snapshots (the prod backup)
 
-Fly snapshots the volume daily and retains them (default 5 days). Manage them:
+Fly snapshots the volume daily. Production retention is configured for 30 days. Manage them:
 ```
 fly volumes snapshots list <volume-id>      # volume id from `fly volumes list`
 fly volumes snapshots create <volume-id>    # on-demand, e.g. before a big change
@@ -234,14 +234,15 @@ Restore by creating a new volume from a snapshot, then attaching it:
 ```
 fly volumes create screener_data --snapshot-id <snap-id> --region iad --size 1
 ```
-Do not open a restored applicant database to traffic until its deletion ledger has been reconciled
-against the pre-restore database. A volume snapshot also rolls back that ledger, so blindly
-attaching an older volume could make already-purged PII visible again. The final M21 cutover runbook
-must pair the bounded snapshot lifetime with a deletion-preserving reconciliation step. The local
-`restore-db` scripts already capture the current hard-purge ledger and reapply it automatically;
-that protection does not extend across a Fly volume replacement by itself.
+Production recovery intentionally restores the selected snapshot as-is. There is no separate
+cross-snapshot deletion-ledger reconciliation: a restore can therefore reintroduce applicant data
+deleted after the snapshot was taken. That exposure is bounded by the 30-day snapshot-retention
+window and is the accepted disaster-recovery tradeoff for this small deployment. The local
+`restore-db` scripts provide stronger deletion-ledger handling for local backups; that behavior does
+not apply to a Fly volume replacement.
 
-For a true off-Fly copy (belt and suspenders), pull a consistent snapshot down on demand —
+For a true off-Fly copy (belt and suspenders), pull a consistent snapshot down on demand. Treat the
+download as sensitive applicant data and delete it within the same 30-day retention window.
 `VACUUM INTO` gives a clean copy even while the app is live:
 ```
 fly ssh console -C "sh -c 'cd /app/backend && uv run python -c \"import sqlite3; \

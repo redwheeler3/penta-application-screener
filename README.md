@@ -119,7 +119,7 @@ Start both servers:
 ```
 
 The backend runs at `http://localhost:8000`. The frontend runs at `http://localhost:5173`.
-During M21 development, open `http://localhost:5173/?applicant` to exercise the applicant form.
+Open `http://localhost:5173/?applicant` to exercise the applicant form.
 Open `http://localhost:5173/?preview=access` to review every access screen and transactional
 email with synthetic data. The preview is available only in local development and never sends email.
 Save and return later accepts an incomplete application, stores a private pending draft, and sends

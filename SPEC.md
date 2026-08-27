@@ -613,15 +613,17 @@ mailing-list subscription.
 Deletion covers the working and submitted answers, dated application versions,
 application participation, AI outputs and caches, eligibility and
 ranking data tied to the applicant, committee notes, sessions and unused login tokens, and
-applicant-identifying delivery records. Backups expire under a bounded backup-retention policy,
-and the built-in local restore path reapplies the current hard-purge ledger before the restored
-service is opened. The production Fly-volume restore procedure must preserve the same guarantee.
-Only a non-identifying audit fact that a record was deleted under a named retention rule may remain.
+applicant-identifying delivery records. Production uses daily Fly volume snapshots retained for
+30 days. A snapshot restore may reintroduce data deleted after that snapshot; the bounded backup
+window is the accepted disaster-recovery tradeoff, and production does not maintain a separate
+deletion-preserving restore ledger. The built-in local restore path does reapply its current
+hard-purge ledger. Only a non-identifying audit fact that a record was deleted under a named
+retention rule may remain in the live database.
 
 Retention is enforced automatically and opportunistically at most once per Pacific calendar day
 when the deployed service receives ordinary browser or API traffic. Health checks, static assets,
-and CORS preflight requests do not wake the sweep, and M21 does not add an external scheduler solely
-to wake a suspended Fly Machine. A durable lease prevents concurrent requests from running the
+and CORS preflight requests do not wake the sweep, and no external scheduler exists solely to wake
+a suspended Fly Machine. A durable lease prevents concurrent requests from running the
 same sweep. The ordered pass retries queued email, processes due unsuccessful notices, and then
 processes due retention deletion. A record may remain somewhat past its scheduled date while the
 service is unused; the first subsequent real use starts the due work in the background.
@@ -1024,7 +1026,7 @@ selection evidence and reproduction commands are in
 [ADR 0013](docs/adr/0013-openai-model-selection.md); the routing architecture is in
 [ADR 0014](docs/adr/0014-multi-provider-model-routing.md).
 
-### Built-In Applications And Committee Access (M21) — in progress
+### Built-In Applications And Committee Access (M21) — complete
 
 **Goal:** replace the external Google Form/Sheet intake path with a first-party public
 application experience at a separate applicant-facing hostname, add email-delivered access for
@@ -1040,7 +1042,7 @@ or require the dual Google/built-in transition that the between-cycle cutover de
 The work is delivered in internal stages and released only when the end-to-end replacement is
 ready.
 
-Stages 1 through 5 are complete. The browser form includes
+All seven delivery stages are complete. The browser form includes
 immediate private Save and return later, 24-hour access links with regeneration and cross-session
 choice, declaration acceptance, and restoration of an existing application without allowing
 pending answers to overwrite it. Applicant and committee sign-in default to shared-device-safe
@@ -1052,16 +1054,16 @@ lifecycle enforcement, submission-date household age checks, and committee openi
 visibility/filtering and the optional household photo link are implemented. Submitted applications
 appear without a committee sync action; Screen and Rank currentness derives from the stored pool.
 The committed synthetic fixture now mirrors the canonical intake schema, and a fail-closed,
-email-free local loader can migrate it into one or more published openings. Production cutover
-remains deliberately deferred until the end of the milestone.
+email-free local loader can migrate it into one or more published openings. The applicant hostname
+and first-party intake path are deployed.
 
 **Delivery stages:**
 
-1. **Canonical intake model** — make application fields independent of spreadsheet headings;
+1. **Canonical intake model (complete)** — make application fields independent of spreadsheet headings;
    introduce one durable application with private working and committee-facing submitted copies,
    opening participation, and dated application versions. Preserve the existing content hash as the
    boundary for stale AI results.
-2. **Transactional email and sessions** — add the provider-neutral sender with SocketLabs, domain
+2. **Transactional email and sessions (complete)** — add the provider-neutral sender with SocketLabs, domain
    authentication, passwordless email access, collision-safe account
    claiming, revocable server-side sessions, allowlist authorization, and delivery observability.
    Refactor Google committee sign-in to issue the same server-side session rather than retaining a
@@ -1077,12 +1079,13 @@ remains deliberately deferred until the end of the milestone.
    automatically; keep the list compact; show submission/version metadata in coherent application
    details; and derive stale Screen/Rank state from the submitted pool without routine committee
    email.
-6. **Retention and opening closeout** — add explicit per-opening selected/unsuccessful outcomes,
+6. **Retention and opening closeout (complete)** — add explicit per-opening
+   selected/unsuccessful outcomes,
    selected-applicant confirmation during the closed or archived phase, automatic eligible
    unsuccessful email after archive, seven-year retention for selected members, opening-anchored retention for
    never-submitted drafts, and complete one-year application purge with its deletion notice and vacancy-list invitation
    through a credential-safe, quota-aware outbox and once-per-Pacific-day automatic maintenance.
-7. **Between-cycle cutover** — configure the applicant hostname and exercise SocketLabs in
+7. **Between-cycle cutover (complete)** — configure the applicant hostname and exercise SocketLabs in
    production with synthetic data and retain existing production records as specified below.
    Application import, Picker, Drive credentials/tokens, and Google data scopes have already been
    removed from the codebase. Retain only identity-scoped Google committee sign-in and its OAuth
@@ -1142,10 +1145,12 @@ separate milestone with its own storage, hostname, and isolation decisions.
   browser submission/edit/collision checks, email delivery checks, and permission/retention checks
   pass before the cycle opens.
 
-**Remaining cutover decision:** choose the bounded production backup lifetime and finalize the
-deletion-preserving Fly-volume restore procedure before applications open. Complete applicant
-deletion, deletion-ledger-aware local restores, the opportunistic retention sweep, and
-administrator delivery-status banners are implemented in M21.
+**Production backup decision:** Fly takes daily volume snapshots and retains them for 30 days.
+That bounded window is the production recovery policy. A separate deletion-preserving Fly-volume
+restore procedure is deliberately excluded: restore-only reconciliation state and ordering rules
+would add failure modes to a rarely exercised disaster path without proportionate benefit.
+Applicant deletion, deletion-ledger-aware local restores, the opportunistic retention sweep, and
+administrator delivery-status banners are implemented.
 
 ### Built-In Vacancy Notifications (M22) — planned
 
