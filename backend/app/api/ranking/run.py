@@ -33,38 +33,31 @@ from app.ai.analysis import (
     exception_type_name,
     log,
 )
-from app.ai.dimension_consolidation import (
-    Consolidation,
-    consolidate_dimensions,
-    estimate_consolidate,
-)
+from app.ai.dimension_consolidation import Consolidation, consolidate_dimensions
 from app.ai.dimension_decomposition import (
     decompose_audit_payload,
     decompose_dimensions,
     enforce_committee_requests,
-    estimate_decompose,
     to_pool_report,
 )
 from app.ai.dimension_discovery import (
     DiscoverySeeds,
     discover_patterns_fanout,
     eligible_applications,
-    estimate_discovery,
 )
-from app.ai.dimension_matching import estimate_match, match_dimensions
+from app.ai.dimension_matching import match_dimensions
 from app.ai.dimension_scoring import (
     applications_needing_scores,
     applications_to_score,
     score_dimensions,
 )
-from app.ai.dimension_scoring_cost import estimate_dimension_scoring
 from app.ai.pricing import PassCost
 from app.ai.provider import AIProvider
-from app.ai.schemas import DecompositionReport, PoolDimension, PoolDimensionReport
+from app.ai.schemas import DecompositionReport, PoolDimensionReport
 from app.api.dependencies import get_ai_provider, require_current_user
 from app.core.config import get_settings
 from app.core.problems import Problem
-from app.db.models import Analysis, Application, MemberRanking, User
+from app.db.models import Analysis, MemberRanking, User
 from app.db.session import get_db
 from app.schemas.events import ErrorEvent as StreamErrorEvent
 from app.schemas.events import (
@@ -85,7 +78,6 @@ from app.schemas.ranking import (
 from app.schemas.settings import AppSettings
 from app.services.cost_report import (
     SCORE_CURRENT_KIND,
-    recent_pass_fresh_usd,
     record_run_cost,
 )
 from app.services.dimension_identity import adopt_matched_keys
@@ -106,6 +98,7 @@ from app.services.ranking_analysis import (
     ranking_is_current,
 )
 from app.services.ranking_dimensions import current_dimension_report
+from app.services.ranking_estimates import build_rank_estimate, current_scoring_estimate
 from app.services.run_lock import acquire_run_lock, release_run_lock
 from app.services.settings import get_app_settings
 from app.services.stream_worker import StreamWorker
@@ -185,95 +178,6 @@ class ScoreTally:
         return PassCost.from_tally(self, model_id)
 
 
-def _rank_estimate(
-    db: Session, settings: AppSettings, *, pool: list[Application] | None = None
-) -> dict[str, Any]:
-    """Combined projected cost of the Rank passes (K-discovery + decompose → match →
-    scoring).
-
-    The K parallel discovery calls always re-run (uncached), and the decomposition that
-    settles them is one more call — both folded into ``criteria_usd``. The match pass adds
-    a call only when a prior run exists. Scoring is priced from HISTORY on a re-rank (the
-    recency-weighted average of recent runs' actual scoring cost — see
-    ``estimate_dimension_scoring`` / ``recent_pass_fresh_usd``); only the first run, with no
-    history, uses the whole-pool ceiling. So the total is a best-effort **expected** cost, NOT
-    a guaranteed upper bound: a real-Bedrock check across 17 runs (2026-07-25) found actual
-    exceeded the estimate ~47% of the time (a full discovery re-mints dimensions whose fresh
-    scoring can outrun the historical mean), always still well under the spending cap. The
-    confirmation labels it approximate; the per-run cap remains a soft guard rather than a
-    reservation. Carry-forward reuse lowers actual spend as the pool stabilizes.
-
-    ``pool`` may be passed by a caller that already computed the union scope (the handler's
-    guard does), so the ~15ms union isn't recomputed for the confirm card.
-    """
-    pool = pool if pool is not None else eligible_applications(db)
-    # Fan-out: K parallel discovery calls (SPEC "Fan-Out Redesign", D6), each priced
-    # like the single call. Discovery is uncached, so K multiplies straight through —
-    # the bigger-than-expected half of the fan-out cost (see the cost-model note).
-    # Prefer MEASURED cost from recent runs; fall back to a seed estimate only when
-    # there's no history (per .clinerules: history is the honest predictor — it self-
-    # corrects when a prompt change moves output size, unlike a hand-tuned token guess).
-    # The ledger stores discovery as the summed K-call cost, so the measured value is
-    # already the whole fan-out — do NOT multiply by K again; the seed fallback does.
-    measured_discovery = recent_pass_fresh_usd(db, "Pattern discovery")
-    discovery_usd = (
-        measured_discovery
-        if measured_discovery is not None
-        else estimate_discovery(pool, settings) * settings.ai.discovery_fan_out
-    )
-    # Decomposition: measured from history, else a seed from projected input size (K
-    # reports × ~20 dims each, since the real reports don't exist pre-run).
-    measured_decompose = recent_pass_fresh_usd(db, "Dimension decomposition")
-    if measured_decompose is not None:
-        decompose_usd = measured_decompose
-    else:
-        _stub = PoolDimension(
-            key="x", name="x", definition="x", high_end="x", low_end="x", why_it_differentiates="x"
-        )
-        projected = [
-            PoolDimensionReport(dimensions=[_stub] * 20)
-            for _ in range(settings.ai.discovery_fan_out)
-        ]
-        decompose_usd = estimate_decompose(projected, settings)
-    # A match pass runs only when there is a prior run to match against. Measured from
-    # history when we have it (same principle as the other passes); the flat-token
-    # estimate_match is the seed for the first re-run before any match cost is recorded.
-    has_prior = get_current_analysis(db) is not None
-    if not has_prior:
-        match_usd = 0.0
-    else:
-        measured_match = recent_pass_fresh_usd(db, "Dimension matching")
-        match_usd = measured_match if measured_match is not None else estimate_match(settings)
-    # Reuse the pool already computed above — the union scope is ~15ms and both discovery
-    # and scoring range over the SAME union (see applications_to_score), so recomputing it
-    # inside the scoring estimate just duplicated the cost on the confirm-card path.
-    scoring = estimate_dimension_scoring(
-        db, settings, include_coverage=False, candidates=pool
-    )
-    scoring_usd = scoring["estimated_usd"]
-    # Post-score consolidation: a ceiling — the confirm call fires only when correlation
-    # nominates a duplicate pair (often none). Measured from history when available, else
-    # the flat seed; folded into criteria (it's criteria-cleanup) so the breakdown sums.
-    measured_consolidate = recent_pass_fresh_usd(db, "Dimension consolidation")
-    consolidate_usd = (
-        measured_consolidate if measured_consolidate is not None else estimate_consolidate(settings)
-    )
-    total = round(discovery_usd + decompose_usd + match_usd + scoring_usd + consolidate_usd, 4)
-    return {
-        "eligible": len(pool),
-        # K parallel discoveries per Rank (D6), so the confirm card can name the fan-out.
-        "fan_out": settings.ai.discovery_fan_out,
-        "breakdown": {
-            # criteria = K discovery + decomposition + the post-score consolidation cleanup.
-            "criteria_usd": round(discovery_usd + decompose_usd + consolidate_usd, 4),
-            "match_usd": round(match_usd, 4),
-            "scoring_usd": round(scoring_usd, 4),
-        },
-        "estimated_usd": total,
-        "approximate": True,  # scoring is a ceiling; carry-forward reuse lowers the real cost
-    }
-
-
 @router.get("/run/estimate", response_model=RankEstimateResponse)
 def rank_estimate(
     user: User = Depends(require_current_user),
@@ -286,7 +190,7 @@ def rank_estimate(
     pool = eligible_applications(db)
     if not pool:
         raise Problem("no_eligible_applications", detail="No eligible applications to rank.")
-    result = _rank_estimate(db, settings, pool=pool)
+    result = build_rank_estimate(db, settings, pool=pool)
     cap = settings.ai.spending_cap_usd
     breakdown = result["breakdown"]
     return RankEstimateResponse(
@@ -309,31 +213,13 @@ def rank_estimate(
     )
 
 
-def _current_scoring_estimate(
-    db: Session, settings: AppSettings
-) -> tuple[PoolDimensionReport, dict[str, object]]:
-    """Return the current criteria and an exact cache-aware scoring estimate.
-
-    Unlike a full Rank, this path never discovers, matches, consolidates, or creates an
-    analysis. It only fills cache misses for the current analysis's dimensions.
-    """
-    analysis = get_current_analysis(db)
-    report = current_dimension_report(analysis) if analysis is not None else None
-    if report is None:
-        raise Problem(
-            "run_required",
-            detail="Discover ranking criteria before scoring applicants against them.",
-        )
-    return report, estimate_dimension_scoring(db, settings, prefer_history=False)
-
-
 @router.get("/score-current/estimate", response_model=ScoreCurrentEstimateResponse)
 def score_current_estimate(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> ScoreCurrentEstimateResponse:
     settings = get_app_settings(db)
-    report, result = _current_scoring_estimate(db, settings)
+    report, result = current_scoring_estimate(db, settings)
     estimated_usd = float(result["estimated_usd"])
     return ScoreCurrentEstimateResponse(
         eligible=int(result["total"]),
@@ -354,7 +240,7 @@ def score_current(
 ) -> StreamingResponse:
     """Fill missing scores without changing the current dimensions or tier layout."""
     settings = get_app_settings(db)
-    report, estimate = _current_scoring_estimate(db, settings)
+    report, estimate = current_scoring_estimate(db, settings)
     if estimate["to_analyze"] == 0:
         raise Problem(
             "unchanged_pool",
@@ -857,7 +743,7 @@ def rank_run(
     # so re-running deliberately gives the committee a fresh set of criteria. The
     # confirmation card is the gate (it flags that nothing requires a re-run); a member who
     # confirms here has opted in on purpose.
-    estimate = _rank_estimate(db, settings)
+    estimate = build_rank_estimate(db, settings)
     try:
         enforce_cap(estimate, settings.ai.spending_cap_usd)
     except SpendingCapExceeded as exc:

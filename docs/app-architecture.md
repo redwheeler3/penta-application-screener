@@ -37,6 +37,10 @@ string in development:
 `ApplicantApp.tsx` owns intake. Shared branding and account controls live in small components
 rather than being duplicated between them.
 
+Applicant persistence is orchestrated by `useApplicantPersistence.ts`; its related UI state and
+typed transitions are centralized in `applicantPersistenceState.ts` so restoring, saving,
+submitting, and access-link handling do not each grow independent state conventions.
+
 ## Applicant intake
 
 Applicant-facing routes live in the `backend/app/api/applicant/` package, grouped into guest,
@@ -240,6 +244,10 @@ Safe placeholders belong in `.env.example`; actual `.env.local` files are ignore
 - `frontend/src/hooks/`: stateful data orchestration;
 - `frontend/src/api/`: browser HTTP boundary, split by backend domain over one shared client;
 - `backend/tests/`: behavior and contract coverage.
+
+Ranking routes are grouped under `backend/app/api/ranking/`. Cost and cache projections live in
+`backend/app/services/ranking_estimates.py`; shared-analysis state and per-member tier state live
+in `ranking_analysis.py` and `member_ranking.py`, respectively.
 
 Route handlers should stay thin. Business rules belong in services or domain modules, and a rule
 should have one named implementation rather than parallel frontend/backend copies whenever the
