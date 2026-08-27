@@ -80,7 +80,7 @@ configuration, committee defaults, Observability, and Evals require an admin.
 | --- | --- | --- | --- |
 | GET | `/dashboard` | Read Screen/Rank availability, currentness, and cache coverage. | Login |
 
-### Applications — `app/api/applications.py`
+### Applications — `app/api/applications/` (package)
 
 | Method | Path | Purpose | Auth |
 | --- | --- | --- | --- |

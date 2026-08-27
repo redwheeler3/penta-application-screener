@@ -249,6 +249,10 @@ Ranking routes are grouped under `backend/app/api/ranking/`. The corresponding s
 at `backend/app/services/ranking/` owns the streamed pipeline, cost projections, shared-analysis
 state, per-member tier state, audits, freshness, and ranked presentation.
 
+Committee application routes live in `backend/app/api/applications/routes.py`; their list/detail
+response assembly lives beside them in `presentation.py` so mutations and presentation can evolve
+independently.
+
 Route handlers should stay thin. Business rules belong in services or domain modules, and a rule
 should have one named implementation rather than parallel frontend/backend copies whenever the
 server can own it.
