@@ -167,8 +167,7 @@ class ConsolidateAuditResponse(ResponseModel):
 
 class FanOutPassOut(ResponseModel):
     """One of the K parallel discoverers, for the Observability discovery panel: the
-    dimensions it found and its own reasoning narrative (null on legacy runs that stored
-    reports without per-pass narratives)."""
+    dimensions it found and its own reasoning narrative, when that narrative is available."""
 
     dimensions: list[PoolDimensionOut]
     narrative: str | None = None

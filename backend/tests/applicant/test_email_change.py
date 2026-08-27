@@ -168,5 +168,3 @@ async def test_different_email_change_request_immediately_replaces_the_first() -
     assert links[0].revoked_at is not None
     assert links[1].revoked_at is None
     assert stored.json()["pendingEmailChange"] == "second-new@example.com"
-
-

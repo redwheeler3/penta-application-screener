@@ -271,5 +271,3 @@ def remove_star(
         db.commit()
 
     return ApplicationEnvelope(application=serialize_detail(application, db, user))
-
-

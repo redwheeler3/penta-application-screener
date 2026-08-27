@@ -110,5 +110,3 @@ async def _save_draft(client: AsyncClient, *, email: str = "avery@example.com", 
         "/applicant/drafts",
         json={"answers": _answers(email), "intent": intent},
     )
-
-

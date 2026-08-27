@@ -150,8 +150,8 @@ def hard_filter_reasons_for(
     pet_facts: PetFacts | None = None,
 ) -> list[dict[str, Any]]:
     """This member's deterministic hard-filter reasons for one applicant, computed on read
-    from ``application.normalized`` + a resolved ``RulesConfig``. Same dict shape the removed
-    ``hard_filter_reasons`` column stored, so it is a drop-in for the old read.
+    from ``application.normalized`` + a resolved ``RulesConfig``. Returns the reason-dict
+    shape consumed by the application and eligibility presentation layers.
 
     Takes an already-resolved ``RulesConfig`` (not a user_id) so callers ranking many apps
     resolve the member's rules once and reuse it across the pool — no per-app DB read.

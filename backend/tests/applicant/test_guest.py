@@ -354,5 +354,3 @@ async def test_unknown_address_without_an_actionable_opening_receives_public_upd
     assert sender.messages[0].to == ("unknown@example.com",)
     assert db.scalar(select(ApplicantDraft)) is None
     assert db.scalar(select(MagicLinkToken)) is None
-
-

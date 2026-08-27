@@ -618,5 +618,3 @@ def stream_rank(
             total_cost_usd=round(total_cost, 4),
         )
     )
-
-

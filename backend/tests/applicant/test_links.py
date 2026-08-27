@@ -329,5 +329,3 @@ async def test_draft_past_its_opening_retention_date_cannot_be_opened_or_regener
     assert inspected.json()["state"] == "abandoned"
     assert regenerated.json()["emailSent"] is False
     assert len(sender.messages) == 1
-
-
