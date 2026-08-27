@@ -193,9 +193,10 @@ SQLAlchemy models live in `backend/app/db/models.py`. Alembic migrations are the
 way to change an existing database. Additive migrations apply in place; never delete the local
 database without explicit approval.
 
-Ranking state is intentionally split by ownership: `ranking_analysis.py` persists the shared
-committee analysis, `member_ranking.py` owns each member's tiers and proposals, and
-`ranking_dimensions.py` parses the stored dimension report used by both.
+Ranking state is intentionally split by ownership: `backend/app/services/ranking/analysis.py`
+persists the shared committee analysis, `backend/app/services/ranking/member_state.py` owns each
+member's tiers and proposals, and `backend/app/services/ranking/dimensions.py` parses the stored
+dimension report used by both.
 
 ## Synthetic local data
 
