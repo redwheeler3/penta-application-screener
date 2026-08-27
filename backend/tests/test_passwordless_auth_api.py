@@ -1,5 +1,5 @@
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
@@ -17,6 +17,7 @@ from app.db.models import (
     EmailDelivery,
     EmailDeliveryState,
     MagicLinkPurpose,
+    Opening,
     PasswordlessIdentityKind,
     User,
     UserRole,
@@ -43,6 +44,17 @@ def _app_and_db() -> tuple:
 
 
 def _application(db: Session, *, deleted: bool = False) -> Application:
+    today = date.today()
+    db.add(
+        Opening(
+            unit_size_bedrooms=2,
+            housing_charge_cents=100_000,
+            application_open_date=today - timedelta(days=1),
+            application_close_date=today + timedelta(days=10),
+            move_in_date=today + timedelta(days=30),
+            published_at=datetime.now(UTC),
+        )
+    )
     application = Application(
         primary_email="applicant@example.test",
         applicant_name="Synthetic Applicant",
@@ -532,6 +544,10 @@ def test_magic_link_email_uses_fragment_and_common_unsubscribe_footer() -> None:
     )
 
     assert "#applicant-link=secret-token" in applicant.text_body
+    assert applicant.subject == "Continue your Penta application"
+    assert "Continue your application" in applicant.html_body
+    assert "Review or update your Penta housing application." in applicant.html_body
+    assert ">Open application<" in applicant.html_body
     assert "HsTracking" not in applicant.html_body
     assert "PENTA HOUSING CO-OP" in applicant.html_body
     assert 'src="https://www.pentacoop.com/email-house.png"' in applicant.html_body
@@ -547,9 +563,10 @@ def test_magic_link_email_uses_fragment_and_common_unsubscribe_footer() -> None:
     assert "expires in" not in committee.html_body
     for message in (applicant, committee):
         assert "{{HsUnsubscribe}}" in message.text_body
+        assert "This email address is not monitored." in message.text_body
         assert (
-            "<HsUnsubscribe>Click here to permanently unsubscribe this email "
-            "address.</HsUnsubscribe>"
+            "<HsUnsubscribe>Click here to permanently unsubscribe.</HsUnsubscribe>"
+            "</strong> <span>Penta will no longer be able to email you"
             in message.html_body
         )
         assert "Penta will no longer be able to email you" in message.text_body

@@ -94,6 +94,8 @@ def attempt_reserved_delivery(
         delivery.quota_blocked = False
         delivery.retry_intent = None
         delivery.last_error_code = type(error).__name__[:120]
+    if delivery.state != EmailDeliveryState.QUEUED:
+        delivery.recipient_email = None
     if delivery.state != EmailDeliveryState.ACCEPTED and magic_link_token is not None:
         magic_link_token.revoked_at = now
     db.commit()
@@ -167,6 +169,11 @@ def _reserve_delivery(
         user_id=user_id,
         magic_link_token_id=magic_link_token.id if magic_link_token is not None else None,
         applicant_draft_id=applicant_draft.id if applicant_draft is not None else None,
+        recipient_email=(
+            message.to[0]
+            if application_id is None and applicant_draft is None and user_id is None
+            else None
+        ),
         state=EmailDeliveryState.QUEUED,
         retry_intent=retry_intent,
         quota_blocked=False,

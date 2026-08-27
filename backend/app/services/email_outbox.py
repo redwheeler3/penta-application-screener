@@ -131,6 +131,13 @@ def _build_retry(
             application_deleted_email(application_id=draft.id, email=draft.email),
             None,
         )
+    if intent_type == "application_unavailable" and delivery.application is None:
+        if delivery.recipient_email is None:
+            return None
+        return (
+            application_unavailable_email(email=delivery.recipient_email),
+            None,
+        )
     application = delivery.application
     if application is None:
         return None

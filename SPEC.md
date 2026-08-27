@@ -197,8 +197,14 @@ private draft and receives its first access link; a known address receives acces
 draft or application. During the closed phase, new guest applications are unavailable, but an
 applicant already participating in a closed opening may still sign in to edit or withdraw. A known
 applicant with nothing actionable receives an email directing them to the public vacancy page
-instead of a credential. If no published opening is open or closed, the entry page disables both
+instead of a credential. An unknown address receives the same useful email outcome rather than
+silence. Every accepted application-access request shows one non-enumerating **Check your email**
+confirmation in the browser; the email, not the browser response, explains whether an application
+can be opened. Repeated recent requests rely on the message already sent.
+If no published opening is open or closed, the entry page disables both
 sign-in and guest access and shows the applications-unavailable state.
+An upcoming opening is visible to administrators for scheduling but remains hidden from applicants
+until its application open date.
 
 After each initial or updated submission, the product sends the primary applicant a confirmation
 email with secure application access. There is no opt-in checkbox: the applicant may ignore or delete
@@ -262,11 +268,13 @@ Access-link handling follows one explicit decision table:
 | Valid link; same applicant session | Offer the remembered-device choice, then consume the link, refresh the session, and open the application. |
 | Expired, used, or replaced link; same applicant session | Ignore the stale credential and open the already-authenticated application. |
 | Expired, used, or replaced link; no applicant session | Explain that the application remains saved and offer to email a fresh 24-hour link without asking for the address again. |
-| Recognizable link; different applicant session | Before consuming or replacing anything, show the full current-session email and link email and require a choice. A valid link offers **Keep current application** or **Open linked application**; a stale link offers **Keep current application** or **Email a new link**. |
+| Recognizable link; different applicant session | Before consuming or replacing anything, show who is signed in now and who received the link, then require a choice. A valid link offers **Stay signed in as [current email]** or **Sign in as [link email]**; a stale link offers the same stay-signed-in action or **Email a new link to [link email]**. |
 | Invalid or abandoned-draft link | Do not reveal an address or establish a session; direct the visitor back to the application entry point. |
 
-After a replacement-link request succeeds, the page shows a dedicated **Check your email**
-confirmation rather than attempting to load application data before authentication.
+After a replacement-link request succeeds, the page shows the same **Check your email**
+confirmation rather than attempting to load application data before authentication. A link to a
+draft or application that is no longer editable cannot establish a new session; requesting a
+replacement instead sends the application-access-unavailable email.
 
 An applicant-session conflict is resolved before link validity changes behavior. Choosing the
 current application leaves its session and browser-local draft untouched. Choosing the linked

@@ -1,6 +1,7 @@
 import { type Dispatch, type SetStateAction, useEffect, useRef, useState } from "react";
 
 import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
+import { APPLICATION_ACCESS_EMAIL_MESSAGE } from "./accessMessages";
 
 import {
   cancelEmailChange,
@@ -52,6 +53,7 @@ export type PersistencePhase =
   | "link_conflict"
   | "link_expired"
   | "link_invalid"
+  | "applications_unavailable"
   | "access_link_sent"
   | "authentication_required"
   | "email_failed"
@@ -185,6 +187,10 @@ export function useApplicantPersistence(
     const body = await linkBody(response);
     setAccessPurpose(body.purpose ?? "applicant_access");
     setAccessApplicationEmail(body.applicationEmail);
+    if (body.state === "unavailable") {
+      setPhase("applications_unavailable");
+      return;
+    }
     if (body.switchRequired && body.currentEmail && body.linkEmail) {
       setLinkConflict({
         currentEmail: body.currentEmail,
@@ -352,7 +358,7 @@ export function useApplicantPersistence(
     setEmailChangeMessage(
       body.emailSent
         ? "Check your email to confirm the new address."
-        : "A confirmation was requested recently. Please check your inbox.",
+        : "Check your inbox for the confirmation link we sent recently.",
     );
     setEmailChangeNeedsReauthentication(false);
     setEmailChangeStatus("sent");
@@ -376,10 +382,10 @@ export function useApplicantPersistence(
     };
     setEmailChangeMessage(
       body.emailSent
-        ? `Check ${primaryEmail ?? "your email"} for a fresh sign-in link.`
+        ? `Check ${primaryEmail ?? "your email"} for a new sign-in link.`
         : body.emailStatus === "failed"
           ? TECH_SUPPORT_ERROR_MESSAGE
-          : "A sign-in link was requested recently. Check your inbox.",
+          : "Check your inbox for the sign-in link we sent recently.",
     );
   }
 
@@ -464,8 +470,8 @@ export function useApplicantPersistence(
     } else {
       setMessage(
         body.emailSent
-          ? "Your application is saved. Use the secure link in your email to return."
-          : "Your application is saved. A link was requested recently; check your inbox.",
+          ? "Your application is saved. Use the link in your email to open it again."
+          : "Your application is saved. Check your inbox for the link we sent recently.",
       );
       setPhase("email_sent");
     }
@@ -506,8 +512,8 @@ export function useApplicantPersistence(
       } else {
         setMessage(
           body.emailSent
-            ? "An application already exists for this email. Check your inbox for a secure link to sign in."
-            : "An application already exists for this email. Check your inbox for the link sent recently.",
+            ? "An application already exists for this email. Check your inbox for a link to sign in and open it."
+            : "An application already exists for this email. Check your inbox for the link we sent recently.",
         );
         setPhase("authentication_required");
       }
@@ -607,7 +613,7 @@ export function useApplicantPersistence(
       ...current,
       applicant: { ...current.applicant, email: email.trim().toLowerCase() },
     }));
-    setMessage("Check your inbox for an update about your application.");
+    setMessage(APPLICATION_ACCESS_EMAIL_MESSAGE);
     setPhase("access_link_sent");
     return true;
   }
@@ -623,7 +629,7 @@ export function useApplicantPersistence(
   async function emailSessionAccessLink(): Promise<void> {
     setPhase("working");
     if (await emailReturnLink()) {
-      setMessage("Check your inbox for a secure link to continue to your application.");
+      setMessage(APPLICATION_ACCESS_EMAIL_MESSAGE);
       setPhase("access_link_sent");
       return;
     }
@@ -685,8 +691,10 @@ export function useApplicantPersistence(
       body.emailSent
         ? accessPurpose === "email_change"
           ? "We emailed a new confirmation link. Open it to finish changing your email address."
-          : "We emailed a new secure link. Open it to continue to your application."
-        : "A secure link was requested recently. Check your inbox for that message.",
+          : "We emailed a new link to open your application."
+        : accessPurpose === "email_change"
+          ? "Check your inbox for the confirmation link we sent recently."
+          : "Check your inbox for the application link we sent recently.",
     );
     setLinkConflict(null);
     setPhase("access_link_sent");
@@ -915,7 +923,7 @@ export function useApplicantPersistence(
 }
 
 type AccessLinkBody = {
-  state: "valid" | "expired" | "used" | "replaced" | "invalid" | "abandoned" | "email_in_use";
+  state: "valid" | "expired" | "used" | "replaced" | "invalid" | "abandoned" | "unavailable" | "email_in_use";
   purpose: "applicant_access" | "email_change" | null;
   currentEmail: string | null;
   linkEmail: string | null;

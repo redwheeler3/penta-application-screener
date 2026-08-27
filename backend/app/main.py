@@ -16,6 +16,7 @@ from app.api.applicant_intake import router as applicant_intake_router
 from app.api.applications import router as applications_router
 from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
+from app.api.dev_previews import router as dev_previews_router
 from app.api.evals import router as evals_router
 from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
@@ -122,6 +123,7 @@ def create_app(*, maintenance_task: Callable[[], None] | None = None) -> FastAPI
     app.include_router(applications_router)
     app.include_router(auth_router)
     app.include_router(dashboard_router)
+    app.include_router(dev_previews_router)
     app.include_router(evals_router)
     app.include_router(feedback_router)
     app.include_router(health_router)
@@ -148,6 +150,7 @@ def _triggers_maintenance(request: Request) -> bool:
     return (
         request.method != "OPTIONS"
         and path != "/health"
+        and not path.startswith("/dev/previews/")
         and not path.startswith("/assets/")
         and path not in {"/favicon.ico", "/robots.txt"}
     )

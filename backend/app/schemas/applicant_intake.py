@@ -57,7 +57,14 @@ class PendingCopyOut(ResponseModel):
 
 class AccessLinkResponse(ResponseModel):
     state: Literal[
-        "valid", "expired", "used", "replaced", "invalid", "abandoned", "email_in_use"
+        "valid",
+        "expired",
+        "used",
+        "replaced",
+        "invalid",
+        "abandoned",
+        "unavailable",
+        "email_in_use",
     ]
     purpose: MagicLinkPurpose | None = None
     current_email: str | None = None

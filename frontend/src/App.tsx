@@ -56,7 +56,6 @@ export function App(props: { authRedirect: AuthRedirect }) {
     isLoadingUser,
     userLoadFailed,
     signInState,
-    loadCurrentUser,
     requestMagicLink,
     keepCurrentSession,
     openLinkedSession,
@@ -369,7 +368,6 @@ export function App(props: { authRedirect: AuthRedirect }) {
           onOpenLinked={openLinkedSession}
           onEmailNew={emailNewLinkedSession}
           onReset={resetSignIn}
-          onRetrySession={loadCurrentUser}
         />
       ) : (
         <>

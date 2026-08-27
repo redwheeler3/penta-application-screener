@@ -9,15 +9,14 @@ from app.services.email_sender import OutboundEmail
 
 BRAND_LOGO_URL = "https://www.pentacoop.com/email-house.png"
 VACANCY_LIST_URL = "https://www.pentacoop.com/apply.html"
-COMMON_FOOTER_TEXT = """Click here to permanently unsubscribe this email address:
-{{HsUnsubscribe}}
+COMMON_FOOTER_TEXT = """This email address is not monitored.
 
-Penta will no longer be able to email you, including secure sign-in links."""
+Click here to permanently unsubscribe: {{HsUnsubscribe}}. Penta will no longer be able to email you, including links used to sign in."""
 COMMON_FOOTER_HTML = (
-    "<strong><HsUnsubscribe>Click here to permanently unsubscribe this email "
-    "address.</HsUnsubscribe></strong>"
-    '<br><span style="display:inline-block;margin-top:8px;">Penta will no longer be able to '
-    "email you, including secure sign-in links.</span>"
+    "<span>This email address is not monitored.</span>"
+    '<br><strong style="display:inline-block;margin-top:8px;"><HsUnsubscribe>'
+    "Click here to permanently unsubscribe.</HsUnsubscribe></strong> "
+    "<span>Penta will no longer be able to email you, including links used to sign in.</span>"
 )
 
 
@@ -35,13 +34,13 @@ def application_confirmation_email(
     introduction = (
         "Your application is now available to the membership committee."
         if submitted
-        else "Your private application draft has been saved securely."
+        else "Your private application draft has been saved."
     )
     text = _with_common_footer(f"""{heading}.
 
 {introduction}
 
-Use this secure link to return to your application:
+Use this link to open your application:
 
 {url}
 
@@ -51,7 +50,7 @@ Use this secure link to return to your application:
         heading=heading,
         introduction=introduction,
         action_url=url,
-        action_label="Return to your application",
+        action_label="Open your application",
         link_notice=None,
     )
     return OutboundEmail(
@@ -159,8 +158,7 @@ def email_change_notice_email(
 def application_deleted_email(*, application_id: int, email: str) -> OutboundEmail:
     heading = "Your application has been deleted"
     introduction = (
-        "We're writing to let you know that your Penta housing application has been "
-        "deleted from our system, in line with our privacy policy."
+        "Your Penta housing application has been deleted from our system."
     )
     invitation = (
         "Penta doesn't keep a waitlist. If you'd like to hear when another unit becomes "
@@ -191,16 +189,14 @@ def application_deleted_email(*, application_id: int, email: str) -> OutboundEma
     )
 
 
-def application_unavailable_email(*, application_id: int, email: str) -> OutboundEmail:
-    heading = "No application updates are available"
+def application_unavailable_email(
+    *, email: str, application_id: int | None = None
+) -> OutboundEmail:
+    heading = "Application access isn't available"
     introduction = (
-        "There isn't currently an opening that you can apply for or update through your "
-        "saved Penta application."
+        "There isn't currently an application you can start or update using this email address."
     )
-    notice = (
-        "Visit Penta's website to see current vacancy information or join the "
-        "notification list."
-    )
+    notice = "Visit Penta's website for vacancy information and notifications."
     text = _with_common_footer(f"""{heading}.
 
 {introduction}
@@ -218,7 +214,9 @@ def application_unavailable_email(*, application_id: int, email: str) -> Outboun
     )
     return OutboundEmail(
         kind="application_unavailable",
-        recipient_id=f"application:{application_id}",
+        recipient_id=(
+            f"application:{application_id}" if application_id is not None else "access-request"
+        ),
         to=(email,),
         subject=heading,
         text_body=text,
@@ -232,7 +230,7 @@ def unsuccessful_application_email(
     heading = "An update on your Penta application"
     introduction = (
         "Thank you for the time you took to apply. We're sorry to let you know that "
-        f"your household was not selected for {', '.join(opening_labels)}. We wish "
+        f"your household was not selected for {_natural_list(opening_labels)}. We wish "
         "you all the best in your housing search."
     )
     notice = (
@@ -264,28 +262,38 @@ def unsuccessful_application_email(
     )
 
 
+def _natural_list(items: list[str]) -> str:
+    if not items:
+        raise ValueError("an unsuccessful notice requires at least one opening")
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} or {items[1]}"
+    return f"{', '.join(items[:-1])}, or {items[-1]}"
+
+
 def _applicant_magic_link_email(
     *, recipient_id: int, email: str, token: str, settings: Settings
 ) -> OutboundEmail:
     url = _applicant_link_url(settings.applicant_frontend_url, token)
-    text = _with_common_footer(f"""Use this secure link to return to your Penta housing application:
+    text = _with_common_footer(f"""Review or update your Penta housing application:
 
 {url}
 
 If you did not request it, you can ignore this email.""")
     html = _email_shell(
         eyebrow="Application access",
-        heading="Return to your application",
-        introduction="Use the secure button below to return to your Penta housing application.",
+        heading="Continue your application",
+        introduction="Review or update your Penta housing application.",
         action_url=url,
-        action_label="Return to your application",
+        action_label="Open application",
         link_notice=None,
     )
     return OutboundEmail(
         kind="applicant_magic_link",
         recipient_id=f"application:{recipient_id}",
         to=(email,),
-        subject="Return to your Penta application",
+        subject="Continue your Penta application",
         text_body=text,
         html_body=html,
     )
@@ -295,7 +303,7 @@ def _committee_magic_link_email(
     *, recipient_id: int, email: str, token: str, settings: Settings
 ) -> OutboundEmail:
     url = _magic_link_url(settings.frontend_url, token)
-    text = _with_common_footer(f"""Use this secure link to sign in to the Penta Application Screener:
+    text = _with_common_footer(f"""Use this link to sign in to the Penta Application Screener:
 
 {url}
 
@@ -303,7 +311,7 @@ If you did not request it, you can ignore this email.""")
     html = _email_shell(
         eyebrow="Member access",
         heading="Sign in to the screener",
-        introduction="Use the secure button below to sign in to the Penta Application Screener.",
+        introduction="Use the button below to sign in to the Penta Application Screener.",
         action_url=url,
         action_label="Sign in to the screener",
         link_notice=None,

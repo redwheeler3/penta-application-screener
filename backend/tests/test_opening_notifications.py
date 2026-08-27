@@ -81,6 +81,7 @@ def test_notice_waits_until_every_active_opening_is_archived_and_final() -> None
     application = _application(db, "applicant@example.com")
     archived = _opening(db, archived=True)
     closed = _opening(db, archived=False)
+    closed.unit_size_bedrooms = 3
     first = _participate(db, application, archived, OpeningOutcome.UNSUCCESSFUL)
     second = _participate(db, application, closed, OpeningOutcome.UNSUCCESSFUL)
 
@@ -91,6 +92,9 @@ def test_notice_waits_until_every_active_opening_is_archived_and_final() -> None
     assert send_due_unsuccessful_notices(db, sender) == 1
     assert len(sender.messages) == 1
     assert "your household was not selected" in sender.messages[0].text_body
+    assert "the 2-bedroom home" in sender.messages[0].text_body
+    assert " or the 3-bedroom home" in sender.messages[0].text_body
+    assert "move-in)" in sender.messages[0].text_body
     assert "all the best in your housing search" in sender.messages[0].text_body
     assert "https://www.pentacoop.com/apply.html" in sender.messages[0].text_body
     assert first.unsuccessful_notified_at is not None

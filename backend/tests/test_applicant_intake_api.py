@@ -432,6 +432,101 @@ async def test_existing_applicant_without_an_actionable_opening_receives_public_
 
 
 @pytest.mark.anyio
+async def test_unknown_address_without_an_actionable_opening_receives_public_update() -> None:
+    app, db, sender = _app_and_db()
+    opening = db.scalar(select(Opening))
+    assert opening is not None
+    opening.application_close_date = pacific_today() - timedelta(days=2)
+    opening.move_in_date = pacific_today() - timedelta(days=1)
+    db.commit()
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/applicant/access-links/request",
+            json={"answers": _answers("unknown@example.com")},
+        )
+
+    assert response.status_code == 202
+    assert response.json()["emailStatus"] == "sent"
+    assert len(sender.messages) == 1
+    assert sender.messages[0].kind == "application_unavailable"
+    assert sender.messages[0].to == ("unknown@example.com",)
+    assert db.scalar(select(ApplicantDraft)) is None
+    assert db.scalar(select(MagicLinkToken)) is None
+
+
+@pytest.mark.anyio
+async def test_pending_draft_cannot_be_reopened_after_applications_archive() -> None:
+    app, db, sender = _app_and_db()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await _save_draft(client)
+        token = _link(sender)
+        opening = db.scalar(select(Opening))
+        assert opening is not None
+        opening.application_close_date = pacific_today() - timedelta(days=2)
+        opening.move_in_date = pacific_today() - timedelta(days=1)
+        db.commit()
+        sender.messages.clear()
+
+        requested = await client.post(
+            "/applicant/access-links/request",
+            json={"answers": _answers()},
+        )
+        inspected = await client.post(
+            "/applicant/access-links/inspect",
+            json={"token": token},
+        )
+        regenerated = await client.post(
+            "/applicant/access-links/regenerate",
+            json={"token": token},
+        )
+
+    assert requested.json()["emailStatus"] == "sent"
+    assert inspected.json()["state"] == "unavailable"
+    assert regenerated.json()["emailStatus"] == "sent"
+    assert len(sender.messages) == 1
+    assert sender.messages[0].kind == "application_unavailable"
+    assert len(list(db.scalars(select(MagicLinkToken)))) == 1
+
+
+@pytest.mark.anyio
+async def test_application_link_cannot_start_a_session_after_openings_archive() -> None:
+    app, db, sender = _app_and_db()
+    opening = db.scalar(select(Opening))
+    assert opening is not None
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        submitted = await client.post(
+            "/applicant/submissions",
+            json={
+                "answers": _answers(),
+                "openingIds": [opening.id],
+                "declarationAccepted": True,
+            },
+        )
+        assert submitted.status_code == 201
+        token = _link(sender)
+        opening.application_close_date = pacific_today() - timedelta(days=2)
+        opening.move_in_date = pacific_today() - timedelta(days=1)
+        db.commit()
+
+        inspected = await client.post(
+            "/applicant/access-links/inspect",
+            json={"token": token},
+        )
+        opened = await client.post(
+            "/applicant/access-links/open",
+            json={"token": token, "switchCurrent": False},
+        )
+
+    assert inspected.json()["state"] == "unavailable"
+    assert opened.json()["state"] == "unavailable"
+    assert opened.json()["applicationId"] is None
+
+
+@pytest.mark.anyio
 async def test_authenticated_return_link_saves_current_answers_before_emailing() -> None:
     app, db, sender = _app_and_db()
     transport = ASGITransport(app=app)

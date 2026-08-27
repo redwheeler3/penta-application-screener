@@ -104,6 +104,8 @@ def _is_unsuccessful_and_final(
 
 
 def _opening_label(opening: Opening) -> str:
-    date_label = opening.move_in_date.strftime("%B ") + str(opening.move_in_date.day)
-    date_label += opening.move_in_date.strftime(", %Y")
-    return f"the {opening.unit_size_bedrooms}-bedroom opening ({date_label} move-in)"
+    move_in = (
+        f"{opening.move_in_date.strftime('%B')} {opening.move_in_date.day}, "
+        f"{opening.move_in_date.year}"
+    )
+    return f"the {opening.unit_size_bedrooms}-bedroom home ({move_in} move-in)"

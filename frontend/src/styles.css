@@ -232,6 +232,14 @@ h1 {
   cursor: wait;
 }
 
+.sign-in-retry-spinner {
+  animation: sign-in-retry-spin 0.8s linear infinite;
+}
+
+@keyframes sign-in-retry-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Neutral/secondary action: green-tint hover-lift. */
 .secondary-button:hover:not(:disabled) {
   border-color: var(--penta-green);

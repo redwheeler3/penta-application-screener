@@ -44,17 +44,21 @@ export function useSession(authRedirect: AuthRedirect) {
         : "idle",
   );
   const exchangeStarted = useRef(false);
+  const userLoadInFlight = useRef(false);
 
   async function loadCurrentUser(): Promise<void> {
+    if (userLoadInFlight.current) return;
+    userLoadInFlight.current = true;
     setIsLoadingUser(true);
-    setUserLoadFailed(false);
     try {
       const authState = await retryWithBackoff(api.fetchAuthState, 3);
       setUser(authState.user);
       setEmailSignInEnabled(authState.emailSignInEnabled);
+      setUserLoadFailed(false);
     } catch {
       setUserLoadFailed(true);
     } finally {
+      userLoadInFlight.current = false;
       setIsLoadingUser(false);
     }
   }
@@ -71,6 +75,25 @@ export function useSession(authRedirect: AuthRedirect) {
     exchangeStarted.current = true;
     void inspectMagicLink(authRedirect.magicLinkToken);
   }, [authRedirect.magicLinkToken]);
+
+  useEffect(() => {
+    if (!userLoadFailed) return;
+    const retryWhenAvailable = () => {
+      if (document.visibilityState === "visible" && navigator.onLine) {
+        void loadCurrentUser();
+      }
+    };
+    const interval = window.setInterval(retryWhenAvailable, 10_000);
+    window.addEventListener("online", retryWhenAvailable);
+    window.addEventListener("focus", retryWhenAvailable);
+    document.addEventListener("visibilitychange", retryWhenAvailable);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("online", retryWhenAvailable);
+      window.removeEventListener("focus", retryWhenAvailable);
+      document.removeEventListener("visibilitychange", retryWhenAvailable);
+    };
+  }, [userLoadFailed]);
 
   async function inspectMagicLink(token: string): Promise<void> {
     const authStatePromise = api.fetchAuthState().catch(() => null);
@@ -152,6 +175,7 @@ export function useSession(authRedirect: AuthRedirect) {
   }
 
   async function requestMagicLink(email: string, rememberDevice: boolean): Promise<void> {
+    setLinkedEmail(email.trim().toLowerCase());
     setSignInState("requesting");
     const response = await api.requestCommitteeMagicLink(email, rememberDevice);
     setSignInState(response.ok ? "emailSent" : "requestFailed");
@@ -176,7 +200,6 @@ export function useSession(authRedirect: AuthRedirect) {
     isLoadingUser,
     userLoadFailed,
     signInState,
-    loadCurrentUser,
     requestMagicLink,
     keepCurrentSession,
     openLinkedSession,

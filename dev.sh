@@ -22,6 +22,7 @@ echo "Starting backend on http://localhost:8000 ..."
 echo "Starting frontend on http://localhost:5173 ..."
 echo "  Committee screener: http://localhost:5173"
 echo "  Application form:   http://localhost:5173/?applicant"
+echo "  Access/email review: http://localhost:5173/?preview=access"
 (cd "$REPO_ROOT/frontend" && npm run dev) &
 
 wait

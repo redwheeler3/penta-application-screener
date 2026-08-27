@@ -37,7 +37,7 @@ def test_maintenance_claims_once_per_pacific_day() -> None:
 
 
 @pytest.mark.anyio
-async def test_real_request_triggers_maintenance_but_health_and_assets_do_not() -> None:
+async def test_real_request_triggers_maintenance_but_inert_requests_do_not() -> None:
     calls = 0
 
     def maintenance_task() -> None:
@@ -49,6 +49,7 @@ async def test_real_request_triggers_maintenance_but_health_and_assets_do_not() 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         await client.get("/health")
         await client.get("/assets/missing.css")
+        await client.get("/dev/previews/emails")
         await client.get("/dashboard")
 
     assert calls == 1

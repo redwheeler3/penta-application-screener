@@ -105,6 +105,7 @@ try {
     Write-Host "Starting frontend on http://localhost:5173 ..."
     Write-Host "  Committee screener: http://localhost:5173"
     Write-Host "  Application form:   http://localhost:5173/?applicant"
+    Write-Host "  Access/email review: http://localhost:5173/?preview=access"
     $frontendRun = Start-Frontend -Attempt 0
     $frontend = $frontendRun.Process
 

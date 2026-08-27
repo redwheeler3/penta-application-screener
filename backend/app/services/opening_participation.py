@@ -175,7 +175,7 @@ def _validate_opening_selection(
         if not by_id[opening_id].can_withdraw:
             raise Problem(
                 "opening_archived",
-                detail="Participation cannot change after the opening is archived on its move-in date.",
+                detail="Your choice for this opening cannot be changed after the move-in date.",
             )
     current_requested = {
         opening_id

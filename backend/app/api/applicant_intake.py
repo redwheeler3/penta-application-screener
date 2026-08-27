@@ -234,7 +234,7 @@ def submit_guest_application(
         )
         raise Problem(
             "application_already_exists",
-            detail="An application already exists for this email. Check your inbox for a secure link to it.",
+            detail="An application already exists for this email. Check your inbox for a link to open it.",
         )
 
     openings = validate_opening_selection(db, None, body.opening_ids, now=now)
@@ -312,21 +312,30 @@ def request_applicant_access_link(
         if application is not None and not application_is_editable(
             applicant_opening_states(db, application)
         ):
-            sent = send_application_unavailable(db, sender, application, now=now)
+            sent = send_application_unavailable(
+                db, sender, email, application=application, now=now
+            )
             return RequestAccessLinkResponse(
                 current_answers_saved=False,
                 email_status="sent" if sent else "failed",
             )
         draft = latest_pending_draft_for_email(db, email, now=now)
         if draft is not None:
+            if not _access_target_is_editable(db, draft):
+                sent = send_application_unavailable(db, sender, email, now=now)
+                return RequestAccessLinkResponse(
+                    current_answers_saved=False,
+                    email_status="sent" if sent else "failed",
+                )
             target = draft
         elif application is not None:
             target = application
         else:
             if not _new_applications_are_open(db):
+                sent = send_application_unavailable(db, sender, email, now=now)
                 return RequestAccessLinkResponse(
                     current_answers_saved=False,
-                    email_status=EmailSendOutcome.SENT.value,
+                    email_status="sent" if sent else "failed",
                 )
             validate_working_opening_selection(db, None, body.opening_ids, now=now)
             open_ids = [
@@ -375,7 +384,7 @@ def inspect_applicant_access_link(
     db: Session = Depends(get_db),
 ) -> AccessLinkResponse:
     link = _applicant_link(db, body.token)
-    return _access_link_response(link, application)
+    return _access_link_response(db, link, application)
 
 
 @router.post("/access-links/open", response_model=AccessLinkResponse)
@@ -388,7 +397,7 @@ def open_applicant_access_link(
     sender: EmailSender = Depends(get_email_sender),
 ) -> AccessLinkResponse:
     inspected = _applicant_link(db, body.token)
-    preview = _access_link_response(inspected, current)
+    preview = _access_link_response(db, inspected, current)
     if preview.state != "valid":
         return preview
     if preview.switch_required and not body.switch_current:
@@ -401,7 +410,7 @@ def open_applicant_access_link(
         purpose=inspected.purpose,
     )
     if link is None:
-        return _access_link_response(_applicant_link(db, body.token), current)
+        return _access_link_response(db, _applicant_link(db, body.token), current)
     claimed = _claim_link_target(db, link)
     if claimed.application is None:
         db.commit()
@@ -486,12 +495,12 @@ def reconcile_pending_copy(
     session: BrowserSession = request.state.passwordless_session
     draft = session.reconciliation_draft
     if not _draft_belongs_to_application(draft, application):
-        raise Problem("pending_copy_not_found", detail="This pending copy is no longer available.")
+        raise Problem("pending_copy_not_found", detail="These answers are no longer available.")
     if body.choice == "guest":
         _require_application_editable(db, application)
         answers = _draft_answers(draft)
         if answers is None:
-            raise Problem("pending_copy_invalid", detail="This pending copy cannot be restored.")
+            raise Problem("pending_copy_invalid", detail="These answers cannot be restored.")
         validate_working_opening_selection(
             db, application, draft.working_opening_ids or [], now=datetime.now(UTC)
         )
@@ -526,6 +535,20 @@ def regenerate_applicant_access_link(
             email_sent=False,
             email_status="failed",
             retry_after_seconds=0,
+        )
+    if not _access_target_is_editable(db, target):
+        application = _application_for_access_target(db, target)
+        sent = send_application_unavailable(
+            db,
+            sender,
+            link.email,
+            application=application,
+            now=now,
+        )
+        return RegenerateAccessLinkResponse(
+            email_sent=sent,
+            email_status="sent" if sent else "failed",
+            retry_after_seconds=get_settings().magic_link_coalesce_seconds,
         )
     can_send = applicant_email_request_allowed(db, link.email, now=now)
     outcome = EmailSendOutcome.RECENT
@@ -843,6 +866,7 @@ def _applicant_link(db: Session, token: str) -> MagicLinkToken | None:
 
 
 def _access_link_response(
+    db: Session,
     link: MagicLinkToken | None,
     current: Application | None,
     *,
@@ -859,6 +883,12 @@ def _access_link_response(
         state = "expired"
     elif link.applicant_draft is not None and not draft_is_available(link.applicant_draft, now=now):
         state = "abandoned"
+    elif link.purpose == MagicLinkPurpose.APPLICANT_ACCESS:
+        target = _link_target(db, link)
+        if target is None:
+            state = "abandoned"
+        else:
+            state = "valid" if _access_target_is_editable(db, target) else "unavailable"
     else:
         state = "valid"
     return AccessLinkResponse(
@@ -1020,6 +1050,31 @@ def _link_target(db: Session, link: MagicLinkToken) -> Application | ApplicantDr
     return draft if draft_is_available(draft) else None
 
 
+def _application_for_access_target(
+    db: Session, target: Application | ApplicantDraft
+) -> Application | None:
+    if isinstance(target, Application):
+        return target
+    application = _active_application(db, target.application_id)
+    if application is not None:
+        return application
+    return db.scalar(
+        select(Application).where(
+            Application.primary_email == target.email,
+            Application.deleted_at.is_(None),
+        )
+    )
+
+
+def _access_target_is_editable(
+    db: Session, target: Application | ApplicantDraft
+) -> bool:
+    application = _application_for_access_target(db, target)
+    if application is not None:
+        return application_is_editable(applicant_opening_states(db, application))
+    return _new_applications_are_open(db)
+
+
 def _active_application(db: Session, application_id: int | None) -> Application | None:
     application = db.get(Application, application_id) if application_id is not None else None
     return application if application is not None and application.deleted_at is None else None
@@ -1076,7 +1131,7 @@ def _new_applications_are_open(db: Session) -> bool:
 
 def _require_application_editable(db: Session, application: Application) -> None:
     if not application_is_editable(applicant_opening_states(db, application)):
-        raise Problem("applications_locked", detail="This application is currently read-only.")
+        raise Problem("applications_locked", detail="This application cannot be edited right now.")
 
 
 def _stored_answers(application: Application) -> WorkingApplicationAnswers | None:
@@ -1100,7 +1155,7 @@ def _require_matching_email(
     ):
         raise Problem(
             "verified_email_required",
-            detail="Changing the primary email requires a new access link.",
+            detail="Use Change email address to update your application email.",
         )
 
 

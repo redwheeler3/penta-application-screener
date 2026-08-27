@@ -513,7 +513,8 @@ class EmailDelivery(TimestampMixin, Base):
         CheckConstraint(
             "(recipient_kind = 'applicant' AND user_id IS NULL AND "
             "((application_id IS NOT NULL AND applicant_draft_id IS NULL) OR "
-            "(application_id IS NULL AND applicant_draft_id IS NOT NULL))) "
+            "(application_id IS NULL AND applicant_draft_id IS NOT NULL) OR "
+            "(application_id IS NULL AND applicant_draft_id IS NULL))) "
             "OR (recipient_kind = 'committee' AND user_id IS NOT NULL "
             "AND application_id IS NULL AND applicant_draft_id IS NULL)",
             name="ck_email_delivery_recipient",
@@ -538,6 +539,8 @@ class EmailDelivery(TimestampMixin, Base):
     applicant_draft_id: Mapped[int | None] = mapped_column(
         ForeignKey("applicant_drafts.id", ondelete="CASCADE"), index=True
     )
+    # Used only while a targetless message is queued, then cleared with the retry intent.
+    recipient_email: Mapped[str | None] = mapped_column(String(320))
     state: Mapped[EmailDeliveryState] = mapped_column(
         Enum(EmailDeliveryState, values_callable=enum_values), nullable=False, index=True
     )

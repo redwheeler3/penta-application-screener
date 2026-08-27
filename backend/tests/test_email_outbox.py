@@ -18,7 +18,11 @@ from app.db.models import (
 )
 from app.services.email_outbox import email_queue_status, retry_queued_emails
 from app.services.email_sender import CapturedEmailSender, EmailQuotaExceededError
-from app.services.magic_link_delivery import EmailSendOutcome, send_magic_link
+from app.services.magic_link_delivery import (
+    EmailSendOutcome,
+    send_application_unavailable,
+    send_magic_link,
+)
 
 
 class QuotaBlockedSender:
@@ -89,6 +93,30 @@ def test_quota_blocked_magic_link_retries_with_a_fresh_credential() -> None:
     assert tokens[1].revoked_at is None
     assert as_utc(tokens[1].created_at) == now + timedelta(days=1)
     assert len(sender.messages) == 1
+
+
+def test_targetless_access_update_retries_without_retaining_recipient_email() -> None:
+    db = _db()
+    now = datetime(2026, 8, 26, 12, tzinfo=UTC)
+
+    assert not send_application_unavailable(
+        db,
+        QuotaBlockedSender(),
+        "unknown@example.com",
+        now=now,
+    )
+    delivery = db.scalar(select(EmailDelivery))
+    assert delivery is not None
+    assert delivery.state == EmailDeliveryState.QUEUED
+    assert delivery.recipient_email == "unknown@example.com"
+
+    sender = CapturedEmailSender()
+    assert retry_queued_emails(db, sender, now=now + timedelta(days=1)).accepted == 1
+
+    db.refresh(delivery)
+    assert sender.messages[0].to == ("unknown@example.com",)
+    assert delivery.recipient_email is None
+    assert delivery.retry_intent is None
 
 
 def test_new_magic_link_request_supersedes_queued_credential_intent() -> None:

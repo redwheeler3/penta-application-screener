@@ -2,11 +2,13 @@
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from hashlib import sha256
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.text import normalize_email
 from app.core.time import pacific_today
 from app.db.models import (
     ApplicantDraft,
@@ -250,22 +252,29 @@ def send_application_deleted(
 def send_application_unavailable(
     db: Session,
     sender: EmailSender,
-    application: Application,
+    email: str,
     *,
+    application: Application | None = None,
     now: datetime | None = None,
 ) -> bool:
     now = now or datetime.now(UTC)
+    recipient_email = application.primary_email if application is not None else email
+    recipient_key = (
+        f"application:{application.id}"
+        if application is not None
+        else f"email:{sha256(normalize_email(email).encode()).hexdigest()[:24]}"
+    )
     return deliver_email(
         db,
         sender,
         application_unavailable_email(
-            application_id=application.id,
-            email=application.primary_email,
+            application_id=application.id if application is not None else None,
+            email=recipient_email,
         ),
         recipient_kind=PasswordlessIdentityKind.APPLICANT,
-        application_id=application.id,
+        application_id=application.id if application is not None else None,
         idempotency_key=(
-            f"application-unavailable:{application.id}:{pacific_today(now=now).isoformat()}"
+            f"application-unavailable:{recipient_key}:{pacific_today(now=now).isoformat()}"
         ),
         retry_intent={"type": "application_unavailable"},
         now=now,

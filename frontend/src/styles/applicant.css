@@ -153,9 +153,6 @@
 .applications-unavailable > p { margin: 0 0 22px; color: #596d7a; }
 .applications-unavailable .applicant-primary-button { text-decoration: none; }
 .applicant-loading { padding: 42px; text-align: center; color: #596d7a; }
-.applications-upcoming-list { display: grid; width: min(100%, 560px); gap: 8px; margin: 0 0 24px; }
-.applications-upcoming-list > div { display: flex; justify-content: space-between; gap: 18px; padding: 12px 14px; text-align: left; background: #f5faf7; border: 1px solid #d7e6dc; border-radius: 9px; }
-.applications-upcoming-list span { color: #607280; font-size: 0.82rem; }
 
 .form-section,
 .review-section {
@@ -289,6 +286,8 @@
 .application-entry-divider::before,
 .application-entry-divider::after { content: ""; flex: 1; border-top: 1px solid #dbe4e0; }
 .application-entry > small { display: block; margin-top: 12px; color: #647782; }
+.application-entry-vacancies { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 18px; color: #647782; }
+.application-entry-vacancies a { color: #176c3c; font-weight: 700; }
 .pending-copy-decision { text-align: center; }
 .pending-copy-table { overflow: hidden; margin: 26px 0; text-align: left; border: 1px solid #dbe4e0; border-radius: 10px; }
 .pending-copy-heading,
@@ -502,7 +501,6 @@
   .application-intro { padding: 20px; }
   .applicant-opening-section { padding: 20px; }
   .applicant-opening-dates { grid-template-columns: 1fr; gap: 8px; }
-  .applications-upcoming-list > div { align-items: flex-start; flex-direction: column; gap: 3px; }
   .subheading-row { align-items: flex-start; }
   .applicant-actions { align-items: stretch; flex-direction: column-reverse; }
   .applicant-action-stack { align-items: stretch; }

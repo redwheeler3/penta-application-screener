@@ -1,4 +1,4 @@
-import { LogIn, ShieldCheck } from "lucide-react";
+import { LoaderCircle, LogIn, ShieldCheck } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 
 import * as api from "../api";
@@ -12,12 +12,12 @@ type CommitteeSignInProps = {
   signInState: SignInState;
   linkConflict: CommitteeLinkConflict | null;
   linkedEmail: string | null;
+  autoFocusEmail?: boolean;
   onRequestLink: (email: string, rememberDevice: boolean) => Promise<void>;
   onKeepCurrent: () => void;
   onOpenLinked: () => Promise<void>;
   onEmailNew: () => Promise<void>;
   onReset: () => void;
-  onRetrySession: () => Promise<void>;
 };
 
 export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
@@ -37,8 +37,29 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
     props.onReset();
   }
 
+  if (props.userLoadFailed) {
+    return (
+      <SignInPanel title="We’re having trouble connecting">
+        <p>We can’t connect to Penta right now. We’ll keep trying automatically.</p>
+        <button className="primary-button is-busy" type="button" disabled>
+          <LoaderCircle className="sign-in-retry-spinner" size={16} />
+          <span>Retrying…</span>
+        </button>
+      </SignInPanel>
+    );
+  }
+
   if (props.signInState === "exchanging") {
-    return <SignInPanel title="Signing you in" message="Checking your secure sign-in link…" />;
+    return <SignInPanel title="Signing you in" message="Checking your sign-in link…" />;
+  }
+
+  if (props.linkConflict?.newLinkSent) {
+    return (
+      <SignInPanel
+        title="Check your email"
+        message={`A new sign-in link is on its way to ${props.linkConflict.linkEmail}.`}
+      />
+    );
   }
 
   if (props.linkConflict) {
@@ -56,8 +77,8 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
   if (props.signInState === "staleLink" && props.linkedEmail) {
     return (
       <SignInPanel
-        title="This secure link is no longer active"
-        message={`We can send a new secure link to ${props.linkedEmail}.`}
+        title="This link has expired"
+        message={`We can send a new sign-in link to ${props.linkedEmail}.`}
       >
         <button className="primary-button" type="button" onClick={() => void props.onEmailNew()}>
           Email a new link
@@ -70,9 +91,13 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
     return (
       <SignInPanel
         title="Check your email"
-        message="If that address has committee access, a sign-in link is on its way."
+        message={
+          props.linkedEmail
+            ? `If ${props.linkedEmail} has committee access, a sign-in link is on its way.`
+            : "If that address has committee access, a sign-in link is on its way."
+        }
       >
-        <button className="secondary-button" type="button" onClick={reset}>
+        <button className="primary-button" type="button" onClick={reset}>
           Use a different email
         </button>
       </SignInPanel>
@@ -97,18 +122,16 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
         </p>
       ) : props.signInState === "googleDenied" ? (
         <p className="login-message login-message-error" role="alert">
-          We couldn't sign in with that Google account. Try another account or ask an
-          administrator to check its committee access.
-        </p>
-      ) : props.userLoadFailed ? (
-        <p className="login-message login-message-error" role="alert">
-          The server may have been starting up. Try checking your session again.
+          We couldn't sign in with that Google account. Try another account or email{" "}
+          <a href={`mailto:${TECH_SUPPORT_EMAIL}`} target="_blank" rel="noreferrer">
+            {TECH_SUPPORT_EMAIL}
+          </a>.
         </p>
       ) : (
         <p>
           {props.emailSignInEnabled
-            ? "Choose Google or receive a secure sign-in link by email."
-            : "Continue with your allowlisted Google account."}
+            ? "Sign in with Google or receive a sign-in link by email."
+            : "Continue with a Google account that has committee access."}
         </p>
       )}
 
@@ -122,17 +145,8 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
             />
             <span>Keep me signed in on this device</span>
           </label>
-          <a
-            className={`${props.emailSignInEnabled ? "secondary" : "primary"}-button login-google-button`}
-            href={api.googleSignInUrl(rememberDevice)}
-          >
-            Continue with Google
-          </a>
           {props.emailSignInEnabled ? (
             <>
-              <div className="login-divider" aria-hidden="true">
-                <span>or use email</span>
-              </div>
               <form className="login-form" onSubmit={submit}>
                 <label>
                   <span>Email address</span>
@@ -140,7 +154,7 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
                     type="email"
                     required
                     autoComplete="email"
-                    autoFocus
+                    autoFocus={props.autoFocusEmail ?? true}
                     placeholder="name@example.com"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
@@ -155,16 +169,20 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
                   <span>Send sign-in link</span>
                 </button>
               </form>
+              <div className="login-divider" aria-hidden="true">
+                <span>or use Google</span>
+              </div>
             </>
           ) : null}
+          <a
+            className={`${props.emailSignInEnabled ? "secondary" : "primary"}-button login-google-button`}
+            href={api.googleSignInUrl(rememberDevice)}
+          >
+            Continue with Google
+          </a>
         </>
       ) : null}
 
-      {props.userLoadFailed ? (
-        <button className="secondary-button" type="button" onClick={() => void props.onRetrySession()}>
-          Retry session check
-        </button>
-      ) : null}
     </SignInPanel>
   );
 }
@@ -180,36 +198,32 @@ function CommitteeAccountChoice(props: {
     <section className="login-panel committee-account-choice">
       <ShieldCheck size={28} />
       <span className="panel-kicker">Member access</span>
-      <h2>Choose which account to use</h2>
-      <p>This browser and the email link belong to different committee members.</p>
+      <h2>{props.conflict.linkIsValid ? "Choose which account to use" : "Choose how to continue"}</h2>
+      <p>Another committee member is already signed in on this browser.</p>
+      {!props.conflict.linkIsValid ? (
+        <p>
+          The link you clicked has expired or is no longer active. You’ll need a new link to sign in with that account.
+        </p>
+      ) : null}
       <dl className="login-identity-list">
-        <div><dt>Currently signed in</dt><dd>{props.conflict.currentEmail}</dd></div>
-        <div><dt>Email link</dt><dd>{props.conflict.linkEmail}</dd></div>
+        <div><dt>Signed in now</dt><dd>{props.conflict.currentEmail}</dd></div>
+        <div><dt>Link sent to</dt><dd>{props.conflict.linkEmail}</dd></div>
       </dl>
-      {props.conflict.newLinkSent ? (
-        <>
-          <p className="login-message login-message-success" role="status">
-            A new secure link is on its way to {props.conflict.linkEmail}.
-          </p>
-          <button className="primary-button" type="button" onClick={props.onKeepCurrent}>
-            Continue as {props.conflict.currentEmail}
-          </button>
-        </>
-      ) : (
-        <div className="login-choice-actions">
-          <button className="secondary-button" type="button" disabled={props.busy} onClick={props.onKeepCurrent}>
-            Continue as {props.conflict.currentEmail}
-          </button>
-          <button
-            className="primary-button"
-            type="button"
-            disabled={props.busy}
-            onClick={() => void (props.conflict.linkIsValid ? props.onOpenLinked() : props.onEmailNew())}
-          >
-            {props.conflict.linkIsValid ? `Sign in as ${props.conflict.linkEmail}` : "Email a new link"}
-          </button>
-        </div>
-      )}
+      <div className="login-choice-actions">
+        <button className="secondary-button" type="button" disabled={props.busy} onClick={props.onKeepCurrent}>
+          Stay signed in as {props.conflict.currentEmail}
+        </button>
+        <button
+          className="primary-button"
+          type="button"
+          disabled={props.busy}
+          onClick={() => void (props.conflict.linkIsValid ? props.onOpenLinked() : props.onEmailNew())}
+        >
+          {props.conflict.linkIsValid
+            ? `Sign in as ${props.conflict.linkEmail}`
+            : `Email a new link to ${props.conflict.linkEmail}`}
+        </button>
+      </div>
     </section>
   );
 }

@@ -1,0 +1,235 @@
+.access-preview-gallery {
+  min-height: 100vh;
+  background: #f4f8f6;
+}
+
+.access-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 62px;
+  padding: 0 max(24px, calc((100vw - 1440px) / 2));
+  background: #fff;
+  border-bottom: 1px solid #dbe4e0;
+}
+
+.access-preview-header > span:last-child {
+  color: #527064;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.access-preview-gallery > main {
+  width: min(100% - 40px, 1440px);
+  margin: 0 auto;
+  padding: 52px 0 80px;
+}
+
+.access-preview-introduction {
+  max-width: 780px;
+}
+
+.access-preview-introduction h1 {
+  margin: 8px 0 10px;
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  letter-spacing: -0.04em;
+}
+
+.access-preview-introduction > p,
+.access-preview-section > header p,
+.access-preview-card > header p {
+  color: #596d7a;
+  line-height: 1.55;
+}
+
+.access-preview-introduction nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 26px;
+}
+
+.access-preview-introduction nav a {
+  padding: 9px 13px;
+  color: #176c3c;
+  font-weight: 750;
+  text-decoration: none;
+  background: #fff;
+  border: 1px solid #bdd7c9;
+  border-radius: 8px;
+}
+
+.access-preview-section {
+  padding-top: 68px;
+  scroll-margin-top: 24px;
+}
+
+.access-preview-section > header {
+  margin-bottom: 22px;
+}
+
+.access-preview-section > header h2 {
+  margin: 0 0 4px;
+  font-size: 1.75rem;
+}
+
+.access-preview-section > header p,
+.access-preview-card > header p {
+  margin: 0;
+}
+
+.access-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 24px;
+}
+
+.access-preview-card {
+  min-width: 0;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #d8e2dd;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgb(17 53 39 / 5%);
+}
+
+.access-preview-card.is-wide {
+  grid-column: 1 / -1;
+}
+
+.access-preview-card > header {
+  padding: 18px 20px;
+  border-bottom: 1px solid #e3ebe7;
+}
+
+.access-preview-card > header h3 {
+  margin: 0 0 3px;
+  font-size: 1rem;
+}
+
+.access-preview-card > header p {
+  font-size: 0.86rem;
+}
+
+.access-preview-canvas {
+  padding: 22px;
+  background: linear-gradient(145deg, #f8fbf9, #eef5f1);
+}
+
+.access-preview-canvas > section {
+  width: 100%;
+  box-sizing: border-box;
+  box-shadow: none;
+}
+
+.access-preview-card:not(.is-wide) .pending-copy-table {
+  overflow-x: auto;
+}
+
+.access-preview-card.is-committee .access-preview-canvas {
+  display: flex;
+  justify-content: center;
+}
+
+.access-preview-card.is-committee .login-panel {
+  width: min(100%, 480px);
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.email-preview-list {
+  display: grid;
+  gap: 28px;
+}
+
+.email-preview-card {
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #d8e2dd;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgb(17 53 39 / 5%);
+}
+
+.email-preview-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e3ebe7;
+}
+
+.email-preview-card > header div {
+  display: grid;
+  gap: 3px;
+}
+
+.email-preview-card > header span {
+  color: #176c3c;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.email-preview-card > header a {
+  color: #527064;
+  font-size: 0.82rem;
+}
+
+.email-preview-card iframe {
+  display: block;
+  width: 100%;
+  height: 700px;
+  background: #f3faf6;
+  border: 0;
+}
+
+.access-preview-loading,
+.access-preview-error {
+  padding: 22px;
+  background: #fff;
+  border: 1px solid #d8e2dd;
+  border-radius: 10px;
+}
+
+.access-preview-error {
+  color: #9f2820;
+  border-color: #efc2bf;
+}
+
+@media (max-width: 900px) {
+  .access-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .access-preview-card.is-wide {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 600px) {
+  .access-preview-header {
+    padding: 0 16px;
+  }
+
+  .access-preview-header > span:last-child {
+    display: none;
+  }
+
+  .access-preview-gallery > main {
+    width: min(100% - 24px, 1440px);
+    padding-top: 36px;
+  }
+
+  .access-preview-canvas {
+    padding: 12px;
+  }
+
+  .email-preview-card iframe {
+    height: 620px;
+  }
+}

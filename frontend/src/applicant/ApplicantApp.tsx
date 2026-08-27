@@ -3,7 +3,22 @@ import { type FormEvent, type InvalidEvent, useEffect, useRef, useState } from "
 
 import { BrandLockup } from "../BrandLockup";
 import { HeaderAccount } from "../HeaderAccount";
-import { TECH_SUPPORT_EMAIL, TECH_SUPPORT_ERROR_MESSAGE } from "../support";
+import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
+import {
+  AccessLinkDecision,
+  AccessLinkReady,
+  AccessLinkSent,
+  ApplicantErrorMessage,
+  ApplicationEntry,
+  ApplicationLoadError,
+  ApplicationsUnavailable,
+  ApplicationSessionExpired,
+  ExpiredAccessLink,
+  formatOpeningDate,
+  InvalidAccessLink,
+  openingLabel,
+  PendingCopyDecision,
+} from "./ApplicantAccessScreens";
 import {
   hasDraftContent,
   remembersDevice,
@@ -21,11 +36,8 @@ import {
   type ReferenceDraft,
   type YesNo,
 } from "./types";
-import { type PendingCopy, useApplicantPersistence } from "./useApplicantPersistence";
-import { pendingCopyDifferences } from "./pendingCopyDiff";
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
-const EMAIL_INVALID_MESSAGE = "This is not a valid email address.";
+import { useApplicantPersistence } from "./useApplicantPersistence";
+import { EMAIL_INVALID_MESSAGE, EMAIL_PATTERN } from "./validation";
 const PHONE_PATTERN = /^[0-9]{3}-[0-9]{3}-[0-9]{4}$/;
 
 type DraftUpdater = (current: ApplicantDraft) => ApplicantDraft;
@@ -213,6 +225,7 @@ export function ApplicantApp() {
       "link_conflict",
       "link_expired",
       "link_invalid",
+      "applications_unavailable",
       "access_link_sent",
       "load_error",
       "submitted",
@@ -274,6 +287,8 @@ export function ApplicantApp() {
           <ExpiredAccessLink purpose={persistence.accessPurpose} onEmailNew={() => void persistence.emailNewAccessLink()} />
         ) : persistence.phase === "link_invalid" ? (
           <InvalidAccessLink />
+        ) : persistence.phase === "applications_unavailable" ? (
+          <ApplicationsUnavailable />
         ) : persistence.pendingCopy ? (
           <PendingCopyDecision
             pendingCopy={persistence.pendingCopy}
@@ -290,7 +305,7 @@ export function ApplicantApp() {
             onRetry={() => void persistence.retryInitialLoad()}
           />
         ) : !persistence.authenticated && !hasActiveOpening ? (
-          <ApplicationsUnavailable authenticated={false} openings={persistence.openings} />
+          <ApplicationsUnavailable />
         ) : !persistence.authenticated && !guestStarted ? (
           <ApplicationEntry
             allowGuest={hasOpenOpening}
@@ -319,10 +334,7 @@ export function ApplicantApp() {
         ) : !persistence.openingsLoaded ? (
           <p className="applicant-loading" role="status">Loading application details…</p>
         ) : !persistence.canEdit ? (
-          <ApplicationsUnavailable
-            authenticated={persistence.authenticated}
-            openings={persistence.openings}
-          />
+          <ApplicationsUnavailable />
         ) : (
           <form
             ref={formRef}
@@ -459,128 +471,6 @@ function DraftStatus(props: { savedAt: Date | null; hasContent: boolean }) {
   );
 }
 
-function ApplicationEntry(props: {
-  allowGuest: boolean;
-  busy: boolean;
-  onContinueGuest: () => void;
-  onEmailLink: (email: string) => Promise<boolean>;
-}) {
-  const [email, setEmail] = useState("");
-  const [validationMessage, setValidationMessage] = useState("");
-
-  function sendLink(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
-    if (!EMAIL_PATTERN.test(email.trim())) {
-      setValidationMessage(EMAIL_INVALID_MESSAGE);
-      return;
-    }
-    setValidationMessage("");
-    void props.onEmailLink(email);
-  }
-
-  return (
-    <section className="application-entry">
-      <ShieldCheck size={30} />
-      <h2>Start or continue an application</h2>
-      <p>
-        {props.allowGuest
-          ? "Enter your email address and we’ll send you a secure link. The same step works whether you’re starting a new application or returning to one you saved."
-          : "If you already have an application for a closed opening, enter its email address to continue."}
-      </p>
-      <form onSubmit={sendLink} noValidate>
-        <label className="applicant-field">
-          <span>Email address</span>
-          <input
-            type="email"
-            autoComplete="email"
-            value={email}
-            aria-invalid={validationMessage ? "true" : undefined}
-            onChange={(event) => {
-              setEmail(event.target.value);
-              if (validationMessage) setValidationMessage("");
-            }}
-          />
-          {validationMessage ? <small className="field-error">{validationMessage}</small> : null}
-        </label>
-        <button className="applicant-primary-button" type="submit" disabled={props.busy}>
-          <Mail size={17} /> Email me a secure link
-        </button>
-      </form>
-      {props.allowGuest ? (
-        <>
-          <div className="application-entry-divider"><span>or</span></div>
-          <button className="applicant-secondary-button" type="button" onClick={props.onContinueGuest}>
-            Continue as a guest
-          </button>
-          <small>You can save your application and receive a secure link later.</small>
-        </>
-      ) : (
-        <small>New applications are closed, but current applicants can still sign in.</small>
-      )}
-    </section>
-  );
-}
-
-function PendingCopyDecision(props: {
-  pendingCopy: PendingCopy;
-  openings: ApplicantOpening[];
-  busy: boolean;
-  error: string | null;
-  onChoose: (choice: "saved" | "guest") => void;
-}) {
-  const differences = pendingCopyDifferences(
-    props.pendingCopy.savedAnswers,
-    props.pendingCopy.savedOpeningIds,
-    props.pendingCopy.guestAnswers,
-    props.pendingCopy.guestOpeningIds,
-    props.openings,
-  );
-  return (
-    <section className="pending-copy-decision">
-      <ShieldCheck size={30} />
-      <h2>Choose which application to keep</h2>
-      <p>
-        We found both a saved application and answers entered before you signed in.
-        Review what changed, then keep one complete copy.
-      </p>
-      <div className="pending-copy-table">
-        <div className="pending-copy-heading"><span>Changed answer</span><strong>Saved application</strong><strong>Answers just entered</strong></div>
-        {differences.map((difference) => (
-          <div className="pending-copy-row" key={difference.label}>
-            <strong>{difference.label}</strong>
-            <span>{difference.saved}</span>
-            <span>{difference.guest}</span>
-          </div>
-        ))}
-      </div>
-      {props.error ? (
-        <div className="persistence-action-status error" role="alert">
-          <strong>We couldn’t keep that copy</strong>
-          <ApplicantErrorMessage message={props.error} />
-        </div>
-      ) : null}
-      <div className="review-actions">
-        <button
-          className="applicant-secondary-button"
-          type="button"
-          disabled={props.busy}
-          onClick={() => props.onChoose("saved")}
-        >
-          Keep my saved application
-        </button>
-        <button
-          className="applicant-primary-button"
-          type="button"
-          disabled={props.busy}
-          onClick={() => props.onChoose("guest")}
-        >
-          Use the answers I just entered
-        </button>
-      </div>
-    </section>
-  );
-}
-
 function formatSavedTime(savedAt: Date): string {
   return `Last saved ${savedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 }
@@ -611,7 +501,9 @@ function OpeningSelection(props: {
   showError: boolean;
   onChange: (openingId: number, selected: boolean) => void;
 }) {
-  const currentOpenings = props.openings.filter((opening) => opening.phase !== "archived");
+  const currentOpenings = props.openings.filter(
+    (opening) => opening.phase === "open" || opening.phase === "closed",
+  );
   return (
     <section
       ref={props.sectionRef}
@@ -661,69 +553,6 @@ function OpeningSelection(props: {
   );
 }
 
-function ApplicationsUnavailable(props: {
-  authenticated: boolean;
-  openings: ApplicantOpening[];
-}) {
-  const upcoming = props.openings.filter((opening) => opening.phase === "upcoming");
-  const waitingForOpening = props.authenticated && upcoming.length > 0;
-  return (
-    <section className="applications-unavailable">
-      <CalendarDays size={30} />
-      <h2>{waitingForOpening
-        ? "Application editing hasn’t opened yet"
-        : props.authenticated
-          ? "Application editing is closed"
-          : "Applications aren’t open right now"}</h2>
-      <p>
-        {waitingForOpening
-          ? "You can edit your application when applications open."
-          : props.authenticated
-          ? "Your application can’t be changed after the move-in date."
-          : "Visit the Penta website for current housing and vacancy information."}
-      </p>
-      {upcoming.length > 0 ? (
-        <div className="applications-upcoming-list">
-          {upcoming.map((opening) => (
-            <div key={opening.id}>
-              <strong>{openingLabel(opening)}</strong>
-              <span>Applications open {formatOpeningDate(opening.applicationOpenDate)}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      <a className="applicant-primary-button" href="https://www.pentacoop.com/">
-        Visit the Penta website
-      </a>
-    </section>
-  );
-}
-
-function ApplicationLoadError(props: { message: string; onRetry: () => void }) {
-  return (
-    <section className="existing-application-choice" role="alert">
-      <ShieldCheck size={28} />
-      <h2>We couldn’t load your application</h2>
-      <p><ApplicantErrorMessage message={props.message} /></p>
-      {props.message !== TECH_SUPPORT_ERROR_MESSAGE ? (
-        <button className="applicant-secondary-button" type="button" onClick={props.onRetry}>
-          Load it again
-        </button>
-      ) : null}
-    </section>
-  );
-}
-
-function openingLabel(opening: ApplicantOpening): string {
-  const unit = `${opening.unitSizeBedrooms}-bedroom home`;
-  const charge = (opening.housingChargeCents / 100).toLocaleString("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    maximumFractionDigits: opening.housingChargeCents % 100 === 0 ? 0 : 2,
-  });
-  return `${unit} · ${charge} per month`;
-}
-
 function openingPhaseLabel(opening: ApplicantOpening, selected: boolean): string {
   if (opening.phase === "open") return "Applications are open.";
   if (opening.phase === "closed") {
@@ -731,14 +560,7 @@ function openingPhaseLabel(opening: ApplicantOpening, selected: boolean): string
     if (opening.participating) return "Applications are closed. Recheck to remain applied.";
     return "Applications are closed. You can’t apply for this opening.";
   }
-  if (opening.phase === "archived") return "Opening is archived";
-  if (opening.phase === "upcoming") return "Applications have not opened yet";
   return "Opening status unavailable";
-}
-
-function formatOpeningDate(value: string): string {
-  return new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeZone: "UTC" })
-    .format(new Date(`${value}T12:00:00Z`));
 }
 
 function HouseholdSection(props: {
@@ -1143,7 +965,7 @@ function PersistenceActionStatus(props: {
     );
   }
   if (props.phase === "working") {
-    return <p className="persistence-action-status" role="status">Saving securely…</p>;
+    return <p className="persistence-action-status" role="status">Saving…</p>;
   }
   if (props.phase === "saved") {
     return (
@@ -1160,7 +982,7 @@ function PersistenceActionStatus(props: {
         <span className="persistence-action-confirmation">
           <Mail size={16} /> Application saved
         </span>
-        <span>Check your email for a secure link to your application.</span>
+        <span>Check your email for a link to open your application.</span>
         <span>
           Didn’t receive it? Double-check the email address above, then{" "}
           <button type="button" onClick={props.onRetry}>try again</button>.
@@ -1172,7 +994,7 @@ function PersistenceActionStatus(props: {
     return (
       <div className="persistence-action-status error" role="alert">
         <strong>Application saved</strong>
-        <span>We couldn’t email the secure link.</span>
+        <span>We couldn’t email a link to open your application.</span>
         <ApplicantErrorMessage message={TECH_SUPPORT_ERROR_MESSAGE} />
       </div>
     );
@@ -1196,10 +1018,10 @@ function ApplicationComplete(props: { submitted: boolean; emailSent: boolean }) 
       <h2>{props.submitted ? "Application submitted" : "Application saved"}</h2>
       <p>
         {props.submitted && props.emailSent
-          ? "An email confirmation with a link to edit your application in the future is on the way."
+          ? "Check your email for confirmation and a link to edit your application later."
           : props.submitted
-            ? <>Your application was submitted, but we couldn’t email the editing link. <ApplicantErrorMessage message={TECH_SUPPORT_ERROR_MESSAGE} /></>
-            : "Your private application draft is saved. An email with a link to continue editing is on the way."}
+            ? <>Your application was submitted, but we couldn’t email a link to edit it later. <ApplicantErrorMessage message={TECH_SUPPORT_ERROR_MESSAGE} /></>
+            : "Your private application draft is saved. Check your email for a link to continue editing."}
       </p>
     </section>
   );
@@ -1210,23 +1032,10 @@ function ApplicationDeleted(props: { emailSent: boolean }) {
     <section className="application-complete">
       <CheckCircle2 size={34} />
       <h2>Application deleted</h2>
-      <p>Your application has been removed from consideration for every opening.</p>
+      <p>Your application has been deleted.</p>
       {!props.emailSent ? (
         <p>We couldn’t email a confirmation, but the deletion is complete.</p>
       ) : null}
-    </section>
-  );
-}
-
-function ApplicationSessionExpired(props: { onEmail: () => void }) {
-  return (
-    <section className="existing-application-choice">
-      <ShieldCheck size={28} />
-      <h2>Sign in to continue</h2>
-      <p>Your application session has ended. We can email you a secure link to sign in again.</p>
-      <button className="applicant-primary-button" type="button" onClick={props.onEmail}>
-        Email me a secure link
-      </button>
     </section>
   );
 }
@@ -1253,8 +1062,7 @@ function ApplicationDeletion(props: {
     <section className="application-action-confirm application-delete-confirm" aria-labelledby="delete-application-title">
       <h2 id="delete-application-title">Delete your application?</h2>
       <p>
-        It will be removed from consideration for every opening, and you will be signed out.
-        This cannot be undone.
+        Your application will be deleted, and you will be signed out. This cannot be undone.
       </p>
       {props.message ? (
         <p className={props.status === "error" ? "field-error" : undefined} role="status">
@@ -1306,152 +1114,6 @@ function DraftActionConfirmation(props: {
           {reverting ? "Revert changes" : "Clear draft"}
         </button>
       </div>
-    </section>
-  );
-}
-
-function AccessLinkReady(props: {
-  email: string;
-  applicationEmail: string | null;
-  purpose: "applicant_access" | "email_change";
-  onOpen: (rememberDevice: boolean) => void;
-}) {
-  const [rememberDevice, setRememberDevice] = useState(false);
-  return (
-    <section className="existing-application-choice">
-      <ShieldCheck size={28} />
-      <h2>
-        {props.purpose === "email_change" ? "Change your application email to" : "You’re signing in as"}
-        <span className="access-email">{props.email}</span>
-      </h2>
-      {props.purpose === "email_change" && props.applicationEmail ? (
-        <p>The application currently uses {props.applicationEmail}.</p>
-      ) : null}
-      <label className="remember-device-choice">
-        <input
-          type="checkbox"
-          checked={rememberDevice}
-          onChange={(event) => setRememberDevice(event.target.checked)}
-        />
-        <span>Keep me signed in on this device</span>
-      </label>
-      <button
-        className="applicant-primary-button"
-        type="button"
-        onClick={() => props.onOpen(rememberDevice)}
-      >
-        {props.purpose === "email_change" ? "Confirm email address" : "Open application"}
-      </button>
-    </section>
-  );
-}
-
-function AccessLinkSent(props: {
-  purpose: "applicant_access" | "email_change";
-  message: string;
-}) {
-  return (
-    <section className="existing-application-choice">
-      <Mail size={28} />
-      <h2>Check your email</h2>
-      <p>{props.message}</p>
-      {props.purpose === "email_change" ? (
-        <p>Your email address will not change until you open the link.</p>
-      ) : null}
-    </section>
-  );
-}
-
-function AccessLinkDecision(props: {
-  conflict: {
-    currentEmail: string;
-    linkEmail: string;
-    applicationEmail: string | null;
-    purpose: "applicant_access" | "email_change";
-    linkIsValid: boolean;
-  };
-  onKeepCurrent: () => void;
-  onOpenLinked: (rememberDevice: boolean) => void;
-  onEmailNew: () => void;
-}) {
-  const [rememberDevice, setRememberDevice] = useState(false);
-  return (
-    <section className="existing-application-choice">
-      <ShieldCheck size={28} />
-      <h2>{props.conflict.purpose === "email_change" ? "Choose how to continue" : "Choose which application to open"}</h2>
-      <p>
-        {props.conflict.purpose === "email_change"
-          ? "This browser has a different application open."
-          : "This browser and the email link belong to different applicants."}
-      </p>
-      <dl className="access-identity-list">
-        <div><dt>Currently open</dt><dd>{props.conflict.currentEmail}</dd></div>
-        <div><dt>{props.conflict.purpose === "email_change" ? "New email" : "Email link"}</dt><dd>{props.conflict.linkEmail}</dd></div>
-        {props.conflict.purpose === "email_change" && props.conflict.applicationEmail ? (
-          <div><dt>Application being changed</dt><dd>{props.conflict.applicationEmail}</dd></div>
-        ) : null}
-      </dl>
-      {props.conflict.linkIsValid ? (
-        <label className="remember-device-choice">
-          <input
-            type="checkbox"
-            checked={rememberDevice}
-            onChange={(event) => setRememberDevice(event.target.checked)}
-          />
-          <span>Keep me signed in on this device</span>
-        </label>
-      ) : null}
-      <div className="review-actions">
-        <button className="applicant-secondary-button" type="button" onClick={props.onKeepCurrent}>
-          Keep current application
-        </button>
-        <button
-          className="applicant-primary-button"
-          type="button"
-          onClick={
-            props.conflict.linkIsValid
-              ? () => props.onOpenLinked(rememberDevice)
-              : props.onEmailNew
-          }
-        >
-          {props.conflict.linkIsValid
-            ? props.conflict.purpose === "email_change" ? "Confirm email change" : "Open linked application"
-            : props.conflict.purpose === "email_change" ? "Email a new confirmation" : "Email a new link"}
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function ExpiredAccessLink(props: {
-  purpose: "applicant_access" | "email_change";
-  onEmailNew: () => void;
-}) {
-  return (
-    <section className="existing-application-choice">
-      <Mail size={28} />
-      <h2>This secure link is no longer active</h2>
-      <p>
-        {props.purpose === "email_change"
-          ? "Your email address has not been changed. We can send a fresh confirmation to the same address."
-          : "Your application has not been deleted. We can email a fresh 24-hour link to the same address."}
-      </p>
-      <button className="applicant-primary-button" type="button" onClick={props.onEmailNew}>
-        {props.purpose === "email_change" ? "Email a new confirmation" : "Email a new link"}
-      </button>
-    </section>
-  );
-}
-
-function InvalidAccessLink() {
-  return (
-    <section className="existing-application-choice">
-      <ShieldCheck size={28} />
-      <h2>This link cannot open an application</h2>
-      <p>The application may be incomplete or no longer available.</p>
-      <a className="applicant-secondary-button" href={window.location.pathname}>
-        Go to the application form
-      </a>
     </section>
   );
 }
@@ -1676,18 +1338,6 @@ function EmailChangeField(props: {
         </button>
       </div>
     </div>
-  );
-}
-
-function ApplicantErrorMessage(props: { message: string }) {
-  if (props.message !== TECH_SUPPORT_ERROR_MESSAGE) return <>{props.message}</>;
-  return (
-    <>
-      Something went wrong. Email{" "}
-      <a href={`mailto:${TECH_SUPPORT_EMAIL}`} target="_blank" rel="noreferrer">
-        Penta Tech Support
-      </a>.
-    </>
   );
 }
 
