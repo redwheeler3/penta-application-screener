@@ -73,7 +73,7 @@ def decompose_audit_view(analysis: Analysis) -> dict | None:
     shaped for the trace viewer, or None on analyses that predate decomposition (single-
     discovery runs have no ``analysis.audit.decompose``).
 
-    The stored audit (built by ``dimension_decompose.decompose_audit_payload``) is already
+    The stored audit (built by ``dimension_decomposition.decompose_audit_payload``) is already
     view-shaped: settled axes with source_keys + decision reasoning, the input/settled
     counts, and the D9 ``folded_requests`` trail. This is a thin pass-through with
     defaults, mirroring the other ``*_audit_view`` accessors so the router stays uniform.

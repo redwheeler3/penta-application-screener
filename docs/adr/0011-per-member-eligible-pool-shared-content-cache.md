@@ -83,7 +83,7 @@ existing content-addressed cache, not on a shared pool.**
   axes are the same concept" is a committee-wide fact (high score-vector correlation *and* a
   model `same_concept` verdict), not a matter of member taste — so per-member consolidation is
   deliberately not built. Crucially, a member never *loses* a merged concept: the survivor is
-  the older/canonical key (`dimension_consolidate.py` orders keys oldest-wins) and it inherits
+  the older/canonical key (`dimension_consolidation.py` orders keys oldest-wins) and it inherits
   the **highest-priority working tier** among all keys collapsing into it (`apply_consolidation`
   in `ranking_run.py`) — max-of-tiers is the non-destructive direction, so a merge can only
   ever nudge a survivor *up* to the strongest tier that member assigned across the twins, never

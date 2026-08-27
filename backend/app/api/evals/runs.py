@@ -10,8 +10,8 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.ai.dimension_consolidate import PROMPT_VERSION as CONSOLIDATE_PROMPT_VERSION
-from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSE_PROMPT_VERSION
+from app.ai.dimension_consolidation import PROMPT_VERSION as CONSOLIDATE_PROMPT_VERSION
+from app.ai.dimension_decomposition import PROMPT_VERSION as DECOMPOSE_PROMPT_VERSION
 from app.ai.dimension_matching import PROMPT_VERSION as MATCH_PROMPT_VERSION
 from app.ai.provider import AIProvider
 from app.api.dependencies import get_ai_provider, require_current_user

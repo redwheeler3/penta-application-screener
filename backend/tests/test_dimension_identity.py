@@ -19,11 +19,11 @@ from tests.ranking_support import (
 def test_fan_out_seeds_only_worker_0_the_rest_stay_blind() -> None:
     # Proposals steer ONE discoverer (worker 0); workers 1..K-1 stay blind, preserving
     # K-1 independent samples. Assert exactly one of K prompts carries the proposal.
-    from app.ai.pattern_discovery import DiscoverySeeds, discover_patterns_fanout
+    from app.ai.dimension_discovery import DiscoverySeeds, discover_patterns_fanout
 
     _app, db, provider = setup_app(role=UserRole.MEMBER)
     add_eligible(db, email="a@x.com", raw_hash="h1")
-    from app.ai.pattern_discovery import eligible_applications
+    from app.ai.dimension_discovery import eligible_applications
 
     pool = eligible_applications(db)
     k = 4
@@ -47,7 +47,7 @@ def test_enforce_committee_requests_guarantees_an_unsurfaced_kept_axis() -> None
     # set) must be re-added by the guard — a kept axis is never dropped. But it re-adds
     # as an ORDINARY dimension: from_committee_request stays false (it's a carried axis
     # the committee tiered on a prior run, not a fresh ask this run).
-    from app.ai.dimension_decompose import enforce_committee_requests
+    from app.ai.dimension_decomposition import enforce_committee_requests
 
     kept_axis = PoolDimension(
         key="participation_commitment", name="Participation commitment",
@@ -77,7 +77,7 @@ def test_enforce_committee_requests_flag_is_authoritative_for_kept_and_plain_axe
     # PROPOSAL this run, false otherwise. So a model that stamps from_committee_request
     # on a kept axis (surfaced by decomposition) or a plain discovered axis is overruled —
     # only a real proposal keeps the flag, guaranteeing it clears on the next run.
-    from app.ai.dimension_decompose import enforce_committee_requests
+    from app.ai.dimension_decomposition import enforce_committee_requests
 
     kept_axis = PoolDimension(
         key="participation_commitment", name="Participation commitment",
@@ -113,7 +113,7 @@ def test_enforce_committee_requests_flag_is_authoritative_for_kept_and_plain_axe
 def test_enforce_committee_requests_strips_stray_flag_when_nothing_asked() -> None:
     # No proposals and no kept axes: the flag is still made authoritative, so a model
     # that stamps from_committee_request on its own is overruled (nothing was asked).
-    from app.ai.dimension_decompose import enforce_committee_requests
+    from app.ai.dimension_decomposition import enforce_committee_requests
 
     settled = DecompositionReport(
         dimensions=[
@@ -300,7 +300,7 @@ def test_settled_why_is_carried_from_source_not_decomposer() -> None:
     # The decomposer never sees the pool, so it does not write why_it_differentiates;
     # to_pool_report carries the real, pool-grounded why forward from the PRIMARY source
     # discovery axis (first source_key that resolves), including across a merge.
-    from app.ai.dimension_decompose import to_pool_report
+    from app.ai.dimension_decomposition import to_pool_report
 
     reports = [
         PoolDimensionReport(
@@ -333,5 +333,4 @@ def test_settled_why_is_carried_from_source_not_decomposer() -> None:
     dim = out.dimensions[0]
     # The primary source's real why is carried forward — NOT an empty/decomposer string.
     assert dim.why_it_differentiates == "Applicants range from eager volunteers to vague."
-
 

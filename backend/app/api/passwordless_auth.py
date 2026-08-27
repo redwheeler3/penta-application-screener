@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.applicant_dependencies import optional_current_application
+from app.api.applicant.dependencies import optional_current_application
 from app.api.auth import serialize_user
 from app.api.dependencies import optional_current_user
 from app.api.problems import Problem

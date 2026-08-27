@@ -79,11 +79,11 @@ class EvalFixture:
 # PROMPT_VERSION drove it. The rank-chain passes only; screening is a separate step.
 # Kept beside the recorder so a new pass is added here when its label is added upstream.
 _PASS_PROMPT_MODULES = {
-    "Pattern discovery": "app.ai.pattern_discovery",
-    "Dimension decomposition": "app.ai.dimension_decompose",
+    "Pattern discovery": "app.ai.dimension_discovery",
+    "Dimension decomposition": "app.ai.dimension_decomposition",
     "Dimension matching": "app.ai.dimension_matching",
     "Dimension scoring": "app.ai.dimension_scoring",
-    "Dimension consolidation": "app.ai.dimension_consolidate",
+    "Dimension consolidation": "app.ai.dimension_consolidation",
 }
 
 

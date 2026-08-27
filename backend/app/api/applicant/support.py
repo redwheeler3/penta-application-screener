@@ -1,4 +1,4 @@
-"""Applicant-owned pending drafts, identity links, and published applications."""
+"""Shared helpers for applicant drafts, identity links, and applications."""
 
 from dataclasses import dataclass
 from datetime import UTC, datetime

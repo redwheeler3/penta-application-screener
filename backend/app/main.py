@@ -12,7 +12,7 @@ from starlette.background import BackgroundTasks
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.allowlist import router as allowlist_router
-from app.api.applicant_intake import router as applicant_intake_router
+from app.api.applicant import router as applicant_router
 from app.api.applications import router as applications_router
 from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
@@ -119,7 +119,7 @@ def create_app(*, maintenance_task: Callable[[], None] | None = None) -> FastAPI
 
     register_error_handlers(app)
     app.include_router(allowlist_router)
-    app.include_router(applicant_intake_router)
+    app.include_router(applicant_router)
     app.include_router(applications_router)
     app.include_router(auth_router)
     app.include_router(dashboard_router)

@@ -4,7 +4,7 @@ prompt+model.
 Like the other live evals, this closes the gap the judge/invariant layers can't: they grade
 recorded artifacts and are blind to a prompt/model regression because the model never runs.
 It freezes the INPUT (a set of dimension descriptors, each as its own discovery report, mined
-from real runs), runs them through the exact production ``dimension_decompose`` prompt on the
+from real runs), runs them through the exact production ``dimension_decomposition`` prompt on the
 configured decompose model, and grades the FRESH settled set.
 
 Grader — categorical, so deterministic exact-match (see docs/ai-evals.md "Grader
@@ -28,7 +28,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.ai.dimension_decompose import SYSTEM_PROMPT, build_prompt
+from app.ai.dimension_decomposition import SYSTEM_PROMPT, build_prompt
 from app.ai.provider import AIProvider
 from app.ai.schemas import DecompositionReport, PoolDimensionReport
 from app.evals._categorical import CategoricalResult as CaseResult

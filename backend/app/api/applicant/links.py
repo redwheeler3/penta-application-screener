@@ -5,10 +5,10 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.applicant_dependencies import (
+from app.api.applicant.dependencies import (
     optional_current_application,
 )
-from app.api.applicant_intake_support import (
+from app.api.applicant.support import (
     _access_link_response,
     _access_target_is_editable,
     _applicant_link,

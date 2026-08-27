@@ -39,8 +39,9 @@ rather than being duplicated between them.
 
 ## Applicant intake
 
-Applicant-facing routes live in `backend/app/api/applicant_intake.py`. The domain operations are
-in `backend/app/services/intake.py`, with authentication and draft-link concerns separated into
+Applicant-facing routes live in the `backend/app/api/applicant/` package, grouped into guest,
+access-link, and authenticated-application workflows. Domain operations are in
+`backend/app/services/intake.py`, with authentication and draft-link concerns separated into
 their own services.
 
 An `Application` has two meaningful representations:

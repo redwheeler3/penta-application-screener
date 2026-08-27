@@ -34,11 +34,11 @@ def rank_inputs_fingerprint(
     applications: list[Application] | None = None,
 ) -> str:
     """Hash the pool, prompts, models, and active reasoning levels used by Rank."""
-    from app.ai.dimension_consolidate import PROMPT_VERSION as CONSOLIDATE_VERSION
-    from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSE_VERSION
+    from app.ai.dimension_consolidation import PROMPT_VERSION as CONSOLIDATE_VERSION
+    from app.ai.dimension_decomposition import PROMPT_VERSION as DECOMPOSE_VERSION
+    from app.ai.dimension_discovery import PROMPT_VERSION as DISCOVERY_VERSION
     from app.ai.dimension_matching import PROMPT_VERSION as MATCH_VERSION
     from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_VERSION
-    from app.ai.pattern_discovery import PROMPT_VERSION as DISCOVERY_VERSION
 
     passes = (
         ("discovery", DISCOVERY_VERSION, settings.ai.discovery_model, settings.ai.discovery_reasoning_effort),

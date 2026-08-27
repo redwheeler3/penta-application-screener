@@ -33,17 +33,23 @@ from app.ai.analysis import (
     exception_type_name,
     log,
 )
-from app.ai.dimension_consolidate import (
+from app.ai.dimension_consolidation import (
     Consolidation,
     consolidate_dimensions,
     estimate_consolidate,
 )
-from app.ai.dimension_decompose import (
+from app.ai.dimension_decomposition import (
     decompose_audit_payload,
     decompose_dimensions,
     enforce_committee_requests,
     estimate_decompose,
     to_pool_report,
+)
+from app.ai.dimension_discovery import (
+    DiscoverySeeds,
+    discover_patterns_fanout,
+    eligible_applications,
+    estimate_discovery,
 )
 from app.ai.dimension_matching import estimate_match, match_dimensions
 from app.ai.dimension_scoring import (
@@ -52,12 +58,6 @@ from app.ai.dimension_scoring import (
     score_dimensions,
 )
 from app.ai.dimension_scoring_cost import estimate_dimension_scoring
-from app.ai.pattern_discovery import (
-    DiscoverySeeds,
-    discover_patterns_fanout,
-    eligible_applications,
-    estimate_discovery,
-)
 from app.ai.pricing import PassCost
 from app.ai.provider import AIProvider
 from app.ai.schemas import DecompositionReport, PoolDimension, PoolDimensionReport

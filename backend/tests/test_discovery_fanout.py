@@ -9,7 +9,7 @@ import threading
 
 import pytest
 
-from app.ai.pattern_discovery import discover_patterns_fanout
+from app.ai.dimension_discovery import discover_patterns_fanout
 from app.ai.provider import AIResult, Usage
 from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.schemas.settings import AppSettings

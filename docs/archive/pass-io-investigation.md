@@ -11,9 +11,9 @@ decision.
 | Pass | Prompt INPUT (what `build_prompt` serializes) | Output schema | Verdict shape |
 |---|---|---|---|
 | **scoring** (`dimension_scoring.py`) | `<dimensions>`: list of `{key, name, definition, high_end, low_end}` + `<applicant>`: `{applicant_id, facts, essays}` | `DimensionScoringReport` = list of `DimensionScore {dimension_key, score −1..+1, rationale, evidence, confidence}` | continuous score + confidence |
-| **consolidation** (`dimension_consolidate.py`) | `<candidate_pairs>`: list of `{key_a, definition_a, key_b, definition_b}` | `ConsolidationReport` = list of `ConsolidationVerdict {key_a, key_b, same_concept: bool, reason}` | categorical (merge/keep) |
+| **consolidation** (`dimension_consolidation.py`) | `<candidate_pairs>`: list of `{key_a, definition_a, key_b, definition_b}` | `ConsolidationReport` = list of `ConsolidationVerdict {key_a, key_b, same_concept: bool, reason}` | categorical (merge/keep) |
 | **matching** (`dimension_matching.py`) | `<prior_dimensions>` + `<new_dimensions>`: two lists of `{key, name, definition}` | `DimensionMatchReport` = list of `DimensionMatch {new_key, old_key}` | categorical (matches/omitted) |
-| **decomposition** (`dimension_decompose.py`) | `<discovery_reports>`: K reports each `{report_index, dimensions:[{key, name, definition, high_end, low_end, from_committee_request}]}` (+ optional `<kept>`) | `DecompositionReport` = list of `DecomposedDimension {key, name, definition, high_end, low_end, source_keys[], from_committee_request, decision}` | grouping (source_keys folds) |
+| **decomposition** (`dimension_decomposition.py`) | `<discovery_reports>`: K reports each `{report_index, dimensions:[{key, name, definition, high_end, low_end, from_committee_request}]}` (+ optional `<kept>`) | `DecompositionReport` = list of `DecomposedDimension {key, name, definition, high_end, low_end, source_keys[], from_committee_request, decision}` | grouping (source_keys folds) |
 | **screening** (`screening.py`) | `<fields>`: 7 named applicant fields + `<essays>`: 4 essays in full | `ScreeningReport` = list of `ScreeningFlag {category, summary, evidence}` | categorical per flag (warranted?) |
 
 ## The atomic unit: a **dimension descriptor**

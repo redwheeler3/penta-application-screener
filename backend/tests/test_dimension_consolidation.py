@@ -8,7 +8,7 @@ re-merge a dead key with no definition to judge (a phantom merge). ``canonical_r
 membership is the live-key gate.
 """
 
-from app.ai.dimension_consolidate import consolidate_dimensions, nominate_pairs
+from app.ai.dimension_consolidation import consolidate_dimensions, nominate_pairs
 from app.ai.mock_provider import MockProvider
 from app.ai.schemas import (
     ConsolidationReport,

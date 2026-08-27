@@ -2,9 +2,9 @@
 
 from fastapi import APIRouter
 
-from app.api.applicant_application import router as application_router
-from app.api.applicant_guest import router as guest_router
-from app.api.applicant_links import router as links_router
+from app.api.applicant.application import router as application_router
+from app.api.applicant.guest import router as guest_router
+from app.api.applicant.links import router as links_router
 
 router = APIRouter(prefix="/applicant", tags=["applicant intake"])
 router.include_router(guest_router)

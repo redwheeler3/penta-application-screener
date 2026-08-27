@@ -165,7 +165,7 @@ def current_prompt_version(eval_key: str, db: Session) -> str:
 
         return SCORING_PROMPT_VERSION
     if eval_key in ("consolidation", "consolidation_stability"):
-        from app.ai.dimension_consolidate import (
+        from app.ai.dimension_consolidation import (
             PROMPT_VERSION as CONSOLIDATE_PROMPT_VERSION,
         )
 
@@ -175,7 +175,7 @@ def current_prompt_version(eval_key: str, db: Session) -> str:
 
         return MATCH_PROMPT_VERSION
     if eval_key in ("decomposition", "decomposition_stability"):
-        from app.ai.dimension_decompose import (
+        from app.ai.dimension_decomposition import (
             PROMPT_VERSION as DECOMPOSE_PROMPT_VERSION,
         )
 

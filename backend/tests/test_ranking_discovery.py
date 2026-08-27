@@ -127,7 +127,7 @@ def _pattern_report_with_requested() -> PoolDimensionReport:
 def test_build_prompt_unseeded_has_no_requested_section() -> None:
     # An un-seeded discovery prompt must not carry a REQUESTED AXES section, so the
     # default blind run is unchanged.
-    from app.ai.pattern_discovery import DiscoverySeeds, build_prompt
+    from app.ai.dimension_discovery import DiscoverySeeds, build_prompt
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
@@ -140,7 +140,7 @@ def test_build_prompt_unseeded_has_no_requested_section() -> None:
 
 def test_build_prompt_includes_proposed_seeds() -> None:
     # Only PROPOSALS seed discovery now; favourites inject at decomposition, not here.
-    from app.ai.pattern_discovery import DiscoverySeeds, build_prompt
+    from app.ai.dimension_discovery import DiscoverySeeds, build_prompt
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")

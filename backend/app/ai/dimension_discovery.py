@@ -43,7 +43,7 @@ class DiscoverySeeds:
     is a prior dimension (one the committee tiered) that already has a pool-grounded
     definition and cached scores, so it needs a *guarantee it stays on the table*, not
     re-discovery. It is injected at the decomposition step instead (see
-    ``dimension_decompose``), which keeps all K discoverers blind — seeding all K on the
+    ``dimension_decomposition``), which keeps all K discoverers blind — seeding all K on the
     same axes would correlate the samples and dent the coverage the fan-out exists to buy
     (SPEC "Fan-Out Redesign", committee-axis injection).
     """

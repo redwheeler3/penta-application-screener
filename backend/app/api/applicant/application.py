@@ -6,11 +6,11 @@ from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.applicant_dependencies import (
+from app.api.applicant.dependencies import (
     require_current_application,
     require_recent_applicant,
 )
-from app.api.applicant_intake_support import (
+from app.api.applicant.support import (
     _applicant_opening,
     _draft_answers,
     _draft_belongs_to_application,

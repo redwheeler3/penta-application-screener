@@ -18,8 +18,12 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
-from app.ai.dimension_consolidate import PROMPT_VERSION as CONSOLIDATION_PROMPT_VERSION
-from app.ai.dimension_decompose import PROMPT_VERSION as DECOMPOSITION_PROMPT_VERSION
+from app.ai.dimension_consolidation import (
+    PROMPT_VERSION as CONSOLIDATION_PROMPT_VERSION,
+)
+from app.ai.dimension_decomposition import (
+    PROMPT_VERSION as DECOMPOSITION_PROMPT_VERSION,
+)
 from app.ai.dimension_matching import PROMPT_VERSION as MATCHING_PROMPT_VERSION
 from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_PROMPT_VERSION
 from app.ai.model_catalog import MODEL_IDS_BY_ROUTE, model_spec

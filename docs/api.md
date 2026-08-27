@@ -33,7 +33,7 @@ configuration, committee defaults, Observability, and Evals require an admin.
 | GET | `/auth/me` | Return the current user, if any, and whether email sign-in is enabled. | Public |
 | POST | `/auth/logout` | Revoke the current committee session. | Public |
 
-### Applicant intake — `app/api/applicant_intake.py`
+### Applicant intake — `app/api/applicant/` (package)
 
 | Method | Path | Purpose | Auth |
 | --- | --- | --- | --- |

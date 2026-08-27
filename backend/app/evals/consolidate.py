@@ -4,7 +4,7 @@ confirm prompt+model.
 Like ``scoring.py``, this closes the gap the judge/invariant layers can't: they grade
 recorded artifacts and are blind to a prompt/model regression because the model never runs.
 This freezes the INPUT (a hand-picked pair of dimension definitions, mined from real runs),
-runs it through the exact production ``dimension_consolidate`` confirm prompt on the
+runs it through the exact production ``dimension_consolidation`` confirm prompt on the
 configured consolidate model, and grades the FRESH verdict.
 
 Grader — categorical, so deterministic exact-match (see docs/ai-evals.md "Grader
@@ -28,7 +28,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.ai.dimension_consolidate import SYSTEM_PROMPT, NominatedPair, build_prompt
+from app.ai.dimension_consolidation import SYSTEM_PROMPT, NominatedPair, build_prompt
 from app.ai.provider import AIProvider
 from app.ai.schemas import ConsolidationReport
 from app.evals._categorical import CategoricalResult as CaseResult
