@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 
-import * as api from "../api";
+import { streamNdjson } from "../api/client";
+import {
+  fetchRankEstimate,
+  fetchScoreCurrentEstimate,
+  runRank as startRankRequest,
+  scoreCurrent as startScoreCurrentRequest,
+} from "../api/ranking";
+import {
+  fetchScreeningEstimate,
+  runScreening as startScreeningRequest,
+} from "../api/screening";
 import { money, readProblem } from "../format";
 import type {
   CurrentRunResponse,
@@ -87,7 +97,7 @@ export function useAiRuns(options: {
     setScreeningEstimate(null);
     setScreeningEstimateLoading(true);
     try {
-      const estimate = await api.fetchScreeningEstimate(controller.signal);
+      const estimate = await fetchScreeningEstimate(controller.signal);
       if (requestId === screeningEstimateRequest.current) {
         setScreeningEstimate(estimate);
       }
@@ -110,14 +120,14 @@ export function useAiRuns(options: {
     setScreeningEstimate(null);
     setScreeningProgress(null);
     try {
-      const response = await api.runScreening();
+      const response = await startScreeningRequest();
       if (!response.ok || !response.body) {
         const problem = await readProblem(response);
         options.notifications.error(
           problem ? `Screening failed: ${problem}` : "Screening failed.",
         );
       } else {
-        await api.streamNdjson<ScreeningStreamEvent>(response.body, (event) => {
+        await streamNdjson<ScreeningStreamEvent>(response.body, (event) => {
           if (event.type === "progress") {
             setScreeningProgress({ processed: event.processed, total: event.total });
           } else if (event.type === "summary") {
@@ -154,9 +164,9 @@ export function useAiRuns(options: {
 
     try {
       const [estimate, scoreEstimate] = await Promise.all([
-        api.fetchRankEstimate(controller.signal),
+        fetchRankEstimate(controller.signal),
         options.ranking.currentRun
-          ? api.fetchScoreCurrentEstimate(controller.signal)
+          ? fetchScoreCurrentEstimate(controller.signal)
           : Promise.resolve(null),
       ]);
       if (requestId === rankEstimateRequest.current) {
@@ -188,7 +198,9 @@ export function useAiRuns(options: {
     }
 
     try {
-      const response = mode === "discover" ? await api.runRank() : await api.scoreCurrent();
+      const response = mode === "discover"
+        ? await startRankRequest()
+        : await startScoreCurrentRequest();
       if (!response.ok || !response.body) {
         const problem = await readProblem(response);
         options.notifications.error(problem ? `Ranking failed: ${problem}` : "Ranking failed.");
@@ -196,7 +208,7 @@ export function useAiRuns(options: {
           options.ranking.setDisplayedProposals(priorProposals);
         }
       } else {
-        await api.streamNdjson<RankingStreamEvent>(response.body, (event) => {
+        await streamNdjson<RankingStreamEvent>(response.body, (event) => {
           if (event.type === "phase") {
             setRankProgress({
               phase: event.phase as RankProgress["phase"],

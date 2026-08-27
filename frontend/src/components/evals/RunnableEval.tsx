@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { saveEvalCase } from "../../api";
+import { saveEvalCase } from "../../api/evals";
 import { AI_PASS_PIPELINE_ORDER } from "../../constants";
 import { formatPacificDate, reasoningEffortLabel } from "../../format";
 import type {

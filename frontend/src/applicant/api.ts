@@ -1,4 +1,4 @@
-import { request } from "../api";
+import { request } from "../api/client";
 import type { CanonicalApplicationAnswers, WorkingApplicationAnswers } from "./types";
 
 export function fetchApplicantOpenings() {

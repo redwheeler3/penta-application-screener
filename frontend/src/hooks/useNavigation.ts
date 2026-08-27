@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import * as api from "../api";
+import * as api from "../api/applications";
 import type { ApplicationDetail, ViewTab } from "../types";
 
 type BrowserLocation = {

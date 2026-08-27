@@ -1,0 +1,188 @@
+import { type ReactNode } from "react";
+import { fetchCostReport, fetchLastRuns } from "../../api/observability";
+import { money } from "../../format";
+import { useFetchResource } from "../../hooks/useFetchResource";
+import type { CostReport, InsightRunKind, LastRunCost, LastRunsReport } from "../../types";
+import { RetryLoadError } from "../shared/RetryLoadError";
+
+// AI cost, shown in two sections with the same column layout so they
+// line up: [ label | tokens (in→out) | uncached | cached | saved by cache | spent ].
+// Spent is the rightmost hard number; cache savings sit to its left as the softer
+// estimate; tokens sit next to the label as the "why it cost that" breakdown.
+//   - Last runs — the most recent Screen, full Rank, and score-current update.
+//   - Cumulative spend — cumulative spend + savings, grouped by run.
+// Passes that can't cache (pattern discovery, dimension matching) show "—" for the
+// cached count and savings, never 0, so structural absence of caching doesn't read as
+// "caching failed".
+const savedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : money(n));
+const cachedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : String(n));
+// Compact token count: 1_234 → "1.2k", 26_203 → "26.2k". Output ~5× the input rate on
+// Sonnet, so the in→out split is what tells you whether a pass is input- or output-bound.
+const tok = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+const tokensCell = (input: number, output: number) =>
+  input || output ? `${tok(input)} → ${tok(output)}` : "—";
+
+// Estimate-vs-actual reconciliation: the pre-run projection next to what the run actually
+// spent, with drift %. Only shown when an estimate was captured (0 on pre-capture runs).
+// The estimate is an upper-bound ceiling (see _rank_estimate), so actual under estimate is
+// the expected, healthy case; actual OVER estimate is the one worth flagging (amber).
+function reconciliation(run: LastRunCost): ReactNode {
+  if (run.estimatedUsd <= 0) return null;
+  const drift = run.freshUsd - run.estimatedUsd;
+  const pct = Math.round((drift / run.estimatedUsd) * 100);
+  const over = drift > 0;
+  return (
+    <span className={`cost-recon ${over ? "cost-recon-over" : ""}`}>
+      {` · est ${money(run.estimatedUsd)}, actual ${money(run.freshUsd)} (${pct >= 0 ? "+" : ""}${pct}%)`}
+    </span>
+  );
+}
+
+// Who kicked off this shared run. Omitted when unknown or when a
+// since-removed member) — runs stay committee-wide; this only attributes the shared spend.
+function triggeredByStamp(run: LastRunCost): ReactNode {
+  if (!run.triggeredBy) return null;
+  return <span className="cost-triggered-by">{` · triggered by ${run.triggeredBy}`}</span>;
+}
+
+const RUN_LABELS: Record<InsightRunKind, string> = {
+  screen: "Screen",
+  rank: "Discover criteria & rank",
+  rank_scores: "Score current criteria",
+};
+
+const PASS_LABELS: Record<InsightRunKind, Array<{ label: string; cacheable: boolean }>> = {
+  screen: [{ label: "Screening", cacheable: true }],
+  rank: [
+    { label: "Pattern discovery", cacheable: false },
+    { label: "Dimension decomposition", cacheable: false },
+    { label: "Dimension matching", cacheable: false },
+    { label: "Dimension scoring", cacheable: true },
+    { label: "Dimension consolidation", cacheable: false },
+  ],
+  rank_scores: [{ label: "Dimension scoring", cacheable: true }],
+};
+
+export function CostPanel(): ReactNode {
+  const { data, state, reload } = useFetchResource<[CostReport, LastRunsReport]>(
+    () => Promise.all([fetchCostReport(), fetchLastRuns()]),
+  );
+
+  if (state === "loading") return <p className="panel-hint">Loading…</p>;
+  if (state === "error" || data === null)
+    return <RetryLoadError message="Couldn’t load AI cost." onRetry={() => void reload()} />;
+  const [cost, last] = data;
+
+  const runs = [last.screen, last.rank, last.rankScores].filter((r): r is LastRunCost => r !== null);
+  const lastSpent = runs.reduce((s, r) => s + r.freshUsd, 0);
+
+  return (
+    <div className="cost-report">
+      <div className="cost-section">
+        <div className="cost-block-head">
+          <span className="observability-label">Last runs</span>
+          <span className="cost-block-total">{`$${lastSpent.toFixed(2)}`} spent</span>
+        </div>
+        {runs.length === 0 ? (
+          <p className="panel-hint">No runs recorded yet — run Screen or Rank to see per-run cost.</p>
+        ) : (
+          <table className="cost-table">
+            <CostHead />
+            {[last.screen, last.rank, last.rankScores].map((run, i) =>
+              run === null ? (
+                <tbody key={i}>
+                  {renderEmptyRun((["screen", "rank", "rank_scores"] as const)[i])}
+                </tbody>
+              ) : (
+                <tbody key={i}>
+                  <tr className="cost-group-head">
+                    <td colSpan={4}>{RUN_LABELS[run.kind]}{triggeredByStamp(run)}{reconciliation(run)}</td>
+                    <td className="cost-num">{run.cachedSavedUsd > 0 ? money(run.cachedSavedUsd) : "—"}</td>
+                    <td className="cost-num">{money(run.freshUsd)}</td>
+                  </tr>
+                  {run.passes.map((p) => (
+                    <tr key={p.label}>
+                      <td className="cost-pass-name">{p.label}</td>
+                      <td className="cost-num">{tokensCell(p.inputTokens, p.outputTokens)}</td>
+                      <td className="cost-num">{p.freshCalls}</td>
+                      <td className="cost-num">{cachedCell(p.cachedCount, p.cacheable)}</td>
+                      <td className="cost-num">{savedCell(p.cachedSavedUsd, p.cacheable)}</td>
+                      <td className="cost-num">{money(p.freshUsd)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              ),
+            )}
+          </table>
+        )}
+      </div>
+
+      <div className="cost-section">
+        <div className="cost-block-head">
+          <span className="observability-label">Cumulative spend</span>
+          <span className="cost-block-total">{`$${cost.totalCostUsd.toFixed(2)}`} spent</span>
+        </div>
+        <table className="cost-table">
+          <CostHead />
+          {cost.groups.map((g) => (
+            <tbody key={g.runLabel}>
+              <tr className="cost-group-head">
+                <td colSpan={4}>{g.runLabel}</td>
+                <td className="cost-num">{g.subtotalSavedUsd > 0 ? money(g.subtotalSavedUsd) : "—"}</td>
+                <td className="cost-num">{money(g.subtotalUsd)}</td>
+              </tr>
+              {g.passes.map((p) => (
+                <tr key={p.passLabel}>
+                  <td className="cost-pass-name">{p.passLabel}</td>
+                  <td className="cost-num">{tokensCell(p.inputTokens, p.outputTokens)}</td>
+                  <td className="cost-num">{p.calls}</td>
+                  <td className="cost-num">{cachedCell(p.cachedCount, p.cacheable)}</td>
+                  <td className="cost-num">{savedCell(p.cachedSavedUsd, p.cacheable)}</td>
+                  <td className="cost-num">{money(p.costUsd)}</td>
+                </tr>
+              ))}
+            </tbody>
+          ))}
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function renderEmptyRun(kind: InsightRunKind): ReactNode {
+  return (
+    <>
+      <tr className="cost-group-head">
+        <td colSpan={4}>{RUN_LABELS[kind]}</td>
+        <td className="cost-num">—</td>
+        <td className="cost-num">{money(0)}</td>
+      </tr>
+      {PASS_LABELS[kind].map((p) => (
+        <tr key={p.label}>
+          <td className="cost-pass-name">{p.label}</td>
+          <td className="cost-num">—</td>
+          <td className="cost-num">0</td>
+          <td className="cost-num">{cachedCell(0, p.cacheable)}</td>
+          <td className="cost-num">{savedCell(0, p.cacheable)}</td>
+          <td className="cost-num">{money(0)}</td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
+// Shared header so both tables carry identical columns and widths.
+function CostHead(): ReactNode {
+  return (
+    <thead>
+      <tr>
+        <th className="cost-col-label" />
+        <th className="cost-col-tokens">tokens (in→out)</th>
+        <th className="cost-col-count">uncached</th>
+        <th className="cost-col-count">cached</th>
+        <th className="cost-col-money">cache savings</th>
+        <th className="cost-col-money">spent</th>
+      </tr>
+    </thead>
+  );
+}

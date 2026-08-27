@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import * as api from "../api";
+import * as api from "../api/auth";
 import type { AuthRedirect } from "../authRedirect";
 import { retryWithBackoff } from "../retry";
 import type { CurrentUser } from "../types";

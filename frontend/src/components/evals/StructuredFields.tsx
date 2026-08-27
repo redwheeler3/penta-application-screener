@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { NumberInput } from "../NumberInput";
+import { NumberInput } from "../shared/NumberInput";
 
 // A field-level editor for an eval case — no raw JSON. A case is a nested object whose
 // shape varies by family (a scoring case has given{applicant{facts, essays}, dimension{…}}

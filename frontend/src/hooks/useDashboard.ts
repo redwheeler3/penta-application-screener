@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 
-import * as api from "../api";
+import * as api from "../api/dashboard";
 import { retryWithBackoff } from "../retry";
 import type { AdminActions, Coverage, WorkflowState } from "../types";
 

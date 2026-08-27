@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import * as api from "../api";
+import * as api from "../api/settings";
 import { retryWithBackoff } from "../retry";
 import type { AppSettings, SettingsResponse } from "../types";
 

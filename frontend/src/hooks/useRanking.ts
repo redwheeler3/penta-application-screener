@@ -1,5 +1,5 @@
 import { useState } from "react";
-import * as api from "../api";
+import * as api from "../api/ranking";
 import { problemMessage, readProblemBody } from "../format";
 import type { CurrentRunResponse, RankingResponse, Tier } from "../types";
 

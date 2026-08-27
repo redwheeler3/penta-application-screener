@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
-import { fetchEvalCases, fetchLastEvalRun, runEval, streamNdjson } from "../../api";
+import { fetchEvalCases, fetchLastEvalRun, runEval } from "../../api/evals";
+import { streamNdjson } from "../../api/client";
 import type {
   EvalCaseResult,
   EvalFixtureKey,

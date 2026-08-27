@@ -10,23 +10,23 @@ import {
 } from "react";
 import { BrandLockup } from "./BrandLockup";
 import { HeaderAccount } from "./HeaderAccount";
-import * as api from "./api";
+import * as api from "./api/applications";
 import type { AuthRedirect } from "./authRedirect";
 import type {
   ApplicationDetail,
   AppStatus,
   ViewTab,
 } from "./types";
-import { AdminSettingsPanel, type AdminSubtab } from "./components/AdminSettingsPanel";
-import { AdminActionBanner } from "./components/AdminActionBanner";
-import { ApplicationsList } from "./components/ApplicationsList";
-import { CandidateDetail } from "./components/CandidateDetail";
-import { CommitteeSignIn } from "./components/CommitteeSignIn";
-import { EligibilitySettingsPanel } from "./components/EligibilitySettingsPanel";
-import { FeedbackButton } from "./components/FeedbackButton";
-import { RankingView } from "./components/RankingView";
-import { Toasts } from "./components/Toasts";
-import { WorkflowBar } from "./components/WorkflowBar";
+import { AdminSettingsPanel, type AdminSubtab } from "./components/admin/AdminSettingsPanel";
+import { AdminActionBanner } from "./components/admin/AdminActionBanner";
+import { EligibilitySettingsPanel } from "./components/admin/EligibilitySettingsPanel";
+import { ApplicationsList } from "./components/applications/ApplicationsList";
+import { CandidateDetail } from "./components/applications/CandidateDetail";
+import { CommitteeSignIn } from "./components/auth/CommitteeSignIn";
+import { RankingView } from "./components/ranking/RankingView";
+import { FeedbackButton } from "./components/shared/FeedbackButton";
+import { Toasts } from "./components/shared/Toasts";
+import { WorkflowBar } from "./components/workflow/WorkflowBar";
 import { useApplications } from "./hooks/useApplications";
 import { useRanking } from "./hooks/useRanking";
 import { useToasts } from "./hooks/useToasts";
@@ -37,7 +37,7 @@ import { useNavigation } from "./hooks/useNavigation";
 import { useAiRuns } from "./hooks/useAiRuns";
 
 const AIQualityView = lazy(() =>
-  import("./components/AIQualityView").then((module) => ({ default: module.AIQualityView })),
+  import("./components/observability/AIQualityView").then((module) => ({ default: module.AIQualityView })),
 );
 
 const aiQualityLoading = (

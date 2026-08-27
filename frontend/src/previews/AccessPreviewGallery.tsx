@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 
-import { request } from "../api";
+import { request } from "../api/client";
 import { APPLICATION_ACCESS_EMAIL_MESSAGE } from "../applicant/accessMessages";
 import type { PendingCopy } from "../applicant/applicantPersistence";
 import {
@@ -17,7 +17,7 @@ import {
 } from "../applicant/ApplicantAccessScreens";
 import { emptyApplicantDraft, type ApplicantOpening, workingAnswers } from "../applicant/types";
 import { BrandLockup } from "../BrandLockup";
-import { CommitteeSignIn } from "../components/CommitteeSignIn";
+import { CommitteeSignIn } from "../components/auth/CommitteeSignIn";
 import type { CommitteeLinkConflict, SignInState } from "../hooks/useSession";
 import "../styles/access-preview.css";
 

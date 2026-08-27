@@ -231,9 +231,10 @@ Safe placeholders belong in `.env.example`; actual `.env.local` files are ignore
 - `backend/app/domain/`: framework-free business rules;
 - `backend/app/schemas/`: request/response and structured data contracts;
 - `backend/app/ai/`: prompts, pass schemas, model catalog, providers, and costs;
-- `frontend/src/components/`: focused visual surfaces;
+- `frontend/src/components/`: visual surfaces grouped by committee feature, with reusable controls
+  under `shared/`;
 - `frontend/src/hooks/`: stateful data orchestration;
-- `frontend/src/api.ts`: browser HTTP boundary;
+- `frontend/src/api/`: browser HTTP boundary, split by backend domain over one shared client;
 - `backend/tests/`: behavior and contract coverage.
 
 Route handlers should stay thin. Business rules belong in services or domain modules, and a rule

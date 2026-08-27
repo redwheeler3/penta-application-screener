@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useState } from "react";
 
-import { fetchJudgeBackgrounds, saveJudgeBackground } from "../../api";
+import { fetchJudgeBackgrounds, saveJudgeBackground } from "../../api/evals";
 import { readProblem } from "../../format";
 import type { JudgeBackground } from "../../types";
 
