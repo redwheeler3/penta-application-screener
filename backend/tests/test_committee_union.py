@@ -17,7 +17,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.db.models import Analysis, Base, MemberRanking, User, UserRole
-from app.services.analysis import (
+from app.services.ranking_analysis import (
     committee_kept_keys,
     committee_proposed_dimensions,
 )

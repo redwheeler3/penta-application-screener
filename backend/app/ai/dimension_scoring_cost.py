@@ -24,8 +24,9 @@ from app.ai.provider import Usage
 from app.ai.schemas import PoolDimensionReport
 from app.db.models import Application
 from app.schemas.settings import AppSettings, effective_reasoning_effort
-from app.services.analysis import current_dimension_report, get_current_analysis
 from app.services.cost_report import recent_pass_fresh_usd
+from app.services.ranking_analysis import get_current_analysis
+from app.services.ranking_dimensions import current_dimension_report
 
 # Per-DIMENSION output tokens — used to price the estimate. Output is genuinely
 # per-dimension (each dimension emits its own score + rationale + evidence), so the

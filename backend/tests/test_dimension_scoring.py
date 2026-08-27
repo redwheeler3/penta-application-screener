@@ -298,7 +298,7 @@ def test_rerun_estimate_cache_aware_fallback_when_no_history() -> None:
     )
     from app.ai.pricing import cost_usd
     from app.ai.provider import Usage
-    from app.services.analysis import create_analysis
+    from app.services.ranking_analysis import create_analysis
 
     db = make_db()
     app1 = add_eligible(db, email="a@x.com", raw_hash="h1")
@@ -340,8 +340,8 @@ def test_rerun_estimate_prefers_measured_history() -> None:
     # than a reconstructed count.
     from app.ai.dimension_scoring_cost import estimate_dimension_scoring
     from app.ai.pricing import PassCost
-    from app.services.analysis import create_analysis
     from app.services.cost_report import record_run_cost
+    from app.services.ranking_analysis import create_analysis
 
     db = make_db()
     add_eligible(db, email="a@x.com", raw_hash="h1")

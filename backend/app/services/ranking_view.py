@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.ai.dimension_scoring import applications_to_score, kind_for_dimension
 from app.db.models import ApplicationAIResult
 from app.domain.ranking import CandidateScores, ScoredDimension
-from app.services.analysis import current_dimension_report
+from app.services.ranking_dimensions import current_dimension_report
 
 
 def candidate_scores(db: Session, analysis) -> list[CandidateScores]:

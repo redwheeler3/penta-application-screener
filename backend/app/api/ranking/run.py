@@ -83,27 +83,29 @@ from app.schemas.ranking import (
     ScoreCurrentEstimateResponse,
 )
 from app.schemas.settings import AppSettings
-from app.services.analysis import (
-    all_known_dimensions,
-    apply_consolidation,
-    carry_forward_layout,
-    committee_kept_keys,
-    committee_proposed_dimensions,
-    create_analysis,
-    current_dimension_report,
-    get_current_analysis,
-    get_or_create_member_ranking,
-    key_history,
-    mark_ranking_current,
-    ranking_is_current,
-    tier_history,
-)
 from app.services.cost_report import (
     SCORE_CURRENT_KIND,
     recent_pass_fresh_usd,
     record_run_cost,
 )
 from app.services.dimension_identity import adopt_matched_keys
+from app.services.member_ranking import (
+    carry_forward_layout,
+    get_or_create_member_ranking,
+    tier_history,
+)
+from app.services.ranking_analysis import (
+    all_known_dimensions,
+    apply_consolidation,
+    committee_kept_keys,
+    committee_proposed_dimensions,
+    create_analysis,
+    get_current_analysis,
+    key_history,
+    mark_ranking_current,
+    ranking_is_current,
+)
+from app.services.ranking_dimensions import current_dimension_report
 from app.services.run_lock import acquire_run_lock, release_run_lock
 from app.services.settings import get_app_settings
 from app.services.stream_worker import StreamWorker

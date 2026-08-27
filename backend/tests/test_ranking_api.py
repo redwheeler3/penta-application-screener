@@ -407,7 +407,7 @@ async def test_rank_runs_k_parallel_discoveries_and_persists_reports() -> None:
     # discovery call (same prompt), so we verify the COUNT and persistence here;
     # cross-call diversity needs real Bedrock (the Phase 3 bake-off).
     from app.schemas.settings import AISettings
-    from app.services.analysis import get_current_analysis
+    from app.services.ranking_analysis import get_current_analysis
 
     app, db, provider = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")

@@ -16,8 +16,8 @@ from sqlalchemy.orm import Session
 from app.core.time import utc_isoformat
 from app.db.models import Analysis, RunCostLedger
 from app.schemas.observability import MetricsReport, PassTrendPoint, TrendPoint
-from app.services.analysis import current_dimension_report
 from app.services.cost_report import CACHEABLE_PASSES
+from app.services.ranking_dimensions import current_dimension_report
 
 
 def _rank_dimension_counts(db: Session) -> list[int]:

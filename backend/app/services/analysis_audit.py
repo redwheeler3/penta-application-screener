@@ -15,7 +15,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.db.models import Analysis
-from app.services.analysis import key_history
+from app.services.ranking_analysis import key_history
 
 
 def _audit_field(analysis: Analysis, name: str) -> dict | None:

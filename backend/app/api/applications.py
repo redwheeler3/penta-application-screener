@@ -45,14 +45,6 @@ from app.schemas.applications import (
     ScreeningFlagOut,
 )
 from app.schemas.base import RequestModel
-from app.services.analysis import (
-    current_dimension_kinds,
-    current_dimension_report,
-    dimension_weights,
-    get_current_analysis,
-    get_or_create_member_ranking,
-    stored_tiers,
-)
 from app.services.application_content import extract_essays
 from app.services.application_scope import committee_application, committee_applications
 from app.services.eligibility import (
@@ -61,8 +53,15 @@ from app.services.eligibility import (
     overrides_by_app,
     pet_facts_by_app,
 )
+from app.services.member_ranking import (
+    dimension_weights,
+    get_or_create_member_ranking,
+    stored_tiers,
+)
 from app.services.opening_participation import opening_ids_by_application
 from app.services.openings import opening_phase, published_openings
+from app.services.ranking_analysis import current_dimension_kinds, get_current_analysis
+from app.services.ranking_dimensions import current_dimension_report
 from app.services.ranking_view import candidate_scores
 from app.services.rules import (
     hard_filter_reasons_for,

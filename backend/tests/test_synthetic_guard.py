@@ -11,7 +11,7 @@ from app.evals.synthetic_guard import (
     require_synthetic_pool,
 )
 from app.schemas.settings import AppSettings
-from app.services.analysis import create_analysis
+from app.services.ranking_analysis import create_analysis
 from tests.ranking_support import add_eligible, setup_app
 
 

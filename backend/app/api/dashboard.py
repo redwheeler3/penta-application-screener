@@ -30,14 +30,14 @@ from app.schemas.dashboard import (
     WorkflowState,
 )
 from app.schemas.settings import effective_reasoning_effort
-from app.services.analysis import (
+from app.services.application_scope import committee_applications
+from app.services.email_outbox import email_queue_status
+from app.services.opening_selection import archived_openings_needing_selection
+from app.services.ranking_analysis import (
     current_dimension_kinds,
     get_current_analysis,
     ranking_is_current,
 )
-from app.services.application_scope import committee_applications
-from app.services.email_outbox import email_queue_status
-from app.services.opening_selection import archived_openings_needing_selection
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
