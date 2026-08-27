@@ -42,6 +42,11 @@ export type ApplicantPersistenceState = {
 
 type StateUpdater<Value> = Value | ((current: Value) => Value);
 
+export type SetApplicantPersistence = <Key extends keyof ApplicantPersistenceState>(
+  key: Key,
+  value: StateUpdater<ApplicantPersistenceState[Key]>,
+) => void;
+
 export type ApplicantPersistenceAction = {
   [Key in keyof ApplicantPersistenceState]: {
     key: Key;
