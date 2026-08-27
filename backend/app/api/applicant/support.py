@@ -21,12 +21,15 @@ from app.db.models import (
     MagicLinkToken,
     PasswordlessIdentityKind,
 )
-from app.schemas.applicant_intake import (
+from app.schemas.applicant.answers import (
+    CanonicalApplicationAnswers,
+    WorkingApplicationAnswers,
+)
+from app.schemas.applicant.contracts import (
     AccessLinkResponse,
     ApplicantOpeningOut,
     PendingCopyOut,
 )
-from app.schemas.intake import CanonicalApplicationAnswers, WorkingApplicationAnswers
 from app.services.applicant_drafts import (
     draft_is_available,
 )

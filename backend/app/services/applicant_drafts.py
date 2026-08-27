@@ -18,7 +18,7 @@ from app.db.models import (
     MagicLinkPurpose,
     MagicLinkToken,
 )
-from app.schemas.intake import WorkingApplicationAnswers
+from app.schemas.applicant.answers import WorkingApplicationAnswers
 from app.services.retention import retention_due_for_opening_ids
 from app.services.token_credentials import new_token, token_hash
 

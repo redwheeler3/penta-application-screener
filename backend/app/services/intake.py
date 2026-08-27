@@ -16,7 +16,10 @@ from app.db.models import (
     Opening,
 )
 from app.domain.ages import age_on
-from app.schemas.intake import CanonicalApplicationAnswers, WorkingApplicationAnswers
+from app.schemas.applicant.answers import (
+    CanonicalApplicationAnswers,
+    WorkingApplicationAnswers,
+)
 from app.services.opening_participation import apply_opening_selection
 from app.services.retention import retention_due_for_opening_ids
 

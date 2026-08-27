@@ -1,0 +1,172 @@
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from httpx2 import ASGITransport, AsyncClient
+from sqlalchemy import select
+
+from app.db.models import (
+    Application,
+    BrowserSession,
+    MagicLinkPurpose,
+    MagicLinkToken,
+)
+from tests.applicant.support import _app_and_db, _link, _save_draft
+
+
+@pytest.mark.anyio
+async def test_verified_email_change_updates_identity_and_private_answers() -> None:
+    app, db, sender = _app_and_db()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await _save_draft(client)
+        await client.post(
+            "/applicant/access-links/open",
+            json={"token": _link(sender), "switchCurrent": False},
+        )
+        requested = await client.post(
+            "/applicant/application/email-change",
+            json={"newEmail": "new-address@example.com"},
+        )
+        token = _link(sender)
+        inspected = await client.post(
+            "/applicant/access-links/inspect", json={"token": token}
+        )
+        opened = await client.post(
+            "/applicant/access-links/open",
+            json={"token": token, "switchCurrent": False, "rememberDevice": True},
+        )
+        stored = await client.get("/applicant/application")
+
+    application = db.scalar(select(Application))
+    assert application is not None
+    assert requested.status_code == 202
+    assert inspected.json()["purpose"] == "email_change"
+    assert inspected.json()["switchRequired"] is False
+    assert inspected.json()["applicationEmail"] == "avery@example.com"
+    assert opened.json()["state"] == "valid"
+    assert stored.json()["primaryEmail"] == "new-address@example.com"
+    assert stored.json()["answers"]["applicant"]["email"] == "new-address@example.com"
+    assert application.raw_row == {}
+    assert sender.messages[-2].kind == "application_email_change_confirmation"
+    assert sender.messages[-2].to == ("new-address@example.com",)
+    assert "will not change unless you confirm it" in sender.messages[-2].text_body
+    assert sender.messages[-1].kind == "application_email_changed"
+    assert sender.messages[-1].to == ("avery@example.com",)
+    assert "If you made this change, no action is needed" in sender.messages[-1].text_body
+    assert "techsupport@pentacoop.com" in sender.messages[-1].text_body
+    assert "new-address@example.com" in sender.messages[-1].text_body
+    assert "new-address@example.com" in sender.messages[-1].html_body
+    assert "{{HsUnsubscribe}}" in sender.messages[-1].text_body
+    assert "<a href=" not in sender.messages[-1].html_body
+    assert "Penta Tech Support" in sender.messages[-1].text_body
+    active_sessions = list(
+        db.scalars(select(BrowserSession).where(BrowserSession.revoked_at.is_(None)))
+    )
+    assert len(active_sessions) == 2
+
+
+@pytest.mark.anyio
+async def test_email_change_never_merges_with_an_existing_application() -> None:
+    app, db, sender = _app_and_db()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await _save_draft(client)
+        await client.post(
+            "/applicant/access-links/open",
+            json={"token": _link(sender), "switchCurrent": False},
+        )
+        original = db.scalar(select(Application))
+        assert original is not None
+        db.add(
+            Application(
+                primary_email="already-used@example.com",
+                applicant_name="Other Applicant",
+                raw_row={},
+                raw_row_hash="other",
+                normalized={},
+            )
+        )
+        db.commit()
+        await client.post(
+            "/applicant/application/email-change",
+            json={"newEmail": "already-used@example.com"},
+        )
+        opened = await client.post(
+            "/applicant/access-links/open",
+            json={"token": _link(sender), "switchCurrent": False},
+        )
+
+    db.refresh(original)
+    assert opened.json()["state"] == "email_in_use"
+    assert original.primary_email == "avery@example.com"
+    assert len(sender.messages) == 2
+
+
+@pytest.mark.anyio
+async def test_email_change_requires_recent_authentication() -> None:
+    app, db, sender = _app_and_db()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await _save_draft(client)
+        await client.post(
+            "/applicant/access-links/open",
+            json={"token": _link(sender), "switchCurrent": False},
+        )
+        session = db.scalar(
+            select(BrowserSession).where(BrowserSession.revoked_at.is_(None))
+        )
+        assert session is not None
+        session.recently_authenticated_at = datetime.now(UTC) - timedelta(days=2)
+        db.commit()
+        response = await client.post(
+            "/applicant/application/email-change",
+            json={"newEmail": "new-address@example.com"},
+        )
+        reauthentication = await client.post("/applicant/application/reauthentication")
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "recent_authentication_required"
+    links = db.scalars(
+        select(MagicLinkToken).where(MagicLinkToken.purpose == MagicLinkPurpose.EMAIL_CHANGE)
+    ).all()
+    assert not links
+    assert reauthentication.status_code == 202
+    assert reauthentication.json()["emailSent"] is True
+    assert sender.messages[-1].to == ("avery@example.com",)
+
+
+@pytest.mark.anyio
+async def test_different_email_change_request_immediately_replaces_the_first() -> None:
+    app, db, sender = _app_and_db()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await _save_draft(client)
+        await client.post(
+            "/applicant/access-links/open",
+            json={"token": _link(sender), "switchCurrent": False},
+        )
+        first = await client.post(
+            "/applicant/application/email-change",
+            json={"newEmail": "first-new@example.com"},
+        )
+        second = await client.post(
+            "/applicant/application/email-change",
+            json={"newEmail": "second-new@example.com"},
+        )
+        stored = await client.get("/applicant/application")
+
+    links = list(
+        db.scalars(
+            select(MagicLinkToken)
+            .where(MagicLinkToken.purpose == MagicLinkPurpose.EMAIL_CHANGE)
+            .order_by(MagicLinkToken.created_at)
+        )
+    )
+    assert first.json()["emailSent"] is True
+    assert second.json()["emailSent"] is True
+    assert len(links) == 2
+    assert links[0].revoked_at is not None
+    assert links[1].revoked_at is None
+    assert stored.json()["pendingEmailChange"] == "second-new@example.com"
+
+

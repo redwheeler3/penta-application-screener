@@ -13,7 +13,7 @@ from app.db.models import (
     Opening,
 )
 from app.domain.hard_filters import RulesConfig
-from app.schemas.intake import (
+from app.schemas.applicant.answers import (
     AddressAnswers,
     CanonicalApplicationAnswers,
     ChildAnswers,

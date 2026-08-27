@@ -37,7 +37,7 @@ from app.db.models import (
     PasswordlessIdentityKind,
 )
 from app.db.session import get_db
-from app.schemas.applicant_intake import (
+from app.schemas.applicant.contracts import (
     ApplicantApplicationResponse,
     AuthenticatedSubmitApplicationResponse,
     DeleteApplicationResponse,

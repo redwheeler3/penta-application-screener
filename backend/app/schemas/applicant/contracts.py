@@ -6,8 +6,11 @@ from typing import Literal
 from pydantic import EmailStr, Field
 
 from app.db.models import ApplicantDraftIntent, MagicLinkPurpose, OpeningPhase
+from app.schemas.applicant.answers import (
+    CanonicalApplicationAnswers,
+    WorkingApplicationAnswers,
+)
 from app.schemas.base import RequestModel, ResponseModel
-from app.schemas.intake import CanonicalApplicationAnswers, WorkingApplicationAnswers
 from app.schemas.openings import OpeningDetailsOut
 
 EmailSendStatus = Literal["sent", "recent", "failed"]
