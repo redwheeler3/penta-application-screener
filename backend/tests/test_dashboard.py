@@ -23,6 +23,7 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.main import create_app
+from tests.application_support import activate_application
 
 SUBMITTED_AT = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -195,8 +196,7 @@ async def test_workflow_flags_track_progress() -> None:
             normalized={},
             submitted_at=SUBMITTED_AT,
         )
-        db.add(application)
-        db.commit()
+        activate_application(db, application)
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow["applicationsAvailable"] is True
         assert workflow["screened"] is False
@@ -247,12 +247,12 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
     settings = AppSettings()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        db.add(Application(
+        first = Application(
             primary_email="a@x.com", applicant_name="A", raw_row={}, raw_row_hash="h1",
             normalized={},
             submitted_at=SUBMITTED_AT,
-        ))
-        db.commit()
+        )
+        activate_application(db, first)
 
         # A run whose fingerprint matches the current pool + prompts + models -> current.
         run = Analysis(
@@ -266,19 +266,19 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
 
         # A new eligible applicant changes the pool -> ranking no longer current,
         # even though we added no scores and removed nothing.
-        db.add(Application(
+        second = Application(
             primary_email="b@x.com", applicant_name="B", raw_row={}, raw_row_hash="h2",
             normalized={},
             submitted_at=SUBMITTED_AT,
-        ))
-        db.commit()
+        )
+        activate_application(db, second)
         workflow = (await client.get("/dashboard")).json()["workflow"]
         assert workflow["rankingCurrent"] is False
 
         # Restore the pool, then prove a rank-chain PROMPT change alone also flips it:
         # re-stamp the run as current, then perturb the stored fingerprint as if a
         # prompt had changed. The dashboard recomputes from live prompts -> mismatch.
-        db.delete(db.get(Application, 2))
+        db.delete(second)
         db.commit()
         run.rank_inputs_fingerprint = rank_inputs_fingerprint(db, settings)
         db.add(run)
@@ -312,19 +312,16 @@ def test_rank_fingerprint_can_reuse_an_already_loaded_pool() -> None:
     from app.services.ranking.freshness import rank_inputs_fingerprint
 
     _app, db = _logged_in_app()
-    db.add_all([
-        Application(
-            primary_email="a@x.com", applicant_name="A", raw_row={},
-            raw_row_hash="h1", normalized={},
-            submitted_at=SUBMITTED_AT,
-        ),
-        Application(
-            primary_email="b@x.com", applicant_name="B", raw_row={},
-            raw_row_hash="h2", normalized={},
-            submitted_at=SUBMITTED_AT,
-        ),
-    ])
-    db.commit()
+    activate_application(db, Application(
+        primary_email="a@x.com", applicant_name="A", raw_row={},
+        raw_row_hash="h1", normalized={},
+        submitted_at=SUBMITTED_AT,
+    ))
+    activate_application(db, Application(
+        primary_email="b@x.com", applicant_name="B", raw_row={},
+        raw_row_hash="h2", normalized={},
+        submitted_at=SUBMITTED_AT,
+    ))
     settings = AppSettings()
     expected = rank_inputs_fingerprint(db, settings)
     applications = list(db.scalars(select(Application).order_by(Application.id.desc())))
@@ -382,8 +379,8 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
         normalized={},
         submitted_at=SUBMITTED_AT,
     )
-    db.add_all([a, b])
-    db.commit()
+    activate_application(db, a)
+    activate_application(db, b)
 
     # a: current result (cache key computed from its present content + model).
     db.add(ApplicationAIResult(
@@ -429,8 +426,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
         normalized={},
         submitted_at=SUBMITTED_AT,
     )
-    db.add(a)
-    db.commit()
+    activate_application(db, a)
     # A run with two dimensions.
     db.add(Analysis(dimension_report={
         "summary": "s",

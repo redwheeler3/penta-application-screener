@@ -480,18 +480,19 @@ removed. They do not show an applicant-removal link.
   After the close date and before the move-in date, an existing participant may unselect it to
   withdraw but nobody may newly select it. Because working selections remain private until Submit,
   the participant may reverse that pending choice in either direction before submitting. On the
-  move-in date the opening is archived and its participation can
-  neither be selected nor withdrawn. If another opening still permits editing, a later publication
-  updates the one committee-facing application shown for every opening, including archived ones.
+  move-in date the opening is archived and its participation can neither be selected nor
+  withdrawn. If another opening still permits editing, a later publication updates the retained
+  application record without returning archived-only applicants to ordinary committee workflows.
 - Before submission, the review page separately names every opening the applicant will remain
   enrolled in and every existing participation that the submission will withdraw.
 - Archived openings are history rather than current choices. They remain in the admin opening list
-  and committee application details, but do not appear in the applicant selector or review and are
-  not offered in the screener's shared application/ranking filter.
-- Unsuccessful applicants remain visible in the **All** Applications and Ranking views throughout
-  their one-year retention period. Opening-specific filters still require explicit participation,
-  so retention never enrolls someone in a later opening. Withdrawn, applicant-deleted, and selected
-  applications are excluded from ordinary committee and AI workflows.
+  and retained administrative application details, but do not appear in the applicant selector or
+  review and are not offered in the screener's shared application/ranking filter.
+- Applications enter ordinary committee and AI workflows only while they participate in at least
+  one non-archived opening. Archived-only applications remain stored for their one-year retention
+  period but are available only through retained administrative history. Retention never enrolls
+  someone in a later opening. Withdrawn, applicant-deleted, and selected applications are also
+  excluded from ordinary committee and AI workflows.
 - Administrators may edit archived opening facts to correct the historical record. Changing a
   move-in date recalculates affected retention dates using the corrected value.
 - The server's Pacific calendar date determines which actions are allowed. Merely receiving an

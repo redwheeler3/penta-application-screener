@@ -15,6 +15,7 @@ from app.ai.screening import (
 )
 from app.db.models import Application, Base
 from app.schemas.settings import AppSettings
+from tests.application_support import activate_application
 
 
 def make_session() -> Session:
@@ -47,9 +48,7 @@ def add_application(
         normalized=normalized,
         submitted_at=datetime.now(UTC),
     )
-    db.add(app)
-    db.commit()
-    return app
+    return activate_application(db, app)
 
 
 def clean() -> ScreeningReport:

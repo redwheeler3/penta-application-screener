@@ -280,25 +280,21 @@ export function WorkflowBar(props: {
             last
           />
         </ol>
-        {currentOpenings.length ? (
+        {currentOpenings.length > 1 ? (
           <div className="workflow-opening-scope">
-            <span className="workflow-opening-label">Viewing</span>
-            <div className="segmented" role="group" aria-label="Filter applications and ranking by opening">
-              <button
-                type="button"
-                className="segment"
-                aria-pressed={props.selectedOpeningIds.length === 0}
-                onClick={() => props.onOpeningScopeChange([])}
-              >
-                All openings
-              </button>
+            <span className="workflow-opening-label">Openings</span>
+            <div
+              className="workflow-opening-options"
+              role="group"
+              aria-label="Filter applications and ranking by current opening"
+            >
               {currentOpenings.map((opening) => {
                 const selected = props.selectedOpeningIds.includes(opening.id);
                 return (
                   <button
                     key={opening.id}
                     type="button"
-                    className="segment"
+                    className="workflow-opening-filter"
                     aria-pressed={selected}
                     onClick={() => props.onOpeningScopeChange(
                       selected
@@ -306,6 +302,9 @@ export function WorkflowBar(props: {
                         : [...props.selectedOpeningIds, opening.id],
                     )}
                   >
+                    <span className="workflow-opening-check" aria-hidden="true">
+                      {selected ? <Check size={12} strokeWidth={3} /> : null}
+                    </span>
                     {openingLabel(opening)}
                   </button>
                 );

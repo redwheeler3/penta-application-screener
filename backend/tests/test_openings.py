@@ -364,10 +364,7 @@ async def test_archived_selection_is_permanent() -> None:
         OpeningOutcome.UNSUCCESSFUL,
         OpeningOutcome.UNSUCCESSFUL,
     ]
-    assert [item.id for item in committee_applications(db)] == [
-        applications[1].id,
-        applications[2].id,
-    ]
+    assert committee_applications(db) == []
 
 
 @pytest.mark.anyio

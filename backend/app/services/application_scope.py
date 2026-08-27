@@ -1,8 +1,9 @@
-"""Submitted applications visible to ordinary committee workflows and AI."""
+"""Submitted applications active in ordinary committee workflows and AI."""
 
-from sqlalchemy import Select, exists, not_, or_, select
+from sqlalchemy import Select, exists, not_, select
 from sqlalchemy.orm import Session
 
+from app.core.time import pacific_today
 from app.db.models import (
     Application,
     ApplicationParticipation,
@@ -12,14 +13,14 @@ from app.db.models import (
 
 
 def committee_applications_query() -> Select[tuple[Application]]:
-    published_opening_exists = exists(
-        select(Opening.id).where(Opening.published_at.is_not(None))
-    )
-    active_participation = exists(
+    current_participation = exists(
         select(ApplicationParticipation.id)
+        .join(Opening, Opening.id == ApplicationParticipation.opening_id)
         .where(
             ApplicationParticipation.application_id == Application.id,
             ApplicationParticipation.withdrawn_at.is_(None),
+            Opening.published_at.is_not(None),
+            Opening.move_in_date > pacific_today(),
         )
     )
     selected = exists(
@@ -32,10 +33,7 @@ def committee_applications_query() -> Select[tuple[Application]]:
         Application.submitted_at.is_not(None),
         Application.deleted_at.is_(None),
         not_(selected),
-        # Retained externally collected applications remain available until the first
-        # built-in opening is published. From then on, participation owns scope; an
-        # archived unsuccessful application remains live until its physical purge.
-        or_(not_(published_opening_exists), active_participation),
+        current_participation,
     )
 
 

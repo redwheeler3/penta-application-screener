@@ -25,6 +25,7 @@ from app.db.models import (
 from app.db.session import get_db
 from app.main import create_app
 from app.services.run_lock import ensure_lock_row
+from tests.application_support import activate_application
 
 
 async def run_and_summarize(client: AsyncClient) -> dict:
@@ -75,7 +76,7 @@ def setup_app(role: UserRole | None) -> tuple:
 
 
 def add_eligible(
-    db: Session, *, email: str, raw_hash: str, name: str = "Test"
+    db: Session, *, email: str, raw_hash: str, name: str = "Test", active: bool = True
 ) -> Application:
     app = Application(
         primary_email=email,
@@ -88,6 +89,8 @@ def add_eligible(
         normalized={"applicant_name": name},
         submitted_at=datetime.now(UTC),
     )
+    if active:
+        return activate_application(db, app)
     db.add(app)
     db.commit()
     return app
@@ -229,7 +232,7 @@ async def test_list_embeds_my_star_state_per_row() -> None:
 @pytest.mark.anyio
 async def test_list_and_detail_expose_opening_participation() -> None:
     app, db, _ = setup_app(role=UserRole.MEMBER)
-    application = add_eligible(db, email="opening@x.com", raw_hash="h1")
+    application = add_eligible(db, email="opening@x.com", raw_hash="h1", active=False)
     today = date.today()
     opening = Opening(
         unit_size_bedrooms=2,

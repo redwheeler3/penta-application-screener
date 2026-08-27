@@ -10,11 +10,17 @@ from app.db.models import (
     Base,
     Opening,
     OpeningOutcome,
+    User,
+    UserRole,
 )
 from app.services.application_scope import committee_applications
+from app.services.eligibility import (
+    rules_eligible_application_ids,
+    union_eligible_application_ids,
+)
 
 
-def test_committee_scope_keeps_retained_applications_live_except_selected() -> None:
+def test_committee_scope_requires_a_current_opening() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     db = Session(engine)
@@ -86,7 +92,12 @@ def test_committee_scope_keeps_retained_applications_live_except_selected() -> N
                 deleted_at=submitted_at,
         ),
     ]
-    db.add_all([current_opening, archived_opening, *applications])
+    db.add_all([
+        current_opening,
+        archived_opening,
+        User(email="member@example.com", display_name="Member", role=UserRole.MEMBER),
+        *applications,
+    ])
     db.flush()
     db.add_all(
         [
@@ -126,5 +137,6 @@ def test_committee_scope_keeps_retained_applications_live_except_selected() -> N
 
     assert [application.primary_email for application in committee_applications(db)] == [
         "submitted@example.com",
-        "archived@example.com",
     ]
+    assert rules_eligible_application_ids(db) == {applications[1].id}
+    assert union_eligible_application_ids(db) == {applications[1].id}

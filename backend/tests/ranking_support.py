@@ -22,6 +22,7 @@ from app.db.models import Application, Base, User, UserRole
 from app.db.session import get_db
 from app.main import create_app
 from app.services.run_lock import ensure_lock_row
+from tests.application_support import activate_application
 
 
 def _decomposition_of(report: PoolDimensionReport) -> DecompositionReport:
@@ -83,9 +84,7 @@ def add_eligible(db: Session, *, email: str, raw_hash: str) -> Application:
         normalized={},
         submitted_at=datetime.now(UTC),
     )
-    db.add(application)
-    db.commit()
-    return application
+    return activate_application(db, application)
 
 
 def a_pattern_report() -> PoolDimensionReport:

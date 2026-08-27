@@ -34,6 +34,7 @@ from app.db.models import (
     UserRole,
 )
 from app.schemas.settings import AppSettings
+from tests.application_support import activate_application
 
 
 def make_db() -> Session:
@@ -58,9 +59,7 @@ def add_eligible(db: Session, *, email: str, raw_hash: str) -> Application:
         normalized={},
         submitted_at=datetime.now(UTC),
     )
-    db.add(app)
-    db.commit()
-    return app
+    return activate_application(db, app)
 
 
 def report_with(keys: list[str]) -> PoolDimensionReport:

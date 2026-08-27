@@ -22,6 +22,7 @@ from app.services.eligibility import (
     eligible_application_ids_for,
     union_eligible_application_ids,
 )
+from tests.application_support import activate_application
 
 
 def make_session() -> Session:
@@ -55,9 +56,7 @@ def add_app(
         normalized=normalized,
         submitted_at=datetime.now(UTC),
     )
-    db.add(app)
-    db.commit()
-    return app
+    return activate_application(db, app)
 
 
 def set_member_rules(db: Session, user_id: int, **overrides: object) -> None:
