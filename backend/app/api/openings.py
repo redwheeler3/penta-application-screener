@@ -10,6 +10,7 @@ from app.core.problems import Problem
 from app.db.models import Application, Opening, User
 from app.db.session import get_db
 from app.schemas.openings import (
+    DirectSelectionOpeningCreate,
     OpeningCreate,
     OpeningCreateConfirmation,
     OpeningCreatedOut,
@@ -21,7 +22,14 @@ from app.schemas.openings import (
     OpeningSelectionRequest,
     OpeningsResponse,
     OpeningWrite,
+    PreviousApplicantSearch,
+    PreviousApplicantSearchOut,
     SocketLabsUsageOut,
+)
+from app.services.direct_openings import (
+    create_direct_selection_opening,
+    remove_direct_selection_opening,
+    search_previous_applicants,
 )
 from app.services.email_sender import EmailSender, get_email_sender
 from app.services.maintenance import run_email_outbox
@@ -83,6 +91,7 @@ def _opening_out(db: Session, opening: Opening, submission_count: int) -> Openin
     decision_exists = selected is not None or opening.no_household_selected_at is not None
     return OpeningOut(
         id=opening.id,
+        intake_mode=opening.intake_mode,
         unit_size_bedrooms=opening.unit_size_bedrooms,
         housing_charge_cents=opening.housing_charge_cents,
         application_open_date=opening.application_open_date,
@@ -107,6 +116,47 @@ def _opening_out(db: Session, opening: Opening, submission_count: int) -> Openin
         created_at=as_utc(opening.created_at),
         updated_at=as_utc(opening.updated_at),
     )
+
+
+@router.post(
+    "/previous-applicants/search",
+    response_model=PreviousApplicantSearchOut,
+)
+def find_previous_applicants(
+    body: PreviousApplicantSearch,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> PreviousApplicantSearchOut:
+    return PreviousApplicantSearchOut(
+        candidates=[
+            OpeningSelectionCandidateOut(
+                application_id=application.id,
+                applicant_name=application.applicant_name,
+                primary_email=application.primary_email,
+            )
+            for application in search_previous_applicants(db, body.query)
+        ]
+    )
+
+
+@router.post("/direct-selection", response_model=OpeningsResponse)
+def add_direct_selection_opening(
+    body: DirectSelectionOpeningCreate,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> OpeningsResponse:
+    create_direct_selection_opening(db, body, decided_by=admin)
+    return _response(db)
+
+
+@router.delete("/{opening_id}/direct-selection", response_model=OpeningsResponse)
+def delete_direct_selection_opening(
+    opening_id: int,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> OpeningsResponse:
+    remove_direct_selection_opening(db, _opening(db, opening_id))
+    return _response(db)
 
 
 @router.get("", response_model=OpeningsResponse)
@@ -269,6 +319,7 @@ def _selection_response(db: Session, opening: Opening) -> OpeningSelectionOut:
     decision_exists = selected is not None or opening.no_household_selected_at is not None
     return OpeningSelectionOut(
         opening_id=opening.id,
+        intake_mode=opening.intake_mode,
         phase=phase,
         selected_application_id=selected.application_id if selected is not None else None,
         selected_applicant_name=(

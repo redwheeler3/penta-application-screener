@@ -253,13 +253,15 @@ export function ApplicationComplete(props: { submitted: boolean; emailSent: bool
   );
 }
 
-export function ApplicationWithdrawn(props: { emailSent: boolean }) {
+export function ApplicationWithdrawn(props: {
+  emailStatus: "sent" | "failed" | "not_needed";
+}) {
   return (
     <section className="application-complete">
       <CheckCircle2 size={34} />
       <h2>Application withdrawn</h2>
       <p>Your application has been removed from consideration, and you have been signed out.</p>
-      {!props.emailSent ? (
+      {props.emailStatus === "failed" ? (
         <p>We couldn’t email a confirmation, but the withdrawal is complete.</p>
       ) : null}
     </section>

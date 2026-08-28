@@ -54,7 +54,6 @@ from app.services.intake import (
 )
 from app.services.magic_link_delivery import (
     send_application_confirmation,
-    send_application_deleted,
     send_application_withdrawn,
     send_magic_link,
 )
@@ -288,13 +287,12 @@ def withdraw_applicant_application(
     now = datetime.now(UTC)
     cancel_queued_application_emails(db, application.id)
     if application.submitted_at is None:
-        email_sent = send_application_deleted(db, sender, application, now=now)
         _purge_never_submitted_application(db, application)
         db.commit()
         clear_session_cookie(response, PasswordlessIdentityKind.APPLICANT)
         return WithdrawApplicationResponse(
-            email_sent=email_sent,
-            email_status="sent" if email_sent else "failed",
+            email_sent=False,
+            email_status="not_needed",
         )
 
     for state in applicant_opening_states(db, application):

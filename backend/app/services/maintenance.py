@@ -48,7 +48,7 @@ def run_due_maintenance_with(
     try:
         retry_queued_emails(db, sender, now=now)
         send_due_unsuccessful_notices(db, sender, now=now)
-        purge_due_applicant_data(db, sender, now=now)
+        purge_due_applicant_data(db, now=now)
         purge_expired_consent_receipts(db, today=pacific_today(now=now))
     except Exception as error:
         run.status = "failed"

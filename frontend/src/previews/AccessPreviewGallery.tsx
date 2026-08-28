@@ -8,7 +8,7 @@ import {
   AccessLinkReady,
   AccessLinkSent,
   ApplicationEntry,
-  ApplicationLoadError,
+  ApplicationLoadRecovery,
   ApplicationsUnavailable,
   ApplicationSessionExpired,
   ExpiredAccessLink,
@@ -19,6 +19,7 @@ import { emptyApplicantDraft, type ApplicantOpening, workingAnswers } from "../a
 import { BrandLockup } from "../components/shared/BrandLockup";
 import { CommitteeSignIn } from "../components/auth/CommitteeSignIn";
 import type { CommitteeLinkConflict, SignInState } from "../hooks/useSession";
+import type { ServiceRecoveryStage } from "../serviceRecovery";
 import "../styles/access-preview.css";
 
 type EmailPreview = {
@@ -228,8 +229,14 @@ function ApplicantAccessPreviews() {
       <PreviewCard title="Application link does not work" description="The emailed link cannot open an application.">
         <InvalidAccessLink />
       </PreviewCard>
-      <PreviewCard title="Application could not be loaded" description="The applicant can try loading the application again.">
-        <ApplicationLoadError message="The application service could not be reached." onRetry={noAction} />
+      <PreviewCard title="Application service waking" description="The app retries automatically during the first minute.">
+        <ApplicationLoadRecovery stage="waking" />
+      </PreviewCard>
+      <PreviewCard title="Application recovery extended" description="The app announces the final 60-second retry window.">
+        <ApplicationLoadRecovery stage="extended" />
+      </PreviewCard>
+      <PreviewCard title="Application recovery failed" description="Automatic recovery ended and Tech Support is available.">
+        <ApplicationLoadRecovery stage="failed" />
       </PreviewCard>
       <PreviewCard wide title="Two application copies" description="A returning applicant entered guest answers before opening their saved application.">
         <PendingCopyDecision pendingCopy={pendingCopy} openings={openings} busy={false} error={null} onChoose={noAction} />
@@ -243,7 +250,7 @@ function CommitteeAccessPreviews() {
     <div className="access-preview-grid">
       <CommitteePreview title="Google or email" description="Normal committee sign-in when email delivery is configured." />
       <CommitteePreview title="Google only" description="Email sign-in is hidden when delivery is not configured." emailSignInEnabled={false} />
-      <CommitteePreview title="Checking session" description="The existing browser session is being loaded." isLoadingUser />
+      <CommitteePreview title="Checking Google session" description="The existing browser session is being loaded." isLoadingUser />
       <CommitteePreview title="Checking sign-in link" description="A committee sign-in link is being checked." signInState="exchanging" />
       <CommitteePreview title="Check your email" description="A committee member has requested a sign-in link." signInState="emailSent" linkedEmail="member@example.test" />
       <CommitteePreview title="Expired committee link" description="The committee member can request a new sign-in link." signInState="staleLink" linkedEmail="member@example.test" />
@@ -253,7 +260,9 @@ function CommitteeAccessPreviews() {
       <CommitteePreview title="Invalid committee link" description="The sign-in token is invalid or expired." signInState="invalidLink" />
       <CommitteePreview title="Email delivery failed" description="The sign-in email could not be sent." signInState="requestFailed" />
       <CommitteePreview title="Google access denied" description="The Google account does not have committee access." signInState="googleDenied" />
-      <CommitteePreview title="Sign-in check failed" description="The app could not determine whether the committee member is signed in." userLoadFailed />
+      <CommitteePreview title="Sign-in service waking" description="The app retries automatically during the first minute." userLoadRecovery="waking" />
+      <CommitteePreview title="Sign-in recovery extended" description="The app announces the final 60-second retry window." userLoadRecovery="extended" />
+      <CommitteePreview title="Sign-in recovery failed" description="Automatic recovery ended and Tech Support is available." userLoadRecovery="failed" />
     </div>
   );
 }
@@ -263,7 +272,7 @@ function CommitteePreview(props: {
   description: string;
   emailSignInEnabled?: boolean;
   isLoadingUser?: boolean;
-  userLoadFailed?: boolean;
+  userLoadRecovery?: ServiceRecoveryStage | null;
   signInState?: SignInState;
   linkConflict?: CommitteeLinkConflict | null;
   linkedEmail?: string | null;
@@ -273,7 +282,7 @@ function CommitteePreview(props: {
       <CommitteeSignIn
         emailSignInEnabled={props.emailSignInEnabled ?? true}
         isLoadingUser={props.isLoadingUser ?? false}
-        userLoadFailed={props.userLoadFailed ?? false}
+        userLoadRecovery={props.userLoadRecovery ?? null}
         signInState={props.signInState ?? "idle"}
         linkConflict={props.linkConflict ?? null}
         linkedEmail={props.linkedEmail ?? null}

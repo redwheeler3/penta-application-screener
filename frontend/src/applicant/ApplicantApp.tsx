@@ -8,7 +8,7 @@ import {
   AccessLinkReady,
   AccessLinkSent,
   ApplicationEntry,
-  ApplicationLoadError,
+  ApplicationLoadRecovery,
   ApplicationsUnavailable,
   ApplicationSessionExpired,
   ExpiredAccessLink,
@@ -267,7 +267,7 @@ export function ApplicantApp() {
         </div>
 
         {persistence.phase === "withdrawn" ? (
-          <ApplicationWithdrawn emailSent={persistence.withdrawalEmailSent} />
+          <ApplicationWithdrawn emailStatus={persistence.withdrawalEmailStatus} />
         ) : persistence.phase === "session_expired" ? (
           <ApplicationSessionExpired onEmail={() => void persistence.emailSessionAccessLink()} />
         ) : persistence.phase === "submitted" ? (
@@ -305,13 +305,12 @@ export function ApplicantApp() {
             error={persistence.phase === "error" ? persistence.message : null}
             onChoose={(choice) => void persistence.reconcilePendingCopy(choice)}
           />
-        ) : !persistence.openingsLoaded && (
-          persistence.phase === "load_error" || persistence.phase === "error"
-        ) ? (
-          <ApplicationLoadError
-            message={persistence.message}
-            onRetry={() => void persistence.retryInitialLoad()}
-          />
+        ) : !persistence.openingsLoaded ? (
+          persistence.loadRecoveryStage !== null
+            || persistence.phase === "load_error"
+            || persistence.phase === "error"
+            ? <ApplicationLoadRecovery stage={persistence.loadRecoveryStage ?? "failed"} />
+            : <p className="applicant-loading" role="status">Loading application details…</p>
         ) : !persistence.authenticated && !hasActiveOpening ? (
           <ApplicationsUnavailable />
         ) : !persistence.authenticated && !guestStarted ? (
@@ -339,8 +338,6 @@ export function ApplicantApp() {
               setReviewing(false);
             }}
           />
-        ) : !persistence.openingsLoaded ? (
-          <p className="applicant-loading" role="status">Loading application details…</p>
         ) : !persistence.canEdit ? (
           <ApplicationsUnavailable />
         ) : (

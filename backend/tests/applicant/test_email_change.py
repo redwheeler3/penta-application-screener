@@ -55,8 +55,15 @@ async def test_verified_email_change_updates_identity_and_private_answers() -> N
     assert "new-address@example.com" in sender.messages[-1].text_body
     assert "new-address@example.com" in sender.messages[-1].html_body
     assert "{{HsUnsubscribe}}" in sender.messages[-1].text_body
-    assert sender.messages[-1].html_body.count("<a href=") == 1
-    assert 'href="mailto:privacy@pentacoop.com"' in sender.messages[-1].html_body
+    assert (
+        "<HsUnsubscribe>Click here to permanently unsubscribe.</HsUnsubscribe>"
+        in sender.messages[-1].html_body
+    )
+    assert "Privacy questions" not in sender.messages[-1].html_body
+    assert (
+        'not monitored.</span><br><span style="display:inline-block;margin-top:8px;">'
+        "Sent by" in sender.messages[-1].html_body
+    )
     assert "Penta Tech Support" in sender.messages[-1].text_body
     active_sessions = list(
         db.scalars(select(BrowserSession).where(BrowserSession.revoked_at.is_(None)))

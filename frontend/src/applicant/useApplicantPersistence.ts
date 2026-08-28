@@ -1,6 +1,7 @@
 import { type Dispatch, type SetStateAction, useEffect, useReducer, useRef } from "react";
 
 import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
+import { retryForServiceRecovery } from "../serviceRecovery";
 import { APPLICATION_ACCESS_EMAIL_MESSAGE } from "./accessMessages";
 import {
   accessCredentialFromFragment,
@@ -9,7 +10,6 @@ import {
   type EmailSendStatus,
   linkBody,
   type PendingCopy,
-  responseDetail,
   responseProblem,
   validBrowserOpeningIds,
   workingSnapshot,
@@ -66,6 +66,7 @@ export function useApplicantPersistence(
   );
   const {
     phase,
+    loadRecoveryStage,
     message,
     applicationId,
     workingRevision,
@@ -91,7 +92,7 @@ export function useApplicantPersistence(
     emailChangeMessage,
     collisionEmail,
     submissionEmailSent,
-    withdrawalEmailSent,
+    withdrawalEmailStatus,
     withdrawalStatus,
     withdrawalMessage,
   } = persistence;
@@ -230,7 +231,8 @@ export function useApplicantPersistence(
   }
 
   async function restoreApplication(knownId?: number): Promise<void> {
-    const response = await fetchApplication();
+    const response = await recoverInitialLoad(fetchApplication);
+    if (response === null) return;
     if (response.status === 401) {
       if (knownId == null) {
         setPersistence("applicationId", null);
@@ -285,12 +287,9 @@ export function useApplicantPersistence(
   }
 
   async function restorePublicOpenings(preserveSelection = false): Promise<void> {
-    const response = await fetchApplicantOpenings();
-    if (!response.ok) {
-      setPersistence("message", await responseDetail(response));
-      setPersistence("phase", "load_error");
-      return;
-    }
+    const response = await recoverInitialLoad(fetchApplicantOpenings);
+    if (response === null) return;
+    if (!response.ok) return fail(response);
     const body = (await response.json()) as {
       canStartApplication: boolean;
       openings: ApplicantOpening[];
@@ -305,6 +304,29 @@ export function useApplicantPersistence(
     setPersistence("submitted", false);
     setPersistence("serverHasUnsubmittedChanges", false);
     setPersistence("openingsLoaded", true);
+  }
+
+  async function recoverInitialLoad(
+    request: () => Promise<Response>,
+  ): Promise<Response | null> {
+    if (openingsLoaded) return request();
+    setPersistence("loadRecoveryStage", null);
+    try {
+      const response = await retryForServiceRecovery(async () => {
+        const attempt = await request();
+        if (attempt.status === 429 || attempt.status >= 500) {
+          throw new Error(`Application service unavailable (${attempt.status}).`);
+        }
+        return attempt;
+      }, (stage) => setPersistence("loadRecoveryStage", stage));
+      setPersistence("loadRecoveryStage", null);
+      return response;
+    } catch {
+      setPersistence("loadRecoveryStage", "failed");
+      setPersistence("message", TECH_SUPPORT_ERROR_MESSAGE);
+      setPersistence("phase", "load_error");
+      return null;
+    }
   }
 
   async function start(intent: DraftIntent): Promise<void> {
@@ -662,6 +684,7 @@ export function useApplicantPersistence(
 
   return {
     phase,
+    loadRecoveryStage,
     message,
     linkConflict,
     pendingCopy,
@@ -689,9 +712,6 @@ export function useApplicantPersistence(
     revertToSubmitted,
     ...withdrawalFlow,
     reloadLatestApplication: () => restoreApplication(applicationId ?? undefined),
-    retryInitialLoad: () => (
-      accessToken ? inspectLink(accessToken) : restoreApplication(applicationId ?? undefined)
-    ),
     openings,
     openingIds,
     canEdit,
@@ -714,7 +734,7 @@ export function useApplicantPersistence(
       serverHasUnsubmittedChanges || savedAnswers !== workingSnapshot(draft, openingIds)
     ),
     hasSubmittedApplication: submitted,
-    withdrawalEmailSent,
+    withdrawalEmailStatus,
     withdrawalStatus,
     withdrawalMessage,
     workingRevision,

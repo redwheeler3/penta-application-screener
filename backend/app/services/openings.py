@@ -7,7 +7,13 @@ from sqlalchemy.orm import Session
 
 from app.core.problems import Problem
 from app.core.time import pacific_today
-from app.db.models import Application, ApplicationParticipation, Opening, OpeningPhase
+from app.db.models import (
+    Application,
+    ApplicationParticipation,
+    Opening,
+    OpeningIntakeMode,
+    OpeningPhase,
+)
 from app.schemas.openings import OpeningCreate, OpeningWrite
 from app.services.retention import (
     refresh_application_retention,
@@ -19,6 +25,10 @@ def opening_phase(opening: Opening, *, today: date | None = None) -> OpeningPhas
     current_date = today or pacific_today()
     if current_date >= opening.move_in_date:
         return OpeningPhase.ARCHIVED
+    if opening.intake_mode == OpeningIntakeMode.DIRECT_SELECTION:
+        return OpeningPhase.CLOSED
+    if opening.application_open_date is None or opening.application_close_date is None:
+        raise ValueError("Application openings require open and close dates.")
     if current_date < opening.application_open_date:
         return OpeningPhase.UPCOMING
     if current_date <= opening.application_close_date:
@@ -47,7 +57,10 @@ def published_openings(db: Session) -> list[Opening]:
     return list(
         db.scalars(
             select(Opening)
-            .where(Opening.published_at.is_not(None))
+            .where(
+                Opening.published_at.is_not(None),
+                Opening.intake_mode == OpeningIntakeMode.APPLICATIONS,
+            )
             .order_by(Opening.move_in_date.desc(), Opening.id.desc())
         )
     )
@@ -79,6 +92,7 @@ def create_opening(
             "move_in_date",
         }),
         application_open_date=today,
+        intake_mode=OpeningIntakeMode.APPLICATIONS,
         published_at=now,
     )
     db.add(opening)
@@ -87,6 +101,11 @@ def create_opening(
 
 
 def update_opening(db: Session, opening: Opening, values: OpeningWrite) -> Opening:
+    if opening.intake_mode != OpeningIntakeMode.APPLICATIONS:
+        raise Problem(
+            "invalid_settings",
+            detail="Direct-selection openings cannot be edited.",
+        )
     for field, value in values.model_dump().items():
         setattr(opening, field, value)
     db.flush()

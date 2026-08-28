@@ -52,10 +52,7 @@ export function Introduction() {
           date; accepted-member records are retained for seven years. Read our{" "}
           <a href="https://www.pentacoop.com/privacy.html" target="_blank" rel="noopener noreferrer">
             Privacy Policy
-          </a>{" "}
-          or contact the Privacy Officer at{" "}
-          <a href="mailto:privacy@pentacoop.com">privacy@pentacoop.com</a> to ask about access,
-          correction, or deletion.
+          </a>.
         </p>
       </div>
     </section>

@@ -181,7 +181,8 @@ The central tables are:
 - `applications`: identity, private working answers, current submitted representation, lifecycle,
   and synthetic provenance;
 - `application_versions`: immutable submitted versions;
-- `openings` and `application_participations`: vacancy configuration and applicant selection;
+- `openings` and `application_participations`: application-intake or direct-selection vacancy
+  configuration, participation, and outcomes;
 - `browser_sessions` and token-credential tables: revocable authentication;
 - `application_ai_results`: cached per-application passes;
 - `analyses`, `analysis_audits`, dimension definitions, and scores: shared Rank state;

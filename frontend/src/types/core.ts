@@ -37,6 +37,7 @@ export type DeniedSignInAttempt = {
 };
 
 export type OpeningPhase = "upcoming" | "open" | "closed" | "archived";
+export type OpeningIntakeMode = "applications" | "direct_selection";
 
 export type OpeningDetails = {
   id: number;
@@ -47,7 +48,10 @@ export type OpeningDetails = {
   moveInDate: string;
 };
 
-export type Opening = OpeningDetails & {
+export type Opening = Omit<OpeningDetails, "applicationOpenDate" | "applicationCloseDate"> & {
+  intakeMode: OpeningIntakeMode;
+  applicationOpenDate: string | null;
+  applicationCloseDate: string | null;
   phase: OpeningPhase;
   publishedAt: string | null;
   submissionCount: number;
@@ -113,6 +117,7 @@ export type OpeningSelectionCandidate = {
 
 export type OpeningSelection = {
   openingId: number;
+  intakeMode: OpeningIntakeMode;
   phase: OpeningPhase;
   selectedApplicationId: number | null;
   selectedApplicantName: string | null;
@@ -120,6 +125,13 @@ export type OpeningSelection = {
   decisionPermanent: boolean;
   activeParticipantCount: number;
   candidates: OpeningSelectionCandidate[];
+};
+
+export type DirectSelectionOpeningCreate = {
+  unitSizeBedrooms: number;
+  housingChargeCents: number;
+  moveInDate: string;
+  applicationId: number;
 };
 
 // A member's feedback item. Members submit body + context; identity/version/time are

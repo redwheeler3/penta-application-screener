@@ -6,8 +6,8 @@ export type AuthState = {
   emailSignInEnabled: boolean;
 };
 
-export function fetchAuthState(): Promise<AuthState> {
-  return getJson<AuthState>("/auth/me");
+export function fetchAuthState(signal?: AbortSignal): Promise<AuthState> {
+  return getJson<AuthState>("/auth/me", signal);
 }
 export function googleSignInUrl(rememberDevice = false): string {
   return url(`/auth/google/login?remember_device=${rememberDevice}`);

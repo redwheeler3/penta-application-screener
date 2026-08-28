@@ -14,6 +14,7 @@ from app.schemas.base import RequestModel, ResponseModel
 from app.schemas.openings import OpeningDetailsOut
 
 EmailSendStatus = Literal["sent", "recent", "failed"]
+WithdrawalEmailStatus = Literal["sent", "failed", "not_needed"]
 
 
 class PendingDraftRequest(RequestModel):
@@ -179,4 +180,4 @@ class AuthenticatedSubmitApplicationResponse(ApplicantApplicationResponse):
 class WithdrawApplicationResponse(ResponseModel):
     withdrawn: bool = True
     email_sent: bool
-    email_status: EmailSendStatus
+    email_status: WithdrawalEmailStatus

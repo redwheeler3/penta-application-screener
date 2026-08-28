@@ -258,16 +258,21 @@ SQLite and daily snapshots retained for 30 days.
 
 **M22 implementation is complete; production cutover remains.** The application now owns vacancy
 subscriptions, administration, opening audience previews, live SocketLabs usage, and retry-safe
-delivery. The always-on public website submits with the agreed bounded recovery experience. Cutover
-is deliberately operational rather than another software phase:
+delivery. Administrators can also fill a home from a retained previous applicant without reopening
+applications or sending email. The always-on public website submits with the agreed bounded recovery
+experience. Cutover is deliberately operational rather than another software phase:
 
 1. Rehearse with a current Google response-sheet export. Dry-run the importer and resolve every
    invalid row or normalized collision without writing to production.
-2. Deploy the application service and migration while the public website still points to Google,
+2. Implement and verify the guarded migration command for the already-closed application-cycle
+   opening.
+3. Deploy the application service and migration while the public website still points to Google,
    then verify the production vacancy list is empty.
-3. Pause Google responses, take and validate the authoritative final export, import it without
+4. Run the historical-opening command. It attaches every existing submitted Google Form
+   application without queueing vacancy emails.
+5. Pause Google responses, take and validate the authoritative final export, import it without
    `--allow-upsert`, and reconcile the active total, bedroom counts, and monthly chart.
-4. Deploy the public website, verify the reviewed legal surfaces and one controlled signup, then
+6. Deploy the public website, verify the reviewed legal surfaces and one controlled signup, then
    remove the controlled record and retire the Google form and sheet without sending a migration
    email.
 

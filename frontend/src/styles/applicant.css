@@ -151,7 +151,6 @@
 .applications-unavailable > svg { color: var(--applicant-green); }
 .applications-unavailable h2 { margin: 13px 0 8px; }
 .applications-unavailable > p { margin: 0 0 22px; color: #596d7a; }
-.applications-unavailable .applicant-primary-button { text-decoration: none; }
 .applicant-loading { padding: 42px; text-align: center; color: #596d7a; }
 
 .form-section,
@@ -320,7 +319,7 @@
   cursor: pointer;
 }
 
-.applicant-primary-button { color: #fff; background: var(--applicant-green); border: 1px solid var(--applicant-green); box-shadow: 0 7px 18px rgb(19 166 83 / 18%); }
+.applicant-primary-button { color: #fff; text-decoration: none; background: var(--applicant-green); border: 1px solid var(--applicant-green); box-shadow: 0 7px 18px rgb(19 166 83 / 18%); }
 .applicant-primary-button:hover { background: var(--applicant-green-dark); }
 .applicant-secondary-button { color: #173d2a; background: #fff; border: 1px solid #b7d7c3; }
 .applicant-secondary-button:hover { background: #f1faf5; }

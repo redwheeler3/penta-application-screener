@@ -226,6 +226,7 @@ async def test_withdrawal_removes_every_opening_and_revokes_applicant_access() -
     assert all(session.revoked_at is not None for session in db.scalars(select(BrowserSession)))
     assert withdrawal_message_kind == "application_withdrawn"
     assert "restricted copy" in sender.messages[-2].text_body
+    assert "committee workflows" not in sender.messages[-2].text_body
     assert requested_again.json()["emailStatus"] == "sent"
     assert sender.messages[-1].kind == "applicant_magic_link"
 
@@ -243,14 +244,16 @@ async def test_delete_physically_removes_a_never_submitted_application() -> None
         withdrawn = await client.post("/applicant/application/withdraw")
 
     assert withdrawn.status_code == 200
+    assert withdrawn.json() == {
+        "withdrawn": True,
+        "emailSent": False,
+        "emailStatus": "not_needed",
+    }
     assert db.scalar(select(Application)) is None
     assert db.scalar(select(ApplicantDraft)) is None
     assert db.scalar(select(MagicLinkToken)) is None
     assert db.scalar(select(BrowserSession)) is None
-    assert sender.messages[-1].kind == "application_deleted"
-    assert "deleted from our system" in sender.messages[-1].text_body
-    assert "removed from consideration" not in sender.messages[-1].text_body
-    assert "https://www.pentacoop.com/apply.html" in sender.messages[-1].text_body
+    assert [message.kind for message in sender.messages] == ["applicant_magic_link"]
 
 
 @pytest.mark.anyio

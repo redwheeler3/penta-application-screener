@@ -31,6 +31,7 @@ from app.services.email_sender import (
 )
 from app.services.retention import one_year_after
 from app.services.socketlabs_usage import SocketLabsUsage, get_socketlabs_usage_reader
+from app.services.vacancy_notifications import opening_audience
 from app.services.vacancy_subscriptions import save_subscription
 
 
@@ -123,6 +124,34 @@ async def test_preview_counts_each_email_variant_and_projects_usage() -> None:
     assert response.json()["socketlabs"]["projectedMessagesUsed"] == 1_103
 
 
+def test_archived_application_inside_retention_is_in_the_opening_audience() -> None:
+    _app, db, _sender = _app_and_db()
+    application = _application("archived@example.com")
+    archived = Opening(
+        unit_size_bedrooms=2,
+        housing_charge_cents=120_000,
+        application_open_date=date(2026, 6, 1),
+        application_close_date=date(2026, 6, 15),
+        move_in_date=date(2026, 7, 1),
+        published_at=datetime(2026, 6, 1, tzinfo=UTC),
+    )
+    db.add_all([application, archived])
+    db.flush()
+    db.add(
+        ApplicationParticipation(
+            application_id=application.id,
+            opening_id=archived.id,
+            applied_at=application.submitted_at,
+            outcome=OpeningOutcome.UNSUCCESSFUL,
+        )
+    )
+    db.commit()
+
+    audience = opening_audience(db, 3)
+
+    assert audience.application_only == (application,)
+
+
 @pytest.mark.anyio
 async def test_create_atomically_opens_and_queues_then_delivers_all_variants() -> None:
     app, db, sender = _app_and_db()
@@ -152,6 +181,17 @@ async def test_create_atomically_opens_and_queues_then_delivers_all_variants() -
         "application_opening",
         "application_opening_with_vacancy_notice",
     }
+    application_messages = [
+        message for message in sender.messages if message.kind != "vacancy_opening"
+    ]
+    assert all(
+        "previously submitted a Penta housing application" in message.text_body
+        for message in application_messages
+    )
+    assert all(
+        "current Penta housing application" not in message.text_body
+        for message in application_messages
+    )
     assert db.scalar(select(func.count()).select_from(VacancySubscription)) == 0
     receipts = list(db.scalars(select(VacancyConsentReceipt).order_by(VacancyConsentReceipt.id)))
     assert len(receipts) == 2

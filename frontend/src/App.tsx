@@ -54,7 +54,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
     linkedEmail,
     isAdmin,
     isLoadingUser,
-    userLoadFailed,
+    userLoadRecovery,
     signInState,
     requestMagicLink,
     keepCurrentSession,
@@ -359,7 +359,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
         <CommitteeSignIn
           emailSignInEnabled={emailSignInEnabled}
           isLoadingUser={isLoadingUser}
-          userLoadFailed={userLoadFailed}
+          userLoadRecovery={userLoadRecovery}
           signInState={signInState}
           linkConflict={linkConflict}
           linkedEmail={linkedEmail}

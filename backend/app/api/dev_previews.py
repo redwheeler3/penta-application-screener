@@ -10,7 +10,6 @@ from app.core.problems import Problem
 from app.db.models import MagicLinkPurpose, PasswordlessIdentityKind
 from app.services.auth_email import (
     application_confirmation_email,
-    application_deleted_email,
     application_opening_email,
     application_unavailable_email,
     application_withdrawn_email,
@@ -115,11 +114,6 @@ def email_previews(
             "application-withdrawn",
             "Application withdrawn",
             application_withdrawn_email(application_id=1, email=email),
-        ),
-        (
-            "application-deleted",
-            "Application deleted",
-            application_deleted_email(application_id=1, email=email),
         ),
         (
             "application-unavailable",

@@ -29,6 +29,7 @@ from app.schemas.applications import (
 )
 from app.schemas.base import RequestModel
 from app.services.application_scope import committee_application, committee_applications
+from app.services.direct_openings import available_previous_applicant
 from app.services.eligibility import (
     active_flags,
     machine_flags_by_app,
@@ -119,7 +120,7 @@ def get_retained_application(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> ApplicationEnvelope:
-    """Read an audit-only selected-member application outside committee workflow scope."""
+    """Read a selected or direct-fill-eligible application outside ordinary scope."""
     application = db.get(Application, application_id)
     selected = db.scalar(
         select(ApplicationParticipation.id).where(
@@ -127,7 +128,8 @@ def get_retained_application(
             ApplicationParticipation.outcome == OpeningOutcome.SELECTED,
         )
     )
-    if application is None or selected is None:
+    available_for_direct_fill = available_previous_applicant(db, application_id)
+    if application is None or (selected is None and available_for_direct_fill is None):
         raise Problem("not_found", detail="Retained application not found.")
     return ApplicationEnvelope(application=serialize_detail(application, db, admin))
 

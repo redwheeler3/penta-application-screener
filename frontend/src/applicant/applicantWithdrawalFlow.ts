@@ -30,8 +30,10 @@ export function createApplicantWithdrawalFlow({
       setPersistence("withdrawalMessage", problem.detail);
       return false;
     }
-    const body = (await response.json()) as { emailSent: boolean };
-    setPersistence("withdrawalEmailSent", body.emailSent);
+    const body = (await response.json()) as {
+      emailStatus: "sent" | "failed" | "not_needed";
+    };
+    setPersistence("withdrawalEmailStatus", body.emailStatus);
     clearApplicantStorage();
     setPersistence("applicationId", null);
     setPersistence("workingRevision", null);

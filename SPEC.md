@@ -327,12 +327,13 @@ change is an explicit operational action, never an automatic retry after an ambi
 SocketLabs uses a dedicated Server ID and Injection API key stored as Fly secrets. The sending
 domain is authenticated with DKIM, SPF, and DMARC. Messages use `Penta Co-operative Housing` as
 the display name and `applications@pentacoop.com` as the sender. The common footer identifies Penta
-at 1717 Wallace Street, Vancouver, BC V6R 4J7 and provides `privacy@pentacoop.com` as the monitored
-privacy contact.
+at 1717 Wallace Street, Vancouver, BC V6R 4J7 and states that the sending address is not monitored.
+Privacy contact information remains in the collection notice and Privacy Policy rather than every
+transactional email.
 
-Every message uses the same legal identity, address, privacy contact, and unsubscribe footer:
-**Click here to permanently unsubscribe this email address. Penta will no longer be able to email
-you, including secure sign-in links.** SocketLabs replaces
+Every message uses the same legal identity, address, and unsubscribe footer:
+**Click here to permanently unsubscribe. Penta will no longer be able to email you, including
+secure sign-in links.** SocketLabs replaces
 its native unsubscribe tags in the HTML and plain-text bodies and adds a confirmed unsubscribe to
 the server suppression list. Penta treats that suppression as permanent. Individual message
 templates do not add footer variants. The notification sent to a previous address after an email
@@ -388,7 +389,7 @@ accidental deployment cannot promise an email that will never be delivered.
 Every applicant transactional message clearly says that it was sent because the recipient has or
 requested access to a Penta application, not because they are on the vacancy-notification list. It
 links to the authenticated **Withdraw application** flow and explains that withdrawal stops ordinary
-application messages, while a required security or final-deletion confirmation may still be sent.
+application messages, while a required security notice may still be sent.
 The link opens a review/confirmation page and never changes state on its initial `GET`, so an email
 security scanner cannot delete an application by following it.
 
@@ -429,13 +430,27 @@ removed. They do not show an applicant-removal link.
   accept the declaration before every initial or updated Submit action. Each immutable submitted
   version stores the current application-terms version as durable evidence of the wording accepted;
   the submission timestamp is also the acceptance timestamp.
-- Each opening records an application open date, application close date, move-in date, unit size,
-  and monthly housing charge. Creating an opening is the application-open event: its open date is
-  that day and the confirmed notification audience is durably queued in the same transaction. Its
-  later phase is derived from the dates rather than maintained with manual Open and Close actions.
-- The dates may be equal but cannot run backward: the open date is on or before the close date,
-  which is on or before the move-in date. If move-in shares another boundary date, archiving on
-  that date takes precedence.
+- Every opening records its intake mode, move-in date, unit size, and monthly housing charge. An
+  **Open applications** opening also records its application open and close dates. Creating one is
+  the application-open event: its open date is that day and the confirmed notification audience is
+  durably queued in the same transaction. Its later phase is derived from the dates rather than
+  maintained with manual Open and Close actions. The dates may be equal but cannot run backward:
+  open is on or before close, which is on or before move-in; archiving takes precedence when dates
+  share a boundary.
+- **Fill from previous applicants** is a separate production intake mode for a home offered to
+  someone from a retained prior pool. An administrator searches by name or email across submitted,
+  non-withdrawn, non-selected applications that still have a prior participation and have not
+  reached their purge date. The retained pool remains absent from Applications, Screen, Rank, and
+  AI; this narrow admin-only search is its sole candidate-discovery exception. After confirming the
+  applicant's interest outside the system, the administrator enters the home details and chooses
+  that applicant. The opening and selected participation are committed atomically. No application
+  period is invented, no other applicant participates or becomes unsuccessful, no vacancy audience
+  is calculated or consumed, and no email is queued. The selected application immediately leaves
+  ordinary committee and AI scope and is retained for seven years after the new move-in date.
+- A direct-selection opening is **closed** until move-in and **archived** on that date. It never
+  appears in applicant opening choices. Before move-in, removing it deletes its sole direct
+  participation and restores the applicant's prior scope and retention. After move-in, the
+  selection is permanent.
 - Application-close timing does not prevent an existing application's information from being
   reused for a later opening. Each opening has a separate participation record that says the
   applicant affirmatively wants their one application considered for that opening. Participation
@@ -481,8 +496,10 @@ An administrator may select and confirm the successful applicant at any time whi
 **closed** or **archived**. This committee closeout is independent of the date-derived opening
 phase: the opening remains **closed** until its move-in date and then becomes **archived**.
 Applicants cannot newly apply after the close date, regardless of whether the committee has
-completed closeout. Confirming the selection records the selected participation and records every
-other active participation in that opening as unsuccessful. AI
+completed closeout. The candidate picker can filter the already-loaded candidates by name or email;
+the filter does not make another request or change the candidate set. Confirming the selection
+records the selected participation and records every other active participation in that opening as
+unsuccessful. AI
 eligibility and ranking never imply that decision. Selecting an applicant immediately removes that
 application from Applications, Screen, Rank, and every successful-applicant picker while retaining
 it in an administrator-only audit view for seven years from the opening's move-in date. The opening
@@ -491,9 +508,11 @@ full retained application. That audit detail is read-only and is available only 
 it does not restore the household to any live committee workflow. Unsuccessful
 applications remain live in the ordinary committee workflow until their one-year purge date.
 
-While the opening remains closed, the administrator may undo the confirmed selection. Undo returns
-every active participation in that opening to a pending outcome, recalculates retention, and returns
-the formerly selected applicant to ordinary committee and AI scope. Once the opening becomes
+While an application-intake opening remains closed, the administrator may undo the confirmed
+selection. Undo returns every active participation in that opening to a pending outcome,
+recalculates retention, and returns the selected applicant to ordinary committee and AI
+scope. A direct-selection undo instead removes that opening and its sole participation, restoring
+the applicant's previous scope and retention. Once the opening becomes
 archived, any existing decision is permanent. An archived opening without a decision permits one
 closeout confirmation, which is permanent immediately; archived decisions cannot be undone or
 replaced through the application.
@@ -576,11 +595,8 @@ The public privacy policy explains these retention periods and the restricted le
 The ordinary applicant interface explains the restricted retention state after a person withdraws
 an application, without exposing internal retention dates.
 
-There is no advance expiry warning. When a due application is purged, the product emails the
-primary applicant that deletion is complete and invites them to join the separate vacancy
-notification list. The minimum transient delivery record needed to send or retry that notice is
-removed after terminal delivery handling; it does not preserve the application or become a
-mailing-list subscription.
+There is no advance expiry warning or deletion confirmation. When retention ends, the application
+is purged without preserving personal information solely to deliver another message.
 
 Deletion covers the working and submitted answers, dated application versions,
 application participation, AI outputs and caches, eligibility and
@@ -600,11 +616,8 @@ same sweep. The ordered pass retries queued email, processes due unsuccessful no
 processes due retention deletion. A record may remain somewhat past its scheduled date while the
 service is unused; the first subsequent real use starts the due work in the background.
 
-Scheduled purge sends the deletion notice before physically removing the aggregate. A temporary or
-quota-blocked send leaves both the notice and aggregate available for the next daily attempt and
-surfaces the administrator banner. The explicit deletion of a never-submitted draft is the privacy
-exception: the draft and its email address are removed immediately rather than retained solely to
-retry a confirmation message.
+Scheduled purge physically removes each due aggregate without depending on email delivery. Explicit
+deletion of a never-submitted draft likewise removes the draft and its email address immediately.
 
 ## Built-In Vacancy Notification List (M22)
 
@@ -629,6 +642,13 @@ unit-size selection. The form reports success only after the service confirms th
 it retains the entered values while retrying. Validation errors are reported immediately rather
 than retried. If recovery is exhausted, the form apologizes and directs the visitor to email
 `techsupport@pentacoop.com` with the requested unit sizes for manual entry.
+
+The committee Google-session check and the applicant application's initial load use the same
+bounded recovery schedule. Their waiting surfaces replace manual retry buttons: after five seconds
+they explain that the service is waking, after one minute they announce the final 60-second window,
+and after two minutes they stop and link to `techsupport@pentacoop.com`. Both retry every 10 seconds.
+The two normal committee checks share the **Signing you in** heading and distinguish the Google
+session from an emailed sign-in link in the green status box.
 
 There is one subscription per normalized email address. A later submission for the same address
 replaces the entire earlier unit-size selection and becomes the current subscription. This is the
@@ -1081,8 +1101,8 @@ and first-party intake path are deployed.
    selected/unsuccessful outcomes,
    selected-applicant confirmation during the closed or archived phase, automatic eligible
    unsuccessful email after archive, seven-year retention for selected members, opening-anchored retention for
-   never-submitted drafts, and complete one-year application purge with its deletion notice and vacancy-list invitation
-   through a credential-safe, quota-aware outbox and once-per-Pacific-day automatic maintenance.
+   never-submitted drafts, complete one-year application purge, credential-safe lifecycle email delivery,
+   and once-per-Pacific-day automatic maintenance.
 7. **Between-cycle cutover (complete)** — configure the applicant hostname and exercise SocketLabs in
    production with synthetic data and retain existing production records as specified below.
    Application import, Picker, Drive credentials/tokens, and Google data scopes have already been
@@ -1094,6 +1114,19 @@ and committee history are retained at cutover rather than reset. They are not se
 access messages; a returning applicant may claim the existing record only by verifying its
 recorded primary email. Records with a missing, duplicated, or inaccessible address require
 administrator-mediated recovery and are never guessed or automatically combined.
+
+The first built-in cycle begins after applications have already closed in the Google Form. Cutover
+requires a guarded migration command that creates that historical opening with its original open
+and close dates and future move-in date, then attaches every submitted, non-withdrawn application
+already in the database. Those records are the complete current Google Form pool and do not yet
+have opening participations or outcomes, so the migration does not use the ordinary application-
+universe query. It preserves existing submissions, creates one active participation per application
+using its submission timestamp, and refreshes retention from the opening's move-in date in one
+transaction. It does not calculate a vacancy audience, queue email, consume vacancy subscriptions,
+or create consent receipts. The opening is immediately closed: an administrator may record the
+selected household or no-household decision, the dashboard requires an unresolved decision at
+move-in, and unsuccessful notices remain blocked until the opening is archived and its outcome is
+final. This command is a pending cutover prerequisite, not part of ordinary opening creation.
 
 **Non-goals:** a general-purpose form builder; separate co-applicant access; simultaneous Google
 Form/Sheet and built-in intake; multiple applications per primary applicant; committee-visible
@@ -1163,7 +1196,7 @@ administrator delivery-status banners are implemented.
    preferences, and a monthly active-subscription bar chart that emulates the current spreadsheet.
    Add exact-email lookup for narrow add, replace, and delete operations, plus a preview of the
    exact audience for an opening without exposing addresses in routine reports.
-3. Make opening creation the application-open event. The creation flow previews the matching
+3. Make application-intake opening creation the application-open event. The creation flow previews the matching
    audience count, exact message variants, current SocketLabs usage and allowance, and projected
    post-send usage. It then requires the administrator to confirm both opening the applications and
    launching the vacancy notifications. A successful create transaction persists
@@ -1198,7 +1231,7 @@ matching vacancy notice.
 - Administrators can see the active total, overlapping unit-size counts, and monthly distribution
   without routinely exposing addresses, and can manage one exact address for a support or privacy
   request.
-- Creating an opening opens applications immediately. Before confirmation, the administrator sees
+- Creating an application-intake opening opens applications immediately. Before confirmation, the administrator sees
   the matching audience count, exact message variants, and current and projected SocketLabs usage;
   after confirmation, the opening exists and every matching notice is durably queued as one
   operation.

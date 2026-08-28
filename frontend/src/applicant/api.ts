@@ -1,8 +1,8 @@
 import { request } from "../api/client";
 import type { CanonicalApplicationAnswers, WorkingApplicationAnswers } from "./types";
 
-export function fetchApplicantOpenings() {
-  return request("/applicant/openings");
+export function fetchApplicantOpenings(signal?: AbortSignal) {
+  return request("/applicant/openings", { signal });
 }
 
 export function checkGuestSubmission(
@@ -64,8 +64,8 @@ export function requestReturnAccessLink(
   );
 }
 
-export function fetchApplication() {
-  return request("/applicant/application");
+export function fetchApplication(signal?: AbortSignal) {
+  return request("/applicant/application", { signal });
 }
 
 export function fetchPendingCopy() {

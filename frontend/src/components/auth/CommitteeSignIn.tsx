@@ -3,12 +3,13 @@ import { type FormEvent, type ReactNode, useState } from "react";
 
 import * as api from "../../api/auth";
 import type { CommitteeLinkConflict, SignInState } from "../../hooks/useSession";
+import type { ServiceRecoveryStage } from "../../serviceRecovery";
 import { TECH_SUPPORT_EMAIL } from "../../support";
 
 type CommitteeSignInProps = {
   emailSignInEnabled: boolean;
   isLoadingUser: boolean;
-  userLoadFailed: boolean;
+  userLoadRecovery: ServiceRecoveryStage | null;
   signInState: SignInState;
   linkConflict: CommitteeLinkConflict | null;
   linkedEmail: string | null;
@@ -37,10 +38,27 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
     props.onReset();
   }
 
-  if (props.userLoadFailed) {
+  if (props.userLoadRecovery === "failed") {
     return (
-      <SignInPanel title="We’re having trouble connecting">
-        <p>We can’t connect to Penta right now. We’ll keep trying automatically.</p>
+      <SignInPanel title="We still couldn’t connect">
+        <p className="login-message login-message-error" role="alert">
+          We’re sorry. Please email Penta Tech Support at{" "}
+          <a href={`mailto:${TECH_SUPPORT_EMAIL}`} target="_blank" rel="noreferrer">
+            {TECH_SUPPORT_EMAIL}
+          </a>.
+        </p>
+      </SignInPanel>
+    );
+  }
+
+  if (props.userLoadRecovery) {
+    return (
+      <SignInPanel title={props.userLoadRecovery === "extended" ? "This is taking longer than usual" : "We’re having trouble connecting"}>
+        <p>
+          {props.userLoadRecovery === "extended"
+            ? "We still can’t connect. We’ll keep trying automatically for another 60 seconds."
+            : "The service is waking up. This is normal, and we’re retrying automatically. Please give us a minute."}
+        </p>
         <button className="primary-button is-busy" type="button" disabled>
           <LoaderCircle className="sign-in-retry-spinner" size={16} />
           <span>Retrying…</span>
@@ -51,6 +69,10 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
 
   if (props.signInState === "exchanging") {
     return <SignInPanel title="Signing you in" message="Checking your sign-in link…" />;
+  }
+
+  if (props.isLoadingUser) {
+    return <SignInPanel title="Signing you in" message="Checking your Google session…" />;
   }
 
   if (props.linkConflict?.newLinkSent) {
@@ -105,7 +127,7 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
   }
 
   return (
-    <SignInPanel title={props.isLoadingUser ? "Checking session" : "Sign in to continue"}>
+    <SignInPanel title="Sign in to continue">
       {props.signInState === "invalidLink" ? (
         <p className="login-message login-message-error" role="alert">
           This sign-in link is invalid or has expired.

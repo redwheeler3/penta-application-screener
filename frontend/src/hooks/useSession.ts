@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 
 import * as api from "../api/auth";
 import type { AuthRedirect } from "../authRedirect";
-import { retryWithBackoff } from "../retry";
+import {
+  retryForServiceRecovery,
+  type ServiceRecoveryStage,
+} from "../serviceRecovery";
 import type { CurrentUser } from "../types";
 
 export type SignInState =
@@ -33,7 +36,7 @@ export function useSession(authRedirect: AuthRedirect) {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [emailSignInEnabled, setEmailSignInEnabled] = useState(false);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
-  const [userLoadFailed, setUserLoadFailed] = useState(false);
+  const [userLoadRecovery, setUserLoadRecovery] = useState<ServiceRecoveryStage | null>(null);
   const [linkConflict, setLinkConflict] = useState<CommitteeLinkConflict | null>(null);
   const [linkedEmail, setLinkedEmail] = useState<string | null>(null);
   const [signInState, setSignInState] = useState<SignInState>(
@@ -50,13 +53,17 @@ export function useSession(authRedirect: AuthRedirect) {
     if (userLoadInFlight.current) return;
     userLoadInFlight.current = true;
     setIsLoadingUser(true);
+    setUserLoadRecovery(null);
     try {
-      const authState = await retryWithBackoff(api.fetchAuthState, 3);
+      const authState = await retryForServiceRecovery(
+        api.fetchAuthState,
+        setUserLoadRecovery,
+      );
       setUser(authState.user);
       setEmailSignInEnabled(authState.emailSignInEnabled);
-      setUserLoadFailed(false);
+      setUserLoadRecovery(null);
     } catch {
-      setUserLoadFailed(true);
+      setUserLoadRecovery("failed");
     } finally {
       userLoadInFlight.current = false;
       setIsLoadingUser(false);
@@ -75,25 +82,6 @@ export function useSession(authRedirect: AuthRedirect) {
     exchangeStarted.current = true;
     void inspectMagicLink(authRedirect.magicLinkToken);
   }, [authRedirect.magicLinkToken]);
-
-  useEffect(() => {
-    if (!userLoadFailed) return;
-    const retryWhenAvailable = () => {
-      if (document.visibilityState === "visible" && navigator.onLine) {
-        void loadCurrentUser();
-      }
-    };
-    const interval = window.setInterval(retryWhenAvailable, 10_000);
-    window.addEventListener("online", retryWhenAvailable);
-    window.addEventListener("focus", retryWhenAvailable);
-    document.addEventListener("visibilitychange", retryWhenAvailable);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("online", retryWhenAvailable);
-      window.removeEventListener("focus", retryWhenAvailable);
-      document.removeEventListener("visibilitychange", retryWhenAvailable);
-    };
-  }, [userLoadFailed]);
 
   async function inspectMagicLink(token: string): Promise<void> {
     const authStatePromise = api.fetchAuthState().catch(() => null);
@@ -198,7 +186,7 @@ export function useSession(authRedirect: AuthRedirect) {
     linkedEmail,
     isAdmin: user?.role === "admin",
     isLoadingUser,
-    userLoadFailed,
+    userLoadRecovery,
     signInState,
     requestMagicLink,
     keepCurrentSession,

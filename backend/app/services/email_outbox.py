@@ -18,7 +18,6 @@ from app.db.models import (
 )
 from app.services.auth_email import (
     application_confirmation_email,
-    application_deleted_email,
     application_opening_email,
     application_unavailable_email,
     application_withdrawn_email,
@@ -157,14 +156,6 @@ def _build_retry(
             ),
             None,
         )
-    if intent_type == "applicant_draft_deleted":
-        draft = delivery.applicant_draft
-        if draft is None:
-            return None
-        return (
-            application_deleted_email(application_id=draft.id, email=draft.email),
-            None,
-        )
     if intent_type == "application_unavailable" and delivery.application is None:
         if delivery.recipient_email is None:
             return None
@@ -201,14 +192,6 @@ def _build_retry(
                 application_id=application.id,
                 old_email=str(intent["old_email"]),
                 new_email=application.primary_email,
-            ),
-            None,
-        )
-    if intent_type == "application_deleted":
-        return (
-            application_deleted_email(
-                application_id=application.id,
-                email=application.primary_email,
             ),
             None,
         )

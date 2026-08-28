@@ -45,6 +45,11 @@ class OpeningPhase(StrEnum):
     ARCHIVED = "archived"
 
 
+class OpeningIntakeMode(StrEnum):
+    APPLICATIONS = "applications"
+    DIRECT_SELECTION = "direct_selection"
+
+
 class OpeningOutcome(StrEnum):
     SELECTED = "selected"
     UNSUCCESSFUL = "unsuccessful"
@@ -298,7 +303,7 @@ class Application(TimestampMixin, Base):
 
 
 class Opening(TimestampMixin, Base):
-    """One unit offering applicants may affirmatively enter.
+    """One available unit, opened for applications or filled from a prior pool.
 
     Location is intentionally absent: the public Penta site describes the neighbourhood,
     while an opening carries only details specific to the available unit.
@@ -311,13 +316,19 @@ class Opening(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    intake_mode: Mapped[OpeningIntakeMode] = mapped_column(
+        Enum(OpeningIntakeMode, values_callable=enum_values),
+        default=OpeningIntakeMode.APPLICATIONS,
+        server_default=OpeningIntakeMode.APPLICATIONS.value,
+        nullable=False,
+    )
     unit_size_bedrooms: Mapped[int] = mapped_column(Integer, nullable=False)
     housing_charge_cents: Mapped[int] = mapped_column(Integer, nullable=False)
-    application_open_date: Mapped[date] = mapped_column(Date, nullable=False)
-    application_close_date: Mapped[date] = mapped_column(Date, nullable=False)
+    application_open_date: Mapped[date | None] = mapped_column(Date)
+    application_close_date: Mapped[date | None] = mapped_column(Date)
     move_in_date: Mapped[date] = mapped_column(Date, nullable=False)
-    # Publication is the sole manual lifecycle action. Once published, Pacific calendar dates
-    # determine whether this opening is upcoming, open, closed, or archived.
+    # Application-intake openings are published immediately. Pacific calendar dates determine
+    # their phase; direct selections stay closed until their move-in date archives them.
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     no_household_selected_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)

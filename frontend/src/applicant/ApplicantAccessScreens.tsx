@@ -1,7 +1,8 @@
-import { CalendarDays, Mail, ShieldCheck } from "lucide-react";
+import { CalendarDays, LoaderCircle, Mail, ShieldCheck } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
 import { TECH_SUPPORT_EMAIL, TECH_SUPPORT_ERROR_MESSAGE } from "../support";
+import type { ServiceRecoveryStage } from "../serviceRecovery";
 import type { PendingCopy } from "./applicantPersistence";
 import { pendingCopyDifferences } from "./pendingCopyDiff";
 import type { ApplicantOpening } from "./types";
@@ -147,17 +148,35 @@ export function ApplicationsUnavailable() {
   );
 }
 
-export function ApplicationLoadError(props: { message: string; onRetry: () => void }) {
+export function ApplicationLoadRecovery(props: { stage: ServiceRecoveryStage }) {
+  if (props.stage === "failed") {
+    return (
+      <section className="existing-application-choice" role="alert">
+        <ShieldCheck size={28} />
+        <h2>We still couldn’t load your application</h2>
+        <p>
+          We’re sorry. Please email Penta Tech Support at{" "}
+          <a href={`mailto:${TECH_SUPPORT_EMAIL}`} target="_blank" rel="noreferrer">
+            {TECH_SUPPORT_EMAIL}
+          </a>.
+        </p>
+      </section>
+    );
+  }
+
   return (
-    <section className="existing-application-choice" role="alert">
+    <section className="existing-application-choice" role="status">
       <ShieldCheck size={28} />
-      <h2>We couldn’t load your application</h2>
-      <p><ApplicantErrorMessage message={props.message} /></p>
-      {props.message !== TECH_SUPPORT_ERROR_MESSAGE ? (
-        <button className="applicant-primary-button" type="button" onClick={props.onRetry}>
-          Try again
-        </button>
-      ) : null}
+      <h2>{props.stage === "extended" ? "This is taking longer than usual" : "We’re having trouble connecting"}</h2>
+      <p>
+        {props.stage === "extended"
+          ? "We still can’t load your application. We’ll keep trying automatically for another 60 seconds."
+          : "The application service is waking up. This is normal, and we’re retrying automatically. Please give us a minute."}
+      </p>
+      <button className="applicant-primary-button is-busy" type="button" disabled>
+        <LoaderCircle className="sign-in-retry-spinner" size={16} />
+        <span>Retrying…</span>
+      </button>
     </section>
   );
 }

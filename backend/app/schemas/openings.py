@@ -1,10 +1,11 @@
 """Admin opening-management request and response shapes."""
 
 from datetime import date, datetime
+from typing import Annotated
 
-from pydantic import Field, model_validator
+from pydantic import Field, StringConstraints, model_validator
 
-from app.db.models import OpeningPhase
+from app.db.models import OpeningIntakeMode, OpeningPhase
 from app.schemas.base import RequestModel, ResponseModel
 
 
@@ -44,7 +45,14 @@ class OpeningDetailsOut(ResponseModel):
     move_in_date: date
 
 
-class OpeningOut(OpeningDetailsOut):
+class OpeningOut(ResponseModel):
+    id: int
+    intake_mode: OpeningIntakeMode
+    unit_size_bedrooms: int
+    housing_charge_cents: int
+    application_open_date: date | None
+    application_close_date: date | None
+    move_in_date: date
     phase: OpeningPhase
     published_at: datetime | None
     submission_count: int
@@ -103,6 +111,7 @@ class OpeningSelectionCandidateOut(ResponseModel):
 
 class OpeningSelectionOut(ResponseModel):
     opening_id: int
+    intake_mode: OpeningIntakeMode
     phase: OpeningPhase
     selected_application_id: int | None
     selected_applicant_name: str | None
@@ -110,3 +119,21 @@ class OpeningSelectionOut(ResponseModel):
     decision_permanent: bool
     active_participant_count: int
     candidates: list[OpeningSelectionCandidateOut]
+
+
+class PreviousApplicantSearch(RequestModel):
+    query: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=2, max_length=100),
+    ]
+
+
+class PreviousApplicantSearchOut(ResponseModel):
+    candidates: list[OpeningSelectionCandidateOut]
+
+
+class DirectSelectionOpeningCreate(RequestModel):
+    unit_size_bedrooms: int = Field(ge=1, le=3)
+    housing_charge_cents: int = Field(ge=0)
+    move_in_date: date
+    application_id: int = Field(gt=0)

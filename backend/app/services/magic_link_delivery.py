@@ -20,7 +20,6 @@ from app.db.models import (
 )
 from app.services.auth_email import (
     application_confirmation_email,
-    application_deleted_email,
     application_unavailable_email,
     application_withdrawn_email,
     email_change_notice_email,
@@ -221,31 +220,6 @@ def send_email_change_notice(
             "type": "email_change_notice",
             "old_email": old_email,
         },
-        now=now,
-    )
-
-
-def send_application_deleted(
-    db: Session,
-    sender: EmailSender,
-    application: Application,
-    *,
-    idempotency_key: str | None = None,
-    now: datetime | None = None,
-) -> bool:
-    now = now or datetime.now(UTC)
-    message = application_deleted_email(
-        application_id=application.id,
-        email=application.primary_email,
-    )
-    return deliver_email(
-        db,
-        sender,
-        message,
-        recipient_kind=PasswordlessIdentityKind.APPLICANT,
-        application_id=application.id,
-        idempotency_key=idempotency_key,
-        retry_intent={"type": "application_deleted"},
         now=now,
     )
 

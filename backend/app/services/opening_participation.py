@@ -8,7 +8,13 @@ from sqlalchemy.orm import Session
 
 from app.core.problems import Problem
 from app.core.time import pacific_today
-from app.db.models import Application, ApplicationParticipation, Opening, OpeningPhase
+from app.db.models import (
+    Application,
+    ApplicationParticipation,
+    Opening,
+    OpeningIntakeMode,
+    OpeningPhase,
+)
 from app.services.openings import opening_phase
 from app.services.retention import one_year_after
 
@@ -51,7 +57,10 @@ def applicant_opening_states(
         selected_ids = set(application.working_opening_ids)
     openings = db.scalars(
         select(Opening)
-        .where(Opening.published_at.is_not(None))
+        .where(
+            Opening.published_at.is_not(None),
+            Opening.intake_mode == OpeningIntakeMode.APPLICATIONS,
+        )
         .order_by(Opening.move_in_date, Opening.id)
     ).all()
     states = []

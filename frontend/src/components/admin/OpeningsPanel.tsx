@@ -14,6 +14,7 @@ import type {
 } from "../../types";
 import { NumberInput } from "../shared/NumberInput";
 import { RetryLoadError } from "../shared/RetryLoadError";
+import { DirectSelectionOpeningForm } from "./DirectSelectionOpeningForm";
 
 type OpeningDraft = {
   unitSizeBedrooms: number;
@@ -49,6 +50,7 @@ export function OpeningsPanel(props: {
   const [confirmingNoHousehold, setConfirmingNoHousehold] = useState(false);
   const [confirmingUndo, setConfirmingUndo] = useState(false);
   const [launchPreview, setLaunchPreview] = useState<OpeningPreview | null>(null);
+  const [fillingDirectly, setFillingDirectly] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -70,9 +72,23 @@ export function OpeningsPanel(props: {
     setMessage("");
     setSelection(null);
     setLaunchPreview(null);
+    setFillingDirectly(false);
+  }
+
+  function beginDirectSelection(): void {
+    setDraft(null);
+    setEditingId(null);
+    setSelection(null);
+    setMessage("");
+    setFillingDirectly(true);
   }
 
   function beginEdit(opening: Opening): void {
+    if (
+      opening.intakeMode !== "applications"
+      || opening.applicationOpenDate === null
+      || opening.applicationCloseDate === null
+    ) return;
     setEditingId(opening.id);
     setDraft({
       unitSizeBedrooms: opening.unitSizeBedrooms,
@@ -200,6 +216,19 @@ export function OpeningsPanel(props: {
     if (!selection || busy) return;
     setBusy(true);
     try {
+      if (selection.intakeMode === "direct_selection") {
+        const response = await api.removeDirectSelectionOpening(selection.openingId);
+        if (!response.ok) {
+          props.onError((await readProblem(response)) ?? "Could not remove that opening.");
+          return;
+        }
+        setOpenings(((await response.json()) as { openings: Opening[] }).openings);
+        setSelection(null);
+        setConfirmingUndo(false);
+        setMessage("Directly filled opening removed.");
+        props.onPoolChanged();
+        return;
+      }
       const response = await api.undoOpeningSelection(selection.openingId);
       if (!response.ok) {
         props.onError((await readProblem(response)) ?? "Could not undo the selection.");
@@ -236,16 +265,35 @@ export function OpeningsPanel(props: {
         <div>
           <h3>Openings</h3>
           <p className="panel-hint">
-            Creating an opening starts applications immediately and queues the matching vacancy
-            notices. Review the audience and exact email variants before confirming.
+            Open applications and notify the matching audience, or fill a home from previous
+            applicants.
           </p>
         </div>
-        {!draft ? (
-          <button className="primary-button" type="button" onClick={beginCreate}>
-            <Plus size={16} /> New opening
-          </button>
+        {!draft && !fillingDirectly ? (
+          <div className="opening-header-actions">
+            <button className="secondary-button" type="button" onClick={beginDirectSelection}>
+              <UserCheck size={16} /> Fill from previous applicants
+            </button>
+            <button className="primary-button" type="button" onClick={beginCreate}>
+              <Plus size={16} /> New opening
+            </button>
+          </div>
         ) : null}
       </div>
+
+      {fillingDirectly ? (
+        <DirectSelectionOpeningForm
+          onCancel={() => setFillingDirectly(false)}
+          onCreated={(items, applicant) => {
+            setOpenings(items);
+            setFillingDirectly(false);
+            setMessage(`${applicant.applicantName ?? applicant.primaryEmail} selected for the new opening.`);
+            props.onPoolChanged();
+          }}
+          onError={props.onError}
+          onReviewRetained={props.onOpenRetainedApplicant}
+        />
+      ) : null}
 
       {draft ? (
         <OpeningForm
@@ -298,7 +346,7 @@ export function OpeningsPanel(props: {
         <div className="openings-empty">
           <CalendarDays size={28} />
           <strong>No openings configured</strong>
-          <span>Create an opening when a unit is ready for applications.</span>
+          <span>Create an opening when a home becomes available.</span>
         </div>
       ) : (
         <div className="opening-list">
@@ -400,7 +448,7 @@ function OpeningLaunchPreview({ preview }: { preview: OpeningPreview }): ReactNo
       <h5>Ready to open applications</h5>
       <p>
         <strong>{preview.audienceCount}</strong> {preview.audienceCount === 1 ? "person" : "people"}
-        {" "}will receive one of the reviewed vacancy emails.
+        {" "}will receive an email.
       </p>
       <dl className="opening-preview-variants">
         {preview.variants.map((variant) => (
@@ -422,8 +470,8 @@ function OpeningLaunchPreview({ preview }: { preview: OpeningPreview }): ReactNo
         </p>
       ) : (
         <p className="opening-quota-summary">
-          Current SocketLabs usage is unavailable. The emails will still be durably queued and
-          retried if the provider does not accept them immediately.
+          Current SocketLabs usage is unavailable. Emails will be queued and retried automatically
+          if needed.
         </p>
       )}
     </section>
@@ -451,16 +499,26 @@ function OpeningCard(props: {
     <article className="opening-card">
       <div className="opening-card-main">
         <div className="opening-card-title">
-          <span className={`opening-status opening-status-${opening.phase}`}>{opening.phase}</span>
+          <span className={`opening-status opening-status-${opening.phase}`}>
+            {opening.intakeMode === "direct_selection" ? "filled directly" : opening.phase}
+          </span>
           <h4>{opening.unitSizeBedrooms}-bedroom opening</h4>
         </div>
         <dl className="opening-facts">
           <div><dt>Unit</dt><dd>{opening.unitSizeBedrooms} bedroom{opening.unitSizeBedrooms === 1 ? "" : "s"}</dd></div>
           <div><dt>Housing charge</dt><dd>{formatHousingCharge(opening.housingChargeCents)}</dd></div>
-          <div><dt>Opens</dt><dd>{formatDateOnly(opening.applicationOpenDate)}</dd></div>
-          <div><dt>Closes</dt><dd>{formatDateOnly(opening.applicationCloseDate)}</dd></div>
+          {opening.intakeMode === "applications" && opening.applicationOpenDate && opening.applicationCloseDate ? (
+            <>
+              <div><dt>Opens</dt><dd>{formatDateOnly(opening.applicationOpenDate)}</dd></div>
+              <div><dt>Closes</dt><dd>{formatDateOnly(opening.applicationCloseDate)}</dd></div>
+            </>
+          ) : (
+            <div><dt>Applications</dt><dd>Not opened</dd></div>
+          )}
           <div><dt>Move-in</dt><dd>{formatDateOnly(opening.moveInDate)}</dd></div>
-          <div><dt>Submissions</dt><dd>{opening.submissionCount}</dd></div>
+          {opening.intakeMode === "applications" ? (
+            <div><dt>Submissions</dt><dd>{opening.submissionCount}</dd></div>
+          ) : null}
         </dl>
         {opening.selectedApplicationId !== null ? (
           <div className="opening-selection-summary">
@@ -485,9 +543,11 @@ function OpeningCard(props: {
         ) : null}
       </div>
       <div className="opening-card-actions">
-        <button className="secondary-button" type="button" onClick={props.onEdit} disabled={props.busy}>
-          <Pencil size={15} /> Edit
-        </button>
+        {opening.intakeMode === "applications" ? (
+          <button className="secondary-button" type="button" onClick={props.onEdit} disabled={props.busy}>
+            <Pencil size={15} /> Edit
+          </button>
+        ) : null}
         {opening.selectedApplicationId !== null ? (
           <button className="secondary-button" type="button" onClick={props.onReviewSelected} disabled={props.busy}>
             <Eye size={15} /> Review application
@@ -522,21 +582,32 @@ function OpeningSelectionPanel(props: {
   onUndo: () => void;
   onClose: () => void;
 }): ReactNode {
+  const [candidateFilter, setCandidateFilter] = useState("");
   const selected = props.selection.selectedApplicationId;
+  const filterTerms = candidateFilter.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const filteredCandidates = props.selection.candidates.filter((candidate) => {
+    const searchable = `${candidate.applicantName ?? ""} ${candidate.primaryEmail}`.toLocaleLowerCase();
+    return filterTerms.every((term) => searchable.includes(term));
+  });
   if (props.confirmingUndo && (selected !== null || props.selection.noHouseholdSelected)) {
+    const directSelection = props.selection.intakeMode === "direct_selection";
     return (
       <section className="opening-selection-panel">
-        <h4>Undo this selection?</h4>
+        <h4>{directSelection ? "Remove this filled opening?" : "Undo this selection?"}</h4>
         <p>
-          {selected !== null
+          {directSelection
+            ? `${props.selection.selectedApplicantName ?? "The selected applicant"} will return to their previous retention and application scope.`
+            : selected !== null
             ? `${props.selection.selectedApplicantName ?? "The selected applicant"} will return to the committee workflow.`
             : "The opening will return to awaiting a decision."}
-          {" "}No unsuccessful emails have been sent while this opening is closed.
+          {" "}{directSelection ? "The opening and its direct participation will be removed." : "No unsuccessful emails have been sent while this opening is closed."}
         </p>
         <div className="opening-form-actions">
-          <button className="secondary-button" type="button" onClick={props.onCancelUndo} disabled={props.busy}>Keep selection</button>
+          <button className="secondary-button" type="button" onClick={props.onCancelUndo} disabled={props.busy}>
+            {directSelection ? "Keep opening" : "Keep selection"}
+          </button>
           <button className="danger-button" type="button" onClick={props.onUndo} disabled={props.busy}>
-            <RotateCcw size={15} /> Undo selection
+            <RotateCcw size={15} /> {directSelection ? "Remove opening" : "Undo selection"}
           </button>
         </div>
       </section>
@@ -552,8 +623,8 @@ function OpeningSelectionPanel(props: {
         </p>
         <p className="panel-hint">
           {props.selection.phase === "closed"
-            ? "No unsuccessful email will be sent until the opening becomes archived. You can undo this decision before then."
-            : "This archived decision is permanent. Eligible unsuccessful applicants will now be notified."}
+            ? "Unsuccessful applicants will not be emailed until the move-in date. You can undo this decision before then."
+            : "This decision is permanent. Eligible unsuccessful applicants will be emailed now."}
         </p>
         <div className="opening-form-actions">
           <button className="secondary-button" type="button" onClick={props.onCancelNoHousehold} disabled={props.busy}>Back</button>
@@ -575,8 +646,8 @@ function OpeningSelectionPanel(props: {
         </p>
         <p className="panel-hint">
           {props.selection.phase === "closed"
-            ? "No unsuccessful email will be sent until the opening becomes archived. You can undo this selection before then."
-            : "This archived selection is permanent. Eligible unsuccessful applicants will now be notified."}
+            ? "Unsuccessful applicants will not be emailed until the move-in date. You can undo this selection before then."
+            : "This selection is permanent. Eligible unsuccessful applicants will be emailed now."}
         </p>
         <div className="opening-form-actions">
           <button className="secondary-button" type="button" onClick={props.onBack} disabled={props.busy}>Back</button>
@@ -600,7 +671,13 @@ function OpeningSelectionPanel(props: {
         <div className="opening-selected-detail">
           <div>
             <strong>{props.selection.selectedApplicantName ?? "Selected application"}</strong>
-            <span>{props.selection.decisionPermanent ? "Permanent archived selection" : "Confirmed for this closed opening"}</span>
+            <span>
+              {props.selection.decisionPermanent
+                ? "Permanent archived selection"
+                : props.selection.intakeMode === "direct_selection"
+                  ? "Filled from previous applicants"
+                  : "Confirmed for this closed opening"}
+            </span>
           </div>
           <button className="secondary-button" type="button" onClick={() => props.onReviewSelected(selected)}>
             <Eye size={15} /> Review application
@@ -624,19 +701,38 @@ function OpeningSelectionPanel(props: {
           {props.selection.candidates.length === 0 ? (
             <p className="panel-hint">There are no available applicants to select.</p>
           ) : (
-            <div className="opening-candidate-list">
-              {props.selection.candidates.map((candidate) => (
-                <div key={candidate.applicationId} className="opening-candidate-row">
-                  <button className="opening-candidate-name" type="button" onClick={() => props.onReview(candidate.applicationId)}>
-                    <strong>{candidate.applicantName ?? candidate.primaryEmail}</strong>
-                    <span>{candidate.primaryEmail}</span>
-                  </button>
-                  <button className="secondary-button" type="button" onClick={() => props.onChoose(candidate)}>
-                    Select
-                  </button>
+            <>
+              {props.selection.candidates.length > 5 ? (
+                <label className="opening-candidate-filter">
+                  <span>Filter candidates</span>
+                  <input
+                    type="search"
+                    value={candidateFilter}
+                    onChange={(event) => setCandidateFilter(event.target.value)}
+                    placeholder="Name or email"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </label>
+              ) : null}
+              {filteredCandidates.length === 0 ? (
+                <p className="panel-hint opening-candidate-empty">No candidates match that filter.</p>
+              ) : (
+                <div className="opening-candidate-list">
+                  {filteredCandidates.map((candidate) => (
+                    <div key={candidate.applicationId} className="opening-candidate-row">
+                      <button className="opening-candidate-name" type="button" onClick={() => props.onReview(candidate.applicationId)}>
+                        <strong>{candidate.applicantName ?? candidate.primaryEmail}</strong>
+                        <span>{candidate.primaryEmail}</span>
+                      </button>
+                      <button className="secondary-button" type="button" onClick={() => props.onChoose(candidate)}>
+                        Select
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
           <button className="opening-no-selection-button" type="button" onClick={props.onRequestNoHousehold}>
             No household selected

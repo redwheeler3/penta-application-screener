@@ -567,7 +567,15 @@ def test_magic_link_email_uses_fragment_and_common_unsubscribe_footer() -> None:
         assert "{{HsUnsubscribe}}" in message.text_body
         assert "This email address is not monitored." in message.text_body
         assert "1717 Wallace Street, Vancouver, BC V6R 4J7" in message.text_body
-        assert "privacy@pentacoop.com" in message.html_body
+        assert "Privacy questions" not in message.html_body
+        assert (
+            'not monitored.</span><br><span style="display:inline-block;margin-top:8px;">'
+            "Sent by" in message.html_body
+        )
+        assert (
+            'V6R 4J7</span><br><strong style="display:inline-block;margin-top:8px;">'
+            "<HsUnsubscribe>" in message.html_body
+        )
         assert (
             "<HsUnsubscribe>Click here to permanently unsubscribe.</HsUnsubscribe>"
             "</strong> <span>Penta will no longer be able to email you"

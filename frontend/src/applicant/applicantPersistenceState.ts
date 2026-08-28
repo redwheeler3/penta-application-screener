@@ -1,3 +1,4 @@
+import type { ServiceRecoveryStage } from "../serviceRecovery";
 import type { DraftIntent } from "./api";
 import type {
   EmailChangeStatus,
@@ -9,6 +10,7 @@ import type { ApplicantOpening } from "./types";
 
 export type ApplicantPersistenceState = {
   phase: PersistencePhase;
+  loadRecoveryStage: ServiceRecoveryStage | null;
   message: string;
   applicationId: number | null;
   workingRevision: number | null;
@@ -34,7 +36,7 @@ export type ApplicantPersistenceState = {
   emailChangeMessage: string;
   collisionEmail: string | null;
   submissionEmailSent: boolean;
-  withdrawalEmailSent: boolean;
+  withdrawalEmailStatus: "sent" | "failed" | "not_needed";
   withdrawalStatus: "idle" | "working" | "error";
   withdrawalMessage: string;
 };
@@ -55,6 +57,7 @@ export type ApplicantPersistenceAction = {
 
 export const INITIAL_APPLICANT_PERSISTENCE_STATE: ApplicantPersistenceState = {
   phase: "idle",
+  loadRecoveryStage: null,
   message: "",
   applicationId: null,
   workingRevision: null,
@@ -80,7 +83,7 @@ export const INITIAL_APPLICANT_PERSISTENCE_STATE: ApplicantPersistenceState = {
   emailChangeMessage: "",
   collisionEmail: null,
   submissionEmailSent: true,
-  withdrawalEmailSent: true,
+  withdrawalEmailStatus: "not_needed",
   withdrawalStatus: "idle",
   withdrawalMessage: "",
 };

@@ -1,4 +1,4 @@
-"""Email first, then completely remove aggregates whose retention period has ended."""
+"""Completely remove aggregates whose retention period has ended."""
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -13,31 +13,22 @@ from app.db.models import (
     ApplicationParticipation,
     Feedback,
     OpeningOutcome,
-    PasswordlessIdentityKind,
     RetentionDeletion,
 )
-from app.services.auth_email import application_deleted_email
-from app.services.email_delivery import deliver_email
-from app.services.email_sender import EmailSender
-from app.services.magic_link_delivery import send_application_deleted
 
 
 @dataclass(frozen=True)
 class PurgeSummary:
     applications_purged: int = 0
     drafts_purged: int = 0
-    notices_waiting: int = 0
 
 
-def purge_due_applicant_data(
-    db: Session, sender: EmailSender, *, now: datetime | None = None
-) -> PurgeSummary:
+def purge_due_applicant_data(db: Session, *, now: datetime | None = None) -> PurgeSummary:
     """Purge all records due on the Pacific date, retaining only deletion facts."""
     now = now or datetime.now(UTC)
     today = pacific_today(now=now)
     applications_purged = 0
     drafts_purged = 0
-    notices_waiting = 0
 
     applications = db.scalars(
         select(Application)
@@ -50,16 +41,6 @@ def purge_due_applicant_data(
     for application in applications:
         due_on = application.retention_due_on
         if due_on is None:
-            continue
-        delivered = send_application_deleted(
-            db,
-            sender,
-            application,
-            idempotency_key=f"retention-delete:application:{application.id}:{due_on}",
-            now=now,
-        )
-        if not delivered:
-            notices_waiting += 1
             continue
         retention_rule = _application_retention_rule(db, application.id)
         _record_deletion(
@@ -88,19 +69,6 @@ def purge_due_applicant_data(
         .order_by(ApplicantDraft.id)
     ).all()
     for draft in drafts:
-        delivered = deliver_email(
-            db,
-            sender,
-            application_deleted_email(application_id=draft.id, email=draft.email),
-            recipient_kind=PasswordlessIdentityKind.APPLICANT,
-            applicant_draft=draft,
-            idempotency_key=f"retention-delete:applicant-draft:{draft.id}:{draft.retention_due_on}",
-            retry_intent={"type": "applicant_draft_deleted"},
-            now=now,
-        )
-        if not delivered:
-            notices_waiting += 1
-            continue
         _record_deletion(
             db,
             record_kind="applicant_draft",
@@ -116,7 +84,6 @@ def purge_due_applicant_data(
     return PurgeSummary(
         applications_purged=applications_purged,
         drafts_purged=drafts_purged,
-        notices_waiting=notices_waiting,
     )
 
 

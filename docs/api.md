@@ -58,7 +58,10 @@ configuration, committee defaults, Observability, and Evals require an admin.
 | GET | `/openings` | List configured openings, derived phases, and active submission counts. | Admin |
 | POST | `/openings/preview` | Count the current notification audience and show message variants plus current/projected SocketLabs usage. | Admin |
 | POST | `/openings` | Open applications immediately and atomically queue the confirmed notification audience. | Admin |
-| PUT | `/openings/{id}` | Update any opening, including an archived historical record. | Admin |
+| POST | `/openings/previous-applicants/search` | Search retained, available previous applicants by name or email without exposing them to ordinary workflows. | Admin |
+| POST | `/openings/direct-selection` | Atomically create a filled opening and select one previous applicant without queueing email. | Admin |
+| DELETE | `/openings/{id}/direct-selection` | Remove a directly filled opening before move-in and restore the applicant's prior scope and retention. | Admin |
+| PUT | `/openings/{id}` | Update an application-intake opening, including an archived historical record. | Admin |
 
 ### Vacancy notifications — `app/api/vacancy_subscriptions.py`
 
@@ -95,6 +98,7 @@ configuration, committee defaults, Observability, and Evals require an admin.
 | --- | --- | --- | --- |
 | GET | `/applications` | Unpaginated committee pool with opening participation and the opening filter catalog. | Login |
 | GET | `/applications/{id}` | One application's detail, including its openings, raw source row, and AI narrative. | Login |
+| GET | `/applications/{id}/retained` | Read a selected or direct-fill-eligible application outside ordinary committee scope. | Admin |
 | PATCH | `/applications/{id}/status` | Human status override (sets `status_source = human`, which is sticky). | Login |
 | DELETE | `/applications/{id}/status` | Remove a human override; recomputes status from the current findings (rules then AI) and clears human ownership. Idempotent if no override is set. | Login |
 

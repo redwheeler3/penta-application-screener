@@ -258,6 +258,24 @@ snapshots in `data/backups/` work the same in the container as locally.)
 
 ### Vacancy-list production cutover
 
+#### Historical application opening prerequisite
+
+The production database initially contains the submitted Google Form application pool without an
+opening participation. Before scheduling the vacancy-list handoff, implement and verify the guarded
+historical-opening migration command described in the specification. It must create the already-
+closed opening with its original open and close dates and future move-in date, attach every
+submitted, non-withdrawn application using its submission timestamp, and refresh retention in one
+transaction. This command is not implemented yet; do not substitute manual SQL or the normal
+opening-creation endpoint.
+
+Dry-run output must report the opening details, target application count, existing participation
+count, active vacancy-subscription count, consent-receipt count, and queued-email count. Apply only
+when the target count matches the complete Google Form pool and no target participation already
+exists. After applying, verify the opening is closed, every target application is attached, and the
+vacancy-subscription, consent-receipt, and queued-email counts are unchanged. This operation must not
+call the normal opening-creation endpoint because that endpoint immediately queues the vacancy
+audience.
+
 The Google form and built-in form must not accept responses at the same time during migration. A
 full export applied with `--allow-upsert` could replace a newer built-in preference with an older
 Google response, while exporting before Google closes could omit a late response. Use the explicit
@@ -323,8 +341,10 @@ administrator interface. Confirm the report returns to the imported totals.
 
 The production gate also includes the application declaration, withdrawal flow, and common email
 footer. Verify those surfaces with controlled records without creating an opening or notifying the
-imported audience. Opening preview is safe to inspect; creating an opening is the real application-
-open event and durably queues its matching notices.
+imported audience. An application-intake opening preview is safe to inspect; confirming it is the
+real application-open event and durably queues its matching notices. Do not exercise direct fill
+with a real retained applicant merely as a smoke test because it changes that application's outcome
+and retention.
 
 After the controlled checks pass, remove the Google form from public use and retire the response
 sheet from operational handling. No migration email is sent. Update the milestone documentation to

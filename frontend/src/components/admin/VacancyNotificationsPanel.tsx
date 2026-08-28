@@ -106,8 +106,7 @@ export function VacancyNotificationsPanel(props: {
       <div className="settings-subtab-head">
         <h3>Vacancy notifications</h3>
         <p className="panel-hint">
-          Active one-time notification requests. Unit-size counts overlap when a person chose
-          more than one size.
+          Active one-time requests. Bedroom counts overlap when someone chose more than one size.
         </p>
       </div>
       {loadError ? (
