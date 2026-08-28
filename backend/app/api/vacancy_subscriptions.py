@@ -21,6 +21,7 @@ from app.schemas.vacancy_subscriptions import (
 )
 from app.services.public_rate_limit import PublicRateLimiter
 from app.services.vacancy_subscriptions import (
+    VALID_UNIT_SIZES,
     delete_subscription,
     find_subscription,
     save_subscription,
@@ -33,7 +34,7 @@ signup_limiter = PublicRateLimiter(limit=10, window=timedelta(minutes=15))
 
 
 def _validate_unit_sizes(values: set[int]) -> None:
-    if not values or not values <= {1, 2, 3}:
+    if not values or not values <= VALID_UNIT_SIZES:
         raise Problem(
             "validation_error",
             detail="Choose one or more of the available unit sizes.",
@@ -108,7 +109,7 @@ def save_for_support(
         db,
         email=str(body.email),
         unit_sizes=body.unit_sizes,
-        source=body.source.strip(),
+        source=body.source,
         actor=admin,
     )
     return VacancySubscriptionLookupOut(subscription=_out(subscription))
@@ -123,7 +124,7 @@ def delete_for_support(
     delete_subscription(
         db,
         email=str(body.email),
-        source=body.source.strip(),
+        source=body.source,
         actor=admin,
     )
     return VacancySubscriptionLookupOut(subscription=None)

@@ -22,4 +22,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    pass
+    """Publication cannot be reversed because prior drafts are no longer distinguishable."""

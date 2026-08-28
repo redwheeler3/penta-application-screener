@@ -100,6 +100,7 @@ def attempt_reserved_delivery(
     magic_link_token: MagicLinkToken | None = None,
     now: datetime | None = None,
     is_retry: bool = False,
+    commit: bool = True,
 ) -> bool:
     """Attempt a reserved intent without ever persisting rendered credential content."""
     now = now or datetime.now(UTC)
@@ -126,7 +127,8 @@ def attempt_reserved_delivery(
         delivery.recipient_email = None
     if delivery.state != EmailDeliveryState.ACCEPTED and magic_link_token is not None:
         magic_link_token.revoked_at = now
-    db.commit()
+    if commit:
+        db.commit()
     return delivery.state == EmailDeliveryState.ACCEPTED
 
 

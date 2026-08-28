@@ -251,25 +251,24 @@ sessions for applicant and committee access, opening participation, outcomes, tr
 and retention. Production runs as a deliberately small single Fly instance with persistent-volume
 SQLite and daily snapshots retained for 30 days.
 
-**M22 is next: built-in vacancy notifications.** Planning and reviewable email templates are
-complete, but the subscription model, public endpoint, administration, delivery workflow, and data
-migration are not yet implemented. The delivery sequence is:
+**M22 implementation is complete; production cutover remains.** The application now owns vacancy
+subscriptions, administration, opening audience previews, live SocketLabs usage, and retry-safe
+delivery. The always-on public website submits with the agreed bounded recovery experience. Cutover
+is deliberately operational rather than another software phase:
 
-1. Add the public email-and-unit-size subscription endpoint and the retrying form in the
-   `penta-coop-website` sister repository, which remains available while this Fly app is suspended.
-2. Add an administrator report with the active total, overlapping unit-size counts, monthly chart,
-   and exact-email support/privacy operations.
-3. Make opening creation immediately open applications and atomically queue the confirmed audience,
-   with exact email previews and current/projected SocketLabs usage shown before confirmation.
-4. Import and reconcile the existing Google response sheet, cut the website over to the built-in
-   endpoint, and retire the old form without sending a migration email.
+1. Complete legal review of the vacancy email and public privacy copy.
+2. Export the existing Google response sheet, dry-run the importer, resolve any invalid rows or
+   normalized collisions, and apply it to production.
+3. Reconcile the active total, bedroom counts, and monthly chart against the source report.
+4. Deploy both repositories, submit a real controlled signup, then retire the Google form without
+   sending a migration email.
 
 M22 deliberately uses the existing grandfathered SocketLabs server, where a permanent unsubscribe
 applies to all Penta mail, including application-access links. Legal review of the final vacancy
 notification remains a production-cutover gate, not an implementation blocker.
 
 The detailed M22 contract, non-goals, and definition of done are in
-[SPEC.md](SPEC.md#built-in-vacancy-notifications-m22--planned). Milestone history is in
+[SPEC.md](SPEC.md#built-in-vacancy-notifications-m22--cutover-pending). Milestone history is in
 [CHANGELOG.md](CHANGELOG.md). Hosting decisions are in
 [ADR 0012](docs/adr/0012-hosting-platform-m17.md); operations are covered by
 [docs/deploy.md](docs/deploy.md) and the

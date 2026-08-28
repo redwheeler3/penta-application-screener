@@ -63,7 +63,7 @@ dates. Applicants can join open openings, withdraw from open or closed openings,
 change archived participation. The committee can filter the application list and ranking by
 current openings; archived openings remain available only in administration and retained history.
 
-Submitted applications are already in the database. There is no import or committee sync action.
+Submitted applications flow directly into the database and become available to the committee.
 The committee client refreshes its lightweight application and workflow reads on focus, on
 visibility return, and every 60 seconds while visible.
 

@@ -457,9 +457,9 @@ removed. They do not show an applicant-removal link.
   the required declaration was accepted; the product does not store a duplicate acceptance
   timestamp or separately managed declaration or privacy-notice version.
 - Each opening records an application open date, application close date, move-in date, unit size,
-  and monthly housing charge. A draft is invisible to applicants until an administrator explicitly
-  publishes it; publishing an opening never sends email. Its phase is then derived from the dates
-  rather than maintained with manual Open and Close actions.
+  and monthly housing charge. Creating an opening is the application-open event: its open date is
+  that day and the confirmed notification audience is durably queued in the same transaction. Its
+  later phase is derived from the dates rather than maintained with manual Open and Close actions.
 - The dates may be equal but cannot run backward: the open date is on or before the close date,
   which is on or before the move-in date. If move-in shares another boundary date, archiving on
   that date takes precedence.
@@ -633,14 +633,9 @@ surfaces the administrator banner. The explicit deletion of a never-submitted dr
 exception: the draft and its email address are removed immediately rather than retained solely to
 retry a confirmation message.
 
-## Email List Form
+## Built-In Vacancy Notification List (M22)
 
-The email-list form is titled `Penta Co-operative Housing: Email List`. It explains that applications are not currently being accepted, Penta no longer maintains a wait list, and paper applications are no longer processed. Applicants can provide an email address to receive a one-time notification when applications open (a unit generally becomes available every 2–3 years). One required checkbox question — "Please notify me when a unit of the following size is available" — with the three unit-size options (1 bedroom: 1–2 adults; 2 bedroom: 1–2 adults + 1+ children under 18; 3 bedroom: 1–2 adults + 2+ children under 18). Response columns: Timestamp, Email Address, requested unit sizes, month/year grouping.
-
-## Built-In Vacancy Notification List (M22 Target)
-
-After M21, the separate Google email-list form and response sheet move into the application
-service. This remains a minimal one-time vacancy-notification list, not a wait list, applicant
+The application service owns a minimal one-time vacancy-notification list, not a wait list, applicant
 account, newsletter, or promise of consideration.
 
 The public form collects only an email address and one or more requested unit sizes, along with
@@ -697,14 +692,15 @@ therefore not part of M22. The resulting server-wide suppression is intentional:
 the provider-managed unsubscribe is unsubscribed from all Penta email, including secure application
 access messages.
 
-## Prior Email Templates
+## Vacancy Email Tone And Content
 
-The prior email templates establish these operational rules and tone:
+Vacancy emails follow these operational rules and tone:
 
 - Applications are opened for a specific unit size, housing charge, target move-in date, and close date.
 - For a 2-bedroom opening, stated eligibility was one or two adults and at least one child under 18.
 - Email-list notifications are treated as one-time notifications; recipients without an existing application are removed from the mailing list after notification.
-- People with applications already on file are told they will be considered and do not need to act, but may submit a new application.
+- People with a current application are told that it was not added automatically. They must review
+  and submit it for the new opening if they want to be considered.
 - Declined applicants may have applications kept on file until a stated expiry date and considered for another unit before then.
 - Applications are deleted after about a year in line with privacy policy.
 - Penta does not maintain a waitlist; applicants are invited to apply only when a unit becomes available so information is current and applicants are actively looking.
@@ -1178,12 +1174,12 @@ would add failure modes to a rarely exercised disaster path without proportionat
 Applicant deletion, deletion-ledger-aware local restores, the opportunistic retention sweep, and
 administrator delivery-status banners are implemented.
 
-### Built-In Vacancy Notifications (M22) — planned
+### Built-In Vacancy Notifications (M22) — cutover pending
 
-**Goal:** replace the separate Google email-list form and response sheet with the minimal
-one-notice subscription described in [Built-In Vacancy Notification List](#built-in-vacancy-notification-list-m22-target).
+**Goal:** operate the minimal one-notice subscription described in
+[Built-In Vacancy Notification List](#built-in-vacancy-notification-list-m22).
 
-**Delivery stages:**
+**Implementation and cutover stages:**
 
 1. Add the public email-and-unit-size form, rate limiting, non-enumerating duplicate handling, and
    the minimal consent/subscription record.
@@ -1199,11 +1195,11 @@ one-notice subscription described in [Built-In Vacancy Notification List](#built
    quota prevents immediate delivery. Send through a retry-safe outbox, consume each subscription
    after provider acceptance, and show delivery outcomes to administrators. There is no separate
    future-open state or opened-versus-notified lifecycle to reconcile.
-4. Import the existing Google list with its unique email addresses, recorded unit preferences, and
-   consent provenance from each form-response timestamp. Normalize and assert uniqueness rather
-   than inventing duplicate precedence; report invalid rows or normalization collisions for manual
-   resolution. Reconcile the total, size counts, and monthly chart, replace the website form target,
-   and retire the Google form and sheet without sending migration email.
+4. **Cutover pending:** use the validated importer to move the existing Google list with its unique
+   email addresses, unit preferences, and consent provenance from each form-response timestamp.
+   Resolve invalid rows or normalized collisions, reconcile the total, size counts, and monthly
+   chart, deploy the website form target, and retire the Google form and sheet without sending a
+   migration email.
 
 **Non-goals:** applicant accounts; email-address verification; recurring newsletters; a wait-list
 position or ordering; automatic application creation; multiple notices from one subscription;
@@ -1237,7 +1233,7 @@ matching vacancy notice.
 - The production website uses the built-in form and the Google form/sheet and their operational
   handling are removed after a count-verified migration.
 
-**Open decision before implementation:** legal review of the final vacancy notification.
+**Production gate:** legal review of the final vacancy notification and public privacy copy.
 
 ### Reporting (M10 shipped) — ✅ closed, demand-driven from here
 

@@ -137,7 +137,6 @@
 .opening-card-title h4 { margin: 0; }
 .opening-card-main > p { margin: 0.55rem 0 0; color: var(--muted); line-height: 1.45; }
 .opening-status { padding: 0.18rem 0.48rem; border-radius: 999px; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
-.opening-status-draft { color: #475569; background: #e2e8f0; }
 .opening-status-upcoming { color: #1e40af; background: #dbeafe; }
 .opening-status-open { color: var(--success-text); background: var(--success-bg); }
 .opening-status-closed { color: #92400e; background: #fef3c7; }
@@ -159,6 +158,38 @@
 .opening-money-input > span { padding-left: 0.65rem; color: var(--muted); }
 .opening-money-input input { border: 0; }
 .opening-form-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1rem; }
+.opening-launch-preview { margin-top: 1rem; padding: 1rem; border: 1px solid #86efac; border-radius: 8px; background: #ecfdf3; }
+.opening-launch-preview h5 { margin: 0 0 0.35rem; font-size: 0.95rem; }
+.opening-launch-preview > p { margin: 0.35rem 0; line-height: 1.5; }
+.opening-preview-variants { display: grid; gap: 0.3rem; margin: 0.8rem 0; }
+.opening-preview-variants div { display: flex; justify-content: space-between; gap: 1rem; }
+.opening-preview-variants dt { color: var(--muted); }
+.opening-preview-variants dd { margin: 0; font-weight: 750; }
+.opening-quota-summary { padding-top: 0.7rem; border-top: 1px solid #bbf7d0; color: #166534; }
+.vacancy-notifications-panel { align-content: start; }
+.vacancy-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; }
+.vacancy-summary-card { display: grid; gap: 0.25rem; padding: 0.85rem; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+.vacancy-summary-card span { color: var(--muted); font-size: 0.78rem; font-weight: 700; }
+.vacancy-summary-card strong { font-size: 1.45rem; }
+.vacancy-chart-panel,
+.vacancy-support-panel { padding: 1rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.vacancy-chart-panel h4,
+.vacancy-support-panel h4 { margin: 0 0 0.3rem; }
+.vacancy-chart-scroll { overflow-x: auto; padding-top: 1rem; }
+.vacancy-chart { display: flex; align-items: flex-end; gap: 0.55rem; min-width: max-content; height: 250px; border-bottom: 1px solid var(--line); }
+.vacancy-chart-column { display: grid; grid-template-rows: 1.2rem 1fr 3.2rem; align-items: end; justify-items: center; width: 52px; height: 100%; }
+.vacancy-chart-value { color: #2563eb; font-size: 0.72rem; font-weight: 750; }
+.vacancy-chart-bar { width: 28px; border-radius: 3px 3px 0 0; background: #3b82f6; }
+.vacancy-chart-label { align-self: start; padding-top: 0.35rem; color: var(--muted); font-size: 0.67rem; line-height: 1.2; text-align: center; }
+.vacancy-lookup { display: flex; gap: 0.5rem; margin-top: 1rem; }
+.vacancy-lookup input,
+.vacancy-support-editor > label input { flex: 1; min-width: 0; padding: 0.55rem 0.65rem; border: 1px solid var(--line); border-radius: 7px; }
+.vacancy-support-editor { margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--line); }
+.vacancy-support-editor fieldset { display: flex; gap: 1rem; padding: 0; border: 0; }
+.vacancy-support-editor legend,
+.vacancy-support-editor > label span { margin-bottom: 0.4rem; color: var(--muted); font-size: 0.78rem; font-weight: 700; }
+.vacancy-support-editor fieldset label { display: flex; align-items: center; gap: 0.35rem; }
+.vacancy-support-editor > label { display: grid; margin-top: 0.8rem; }
 .opening-selection-summary { display: flex; align-items: center; gap: 0.65rem; margin-top: 0.9rem; padding: 0.65rem 0.75rem; border: 1px solid #bfe5ce; border-radius: 8px; background: #f5fbf7; color: var(--success-text); }
 .opening-selection-summary > span { display: grid; gap: 0.08rem; font-size: 0.75rem; }
 .opening-selection-summary strong { color: var(--ink); font-size: 0.88rem; }
@@ -191,6 +222,8 @@
   .opening-form-grid { grid-template-columns: 1fr; }
   .opening-selected-detail,
   .opening-candidate-row { align-items: stretch; flex-direction: column; }
+  .vacancy-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vacancy-lookup { align-items: stretch; flex-direction: column; }
 }
 
 /* A saving-forks-the-default note above the eligibility form; spans both form columns

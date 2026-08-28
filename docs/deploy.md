@@ -256,6 +256,32 @@ snapshots in `data/backups/` work the same in the container as locally.)
 
 ## Routine operations
 
+### Vacancy-list production cutover
+
+Export the Google response sheet as CSV and validate it locally before writing anything:
+
+```sh
+cd backend
+uv run python scripts/import_vacancy_subscriptions.py path/to/export.csv
+```
+
+The dry run requires the timestamp, email, and preference columns, validates every address and
+consent timestamp, asserts normalized-email uniqueness, and reports the total plus overlapping 1BR,
+2BR, and 3BR counts. If the sheet's preference heading differs, pass
+`--preferences-column "Exact heading"`. Resolve every reported row before continuing.
+
+Apply the same validated file against production with an encrypted transfer or a short-lived remote
+copy, then remove that copy immediately because it contains personal information:
+
+```sh
+uv run python scripts/import_vacancy_subscriptions.py path/to/export.csv --apply
+```
+
+The importer refuses to write into a non-empty list unless `--allow-upsert` is deliberately passed.
+Afterward, reconcile the Notifications report total, bedroom counts, and monthly chart against the
+source report. Deploy the public website target only after that reconciliation, verify one controlled
+signup end to end, and then disable the Google form.
+
 | Task | Command |
 |---|---|
 | Tail logs | `fly logs` |

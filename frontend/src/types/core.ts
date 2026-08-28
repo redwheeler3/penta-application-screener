@@ -36,7 +36,7 @@ export type DeniedSignInAttempt = {
   count: number;
 };
 
-export type OpeningPhase = "draft" | "upcoming" | "open" | "closed" | "archived";
+export type OpeningPhase = "upcoming" | "open" | "closed" | "archived";
 
 export type OpeningDetails = {
   id: number;
@@ -61,6 +61,49 @@ export type Opening = OpeningDetails & {
 };
 
 export type OpeningWrite = Omit<OpeningDetails, "id">;
+
+export type OpeningCreate = Omit<OpeningWrite, "applicationOpenDate">;
+
+export type SocketLabsUsage = {
+  available: boolean;
+  retrievedAt: string | null;
+  billingPeriodStart: string | null;
+  billingPeriodEnd: string | null;
+  messagesUsed: number | null;
+  messageAllowance: number | null;
+  messagesUsedPercent: number | null;
+  allowOverages: boolean | null;
+  projectedMessagesUsed: number | null;
+};
+
+export type OpeningPreview = {
+  audienceCount: number;
+  subscriberOnlyCount: number;
+  applicationOnlyCount: number;
+  overlapCount: number;
+  variants: Array<{ kind: string; recipientCount: number }>;
+  socketlabs: SocketLabsUsage;
+};
+
+export type OpeningCreated = {
+  openings: Opening[];
+  queuedNotificationCount: number;
+};
+
+export type VacancySubscription = {
+  email: string;
+  unitSizes: number[];
+  consentedAt: string;
+  source: string;
+};
+
+export type VacancySubscriptionReport = {
+  total: number;
+  oneBedroom: number;
+  twoBedroom: number;
+  threeBedroom: number;
+  months: Array<{ month: string; count: number }>;
+};
 
 export type OpeningSelectionCandidate = {
   applicationId: number;

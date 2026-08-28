@@ -210,3 +210,15 @@ def test_selected_applications_are_not_notified() -> None:
     from app.services.vacancy_notifications import opening_audience
 
     assert opening_audience(db, 2).total == 0
+
+
+def test_applications_due_for_retention_are_not_notified() -> None:
+    _, db, _ = _app_and_db()
+    expired = _application("expired@example.com")
+    expired.retention_due_on = date(2000, 1, 1)
+    db.add(expired)
+    db.commit()
+
+    from app.services.vacancy_notifications import opening_audience
+
+    assert opening_audience(db, 2).total == 0

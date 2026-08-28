@@ -1,10 +1,16 @@
 """Public and administrator vacancy-notification contracts."""
 
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import EmailStr, Field
+from pydantic import EmailStr, Field, StringConstraints
 
 from app.schemas.base import RequestModel, ResponseModel
+
+RequestSource = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=2, max_length=120),
+]
 
 
 class VacancySubscriptionWrite(RequestModel):
@@ -13,7 +19,7 @@ class VacancySubscriptionWrite(RequestModel):
 
 
 class VacancySubscriptionAdminWrite(VacancySubscriptionWrite):
-    source: str = Field(min_length=2, max_length=120)
+    source: RequestSource
 
 
 class VacancySubscriptionLookup(RequestModel):
@@ -21,7 +27,7 @@ class VacancySubscriptionLookup(RequestModel):
 
 
 class VacancySubscriptionDelete(VacancySubscriptionLookup):
-    source: str = Field(min_length=2, max_length=120)
+    source: RequestSource
 
 
 class VacancySubscriptionPublicOut(ResponseModel):

@@ -135,7 +135,6 @@ def add_opening(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
-    usage_reader: SocketLabsUsageReader = Depends(get_socketlabs_usage_reader),
     outbox_runner: Callable[[EmailSender], None] = Depends(get_outbox_runner),
 ) -> OpeningCreatedOut:
     audience = opening_audience(db, body.unit_size_bedrooms)
@@ -145,7 +144,6 @@ def add_opening(
             detail="The audience changed while you were reviewing it. Preview the opening again.",
             audienceCount=audience.total,
         )
-    usage_reader.fetch()
     opening = create_opening(db, body)
     queue_opening_notifications(db, opening, audience)
     db.commit()

@@ -85,6 +85,27 @@ async def test_public_signup_validates_sizes_and_is_rate_limited() -> None:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    "origin",
+    ["https://www.pentacoop.com", "http://localhost:8080"],
+)
+async def test_public_signup_allows_the_website_origins(origin: str) -> None:
+    app, _, _ = _app_and_db()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.options(
+            "/vacancy-subscriptions",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+
+
+@pytest.mark.anyio
 async def test_admin_report_counts_overlapping_preferences_and_months() -> None:
     app, db, _ = _app_and_db()
     save_subscription(
@@ -101,19 +122,26 @@ async def test_admin_report_counts_overlapping_preferences_and_months() -> None:
         source="import",
         consented_at=datetime(2026, 8, 2, tzinfo=UTC),
     )
+    save_subscription(
+        db,
+        email="late-august@example.com",
+        unit_sizes={1},
+        source="public website",
+        consented_at=datetime(2026, 9, 1, 6, tzinfo=UTC),
+    )
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.get("/vacancy-subscriptions/report")
 
     assert response.status_code == 200
     assert response.json() == {
-        "total": 2,
-        "oneBedroom": 1,
+        "total": 3,
+        "oneBedroom": 2,
         "twoBedroom": 2,
         "threeBedroom": 1,
         "months": [
             {"month": "2026-07", "count": 1},
-            {"month": "2026-08", "count": 1},
+            {"month": "2026-08", "count": 2},
         ],
     }
 
@@ -156,3 +184,20 @@ async def test_admin_routes_reject_members() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.get("/vacancy-subscriptions/report")
     assert response.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_admin_request_source_must_contain_text() -> None:
+    app, _, _ = _app_and_db()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.put(
+            "/vacancy-subscriptions/admin",
+            json={
+                "email": "help@example.com",
+                "unitSizes": [1],
+                "source": "   ",
+            },
+        )
+
+    assert response.status_code == 422

@@ -6,12 +6,14 @@ import { AdminConfigurationPanel } from "./AdminConfigurationPanel";
 import { CommitteeDefaultsPanel } from "./CommitteeDefaultsPanel";
 import { FeedbackPanel } from "./FeedbackPanel";
 import { OpeningsPanel } from "./OpeningsPanel";
+import { VacancyNotificationsPanel } from "./VacancyNotificationsPanel";
 
-export type AdminSubtab = "configuration" | "openings" | "defaults" | "access" | "feedback";
+export type AdminSubtab = "configuration" | "openings" | "notifications" | "defaults" | "access" | "feedback";
 
 const ADMIN_SUBTABS: Array<{ id: AdminSubtab; label: string }> = [
   { id: "configuration", label: "Configuration" },
   { id: "openings", label: "Openings" },
+  { id: "notifications", label: "Notifications" },
   { id: "defaults", label: "Committee Defaults" },
   { id: "access", label: "Access" },
   { id: "feedback", label: "Feedback" },
@@ -74,6 +76,8 @@ export function AdminSettingsPanel(props: {
           onOpenApplicant={props.onOpenApplicant}
           onOpenRetainedApplicant={props.onOpenRetainedApplicant}
         />
+      ) : subtab === "notifications" ? (
+        <VacancyNotificationsPanel onError={props.onError} />
       ) : subtab === "defaults" ? (
         <CommitteeDefaultsPanel
           onError={props.onError}

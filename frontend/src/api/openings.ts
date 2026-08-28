@@ -1,4 +1,11 @@
-import type { Opening, OpeningSelection, OpeningWrite } from "../types";
+import type {
+  Opening,
+  OpeningCreate,
+  OpeningCreated,
+  OpeningPreview,
+  OpeningSelection,
+  OpeningWrite,
+} from "../types";
 import { getJson, request } from "./client";
 
 // --- Openings (admin only) --------------------------------------------------
@@ -6,11 +13,25 @@ import { getJson, request } from "./client";
 export const fetchOpenings = () =>
   getJson<{ openings: Opening[] }>("/openings").then((payload) => payload.openings);
 
-export function createOpening(opening: OpeningWrite): Promise<Response> {
-  return request("/openings", {
+export function previewOpening(opening: OpeningCreate): Promise<OpeningPreview> {
+  return request("/openings/preview", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(opening),
+  }).then(async (response) => {
+    if (!response.ok) throw new Error("Could not preview opening.");
+    return (await response.json()) as OpeningPreview;
+  });
+}
+
+export function createOpening(
+  opening: OpeningCreate,
+  expectedAudienceCount: number,
+): Promise<Response> {
+  return request("/openings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...opening, expectedAudienceCount }),
   });
 }
 
@@ -21,9 +42,6 @@ export function updateOpening(id: number, opening: OpeningWrite): Promise<Respon
     body: JSON.stringify(opening),
   });
 }
-
-export const publishOpening = (id: number) =>
-  request(`/openings/${id}/publish`, { method: "POST" });
 
 export const fetchOpeningSelection = (id: number) =>
   getJson<OpeningSelection>(`/openings/${id}/selection`);

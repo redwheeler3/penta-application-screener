@@ -1,17 +1,16 @@
 """Build and queue the complete audience when an opening is created."""
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 from sqlalchemy import exists, not_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.text import normalize_email
+from app.core.time import pacific_today
 from app.db.models import (
     Application,
     ApplicationParticipation,
-    MagicLinkPurpose,
     Opening,
     OpeningOutcome,
     PasswordlessIdentityKind,
@@ -19,7 +18,6 @@ from app.db.models import (
 )
 from app.services.auth_email import application_opening_email, vacancy_opening_email
 from app.services.email_delivery import queue_email
-from app.services.passwordless_auth import issue_magic_link
 from app.services.vacancy_subscriptions import matching_subscriptions
 
 
@@ -61,10 +59,7 @@ def queue_opening_notifications(
     db: Session,
     opening: Opening,
     audience: VacancyAudience,
-    *,
-    now: datetime | None = None,
 ) -> None:
-    now = now or datetime.now(UTC)
     details = opening_email_details(opening)
     for subscription in audience.subscriber_only:
         message = vacancy_opening_email(email=subscription.email, **details)
@@ -80,7 +75,7 @@ def queue_opening_notifications(
             },
         )
     for application in audience.application_only:
-        _queue_application_notice(db, opening, application, None, details=details, now=now)
+        _queue_application_notice(db, opening, application, None, details=details)
     for application, subscription in audience.overlaps:
         _queue_application_notice(
             db,
@@ -88,7 +83,6 @@ def queue_opening_notifications(
             application,
             subscription,
             details=details,
-            now=now,
         )
 
 
@@ -99,20 +93,13 @@ def _queue_application_notice(
     subscription: VacancySubscription | None,
     *,
     details: dict[str, str],
-    now: datetime,
 ) -> None:
-    issued = issue_magic_link(
-        db,
-        identity_kind=PasswordlessIdentityKind.APPLICANT,
-        email=application.primary_email,
-        purpose=MagicLinkPurpose.APPLICANT_ACCESS,
-        application_id=application.id,
-        now=now,
-    )
+    # The retry worker creates the short-lived access link immediately before delivery.
+    # Only the message metadata is needed while the notice is waiting in the outbox.
     message = application_opening_email(
         application_id=application.id,
         email=application.primary_email,
-        token=issued.token,
+        token="queued",
         notification_list_overlap=subscription is not None,
         settings=get_settings(),
         **details,
@@ -128,7 +115,6 @@ def _queue_application_notice(
         message,
         recipient_kind=PasswordlessIdentityKind.APPLICANT,
         application_id=application.id,
-        magic_link_token=issued.record,
         idempotency_key=f"opening:{opening.id}:application:{application.id}",
         retry_intent=intent,
     )
@@ -147,6 +133,7 @@ def _notifiable_applications(db: Session) -> list[Application]:
             .where(
                 Application.submitted_at.is_not(None),
                 Application.deleted_at.is_(None),
+                Application.retention_due_on > pacific_today(),
                 not_(selected),
             )
             .order_by(Application.id)

@@ -24,6 +24,7 @@ primary_region = "iad"   # Ashburn — lower-cost region; Bedrock runs in nearby
   # real hostname — single-origin, so the frontend and API share it.
   DATABASE_URL = "sqlite:///./data/penta_screener.db"
   FRONTEND_URL = "https://screener.pentacoop.com"
+  PUBLIC_WEBSITE_URL = "https://www.pentacoop.com"
   GOOGLE_REDIRECT_URI = "https://screener.pentacoop.com/auth/google/callback"
   AWS_REGION = "us-east-1"          # Bedrock region (matches settings default)
   AWS_DEFAULT_REGION = "us-east-1"  # botocore reads this one

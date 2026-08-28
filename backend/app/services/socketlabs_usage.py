@@ -1,7 +1,7 @@
 """Read-only SocketLabs plan usage for administrator send previews."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Protocol
 
@@ -50,7 +50,7 @@ class SocketLabsUsageClient:
             usage = payload["usage"]
             allowance = payload["allowance"]
             return SocketLabsUsage(
-                retrieved_at=as_utc(datetime.now().astimezone()),
+                retrieved_at=datetime.now(UTC),
                 billing_period_start=as_utc(datetime.fromisoformat(payload["billingPeriodStartDateTime"])),
                 billing_period_end=as_utc(datetime.fromisoformat(payload["billingPeriodEndDateTime"])),
                 messages_used=int(usage["messagesUsed"]),

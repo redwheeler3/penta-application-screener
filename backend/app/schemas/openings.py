@@ -8,22 +8,6 @@ from app.db.models import OpeningPhase
 from app.schemas.base import RequestModel, ResponseModel
 
 
-class OpeningWrite(RequestModel):
-    unit_size_bedrooms: int = Field(ge=1, le=3)
-    housing_charge_cents: int = Field(ge=0)
-    application_open_date: date
-    application_close_date: date
-    move_in_date: date
-
-    @model_validator(mode="after")
-    def dates_are_chronological(self) -> "OpeningWrite":
-        if self.application_open_date > self.application_close_date:
-            raise ValueError("Application open date must be on or before the close date.")
-        if self.application_close_date > self.move_in_date:
-            raise ValueError("Application close date must be on or before the move-in date.")
-        return self
-
-
 class OpeningCreate(RequestModel):
     unit_size_bedrooms: int = Field(ge=1, le=3)
     housing_charge_cents: int = Field(ge=0)
@@ -34,6 +18,16 @@ class OpeningCreate(RequestModel):
     def dates_are_chronological(self) -> "OpeningCreate":
         if self.application_close_date > self.move_in_date:
             raise ValueError("Application close date must be on or before the move-in date.")
+        return self
+
+
+class OpeningWrite(OpeningCreate):
+    application_open_date: date
+
+    @model_validator(mode="after")
+    def open_date_precedes_close_date(self) -> "OpeningWrite":
+        if self.application_open_date > self.application_close_date:
+            raise ValueError("Application open date must be on or before the close date.")
         return self
 
 

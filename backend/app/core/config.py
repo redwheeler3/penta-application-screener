@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:5173"
     applicant_frontend_url: str = "http://localhost:5173/?applicant"
     public_website_url: str = "https://www.pentacoop.com"
+    public_website_dev_url: str = "http://localhost:8080"
     google_client_id: str = ""
     google_client_secret: str = ""
     google_oauth_client_secrets_file: str = ""

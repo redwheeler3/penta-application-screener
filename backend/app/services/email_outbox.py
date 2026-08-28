@@ -76,7 +76,7 @@ def retry_queued_emails(
             db.commit()
             continue
         message, magic_link_token = built
-        if attempt_reserved_delivery(
+        was_accepted = attempt_reserved_delivery(
             db,
             sender,
             delivery,
@@ -84,7 +84,9 @@ def retry_queued_emails(
             magic_link_token=magic_link_token,
             now=now,
             is_retry=True,
-        ):
+            commit=False,
+        )
+        if was_accepted:
             accepted += 1
             if subscription_id is not None:
                 consume_subscription(db, int(subscription_id))
@@ -93,6 +95,7 @@ def retry_queued_emails(
                 queued += 1
             if delivery.quota_blocked:
                 quota_blocked += 1
+        db.commit()
     return RetrySummary(
         accepted=accepted,
         still_queued=queued,

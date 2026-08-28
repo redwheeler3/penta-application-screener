@@ -83,7 +83,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app(*, maintenance_task: Callable[[], None] | None = None) -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="Penta Application Screener API", lifespan=lifespan)
+    app = FastAPI(title="Penta Housing Application System API", lifespan=lifespan)
     # Authlib uses this signed cookie only while a browser completes Google OIDC. Successful
     # Google and email sign-ins both issue the same revocable BrowserSession cookie.
     app.add_middleware(
@@ -93,10 +93,8 @@ def create_app(*, maintenance_task: Callable[[], None] | None = None) -> FastAPI
         https_only=settings.oauth_state_cookie_secure,
         max_age=10 * 60,
     )
-    # CORS is only load-bearing in the two-origin DEV setup (Vite :5173 → API :8000).
-    # In the single-origin prod deploy (FastAPI serves the bundle) requests are same-origin,
-    # so this allowance is simply never exercised. Driven off `frontend_url` so it's correct
-    # in both without a hardcoded localhost.
+    # Committee and applicant traffic is same-origin in production. The public website is a
+    # separate origin and needs CORS for vacancy signups; local Vite and Eleventy use it too.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(
@@ -104,6 +102,7 @@ def create_app(*, maintenance_task: Callable[[], None] | None = None) -> FastAPI
                 settings.frontend_url,
                 settings.applicant_frontend_url.split("?", 1)[0],
                 settings.public_website_url,
+                settings.public_website_dev_url,
             }
         ),
         allow_credentials=True,

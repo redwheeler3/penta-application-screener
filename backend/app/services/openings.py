@@ -109,4 +109,3 @@ def _refresh_participant_retention(db: Session, opening_id: int) -> None:
         application = db.get(Application, application_id)
         if application is not None:
             refresh_application_retention(db, application)
-

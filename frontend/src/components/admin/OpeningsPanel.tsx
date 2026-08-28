@@ -5,6 +5,9 @@ import * as api from "../../api/openings";
 import { readProblem } from "../../api/problems";
 import type {
   Opening,
+  OpeningCreate,
+  OpeningCreated,
+  OpeningPreview,
   OpeningSelection,
   OpeningSelectionCandidate,
   OpeningWrite,
@@ -45,6 +48,7 @@ export function OpeningsPanel(props: {
   const [pendingCandidate, setPendingCandidate] = useState<OpeningSelectionCandidate | null>(null);
   const [confirmingNoHousehold, setConfirmingNoHousehold] = useState(false);
   const [confirmingUndo, setConfirmingUndo] = useState(false);
+  const [launchPreview, setLaunchPreview] = useState<OpeningPreview | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -65,6 +69,7 @@ export function OpeningsPanel(props: {
     setDraft({ ...EMPTY_DRAFT });
     setMessage("");
     setSelection(null);
+    setLaunchPreview(null);
   }
 
   function beginEdit(opening: Opening): void {
@@ -78,6 +83,7 @@ export function OpeningsPanel(props: {
     });
     setMessage("");
     setSelection(null);
+    setLaunchPreview(null);
   }
 
   async function save(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -90,23 +96,48 @@ export function OpeningsPanel(props: {
       applicationCloseDate: draft.applicationCloseDate,
       moveInDate: draft.moveInDate,
     };
-    const response = await mutate(
-      editingId === null
-        ? api.createOpening(payload)
-        : api.updateOpening(editingId, payload),
-    );
+    if (editingId === null && launchPreview === null) {
+      setBusy(true);
+      try {
+        setLaunchPreview(await api.previewOpening(createPayload(payload)));
+      } catch {
+        props.onError("Could not preview the opening and notification audience.");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    if (editingId === null && launchPreview !== null) {
+      setBusy(true);
+      try {
+        const createResponse = await api.createOpening(
+          createPayload(payload),
+          launchPreview.audienceCount,
+        );
+        if (!createResponse.ok) {
+          const problem = await readProblem(createResponse);
+          if (createResponse.status === 409) setLaunchPreview(null);
+          props.onError(problem ?? "Could not create that opening.");
+          return;
+        }
+        const created = (await createResponse.json()) as OpeningCreated;
+        setOpenings(created.openings);
+        setDraft(null);
+        setLaunchPreview(null);
+        setMessage(
+          `Applications are open and ${created.queuedNotificationCount} ${created.queuedNotificationCount === 1 ? "email is" : "emails are"} queued.`,
+        );
+        return;
+      } finally {
+        setBusy(false);
+      }
+    }
+    const response = await mutate(api.updateOpening(editingId as number, payload));
     if (!response) return;
     setOpenings(response);
     setDraft(null);
     setEditingId(null);
-    setMessage(editingId === null ? "Draft opening created." : "Opening updated.");
-  }
-
-  async function publish(opening: Opening): Promise<void> {
-    const response = await mutate(api.publishOpening(opening.id));
-    if (!response) return;
-    setOpenings(response);
-    setMessage("Opening published.");
+    setMessage("Opening updated.");
   }
 
   async function manageSelection(opening: Opening): Promise<void> {
@@ -205,8 +236,8 @@ export function OpeningsPanel(props: {
         <div>
           <h3>Openings</h3>
           <p className="panel-hint">
-            Configure unit offerings and publish them when they are ready. Availability follows
-            the three dates; publishing never sends email.
+            Creating an opening starts applications immediately and queues the matching vacancy
+            notices. Review the audience and exact email variants before confirming.
           </p>
         </div>
         {!draft ? (
@@ -221,9 +252,10 @@ export function OpeningsPanel(props: {
           draft={draft}
           editing={editingId !== null}
           busy={busy}
-          onChange={setDraft}
-          onCancel={() => { setDraft(null); setEditingId(null); }}
+          onChange={(next) => { setDraft(next); setLaunchPreview(null); }}
+          onCancel={() => { setDraft(null); setEditingId(null); setLaunchPreview(null); }}
           onSubmit={save}
+          launchPreview={launchPreview}
         />
       ) : null}
 
@@ -266,7 +298,7 @@ export function OpeningsPanel(props: {
         <div className="openings-empty">
           <CalendarDays size={28} />
           <strong>No openings configured</strong>
-          <span>Create a draft offering before opening applications.</span>
+          <span>Create an opening when a unit is ready for applications.</span>
         </div>
       ) : (
         <div className="opening-list">
@@ -276,7 +308,6 @@ export function OpeningsPanel(props: {
               opening={opening}
               busy={busy}
               onEdit={() => beginEdit(opening)}
-              onPublish={() => void publish(opening)}
               onManageSelection={() => void manageSelection(opening)}
               onReviewSelected={() => {
                 if (opening.selectedApplicationId !== null) {
@@ -298,13 +329,14 @@ function OpeningForm(props: {
   onChange: (draft: OpeningDraft) => void;
   onCancel: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  launchPreview: OpeningPreview | null;
 }): ReactNode {
   const set = (patch: Partial<OpeningDraft>) => props.onChange({ ...props.draft, ...patch });
   return (
     <form className="opening-form" onSubmit={props.onSubmit}>
       <div className="opening-form-heading">
-        <h4>{props.editing ? "Edit opening" : "New draft opening"}</h4>
-        <span>Applicants cannot see or submit to a draft.</span>
+        <h4>{props.editing ? "Edit opening" : "New opening"}</h4>
+        <span>{props.editing ? "Update the opening details." : "Applications open as soon as you confirm."}</span>
       </div>
       <div className="opening-form-grid">
         <label>
@@ -322,10 +354,12 @@ function OpeningForm(props: {
             <NumberInput min="0" step="0.01" required value={props.draft.housingChargeDollars} onChange={(value) => set({ housingChargeDollars: value ?? 0 })} />
           </div>
         </label>
-        <label>
-          <span>Applications open</span>
-          <input type="date" required value={props.draft.applicationOpenDate} onChange={(event) => set({ applicationOpenDate: event.target.value })} />
-        </label>
+        {props.editing ? (
+          <label>
+            <span>Applications opened</span>
+            <input type="date" value={props.draft.applicationOpenDate} readOnly />
+          </label>
+        ) : null}
         <label>
           <span>Applications close</span>
           <input type="date" required value={props.draft.applicationCloseDate} onChange={(event) => set({ applicationCloseDate: event.target.value })} />
@@ -335,21 +369,80 @@ function OpeningForm(props: {
           <input type="date" required value={props.draft.moveInDate} onChange={(event) => set({ moveInDate: event.target.value })} />
         </label>
       </div>
+      {!props.editing && props.launchPreview ? (
+        <OpeningLaunchPreview preview={props.launchPreview} />
+      ) : null}
       <div className="opening-form-actions">
         <button className="secondary-button" type="button" onClick={props.onCancel} disabled={props.busy}>Cancel</button>
         <button className="primary-button" type="submit" disabled={props.busy}>
-          {props.busy ? "Saving…" : props.editing ? "Save changes" : "Create draft"}
+          {props.busy
+            ? "Working…"
+            : props.editing
+              ? "Save changes"
+              : props.launchPreview
+                ? `Open applications and queue ${props.launchPreview.audienceCount} ${props.launchPreview.audienceCount === 1 ? "email" : "emails"}`
+                : "Review opening and emails"}
         </button>
       </div>
     </form>
   );
 }
 
+function OpeningLaunchPreview({ preview }: { preview: OpeningPreview }): ReactNode {
+  const usage = preview.socketlabs;
+  const variantLabels: Record<string, string> = {
+    notification_list: "Notification list email",
+    current_application: "Current application email",
+    application_and_notification_list: "Combined application and notification-list email",
+  };
+  return (
+    <section className="opening-launch-preview" aria-label="Opening and email confirmation">
+      <h5>Ready to open applications</h5>
+      <p>
+        <strong>{preview.audienceCount}</strong> {preview.audienceCount === 1 ? "person" : "people"}
+        {" "}will receive one of the reviewed vacancy emails.
+      </p>
+      <dl className="opening-preview-variants">
+        {preview.variants.map((variant) => (
+          <div key={variant.kind}>
+            <dt>{variantLabels[variant.kind] ?? variant.kind}</dt>
+            <dd>{variant.recipientCount}</dd>
+          </div>
+        ))}
+      </dl>
+      {usage.available ? (
+        <p className="opening-quota-summary">
+          SocketLabs usage will move from <strong>{usage.messagesUsed?.toLocaleString()}</strong> to{" "}
+          <strong>{usage.projectedMessagesUsed?.toLocaleString()}</strong> of{" "}
+          <strong>{usage.messageAllowance?.toLocaleString()}</strong> messages this billing period.
+          {usage.allowOverages === false && usage.projectedMessagesUsed !== null && usage.messageAllowance !== null
+            && usage.projectedMessagesUsed > usage.messageAllowance
+            ? " Messages beyond the allowance will remain queued until SocketLabs accepts them."
+            : ""}
+        </p>
+      ) : (
+        <p className="opening-quota-summary">
+          Current SocketLabs usage is unavailable. The emails will still be durably queued and
+          retried if the provider does not accept them immediately.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function createPayload(payload: OpeningWrite): OpeningCreate {
+  return {
+    unitSizeBedrooms: payload.unitSizeBedrooms,
+    housingChargeCents: payload.housingChargeCents,
+    applicationCloseDate: payload.applicationCloseDate,
+    moveInDate: payload.moveInDate,
+  };
+}
+
 function OpeningCard(props: {
   opening: Opening;
   busy: boolean;
   onEdit: () => void;
-  onPublish: () => void;
   onManageSelection: () => void;
   onReviewSelected: () => void;
 }): ReactNode {
@@ -395,11 +488,6 @@ function OpeningCard(props: {
         <button className="secondary-button" type="button" onClick={props.onEdit} disabled={props.busy}>
           <Pencil size={15} /> Edit
         </button>
-        {opening.phase === "draft" ? (
-          <button className="primary-button" type="button" onClick={props.onPublish} disabled={props.busy}>
-            Publish opening
-          </button>
-        ) : null}
         {opening.selectedApplicationId !== null ? (
           <button className="secondary-button" type="button" onClick={props.onReviewSelected} disabled={props.busy}>
             <Eye size={15} /> Review application
