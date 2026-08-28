@@ -328,6 +328,45 @@ class Opening(TimestampMixin, Base):
     )
 
 
+class VacancySubscription(TimestampMixin, Base):
+    """One active request for a single future vacancy notification."""
+
+    __tablename__ = "vacancy_subscriptions"
+    __table_args__ = (
+        CheckConstraint(
+            "wants_one_bedroom OR wants_two_bedroom OR wants_three_bedroom",
+            name="ck_vacancy_subscription_has_unit_size",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
+    wants_one_bedroom: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    wants_two_bedroom: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    wants_three_bedroom: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    consented_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    source: Mapped[str] = mapped_column(String(120), nullable=False)
+    managed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+
+    managed_by: Mapped[User | None] = relationship()
+
+
+class VacancySubscriptionAudit(Base):
+    """PII-minimized audit of manual vacancy-list changes."""
+
+    __tablename__ = "vacancy_subscription_audits"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subscription_id: Mapped[int | None] = mapped_column(index=True)
+    email_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    source: Mapped[str] = mapped_column(String(120), nullable=False)
+    acted_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    acted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    acted_by: Mapped[User] = relationship()
+
+
 class ApplicationParticipation(TimestampMixin, Base):
     """An applicant's explicit entry into one opening, separate from their durable answers."""
 

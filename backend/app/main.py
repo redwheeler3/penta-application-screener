@@ -27,6 +27,7 @@ from app.api.ranking import router as ranking_router
 from app.api.screening import router as screening_router
 from app.api.settings import router as settings_router
 from app.api.settings import rules_router as eligibility_rules_router
+from app.api.vacancy_subscriptions import router as vacancy_subscriptions_router
 from app.core.config import get_settings
 from app.core.problems import Problem
 from app.services.maintenance import run_due_maintenance
@@ -98,7 +99,13 @@ def create_app(*, maintenance_task: Callable[[], None] | None = None) -> FastAPI
     # in both without a hardcoded localhost.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=list({settings.frontend_url, settings.applicant_frontend_url}),
+        allow_origins=list(
+            {
+                settings.frontend_url,
+                settings.applicant_frontend_url.split("?", 1)[0],
+                settings.public_website_url,
+            }
+        ),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -108,7 +115,7 @@ def create_app(*, maintenance_task: Callable[[], None] | None = None) -> FastAPI
     @app.middleware("http")
     async def prevent_applicant_data_caching(request: Request, call_next):
         response = await call_next(request)
-        if request.url.path.startswith("/applicant"):
+        if request.url.path.startswith(("/applicant", "/vacancy-subscriptions")):
             response.headers["Cache-Control"] = "no-store"
         if maintenance_task is not None and _triggers_maintenance(request):
             tasks = BackgroundTasks()
@@ -135,6 +142,7 @@ def create_app(*, maintenance_task: Callable[[], None] | None = None) -> FastAPI
     app.include_router(ranking_router)
     app.include_router(settings_router)
     app.include_router(eligibility_rules_router)
+    app.include_router(vacancy_subscriptions_router)
     # Serve the built frontend from the API origin. API routers are registered above,
     # so they always win; this catch-all mount handles everything else — the SPA's assets and
     # its index.html (html=True serves index.html for "/" and for unknown paths). Mounted only

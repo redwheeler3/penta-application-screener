@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     session_secret: str = "dev-only-change-me"
     frontend_url: str = "http://localhost:5173"
     applicant_frontend_url: str = "http://localhost:5173/?applicant"
+    public_website_url: str = "https://www.pentacoop.com"
     google_client_id: str = ""
     google_client_secret: str = ""
     google_oauth_client_secrets_file: str = ""

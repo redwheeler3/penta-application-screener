@@ -39,6 +39,7 @@ PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     "forbidden": (403, "Admin access required"),
     "not_found": (404, "Resource not found"),
     "validation_error": (422, "Request validation failed"),
+    "rate_limited": (429, "Too many requests"),
     "invalid_settings": (422, "Invalid settings"),
     "ai_provider_not_configured": (409, "AI provider not configured"),
     # Screening / ranking preconditions and gates.
