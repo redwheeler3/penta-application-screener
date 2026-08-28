@@ -1,10 +1,20 @@
-# Penta Application Screener
+# Penta Housing Application System
 
-A production tool that turns 300+ housing co-op applications into a committee-ready, weighted shortlist — with a human in the loop at every stage and every AI-influenced number traceable back to its evidence. **In real use by the Penta Housing Co-op membership committee**, hosted at `screener.pentacoop.com`.
+Penta's production system for the complete housing-application lifecycle: public intake, private
+working copies, secure applicant access, opening participation, committee review, AI-assisted
+screening and ranking, applicant outcomes, transactional email, and retention. Applicants use
+`applications.pentacoop.com`; the Penta Housing Co-op membership committee uses
+`screener.pentacoop.com`.
 
-Applicants complete and maintain their application in the app. The screener applies deterministic eligibility filters, runs cached AI passes over the submitted pool, and produces a ranked list with per-candidate rationale. Reviewers get a searchable table, candidate detail pages, audit-friendly flags, human overrides, and an interactive tier-list for weighting what matters.
+Applicants can begin without an account, save privately through an emailed access link, submit to
+one or more current openings, and return later to update or reuse their application. The committee
+manages openings and outcomes in the same database, while the screening workflow applies
+deterministic eligibility filters, runs cached AI passes over the submitted pool, and produces a
+committee-weighted shortlist with every AI-influenced number traceable to its evidence.
 
-It's both a live application backing a real co-op screening workflow and a portfolio project exploring the craft of AI product design: human-in-the-loop review, cost-aware model use, and the judgment of which decisions to keep deterministic and which to hand to an LLM.
+It is both a live operational application and a portfolio project exploring the craft of AI product
+design: human-in-the-loop review, cost-aware model use, and the judgment of which decisions to keep
+deterministic and which to hand to an LLM.
 
 ## Design Highlights
 
@@ -22,13 +32,27 @@ A few decisions I'm particularly happy with — the ideas that make this more th
 
 ## What It Does
 
-Submitted applications appear automatically. The committee workflow is **Screen → Rank**; each paid step is gated behind a confirmation card with an up-front cost estimate.
+The application service owns intake and the durable applicant record. Submitted applications
+appear automatically in the committee interface.
 
-- Built-in applicant form with private working copies, explicit submission, opening selection, emailed access links, and version history.
-- Committee sign-in by Google or emailed magic link, both issuing the same revocable server-side session. Google login is identity-only.
-- Admin-managed openings and configurable eligibility rules, pet limits, AI models, concurrency, and spending cap.
+- Public applicant form with guest entry, private saved working copies, deliberate submission,
+  opening selection, emailed access links, and immutable submitted versions.
+- One application can participate in later or simultaneous openings without duplicating the
+  applicant's answers. Only participation in current, non-archived openings enters committee and
+  AI scope.
+- Applicant-controlled email changes and deletion, collision-safe identity handling, revocable
+  sessions, and credential-safe transactional-email retries.
+- Date-driven opening phases, administrator-confirmed selections, unsuccessful-applicant notices,
+  and automatic retention: one year for unsuccessful or withdrawn applicants and seven years for
+  selected members.
+- Committee sign-in by Google or emailed magic link, both issuing the same revocable server-side
+  session. Google login is identity-only; access and roles come from the application allowlist.
+- Admin-managed openings and configurable eligibility rules, pet limits, AI models, concurrency,
+  spending cap, email-delivery status, access, and operational settings.
 - Deterministic hard filters for clear eligibility issues, computed from the latest submitted fields.
 - Application dashboard, searchable/sortable table, facets, pagination, and candidate detail pages.
+- The committee workflow is **Screen → Rank**; each paid step is gated behind a confirmation card
+  with an up-front cost estimate.
 - **Screen:** AI integrity pass flagging suspicious, AI-boilerplate, or low-quality submissions (informational input to human review, never auto-disqualifying).
 - **Rank:** one orchestrated AI chain over eligible applicants — parallel pattern discovery → decomposition into one non-overlapping set → identity-match onto prior runs → per-dimension scoring → post-score duplicate consolidation — feeding a weighted ranked list with relative fit bands and per-driver rationale. (Detailed in *The AI Pipeline* below; the ranking math is in *The LLM extracts features; the math does the ranking* above.)
 - **Interactive tier-list weighting:** drag discovered criteria into Critical/Important/Minor/Ignore tiers to instantly re-sort. Re-ranking carries tier placements forward and reuses cached scores (see *Prompt identity as a cache key* above).
@@ -69,9 +93,13 @@ The sample CSV in [test-data](test-data) is synthetic and intentionally realisti
 - Python tooling: `uv`, project-local virtual environment, `pytest`
 - Frontend: Vite, React, TypeScript, npm
 - Authentication: identity-only Google OIDC or email magic links with revocable server-side sessions
+- Transactional email: provider-neutral sender with SocketLabs delivery, a durable retry-safe
+  outbox, quota-blocked observability, and capture-only local defaults
 - Google integration: optional identity-only OIDC for committee sign-in
 - AI integration: provider-agnostic interface; Strands routes through Bedrock or direct OpenAI/Anthropic APIs; mock provider for tests
-- Hosting: Fly.io (single instance, auto-suspend, persistent-volume SQLite); single-origin — FastAPI serves the built SPA; deployed manually with `fly deploy --remote-only`
+- Hosting: Fly.io (single instance, auto-suspend, persistent-volume SQLite) serving the committee
+  and applicant hostnames; FastAPI serves the built SPA; deployed manually with
+  `fly deploy --remote-only`
 
 ## Setup
 
@@ -138,7 +166,9 @@ is idempotent, sends no email, refuses non-SQLite databases, and will not overwr
 unless it is already stamped synthetic.
 On Windows, `dev.ps1` writes per-service output and errors to `.dev-logs/`. If either
 service exits, it prints the last log lines; it also retries the frontend twice before
-leaving the backend running for diagnosis.
+leaving the backend running for diagnosis. It uses `watchfiles` to replace the backend process
+reliably after Python edits. Vite HMR updates ordinary frontend edits and also tells the open email
+gallery to refetch when its Python templates change.
 
 If local screening data looks stale or inconsistent, reset the local SQLite database before starting dev:
 
@@ -213,11 +243,40 @@ re-baselining the invariant fixture is the tab's "Re-baseline from current Rank"
 Growing the golden case sets from a real Rank is done with the harvest scripts under
 `backend/scripts/` (co-authored, then labelled by hand).
 
-## Status
+## Status And Next Milestone
 
-**Live in production.** The app is deployed on [Fly.io](https://fly.io) at `screener.pentacoop.com` and used by the Penta Housing Co-op membership committee (a small, trusted group of screeners) to review real application cycles. It runs as a single instance with SQLite on a persistent volume — deliberately right-sized for a ~5-member committee rather than built for scale it doesn't need. Hosting decisions and the platform tradeoff analysis are in [docs/adr/0012-hosting-platform-m17.md](docs/adr/0012-hosting-platform-m17.md); the deploy/runbook is [docs/deploy.md](docs/deploy.md), and suspend-to-zero recovery controls are in [ops/fly-watchdog/README.md](ops/fly-watchdog/README.md).
+**Milestones 1–21 are complete.** The system is live in production and used by the Penta Housing
+Co-op membership committee. It includes the built-in applicant experience, revocable server-side
+sessions for applicant and committee access, opening participation, outcomes, transactional email,
+and retention. Production runs as a deliberately small single Fly instance with persistent-volume
+SQLite and daily snapshots retained for 30 days.
 
-It remains an actively developed project, and everything below still works for fully local screening workflows — the same codebase runs on a laptop with no hosting at all.
+**M22 is next: built-in vacancy notifications.** Planning and reviewable email templates are
+complete, but the subscription model, public endpoint, administration, delivery workflow, and data
+migration are not yet implemented. The delivery sequence is:
+
+1. Add the public email-and-unit-size subscription endpoint and the retrying form in the
+   `penta-coop-website` sister repository, which remains available while this Fly app is suspended.
+2. Add an administrator report with the active total, overlapping unit-size counts, monthly chart,
+   and exact-email support/privacy operations.
+3. Make opening creation immediately open applications and atomically queue the confirmed audience,
+   with exact email previews and current/projected SocketLabs usage shown before confirmation.
+4. Import and reconcile the existing Google response sheet, cut the website over to the built-in
+   endpoint, and retire the old form without sending a migration email.
+
+M22 deliberately uses the existing grandfathered SocketLabs server, where a permanent unsubscribe
+applies to all Penta mail, including application-access links. Legal review of the final vacancy
+notification remains a production-cutover gate, not an implementation blocker.
+
+The detailed M22 contract, non-goals, and definition of done are in
+[SPEC.md](SPEC.md#built-in-vacancy-notifications-m22--planned). Milestone history is in
+[CHANGELOG.md](CHANGELOG.md). Hosting decisions are in
+[ADR 0012](docs/adr/0012-hosting-platform-m17.md); operations are covered by
+[docs/deploy.md](docs/deploy.md) and the
+[scale-to-zero watchdog runbook](ops/fly-watchdog/README.md).
+
+The same codebase still supports a fully local workflow with captured email and synthetic
+applications; no production services or real applicant records are required for development.
 
 ## License
 
