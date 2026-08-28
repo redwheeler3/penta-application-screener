@@ -1171,11 +1171,15 @@ administrator delivery-status banners are implemented.
    quota prevents immediate delivery. Send through a retry-safe outbox, consume each subscription
    after provider acceptance, and show delivery outcomes to administrators. There is no separate
    future-open state or opened-versus-notified lifecycle to reconcile.
-4. **Cutover pending:** use the validated importer to move the existing Google list with its unique
-   email addresses, unit preferences, and consent provenance from each form-response timestamp.
-   Resolve invalid rows or normalized collisions, reconcile the total, size counts, and monthly
-   chart, deploy the website form target, and retire the Google form and sheet without sending a
-   migration email.
+4. **Cutover pending:** rehearse the importer against a current Google export and resolve invalid
+   rows or normalized collisions without writing to production. Deploy the application service
+   while the website still points to Google and verify the production vacancy list is empty. Pause
+   Google responses, take and validate the authoritative final export, and import its unique email
+   addresses, unit preferences, and form-response consent timestamps without `--allow-upsert`.
+   Reconcile the total, size counts, and monthly chart before switching the website form target.
+   Verify one controlled built-in signup, remove that record, and retire the Google form and sheet
+   without sending a migration email. If validation or reconciliation fails before the switch,
+   re-enable Google responses and restart later from a fresh export.
 
 **Non-goals:** applicant accounts; email-address verification; recurring newsletters; a wait-list
 position or ordering; automatic application creation; multiple notices from one subscription;

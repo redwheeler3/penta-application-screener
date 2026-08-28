@@ -261,13 +261,19 @@ subscriptions, administration, opening audience previews, live SocketLabs usage,
 delivery. The always-on public website submits with the agreed bounded recovery experience. Cutover
 is deliberately operational rather than another software phase:
 
-1. Export the existing Google response sheet, dry-run the importer, resolve any invalid rows or
-   normalized collisions, and apply it to production.
-2. Reconcile the active total, bedroom counts, and monthly chart against the source report.
-3. Deploy both repositories together, verify the reviewed signup notice, privacy policy,
-   application declaration, withdrawal flow, and email footer with controlled records, then retire
-   the Google form without
-   sending a migration email.
+1. Rehearse with a current Google response-sheet export. Dry-run the importer and resolve every
+   invalid row or normalized collision without writing to production.
+2. Deploy the application service and migration while the public website still points to Google,
+   then verify the production vacancy list is empty.
+3. Pause Google responses, take and validate the authoritative final export, import it without
+   `--allow-upsert`, and reconcile the active total, bedroom counts, and monthly chart.
+4. Deploy the public website, verify the reviewed legal surfaces and one controlled signup, then
+   remove the controlled record and retire the Google form and sheet without sending a migration
+   email.
+
+The brief response pause closes the handoff between the two systems. If the final export fails
+validation or reconciliation before the website switch, re-enable Google responses and restart the
+cutover later from a fresh export.
 
 M22 deliberately uses the existing grandfathered SocketLabs server, where a permanent unsubscribe
 applies to all Penta mail, including application-access links. The reviewed legal and privacy

@@ -258,7 +258,14 @@ snapshots in `data/backups/` work the same in the container as locally.)
 
 ### Vacancy-list production cutover
 
-Export the Google response sheet as CSV and validate it locally before writing anything:
+The Google form and built-in form must not accept responses at the same time during migration. A
+full export applied with `--allow-upsert` could replace a newer built-in preference with an older
+Google response, while exporting before Google closes could omit a late response. Use the explicit
+freeze and handoff below.
+
+#### 1. Rehearse before the cutover window
+
+Export the current Google response sheet as CSV and validate it locally without writing anything:
 
 ```sh
 cd backend
@@ -268,19 +275,60 @@ uv run python scripts/import_vacancy_subscriptions.py path/to/export.csv
 The dry run requires the timestamp, email, and preference columns, validates every address and
 consent timestamp, asserts normalized-email uniqueness, and reports the total plus overlapping 1BR,
 2BR, and 3BR counts. If the sheet's preference heading differs, pass
-`--preferences-column "Exact heading"`. Resolve every reported row before continuing.
+`--preferences-column "Exact heading"`. Resolve every reported row before scheduling cutover. This
+export is a rehearsal only; Google may receive more responses afterward.
 
-Apply the same validated file against production with an encrypted transfer or a short-lived remote
-copy, then remove that copy immediately because it contains personal information:
+#### 2. Prepare production without changing the public form
+
+Deploy the application service and its database migration while the public website still points to
+Google. Verify application health, administrator access, SocketLabs usage reporting, and the vacancy
+report. The production vacancy list must be empty before the authoritative import. Remove any
+controlled test subscription through the narrow administrator interface rather than relying on an
+upsert during migration.
+
+#### 3. Freeze Google and take the authoritative export
+
+Pause the Google form so it no longer accepts responses. Leave the public website online; its
+signup is briefly unavailable until the website deployment in step 5. Export the response sheet
+again after the pause and run the same dry-run command against this final file.
+
+If validation fails, re-enable Google responses and end the cutover attempt. Resolve the source
+data and begin a later attempt with another fresh export. Do not edit an exported CSV into a second
+source of truth.
+
+#### 4. Import and reconcile
+
+Transfer the final validated file to production using an encrypted transfer or short-lived remote
+copy and apply it without `--allow-upsert`:
 
 ```sh
 uv run python scripts/import_vacancy_subscriptions.py path/to/export.csv --apply
 ```
 
 The importer refuses to write into a non-empty list unless `--allow-upsert` is deliberately passed.
-Afterward, reconcile the Notifications report total, bedroom counts, and monthly chart against the
-source report. Deploy the public website target only after that reconciliation, verify one controlled
-signup end to end, and then disable the Google form.
+Do not use that option for the cutover. Reconcile the Notifications report total, overlapping bedroom
+counts, and monthly chart against the final Google export. Remove the transferred CSV immediately
+after the import because it contains personal information.
+
+If the import or reconciliation fails, do not deploy the website form. Re-enable Google responses,
+diagnose the mismatch, restore the vacancy list to an empty pre-cutover state through an explicitly
+approved production operation, and restart later from a fresh export.
+
+#### 5. Switch the public website
+
+Deploy the public website with the built-in vacancy form. Verify the reviewed signup notice and
+Privacy Policy, then submit one controlled address. Confirm it appears in the administrator report
+and exact-address lookup, replace its unit-size selection once, and delete it through the
+administrator interface. Confirm the report returns to the imported totals.
+
+The production gate also includes the application declaration, withdrawal flow, and common email
+footer. Verify those surfaces with controlled records without creating an opening or notifying the
+imported audience. Opening preview is safe to inspect; creating an opening is the real application-
+open event and durably queues its matching notices.
+
+After the controlled checks pass, remove the Google form from public use and retire the response
+sheet from operational handling. No migration email is sent. Update the milestone documentation to
+mark M22 complete.
 
 | Task | Command |
 |---|---|
