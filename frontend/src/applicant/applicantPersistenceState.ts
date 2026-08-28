@@ -32,11 +32,10 @@ export type ApplicantPersistenceState = {
   pendingEmailChange: string | null;
   emailChangeStatus: EmailChangeStatus;
   emailChangeMessage: string;
-  emailChangeNeedsReauthentication: boolean;
   collisionEmail: string | null;
   submissionEmailSent: boolean;
   deletionEmailSent: boolean;
-  deletionStatus: "idle" | "working" | "reauth" | "error";
+  deletionStatus: "idle" | "working" | "error";
   deletionMessage: string;
 };
 
@@ -79,7 +78,6 @@ export const INITIAL_APPLICANT_PERSISTENCE_STATE: ApplicantPersistenceState = {
   pendingEmailChange: null,
   emailChangeStatus: "idle",
   emailChangeMessage: "",
-  emailChangeNeedsReauthentication: false,
   collisionEmail: null,
   submissionEmailSent: true,
   deletionEmailSent: true,

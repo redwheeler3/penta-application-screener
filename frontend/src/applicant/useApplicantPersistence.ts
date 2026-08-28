@@ -89,7 +89,6 @@ export function useApplicantPersistence(
     pendingEmailChange,
     emailChangeStatus,
     emailChangeMessage,
-    emailChangeNeedsReauthentication,
     collisionEmail,
     submissionEmailSent,
     deletionEmailSent,
@@ -710,7 +709,6 @@ export function useApplicantPersistence(
     pendingEmailChange,
     emailChangeStatus,
     emailChangeMessage,
-    emailChangeNeedsReauthentication,
     hasUnsavedChanges: savedAnswers !== workingSnapshot(draft, openingIds),
     hasUnsubmittedChanges: submitted && (
       serverHasUnsubmittedChanges || savedAnswers !== workingSnapshot(draft, openingIds)

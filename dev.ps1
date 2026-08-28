@@ -97,8 +97,12 @@ try {
     # server reload on Windows.
     $backendOutputLog = Join-Path $logDir "$sessionStamp-backend.out.log"
     $backendErrorLog = Join-Path $logDir "$sessionStamp-backend.err.log"
+    $backendPython = Join-Path $PSScriptRoot "backend\.venv\Scripts\python.exe"
+    if (-not (Test-Path $backendPython)) {
+        throw "Backend virtual-environment Python was not found at $backendPython. Run uv sync in backend first."
+    }
     $backend = Start-Process -PassThru -WorkingDirectory "$PSScriptRoot\backend" `
-        -FilePath "uv" -ArgumentList "run", "uvicorn", "app.main:app", "--host", "localhost", "--port", "8000", "--reload", "--reload-dir", "app" `
+        -FilePath $backendPython -ArgumentList "-m", "watchfiles", "--filter", "python", "--sigint-timeout", "2", "--sigkill-timeout", "1", "dev_server.run", "app" `
         -WindowStyle Hidden `
         -RedirectStandardOutput $backendOutputLog -RedirectStandardError $backendErrorLog
 

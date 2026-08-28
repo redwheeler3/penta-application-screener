@@ -90,13 +90,6 @@ export function cancelEmailChange() {
   return request("/applicant/application/email-change", { method: "DELETE" });
 }
 
-export function requestApplicantReauthentication() {
-  return request(
-    "/applicant/application/reauthentication",
-    { method: "POST" },
-  );
-}
-
 export function logoutApplicant() {
   return request("/applicant/auth/logout", { method: "POST" });
 }

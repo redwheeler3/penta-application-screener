@@ -489,9 +489,6 @@ class BrowserSession(Base):
     last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     idle_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     absolute_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    recently_authenticated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     application: Mapped[Application | None] = relationship()

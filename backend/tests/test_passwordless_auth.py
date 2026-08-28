@@ -18,7 +18,6 @@ from app.services.passwordless_auth import (
     create_browser_session,
     issue_magic_link,
     magic_link_request_allowed,
-    recently_authenticated,
     revoke_browser_session,
     revoke_identity_magic_links,
     revoke_identity_sessions,
@@ -335,7 +334,7 @@ def test_remembered_session_slides_idle_expiry_but_respects_absolute_expiry() ->
     assert issued.record.revoked_at == NOW + timedelta(days=30)
 
 
-def test_sessions_are_hashed_revocable_and_support_recent_authentication() -> None:
+def test_sessions_are_hashed_and_revocable() -> None:
     db = _session()
     user = _user(db)
     first = create_browser_session(
@@ -356,16 +355,6 @@ def test_sessions_are_hashed_revocable_and_support_recent_authentication() -> No
     )
 
     assert first.token != first.record.token_hash
-    assert recently_authenticated(
-        first.record,
-        now=NOW + timedelta(minutes=59),
-        maximum_age=timedelta(minutes=60),
-    )
-    assert not recently_authenticated(
-        first.record,
-        now=NOW + timedelta(minutes=61),
-        maximum_age=timedelta(minutes=60),
-    )
     assert revoke_browser_session(db, first.token, now=NOW + timedelta(hours=1))
     assert (
         authenticate_browser_session(

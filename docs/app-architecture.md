@@ -73,11 +73,9 @@ Committee members may use identity-only Google OIDC or an emailed magic link. Bo
 the same revocable `BrowserSession`. Applicant access is email-link based and uses a separate,
 host-only session cookie so applicant and committee identities can coexist safely.
 
-Session policy is implemented server-side:
-
-- 1 day recent-auth window for sensitive actions;
-- 7 days of inactivity;
-- 30 days absolute lifetime.
+Session policy is implemented server-side: sessions expire after 7 days of inactivity or 30 days
+in total. Any valid session may perform the actions authorized for its identity and role; there is
+no separate recent-sign-in window.
 
 The access allowlist gates committee sign-in regardless of identity provider. Google provides
 identity only; it has no access to application data.

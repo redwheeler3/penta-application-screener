@@ -287,7 +287,6 @@ def create_browser_session(
         last_activity_at=now,
         idle_expires_at=now + idle_lifetime,
         absolute_expires_at=now + absolute_lifetime,
-        recently_authenticated_at=now,
         reconciliation_draft_id=reconciliation_draft_id,
         **identity_values,
     )
@@ -325,18 +324,6 @@ def authenticate_browser_session(
     record.idle_expires_at = min(now + idle_lifetime, as_utc(record.absolute_expires_at))
     db.flush()
     return record
-
-
-def recently_authenticated(
-    record: BrowserSession,
-    *,
-    now: datetime | None = None,
-    maximum_age: timedelta | None = None,
-) -> bool:
-    now = now or datetime.now(UTC)
-    settings = get_settings()
-    maximum_age = maximum_age or timedelta(minutes=settings.recent_authentication_minutes)
-    return as_utc(record.recently_authenticated_at) > now - maximum_age
 
 
 def revoke_browser_session(db: Session, token: str, *, now: datetime | None = None) -> bool:

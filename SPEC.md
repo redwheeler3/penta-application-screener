@@ -217,13 +217,12 @@ separate email-verification transaction. A save request gives the same response 
 is new or already known, so it does not reveal which people have applications.
 
 After sign-in, the verified primary email is read-only in the application form. **Change email
-address** is a separate sensitive action requiring authentication within the last 24 hours. It
-sends a 24-hour, single-use confirmation link to the proposed address and leaves the current
+address** sends a 24-hour, single-use confirmation link to the proposed address and leaves the current
 identity unchanged until that link is consumed. Confirmation atomically updates the application
 identity and private working answers, sends the previous address a security notice naming the new
 address and directing an unexpected change to Penta Tech Support, revokes other application
 sessions and unused links, and establishes a session in the confirmation tab.
-The recently authenticated session that initiated the change remains valid so its original tab can
+The session that initiated the change remains valid so its original tab can
 refresh the identity when it next becomes visible; there is no polling dependency. If the proposed
 address already belongs to another current application, neither application changes and they are
 never merged. A replacement request supersedes an earlier unconfirmed address, and the applicant
@@ -287,8 +286,7 @@ follow a session switch. Applicant and committee cookies remain independent.
 Committee members may either request the same kind of passwordless email link or sign in with
 Google. Both methods prove an allowlisted committee identity and then issue the same revocable
 server-side browser session. Provider choice does not create a second user, cookie, session
-policy, authorization path, or logout/revocation mechanism. A fresh magic-link exchange or fresh
-Google sign-in satisfies the same recent-authentication requirement for sensitive actions.
+policy, authorization path, or logout/revocation mechanism.
 
 Google is retained only as an identity provider for committee convenience and as an operational
 alternative when transactional email is unavailable. It uses standard OpenID Connect with only
@@ -330,10 +328,8 @@ data in addition to revoking the server session.
 Signing out revokes the current server-side session immediately. **Sign out all devices** revokes
 every session for that identity. Administrators can revoke a committee member's sessions, and
 deactivation, removal from the allowlist, a role change, or a primary-email change invalidates
-affected sessions. Changing committee access or performing another sensitive administrator action
-requires authentication within the previous 24 hours rather than trusting an older remembered
-browser. Together, sensitive-action reauthentication, inactivity expiry, and absolute expiry use
-an easy-to-remember day / week / month policy.
+affected sessions. Any otherwise valid session may perform the actions authorized for its identity
+and role; the application does not impose an additional recent-sign-in check on sensitive actions.
 
 Session cookies are host-only, `Secure`, `HttpOnly`, and `SameSite=Lax`; raw session credentials are
 not stored in browser-readable storage. The server records only hashed session credentials plus
@@ -382,14 +378,17 @@ message.
 
 SocketLabs remains the source of truth for bounces, complaints, suppression, and account-level
 reporting; the application does not ingest provider webhooks or duplicate its suppression list.
-The current plan permits 2,000 messages per month, but this server also carries Penta mail sent
-outside the application. SocketLabs does not expose a reliable remaining-plan-quota value for the
-shared server, so the application reacts to a provider quota rejection instead of presenting an
-estimate as fact. Queued mail and quota-blocked mail appear in the administrator action banner and
-retry on the ordinary once-per-Pacific-day maintenance cadence. The banner shows the queue size,
-quota-blocked count, oldest and newest queued times, and latest delivery attempt without exposing
-message contents or credentials. The application cannot email an alert through the same suspended
-account, so SocketLabs' own account notifications are the out-of-band warning.
+The current plan permits 2,000 messages per billing period, and this server also carries Penta mail
+sent outside the application. The SocketLabs usage-summary API returns the server's billing-period
+boundaries, messages used, message allowance, percentage used, and overage policy. Administrator
+send previews show that current provider snapshot, its retrieval time, and projected usage after the
+previewed audience; confirmation refreshes it because other Penta mail may have been injected in the
+meantime. An unavailable usage summary is reported as unknown rather than replaced with a guess.
+Queued mail and quota-blocked mail appear in the administrator action banner and retry on the
+ordinary once-per-Pacific-day maintenance cadence. The banner shows the queue size, quota-blocked
+count, oldest and newest queued times, and latest delivery attempt without exposing message contents
+or credentials. The application cannot email an alert through the same suspended account, so
+SocketLabs' own account notifications are the out-of-band warning.
 Automated tests and normal local development use a captured fake sender and never deliver real
 email.
 
@@ -650,10 +649,31 @@ requested vacancy notice is the only email the subscription sends. Submission is
 does not reveal whether the address is already present. Applying does not subscribe someone, and
 subscribing does not create or preserve an application.
 
+The form remains on the always-available static `www.pentacoop.com/apply.html` page and submits
+directly to a public endpoint on `applications.pentacoop.com`, which owns validation and durable
+storage. A request may need to wake or recover the suspended Fly Machine. The form therefore shows
+an immediate **Submitting...** state, then explains after a few seconds that the signup service is
+waking and will retry automatically. After roughly one minute, the status says that the request has
+not yet been saved and that automatic retries will continue for another 60 seconds. The browser
+makes one immediate attempt, then one non-overlapping attempt every 10 seconds until the 120-second
+deadline. Retries are safe because submitting the same normalized address replaces its complete
+unit-size selection. The form reports success only after the service confirms the database write;
+it retains the entered values while retrying. Validation errors are reported immediately rather
+than retried. If recovery is exhausted, the form apologizes and directs the visitor to email
+`techsupport@pentacoop.com` with the requested unit sizes for manual entry.
+
 There is one subscription per normalized email address. A later submission for the same address
 replaces the entire earlier unit-size selection and becomes the current subscription. This is the
 intentional no-verification tradeoff that lets a person update their preferences without receiving
 or following a confirmation email; preferences are never merged.
+
+Administrators have a vacancy-list report showing the total active subscriptions, counts for 1-,
+2-, and 3-bedroom preferences, and a monthly bar chart modeled on the existing spreadsheet report.
+The size counts overlap because one subscription may request more than one size. The monthly chart
+groups active records by their current consent month, so its bars add up to the displayed active
+total. Routine reporting does not expose email addresses. A separate exact-email lookup lets an
+administrator add or replace a subscription after a person requests manual help, or delete one on
+request; those actions record the acting administrator and their source.
 
 When any requested unit size becomes available, the transactional email provider sends one vacancy
 notice and the entire list record is consumed, even if the person selected other unit sizes.
@@ -670,6 +690,12 @@ provider-managed link permanently suppresses the address from all Penta email se
 server, including secure sign-in links. A vacancy notice still states that its one-notice
 subscription has been consumed and offers the public sign-up link for recipients who have not
 permanently unsubscribed.
+
+Vacancy notices use the same grandfathered SocketLabs server as transactional application email;
+the free 2,000-message allowance is tied to that server rather than the account. A second server is
+therefore not part of M22. The resulting server-wide suppression is intentional: someone who uses
+the provider-managed unsubscribe is unsubscribed from all Penta email, including secure application
+access messages.
 
 ## Prior Email Templates
 
@@ -1120,8 +1146,8 @@ separate milestone with its own storage, hostname, and isolation decisions.
 - One application can participate in later and simultaneous openings, the committee can filter by
   those selections, and the latest submitted application remains the normal committee view.
 - Committee members sign in through an allowlisted magic link or identity-only Google OIDC; both
-  issue the same server-side session and support the same revocation, expiry, recent-authentication,
-  and remembered-device choice. Role/access changes revoke those sessions server-side.
+  issue the same server-side session and support the same revocation, expiry, and remembered-device
+  choice. Role/access changes revoke those sessions server-side.
 - The optional household photo link is private until submission, is available to the committee
   afterward, and is excluded from AI prompts.
 - An administrator may confirm the selected applicant while an opening is closed or archived. No
@@ -1161,15 +1187,23 @@ one-notice subscription described in [Built-In Vacancy Notification List](#built
 
 1. Add the public email-and-unit-size form, rate limiting, non-enumerating duplicate handling, and
    the minimal consent/subscription record.
-2. Add an administrator view for counts by unit size and a preview of the exact audience for an
-   opening without exposing addresses in routine reports.
-3. Require an administrator to preview the matching audience and exact message, then separately
-   confirm **Send vacancy notification**. Creating or opening an offering never sends email
-   automatically. Send through a retry-safe outbox, consume the whole subscription after provider
-   acceptance, and show delivery outcomes to administrators.
-4. Import the existing Google list with its recorded unit preferences and available consent
-   provenance from its form-response timestamp, verify counts, replace the website link, and
-   retire the Google form and sheet.
+2. Add an administrator report with the active total, overlapping counts for 1-, 2-, and 3-bedroom
+   preferences, and a monthly active-subscription bar chart that emulates the current spreadsheet.
+   Add exact-email lookup for narrow add, replace, and delete operations, plus a preview of the
+   exact audience for an opening without exposing addresses in routine reports.
+3. Make opening creation the application-open event. The creation flow previews the matching
+   audience count, exact message variants, current SocketLabs usage and allowance, and projected
+   post-send usage. It then requires the administrator to confirm both opening the applications and
+   launching the vacancy notifications. A successful create transaction persists
+   the opening and durably queues the matching notices before reporting success, even when provider
+   quota prevents immediate delivery. Send through a retry-safe outbox, consume each subscription
+   after provider acceptance, and show delivery outcomes to administrators. There is no separate
+   future-open state or opened-versus-notified lifecycle to reconcile.
+4. Import the existing Google list with its unique email addresses, recorded unit preferences, and
+   consent provenance from each form-response timestamp. Normalize and assert uniqueness rather
+   than inventing duplicate precedence; report invalid rows or normalization collisions for manual
+   resolution. Reconcile the total, size counts, and monthly chart, replace the website form target,
+   and retire the Google form and sheet without sending migration email.
 
 **Non-goals:** applicant accounts; email-address verification; recurring newsletters; a wait-list
 position or ordering; automatic application creation; multiple notices from one subscription;
@@ -1180,15 +1214,26 @@ matching vacancy notice.
 
 - A visitor can request one notice for one or more unit sizes without creating an application or
   receiving a confirmation email.
+- The public website remains usable while the application service is suspended. Subscription
+  submission visibly waits and retries through an ordinary Fly recovery, never reports an
+  unconfirmed success, and offers the Tech Support manual-entry path after bounded retries fail.
 - A later submission for the same normalized email replaces, rather than merges with, the prior
   unit-size preferences and does not reveal that a prior record existed.
+- Administrators can see the active total, overlapping unit-size counts, and monthly distribution
+  without routinely exposing addresses, and can manage one exact address for a support or privacy
+  request.
+- Creating an opening opens applications immediately. Before confirmation, the administrator sees
+  the matching audience count, exact message variants, and current and projected SocketLabs usage;
+  after confirmation, the opening exists and every matching notice is durably queued as one
+  operation.
 - The first matching opening sends one notice and consumes the entire record regardless of how
   many sizes were selected; a transient provider failure remains retryable and cannot double-send
   after provider acceptance. The notice explains the removal and offers a link to subscribe again.
 - Application deletion and mailing-list deletion remain independent, and application activity
   never silently subscribes an address.
 - Every vacancy-list message uses the common SocketLabs permanent-unsubscribe footer. SocketLabs
-  owns unsubscribe, hard-bounce, complaint, and durable suppression for all email from the server.
+  owns unsubscribe, hard-bounce, complaint, and durable suppression for all email from the shared
+  grandfathered server; unsubscribing also blocks later application-access messages.
 - The production website uses the built-in form and the Google form/sheet and their operational
   handling are removed after a count-verified migration.
 

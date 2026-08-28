@@ -1,7 +1,6 @@
 """Admin-only management of the access allowlist (who may sign in, with what role).
 
-Every route is admin-gated. Mutations also require a recently authenticated browser.
-The last admin entry can neither be removed nor demoted to member.
+Every route is admin-gated. The last admin entry can neither be removed nor demoted to member.
 """
 
 from datetime import UTC, datetime
@@ -10,7 +9,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import require_admin, require_recent_admin
+from app.api.dependencies import require_admin
 from app.core.problems import Problem
 from app.core.text import normalize_email
 from app.db.models import User, UserRole
@@ -98,7 +97,7 @@ def read_allowlist(
 @router.put("", response_model=AllowlistResponse)
 def upsert_allowlist_entry(
     body: AllowlistUpsert,
-    _admin: User = Depends(require_recent_admin),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> AllowlistResponse:
     """Add an allowed email or change its role. Adding an ``admin`` entry grants
@@ -136,7 +135,7 @@ def upsert_allowlist_entry(
 @router.delete("/{email}", response_model=AllowlistResponse)
 def remove_allowlist_entry(
     email: str,
-    _admin: User = Depends(require_recent_admin),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> AllowlistResponse:
     """Remove committee access and revoke the account's sessions and unused links."""

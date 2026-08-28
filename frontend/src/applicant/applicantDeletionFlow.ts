@@ -1,10 +1,8 @@
-import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
-import { type EmailSendStatus, responseDetail, responseProblem } from "./applicantPersistence";
+import { responseProblem } from "./applicantPersistence";
 import type { SetApplicantPersistence } from "./applicantPersistenceState";
 import {
   deleteApplication as deleteApplicationRequest,
   logoutApplicant,
-  requestApplicantReauthentication,
 } from "./api";
 import { clearApplicantStorage } from "./draftStorage";
 
@@ -31,10 +29,7 @@ export function createApplicantDeletionFlow({
         setPersistence("deletionStatus", "idle");
         return false;
       }
-      setPersistence(
-        "deletionStatus",
-        problem.code === "recent_authentication_required" ? "reauth" : "error",
-      );
+      setPersistence("deletionStatus", "error");
       setPersistence("deletionMessage", problem.detail);
       return false;
     }
@@ -50,27 +45,6 @@ export function createApplicantDeletionFlow({
     setPersistence("deletionStatus", "idle");
     setPersistence("phase", "deleted");
     return true;
-  }
-
-  async function emailDeletionReauthentication(): Promise<void> {
-    const response = await requestApplicantReauthentication();
-    if (!response.ok) {
-      setPersistence("deletionStatus", "error");
-      setPersistence("deletionMessage", await responseDetail(response));
-      return;
-    }
-    const body = (await response.json()) as { emailStatus: EmailSendStatus };
-    if (body.emailStatus === "failed") {
-      setPersistence("deletionStatus", "error");
-      setPersistence("deletionMessage", TECH_SUPPORT_ERROR_MESSAGE);
-      return;
-    }
-    setPersistence(
-      "deletionMessage",
-      body.emailStatus === "sent"
-        ? "Check your email for a fresh sign-in link."
-        : "A fresh sign-in link was requested recently. Check your inbox.",
-    );
   }
 
   function clearDeletionFeedback(): void {
@@ -99,7 +73,6 @@ export function createApplicantDeletionFlow({
 
   return {
     removeApplication,
-    emailDeletionReauthentication,
     clearDeletionFeedback,
     signOut,
   };

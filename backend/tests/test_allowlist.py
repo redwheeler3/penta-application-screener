@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.dependencies import require_current_user, require_recent_admin
+from app.api.dependencies import require_current_user
 from app.db.models import (
     AccessAllowlistEntry,
     Base,
@@ -50,8 +50,6 @@ def setup_app(role: UserRole | None) -> tuple:
     app.dependency_overrides[get_db] = lambda: db
     if user is not None:
         app.dependency_overrides[require_current_user] = lambda: user
-        if user.role == UserRole.ADMIN:
-            app.dependency_overrides[require_recent_admin] = lambda: user
     return app, db
 
 

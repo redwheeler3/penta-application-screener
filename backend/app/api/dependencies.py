@@ -9,7 +9,6 @@ from app.core.problems import Problem
 from app.db.models import PasswordlessIdentityKind, User, UserRole
 from app.db.session import get_db
 from app.services.committee_auth import authenticate_committee_user
-from app.services.passwordless_auth import recently_authenticated
 from app.services.settings import get_app_settings
 
 
@@ -39,20 +38,6 @@ def require_admin(user: User = Depends(require_current_user)) -> User:
     """Gate shared infrastructure and user-administration changes."""
     if user.role != UserRole.ADMIN:
         raise Problem("forbidden", detail="This action requires an admin.")
-    return user
-
-
-def require_recent_admin(
-    request: Request,
-    user: User = Depends(require_admin),
-) -> User:
-    """Require a recent Google or email sign-in for a sensitive access change."""
-    browser_session = getattr(request.state, "browser_session", None)
-    if browser_session is None or not recently_authenticated(browser_session):
-        raise Problem(
-            "recent_authentication_required",
-            detail="Sign in again before changing committee access.",
-        )
     return user
 
 

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import require_admin, require_recent_admin
+from app.api.dependencies import require_admin
 from app.core.problems import Problem
 from app.db.models import Application, Opening, User
 from app.db.session import get_db
@@ -99,7 +99,7 @@ def read_openings(
 @router.post("", response_model=OpeningsResponse)
 def add_opening(
     body: OpeningWrite,
-    _admin: User = Depends(require_recent_admin),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> OpeningsResponse:
     create_opening(db, body)
@@ -110,7 +110,7 @@ def add_opening(
 def edit_opening(
     opening_id: int,
     body: OpeningWrite,
-    _admin: User = Depends(require_recent_admin),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> OpeningsResponse:
     update_opening(db, _opening(db, opening_id), body)
@@ -120,7 +120,7 @@ def edit_opening(
 @router.post("/{opening_id}/publish", response_model=OpeningsResponse)
 def publish_draft_opening(
     opening_id: int,
-    _admin: User = Depends(require_recent_admin),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> OpeningsResponse:
     publish_opening(db, _opening(db, opening_id))
@@ -140,7 +140,7 @@ def read_opening_selection(
 def select_successful_applicant(
     opening_id: int,
     body: OpeningSelectionRequest,
-    admin: User = Depends(require_recent_admin),
+    admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
 ) -> OpeningSelectionOut:
@@ -158,7 +158,7 @@ def select_successful_applicant(
 @router.post("/{opening_id}/selection/no-household", response_model=OpeningSelectionOut)
 def select_no_household(
     opening_id: int,
-    admin: User = Depends(require_recent_admin),
+    admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
 ) -> OpeningSelectionOut:
@@ -171,7 +171,7 @@ def select_no_household(
 @router.delete("/{opening_id}/selection", response_model=OpeningSelectionOut)
 def undo_successful_applicant(
     opening_id: int,
-    _admin: User = Depends(require_recent_admin),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> OpeningSelectionOut:
     opening = _opening(db, opening_id)

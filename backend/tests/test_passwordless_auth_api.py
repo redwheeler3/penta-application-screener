@@ -424,7 +424,7 @@ async def test_magic_link_request_is_non_enumerating_and_coalesces_email() -> No
 
 
 @pytest.mark.anyio
-async def test_stale_email_session_cannot_change_committee_access() -> None:
+async def test_remembered_session_can_change_committee_access() -> None:
     app, db = _app_and_db()
     user = User(
         email="admin@example.test",
@@ -457,18 +457,20 @@ async def test_stale_email_session_cannot_change_committee_access() -> None:
         ).status_code == 200
         browser_session = db.scalar(select(BrowserSession))
         assert browser_session is not None
-        browser_session.recently_authenticated_at = datetime.now(UTC) - timedelta(
-            days=1, minutes=1
-        )
+        browser_session.created_at = datetime.now(UTC) - timedelta(days=2)
         db.commit()
 
         response = await client.put(
             "/allowlist",
-            json={"email": "new-member@example.test", "role": "member"},
+            json={"email": "new-member@example.com", "role": "member"},
         )
 
-    assert response.status_code == 401
-    assert response.json()["code"] == "recent_authentication_required"
+    assert response.status_code == 200
+    assert db.scalar(
+        select(AccessAllowlistEntry).where(
+            AccessAllowlistEntry.email == "new-member@example.com"
+        )
+    ) is not None
 
 
 @pytest.mark.anyio

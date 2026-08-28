@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.dependencies import require_current_user, require_recent_admin
+from app.api.dependencies import require_current_user
 from app.core.time import pacific_today
 from app.db.models import (
     ApplicantDraft,
@@ -40,8 +40,6 @@ def _app_and_db(role: UserRole) -> tuple:
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[require_current_user] = lambda: user
-    if role == UserRole.ADMIN:
-        app.dependency_overrides[require_recent_admin] = lambda: user
     return app, db
 
 

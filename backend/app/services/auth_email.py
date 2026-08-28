@@ -262,6 +262,162 @@ def unsuccessful_application_email(
     )
 
 
+def vacancy_opening_email(
+    *,
+    email: str,
+    unit_size: str,
+    housing_charge: str,
+    move_in_date: str,
+    close_date: str,
+    household_summary: str,
+) -> OutboundEmail:
+    heading = f"A {unit_size} home is available"
+    introduction = (
+        f"You asked us to let you know when a {unit_size} home became available at "
+        "Penta Housing Co-op. Applications are now open."
+    )
+    details = _opening_details_text(
+        housing_charge=housing_charge,
+        move_in_date=move_in_date,
+        close_date=close_date,
+        household_summary=household_summary,
+    )
+    completed_notice = (
+        "Your one-time notification is now complete, and we've removed you from the "
+        "vacancy notification list."
+    )
+    text = _with_common_footer(f"""{heading}.
+
+{introduction}
+
+{details}
+
+The move-in date may shift while we prepare the home.
+
+Apply for this home:
+
+{VACANCY_LIST_URL}
+
+{completed_notice} If you'd like another notice in the future, you can sign up again:
+
+{VACANCY_LIST_URL}
+
+If you're no longer interested, you don't need to do anything.""")
+    html = _opening_email_shell(
+        eyebrow="Applications open",
+        heading=heading,
+        introduction=introduction,
+        unit_size=unit_size,
+        housing_charge=housing_charge,
+        move_in_date=move_in_date,
+        close_date=close_date,
+        household_summary=household_summary,
+        action_url=VACANCY_LIST_URL,
+        action_label="Apply for this home",
+        primary_notice=completed_notice,
+        list_signup_invitation=True,
+        closing="If you're no longer interested, you don't need to do anything.",
+    )
+    return OutboundEmail(
+        kind="vacancy_opening",
+        recipient_id=f"vacancy-list:{email}",
+        to=(email,),
+        subject=f"Applications are open for a {unit_size} home at Penta",
+        text_body=text,
+        html_body=html,
+    )
+
+
+def application_opening_email(
+    *,
+    application_id: int,
+    email: str,
+    token: str,
+    unit_size: str,
+    housing_charge: str,
+    move_in_date: str,
+    close_date: str,
+    household_summary: str,
+    notification_list_overlap: bool,
+    settings: Settings,
+) -> OutboundEmail:
+    url = _applicant_link_url(settings.applicant_frontend_url, token)
+    heading = "A new home is available at Penta"
+    introduction = (
+        "We're emailing because you have a current Penta housing application. "
+        f"A new {unit_size} opening is available and may match your household."
+    )
+    action_notice = (
+        "We have not added your application to this opening. If you'd like to be "
+        "considered, review your application and submit it for this opening before "
+        "the deadline."
+    )
+    overlap_notice = (
+        f"This email also completes your one-time notification request for {unit_size} "
+        "openings. We've removed you from the vacancy notification list."
+    )
+    details = _opening_details_text(
+        housing_charge=housing_charge,
+        move_in_date=move_in_date,
+        close_date=close_date,
+        household_summary=household_summary,
+    )
+    overlap_text = ""
+    if notification_list_overlap:
+        overlap_text = f"""
+
+{overlap_notice} You can sign up again if you'd like another notice in the future:
+
+{VACANCY_LIST_URL}
+"""
+    text = _with_common_footer(f"""{heading}.
+
+{introduction}
+
+{details}
+
+The move-in date may shift while we prepare the home.
+
+{action_notice}
+
+Review and submit your application:
+
+{url}
+{overlap_text}
+If you're not interested in this opening, you don't need to do anything. Ignoring this email will not change your participation in any other opening.""")
+    html = _opening_email_shell(
+        eyebrow="Application update",
+        heading=heading,
+        introduction=introduction,
+        unit_size=unit_size,
+        housing_charge=housing_charge,
+        move_in_date=move_in_date,
+        close_date=close_date,
+        household_summary=household_summary,
+        action_url=url,
+        action_label="Review and submit your application",
+        primary_notice=action_notice,
+        list_signup_invitation=notification_list_overlap,
+        list_signup_context=overlap_notice if notification_list_overlap else None,
+        closing=(
+            "If you're not interested in this opening, you don't need to do anything. "
+            "Ignoring this email will not change your participation in any other opening."
+        ),
+    )
+    return OutboundEmail(
+        kind=(
+            "application_opening_with_vacancy_notice"
+            if notification_list_overlap
+            else "application_opening"
+        ),
+        recipient_id=f"application:{application_id}",
+        to=(email,),
+        subject=f"A new {unit_size} opening may match your household",
+        text_body=text,
+        html_body=html,
+    )
+
+
 def _natural_list(items: list[str]) -> str:
     if not items:
         raise ValueError("an unsuccessful notice requires at least one opening")
@@ -344,6 +500,87 @@ def _with_common_footer(body: str) -> str:
     return f"{body.rstrip()}\n\n{COMMON_FOOTER_TEXT}\n"
 
 
+def _opening_details_text(
+    *,
+    housing_charge: str,
+    move_in_date: str,
+    close_date: str,
+    household_summary: str,
+) -> str:
+    return "\n".join(
+        (
+            f"Housing charge: {housing_charge}",
+            f"Expected move-in: {move_in_date}",
+            f"Applications close: {close_date}",
+            f"Household: {household_summary}",
+        )
+    )
+
+
+def _opening_email_shell(
+    *,
+    eyebrow: str,
+    heading: str,
+    introduction: str,
+    unit_size: str,
+    housing_charge: str,
+    move_in_date: str,
+    close_date: str,
+    household_summary: str,
+    action_url: str,
+    action_label: str,
+    primary_notice: str,
+    list_signup_invitation: bool,
+    closing: str,
+    list_signup_context: str | None = None,
+) -> str:
+    safe_action_url = escape(action_url, quote=True)
+    rows = (
+        ("Housing charge", housing_charge),
+        ("Expected move-in", move_in_date),
+        ("Applications close", close_date),
+        ("Household", household_summary),
+    )
+    details_html = "".join(
+        f"""<tr>
+                    <td style="padding:7px 14px 7px 0;color:#6b7280;font-size:14px;vertical-align:baseline;white-space:nowrap;">{escape(label)}</td>
+                    <td style="padding:7px 0;color:#111827;font-size:14px;font-weight:700;line-height:1.45;vertical-align:baseline;">{escape(value)}</td>
+                  </tr>"""
+        for label, value in rows
+    )
+    signup_html = ""
+    if list_signup_invitation:
+        signup_context = list_signup_context or ""
+        context_html = f"{escape(signup_context)} " if signup_context else ""
+        signup_html = f"""<p style="margin:12px 0 0;color:#166534;font-size:14px;line-height:1.55;">{context_html}If you'd like another notice in the future, you can <a href="{escape(VACANCY_LIST_URL, quote=True)}" style="color:#166534;font-weight:700;">sign up again</a>.</p>"""
+    body_html = f"""<p style="margin:0 0 22px;color:#4b5563;font-size:16px;line-height:1.6;">{escape(introduction)}</p>
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 12px;padding:10px 16px;background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
+                {details_html}
+              </table>
+              <p style="margin:0 0 24px;color:#6b7280;font-size:14px;line-height:1.55;">The move-in date may shift while we prepare the {escape(unit_size)} home.</p>
+              <div style="margin:0 0 24px;padding:16px 18px;background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
+                <p style="margin:0;color:#166534;font-size:14px;line-height:1.55;">{escape(primary_notice)}</p>
+                {signup_html}
+              </div>
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="border-radius:8px;background-color:#16a34a;">
+                    <a href="{safe_action_url}" style="display:inline-block;padding:13px 20px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;">{escape(action_label)}</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:22px 0 0;color:#4b5563;font-size:15px;line-height:1.6;">{escape(closing)}</p>"""
+    return _email_shell(
+        eyebrow=eyebrow,
+        heading=heading,
+        introduction=introduction,
+        action_url=None,
+        action_label=None,
+        link_notice=None,
+        custom_content_html=body_html,
+    )
+
+
 def _email_shell(
     *,
     eyebrow: str,
@@ -352,6 +589,7 @@ def _email_shell(
     action_url: str | None,
     action_label: str | None,
     link_notice: str | None,
+    custom_content_html: str | None = None,
 ) -> str:
     action_html = ""
     if action_url is not None and action_label is not None:
@@ -369,6 +607,9 @@ def _email_shell(
         notice_html = f"""<div style="margin-top:{notice_margin};padding:16px 18px;background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
                 <p style="margin:0;color:#166534;font-size:14px;line-height:1.55;">{escape(link_notice)}</p>
               </div>"""
+    content_html = custom_content_html or f"""<p style="margin:0 0 24px;color:#4b5563;font-size:16px;line-height:1.6;">{escape(introduction)}</p>
+              {action_html}
+              {notice_html}"""
     return f"""<!doctype html>
 <html lang="en">
 <body style="margin:0;padding:0;background-color:#f3faf6;color:#111827;font-family:Arial,Helvetica,sans-serif;">
@@ -393,9 +634,7 @@ def _email_shell(
             <td style="padding:32px 28px 28px;">
               <div style="margin-bottom:12px;color:#15803d;font-size:13px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;">{escape(eyebrow)}</div>
               <h1 style="margin:0 0 16px;color:#111827;font-size:28px;line-height:1.2;">{escape(heading)}</h1>
-              <p style="margin:0 0 24px;color:#4b5563;font-size:16px;line-height:1.6;">{escape(introduction)}</p>
-              {action_html}
-              {notice_html}
+              {content_html}
             </td>
           </tr>
           <tr>

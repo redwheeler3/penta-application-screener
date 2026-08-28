@@ -102,6 +102,7 @@ def create_app(*, maintenance_task: Callable[[], None] | None = None) -> FastAPI
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Preview-Process"],
     )
 
     @app.middleware("http")

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode, type SyntheticEvent } from "react";
 
 import { request } from "../api/client";
 import { APPLICATION_ACCESS_EMAIL_MESSAGE } from "../applicant/accessMessages";
@@ -31,6 +31,8 @@ type EmailPreview = {
 const noAction = () => undefined;
 const noAsyncAction = async () => undefined;
 const emailLinkAccepted = async () => true;
+const emailRefreshRetryMs = 500;
+const emailRefreshTimeoutMs = 15_000;
 
 export function AccessPreviewGallery() {
   const [emails, setEmails] = useState<EmailPreview[]>([]);
@@ -38,18 +40,46 @@ export function AccessPreviewGallery() {
 
   useEffect(() => {
     let active = true;
-    const loadEmails = async () => {
+    let loading = false;
+    let lastPayload: string | null = null;
+    let lastBackendProcess: string | null = null;
+    let refreshGeneration = 0;
+    const loadEmails = async (): Promise<boolean> => {
+      if (loading) return false;
+      loading = true;
       try {
         const response = await request("/dev/previews/emails");
-        if (!active) return;
+        if (!active) return false;
         if (!response.ok) {
-          setEmailError(true);
-          return;
+          if (lastPayload === null) setEmailError(true);
+          return false;
         }
-        setEmails((await response.json()) as EmailPreview[]);
+        const payload = await response.text();
+        const backendProcess = response.headers.get("X-Preview-Process");
+        const payloadChanged = payload !== lastPayload;
+        const backendRestarted =
+          lastBackendProcess !== null && backendProcess !== lastBackendProcess;
+        if (payloadChanged) {
+          setEmails(JSON.parse(payload) as EmailPreview[]);
+          lastPayload = payload;
+        }
+        lastBackendProcess = backendProcess;
         setEmailError(false);
+        return payloadChanged || backendRestarted;
       } catch {
-        if (active) setEmailError(true);
+        if (active && lastPayload === null) setEmailError(true);
+        return false;
+      } finally {
+        loading = false;
+      }
+    };
+    const refreshAfterBackendChange = async () => {
+      const generation = ++refreshGeneration;
+      const deadline = Date.now() + emailRefreshTimeoutMs;
+      while (active && generation === refreshGeneration) {
+        if (await loadEmails()) return;
+        if (Date.now() >= deadline) return;
+        await new Promise((resolve) => window.setTimeout(resolve, emailRefreshRetryMs));
       }
     };
 
@@ -59,10 +89,13 @@ export function AccessPreviewGallery() {
     };
     window.addEventListener("focus", loadEmails);
     document.addEventListener("visibilitychange", refreshWhenVisible);
+    import.meta.hot?.on("email-previews:changed", refreshAfterBackendChange);
     return () => {
       active = false;
+      refreshGeneration += 1;
       window.removeEventListener("focus", loadEmails);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
+      import.meta.hot?.off("email-previews:changed", refreshAfterBackendChange);
     };
   }, []);
 
@@ -129,7 +162,8 @@ export function AccessPreviewGallery() {
                     id={email.key}
                     title={`${email.title} email preview`}
                     srcDoc={email.html}
-                    sandbox=""
+                    sandbox="allow-same-origin"
+                    onLoad={resizeEmailPreview}
                   />
                 </article>
               ))}
@@ -139,6 +173,12 @@ export function AccessPreviewGallery() {
       </main>
     </div>
   );
+}
+
+function resizeEmailPreview(event: SyntheticEvent<HTMLIFrameElement>): void {
+  const frame = event.currentTarget;
+  const contentHeight = frame.contentDocument?.documentElement.scrollHeight;
+  if (contentHeight) frame.style.height = `${contentHeight}px`;
 }
 
 function ApplicantAccessPreviews() {

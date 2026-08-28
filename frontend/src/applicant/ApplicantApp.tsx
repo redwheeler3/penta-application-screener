@@ -371,14 +371,12 @@ export function ApplicantApp() {
               pendingEmailChange={persistence.pendingEmailChange}
               emailChangeStatus={persistence.emailChangeStatus}
               emailChangeMessage={persistence.emailChangeMessage}
-              emailChangeNeedsReauthentication={persistence.emailChangeNeedsReauthentication}
               onOpenEmailChange={() => {
                 persistence.clearEmailChangeFeedback();
                 setEmailChangeOpen(true);
               }}
               onCloseEmailChange={() => setEmailChangeOpen(false)}
               onRequestEmailChange={(email) => void persistence.beginEmailChange(email)}
-              onRequestReauthentication={() => void persistence.emailReauthenticationLink()}
               onCancelEmailChange={() => void cancelPendingEmailChange()}
             />
             <HousingSection draft={draft} update={update} />
@@ -444,7 +442,6 @@ export function ApplicantApp() {
               setDeleteConfirmOpen(false);
             }}
             onDelete={() => void persistence.removeApplication()}
-            onReauthenticate={() => void persistence.emailDeletionReauthentication()}
           />
         ) : null}
       </main>

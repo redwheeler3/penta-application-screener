@@ -245,7 +245,6 @@
 .authenticated-email-field.wide .verified-email-control input { flex: 0 0 calc((100% - 20px) / 2); width: calc((100% - 20px) / 2); }
 .verified-email-control input[readonly] { color: #526774; background: #f5f7f6; }
 .verified-email-control .text-button { padding-left: 1px; color: var(--applicant-green-dark); }
-.email-reauthentication-button { align-self: flex-start; padding-left: 0; color: var(--applicant-green-dark); text-decoration: underline; }
 .field-error { color: #a03833 !important; font-weight: 650; }
 .field-success { color: #27613e !important; font-weight: 650; }
 

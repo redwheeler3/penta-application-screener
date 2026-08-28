@@ -15,9 +15,14 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
     transport = ASGITransport(app=app)
 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await client.get("/dev/previews/emails")
+        response = await client.get(
+            "/dev/previews/emails",
+            headers={"Origin": "http://localhost:5173"},
+        )
 
     assert response.status_code == 200
+    assert response.headers["X-Preview-Process"].isdigit()
+    assert "X-Preview-Process" in response.headers["Access-Control-Expose-Headers"]
     previews = response.json()
     assert [preview["key"] for preview in previews] == [
         "application-saved",
@@ -29,10 +34,15 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
         "application-deleted",
         "application-unavailable",
         "application-unsuccessful",
+        "vacancy-opening-list-only",
+        "vacancy-opening-application-only",
+        "vacancy-opening-overlap",
     ]
     assert all(preview["subject"] and "PENTA HOUSING CO-OP" in preview["html"] for preview in previews)
     assert "jeffo.net" not in response.text
     assert "pentacoop.com#" not in response.text
+    assert "removed you from the vacancy notification list" in response.text
+    assert "https://www.pentacoop.com/apply.html" in response.text
 
 
 @pytest.mark.anyio

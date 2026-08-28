@@ -12,7 +12,6 @@ import type { SetApplicantPersistence } from "./applicantPersistenceState";
 import {
   cancelEmailChange,
   fetchApplication,
-  requestApplicantReauthentication,
   requestEmailChange,
 } from "./api";
 import type { ApplicantDraft } from "./types";
@@ -36,10 +35,6 @@ export function createApplicantEmailFlow({
     const response = await requestEmailChange(newEmail);
     if (!response.ok) {
       const problem = await responseProblem(response);
-      setPersistence(
-        "emailChangeNeedsReauthentication",
-        problem.code === "recent_authentication_required",
-      );
       setPersistence("emailChangeMessage", problem.detail);
       setPersistence("emailChangeStatus", "error");
       return;
@@ -61,34 +56,12 @@ export function createApplicantEmailFlow({
         ? "Check your email to confirm the new address."
         : "Check your inbox for the confirmation link we sent recently.",
     );
-    setPersistence("emailChangeNeedsReauthentication", false);
     setPersistence("emailChangeStatus", "sent");
   }
 
   function clearEmailChangeFeedback(): void {
     setPersistence("emailChangeMessage", "");
-    setPersistence("emailChangeNeedsReauthentication", false);
     setPersistence("emailChangeStatus", "idle");
-  }
-
-  async function emailReauthenticationLink(): Promise<void> {
-    const response = await requestApplicantReauthentication();
-    if (!response.ok) {
-      setPersistence("emailChangeMessage", await responseDetail(response));
-      return;
-    }
-    const body = (await response.json()) as {
-      emailSent: boolean;
-      emailStatus: EmailSendStatus;
-    };
-    setPersistence(
-      "emailChangeMessage",
-      body.emailSent
-        ? `Check ${primaryEmail ?? "your email"} for a new sign-in link.`
-        : body.emailStatus === "failed"
-          ? TECH_SUPPORT_ERROR_MESSAGE
-          : "Check your inbox for the sign-in link we sent recently.",
-    );
   }
 
   async function stopEmailChange(): Promise<boolean> {
@@ -100,7 +73,6 @@ export function createApplicantEmailFlow({
     }
     setPersistence("pendingEmailChange", null);
     setPersistence("emailChangeMessage", "");
-    setPersistence("emailChangeNeedsReauthentication", false);
     setPersistence("emailChangeStatus", "idle");
     return true;
   }
@@ -128,7 +100,6 @@ export function createApplicantEmailFlow({
     }));
     if (emailChanged) {
       setPersistence("emailChangeMessage", "");
-      setPersistence("emailChangeNeedsReauthentication", false);
       setPersistence("emailChangeStatus", "confirmed");
     }
     if (workingRevision !== null && body.workingRevision !== workingRevision) {
@@ -143,7 +114,6 @@ export function createApplicantEmailFlow({
   return {
     beginEmailChange,
     clearEmailChangeFeedback,
-    emailReauthenticationLink,
     stopEmailChange,
     refreshEmailIdentity,
   };

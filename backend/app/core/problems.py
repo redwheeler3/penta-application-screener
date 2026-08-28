@@ -35,7 +35,6 @@ PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     "applications_closed": (409, "Applications are closed"),
     "opening_selection_required": (409, "Choose an opening"),
     "opening_archived": (409, "Opening is archived"),
-    "recent_authentication_required": (401, "Recent sign-in required"),
     "session_switch_required": (409, "Choose a committee account"),
     "forbidden": (403, "Admin access required"),
     "not_found": (404, "Resource not found"),

@@ -1,5 +1,3 @@
-from datetime import UTC, datetime, timedelta
-
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import select
@@ -100,39 +98,6 @@ async def test_email_change_never_merges_with_an_existing_application() -> None:
     assert opened.json()["state"] == "email_in_use"
     assert original.primary_email == "avery@example.com"
     assert len(sender.messages) == 2
-
-
-@pytest.mark.anyio
-async def test_email_change_requires_recent_authentication() -> None:
-    app, db, sender = app_and_db()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await save_draft(client)
-        await client.post(
-            "/applicant/access-links/open",
-            json={"token": link_from_email(sender), "switchCurrent": False},
-        )
-        session = db.scalar(
-            select(BrowserSession).where(BrowserSession.revoked_at.is_(None))
-        )
-        assert session is not None
-        session.recently_authenticated_at = datetime.now(UTC) - timedelta(days=2)
-        db.commit()
-        response = await client.post(
-            "/applicant/application/email-change",
-            json={"newEmail": "new-address@example.com"},
-        )
-        reauthentication = await client.post("/applicant/application/reauthentication")
-
-    assert response.status_code == 401
-    assert response.json()["code"] == "recent_authentication_required"
-    links = db.scalars(
-        select(MagicLinkToken).where(MagicLinkToken.purpose == MagicLinkPurpose.EMAIL_CHANGE)
-    ).all()
-    assert not links
-    assert reauthentication.status_code == 202
-    assert reauthentication.json()["emailSent"] is True
-    assert sender.messages[-1].to == ("avery@example.com",)
 
 
 @pytest.mark.anyio

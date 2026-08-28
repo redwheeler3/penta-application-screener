@@ -34,9 +34,7 @@ export function EmailChangeField(props: {
   pendingEmail: string | null;
   status: "idle" | "sending" | "sent" | "confirmed" | "error";
   message: string;
-  needsReauthentication: boolean;
   onRequest: (email: string) => void;
-  onRequestReauthentication: () => void;
   onCancelPending: () => void;
   onClose: () => void;
 }) {
@@ -109,11 +107,6 @@ export function EmailChangeField(props: {
         {validationMessage ? <small className="field-error">{validationMessage}</small> : null}
         {props.status === "error" && props.message ? (
           <small className="field-error"><ApplicantErrorMessage message={props.message} /></small>
-        ) : null}
-        {props.needsReauthentication ? (
-          <button className="text-button email-reauthentication-button" type="button" onClick={props.onRequestReauthentication}>
-            Email me a fresh sign-in link
-          </button>
         ) : null}
       </label>
       <div className="email-change-actions">

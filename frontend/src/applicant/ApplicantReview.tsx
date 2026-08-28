@@ -264,12 +264,11 @@ export function ApplicationDeleted(props: { emailSent: boolean }) {
 
 export function ApplicationDeletion(props: {
   open: boolean;
-  status: "idle" | "working" | "reauth" | "error";
+  status: "idle" | "working" | "error";
   message: string;
   onOpen: () => void;
   onCancel: () => void;
   onDelete: () => void;
-  onReauthenticate: () => void;
 }) {
   if (!props.open) {
     return (
@@ -290,11 +289,6 @@ export function ApplicationDeletion(props: {
         <p className={props.status === "error" ? "field-error" : undefined} role="status">
           <ApplicantErrorMessage message={props.message} />
         </p>
-      ) : null}
-      {props.status === "reauth" ? (
-        <button className="applicant-secondary-button compact" type="button" onClick={props.onReauthenticate}>
-          Email me a fresh sign-in link
-        </button>
       ) : null}
       <div className="applicant-action-group">
         <button className="applicant-secondary-button" type="button" onClick={props.onCancel}>

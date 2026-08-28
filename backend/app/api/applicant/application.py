@@ -6,10 +6,7 @@ from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.applicant.dependencies import (
-    require_current_application,
-    require_recent_applicant,
-)
+from app.api.applicant.dependencies import require_current_application
 from app.api.applicant.support import (
     _applicant_opening,
     _draft_answers,
@@ -45,7 +42,6 @@ from app.schemas.applicant.contracts import (
     EmailChangeResponse,
     PendingCopyResponse,
     ReconcilePendingCopyRequest,
-    RegenerateAccessLinkResponse,
     RevertApplicationRequest,
     SaveApplicationRequest,
     SubmitApplicationRequest,
@@ -163,7 +159,7 @@ def get_applicant_application(
 def request_applicant_email_change(
     body: EmailChangeRequest,
     request: Request,
-    application: Application = Depends(require_recent_applicant),
+    application: Application = Depends(require_current_application),
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
 ) -> EmailChangeResponse:
@@ -202,32 +198,6 @@ def cancel_applicant_email_change(
     )
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.post(
-    "/application/reauthentication",
-    response_model=RegenerateAccessLinkResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-def request_applicant_reauthentication(
-    application: Application = Depends(require_current_application),
-    db: Session = Depends(get_db),
-    sender: EmailSender = Depends(get_email_sender),
-) -> RegenerateAccessLinkResponse:
-    outcome = send_magic_link(
-        db,
-        sender,
-        identity_kind=PasswordlessIdentityKind.APPLICANT,
-        purpose=MagicLinkPurpose.APPLICANT_ACCESS,
-        email=application.primary_email,
-        recipient_id=application.id,
-        application_id=application.id,
-    )
-    return RegenerateAccessLinkResponse(
-        email_sent=outcome.email_sent,
-        email_status=outcome.value,
-        retry_after_seconds=get_settings().magic_link_coalesce_seconds,
-    )
 
 
 @router.put("/application", response_model=ApplicantApplicationResponse)
@@ -308,7 +278,7 @@ def revert_applicant_application(
 @router.delete("/application", response_model=DeleteApplicationResponse)
 def delete_applicant_application(
     response: Response,
-    application: Application = Depends(require_recent_applicant),
+    application: Application = Depends(require_current_application),
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
 ) -> DeleteApplicationResponse:

@@ -122,11 +122,9 @@ export function HouseholdSection(props: {
   pendingEmailChange: string | null;
   emailChangeStatus: "idle" | "sending" | "sent" | "confirmed" | "error";
   emailChangeMessage: string;
-  emailChangeNeedsReauthentication: boolean;
   onOpenEmailChange: () => void;
   onCloseEmailChange: () => void;
   onRequestEmailChange: (email: string) => void;
-  onRequestReauthentication: () => void;
   onCancelEmailChange: () => void;
 }) {
   const { draft, update } = props;
@@ -157,9 +155,7 @@ export function HouseholdSection(props: {
                 pendingEmail={props.pendingEmailChange}
                 status={props.emailChangeStatus}
                 message={props.emailChangeMessage}
-                needsReauthentication={props.emailChangeNeedsReauthentication}
                 onRequest={props.onRequestEmailChange}
-                onRequestReauthentication={props.onRequestReauthentication}
                 onCancelPending={props.onCancelEmailChange}
                 onClose={props.onCloseEmailChange}
               />
