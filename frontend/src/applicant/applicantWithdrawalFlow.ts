@@ -1,40 +1,37 @@
 import { responseProblem } from "./applicantPersistence";
 import type { SetApplicantPersistence } from "./applicantPersistenceState";
-import {
-  deleteApplication as deleteApplicationRequest,
-  logoutApplicant,
-} from "./api";
+import { logoutApplicant, withdrawApplication } from "./api";
 import { clearApplicantStorage } from "./draftStorage";
 
-type DeletionFlowDependencies = {
+type WithdrawalFlowDependencies = {
   setPersistence: SetApplicantPersistence;
   fail: (response: Response) => Promise<void>;
   restorePublicOpenings: () => Promise<void>;
 };
 
-export function createApplicantDeletionFlow({
+export function createApplicantWithdrawalFlow({
   setPersistence,
   fail,
   restorePublicOpenings,
-}: DeletionFlowDependencies) {
-  async function removeApplication(): Promise<boolean> {
-    setPersistence("deletionStatus", "working");
-    setPersistence("deletionMessage", "");
-    const response = await deleteApplicationRequest();
+}: WithdrawalFlowDependencies) {
+  async function withdraw(): Promise<boolean> {
+    setPersistence("withdrawalStatus", "working");
+    setPersistence("withdrawalMessage", "");
+    const response = await withdrawApplication();
     if (!response.ok) {
       const problem = await responseProblem(response);
       if (problem.code === "unauthorized") {
         setPersistence("message", "Your application session has ended.");
         setPersistence("phase", "session_expired");
-        setPersistence("deletionStatus", "idle");
+        setPersistence("withdrawalStatus", "idle");
         return false;
       }
-      setPersistence("deletionStatus", "error");
-      setPersistence("deletionMessage", problem.detail);
+      setPersistence("withdrawalStatus", "error");
+      setPersistence("withdrawalMessage", problem.detail);
       return false;
     }
     const body = (await response.json()) as { emailSent: boolean };
-    setPersistence("deletionEmailSent", body.emailSent);
+    setPersistence("withdrawalEmailSent", body.emailSent);
     clearApplicantStorage();
     setPersistence("applicationId", null);
     setPersistence("workingRevision", null);
@@ -42,14 +39,14 @@ export function createApplicantDeletionFlow({
     setPersistence("serverHasUnsubmittedChanges", false);
     setPersistence("primaryEmail", null);
     setPersistence("pendingEmailChange", null);
-    setPersistence("deletionStatus", "idle");
-    setPersistence("phase", "deleted");
+    setPersistence("withdrawalStatus", "idle");
+    setPersistence("phase", "withdrawn");
     return true;
   }
 
-  function clearDeletionFeedback(): void {
-    setPersistence("deletionStatus", "idle");
-    setPersistence("deletionMessage", "");
+  function clearWithdrawalFeedback(): void {
+    setPersistence("withdrawalStatus", "idle");
+    setPersistence("withdrawalMessage", "");
   }
 
   async function signOut(): Promise<boolean> {
@@ -72,8 +69,8 @@ export function createApplicantDeletionFlow({
   }
 
   return {
-    removeApplication,
-    clearDeletionFeedback,
+    withdrawApplication: withdraw,
+    clearWithdrawalFeedback,
     signOut,
   };
 }

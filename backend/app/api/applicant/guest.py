@@ -92,7 +92,7 @@ def check_guest_submission(
     application = db.scalar(
         select(Application).where(
             Application.primary_email == email,
-            Application.deleted_at.is_(None),
+            Application.withdrawn_at.is_(None),
         )
     )
     if application is None:
@@ -182,7 +182,7 @@ def submit_guest_application(
     existing = db.scalar(
         select(Application).where(
             Application.primary_email == email,
-            Application.deleted_at.is_(None),
+            Application.withdrawn_at.is_(None),
         )
     )
     if existing is not None:
@@ -270,7 +270,7 @@ def request_applicant_access_link(
         application = db.scalar(
             select(Application).where(
                 Application.primary_email == email,
-                Application.deleted_at.is_(None),
+                Application.withdrawn_at.is_(None),
             )
         )
         if application is not None and not application_is_editable(

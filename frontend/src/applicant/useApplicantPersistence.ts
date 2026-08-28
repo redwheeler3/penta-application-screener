@@ -14,7 +14,7 @@ import {
   validBrowserOpeningIds,
   workingSnapshot,
 } from "./applicantPersistence";
-import { createApplicantDeletionFlow } from "./applicantDeletionFlow";
+import { createApplicantWithdrawalFlow } from "./applicantWithdrawalFlow";
 import { createApplicantEmailFlow } from "./applicantEmailFlow";
 import {
   type ApplicantPersistenceState,
@@ -91,9 +91,9 @@ export function useApplicantPersistence(
     emailChangeMessage,
     collisionEmail,
     submissionEmailSent,
-    deletionEmailSent,
-    deletionStatus,
-    deletionMessage,
+    withdrawalEmailSent,
+    withdrawalStatus,
+    withdrawalMessage,
   } = persistence;
 
   function setPersistence<Key extends keyof ApplicantPersistenceState>(
@@ -654,7 +654,7 @@ export function useApplicantPersistence(
     primaryEmail,
     workingRevision,
   });
-  const deletionFlow = createApplicantDeletionFlow({
+  const withdrawalFlow = createApplicantWithdrawalFlow({
     setPersistence,
     fail,
     restorePublicOpenings,
@@ -687,7 +687,7 @@ export function useApplicantPersistence(
     ...emailFlow,
     discardDraft,
     revertToSubmitted,
-    ...deletionFlow,
+    ...withdrawalFlow,
     reloadLatestApplication: () => restoreApplication(applicationId ?? undefined),
     retryInitialLoad: () => (
       accessToken ? inspectLink(accessToken) : restoreApplication(applicationId ?? undefined)
@@ -714,9 +714,9 @@ export function useApplicantPersistence(
       serverHasUnsubmittedChanges || savedAnswers !== workingSnapshot(draft, openingIds)
     ),
     hasSubmittedApplication: submitted,
-    deletionEmailSent,
-    deletionStatus,
-    deletionMessage,
+    withdrawalEmailSent,
+    withdrawalStatus,
+    withdrawalMessage,
     workingRevision,
     busy: phase === "working",
   };

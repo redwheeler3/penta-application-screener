@@ -79,7 +79,12 @@ Then the ranking itself is **pure deterministic math** over the cached scores an
 
 Two tabs make the AI legible. **Observability** surfaces each run: what each discoverer found, how decomposition settled them, which duplicates consolidation merged and why, how dimensions carried forward, per-pass cost attribution, and operational-metrics trends. **Evals** is an in-app cockpit — property-based invariants, per-pass live evals, and a blind label-auditing LLM judge (evaluation design is documented in [docs/ai-evals.md](docs/ai-evals.md)).
 
-The spec lives in [SPEC.md](SPEC.md); developer architecture notes in [docs/app-architecture.md](docs/app-architecture.md), with deeper references in [docs/ai-screening.md](docs/ai-screening.md), [docs/api.md](docs/api.md), and [docs/form-field-reference.md](docs/form-field-reference.md). Significant design decisions live in [docs/adr/](docs/adr/). Shared agent guidance lives in [.clinerules](.clinerules), with [AGENTS.md](AGENTS.md) pointing agents there.
+The spec lives in [SPEC.md](SPEC.md); developer architecture notes in
+[docs/app-architecture.md](docs/app-architecture.md), with deeper references in
+[docs/ai-screening.md](docs/ai-screening.md) and [docs/api.md](docs/api.md). The canonical built-in
+application contract is `backend/app/schemas/applicant/answers.py`. Significant design decisions
+live in [docs/adr/](docs/adr/). Shared agent guidance lives in [.clinerules](.clinerules), with
+[AGENTS.md](AGENTS.md) pointing agents there.
 
 ## Privacy And Test Data
 
@@ -256,16 +261,17 @@ subscriptions, administration, opening audience previews, live SocketLabs usage,
 delivery. The always-on public website submits with the agreed bounded recovery experience. Cutover
 is deliberately operational rather than another software phase:
 
-1. Complete legal review of the vacancy email and public privacy copy.
-2. Export the existing Google response sheet, dry-run the importer, resolve any invalid rows or
+1. Export the existing Google response sheet, dry-run the importer, resolve any invalid rows or
    normalized collisions, and apply it to production.
-3. Reconcile the active total, bedroom counts, and monthly chart against the source report.
-4. Deploy both repositories, submit a real controlled signup, then retire the Google form without
+2. Reconcile the active total, bedroom counts, and monthly chart against the source report.
+3. Deploy both repositories together, verify the reviewed signup notice, privacy policy,
+   application declaration, withdrawal flow, and email footer with controlled records, then retire
+   the Google form without
    sending a migration email.
 
 M22 deliberately uses the existing grandfathered SocketLabs server, where a permanent unsubscribe
-applies to all Penta mail, including application-access links. Legal review of the final vacancy
-notification remains a production-cutover gate, not an implementation blocker.
+applies to all Penta mail, including application-access links. The reviewed legal and privacy
+changes are implemented in development and must be deployed with the cutover.
 
 The detailed M22 contract, non-goals, and definition of done are in
 [SPEC.md](SPEC.md#built-in-vacancy-notifications-m22--cutover-pending). Milestone history is in

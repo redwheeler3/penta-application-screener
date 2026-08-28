@@ -262,8 +262,8 @@ class Application(TimestampMixin, Base):
             "uq_applications_active_primary_email",
             "primary_email",
             unique=True,
-            sqlite_where=text("deleted_at IS NULL"),
-            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("withdrawn_at IS NULL"),
+            postgresql_where=text("withdrawn_at IS NULL"),
         ),
     )
 
@@ -284,7 +284,7 @@ class Application(TimestampMixin, Base):
     # Null means a never-submitted draft. Retained externally collected rows are
     # submitted; built-in drafts start null.
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     retention_due_on: Mapped[date | None] = mapped_column(Date)
     # Provenance for evidence-bearing eval exports. Production form submissions are
     # false; committed synthetic fixtures and explicitly synthetic local intake are true.
@@ -344,10 +344,28 @@ class VacancySubscription(TimestampMixin, Base):
     wants_two_bedroom: Mapped[bool] = mapped_column(Boolean, nullable=False)
     wants_three_bedroom: Mapped[bool] = mapped_column(Boolean, nullable=False)
     consented_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    consent_version: Mapped[str | None] = mapped_column(String(30))
     source: Mapped[str] = mapped_column(String(120), nullable=False)
     managed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
 
     managed_by: Mapped[User | None] = relationship()
+
+
+class VacancyConsentReceipt(Base):
+    """Minimal evidence for the consent used to send one vacancy notice."""
+
+    __tablename__ = "vacancy_consent_receipts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subscription_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    email_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    unit_sizes: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    consented_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consent_version: Mapped[str | None] = mapped_column(String(30))
+    source: Mapped[str] = mapped_column(String(120), nullable=False)
+    fulfilled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    retain_until: Mapped[date] = mapped_column(Date, index=True, nullable=False)
+    email_delivery_id: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class VacancySubscriptionAudit(Base):
@@ -421,6 +439,7 @@ class ApplicationVersion(Base):
     selected_opening_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    terms_version: Mapped[str | None] = mapped_column(String(30))
 
     application: Mapped[Application] = relationship()
 

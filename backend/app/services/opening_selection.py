@@ -31,7 +31,7 @@ def active_opening_participants(
                 ApplicationParticipation.opening_id == opening.id,
                 ApplicationParticipation.withdrawn_at.is_(None),
                 Application.submitted_at.is_not(None),
-                Application.deleted_at.is_(None),
+                Application.withdrawn_at.is_(None),
             )
             .order_by(Application.applicant_name, Application.id)
         ).all()

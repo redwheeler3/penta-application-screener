@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
@@ -12,12 +12,18 @@ from app.db.models import (
     Base,
     User,
     UserRole,
+    VacancyConsentReceipt,
     VacancySubscription,
     VacancySubscriptionAudit,
 )
 from app.db.session import get_db
+from app.legal import VACANCY_CONSENT_VERSION
 from app.main import create_app
-from app.services.vacancy_subscriptions import save_subscription
+from app.services.vacancy_subscriptions import (
+    consume_subscription,
+    purge_expired_consent_receipts,
+    save_subscription,
+)
 
 
 def _app_and_db(role: UserRole = UserRole.ADMIN) -> tuple:
@@ -45,11 +51,19 @@ async def test_public_signup_replaces_preferences_without_enumerating() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         first = await client.post(
             "/vacancy-subscriptions",
-            json={"email": " Person@Example.com ", "unitSizes": [1, 3]},
+            json={
+                "email": " Person@Example.com ",
+                "unitSizes": [1, 3],
+                "consentVersion": VACANCY_CONSENT_VERSION,
+            },
         )
         second = await client.post(
             "/vacancy-subscriptions",
-            json={"email": "person@example.com", "unitSizes": [2]},
+            json={
+                "email": "person@example.com",
+                "unitSizes": [2],
+                "consentVersion": VACANCY_CONSENT_VERSION,
+            },
         )
 
     rows = list(db.scalars(select(VacancySubscription)))
@@ -61,6 +75,36 @@ async def test_public_signup_replaces_preferences_without_enumerating() -> None:
     assert rows[0].wants_one_bedroom is False
     assert rows[0].wants_two_bedroom is True
     assert rows[0].wants_three_bedroom is False
+    assert rows[0].consent_version == VACANCY_CONSENT_VERSION
+
+
+def test_fulfilled_consent_receipt_is_hashed_and_expires_after_one_year() -> None:
+    _, db, _ = _app_and_db()
+    subscription = save_subscription(
+        db,
+        email="person@example.com",
+        unit_sizes={1, 3},
+        source="public website",
+        consent_version=VACANCY_CONSENT_VERSION,
+        consented_at=datetime(2026, 8, 27, 18, tzinfo=UTC),
+    )
+
+    consume_subscription(
+        db,
+        subscription.id,
+        email_delivery_id=42,
+        fulfilled_at=datetime(2026, 9, 1, 18, tzinfo=UTC),
+    )
+    db.commit()
+
+    receipt = db.scalar(select(VacancyConsentReceipt))
+    assert receipt is not None
+    assert receipt.email_hash != "person@example.com"
+    assert receipt.unit_sizes == [1, 3]
+    assert receipt.consent_version == VACANCY_CONSENT_VERSION
+    assert purge_expired_consent_receipts(db, today=date(2027, 8, 31)) == 0
+    assert purge_expired_consent_receipts(db, today=date(2027, 9, 1)) == 1
+    assert db.scalar(select(VacancyConsentReceipt)) is None
 
 
 @pytest.mark.anyio
@@ -70,18 +114,46 @@ async def test_public_signup_validates_sizes_and_is_rate_limited() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         invalid = await client.post(
             "/vacancy-subscriptions",
-            json={"email": "person@example.com", "unitSizes": [4]},
+            json={
+                "email": "person@example.com",
+                "unitSizes": [4],
+                "consentVersion": VACANCY_CONSENT_VERSION,
+            },
         )
         responses = [
             await client.post(
                 "/vacancy-subscriptions",
-                json={"email": f"person-{index}@example.com", "unitSizes": [1]},
+                json={
+                    "email": f"person-{index}@example.com",
+                    "unitSizes": [1],
+                    "consentVersion": VACANCY_CONSENT_VERSION,
+                },
             )
             for index in range(11)
         ]
 
     assert invalid.status_code == 422
     assert responses[-1].status_code == 429
+
+
+@pytest.mark.anyio
+async def test_public_signup_rejects_an_outdated_consent_notice() -> None:
+    app, _, _ = _app_and_db()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/vacancy-subscriptions",
+            json={
+                "email": "person@example.com",
+                "unitSizes": [1],
+                "consentVersion": "outdated",
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "Refresh the page before submitting this vacancy request."
+    )
 
 
 @pytest.mark.anyio

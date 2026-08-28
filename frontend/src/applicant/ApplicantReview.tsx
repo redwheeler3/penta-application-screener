@@ -104,11 +104,12 @@ export function ApplicationReview(props: {
           <h2>Declaration and privacy</h2>
           <p>By submitting this application, I / we understand that:</p>
           <ul>
-            <li>Personal property and liability insurance of at least $1,000,000 is required.</li>
-            <li>Required shares and the first housing charge are due if membership is approved.</li>
-            <li>Penta may verify housing, employment, income, references, and credit information.</li>
-            <li>Accepted members must follow Penta's Rules, Occupancy Agreement, and Policies.</li>
-            <li>Incomplete or false information may result in termination of membership.</li>
+            <li>Personal property and liability insurance of at least $1,000,000 is required, with proof provided during the first month of residency and annually afterward.</li>
+            <li>If membership is approved, a share purchase of $2,000 for a 1-bedroom home, $3,500 for a 2-bedroom home, or $4,000 for a 3-bedroom home is due at approval. The first housing charge and arrangements for future charges are made with Penta&apos;s management company.</li>
+            <li>References will be requested from shortlisted applicants.</li>
+            <li>Penta may verify any information in this application, including housing, employment, income, references, and credit information.</li>
+            <li>If accepted, I / we must follow Penta&apos;s Rules, Occupancy Agreement, and Policies as amended from time to time.</li>
+            <li>Incomplete or false information may result in rejection of this application or, where applicable, action under Penta&apos;s Rules, Occupancy Agreement, and applicable law.</li>
           </ul>
           <p>
             Penta handles this information as described in its{" "}
@@ -126,7 +127,10 @@ export function ApplicationReview(props: {
               checked={props.declarationAccepted}
               onChange={(event) => props.onDeclarationChange(event.target.checked)}
             />
-            <span>I / We have read and agree to be bound by the conditions outlined above.</span>
+            <span>
+              I / We declare that the information in this application is correct, consent to the
+              verification and credit check described above, and acknowledge the other conditions.
+            </span>
           </label>
         </div>
       </section>
@@ -249,41 +253,43 @@ export function ApplicationComplete(props: { submitted: boolean; emailSent: bool
   );
 }
 
-export function ApplicationDeleted(props: { emailSent: boolean }) {
+export function ApplicationWithdrawn(props: { emailSent: boolean }) {
   return (
     <section className="application-complete">
       <CheckCircle2 size={34} />
-      <h2>Application deleted</h2>
-      <p>Your application has been deleted.</p>
+      <h2>Application withdrawn</h2>
+      <p>Your application has been removed from consideration, and you have been signed out.</p>
       {!props.emailSent ? (
-        <p>We couldn’t email a confirmation, but the deletion is complete.</p>
+        <p>We couldn’t email a confirmation, but the withdrawal is complete.</p>
       ) : null}
     </section>
   );
 }
 
-export function ApplicationDeletion(props: {
+export function ApplicationWithdrawal(props: {
   open: boolean;
   status: "idle" | "working" | "error";
   message: string;
   onOpen: () => void;
   onCancel: () => void;
-  onDelete: () => void;
+  onWithdraw: () => void;
 }) {
   if (!props.open) {
     return (
-      <div className="application-delete-entry">
+      <div className="application-withdraw-entry">
         <button className="applicant-danger-link" type="button" onClick={props.onOpen}>
-          <Trash2 size={16} /> Delete application
+          <Trash2 size={16} /> Withdraw application
         </button>
       </div>
     );
   }
   return (
-    <section className="application-action-confirm application-delete-confirm" aria-labelledby="delete-application-title">
-      <h2 id="delete-application-title">Delete your application?</h2>
+    <section className="application-action-confirm application-withdraw-confirm" aria-labelledby="withdraw-application-title">
+      <h2 id="withdraw-application-title">Withdraw your application?</h2>
       <p>
-        Your application will be deleted, and you will be signed out. This cannot be undone.
+        Your application will be removed from consideration immediately, and you will be signed
+        out. If it has been submitted, Penta will retain a restricted copy until its legal
+        retention period ends, then permanently delete it. This cannot be undone.
       </p>
       {props.message ? (
         <p className={props.status === "error" ? "field-error" : undefined} role="status">
@@ -298,9 +304,9 @@ export function ApplicationDeletion(props: {
           className="applicant-danger-button"
           type="button"
           disabled={props.status === "working"}
-          onClick={props.onDelete}
+          onClick={props.onWithdraw}
         >
-          {props.status === "working" ? "Deleting…" : "Delete application"}
+          {props.status === "working" ? "Withdrawing…" : "Withdraw application"}
         </button>
       </div>
     </section>

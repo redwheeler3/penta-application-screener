@@ -112,8 +112,8 @@ export function revertApplication(baseRevision: number) {
   );
 }
 
-export function deleteApplication() {
-  return request("/applicant/application", { method: "DELETE" });
+export function withdrawApplication() {
+  return request("/applicant/application/withdraw", { method: "POST" });
 }
 
 export function submitApplication(

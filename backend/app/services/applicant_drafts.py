@@ -56,7 +56,7 @@ def save_pending_draft(
         application = db.scalar(
             select(Application).where(
                 Application.primary_email == email,
-                Application.deleted_at.is_(None),
+                Application.withdrawn_at.is_(None),
             )
         )
         record = ApplicantDraft(

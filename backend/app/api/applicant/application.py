@@ -25,7 +25,7 @@ from app.api.session_cookie import (
 from app.core.config import get_settings
 from app.core.problems import Problem
 from app.core.text import normalize_email
-from app.core.time import as_utc, pacific_today
+from app.core.time import as_utc
 from app.db.models import (
     Application,
     ApplicationParticipation,
@@ -37,7 +37,6 @@ from app.db.session import get_db
 from app.schemas.applicant.contracts import (
     ApplicantApplicationResponse,
     AuthenticatedSubmitApplicationResponse,
-    DeleteApplicationResponse,
     EmailChangeRequest,
     EmailChangeResponse,
     PendingCopyResponse,
@@ -45,6 +44,7 @@ from app.schemas.applicant.contracts import (
     RevertApplicationRequest,
     SaveApplicationRequest,
     SubmitApplicationRequest,
+    WithdrawApplicationResponse,
 )
 from app.services.email_delivery import cancel_queued_application_emails
 from app.services.email_sender import EmailSender, get_email_sender
@@ -55,6 +55,7 @@ from app.services.intake import (
 from app.services.magic_link_delivery import (
     send_application_confirmation,
     send_application_deleted,
+    send_application_withdrawn,
     send_magic_link,
 )
 from app.services.opening_participation import (
@@ -67,6 +68,7 @@ from app.services.passwordless_auth import (
     revoke_identity_magic_links,
     revoke_identity_sessions,
 )
+from app.services.retention import refresh_application_retention
 
 router = APIRouter()
 
@@ -275,14 +277,14 @@ def revert_applicant_application(
     return get_applicant_application(application, db)
 
 
-@router.delete("/application", response_model=DeleteApplicationResponse)
-def delete_applicant_application(
+@router.post("/application/withdraw", response_model=WithdrawApplicationResponse)
+def withdraw_applicant_application(
     response: Response,
     application: Application = Depends(require_current_application),
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
-) -> DeleteApplicationResponse:
-    """Remove one application and every opening participation from ordinary access."""
+) -> WithdrawApplicationResponse:
+    """Withdraw one application and every opening participation from ordinary access."""
     now = datetime.now(UTC)
     cancel_queued_application_emails(db, application.id)
     if application.submitted_at is None:
@@ -290,7 +292,7 @@ def delete_applicant_application(
         _purge_never_submitted_application(db, application)
         db.commit()
         clear_session_cookie(response, PasswordlessIdentityKind.APPLICANT)
-        return DeleteApplicationResponse(
+        return WithdrawApplicationResponse(
             email_sent=email_sent,
             email_status="sent" if email_sent else "failed",
         )
@@ -306,14 +308,13 @@ def delete_applicant_application(
             if participation is not None and participation.withdrawn_at is None:
                 participation.withdrawn_at = now
 
-    application.deleted_at = now
+    application.withdrawn_at = now
     application.working_answers = dict(application.raw_row)
     application.working_content_hash = application.raw_row_hash
     application.working_saved_at = now
     application.working_opening_ids = []
     application.working_revision += 1
-    if application.retention_due_on is None:
-        application.retention_due_on = pacific_today(now=now)
+    refresh_application_retention(db, application)
     revoke_identity_sessions(
         db,
         identity_kind=PasswordlessIdentityKind.APPLICANT,
@@ -325,9 +326,9 @@ def delete_applicant_application(
         application_id=application.id,
     )
     db.commit()
-    email_sent = send_application_deleted(db, sender, application, now=now)
+    email_sent = send_application_withdrawn(db, sender, application, now=now)
     clear_session_cookie(response, PasswordlessIdentityKind.APPLICANT)
-    return DeleteApplicationResponse(
+    return WithdrawApplicationResponse(
         email_sent=email_sent,
         email_status="sent" if email_sent else "failed",
     )

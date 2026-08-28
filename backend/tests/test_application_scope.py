@@ -89,7 +89,7 @@ def test_committee_scope_requires_a_current_opening() -> None:
                 raw_row_hash="deleted",
                 normalized={},
                 submitted_at=submitted_at,
-                deleted_at=submitted_at,
+                withdrawn_at=submitted_at,
         ),
     ]
     db.add_all([

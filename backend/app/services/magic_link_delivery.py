@@ -22,6 +22,7 @@ from app.services.auth_email import (
     application_confirmation_email,
     application_deleted_email,
     application_unavailable_email,
+    application_withdrawn_email,
     email_change_notice_email,
     magic_link_email,
 )
@@ -245,6 +246,28 @@ def send_application_deleted(
         application_id=application.id,
         idempotency_key=idempotency_key,
         retry_intent={"type": "application_deleted"},
+        now=now,
+    )
+
+
+def send_application_withdrawn(
+    db: Session,
+    sender: EmailSender,
+    application: Application,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    now = now or datetime.now(UTC)
+    return deliver_email(
+        db,
+        sender,
+        application_withdrawn_email(
+            application_id=application.id,
+            email=application.primary_email,
+        ),
+        recipient_kind=PasswordlessIdentityKind.APPLICANT,
+        application_id=application.id,
+        retry_intent={"type": "application_withdrawn"},
         now=now,
     )
 

@@ -18,6 +18,7 @@ from app.db.models import (
     OpeningOutcome,
     User,
     UserRole,
+    VacancyConsentReceipt,
     VacancySubscription,
 )
 from app.db.session import get_db
@@ -28,6 +29,7 @@ from app.services.email_sender import (
     EmailRetryableError,
     get_email_sender,
 )
+from app.services.retention import one_year_after
 from app.services.socketlabs_usage import SocketLabsUsage, get_socketlabs_usage_reader
 from app.services.vacancy_subscriptions import save_subscription
 
@@ -130,7 +132,7 @@ async def test_create_atomically_opens_and_queues_then_delivers_all_variants() -
     ])
     db.commit()
     save_subscription(db, email="list@example.com", unit_sizes={2}, source="public website")
-    save_subscription(db, email="overlap@example.com", unit_sizes={2}, source="public website")
+    save_subscription(db, email="overlap@example.com", unit_sizes={2, 3}, source="public website")
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -151,6 +153,14 @@ async def test_create_atomically_opens_and_queues_then_delivers_all_variants() -
         "application_opening_with_vacancy_notice",
     }
     assert db.scalar(select(func.count()).select_from(VacancySubscription)) == 0
+    receipts = list(db.scalars(select(VacancyConsentReceipt).order_by(VacancyConsentReceipt.id)))
+    assert len(receipts) == 2
+    assert {tuple(receipt.unit_sizes) for receipt in receipts} == {(2,), (2, 3)}
+    assert all(receipt.email_hash != "" for receipt in receipts)
+    assert all(
+        receipt.retain_until == one_year_after(receipt.fulfilled_at.date())
+        for receipt in receipts
+    )
 
 
 @pytest.mark.anyio

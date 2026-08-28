@@ -31,7 +31,7 @@ def committee_applications_query() -> Select[tuple[Application]]:
     )
     return select(Application).where(
         Application.submitted_at.is_not(None),
-        Application.deleted_at.is_(None),
+        Application.withdrawn_at.is_(None),
         not_(selected),
         current_participation,
     )

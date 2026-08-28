@@ -153,7 +153,7 @@ def _claim_link_target(db: Session, link: MagicLinkToken) -> _ClaimedApplicantLi
         application = db.scalar(
             select(Application).where(
                 Application.primary_email == draft.email,
-                Application.deleted_at.is_(None),
+                Application.withdrawn_at.is_(None),
             )
         )
     if application is not None:
@@ -189,7 +189,7 @@ def _claim_email_change(db: Session, link: MagicLinkToken) -> _ClaimedApplicantL
         select(Application).where(
             Application.primary_email == link.email,
             Application.id != application.id,
-            Application.deleted_at.is_(None),
+            Application.withdrawn_at.is_(None),
         )
     )
     if conflicting is not None:
@@ -289,7 +289,7 @@ def _application_for_access_target(
     return db.scalar(
         select(Application).where(
             Application.primary_email == target.email,
-            Application.deleted_at.is_(None),
+            Application.withdrawn_at.is_(None),
         )
     )
 
@@ -305,7 +305,7 @@ def _access_target_is_editable(
 
 def _active_application(db: Session, application_id: int | None) -> Application | None:
     application = db.get(Application, application_id) if application_id is not None else None
-    return application if application is not None and application.deleted_at is None else None
+    return application if application is not None and application.withdrawn_at is None else None
 
 
 def _draft_answers(draft: ApplicantDraft | None) -> WorkingApplicationAnswers | None:

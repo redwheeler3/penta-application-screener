@@ -43,7 +43,7 @@ def _app_and_db() -> tuple:
     return app, db
 
 
-def _application(db: Session, *, deleted: bool = False) -> Application:
+def _application(db: Session, *, withdrawn: bool = False) -> Application:
     today = date.today()
     db.add(
         Opening(
@@ -61,7 +61,7 @@ def _application(db: Session, *, deleted: bool = False) -> Application:
         raw_row={},
         raw_row_hash="synthetic",
         normalized={},
-        deleted_at=datetime(2026, 8, 23, tzinfo=UTC) if deleted else None,
+        withdrawn_at=datetime(2026, 8, 23, tzinfo=UTC) if withdrawn else None,
     )
     db.add(application)
     db.commit()
@@ -371,9 +371,9 @@ async def test_applicant_and_committee_sessions_coexist_on_localhost() -> None:
 
 
 @pytest.mark.anyio
-async def test_deleted_application_cannot_establish_a_session() -> None:
+async def test_withdrawn_application_cannot_establish_a_session() -> None:
     app, db = _app_and_db()
-    application = _application(db, deleted=True)
+    application = _application(db, withdrawn=True)
     issued = issue_magic_link(
         db,
         identity_kind=PasswordlessIdentityKind.APPLICANT,
@@ -566,6 +566,8 @@ def test_magic_link_email_uses_fragment_and_common_unsubscribe_footer() -> None:
     for message in (applicant, committee):
         assert "{{HsUnsubscribe}}" in message.text_body
         assert "This email address is not monitored." in message.text_body
+        assert "1717 Wallace Street, Vancouver, BC V6R 4J7" in message.text_body
+        assert "privacy@pentacoop.com" in message.html_body
         assert (
             "<HsUnsubscribe>Click here to permanently unsubscribe.</HsUnsubscribe>"
             "</strong> <span>Penta will no longer be able to email you"

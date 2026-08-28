@@ -60,7 +60,7 @@ def load_fixture(*, opening_ids: list[int], fixture: Path = DEFAULT_FIXTURE) -> 
             application = db.scalar(
                 select(Application).where(
                     Application.primary_email == email,
-                    Application.deleted_at.is_(None),
+                    Application.withdrawn_at.is_(None),
                 )
             )
             existed = application is not None

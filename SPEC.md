@@ -15,51 +15,19 @@ The project is also a deliberate learning and portfolio project for Jeff to buil
 
 The primary user is Jeff. The output audience is MOMI, who need a clear shortlist of applicants recommended for the interview stage, with justification.
 
-## Source Materials
-
-- Google Drive folder: application working folder containing forms, response sheets, and email templates
-- Email list spreadsheet: `Penta Co-operative Housing Email List (Responses)`
-- Application response spreadsheet: `Penta Co-operative Housing Application (Responses)`
-- Application form: `Penta Co-operative Housing Application`
-- Email list form: `Penta Co-operative Housing Email List`
-- Email templates:
-  - `Applications are open email - no application record.docx`
-  - `Applications are open email - application already on file.docx`
-  - `Application declined but on file email.docx`
-  - `Application deleted email.docx`
-
-Google Forms definitions were inspected through the authenticated browser/devtools MCP. The response sheets provide the effective column schema.
-
 ## Application Form
 
-The application form is titled `Penta Co-operative Housing: Application For Membership`.
-
-The form introduction includes:
-
-- Household eligibility declaration: 1 or 2 adults plus 1 or more children under 18 years old.
-- Direction that people not interested in or eligible for the current unit should use the mailing list instead.
-- Privacy/consent language describing who may access personal information, including auditors, lawyers, treasurer, directors, approved committee members, management company agents/staff, municipal employees for Home Owner Grant applications, and general membership only if relevant to an appeal.
-- Permitted uses: application contact, housing and membership eligibility, Home Owner Grant eligibility, housing reference check, credit check, and internal move decisions.
-- Retention schedule: non-members within 1 year of application closing date; members within 7 years of application closing date.
-- Privacy Officer contact: `privacy@pentacoop.com`, with a stated 10 business day response window.
-
-The application has 9 sections:
-
-1. Application introduction and consent
-2. Applicant and co-applicant details
-3. Ineligible household-size message
-4. Children
-5. Current housing situation
-6. Tell us more about you
-7. Employment information
-8. Household income
-9. Declaration
+The built-in application form begins with opening selection and a point-of-collection privacy notice.
+The notice identifies the purposes for collection, people and service-provider categories that may
+receive information where necessary, opening-based retention periods, and the Privacy Officer. The
+form then collects household details, current housing, essay answers, employment, and income before
+showing the complete review and declaration.
 
 The applicant/co-applicant section asks for applicant name, date of birth, phone, and email;
 co-applicant name, date of birth, relationship, phone, and email; and the children who will live in
 the unit. Ages are calculated from those birth dates as of the application's last submitted edit.
 
-The form contains an ineligible branch titled `Sorry...` that says the current unit accepts families with at least 1 child and at most 4 children, invites people to use the mailing list, and restates unit-size requirements:
+Opening cards state the applicable household-size requirements:
 
 - 1 bedroom: 1 or 2 adults
 - 2 bedroom: 1 or 2 adults plus 1 or more children under 18
@@ -100,7 +68,11 @@ The declaration states that applicants understand:
 
 The final declaration checkbox text is: `I / We have read and agree to be bound by the conditions outlined above`.
 
-Current application response columns include applicant/co-applicant identity and contact fields, household children fields, current address + duration, real-estate ownership, current and previous landlord references, the four required essay fields, optional additional information, an optional household photo link, pets description, applicant/co-applicant employment fields, applicant/co-applicant/household gross yearly income, and the declaration. (Full column-by-column detail: [docs/form-field-reference.md](docs/form-field-reference.md).)
+Current application answers include applicant and co-applicant identity and contact fields,
+household children, current address and duration, real-estate ownership, current and previous
+housing references, four required essays, optional additional information, an optional household
+photo link, pets, employment, and gross yearly income. The canonical contract is
+`backend/app/schemas/applicant/answers.py`.
 
 ## Built-In Application Intake (M21)
 
@@ -156,18 +128,19 @@ confirmation with secure access for future edits; initial submission does not wa
 applicant to follow that link.
 An authenticated primary applicant may edit while at least one published opening is between its
 open date and move-in date. Before the next open date, or after every published opening reaches its
-move-in date, application content is read-only. An applicant-deleted legal-hold record is not active
+move-in date, application content is read-only. An applicant-withdrawn legal-hold record is not active
 and is not available through this flow.
 
-An authenticated applicant can choose **Delete application** without contacting the Privacy
+An authenticated applicant can choose **Withdraw application** without contacting the Privacy
 Officer. After a short confirmation, this immediately retracts every active participation,
 excludes the application from all committee views and future consideration, discards unsubmitted
 changes, revokes applicant sessions and unused links, and removes applicant access. The UI and
-confirmation email simply say that the application has been deleted and will no longer be
-considered; they do not expose the internal retention workflow.
+confirmation email explain that the application has been withdrawn and that a restricted copy is
+retained until its scheduled purge.
 A never-submitted draft is physically purged immediately. Submitted information that must be
-retained becomes a read-only legal-hold record accessible only through an audited administrator
-retention view until its scheduled purge. It cannot be restored into active consideration.
+retained becomes a read-only legal-hold record excluded from applicant and committee APIs until
+its scheduled purge. Privacy access requests are handled through restricted operational access.
+The record cannot be restored into active consideration.
 
 If an authenticated applicant has private edits that differ from the committee copy, the form
 offers **Revert to last submitted application**. This replaces the entire private working copy,
@@ -178,7 +151,7 @@ Destructive actions initiated inside the application use styled, in-page confirm
 native confirmation is reserved for leaving or reloading a page with unsaved answers, where the
 browser controls the warning.
 
-If the same verified address applies again while an older deleted record remains under legal hold,
+If the same verified address applies again while an older withdrawn record remains under legal hold,
 the applicant starts a blank current application. The retained record is never returned,
 pre-populated, or exposed as an email collision; it remains linked only as needed to enforce its
 retention and purge date. There is still at most one current application for the address.
@@ -353,11 +326,13 @@ change is an explicit operational action, never an automatic retry after an ambi
 
 SocketLabs uses a dedicated Server ID and Injection API key stored as Fly secrets. The sending
 domain is authenticated with DKIM, SPF, and DMARC. Messages use `Penta Co-operative Housing` as
-the display name and `applications@pentacoop.com` as both the sender and monitored Reply-To address.
-The privacy-policy contact is `privacy@pentacoop.com`.
+the display name and `applications@pentacoop.com` as the sender. The common footer identifies Penta
+at 1717 Wallace Street, Vancouver, BC V6R 4J7 and provides `privacy@pentacoop.com` as the monitored
+privacy contact.
 
-Every message uses the same footer: **Click here to permanently unsubscribe this email address.
-Penta will no longer be able to email you, including secure sign-in links.** SocketLabs replaces
+Every message uses the same legal identity, address, privacy contact, and unsubscribe footer:
+**Click here to permanently unsubscribe this email address. Penta will no longer be able to email
+you, including secure sign-in links.** SocketLabs replaces
 its native unsubscribe tags in the HTML and plain-text bodies and adds a confirmed unsubscribe to
 the server suppression list. Penta treats that suppression as permanent. Individual message
 templates do not add footer variants. The notification sent to a previous address after an email
@@ -412,7 +387,7 @@ accidental deployment cannot promise an email that will never be delivered.
 
 Every applicant transactional message clearly says that it was sent because the recipient has or
 requested access to a Penta application, not because they are on the vacancy-notification list. It
-links to the authenticated **Delete application** flow and explains that deletion stops ordinary
+links to the authenticated **Withdraw application** flow and explains that withdrawal stops ordinary
 application messages, while a required security or final-deletion confirmation may still be sent.
 The link opens a review/confirmation page and never changes state on its initial `GET`, so an email
 security scanner cannot delete an application by following it.
@@ -447,15 +422,13 @@ removed. They do not show an applicant-removal link.
 - The form accepts one optional web link to a household photo. Applicants are reminded to use a
   link the committee can open. The link follows the same private-working-copy and submitted-copy
   visibility rules as every other answer and never enters AI prompts.
-- The final **Declaration** section presents the membership declaration and the updated privacy
-  notice together. Its privacy wording reflects the self-service application deletion and
-  retention behavior specified here rather than directing applicants to contact the Privacy
-  Officer for routine changes or deletion. A required, initially unchecked acceptance confirms
-  both the declaration and privacy notice; the introduction explains eligibility but merely
-  continuing or entering an email is not consent. The primary applicant must accept this before
-  every initial or updated Submit action. A successful submission is the durable evidence that
-  the required declaration was accepted; the product does not store a duplicate acceptance
-  timestamp or separately managed declaration or privacy-notice version.
+- The introduction provides the collection purposes, disclosure categories, retention schedule,
+  Privacy Officer contact, and privacy-policy link before any server save. The final
+  **Declaration** presents the membership conditions and explicit verification and credit-check
+  consent. Merely continuing or entering an email is not consent. The primary applicant must
+  accept the declaration before every initial or updated Submit action. Each immutable submitted
+  version stores the current application-terms version as durable evidence of the wording accepted;
+  the submission timestamp is also the acceptance timestamp.
 - Each opening records an application open date, application close date, move-in date, unit size,
   and monthly housing charge. Creating an opening is the application-open event: its open date is
   that day and the confirmed notification audience is durably queued in the same transaction. Its
@@ -490,7 +463,7 @@ removed. They do not show an applicant-removal link.
 - Applications enter ordinary committee and AI workflows only while they participate in at least
   one non-archived opening. Archived-only applications remain stored for their one-year retention
   period but are available only through retained administrative history. Retention never enrolls
-  someone in a later opening. Withdrawn, applicant-deleted, and selected applications are also
+  someone in a later opening. Opening-withdrawn, application-withdrawn, and selected applications are also
   excluded from ordinary committee and AI workflows.
 - Administrators may edit archived opening facts to correct the historical record. Changing a
   move-in date recalculates affected retention dates using the corrected value.
@@ -587,7 +560,7 @@ application record and are purged with that applicant. For an application that h
 submitted, the retention anchor is one year after the latest move-in date among the openings saved
 in its draft; this prevents an abandoned draft from retaining PII forever. Remembered-device draft
 storage likewise has no independent 30-day timer and is removed by sign-out, clearing the device,
-or an explicit application-deletion flow. Server retention cleanup cannot erase storage on a
+or an explicit application-withdrawal flow. Server retention cleanup cannot erase storage on a
 browser that never returns; remembered-device storage is therefore an applicant-controlled device
 copy rather than part of the server retention guarantee.
 
@@ -600,8 +573,8 @@ a new anchor. Submitted, declined, and retracted applications use this same rule
 records continue under the existing seven-year policy.
 
 The public privacy policy explains these retention periods and the restricted legal-hold behavior.
-The ordinary applicant interface does not show retention dates or internal storage states after a
-person deletes an application.
+The ordinary applicant interface explains the restricted retention state after a person withdraws
+an application, without exposing internal retention dates.
 
 There is no advance expiry warning. When a due application is purged, the product emails the
 primary applicant that deletion is complete and invites them to join the separate vacancy
@@ -679,6 +652,9 @@ the public form so the recipient can create a new one-notice subscription if the
 notifications. Resubscribing creates a new record; it does not reactivate or retain the consumed
 one. SocketLabs applies hard-bounce, complaint, and unsubscribe suppression to future delivery. The
 application does not ingest those events or duplicate SocketLabs' permanent suppression list.
+On consumption, the application retains a one-year consent receipt containing the consent time,
+notice version, source, requested sizes, delivery identifier, and a one-way hash of the normalized
+address. The receipt proves why the notice was sent without retaining another usable contact list.
 
 Every vacancy-list message uses the common SocketLabs unsubscribe footer. Confirming that
 provider-managed link permanently suppresses the address from all Penta email sent through the
@@ -698,7 +674,7 @@ Vacancy emails follow these operational rules and tone:
 
 - Applications are opened for a specific unit size, housing charge, target move-in date, and close date.
 - For a 2-bedroom opening, stated eligibility was one or two adults and at least one child under 18.
-- Email-list notifications are treated as one-time notifications; recipients without an existing application are removed from the mailing list after notification.
+- Vacancy requests are one-time notifications; recipients without an existing application are removed from the active request list after notification.
 - People with a current application are told that it was not added automatically. They must review
   and submit it for the new opening if they want to be considered.
 - Declined applicants may have applications kept on file until a stated expiry date and considered for another unit before then.
@@ -1225,7 +1201,7 @@ matching vacancy notice.
 - The first matching opening sends one notice and consumes the entire record regardless of how
   many sizes were selected; a transient provider failure remains retryable and cannot double-send
   after provider acceptance. The notice explains the removal and offers a link to subscribe again.
-- Application deletion and mailing-list deletion remain independent, and application activity
+- Application withdrawal and vacancy-request deletion remain independent, and application activity
   never silently subscribes an address.
 - Every vacancy-list message uses the common SocketLabs permanent-unsubscribe footer. SocketLabs
   owns unsubscribe, hard-bounce, complaint, and durable suppression for all email from the shared
@@ -1233,7 +1209,8 @@ matching vacancy notice.
 - The production website uses the built-in form and the Google form/sheet and their operational
   handling are removed after a count-verified migration.
 
-**Production gate:** legal review of the final vacancy notification and public privacy copy.
+**Production gate:** deploy the reviewed notice, privacy copy, email footer, consent evidence, and
+application-withdrawal semantics together before accepting production signups or applications.
 
 ### Reporting (M10 shipped) — ✅ closed, demand-driven from here
 

@@ -36,8 +36,26 @@ export function Introduction() {
           question so the membership committee has a complete picture of your household.
         </p>
         <p>
-          We use your information to assess housing and membership eligibility and, if you are
-          shortlisted, to verify references, income, and credit.
+          We collect and use the information in this form to contact you, assess eligibility for
+          housing, membership, the Home Owner Grant, or an internal move, and, if you are
+          shortlisted, verify housing references, employment, income, and credit.
+        </p>
+        <p>
+          Where necessary, your information may be available to Penta&apos;s authorized committee
+          members, directors, treasurer, auditor, lawyer, management company, municipal employees
+          processing a Home Owner Grant, and service providers acting for Penta, including hosting,
+          email, and AI-processing providers. It is available to the general membership only when
+          relevant to an appeal you make about a Board decision.
+        </p>
+        <p>
+          Non-member applications are retained until one year after the latest relevant move-in
+          date; accepted-member records are retained for seven years. Read our{" "}
+          <a href="https://www.pentacoop.com/privacy.html" target="_blank" rel="noopener noreferrer">
+            Privacy Policy
+          </a>{" "}
+          or contact the Privacy Officer at{" "}
+          <a href="mailto:privacy@pentacoop.com">privacy@pentacoop.com</a> to ask about access,
+          correction, or deletion.
         </p>
       </div>
     </section>

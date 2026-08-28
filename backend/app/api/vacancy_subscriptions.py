@@ -9,6 +9,7 @@ from app.api.dependencies import require_admin
 from app.core.problems import Problem
 from app.db.models import User
 from app.db.session import get_db
+from app.legal import VACANCY_CONSENT_VERSION
 from app.schemas.vacancy_subscriptions import (
     VacancySubscriptionAdminWrite,
     VacancySubscriptionDelete,
@@ -16,8 +17,8 @@ from app.schemas.vacancy_subscriptions import (
     VacancySubscriptionLookupOut,
     VacancySubscriptionOut,
     VacancySubscriptionPublicOut,
+    VacancySubscriptionPublicWrite,
     VacancySubscriptionReportOut,
-    VacancySubscriptionWrite,
 )
 from app.services.public_rate_limit import PublicRateLimiter
 from app.services.vacancy_subscriptions import (
@@ -59,11 +60,16 @@ def _out(subscription) -> VacancySubscriptionOut:
 
 @router.post("", response_model=VacancySubscriptionPublicOut)
 def subscribe(
-    body: VacancySubscriptionWrite,
+    body: VacancySubscriptionPublicWrite,
     request: Request,
     db: Session = Depends(get_db),
 ) -> VacancySubscriptionPublicOut:
     _validate_unit_sizes(body.unit_sizes)
+    if body.consent_version != VACANCY_CONSENT_VERSION:
+        raise Problem(
+            "validation_error",
+            detail="Refresh the page before submitting this vacancy request.",
+        )
     if not signup_limiter.allow(_client_key(request)):
         raise Problem(
             "rate_limited",
@@ -74,6 +80,7 @@ def subscribe(
         email=str(body.email),
         unit_sizes=body.unit_sizes,
         source="public website",
+        consent_version=body.consent_version,
     )
     return VacancySubscriptionPublicOut()
 

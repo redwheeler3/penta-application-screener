@@ -31,8 +31,8 @@ import {
 } from "./ApplicantFormSections";
 import {
   ApplicationComplete,
-  ApplicationDeleted,
-  ApplicationDeletion,
+  ApplicationWithdrawn,
+  ApplicationWithdrawal,
   ApplicationReview,
   type DraftConfirmation,
   DraftActionConfirmation,
@@ -58,7 +58,7 @@ export function ApplicantApp() {
   const [declarationAccepted, setDeclarationAccepted] = useState(false);
   const [rememberDevice, setRememberDeviceState] = useState(remembersDevice);
   const [emailChangeOpen, setEmailChangeOpen] = useState(false);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
   const [draftConfirmation, setDraftConfirmation] = useState<DraftConfirmation | null>(null);
   const [guestStarted, setGuestStarted] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -224,10 +224,10 @@ export function ApplicantApp() {
     if (await persistence.stopEmailChange()) setEmailChangeOpen(false);
   }
 
-  const showDeleteApplication = persistence.authenticated
+  const showWithdrawApplication = persistence.authenticated
     && persistence.openingsLoaded
     && ![
-      "deleted",
+      "withdrawn",
       "session_expired",
       "link_ready",
       "link_conflict",
@@ -266,8 +266,8 @@ export function ApplicantApp() {
           ) : null}
         </div>
 
-        {persistence.phase === "deleted" ? (
-          <ApplicationDeleted emailSent={persistence.deletionEmailSent} />
+        {persistence.phase === "withdrawn" ? (
+          <ApplicationWithdrawn emailSent={persistence.withdrawalEmailSent} />
         ) : persistence.phase === "session_expired" ? (
           <ApplicationSessionExpired onEmail={() => void persistence.emailSessionAccessLink()} />
         ) : persistence.phase === "submitted" ? (
@@ -431,17 +431,17 @@ export function ApplicantApp() {
           </form>
         )}
 
-        {showDeleteApplication ? (
-          <ApplicationDeletion
-            open={deleteConfirmOpen}
-            status={persistence.deletionStatus}
-            message={persistence.deletionMessage}
-            onOpen={() => setDeleteConfirmOpen(true)}
+        {showWithdrawApplication ? (
+          <ApplicationWithdrawal
+            open={withdrawConfirmOpen}
+            status={persistence.withdrawalStatus}
+            message={persistence.withdrawalMessage}
+            onOpen={() => setWithdrawConfirmOpen(true)}
             onCancel={() => {
-              persistence.clearDeletionFeedback();
-              setDeleteConfirmOpen(false);
+              persistence.clearWithdrawalFeedback();
+              setWithdrawConfirmOpen(false);
             }}
-            onDelete={() => void persistence.removeApplication()}
+            onWithdraw={() => void persistence.withdrawApplication()}
           />
         ) : null}
       </main>

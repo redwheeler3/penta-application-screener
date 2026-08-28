@@ -13,6 +13,8 @@ from app.db.models import (
     MagicLinkToken,
     Opening,
 )
+from app.legal import APPLICATION_TERMS_VERSION
+from app.services.retention import one_year_after
 from tests.applicant.support import (
     app_and_db,
     link_from_email,
@@ -86,6 +88,7 @@ async def test_authenticated_submission_requires_declaration_and_accepts_multipl
     version = db.scalar(select(ApplicationVersion))
     assert version is not None
     assert version.selected_opening_ids == [opening.id, later_opening.id]
+    assert version.terms_version == APPLICATION_TERMS_VERSION
 
 
 @pytest.mark.anyio
@@ -177,7 +180,7 @@ async def test_revert_restores_the_submitted_answers_and_openings() -> None:
 
 
 @pytest.mark.anyio
-async def test_delete_withdraws_every_opening_and_revokes_applicant_access() -> None:
+async def test_withdrawal_removes_every_opening_and_revokes_applicant_access() -> None:
     app, db, sender = app_and_db()
     opening = db.scalar(select(Opening))
     assert opening is not None
@@ -198,9 +201,9 @@ async def test_delete_withdraws_every_opening_and_revokes_applicant_access() -> 
                 "baseRevision": restored.json()["workingRevision"],
             },
         )
-        deleted = await client.delete("/applicant/application")
+        withdrawn = await client.post("/applicant/application/withdraw")
         after_delete = await client.get("/applicant/application")
-        deletion_message_kind = sender.messages[-1].kind
+        withdrawal_message_kind = sender.messages[-1].kind
         requested_again = await client.post(
             "/applicant/access-links/request",
             json={"answers": sample_answers(), "openingIds": [opening.id]},
@@ -208,19 +211,21 @@ async def test_delete_withdraws_every_opening_and_revokes_applicant_access() -> 
 
     application = db.scalar(select(Application))
     participation = db.scalar(select(ApplicationParticipation))
-    assert deleted.status_code == 200
-    assert deleted.json() == {
-        "deleted": True,
+    assert withdrawn.status_code == 200
+    assert withdrawn.json() == {
+        "withdrawn": True,
         "emailSent": True,
         "emailStatus": "sent",
     }
     assert after_delete.status_code == 401
     assert application is not None
-    assert application.deleted_at is not None
+    assert application.withdrawn_at is not None
+    assert application.retention_due_on == one_year_after(opening.move_in_date)
     assert participation is not None
     assert participation.withdrawn_at is not None
     assert all(session.revoked_at is not None for session in db.scalars(select(BrowserSession)))
-    assert deletion_message_kind == "application_deleted"
+    assert withdrawal_message_kind == "application_withdrawn"
+    assert "restricted copy" in sender.messages[-2].text_body
     assert requested_again.json()["emailStatus"] == "sent"
     assert sender.messages[-1].kind == "applicant_magic_link"
 
@@ -235,9 +240,9 @@ async def test_delete_physically_removes_a_never_submitted_application() -> None
             "/applicant/access-links/open",
             json={"token": link_from_email(sender), "switchCurrent": False},
         )
-        deleted = await client.delete("/applicant/application")
+        withdrawn = await client.post("/applicant/application/withdraw")
 
-    assert deleted.status_code == 200
+    assert withdrawn.status_code == 200
     assert db.scalar(select(Application)) is None
     assert db.scalar(select(ApplicantDraft)) is None
     assert db.scalar(select(MagicLinkToken)) is None
@@ -249,7 +254,7 @@ async def test_delete_physically_removes_a_never_submitted_application() -> None
 
 
 @pytest.mark.anyio
-async def test_deleted_email_can_start_a_new_blank_application() -> None:
+async def test_withdrawn_email_can_start_a_new_blank_application() -> None:
     app, db, sender = app_and_db()
     opening = db.scalar(select(Opening))
     assert opening is not None
@@ -267,7 +272,7 @@ async def test_deleted_email_can_start_a_new_blank_application() -> None:
             "/applicant/access-links/open",
             json={"token": link_from_email(sender), "switchCurrent": False},
         )
-        deleted = await client.delete("/applicant/application")
+        withdrawn = await client.post("/applicant/application/withdraw")
         second_answers = sample_answers(introduction="A completely new application")
         second = await client.post(
             "/applicant/submissions",
@@ -280,11 +285,11 @@ async def test_deleted_email_can_start_a_new_blank_application() -> None:
 
     applications = list(db.scalars(select(Application).order_by(Application.id)))
     assert first.status_code == 201
-    assert deleted.status_code == 200
+    assert withdrawn.status_code == 200
     assert second.status_code == 201
     assert len(applications) == 2
-    assert applications[0].deleted_at is not None
-    assert applications[1].deleted_at is None
+    assert applications[0].withdrawn_at is not None
+    assert applications[1].withdrawn_at is None
     assert applications[1].raw_row["essays"]["household_introduction"] == (
         "A completely new application"
     )

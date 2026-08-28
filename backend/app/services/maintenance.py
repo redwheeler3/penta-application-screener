@@ -13,6 +13,7 @@ from app.services.email_outbox import retry_queued_emails
 from app.services.email_sender import EmailSender, get_email_sender
 from app.services.opening_notifications import send_due_unsuccessful_notices
 from app.services.retention_purge import purge_due_applicant_data
+from app.services.vacancy_subscriptions import purge_expired_consent_receipts
 
 DAILY_LIFECYCLE_TASK = "applicant_lifecycle"
 LEASE_DURATION = timedelta(minutes=10)
@@ -48,6 +49,7 @@ def run_due_maintenance_with(
         retry_queued_emails(db, sender, now=now)
         send_due_unsuccessful_notices(db, sender, now=now)
         purge_due_applicant_data(db, sender, now=now)
+        purge_expired_consent_receipts(db, today=pacific_today(now=now))
     except Exception as error:
         run.status = "failed"
         run.lease_expires_at = now + LEASE_DURATION

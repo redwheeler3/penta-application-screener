@@ -34,9 +34,9 @@ export type ApplicantPersistenceState = {
   emailChangeMessage: string;
   collisionEmail: string | null;
   submissionEmailSent: boolean;
-  deletionEmailSent: boolean;
-  deletionStatus: "idle" | "working" | "error";
-  deletionMessage: string;
+  withdrawalEmailSent: boolean;
+  withdrawalStatus: "idle" | "working" | "error";
+  withdrawalMessage: string;
 };
 
 type StateUpdater<Value> = Value | ((current: Value) => Value);
@@ -80,9 +80,9 @@ export const INITIAL_APPLICANT_PERSISTENCE_STATE: ApplicantPersistenceState = {
   emailChangeMessage: "",
   collisionEmail: null,
   submissionEmailSent: true,
-  deletionEmailSent: true,
-  deletionStatus: "idle",
-  deletionMessage: "",
+  withdrawalEmailSent: true,
+  withdrawalStatus: "idle",
+  withdrawalMessage: "",
 };
 
 export function applicantPersistenceReducer(

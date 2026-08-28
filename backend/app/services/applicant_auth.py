@@ -32,7 +32,7 @@ def authenticate_applicant(
         db.commit()
         return None
     application = db.get(Application, browser_session.application_id)
-    if application is None or application.deleted_at is not None:
+    if application is None or application.withdrawn_at is not None:
         browser_session.revoked_at = now
         db.commit()
         return None

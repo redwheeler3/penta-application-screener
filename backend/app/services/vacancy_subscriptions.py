@@ -1,7 +1,7 @@
 """Vacancy-notification subscription ownership and reporting."""
 
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from hashlib import sha256
 
 from sqlalchemy import delete, select
@@ -9,7 +9,13 @@ from sqlalchemy.orm import Session
 
 from app.core.text import normalize_email
 from app.core.time import PACIFIC, as_utc
-from app.db.models import User, VacancySubscription, VacancySubscriptionAudit
+from app.db.models import (
+    User,
+    VacancyConsentReceipt,
+    VacancySubscription,
+    VacancySubscriptionAudit,
+)
+from app.services.retention import one_year_after
 
 VALID_UNIT_SIZES = frozenset({1, 2, 3})
 
@@ -22,6 +28,7 @@ def save_subscription(
     source: str,
     actor: User | None = None,
     consented_at: datetime | None = None,
+    consent_version: str | None = None,
     commit: bool = True,
 ) -> VacancySubscription:
     if not unit_sizes or not unit_sizes <= VALID_UNIT_SIZES:
@@ -39,6 +46,7 @@ def save_subscription(
     subscription.wants_two_bedroom = 2 in unit_sizes
     subscription.wants_three_bedroom = 3 in unit_sizes
     subscription.consented_at = now
+    subscription.consent_version = consent_version
     subscription.source = source
     subscription.managed_by_user_id = actor.id if actor is not None else None
     db.flush()
@@ -80,8 +88,38 @@ def matching_subscriptions(db: Session, unit_size: int) -> list[VacancySubscript
     return list(db.scalars(select(VacancySubscription).where(column.is_(True)).order_by(VacancySubscription.id)))
 
 
-def consume_subscription(db: Session, subscription_id: int) -> None:
-    db.execute(delete(VacancySubscription).where(VacancySubscription.id == subscription_id))
+def consume_subscription(
+    db: Session,
+    subscription_id: int,
+    *,
+    email_delivery_id: int,
+    fulfilled_at: datetime,
+) -> None:
+    subscription = db.get(VacancySubscription, subscription_id)
+    if subscription is None:
+        return
+    db.add(
+        VacancyConsentReceipt(
+            subscription_id=subscription.id,
+            email_hash=sha256(subscription.email.encode()).hexdigest(),
+            unit_sizes=unit_sizes(subscription),
+            consented_at=subscription.consented_at,
+            consent_version=subscription.consent_version,
+            source=subscription.source,
+            fulfilled_at=fulfilled_at,
+            retain_until=one_year_after(fulfilled_at.date()),
+            email_delivery_id=email_delivery_id,
+        )
+    )
+    db.delete(subscription)
+
+
+def purge_expired_consent_receipts(db: Session, *, today: date) -> int:
+    result = db.execute(
+        delete(VacancyConsentReceipt).where(VacancyConsentReceipt.retain_until <= today)
+    )
+    db.commit()
+    return int(result.rowcount or 0)
 
 
 def unit_sizes(subscription: VacancySubscription) -> list[int]:

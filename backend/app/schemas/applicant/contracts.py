@@ -176,7 +176,7 @@ class AuthenticatedSubmitApplicationResponse(ApplicantApplicationResponse):
     email_status: EmailSendStatus
 
 
-class DeleteApplicationResponse(ResponseModel):
-    deleted: bool = True
+class WithdrawApplicationResponse(ResponseModel):
+    withdrawn: bool = True
     email_sent: bool
     email_status: EmailSendStatus

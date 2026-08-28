@@ -21,6 +21,7 @@ from app.services.auth_email import (
     application_deleted_email,
     application_opening_email,
     application_unavailable_email,
+    application_withdrawn_email,
     email_change_notice_email,
     magic_link_email,
     unsuccessful_application_email,
@@ -89,7 +90,12 @@ def retry_queued_emails(
         if was_accepted:
             accepted += 1
             if subscription_id is not None:
-                consume_subscription(db, int(subscription_id))
+                consume_subscription(
+                    db,
+                    int(subscription_id),
+                    email_delivery_id=delivery.id,
+                    fulfilled_at=now,
+                )
         else:
             if delivery.state == EmailDeliveryState.QUEUED:
                 queued += 1
@@ -201,6 +207,14 @@ def _build_retry(
     if intent_type == "application_deleted":
         return (
             application_deleted_email(
+                application_id=application.id,
+                email=application.primary_email,
+            ),
+            None,
+        )
+    if intent_type == "application_withdrawn":
+        return (
+            application_withdrawn_email(
                 application_id=application.id,
                 email=application.primary_email,
             ),

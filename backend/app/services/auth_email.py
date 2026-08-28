@@ -11,9 +11,17 @@ BRAND_LOGO_URL = "https://www.pentacoop.com/email-house.png"
 VACANCY_LIST_URL = "https://www.pentacoop.com/apply.html"
 COMMON_FOOTER_TEXT = """This email address is not monitored.
 
+Sent by Penta Co-operative Housing
+1717 Wallace Street, Vancouver, BC V6R 4J7
+Privacy questions: privacy@pentacoop.com
+
 Click here to permanently unsubscribe: {{HsUnsubscribe}}. Penta will no longer be able to email you, including links used to sign in."""
 COMMON_FOOTER_HTML = (
     "<span>This email address is not monitored.</span>"
+    "<br><span>Sent by Penta Co-operative Housing</span>"
+    "<br><span>1717 Wallace Street, Vancouver, BC V6R 4J7</span>"
+    '<br><span>Privacy questions: <a href="mailto:privacy@pentacoop.com" '
+    'style="color:#166534;">privacy@pentacoop.com</a></span>'
     '<br><strong style="display:inline-block;margin-top:8px;"><HsUnsubscribe>'
     "Click here to permanently unsubscribe.</HsUnsubscribe></strong> "
     "<span>Penta will no longer be able to email you, including links used to sign in.</span>"
@@ -158,7 +166,7 @@ def email_change_notice_email(
 def application_deleted_email(*, application_id: int, email: str) -> OutboundEmail:
     heading = "Your application has been deleted"
     introduction = (
-        "Your Penta housing application has been deleted from our system."
+        "Your Penta housing application has been permanently deleted from our system."
     )
     invitation = (
         "Penta doesn't keep a waitlist. If you'd like to hear when another unit becomes "
@@ -181,6 +189,47 @@ def application_deleted_email(*, application_id: int, email: str) -> OutboundEma
     )
     return OutboundEmail(
         kind="application_deleted",
+        recipient_id=f"application:{application_id}",
+        to=(email,),
+        subject=heading,
+        text_body=text,
+        html_body=html,
+    )
+
+
+def application_withdrawn_email(*, application_id: int, email: str) -> OutboundEmail:
+    heading = "Your application has been withdrawn"
+    introduction = (
+        "We've removed your Penta housing application from consideration and signed out "
+        "every device with access to it."
+    )
+    retention = (
+        "Penta will keep a restricted copy until the legal retention period ends, then "
+        "permanently delete it. It will not appear in committee workflows or AI screening."
+    )
+    invitation = (
+        "If you'd like to apply for a future opening, you can start a new application when "
+        "one becomes available."
+    )
+    text = _with_common_footer(f"""{heading}.
+
+{introduction}
+
+{retention}
+
+{invitation}
+
+{VACANCY_LIST_URL}""")
+    html = _email_shell(
+        eyebrow="Application update",
+        heading=heading,
+        introduction=f"{introduction} {retention}",
+        action_url=VACANCY_LIST_URL,
+        action_label="View vacancy information",
+        link_notice=invitation,
+    )
+    return OutboundEmail(
+        kind="application_withdrawn",
         recipient_id=f"application:{application_id}",
         to=(email,),
         subject=heading,

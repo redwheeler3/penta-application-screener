@@ -13,6 +13,7 @@ from app.services.auth_email import (
     application_deleted_email,
     application_opening_email,
     application_unavailable_email,
+    application_withdrawn_email,
     email_change_notice_email,
     magic_link_email,
     unsuccessful_application_email,
@@ -109,6 +110,11 @@ def email_previews(
                 old_email=email,
                 new_email="new-address@example.test",
             ),
+        ),
+        (
+            "application-withdrawn",
+            "Application withdrawn",
+            application_withdrawn_email(application_id=1, email=email),
         ),
         (
             "application-deleted",

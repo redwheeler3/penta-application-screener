@@ -46,7 +46,7 @@ configuration, committee defaults, Observability, and Evals require an admin.
 | GET | `/applicant/application` | Read the authenticated working application. | Applicant |
 | PUT | `/applicant/application` | Save the authenticated private working copy. | Applicant |
 | POST | `/applicant/application/revert` | Replace private edits and pending opening choices with the last submitted application. | Applicant |
-| DELETE | `/applicant/application` | Withdraw from every opening, delete ordinary applicant access, and revoke applicant sessions and links. | Applicant |
+| POST | `/applicant/application/withdraw` | Withdraw from every opening, remove ordinary applicant access, and revoke applicant sessions and links. | Applicant |
 | POST | `/applicant/application/email-change` | Email a confirmation link for a new primary address. | Applicant |
 | DELETE | `/applicant/application/email-change` | Cancel an unconfirmed primary-address change. | Applicant |
 | POST | `/applicant/application/submit` | Publish the validated working copy and update explicit participation in the selected openings. | Applicant |

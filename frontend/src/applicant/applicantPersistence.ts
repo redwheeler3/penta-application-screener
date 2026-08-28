@@ -14,7 +14,7 @@ export type PersistencePhase =
   | "email_sent"
   | "saved"
   | "submitted"
-  | "deleted"
+  | "withdrawn"
   | "link_ready"
   | "link_conflict"
   | "link_expired"

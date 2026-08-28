@@ -132,7 +132,7 @@ def _notifiable_applications(db: Session) -> list[Application]:
             select(Application)
             .where(
                 Application.submitted_at.is_not(None),
-                Application.deleted_at.is_(None),
+                Application.withdrawn_at.is_(None),
                 Application.retention_due_on > pacific_today(),
                 not_(selected),
             )

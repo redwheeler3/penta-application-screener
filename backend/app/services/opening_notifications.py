@@ -28,7 +28,7 @@ def send_due_unsuccessful_notices(
     applications = db.scalars(
         select(Application).where(
             Application.submitted_at.is_not(None),
-            Application.deleted_at.is_(None),
+            Application.withdrawn_at.is_(None),
         )
     ).all()
     for application in applications:
