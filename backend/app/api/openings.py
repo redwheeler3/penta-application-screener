@@ -1,6 +1,8 @@
 """Admin-only opening configuration and lifecycle endpoints."""
 
-from fastapi import APIRouter, Depends
+from collections.abc import Callable
+
+from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin
@@ -8,14 +10,21 @@ from app.core.problems import Problem
 from app.db.models import Application, Opening, User
 from app.db.session import get_db
 from app.schemas.openings import (
+    OpeningCreate,
+    OpeningCreateConfirmation,
+    OpeningCreatedOut,
+    OpeningNotificationVariantOut,
     OpeningOut,
+    OpeningPreviewOut,
     OpeningSelectionCandidateOut,
     OpeningSelectionOut,
     OpeningSelectionRequest,
     OpeningsResponse,
     OpeningWrite,
+    SocketLabsUsageOut,
 )
 from app.services.email_sender import EmailSender, get_email_sender
+from app.services.maintenance import run_email_outbox
 from app.services.opening_notifications import send_due_unsuccessful_notices
 from app.services.opening_selection import (
     active_opening_participants,
@@ -29,12 +38,24 @@ from app.services.openings import (
     create_opening,
     list_openings,
     opening_phase,
-    publish_opening,
     update_opening,
 )
 from app.services.passwordless_auth import as_utc
+from app.services.socketlabs_usage import (
+    SocketLabsUsageReader,
+    get_socketlabs_usage_reader,
+)
+from app.services.vacancy_notifications import (
+    VacancyAudience,
+    opening_audience,
+    queue_opening_notifications,
+)
 
 router = APIRouter(prefix="/openings", tags=["openings"])
+
+
+def get_outbox_runner() -> Callable[[EmailSender], None]:
+    return run_email_outbox
 
 
 def _opening(db: Session, opening_id: int) -> Opening:
@@ -96,14 +117,44 @@ def read_openings(
     return _response(db)
 
 
-@router.post("", response_model=OpeningsResponse)
-def add_opening(
-    body: OpeningWrite,
+@router.post("/preview", response_model=OpeningPreviewOut)
+def preview_opening(
+    body: OpeningCreate,
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
-) -> OpeningsResponse:
-    create_opening(db, body)
-    return _response(db)
+    usage_reader: SocketLabsUsageReader = Depends(get_socketlabs_usage_reader),
+) -> OpeningPreviewOut:
+    audience = opening_audience(db, body.unit_size_bedrooms)
+    return _preview_out(audience, usage_reader)
+
+
+@router.post("", response_model=OpeningCreatedOut)
+def add_opening(
+    body: OpeningCreateConfirmation,
+    background_tasks: BackgroundTasks,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+    sender: EmailSender = Depends(get_email_sender),
+    usage_reader: SocketLabsUsageReader = Depends(get_socketlabs_usage_reader),
+    outbox_runner: Callable[[EmailSender], None] = Depends(get_outbox_runner),
+) -> OpeningCreatedOut:
+    audience = opening_audience(db, body.unit_size_bedrooms)
+    if audience.total != body.expected_audience_count:
+        raise Problem(
+            "opening_audience_changed",
+            detail="The audience changed while you were reviewing it. Preview the opening again.",
+            audienceCount=audience.total,
+        )
+    usage_reader.fetch()
+    opening = create_opening(db, body)
+    queue_opening_notifications(db, opening, audience)
+    db.commit()
+    response = _response(db)
+    background_tasks.add_task(outbox_runner, sender)
+    return OpeningCreatedOut(
+        openings=response.openings,
+        queued_notification_count=audience.total,
+    )
 
 
 @router.put("/{opening_id}", response_model=OpeningsResponse)
@@ -117,14 +168,45 @@ def edit_opening(
     return _response(db)
 
 
-@router.post("/{opening_id}/publish", response_model=OpeningsResponse)
-def publish_draft_opening(
-    opening_id: int,
-    _admin: User = Depends(require_admin),
-    db: Session = Depends(get_db),
-) -> OpeningsResponse:
-    publish_opening(db, _opening(db, opening_id))
-    return _response(db)
+def _preview_out(
+    audience: VacancyAudience,
+    usage_reader: SocketLabsUsageReader,
+) -> OpeningPreviewOut:
+    usage = usage_reader.fetch()
+    socketlabs = SocketLabsUsageOut(available=False)
+    if usage is not None:
+        socketlabs = SocketLabsUsageOut(
+            available=True,
+            retrieved_at=usage.retrieved_at,
+            billing_period_start=usage.billing_period_start,
+            billing_period_end=usage.billing_period_end,
+            messages_used=usage.messages_used,
+            message_allowance=usage.message_allowance,
+            messages_used_percent=usage.messages_used_percent,
+            allow_overages=usage.allow_overages,
+            projected_messages_used=usage.messages_used + audience.total,
+        )
+    return OpeningPreviewOut(
+        audience_count=audience.total,
+        subscriber_only_count=len(audience.subscriber_only),
+        application_only_count=len(audience.application_only),
+        overlap_count=len(audience.overlaps),
+        variants=[
+            OpeningNotificationVariantOut(
+                kind="notification_list",
+                recipient_count=len(audience.subscriber_only),
+            ),
+            OpeningNotificationVariantOut(
+                kind="current_application",
+                recipient_count=len(audience.application_only),
+            ),
+            OpeningNotificationVariantOut(
+                kind="application_and_notification_list",
+                recipient_count=len(audience.overlaps),
+            ),
+        ],
+        socketlabs=socketlabs,
+    )
 
 
 @router.get("/{opening_id}/selection", response_model=OpeningSelectionOut)

@@ -27,6 +27,15 @@ def run_due_maintenance() -> None:
         db.close()
 
 
+def run_email_outbox(sender: EmailSender | None = None) -> None:
+    """Drain durable email intents after a write without waiting for the daily sweep."""
+    db = SessionLocal()
+    try:
+        retry_queued_emails(db, sender or get_email_sender())
+    finally:
+        db.close()
+
+
 def run_due_maintenance_with(
     db: Session, sender: EmailSender, *, now: datetime | None = None
 ) -> bool:

@@ -50,6 +50,7 @@ def _opening_payload(**overrides) -> dict:
         "applicationOpenDate": "2026-09-01",
         "applicationCloseDate": "2026-09-15",
         "moveInDate": "2026-10-01",
+        "expectedAudienceCount": 0,
     }
     payload.update(overrides)
     return payload
@@ -65,7 +66,7 @@ async def test_opening_routes_are_admin_only() -> None:
 
 
 @pytest.mark.anyio
-async def test_admin_creates_edits_and_publishes_an_opening() -> None:
+async def test_admin_creation_opens_an_opening_immediately() -> None:
     app, db = _app_and_db(UserRole.ADMIN)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -74,20 +75,18 @@ async def test_admin_creates_edits_and_publishes_an_opening() -> None:
         opening_id = opening["id"]
 
         assert created.status_code == 200
-        assert opening["phase"] == "draft"
-        assert opening["applicationOpenDate"] == "2026-09-01"
+        assert opening["phase"] == "open"
+        assert opening["applicationOpenDate"] == pacific_today().isoformat()
         assert opening["applicationCloseDate"] == "2026-09-15"
-        assert opening["publishedAt"] is None
+        assert opening["publishedAt"] is not None
         assert opening["submissionCount"] == 0
 
         edited = await client.put(
             f"/openings/{opening_id}",
             json=_opening_payload(housingChargeCents=130_000),
         )
-        published = await client.post(f"/openings/{opening_id}/publish")
 
     assert edited.json()["openings"][0]["housingChargeCents"] == 130_000
-    assert published.json()["openings"][0]["publishedAt"] is not None
     assert db.get(Opening, opening_id).housing_charge_cents == 130_000
 
 
@@ -96,9 +95,9 @@ async def test_opening_dates_must_be_chronological() -> None:
     app, _ = _app_and_db(UserRole.ADMIN)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        close_before_open = await client.post(
+        close_in_past = await client.post(
             "/openings",
-            json=_opening_payload(applicationCloseDate="2026-08-31"),
+            json=_opening_payload(applicationCloseDate="2026-08-26"),
         )
         move_in_before_close = await client.post(
             "/openings",
@@ -117,7 +116,7 @@ async def test_opening_dates_must_be_chronological() -> None:
             ),
         )
 
-    assert close_before_open.status_code == 422
+    assert close_in_past.status_code == 422
     assert move_in_before_close.status_code == 422
     assert move_in_on_close.status_code == 200
     assert all_dates_equal.status_code == 200

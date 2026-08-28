@@ -39,7 +39,6 @@ class ApplicationStatus(StrEnum):
 
 
 class OpeningPhase(StrEnum):
-    DRAFT = "draft"
     UPCOMING = "upcoming"
     OPEN = "open"
     CLOSED = "closed"

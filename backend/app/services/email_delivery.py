@@ -63,6 +63,34 @@ def deliver_email(
     )
 
 
+def queue_email(
+    db: Session,
+    message: OutboundEmail,
+    *,
+    recipient_kind: PasswordlessIdentityKind,
+    application_id: int | None = None,
+    magic_link_token: MagicLinkToken | None = None,
+    idempotency_key: str,
+    retry_intent: dict[str, object],
+) -> EmailDelivery:
+    """Add an outbox intent to the caller's transaction without contacting the provider."""
+    delivery = EmailDelivery(
+        idempotency_key=idempotency_key,
+        message_kind=message.kind,
+        recipient_kind=recipient_kind,
+        application_id=application_id,
+        magic_link_token_id=magic_link_token.id if magic_link_token is not None else None,
+        recipient_email=message.to[0] if application_id is None else None,
+        state=EmailDeliveryState.QUEUED,
+        retry_intent=retry_intent,
+        quota_blocked=False,
+        attempt_count=0,
+    )
+    db.add(delivery)
+    db.flush()
+    return delivery
+
+
 def attempt_reserved_delivery(
     db: Session,
     sender: EmailSender,

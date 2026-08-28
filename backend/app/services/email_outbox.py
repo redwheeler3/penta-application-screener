@@ -12,19 +12,25 @@ from app.db.models import (
     EmailDeliveryState,
     MagicLinkPurpose,
     MagicLinkToken,
+    Opening,
     PasswordlessIdentityKind,
+    VacancySubscription,
 )
 from app.services.auth_email import (
     application_confirmation_email,
     application_deleted_email,
+    application_opening_email,
     application_unavailable_email,
     email_change_notice_email,
     magic_link_email,
     unsuccessful_application_email,
+    vacancy_opening_email,
 )
 from app.services.email_delivery import attempt_reserved_delivery
 from app.services.email_sender import EmailSender, OutboundEmail
 from app.services.passwordless_auth import issue_magic_link
+from app.services.vacancy_notifications import opening_email_details
+from app.services.vacancy_subscriptions import consume_subscription
 
 
 @dataclass(frozen=True)
@@ -60,6 +66,7 @@ def retry_queued_emails(
         .order_by(EmailDelivery.id)
     ).all()
     for delivery in deliveries:
+        subscription_id = (delivery.retry_intent or {}).get("subscription_id")
         built = _build_retry(db, delivery, now=now)
         if built is None:
             delivery.state = EmailDeliveryState.FAILED
@@ -79,6 +86,8 @@ def retry_queued_emails(
             is_retry=True,
         ):
             accepted += 1
+            if subscription_id is not None:
+                consume_subscription(db, int(subscription_id))
         else:
             if delivery.state == EmailDeliveryState.QUEUED:
                 queued += 1
@@ -123,6 +132,22 @@ def _build_retry(
     intent_type = intent.get("type")
     if intent_type == "magic_link":
         return _build_magic_link_retry(db, delivery, intent, now=now)
+    if intent_type == "vacancy_opening":
+        opening = db.get(Opening, int(intent["opening_id"]))
+        subscription_id = int(intent["subscription_id"])
+        if (
+            opening is None
+            or delivery.recipient_email is None
+            or db.get(VacancySubscription, subscription_id) is None
+        ):
+            return None
+        return (
+            vacancy_opening_email(
+                email=delivery.recipient_email,
+                **opening_email_details(opening),
+            ),
+            None,
+        )
     if intent_type == "applicant_draft_deleted":
         draft = delivery.applicant_draft
         if draft is None:
@@ -194,6 +219,35 @@ def _build_retry(
                 opening_labels=[str(label) for label in intent.get("opening_labels", [])],
             ),
             None,
+        )
+    if intent_type == "application_opening":
+        opening = db.get(Opening, int(intent["opening_id"]))
+        if opening is None:
+            return None
+        issued = issue_magic_link(
+            db,
+            identity_kind=PasswordlessIdentityKind.APPLICANT,
+            email=application.primary_email,
+            purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+            application_id=application.id,
+            now=now,
+        )
+        delivery.magic_link_token_id = issued.record.id
+        subscription_id = intent.get("subscription_id")
+        overlap = (
+            subscription_id is not None
+            and db.get(VacancySubscription, int(subscription_id)) is not None
+        )
+        return (
+            application_opening_email(
+                application_id=application.id,
+                email=application.primary_email,
+                token=issued.token,
+                notification_list_overlap=overlap,
+                settings=get_settings(),
+                **opening_email_details(opening),
+            ),
+            issued.record,
         )
     return None
 

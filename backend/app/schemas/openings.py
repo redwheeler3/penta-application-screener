@@ -24,6 +24,23 @@ class OpeningWrite(RequestModel):
         return self
 
 
+class OpeningCreate(RequestModel):
+    unit_size_bedrooms: int = Field(ge=1, le=3)
+    housing_charge_cents: int = Field(ge=0)
+    application_close_date: date
+    move_in_date: date
+
+    @model_validator(mode="after")
+    def dates_are_chronological(self) -> "OpeningCreate":
+        if self.application_close_date > self.move_in_date:
+            raise ValueError("Application close date must be on or before the move-in date.")
+        return self
+
+
+class OpeningCreateConfirmation(OpeningCreate):
+    expected_audience_count: int = Field(ge=0)
+
+
 class OpeningDetailsOut(ResponseModel):
     id: int
     unit_size_bedrooms: int
@@ -48,6 +65,36 @@ class OpeningOut(OpeningDetailsOut):
 
 class OpeningsResponse(ResponseModel):
     openings: list[OpeningOut]
+
+
+class OpeningNotificationVariantOut(ResponseModel):
+    kind: str
+    recipient_count: int
+
+
+class SocketLabsUsageOut(ResponseModel):
+    available: bool
+    retrieved_at: datetime | None = None
+    billing_period_start: datetime | None = None
+    billing_period_end: datetime | None = None
+    messages_used: int | None = None
+    message_allowance: int | None = None
+    messages_used_percent: float | None = None
+    allow_overages: bool | None = None
+    projected_messages_used: int | None = None
+
+
+class OpeningPreviewOut(ResponseModel):
+    audience_count: int
+    subscriber_only_count: int
+    application_only_count: int
+    overlap_count: int
+    variants: list[OpeningNotificationVariantOut]
+    socketlabs: SocketLabsUsageOut
+
+
+class OpeningCreatedOut(OpeningsResponse):
+    queued_notification_count: int
 
 
 class OpeningSelectionRequest(RequestModel):

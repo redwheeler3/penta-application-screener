@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.problems import Problem
 from app.core.time import pacific_today
 from app.db.models import Application, ApplicationParticipation, Opening, OpeningPhase
-from app.schemas.openings import OpeningWrite
+from app.schemas.openings import OpeningCreate, OpeningWrite
 from app.services.retention import (
     refresh_application_retention,
     refresh_draft_retention_for_opening,
@@ -16,8 +16,6 @@ from app.services.retention import (
 
 
 def opening_phase(opening: Opening, *, today: date | None = None) -> OpeningPhase:
-    if opening.published_at is None:
-        return OpeningPhase.DRAFT
     current_date = today or pacific_today()
     if current_date >= opening.move_in_date:
         return OpeningPhase.ARCHIVED
@@ -55,11 +53,36 @@ def published_openings(db: Session) -> list[Opening]:
     )
 
 
-def create_opening(db: Session, values: OpeningWrite) -> Opening:
-    opening = Opening(**values.model_dump())
+def create_opening(
+    db: Session,
+    values: OpeningCreate,
+    *,
+    now: datetime | None = None,
+) -> Opening:
+    now = now or datetime.now(UTC)
+    today = pacific_today(now=now)
+    if values.application_close_date < today:
+        raise Problem(
+            "invalid_settings",
+            detail="The application close date cannot be in the past.",
+        )
+    if values.move_in_date <= today:
+        raise Problem(
+            "invalid_settings",
+            detail="The move-in date must be in the future.",
+        )
+    opening = Opening(
+        **values.model_dump(include={
+            "unit_size_bedrooms",
+            "housing_charge_cents",
+            "application_close_date",
+            "move_in_date",
+        }),
+        application_open_date=today,
+        published_at=now,
+    )
     db.add(opening)
-    db.commit()
-    db.refresh(opening)
+    db.flush()
     return opening
 
 
@@ -87,22 +110,3 @@ def _refresh_participant_retention(db: Session, opening_id: int) -> None:
         if application is not None:
             refresh_application_retention(db, application)
 
-
-def publish_opening(
-    db: Session,
-    opening: Opening,
-    *,
-    now: datetime | None = None,
-) -> Opening:
-    now = now or datetime.now(UTC)
-    if opening.published_at is not None:
-        return opening
-    if opening.move_in_date <= pacific_today(now=now):
-        raise Problem(
-            "invalid_settings",
-            detail="The move-in date must be in the future before publishing an opening.",
-        )
-    opening.published_at = now
-    db.commit()
-    db.refresh(opening)
-    return opening
