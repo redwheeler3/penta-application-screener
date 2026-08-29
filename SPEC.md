@@ -1125,8 +1125,9 @@ administrator-mediated recovery and are never guessed or automatically combined.
 
 The first built-in cycle begins after applications have already closed in the Google Form. Cutover
 uses the guarded `scripts.create_historical_opening` migration command to create that historical
-opening with its original open
-and close dates and future move-in date, then attaches every submitted, non-withdrawn application
+3-bedroom opening: applications opened July 6, 2026 and closed July 31, 2026; the monthly housing
+charge is $1,226; and the move-in date is November 1, 2026. It then attaches every submitted,
+non-withdrawn application
 already in the database. Those records are the complete current Google Form pool and do not yet
 have opening participations or outcomes, so the migration does not use the ordinary application-
 universe query. It preserves existing submissions, creates one active participation per application

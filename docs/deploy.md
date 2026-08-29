@@ -305,22 +305,21 @@ upsert during migration.
 
 #### 3. Create the historical application opening
 
-From the deployed `backend/` directory, first dry-run with the reviewed original opening facts. All
-dates use `YYYY-MM-DD`; the housing charge is in cents:
+From the deployed `backend/` directory, first dry-run with the reviewed original opening facts:
 
 ```sh
 uv run python -m scripts.create_historical_opening \
-  --unit-size-bedrooms <1-or-2-or-3> \
-  --housing-charge-cents <monthly-charge-in-cents> \
-  --application-open-date <original-open-date> \
-  --application-close-date <original-close-date> \
-  --move-in-date <future-move-in-date>
+  --unit-size-bedrooms 3 \
+  --housing-charge-cents 122600 \
+  --application-open-date 2026-07-06 \
+  --application-close-date 2026-07-31 \
+  --move-in-date 2026-11-01
 ```
 
 Reconcile `target applications` to the complete submitted, non-withdrawn Google Form application
 pool. `existing target participations` and `matching openings` must both be zero. Record the vacancy
 subscription, consent-receipt, and queued-email counts. Apply only with that exact reconciled target
-count by repeating the dry-run command and appending both of these arguments:
+count by repeating that command and appending both of these arguments:
 
 ```sh
 --apply --expected-application-count <reconciled-target-count>
