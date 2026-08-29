@@ -137,14 +137,14 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
         </p>
       ) : props.signInState === "requestFailed" ? (
         <p className="login-message login-message-error" role="alert">
-          We couldn't send a sign-in link. Email{" "}
+          We couldn’t send a sign-in link. Email{" "}
           <a href={`mailto:${TECH_SUPPORT_EMAIL}`} target="_blank" rel="noreferrer">
             Penta Tech Support
           </a>.
         </p>
       ) : props.signInState === "googleDenied" ? (
         <p className="login-message login-message-error" role="alert">
-          We couldn't sign in with that Google account. Try another account or email{" "}
+          We couldn’t sign in with that Google account. Try another account or email{" "}
           <a href={`mailto:${TECH_SUPPORT_EMAIL}`} target="_blank" rel="noreferrer">
             {TECH_SUPPORT_EMAIL}
           </a>.

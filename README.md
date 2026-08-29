@@ -99,7 +99,7 @@ The sample CSV in [test-data](test-data) is synthetic and intentionally realisti
 - Frontend: Vite, React, TypeScript, npm
 - Authentication: identity-only Google OIDC or email magic links with revocable server-side sessions
 - Transactional email: provider-neutral sender with SocketLabs delivery, a durable retry-safe
-  outbox, quota-blocked observability, and capture-only local defaults
+  outbox, admin delivery reporting, and capture-only local defaults
 - Google integration: optional identity-only OIDC for committee sign-in
 - AI integration: provider-agnostic interface; Strands routes through Bedrock or direct OpenAI/Anthropic APIs; mock provider for tests
 - Hosting: Fly.io (single instance, auto-suspend, persistent-volume SQLite) serving the committee

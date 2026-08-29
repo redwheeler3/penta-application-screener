@@ -4,16 +4,18 @@ import type { AppSettings, CurrentUser, SettingsResponse, ViewTab } from "../../
 import { AccessPanel } from "./AccessPanel";
 import { AdminConfigurationPanel } from "./AdminConfigurationPanel";
 import { CommitteeDefaultsPanel } from "./CommitteeDefaultsPanel";
+import { EmailDeliveryPanel } from "./EmailDeliveryPanel";
 import { FeedbackPanel } from "./FeedbackPanel";
 import { OpeningsPanel } from "./OpeningsPanel";
 import { VacancyNotificationsPanel } from "./VacancyNotificationsPanel";
 
-export type AdminSubtab = "configuration" | "openings" | "notifications" | "defaults" | "access" | "feedback";
+export type AdminSubtab = "configuration" | "openings" | "notifications" | "emailDelivery" | "defaults" | "access" | "feedback";
 
 const ADMIN_SUBTABS: Array<{ id: AdminSubtab; label: string }> = [
   { id: "configuration", label: "Configuration" },
   { id: "openings", label: "Openings" },
   { id: "notifications", label: "Notifications" },
+  { id: "emailDelivery", label: "Email Delivery" },
   { id: "defaults", label: "Committee Defaults" },
   { id: "access", label: "Access" },
   { id: "feedback", label: "Feedback" },
@@ -78,6 +80,8 @@ export function AdminSettingsPanel(props: {
         />
       ) : subtab === "notifications" ? (
         <VacancyNotificationsPanel onError={props.onError} />
+      ) : subtab === "emailDelivery" ? (
+        <EmailDeliveryPanel onError={props.onError} />
       ) : subtab === "defaults" ? (
         <CommitteeDefaultsPanel
           onError={props.onError}

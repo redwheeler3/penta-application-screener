@@ -35,8 +35,6 @@ export type ApplicantPersistenceState = {
   emailChangeStatus: EmailChangeStatus;
   emailChangeMessage: string;
   collisionEmail: string | null;
-  submissionEmailSent: boolean;
-  withdrawalEmailStatus: "sent" | "failed" | "not_needed";
   withdrawalStatus: "idle" | "working" | "error";
   withdrawalMessage: string;
 };
@@ -82,8 +80,6 @@ export const INITIAL_APPLICANT_PERSISTENCE_STATE: ApplicantPersistenceState = {
   emailChangeStatus: "idle",
   emailChangeMessage: "",
   collisionEmail: null,
-  submissionEmailSent: true,
-  withdrawalEmailStatus: "not_needed",
   withdrawalStatus: "idle",
   withdrawalMessage: "",
 };

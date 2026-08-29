@@ -101,9 +101,111 @@ async def test_admin_dashboard_reports_quota_blocked_email_queue() -> None:
     actions = response.json()["adminActions"]
     assert actions["queuedEmailCount"] == 2
     assert actions["quotaBlockedEmailCount"] == 1
+    assert actions["recentFailedEmailCount"] == 0
     assert actions["oldestQueuedEmailAt"] == "2026-08-24T10:00:00Z"
     assert actions["newestQueuedEmailAt"] == "2026-08-25T12:00:00Z"
     assert actions["lastEmailAttemptAt"] == "2026-08-26T13:00:00Z"
+
+
+@pytest.mark.anyio
+async def test_admin_can_review_queued_and_unexpected_failed_emails() -> None:
+    app, db = _logged_in_app(UserRole.ADMIN)
+    now = datetime.now(UTC)
+    application = Application(
+        primary_email="applicant@example.com",
+        raw_row={},
+        raw_row_hash="email-report",
+        normalized={},
+    )
+    db.add(application)
+    db.flush()
+    committee_user = User(
+        email="member@example.com",
+        display_name="Member",
+        role=UserRole.MEMBER,
+        is_active=True,
+    )
+    db.add(committee_user)
+    db.flush()
+    db.add_all(
+        [
+            EmailDelivery(
+                message_kind="application_submitted",
+                recipient_kind=PasswordlessIdentityKind.APPLICANT,
+                application_id=application.id,
+                state=EmailDeliveryState.QUEUED,
+                retry_intent={"type": "application_confirmation"},
+                quota_blocked=True,
+                attempt_count=2,
+                created_at=now - timedelta(hours=3),
+                last_attempt_at=now - timedelta(hours=1),
+                last_error_code="MonthlyQuotaExceeded",
+            ),
+            EmailDelivery(
+                message_kind="committee_magic_link",
+                recipient_kind=PasswordlessIdentityKind.COMMITTEE,
+                user_id=committee_user.id,
+                recipient_email="member@example.com",
+                state=EmailDeliveryState.FAILED,
+                attempt_count=1,
+                created_at=now - timedelta(hours=2),
+                last_attempt_at=now,
+                last_error_code="ConnectionError",
+            ),
+            EmailDelivery(
+                message_kind="application_saved",
+                recipient_kind=PasswordlessIdentityKind.APPLICANT,
+                application_id=application.id,
+                state=EmailDeliveryState.FAILED,
+                attempt_count=1,
+                created_at=now,
+                last_attempt_at=now,
+                last_error_code="ApplicationWithdrawn",
+            ),
+        ]
+    )
+    db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        dashboard = await client.get("/dashboard")
+        report = await client.get("/dashboard/email-deliveries")
+
+    assert dashboard.json()["adminActions"]["recentFailedEmailCount"] == 1
+    assert report.status_code == 200
+    assert report.json()["items"] == [
+        {
+            "id": report.json()["items"][0]["id"],
+            "recipientEmail": "member@example.com",
+            "messageKind": "committee_magic_link",
+            "state": "failed",
+            "attemptedAt": now.isoformat().replace("+00:00", "Z"),
+            "attemptCount": 1,
+            "errorCode": "ConnectionError",
+            "quotaBlocked": False,
+        },
+        {
+            "id": report.json()["items"][1]["id"],
+            "recipientEmail": "applicant@example.com",
+            "messageKind": "application_submitted",
+            "state": "queued",
+            "attemptedAt": (now - timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
+            "attemptCount": 2,
+            "errorCode": "MonthlyQuotaExceeded",
+            "quotaBlocked": True,
+        },
+    ]
+
+
+@pytest.mark.anyio
+async def test_email_delivery_report_requires_admin() -> None:
+    app, _db = _logged_in_app(UserRole.MEMBER)
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/dashboard/email-deliveries")
+
+    assert response.status_code == 403
 
 
 @pytest.mark.anyio

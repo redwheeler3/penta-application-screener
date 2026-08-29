@@ -374,10 +374,14 @@ export function App(props: { authRedirect: AuthRedirect }) {
           {isAdmin ? (
             <AdminActionBanner
               actions={adminActions}
-              onReviewOpenings={() => {
-                setAdminSubtab("openings");
-                navigateToView("adminSettings");
-              }}
+                onReviewOpenings={() => {
+                  setAdminSubtab("openings");
+                  navigateToView("adminSettings");
+                }}
+                onReviewEmailDelivery={() => {
+                  setAdminSubtab("emailDelivery");
+                  navigateToView("adminSettings");
+                }}
             />
           ) : null}
           {/* Global actions first (workflow acts on the whole dataset regardless of

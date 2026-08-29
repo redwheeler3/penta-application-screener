@@ -91,6 +91,7 @@ configuration, committee defaults, Observability, and Evals require an admin.
 | Method | Path | Purpose | Auth |
 | --- | --- | --- | --- |
 | GET | `/dashboard` | Read Screen/Rank availability, currentness, and cache coverage. | Login |
+| GET | `/dashboard/email-deliveries` | List queued and unexpectedly failed email attempts. | Admin |
 
 ### Applications — `app/api/applications/` (package)
 

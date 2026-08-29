@@ -602,7 +602,8 @@ class EmailDelivery(TimestampMixin, Base):
     applicant_draft_id: Mapped[int | None] = mapped_column(
         ForeignKey("applicant_drafts.id", ondelete="CASCADE"), index=True
     )
-    # Used only while a targetless message is queued, then cleared with the retry intent.
+    # Retained for targetless queued or failed mail so administrators can identify the recipient.
+    # Accepted mail clears it because SocketLabs owns delivery history after acceptance.
     recipient_email: Mapped[str | None] = mapped_column(String(320))
     state: Mapped[EmailDeliveryState] = mapped_column(
         Enum(EmailDeliveryState, values_callable=enum_values), nullable=False, index=True

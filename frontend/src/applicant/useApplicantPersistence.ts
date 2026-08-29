@@ -91,8 +91,6 @@ export function useApplicantPersistence(
     emailChangeStatus,
     emailChangeMessage,
     collisionEmail,
-    submissionEmailSent,
-    withdrawalEmailStatus,
     withdrawalStatus,
     withdrawalMessage,
   } = persistence;
@@ -423,11 +421,6 @@ export function useApplicantPersistence(
       pendingDraftToken,
     );
     if (!response.ok) return fail(response);
-    const body = (await response.json()) as {
-      emailSent: boolean;
-      emailStatus: EmailSendStatus;
-    };
-    setPersistence("submissionEmailSent", body.emailSent);
     setPersistence("savedAnswers", workingSnapshot(draftRef.current, openingIds));
     setPersistence("phase", "submitted");
   }
@@ -450,10 +443,7 @@ export function useApplicantPersistence(
       await fail(response);
       return false;
     }
-    const body = (await response.json()) as ApplicationResponse & {
-      emailSent?: boolean;
-      emailStatus?: EmailSendStatus;
-    };
+    const body = (await response.json()) as ApplicationResponse;
     setPersistence("workingRevision", body.workingRevision);
     setPersistence("submitted", body.submitted);
     setPersistence("serverHasUnsubmittedChanges", body.hasUnsubmittedChanges);
@@ -461,7 +451,6 @@ export function useApplicantPersistence(
     setPersistence("canEdit", body.canEdit);
     setPersistence("savedAnswers", workingSnapshot(draftRef.current, openingIds));
     if (intent === "submit" && applicationId != null) clearApplicationDraft(applicationId);
-    if (intent === "submit") setPersistence("submissionEmailSent", body.emailSent !== false);
     setPersistence("phase", intent === "submit" ? "submitted" : "saved");
     return true;
   }
@@ -513,7 +502,18 @@ export function useApplicantPersistence(
   async function reconcilePendingCopy(choice: "saved" | "guest"): Promise<void> {
     setPersistence("phase", "working");
     const response = await reconcilePendingCopyRequest(choice);
-    if (!response.ok) return fail(response);
+    if (!response.ok) {
+      const problem = await responseProblem(response);
+      if (problem.code === "pending_copy_not_found") {
+        setPersistence("pendingCopy", null);
+        setPersistence("phase", "idle");
+        await restoreApplication(applicationId ?? undefined);
+        return;
+      }
+      setPersistence("message", problem.detail);
+      setPersistence("phase", "error");
+      return;
+    }
     setPersistence("pendingCopy", null);
     await restoreApplication(applicationId ?? undefined);
   }
@@ -691,7 +691,6 @@ export function useApplicantPersistence(
     accessEmail,
     accessPurpose,
     accessApplicationEmail,
-    submissionEmailSent,
     reviewAfterAccess,
     clearReviewAfterAccess: () => setPersistence("reviewAfterAccess", false),
     clearActionFeedback,
@@ -734,7 +733,6 @@ export function useApplicantPersistence(
       serverHasUnsubmittedChanges || savedAnswers !== workingSnapshot(draft, openingIds)
     ),
     hasSubmittedApplication: submitted,
-    withdrawalEmailStatus,
     withdrawalStatus,
     withdrawalMessage,
     workingRevision,

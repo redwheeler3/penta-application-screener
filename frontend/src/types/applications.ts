@@ -31,9 +31,21 @@ export type AdminActions = {
   }>;
   queuedEmailCount: number;
   quotaBlockedEmailCount: number;
+  recentFailedEmailCount: number;
   oldestQueuedEmailAt: string | null;
   newestQueuedEmailAt: string | null;
   lastEmailAttemptAt: string | null;
+};
+
+export type EmailDeliveryIssue = {
+  id: number;
+  recipientEmail: string;
+  messageKind: string;
+  state: "queued" | "failed";
+  attemptedAt: string;
+  attemptCount: number;
+  errorCode: string | null;
+  quotaBlocked: boolean;
 };
 
 // Faceted counts: each facet reflects the other group's active filter, so the two

@@ -216,11 +216,8 @@ def submit_guest_application(
             draft.application_id = application.id
             draft.resolved_at = now
     db.commit()
-    sent = send_application_confirmation(db, sender, application, submitted=True, now=now)
-    return GuestSubmitApplicationResponse(
-        email_sent=sent,
-        email_status="sent" if sent else "failed",
-    )
+    send_application_confirmation(db, sender, application, submitted=True, now=now)
+    return GuestSubmitApplicationResponse()
 
 
 @router.delete("/drafts", status_code=status.HTTP_204_NO_CONTENT)

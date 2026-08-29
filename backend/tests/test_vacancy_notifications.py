@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies import require_current_user
 from app.api.openings import get_outbox_runner
+from app.core.time import pacific_today
 from app.db.models import (
     Application,
     ApplicationParticipation,
@@ -90,11 +91,12 @@ def _application(email: str, *, selected: bool = False) -> Application:
 
 
 def _opening_payload(expected: int | None = None) -> dict:
+    today = pacific_today()
     payload = {
         "unitSizeBedrooms": 2,
         "housingChargeCents": 122_600,
-        "applicationCloseDate": "2026-09-15",
-        "moveInDate": "2026-10-01",
+        "applicationCloseDate": (today + timedelta(days=20)).isoformat(),
+        "moveInDate": (today + timedelta(days=45)).isoformat(),
     }
     if expected is not None:
         payload["expectedAudienceCount"] = expected
@@ -173,7 +175,7 @@ async def test_create_atomically_opens_and_queues_then_delivers_all_variants() -
     assert response.json()["queuedNotificationCount"] == 3
     assert opening is not None
     assert opening.published_at is not None
-    assert opening.application_open_date == date(2026, 8, 27)
+    assert opening.application_open_date == pacific_today()
     assert len(deliveries) == 3
     assert all(delivery.state == EmailDeliveryState.ACCEPTED for delivery in deliveries)
     assert {message.kind for message in sender.messages} == {

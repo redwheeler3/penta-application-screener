@@ -121,11 +121,7 @@ async def test_guest_can_submit_directly_and_receives_application_access() -> No
 
     application = db.scalar(select(Application))
     assert response.status_code == 201
-    assert response.json() == {
-        "submitted": True,
-        "emailSent": True,
-        "emailStatus": "sent",
-    }
+    assert response.json() == {"submitted": True}
     assert application is not None
     assert application.submitted_at is not None
     assert db.scalar(select(ApplicationVersion.application_id)) == application.id

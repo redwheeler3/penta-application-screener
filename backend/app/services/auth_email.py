@@ -160,47 +160,6 @@ def email_change_notice_email(
     )
 
 
-def application_withdrawn_email(*, application_id: int, email: str) -> OutboundEmail:
-    heading = "Your application has been withdrawn"
-    introduction = (
-        "We've removed your Penta housing application from consideration and signed out "
-        "every device with access to it."
-    )
-    retention = (
-        "Penta will keep a restricted copy until the legal retention period ends, then "
-        "permanently delete it."
-    )
-    invitation = (
-        "If you'd like to apply for a future opening, you can start a new application when "
-        "one becomes available."
-    )
-    text = _with_common_footer(f"""{heading}.
-
-{introduction}
-
-{retention}
-
-{invitation}
-
-{VACANCY_LIST_URL}""")
-    html = _email_shell(
-        eyebrow="Application update",
-        heading=heading,
-        introduction=f"{introduction} {retention}",
-        action_url=VACANCY_LIST_URL,
-        action_label="View vacancy information",
-        link_notice=invitation,
-    )
-    return OutboundEmail(
-        kind="application_withdrawn",
-        recipient_id=f"application:{application_id}",
-        to=(email,),
-        subject=heading,
-        text_body=text,
-        html_body=html,
-    )
-
-
 def application_unavailable_email(
     *, email: str, application_id: int | None = None
 ) -> OutboundEmail:

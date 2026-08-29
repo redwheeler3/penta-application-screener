@@ -8,6 +8,7 @@ import {
   AccessLinkReady,
   AccessLinkSent,
   ApplicationEntry,
+  ApplicationLoading,
   ApplicationLoadRecovery,
   ApplicationsUnavailable,
   ApplicationSessionExpired,
@@ -30,7 +31,7 @@ import {
   OpeningSelection,
 } from "./ApplicantFormSections";
 import {
-  ApplicationComplete,
+  ApplicationSubmitted,
   ApplicationWithdrawn,
   ApplicationWithdrawal,
   ApplicationReview,
@@ -267,11 +268,11 @@ export function ApplicantApp() {
         </div>
 
         {persistence.phase === "withdrawn" ? (
-          <ApplicationWithdrawn emailStatus={persistence.withdrawalEmailStatus} />
+          <ApplicationWithdrawn />
         ) : persistence.phase === "session_expired" ? (
           <ApplicationSessionExpired onEmail={() => void persistence.emailSessionAccessLink()} />
         ) : persistence.phase === "submitted" ? (
-          <ApplicationComplete submitted emailSent={persistence.submissionEmailSent} />
+          <ApplicationSubmitted />
         ) : persistence.phase === "access_link_sent" ? (
           <AccessLinkSent
             purpose={persistence.accessPurpose}
@@ -310,7 +311,7 @@ export function ApplicantApp() {
             || persistence.phase === "load_error"
             || persistence.phase === "error"
             ? <ApplicationLoadRecovery stage={persistence.loadRecoveryStage ?? "failed"} />
-            : <p className="applicant-loading" role="status">Loading application details…</p>
+            : <ApplicationLoading />
         ) : !persistence.authenticated && !hasActiveOpening ? (
           <ApplicationsUnavailable />
         ) : !persistence.authenticated && !guestStarted ? (

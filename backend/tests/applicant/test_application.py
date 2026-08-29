@@ -201,9 +201,10 @@ async def test_withdrawal_removes_every_opening_and_revokes_applicant_access() -
                 "baseRevision": restored.json()["workingRevision"],
             },
         )
+        messages_before_withdrawal = len(sender.messages)
         withdrawn = await client.post("/applicant/application/withdraw")
         after_delete = await client.get("/applicant/application")
-        withdrawal_message_kind = sender.messages[-1].kind
+        messages_after_withdrawal = len(sender.messages)
         requested_again = await client.post(
             "/applicant/access-links/request",
             json={"answers": sample_answers(), "openingIds": [opening.id]},
@@ -212,11 +213,7 @@ async def test_withdrawal_removes_every_opening_and_revokes_applicant_access() -
     application = db.scalar(select(Application))
     participation = db.scalar(select(ApplicationParticipation))
     assert withdrawn.status_code == 200
-    assert withdrawn.json() == {
-        "withdrawn": True,
-        "emailSent": True,
-        "emailStatus": "sent",
-    }
+    assert withdrawn.json() == {"withdrawn": True}
     assert after_delete.status_code == 401
     assert application is not None
     assert application.withdrawn_at is not None
@@ -224,9 +221,7 @@ async def test_withdrawal_removes_every_opening_and_revokes_applicant_access() -
     assert participation is not None
     assert participation.withdrawn_at is not None
     assert all(session.revoked_at is not None for session in db.scalars(select(BrowserSession)))
-    assert withdrawal_message_kind == "application_withdrawn"
-    assert "restricted copy" in sender.messages[-2].text_body
-    assert "committee workflows" not in sender.messages[-2].text_body
+    assert messages_after_withdrawal == messages_before_withdrawal
     assert requested_again.json()["emailStatus"] == "sent"
     assert sender.messages[-1].kind == "applicant_magic_link"
 
@@ -244,11 +239,7 @@ async def test_delete_physically_removes_a_never_submitted_application() -> None
         withdrawn = await client.post("/applicant/application/withdraw")
 
     assert withdrawn.status_code == 200
-    assert withdrawn.json() == {
-        "withdrawn": True,
-        "emailSent": False,
-        "emailStatus": "not_needed",
-    }
+    assert withdrawn.json() == {"withdrawn": True}
     assert db.scalar(select(Application)) is None
     assert db.scalar(select(ApplicantDraft)) is None
     assert db.scalar(select(MagicLinkToken)) is None
@@ -257,7 +248,7 @@ async def test_delete_physically_removes_a_never_submitted_application() -> None
 
 
 @pytest.mark.anyio
-async def test_withdrawn_email_can_start_a_new_blank_application() -> None:
+async def test_withdrawn_applicant_can_start_a_new_blank_application() -> None:
     app, db, sender = app_and_db()
     opening = db.scalar(select(Opening))
     assert opening is not None

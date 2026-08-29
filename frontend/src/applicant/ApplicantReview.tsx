@@ -176,7 +176,7 @@ export function PersistenceActionStatus(props: {
   if (props.phase === "error") {
     return (
       <div className="persistence-action-status error" role="alert">
-        <strong>We couldn't continue</strong>
+        <strong>We couldn’t continue</strong>
         <ApplicantErrorMessage message={props.message} />
       </div>
     );
@@ -237,33 +237,22 @@ export function PrivateChangesNotice() {
   );
 }
 
-export function ApplicationComplete(props: { submitted: boolean; emailSent: boolean }) {
+export function ApplicationSubmitted() {
   return (
     <section className="application-complete">
       <CheckCircle2 size={34} />
-      <h2>{props.submitted ? "Application submitted" : "Application saved"}</h2>
-      <p>
-        {props.submitted && props.emailSent
-          ? "Check your email for confirmation and a link to edit your application later."
-          : props.submitted
-            ? <>Your application was submitted, but we couldn’t email a link to edit it later. <ApplicantErrorMessage message={TECH_SUPPORT_ERROR_MESSAGE} /></>
-            : "Your private application draft is saved. Check your email for a link to continue editing."}
-      </p>
+      <h2>Application submitted</h2>
+      <p>Your application has been submitted. Check your email for a link to edit it later.</p>
     </section>
   );
 }
 
-export function ApplicationWithdrawn(props: {
-  emailStatus: "sent" | "failed" | "not_needed";
-}) {
+export function ApplicationWithdrawn() {
   return (
     <section className="application-complete">
       <CheckCircle2 size={34} />
       <h2>Application withdrawn</h2>
       <p>Your application has been removed from consideration, and you have been signed out.</p>
-      {props.emailStatus === "failed" ? (
-        <p>We couldn’t email a confirmation, but the withdrawal is complete.</p>
-      ) : null}
     </section>
   );
 }

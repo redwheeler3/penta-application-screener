@@ -123,7 +123,7 @@ def attempt_reserved_delivery(
         delivery.quota_blocked = False
         delivery.retry_intent = None
         delivery.last_error_code = type(error).__name__[:120]
-    if delivery.state != EmailDeliveryState.QUEUED:
+    if delivery.state == EmailDeliveryState.ACCEPTED:
         delivery.recipient_email = None
     if delivery.state != EmailDeliveryState.ACCEPTED and magic_link_token is not None:
         magic_link_token.revoked_at = now

@@ -108,8 +108,8 @@ export function PendingCopyDecision(props: {
         ))}
       </div>
       {props.error ? (
-        <div className="persistence-action-status error" role="alert">
-          <strong>We couldn’t keep that copy</strong>
+        <div className="pending-copy-error" role="alert">
+          <strong>We couldn’t save that choice</strong>
           <ApplicantErrorMessage message={props.error} />
         </div>
       ) : null}
@@ -146,6 +146,10 @@ export function ApplicationsUnavailable() {
       </a>
     </section>
   );
+}
+
+export function ApplicationLoading() {
+  return <p className="applicant-loading" role="status">Loading application details…</p>;
 }
 
 export function ApplicationLoadRecovery(props: { stage: ServiceRecoveryStage }) {

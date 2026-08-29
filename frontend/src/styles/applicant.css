@@ -298,6 +298,7 @@
 .pending-copy-row + .pending-copy-row { border-top: 1px solid #dbe4e0; }
 .pending-copy-row > span { color: #354b58; white-space: pre-wrap; overflow-wrap: anywhere; }
 .pending-copy-decision .review-actions { justify-content: center; }
+.pending-copy-error { display: grid; gap: 3px; max-width: 680px; margin: -8px auto 20px; padding: 12px 16px; color: #8f2f2a; background: #fff5f4; border: 1px solid #efc4c0; border-radius: 8px; font-size: 0.9rem; line-height: 1.4; text-align: left; }
 
 .section-divider { height: 1px; margin: 29px 0; background: #e5ebee; }
 .subheading-row { display: flex; justify-content: space-between; align-items: center; gap: 15px; }

@@ -7,23 +7,40 @@ import type { AdminActions } from "../../types";
 export function AdminActionBanner(props: {
   actions: AdminActions | null;
   onReviewOpenings: () => void;
+  onReviewEmailDelivery: () => void;
 }): ReactNode {
   const openings = props.actions?.archivedOpeningsNeedingSelection ?? [];
   const queuedEmails = props.actions?.queuedEmailCount ?? 0;
   const quotaBlockedEmails = props.actions?.quotaBlockedEmailCount ?? 0;
-  if (openings.length === 0 && queuedEmails === 0) return null;
+  const failedEmails = props.actions?.recentFailedEmailCount ?? 0;
+  if (openings.length === 0 && queuedEmails === 0 && failedEmails === 0) return null;
 
   return (
     <>
-      {queuedEmails > 0 && (
+      {(queuedEmails > 0 || failedEmails > 0) && (
         <aside className="admin-action-banner no-print" role="alert">
           <AlertTriangle size={20} aria-hidden="true" />
           <div>
-            <strong>{quotaBlockedEmails > 0 ? "Email quota reached" : "Email delivery delayed"}</strong>
-            <span>
-              {queuedEmails === 1 ? "One email is waiting" : `${queuedEmails} emails are waiting`}.
-              Penta will retry once each day until SocketLabs accepts {queuedEmails === 1 ? "it" : "them"}.
-            </span>
+            <strong>
+              {failedEmails > 0
+                ? "Email delivery needs attention"
+                : quotaBlockedEmails > 0
+                  ? "Email quota reached"
+                  : "Email delivery delayed"}
+            </strong>
+            {failedEmails > 0 && (
+              <span>
+                {failedEmails === 1
+                  ? "One email failed in the past 7 days."
+                  : `${failedEmails} emails failed in the past 7 days.`}
+              </span>
+            )}
+            {queuedEmails > 0 && (
+              <span>
+                {queuedEmails === 1 ? "One email is waiting" : `${queuedEmails} emails are waiting`}.
+                Penta will retry once each day until SocketLabs accepts {queuedEmails === 1 ? "it" : "them"}.
+              </span>
+            )}
             {quotaBlockedEmails > 0 && (
               <span>
                 {quotaBlockedEmails === 1
@@ -31,12 +48,18 @@ export function AdminActionBanner(props: {
                   : `${quotaBlockedEmails} emails are blocked by the SocketLabs quota.`}
               </span>
             )}
-            <dl className="admin-action-details">
-              <QueueTime label="Oldest queued" value={props.actions?.oldestQueuedEmailAt} />
-              <QueueTime label="Newest queued" value={props.actions?.newestQueuedEmailAt} />
-              <QueueTime label="Last attempt" value={props.actions?.lastEmailAttemptAt} />
-            </dl>
+            {queuedEmails > 0 && (
+              <dl className="admin-action-details">
+                <QueueTime label="Oldest queued" value={props.actions?.oldestQueuedEmailAt} />
+                <QueueTime label="Newest queued" value={props.actions?.newestQueuedEmailAt} />
+                <QueueTime label="Last attempt" value={props.actions?.lastEmailAttemptAt} />
+              </dl>
+            )}
           </div>
+          <button type="button" onClick={props.onReviewEmailDelivery}>
+            Review email delivery
+            <ArrowRight size={16} aria-hidden="true" />
+          </button>
         </aside>
       )}
       {openings.length > 0 && (

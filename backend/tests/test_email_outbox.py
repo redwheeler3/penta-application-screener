@@ -30,6 +30,11 @@ class QuotaBlockedSender:
         raise EmailQuotaExceededError("synthetic quota rejection")
 
 
+class TerminalFailureSender:
+    def send(self, _message) -> str:
+        raise ValueError("synthetic terminal failure")
+
+
 def _db():
     engine = create_engine(
         "sqlite:///:memory:",
@@ -117,6 +122,22 @@ def test_targetless_access_update_retries_without_retaining_recipient_email() ->
     assert sender.messages[0].to == ("unknown@example.com",)
     assert delivery.recipient_email is None
     assert delivery.retry_intent is None
+
+
+def test_targetless_terminal_failure_retains_recipient_for_admin_review() -> None:
+    db = _db()
+
+    assert not send_application_unavailable(
+        db,
+        TerminalFailureSender(),
+        "unknown@example.com",
+    )
+
+    delivery = db.scalar(select(EmailDelivery))
+    assert delivery is not None
+    assert delivery.state == EmailDeliveryState.FAILED
+    assert delivery.recipient_email == "unknown@example.com"
+    assert delivery.last_error_code == "ValueError"
 
 
 def test_new_magic_link_request_supersedes_queued_credential_intent() -> None:

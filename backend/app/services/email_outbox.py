@@ -1,9 +1,9 @@
 """Rebuild and retry queued email intents without storing rendered credentials."""
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -20,7 +20,6 @@ from app.services.auth_email import (
     application_confirmation_email,
     application_opening_email,
     application_unavailable_email,
-    application_withdrawn_email,
     email_change_notice_email,
     magic_link_email,
     unsuccessful_application_email,
@@ -44,6 +43,7 @@ class RetrySummary:
 class EmailQueueStatus:
     count: int = 0
     quota_blocked: int = 0
+    recent_failed: int = 0
     oldest_queued_at: datetime | None = None
     newest_queued_at: datetime | None = None
     last_attempt_at: datetime | None = None
@@ -108,18 +108,47 @@ def retry_queued_emails(
     )
 
 
-def email_queue_status(db: Session) -> EmailQueueStatus:
+EXPECTED_FAILURE_CODES = frozenset({"ApplicationWithdrawn", "Superseded"})
+FAILURE_BANNER_WINDOW = timedelta(days=7)
+
+
+@dataclass(frozen=True)
+class EmailDeliveryIssue:
+    id: int
+    recipient_email: str
+    message_kind: str
+    state: EmailDeliveryState
+    attempted_at: datetime
+    attempt_count: int
+    error_code: str | None
+    quota_blocked: bool
+
+
+def email_queue_status(
+    db: Session, *, now: datetime | None = None
+) -> EmailQueueStatus:
+    now = now or datetime.now(UTC)
     deliveries = db.scalars(
         select(EmailDelivery).where(
             EmailDelivery.state == EmailDeliveryState.QUEUED,
             EmailDelivery.retry_intent.is_not(None),
         )
     ).all()
+    recent_failed = db.scalar(
+        select(func.count())
+        .select_from(EmailDelivery)
+        .where(
+            _unexpected_failure_filter(),
+            func.coalesce(EmailDelivery.last_attempt_at, EmailDelivery.created_at)
+            >= now - FAILURE_BANNER_WINDOW,
+        )
+    ) or 0
     if not deliveries:
-        return EmailQueueStatus()
+        return EmailQueueStatus(recent_failed=recent_failed)
     return EmailQueueStatus(
         count=len(deliveries),
         quota_blocked=sum(delivery.quota_blocked for delivery in deliveries),
+        recent_failed=recent_failed,
         oldest_queued_at=min(delivery.created_at for delivery in deliveries),
         newest_queued_at=max(delivery.created_at for delivery in deliveries),
         last_attempt_at=max(
@@ -131,6 +160,58 @@ def email_queue_status(db: Session) -> EmailQueueStatus:
             default=None,
         ),
     )
+
+
+def email_delivery_issues(db: Session, *, limit: int = 100) -> list[EmailDeliveryIssue]:
+    deliveries = db.scalars(
+        select(EmailDelivery)
+        .where(
+            or_(
+                EmailDelivery.state == EmailDeliveryState.QUEUED,
+                _unexpected_failure_filter(),
+            )
+        )
+        .order_by(
+            func.coalesce(EmailDelivery.last_attempt_at, EmailDelivery.created_at).desc(),
+            EmailDelivery.id.desc(),
+        )
+        .limit(limit)
+    ).all()
+    return [
+        EmailDeliveryIssue(
+            id=delivery.id,
+            recipient_email=_delivery_recipient(delivery),
+            message_kind=delivery.message_kind,
+            state=delivery.state,
+            attempted_at=delivery.last_attempt_at or delivery.created_at,
+            attempt_count=delivery.attempt_count,
+            error_code=delivery.last_error_code,
+            quota_blocked=delivery.quota_blocked,
+        )
+        for delivery in deliveries
+    ]
+
+
+def _unexpected_failure_filter():
+    return (
+        (EmailDelivery.state == EmailDeliveryState.FAILED)
+        & or_(
+            EmailDelivery.last_error_code.is_(None),
+            EmailDelivery.last_error_code.not_in(EXPECTED_FAILURE_CODES),
+        )
+    )
+
+
+def _delivery_recipient(delivery: EmailDelivery) -> str:
+    if delivery.recipient_email:
+        return delivery.recipient_email
+    if delivery.application is not None:
+        return delivery.application.primary_email
+    if delivery.applicant_draft is not None:
+        return delivery.applicant_draft.email
+    if delivery.user is not None:
+        return delivery.user.email
+    return "Unavailable"
 
 
 def _build_retry(
@@ -192,14 +273,6 @@ def _build_retry(
                 application_id=application.id,
                 old_email=str(intent["old_email"]),
                 new_email=application.primary_email,
-            ),
-            None,
-        )
-    if intent_type == "application_withdrawn":
-        return (
-            application_withdrawn_email(
-                application_id=application.id,
-                email=application.primary_email,
             ),
             None,
         )

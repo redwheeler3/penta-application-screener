@@ -8,6 +8,7 @@ import {
   AccessLinkReady,
   AccessLinkSent,
   ApplicationEntry,
+  ApplicationLoading,
   ApplicationLoadRecovery,
   ApplicationsUnavailable,
   ApplicationSessionExpired,
@@ -15,11 +16,13 @@ import {
   InvalidAccessLink,
   PendingCopyDecision,
 } from "../applicant/ApplicantAccessScreens";
+import { ApplicationSubmitted, ApplicationWithdrawn } from "../applicant/ApplicantReview";
 import { emptyApplicantDraft, type ApplicantOpening, workingAnswers } from "../applicant/types";
 import { BrandLockup } from "../components/shared/BrandLockup";
 import { CommitteeSignIn } from "../components/auth/CommitteeSignIn";
 import type { CommitteeLinkConflict, SignInState } from "../hooks/useSession";
 import type { ServiceRecoveryStage } from "../serviceRecovery";
+import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import "../styles/access-preview.css";
 
 type EmailPreview = {
@@ -109,13 +112,14 @@ export function AccessPreviewGallery() {
       <main>
         <div className="access-preview-introduction">
           <span className="panel-kicker">Design review</span>
-          <h1>Access screens and emails</h1>
+          <h1>Application screens and emails</h1>
           <p>
             These are the production components and email templates populated with synthetic data.
             Buttons are intentionally inert, and nothing on this page sends email.
           </p>
           <nav aria-label="Preview sections">
             <a href="#applicant-access">Applicant access</a>
+            <a href="#applicant-results">Applicant results</a>
             <a href="#committee-access">Committee access</a>
             <a href="#email-previews">Emails</a>
           </nav>
@@ -127,6 +131,14 @@ export function AccessPreviewGallery() {
           description="Entry, link, session, identity-conflict, and copy-reconciliation states."
         >
           <ApplicantAccessPreviews />
+        </PreviewSection>
+
+        <PreviewSection
+          id="applicant-results"
+          title="Applicant results"
+          description="Submission and withdrawal outcomes shown after the requested action is complete."
+        >
+          <ApplicantResultPreviews />
         </PreviewSection>
 
         <PreviewSection
@@ -196,6 +208,9 @@ function ApplicantAccessPreviews() {
       <PreviewCard title="Applications unavailable" description="No opening currently accepts applications or changes.">
         <ApplicationsUnavailable />
       </PreviewCard>
+      <PreviewCard title="Application loading" description="Application and opening details are loading normally.">
+        <ApplicationLoading />
+      </PreviewCard>
       <PreviewCard title="Session expired" description="The applicant session reached its inactivity or absolute limit.">
         <ApplicationSessionExpired onEmail={noAction} />
       </PreviewCard>
@@ -211,14 +226,17 @@ function ApplicantAccessPreviews() {
       <PreviewCard title="Email-change confirmation sent" description="The new address must open its confirmation link.">
         <AccessLinkSent purpose="email_change" message="A confirmation link is on its way to new-address@example.test." />
       </PreviewCard>
-      <PreviewCard title="Different applicant — link works" description="Another applicant is signed in when an application link is opened.">
+      <PreviewCard title="Different applicant, valid link" description="Another applicant is signed in when an application link is opened.">
         <AccessLinkDecision conflict={applicantConflict(true)} onKeepCurrent={noAction} onOpenLinked={noAction} onEmailNew={noAction} />
       </PreviewCard>
-      <PreviewCard title="Different applicant — link expired" description="Another applicant is signed in and the emailed link has expired.">
+      <PreviewCard title="Different applicant, expired link" description="Another applicant is signed in and the emailed link has expired.">
         <AccessLinkDecision conflict={applicantConflict(false)} onKeepCurrent={noAction} onOpenLinked={noAction} onEmailNew={noAction} />
       </PreviewCard>
-      <PreviewCard title="Email change, different application" description="The browser has another applicant’s application open.">
+      <PreviewCard title="Email change, valid confirmation" description="The browser has another applicant’s application open.">
         <AccessLinkDecision conflict={emailChangeConflict(true)} onKeepCurrent={noAction} onOpenLinked={noAction} onEmailNew={noAction} />
+      </PreviewCard>
+      <PreviewCard title="Email change, expired confirmation" description="The browser has another applicant’s application open and the confirmation has expired.">
+        <AccessLinkDecision conflict={emailChangeConflict(false)} onKeepCurrent={noAction} onOpenLinked={noAction} onEmailNew={noAction} />
       </PreviewCard>
       <PreviewCard title="Applicant link expired" description="The applicant can request a fresh 24-hour link.">
         <ExpiredAccessLink purpose="applicant_access" onEmailNew={noAction} />
@@ -241,6 +259,22 @@ function ApplicantAccessPreviews() {
       <PreviewCard wide title="Two application copies" description="A returning applicant entered guest answers before opening their saved application.">
         <PendingCopyDecision pendingCopy={pendingCopy} openings={openings} busy={false} error={null} onChoose={noAction} />
       </PreviewCard>
+      <PreviewCard wide title="Two application copies, choice failed" description="The selected copy could not be kept and the applicant can try again.">
+        <PendingCopyDecision pendingCopy={pendingCopy} openings={openings} busy={false} error="Network request failed. Please try again." onChoose={noAction} />
+      </PreviewCard>
+    </div>
+  );
+}
+
+function ApplicantResultPreviews() {
+  return (
+    <div className="access-preview-grid">
+      <PreviewCard title="Application submitted" description="The application was submitted.">
+        <ApplicationSubmitted />
+      </PreviewCard>
+      <PreviewCard title="Application withdrawn" description="The application was removed from consideration and the applicant was signed out.">
+        <ApplicationWithdrawn />
+      </PreviewCard>
     </div>
   );
 }
@@ -252,6 +286,7 @@ function CommitteeAccessPreviews() {
       <CommitteePreview title="Google only" description="Email sign-in is hidden when delivery is not configured." emailSignInEnabled={false} />
       <CommitteePreview title="Checking Google session" description="The existing browser session is being loaded." isLoadingUser />
       <CommitteePreview title="Checking sign-in link" description="A committee sign-in link is being checked." signInState="exchanging" />
+      <CommitteePreview title="Sending sign-in link" description="A committee sign-in request is in progress." signInState="requesting" />
       <CommitteePreview title="Check your email" description="A committee member has requested a sign-in link." signInState="emailSent" linkedEmail="member@example.test" />
       <CommitteePreview title="Expired committee link" description="The committee member can request a new sign-in link." signInState="staleLink" linkedEmail="member@example.test" />
       <CommitteePreview title="Different member, valid link" description="The browser and link belong to different committee members." linkConflict={committeeConflict(true)} />

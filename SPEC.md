@@ -135,8 +135,8 @@ An authenticated applicant can choose **Withdraw application** without contactin
 Officer. After a short confirmation, this immediately retracts every active participation,
 excludes the application from all committee views and future consideration, discards unsubmitted
 changes, revokes applicant sessions and unused links, and removes applicant access. The UI and
-confirmation email explain that the application has been withdrawn and that a restricted copy is
-retained until its scheduled purge.
+explains that the application has been withdrawn and that a restricted copy is retained until its
+scheduled purge. Withdrawal does not send an email.
 A never-submitted draft is physically purged immediately. Submitted information that must be
 retained becomes a read-only legal-hold record excluded from applicant and committee APIs until
 its scheduled purge. Privacy access requests are handled through restricted operational access.
@@ -361,10 +361,13 @@ send previews show that current provider snapshot, its retrieval time, and proje
 previewed audience; confirmation refreshes it because other Penta mail may have been injected in the
 meantime. An unavailable usage summary is reported as unknown rather than replaced with a guess.
 Queued mail and quota-blocked mail appear in the administrator action banner and retry on the
-ordinary once-per-Pacific-day maintenance cadence. The banner shows the queue size, quota-blocked
-count, oldest and newest queued times, and latest delivery attempt without exposing message contents
-or credentials. The application cannot email an alert through the same suspended account, so
-SocketLabs' own account notifications are the out-of-band warning.
+ordinary once-per-Pacific-day maintenance cadence. Unexpected terminal failures also appear in the
+banner for seven days. The Email Delivery report lists current queued and failed messages with the
+recipient address, attempted time, email type, state, attempt count, and error classification.
+Expected cancellations, such as mail superseded by a newer request or cancelled by withdrawal, do
+not appear as failures. The report never stores or displays rendered message contents or
+credentials. The application cannot email an alert through the same suspended account, so
+SocketLabs' own account notifications remain the out-of-band warning.
 Automated tests and normal local development use a captured fake sender and never deliver real
 email.
 

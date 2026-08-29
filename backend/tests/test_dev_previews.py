@@ -31,7 +31,6 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
         "committee-access",
         "email-change-confirmation",
         "email-change-notice",
-        "application-withdrawn",
         "application-unavailable",
         "application-unsuccessful",
         "vacancy-opening-list-only",

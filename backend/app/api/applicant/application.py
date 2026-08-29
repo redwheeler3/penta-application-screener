@@ -36,7 +36,6 @@ from app.db.models import (
 from app.db.session import get_db
 from app.schemas.applicant.contracts import (
     ApplicantApplicationResponse,
-    AuthenticatedSubmitApplicationResponse,
     EmailChangeRequest,
     EmailChangeResponse,
     PendingCopyResponse,
@@ -54,7 +53,6 @@ from app.services.intake import (
 )
 from app.services.magic_link_delivery import (
     send_application_confirmation,
-    send_application_withdrawn,
     send_magic_link,
 )
 from app.services.opening_participation import (
@@ -222,13 +220,13 @@ def save_applicant_application(
     return get_applicant_application(application, db)
 
 
-@router.post("/application/submit", response_model=AuthenticatedSubmitApplicationResponse)
+@router.post("/application/submit", response_model=ApplicantApplicationResponse)
 def submit_applicant_application(
     body: SubmitApplicationRequest,
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
     application: Application = Depends(require_current_application),
-) -> AuthenticatedSubmitApplicationResponse:
+) -> ApplicantApplicationResponse:
     if not body.declaration_accepted:
         raise Problem("declaration_required", detail="Accept the declaration before submitting.")
     _require_application_editable(db, application)
@@ -238,15 +236,9 @@ def submit_applicant_application(
     openings = validate_opening_selection(db, application, body.opening_ids, now=now)
     publish_working_copy(db, application, body.answers, openings, submitted_at=now)
     db.commit()
-    email_sent = send_application_confirmation(
-        db, sender, application, submitted=True, now=now
-    )
+    send_application_confirmation(db, sender, application, submitted=True, now=now)
     restored = get_applicant_application(application, db)
-    return AuthenticatedSubmitApplicationResponse(
-        **restored.model_dump(),
-        email_sent=email_sent,
-        email_status="sent" if email_sent else "failed",
-    )
+    return restored
 
 
 @router.post("/application/revert", response_model=ApplicantApplicationResponse)
@@ -281,7 +273,6 @@ def withdraw_applicant_application(
     response: Response,
     application: Application = Depends(require_current_application),
     db: Session = Depends(get_db),
-    sender: EmailSender = Depends(get_email_sender),
 ) -> WithdrawApplicationResponse:
     """Withdraw one application and every opening participation from ordinary access."""
     now = datetime.now(UTC)
@@ -290,10 +281,7 @@ def withdraw_applicant_application(
         _purge_never_submitted_application(db, application)
         db.commit()
         clear_session_cookie(response, PasswordlessIdentityKind.APPLICANT)
-        return WithdrawApplicationResponse(
-            email_sent=False,
-            email_status="not_needed",
-        )
+        return WithdrawApplicationResponse()
 
     for state in applicant_opening_states(db, application):
         if state.participating:
@@ -324,9 +312,5 @@ def withdraw_applicant_application(
         application_id=application.id,
     )
     db.commit()
-    email_sent = send_application_withdrawn(db, sender, application, now=now)
     clear_session_cookie(response, PasswordlessIdentityKind.APPLICANT)
-    return WithdrawApplicationResponse(
-        email_sent=email_sent,
-        email_status="sent" if email_sent else "failed",
-    )
+    return WithdrawApplicationResponse()

@@ -13,7 +13,7 @@ from app.ai.dimension_scoring import (
 from app.ai.dimension_scoring import applications_to_score
 from app.ai.screening import applications_for_screening as screening_scope
 from app.ai.screening import screening_prompt_version
-from app.api.dependencies import require_current_user
+from app.api.dependencies import require_admin, require_current_user
 from app.core.time import as_utc
 from app.db.models import (
     Analysis,
@@ -26,12 +26,14 @@ from app.schemas.dashboard import (
     AdminActions,
     CoverageEntry,
     DashboardResponse,
+    EmailDeliveryIssueOut,
+    EmailDeliveryIssuesResponse,
     OpeningSelectionAction,
     WorkflowState,
 )
 from app.schemas.settings import effective_reasoning_effort
 from app.services.application_scope import committee_applications
-from app.services.email_outbox import email_queue_status
+from app.services.email_outbox import email_delivery_issues, email_queue_status
 from app.services.opening_selection import archived_openings_needing_selection
 from app.services.ranking.analysis import (
     current_dimension_kinds,
@@ -96,6 +98,7 @@ def read_dashboard(
                 ],
                 queued_email_count=email_queue.count,
                 quota_blocked_email_count=email_queue.quota_blocked,
+                recent_failed_email_count=email_queue.recent_failed,
                 oldest_queued_email_at=_as_utc(email_queue.oldest_queued_at),
                 newest_queued_email_at=_as_utc(email_queue.newest_queued_at),
                 last_email_attempt_at=_as_utc(email_queue.last_attempt_at),
@@ -103,6 +106,28 @@ def read_dashboard(
             if user.role == UserRole.ADMIN
             else None
         ),
+    )
+
+
+@router.get("/email-deliveries", response_model=EmailDeliveryIssuesResponse)
+def read_email_delivery_issues(
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> EmailDeliveryIssuesResponse:
+    return EmailDeliveryIssuesResponse(
+        items=[
+            EmailDeliveryIssueOut(
+                id=issue.id,
+                recipient_email=issue.recipient_email,
+                message_kind=issue.message_kind,
+                state=issue.state,
+                attempted_at=as_utc(issue.attempted_at),
+                attempt_count=issue.attempt_count,
+                error_code=issue.error_code,
+                quota_blocked=issue.quota_blocked,
+            )
+            for issue in email_delivery_issues(db)
+        ]
     )
 
 

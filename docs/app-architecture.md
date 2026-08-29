@@ -101,11 +101,17 @@ rebuilt with a fresh, immediately usable token for each attempt; an unsuccessful
 that token. A newer credential request supersedes an older queued one for the same identity and
 purpose.
 
+Accepted deliveries clear any targetless recipient address from the application ledger. Queued and
+unexpectedly failed deliveries retain enough routing information for the admin-only Email Delivery
+report to show the recipient, attempted time, message kind, state, attempts, and error code. The
+report excludes expected cancellations and never stores rendered bodies or credentials.
+
 Ordinary application traffic claims a durable once-per-Pacific-day maintenance lease in a response
 background task. The pass retries queued mail, sends due unsuccessful notices, and performs due
 retention deletion. Health checks, static assets, and CORS preflight requests do not trigger it.
-Administrators see queued and provider-quota-blocked counts in the action banner. SocketLabs, not
-the application, owns bounce, complaint, suppression, plan reporting, and account notifications.
+Administrators see queued, provider-quota-blocked, and recent unexpected failure counts in the
+action banner. SocketLabs, not the application, owns bounce, complaint, suppression, plan
+reporting, and account notifications.
 
 ## Committee workflow
 
