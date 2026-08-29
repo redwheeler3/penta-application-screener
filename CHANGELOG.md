@@ -22,9 +22,10 @@ submitted non-withdrawn application at its original submission timestamp, refres
 verifies notification state is unchanged before the transaction commits.
 
 The milestone remains operationally open until the explicitly approved production cutover in
-[docs/deploy.md](docs/deploy.md#vacancy-list-production-cutover): create the historical opening,
-freeze and import the authoritative Google vacancy export, reconcile it, switch the public website,
-and retire the Google form and sheet. No production operation is part of this repository change.
+[docs/deploy.md](docs/deploy.md#vacancy-list-production-cutover): activate the applicant hostname,
+create the historical opening, freeze and import the authoritative Google vacancy export, reconcile
+it, switch the public website, and retire the Google form and sheet. No production operation is
+part of this repository change.
 
 ---
 
@@ -37,9 +38,11 @@ AI workflows. Applicant and committee access use revocable server-side sessions,
 email is provider-neutral and retry-aware, and opening closeout drives unsuccessful notices and
 retention.
 
-All seven delivery stages are complete: canonical intake, email and sessions, the applicant form,
-publication and opening participation, committee intake, retention and closeout, and production
-cutover. Production relies on daily Fly volume snapshots retained for 30 days. A separate
+All seven implementation stages are complete: canonical intake, email and sessions, the applicant
+form, publication and opening participation, committee intake, retention and closeout, and
+deployment preparation. The applicant hostname's Fly certificate, DNS, and live verification remain
+part of the M22 production cutover. Production relies on daily Fly volume snapshots retained for 30
+days. A separate
 deletion-preserving Fly restore procedure was deliberately declined because restore-only
 reconciliation state and ordering rules would make the disaster path more fragile. Restoring a
 snapshot can reintroduce deletions made after it was taken, bounded by the backup window. Local

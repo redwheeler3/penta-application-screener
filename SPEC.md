@@ -1052,7 +1052,7 @@ selection evidence and reproduction commands are in
 [ADR 0013](docs/adr/0013-openai-model-selection.md); the routing architecture is in
 [ADR 0014](docs/adr/0014-multi-provider-model-routing.md).
 
-### Built-In Applications And Committee Access (M21) — complete
+### Built-In Applications And Committee Access (M21) — implementation complete
 
 **Goal:** replace the external Google Form/Sheet intake path with a first-party public
 application experience at a separate applicant-facing hostname, add email-delivered access for
@@ -1080,8 +1080,9 @@ lifecycle enforcement, submission-date household age checks, and committee openi
 visibility/filtering and the optional household photo link are implemented. Submitted applications
 appear without a committee sync action; Screen and Rank currentness derives from the stored pool.
 The committed synthetic fixture now mirrors the canonical intake schema, and a fail-closed,
-email-free local loader can migrate it into one or more published openings. The applicant hostname
-and first-party intake path are deployed.
+email-free local loader can migrate it into one or more published openings. The first-party intake
+path is implemented; production certificate, DNS, and live verification for the applicant hostname
+are part of the pending M22 cutover.
 
 **Delivery stages:**
 
@@ -1111,13 +1112,15 @@ and first-party intake path are deployed.
    unsuccessful email after archive, seven-year retention for selected members, opening-anchored retention for
    never-submitted drafts, complete one-year application purge, credential-safe lifecycle email delivery,
    and once-per-Pacific-day automatic maintenance.
-7. **Between-cycle cutover (complete)** — configure the applicant hostname and exercise SocketLabs in
-   production with synthetic data and retain existing production records as specified below.
+7. **Between-cycle deployment preparation (complete)** — configure the applicant URL used by the
+   service, exercise SocketLabs in production with synthetic data, and retain existing production
+   records as specified below. The applicant hostname's Fly certificate, DNS, and live verification
+   remain M22 production cutover operations.
    Application import, Picker, Drive credentials/tokens, and Google data scopes have already been
    removed from the codebase. Retain only identity-scoped Google committee sign-in and its OAuth
    client configuration.
 
-The applicant hostname is `applications.pentacoop.com`. Existing production application records
+The applicant hostname will be `applications.pentacoop.com`. Existing production application records
 and committee history are retained at cutover rather than reset. They are not sent unsolicited
 access messages; a returning applicant may claim the existing record only by verifying its
 recorded primary email. Records with a missing, duplicated, or inaccessible address require

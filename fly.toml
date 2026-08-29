@@ -10,7 +10,8 @@
 #       GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... \
 #       AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
 #   fly deploy
-#   fly certs add screener.pentacoop.com    # then add the CNAME it prints
+#   fly certs add screener.pentacoop.com
+#   fly certs add applications.pentacoop.com  # then add the DNS records Fly prints
 
 app = "penta-application-screener"
 primary_region = "iad"   # Ashburn — lower-cost region; Bedrock runs in nearby us-east-1.
@@ -21,9 +22,10 @@ primary_region = "iad"   # Ashburn — lower-cost region; Bedrock runs in nearby
 [env]
   # Non-secret runtime config. The DB path is relative to the backend workdir (/app/backend),
   # so this file lands on the mounted volume below. FRONTEND_URL / GOOGLE_REDIRECT_URI use the
-  # real hostname — single-origin, so the frontend and API share it.
+  # Each browser surface is same-origin with this one service; email links use the applicant host.
   DATABASE_URL = "sqlite:///./data/penta_screener.db"
   FRONTEND_URL = "https://screener.pentacoop.com"
+  APPLICANT_FRONTEND_URL = "https://applications.pentacoop.com"
   PUBLIC_WEBSITE_URL = "https://www.pentacoop.com"
   GOOGLE_REDIRECT_URI = "https://screener.pentacoop.com/auth/google/callback"
   AWS_REGION = "us-east-1"          # Bedrock region (matches settings default)

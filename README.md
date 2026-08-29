@@ -2,9 +2,9 @@
 
 Penta's production system for the complete housing-application lifecycle: public intake, private
 working copies, secure applicant access, opening participation, committee review, AI-assisted
-screening and ranking, applicant outcomes, transactional email, and retention. Applicants use
-`applications.pentacoop.com`; the Penta Housing Co-op membership committee uses
-`screener.pentacoop.com`.
+screening and ranking, applicant outcomes, transactional email, and retention. The Penta Housing
+Co-op membership committee uses `screener.pentacoop.com`; built-in applicant intake will use
+`applications.pentacoop.com` when that hostname is activated during the M22 production cutover.
 
 Applicants can begin without an account, save privately through an emailed access link, submit to
 one or more current openings, and return later to update or reuse their application. The committee
@@ -264,8 +264,9 @@ experience. Cutover is deliberately operational rather than another software pha
 
 1. Rehearse with a current Google response-sheet export. Dry-run the importer and resolve every
    invalid row or normalized collision without writing to production.
-2. Deploy the application service and migration while the public website still points to Google,
-   then verify the production vacancy list is empty.
+2. Deploy the application service and migration while the public website still points to Google;
+   activate `applications.pentacoop.com` on the same Fly service; verify both host surfaces; then
+   verify the production vacancy list is empty.
 3. Dry-run `uv run python -m scripts.create_historical_opening` with the original opening facts,
    reconcile its target count to the complete Google Form application pool, then apply it with the
    exact expected count. It attaches every existing submitted Google Form application without

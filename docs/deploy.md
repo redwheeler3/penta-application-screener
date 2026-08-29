@@ -7,8 +7,9 @@ push, and back up / restore the data.
 
 **Shape of the deploy (why the steps are what they are):**
 
-- **Single origin.** FastAPI serves the built Vite bundle, so there is *one* service, one
-  hostname, and no CORS. The frontend calls the API with relative URLs in prod.
+- **One service, two same-origin surfaces.** FastAPI serves the built Vite bundle on both the
+  committee and applicant hostnames. Each surface calls the API at its own origin with relative
+  URLs; the public website is the only production browser origin that needs CORS.
 - **Fly auto-stop to zero.** The machine stops when idle (compute billing → ~$0) and
   cold-starts on the next request. A **persistent volume** holds the SQLite DB, so the data
   survives stop/start and redeploys. Realistic cost ~$1–5/mo.
@@ -90,7 +91,9 @@ fly status
 The `/health` check should go green once migrations finish (see the grace period in
 `fly.toml`).
 
-### 5. Custom domain
+### 5. Custom domains
+
+The committee hostname is already configured and must remain in place:
 
 ```
 fly certs add screener.pentacoop.com
@@ -110,6 +113,26 @@ fly certs check screener.pentacoop.com
 This uses Fly's **free shared IPv4 + IPv6** — no dedicated IP ($2/mo) needed for a subdomain.
 On Cloudflare, set the records to **DNS-only (grey cloud)**, not proxied, or cert validation
 fails.
+
+Before activating built-in applicant intake, add the second hostname to the same Fly app:
+
+```
+fly certs add applications.pentacoop.com
+```
+
+Add the A/AAAA records Fly currently reports at the DNS provider with host `applications`, without
+changing the existing `screener` records. Both names route to the same service and persistent
+database; adding this certificate and DNS name does not interrupt the committee hostname. Verify
+both independently:
+
+```
+fly certs check screener.pentacoop.com
+fly certs check applications.pentacoop.com
+```
+
+The deployed `APPLICANT_FRONTEND_URL=https://applications.pentacoop.com` setting must be present
+before this activation so applicant access emails use the public hostname and applicant session
+cookies are Secure. Google OAuth remains on the committee hostname only.
 
 ### 6. Point Google OAuth at prod
 
@@ -298,10 +321,12 @@ export is a rehearsal only; Google may receive more responses afterward.
 #### 2. Prepare production without changing the public form
 
 Deploy the application service and its database migration while the public website still points to
-Google. Verify application health, administrator access, SocketLabs usage reporting, and the vacancy
-report. The production vacancy list must be empty before the authoritative import. Remove any
-controlled test subscription through the narrow administrator interface rather than relying on an
-upsert during migration.
+Google. Add the `applications.pentacoop.com` Fly certificate and DNS records as described above,
+then verify that the committee and applicant hostnames serve their respective surfaces without
+submitting an application. Verify application health, administrator access, SocketLabs usage
+reporting, and the vacancy report. The production vacancy list must be empty before the
+authoritative import. Remove any controlled test subscription through the narrow administrator
+interface rather than relying on an upsert during migration.
 
 #### 3. Create the historical application opening
 
@@ -335,7 +360,7 @@ Stop if any preflight or read-back value differs; do not continue by editing the
 #### 4. Freeze Google and take the authoritative export
 
 Pause the Google form so it no longer accepts responses. Leave the public website online; its
-signup is briefly unavailable until the website deployment in step 5. Export the response sheet
+signup is briefly unavailable until the website deployment in step 6. Export the response sheet
 again after the pause and run the same dry-run command against this final file.
 
 If validation fails, re-enable Google responses and end the cutover attempt. Resolve the source
