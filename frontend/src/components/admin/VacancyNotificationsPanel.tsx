@@ -2,6 +2,7 @@ import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "re
 
 import * as api from "../../api/vacancySubscriptions";
 import { readProblem } from "../../api/problems";
+import { formatPacificDateTime } from "../../format";
 import type { VacancySubscription, VacancySubscriptionReport } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
@@ -146,7 +147,23 @@ export function VacancyNotificationsPanel(props: {
           />
           <button className="secondary-button" type="submit" disabled={busy}>Look up</button>
         </form>
-        {message ? <p className="opening-message" role="status">{message}</p> : null}
+        {message ? <p className="opening-message vacancy-lookup-message" role="status">{message}</p> : null}
+        {subscription ? (
+          <dl className="vacancy-subscription-facts">
+            <div>
+              <dt>Subscribed</dt>
+              <dd>{formatPacificDateTime(subscription.consentedAt)}</dd>
+            </div>
+            <div>
+              <dt>Source</dt>
+              <dd>{subscription.source}</dd>
+            </div>
+            <div>
+              <dt>Consent notice</dt>
+              <dd>{subscription.consentVersion ?? "Not recorded"}</dd>
+            </div>
+          </dl>
+        ) : null}
         {lookedUp ? (
           <div className="vacancy-support-editor">
             <fieldset>

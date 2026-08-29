@@ -42,6 +42,7 @@ class VacancySubscriptionOut(ResponseModel):
     email: str
     unit_sizes: list[int]
     consented_at: datetime
+    consent_version: str | None
     source: str
 
 

@@ -98,6 +98,7 @@ export type VacancySubscription = {
   email: string;
   unitSizes: number[];
   consentedAt: string;
+  consentVersion: string | null;
   source: string;
 };
 

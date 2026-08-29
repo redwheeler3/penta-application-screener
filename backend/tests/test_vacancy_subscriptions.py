@@ -243,10 +243,42 @@ async def test_admin_can_lookup_replace_and_delete_exact_email_with_audit() -> N
     audits = list(db.scalars(select(VacancySubscriptionAudit).order_by(VacancySubscriptionAudit.id)))
     assert missing.json() == {"subscription": None}
     assert saved.json()["subscription"]["unitSizes"] == [1, 3]
+    assert saved.json()["subscription"]["consentVersion"] is None
+    assert saved.json()["subscription"]["source"] == "Tech support request"
     assert deleted.json() == {"subscription": None}
     assert [audit.action for audit in audits] == ["add", "delete"]
     assert all(audit.acted_by_user_id == admin.id for audit in audits)
     assert db.scalar(select(VacancySubscription)) is None
+
+
+@pytest.mark.anyio
+async def test_admin_lookup_returns_subscription_metadata_with_a_qualified_timestamp() -> None:
+    app, db, _ = _app_and_db()
+    save_subscription(
+        db,
+        email="person@example.com",
+        unit_sizes={2},
+        source="public website",
+        consent_version=VACANCY_CONSENT_VERSION,
+        consented_at=datetime(2026, 8, 27, 18, tzinfo=UTC),
+    )
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/vacancy-subscriptions/admin/lookup",
+            json={"email": "person@example.com"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "subscription": {
+            "email": "person@example.com",
+            "unitSizes": [2],
+            "consentedAt": "2026-08-27T18:00:00Z",
+            "consentVersion": VACANCY_CONSENT_VERSION,
+            "source": "public website",
+        }
+    }
 
 
 @pytest.mark.anyio

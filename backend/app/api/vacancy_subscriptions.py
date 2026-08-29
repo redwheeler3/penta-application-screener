@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin
 from app.core.problems import Problem
+from app.core.time import as_utc
 from app.db.models import User
 from app.db.session import get_db
 from app.legal import VACANCY_CONSENT_VERSION
@@ -53,7 +54,8 @@ def _out(subscription) -> VacancySubscriptionOut:
     return VacancySubscriptionOut(
         email=subscription.email,
         unit_sizes=unit_sizes(subscription),
-        consented_at=subscription.consented_at,
+        consented_at=as_utc(subscription.consented_at),
+        consent_version=subscription.consent_version,
         source=subscription.source,
     )
 
