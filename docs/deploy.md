@@ -281,6 +281,14 @@ snapshots in `data/backups/` work the same in the container as locally.)
 
 ### Vacancy-list production cutover
 
+**Completed August 29, 2026.** Historical opening 1 attached 232 applications. The authoritative
+vacancy import produced 1,478 active subscriptions (1BR=894, 2BR=707, 3BR=111) and matched every
+monthly source bucket. Both hostnames, one controlled SocketLabs delivery, and the public
+signup/replace/delete flow were verified; the controlled subscription was removed and the report
+returned to baseline. The Google form and response sheet are frozen and retired from operational
+use, with the owner's archived copies pending deletion. Remote and local CSV exports were removed.
+The steps below remain the audit trail and recovery procedure for this cutover.
+
 #### Historical application opening prerequisite
 
 The production database initially contains the submitted Google Form application pool without an
@@ -385,7 +393,7 @@ If the import or reconciliation fails, do not deploy the website form. Re-enable
 diagnose the mismatch, restore the vacancy list to an empty pre-cutover state through an explicitly
 approved production operation, and restart later from a fresh export.
 
-#### 6. Configure and verify transactional email — TODO
+#### 6. Configure and verify transactional email
 
 SocketLabs credentials and live delivery are deliberately still absent after the vacancy import,
 so no imported address can receive mail during reconciliation. Before directing applicants to the
@@ -415,8 +423,8 @@ with a real retained applicant merely as a smoke test because it changes that ap
 and retention.
 
 After the controlled checks pass, remove the Google form from public use and retire the response
-sheet from operational handling. No migration email is sent. Update the milestone documentation to
-mark the M22 production cutover complete.
+sheet from operational handling. No migration email is sent. Record the verified counts and
+production evidence in the milestone documentation.
 
 | Task | Command |
 |---|---|

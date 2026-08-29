@@ -3,8 +3,8 @@
 Penta's production system for the complete housing-application lifecycle: public intake, private
 working copies, secure applicant access, opening participation, committee review, AI-assisted
 screening and ranking, applicant outcomes, transactional email, and retention. The Penta Housing
-Co-op membership committee uses `screener.pentacoop.com`; built-in applicant intake will use
-`applications.pentacoop.com` when that hostname is activated during the M22 production cutover.
+Co-op membership committee uses `screener.pentacoop.com`; applicants use
+`applications.pentacoop.com`.
 
 Applicants can begin without an account, save privately through an emailed access link, submit to
 one or more current openings, and return later to update or reuse their application. The committee
@@ -262,45 +262,29 @@ Growing the golden case sets from a real Rank is done with the harvest scripts u
 
 ## Status And Next Milestone
 
-**Milestones 1–21 are complete.** The system is live in production and used by the Penta Housing
+**Milestones 1–22 are complete.** The system is live in production and used by the Penta Housing
 Co-op membership committee. It includes the built-in applicant experience, revocable server-side
 sessions for applicant and committee access, opening participation, outcomes, transactional email,
 and retention. Production runs as a deliberately small single Fly instance with persistent-volume
 SQLite and daily snapshots retained for 30 days.
 
-**M22 implementation is complete; production cutover remains.** The application now owns vacancy
+**M22 production cutover completed on August 29, 2026.** The application now owns vacancy
 subscriptions, administration, opening audience previews, live SocketLabs usage, and retry-safe
 delivery. Administrators can also fill a home from a retained previous applicant without reopening
 applications or sending email. The always-on public website submits with the agreed bounded recovery
-experience. Cutover is deliberately operational rather than another software phase:
-
-1. Rehearse with a current Google response-sheet export. Dry-run the importer and resolve every
-   invalid row or normalized collision without writing to production.
-2. Deploy the application service and migration while the public website still points to Google;
-   activate `applications.pentacoop.com` on the same Fly service; verify both host surfaces; then
-   verify the production vacancy list is empty.
-3. Dry-run `uv run python -m scripts.create_historical_opening` with the original opening facts,
-   reconcile its target count to the complete Google Form application pool, then apply it with the
-   exact expected count. It attaches every existing submitted Google Form application without
-   queueing vacancy emails.
-4. Pause Google responses, take and validate the authoritative final export, import it without
-   `--allow-upsert`, and reconcile the active total, bedroom counts, and monthly chart.
-5. Configure SocketLabs in development mode, verify one controlled approved-domain delivery and
-   usage reporting, then enable production delivery.
-6. Deploy the public website, verify the reviewed legal surfaces and one controlled signup, then
-   remove the controlled record and retire the Google form and sheet without sending a migration
-   email.
-
-The brief response pause closes the handoff between the two systems. If the final export fails
-validation or reconciliation before the website switch, re-enable Google responses and restart the
-cutover later from a fresh export.
+experience. The guarded historical opening attached all 232 retained applications without email.
+The frozen Google vacancy export imported 1,478 unique subscriptions and reconciled exactly to
+1BR=894, 2BR=707, and 3BR=111, including every monthly chart bucket. A controlled signup,
+preference replacement, deletion, approved-domain SocketLabs delivery, and both production
+hostnames were verified before the Google form and sheet were retired from operational use. No
+migration email was sent.
 
 M22 deliberately uses the existing grandfathered SocketLabs server, where a permanent unsubscribe
 applies to all Penta mail, including application-access links. The reviewed legal and privacy
-changes are implemented in development and must be deployed with the cutover.
+changes are deployed.
 
 The detailed M22 contract, non-goals, and definition of done are in
-[SPEC.md](SPEC.md#built-in-vacancy-notifications-m22--cutover-pending). Milestone history is in
+[SPEC.md](SPEC.md#built-in-vacancy-notifications-m22--complete). Milestone history is in
 [CHANGELOG.md](CHANGELOG.md). Hosting decisions are in
 [ADR 0012](docs/adr/0012-hosting-platform-m17.md); operations are covered by
 [docs/deploy.md](docs/deploy.md) and the

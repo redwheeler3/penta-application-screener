@@ -1053,7 +1053,7 @@ selection evidence and reproduction commands are in
 [ADR 0013](docs/adr/0013-openai-model-selection.md); the routing architecture is in
 [ADR 0014](docs/adr/0014-multi-provider-model-routing.md).
 
-### Built-In Applications And Committee Access (M21) — implementation complete
+### Built-In Applications And Committee Access (M21) — complete
 
 **Goal:** replace the external Google Form/Sheet intake path with a first-party public
 application experience at a separate applicant-facing hostname, add email-delivered access for
@@ -1082,8 +1082,7 @@ visibility/filtering and the optional household photo link are implemented. Subm
 appear without a committee sync action; Screen and Rank currentness derives from the stored pool.
 The committed synthetic fixture now mirrors the canonical intake schema, and a fail-closed,
 email-free local loader can migrate it into one or more published openings. The first-party intake
-path is implemented; production certificate, DNS, and live verification for the applicant hostname
-are part of the pending M22 cutover.
+path is deployed and verified at the applicant hostname.
 
 **Delivery stages:**
 
@@ -1113,15 +1112,14 @@ are part of the pending M22 cutover.
    unsuccessful email after archive, seven-year retention for selected members, opening-anchored retention for
    never-submitted drafts, complete one-year application purge, credential-safe lifecycle email delivery,
    and once-per-Pacific-day automatic maintenance.
-7. **Between-cycle deployment preparation (complete)** — configure the applicant URL used by the
-   service, exercise SocketLabs in production with synthetic data, and retain existing production
-   records as specified below. The applicant hostname's Fly certificate, DNS, and live verification
-   remain M22 production cutover operations.
+7. **Between-cycle cutover (complete)** — configure and verify the applicant hostname, exercise
+   SocketLabs in production with controlled data, and retain existing production records as
+   specified below.
    Application import, Picker, Drive credentials/tokens, and Google data scopes have already been
    removed from the codebase. Retain only identity-scoped Google committee sign-in and its OAuth
    client configuration.
 
-The applicant hostname will be `applications.pentacoop.com`. Existing production application records
+The applicant hostname is `applications.pentacoop.com`. Existing production application records
 and committee history are retained at cutover rather than reset. They are not sent unsolicited
 access messages; a returning applicant may claim the existing record only by verifying its
 recorded primary email. Records with a missing, duplicated, or inaccessible address require
@@ -1198,7 +1196,7 @@ would add failure modes to a rarely exercised disaster path without proportionat
 Applicant deletion, deletion-ledger-aware local restores, the opportunistic retention sweep, and
 administrator delivery-status banners are implemented.
 
-### Built-In Vacancy Notifications (M22) — cutover pending
+### Built-In Vacancy Notifications (M22) — complete
 
 **Goal:** operate the minimal one-notice subscription described in
 [Built-In Vacancy Notification List](#built-in-vacancy-notification-list-m22).
@@ -1219,15 +1217,16 @@ administrator delivery-status banners are implemented.
    quota prevents immediate delivery. Send through a retry-safe outbox, consume each subscription
    after provider acceptance, and show delivery outcomes to administrators. There is no separate
    future-open state or opened-versus-notified lifecycle to reconcile.
-4. **Cutover pending:** rehearse the importer against a current Google export and resolve invalid
-   rows or normalized collisions without writing to production. Deploy the application service
-   while the website still points to Google and verify the production vacancy list is empty. Pause
-   Google responses, take and validate the authoritative final export, and import its unique email
-   addresses, unit preferences, and form-response consent timestamps without `--allow-upsert`.
-   Reconcile the total, size counts, and monthly chart before switching the website form target.
-   Verify one controlled built-in signup, remove that record, and retire the Google form and sheet
-   without sending a migration email. If validation or reconciliation fails before the switch,
-   re-enable Google responses and restart later from a fresh export.
+4. **Production cutover (complete, August 29, 2026):** activate and verify the applicant hostname;
+   create historical opening 1 and attach all 232 submitted, non-withdrawn applications without
+   queueing email; freeze and validate the authoritative Google vacancy export; and import it
+   without `--allow-upsert`. The resulting 1,478 active subscriptions reconciled exactly to
+   1BR=894, 2BR=707, and 3BR=111, including every monthly chart bucket. The shared grandfathered
+   SocketLabs server passed a controlled approved-domain template/link test before production
+   delivery was enabled. The public website's built-in signup, preference replacement, and deletion
+   returned the report to the imported baseline. The Google form and response sheet are retired
+   from operational use and temporarily retained only as frozen archives pending deletion; no
+   migration email was sent.
 
 **Non-goals:** applicant accounts; email-address verification; recurring newsletters; a wait-list
 position or ordering; automatic application creation; multiple notices from one subscription;
@@ -1261,8 +1260,9 @@ matching vacancy notice.
 - The production website uses the built-in form and the Google form/sheet and their operational
   handling are removed after a count-verified migration.
 
-**Production gate:** deploy the reviewed notice, privacy copy, email footer, consent evidence, and
-application-withdrawal semantics together before accepting production signups or applications.
+**Production gate (completed August 29, 2026):** the reviewed notice, privacy copy, email footer,
+consent evidence, and application-withdrawal semantics were deployed together before production
+signups moved to the built-in service.
 
 ### Reporting (M10 shipped) — ✅ closed, demand-driven from here
 

@@ -6,7 +6,7 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/). 
 
 ---
 
-## Milestone 22 — Built-In Vacancy Notifications (Production Cutover Pending)
+## Milestone 22 — Built-In Vacancy Notifications
 
 Implemented the one-notice vacancy subscription flow, administrator reconciliation and narrow
 management tools, opening-audience preview, live SocketLabs usage, and retry-safe delivery. Opening
@@ -21,11 +21,15 @@ reconciled application count, refuses prior participation or a duplicate opening
 submitted non-withdrawn application at its original submission timestamp, refreshes retention, and
 verifies notification state is unchanged before the transaction commits.
 
-The milestone remains operationally open until the explicitly approved production cutover in
-[docs/deploy.md](docs/deploy.md#vacancy-list-production-cutover): activate the applicant hostname,
-create the historical opening, freeze and import the authoritative Google vacancy export, reconcile
-it, switch the public website, and retire the Google form and sheet. No production operation is
-part of this repository change.
+Production cutover completed on August 29, 2026. `applications.pentacoop.com` and the existing
+committee hostname were certificate- and health-verified on the same Fly service. Historical
+opening 1 attached all 232 retained applications without queueing email. The frozen Google export
+imported 1,478 subscriptions and reconciled exactly to 1BR=894, 2BR=707, and 3BR=111 plus every
+monthly bucket. The shared grandfathered SocketLabs server passed a controlled template/link test;
+production delivery was then enabled with an empty queue. The public website signup, replacement,
+and deletion flow returned the report to the imported baseline. The Google form and sheet are no
+longer operational sources and remain only temporarily archived pending deletion. No migration
+email was sent, and local/exported CSV copies were removed after reconciliation.
 
 ---
 
@@ -38,11 +42,9 @@ AI workflows. Applicant and committee access use revocable server-side sessions,
 email is provider-neutral and retry-aware, and opening closeout drives unsuccessful notices and
 retention.
 
-All seven implementation stages are complete: canonical intake, email and sessions, the applicant
-form, publication and opening participation, committee intake, retention and closeout, and
-deployment preparation. The applicant hostname's Fly certificate, DNS, and live verification remain
-part of the M22 production cutover. Production relies on daily Fly volume snapshots retained for 30
-days. A separate
+All seven delivery stages are complete: canonical intake, email and sessions, the applicant form,
+publication and opening participation, committee intake, retention and closeout, and production
+cutover. Production relies on daily Fly volume snapshots retained for 30 days. A separate
 deletion-preserving Fly restore procedure was deliberately declined because restore-only
 reconciliation state and ordering rules would make the disaster path more fragile. Restoring a
 snapshot can reintroduce deletions made after it was taken, bounded by the backup window. Local
