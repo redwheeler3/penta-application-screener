@@ -54,8 +54,8 @@ def _out(subscription) -> VacancySubscriptionOut:
     return VacancySubscriptionOut(
         email=subscription.email,
         unit_sizes=unit_sizes(subscription),
+        first_consented_at=as_utc(subscription.first_consented_at),
         consented_at=as_utc(subscription.consented_at),
-        consent_version=subscription.consent_version,
         source=subscription.source,
     )
 

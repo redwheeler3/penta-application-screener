@@ -69,7 +69,7 @@ configuration, committee defaults, Observability, and Evals require an admin.
 | --- | --- | --- | --- |
 | POST | `/vacancy-subscriptions` | Add or replace one address's complete unit-size selection without revealing prior state. | Public |
 | GET | `/vacancy-subscriptions/report` | Return active total, overlapping bedroom counts, and monthly consent distribution. | Admin |
-| POST | `/vacancy-subscriptions/admin/lookup` | Look up one exact normalized address for a support or privacy request. | Admin |
+| POST | `/vacancy-subscriptions/admin/lookup` | Look up one exact normalized address with first-subscription time, current-update time, and source. | Admin |
 | PUT | `/vacancy-subscriptions/admin` | Add or replace one exact address with an audited request source. | Admin |
 | POST | `/vacancy-subscriptions/admin/delete` | Delete one exact address and record a PII-minimized audit event. | Admin |
 

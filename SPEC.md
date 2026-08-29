@@ -667,9 +667,10 @@ Administrators have a vacancy-list report showing the total active subscriptions
 2-, and 3-bedroom preferences, and a monthly bar chart modeled on the existing spreadsheet report.
 The size counts overlap because one subscription may request more than one size. The monthly chart
 groups active records by their current consent month, so its bars add up to the displayed active
-total. Routine reporting does not expose email addresses. A separate exact-email lookup lets an
-administrator add or replace a subscription after a person requests manual help, or delete one on
-request; those actions record the acting administrator and their source.
+total. Routine reporting does not expose email addresses. A separate exact-email lookup shows when
+the person first subscribed, when the current preferences were last updated, and the current source;
+it lets an administrator add or replace a subscription after a person requests manual help, or
+delete one on request. Those actions record the acting administrator and their source.
 
 When any requested unit size becomes available, the transactional email provider sends one vacancy
 notice and the entire list record is consumed, even if the person selected other unit sizes.

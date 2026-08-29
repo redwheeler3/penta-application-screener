@@ -41,8 +41,8 @@ class VacancySubscriptionPublicOut(ResponseModel):
 class VacancySubscriptionOut(ResponseModel):
     email: str
     unit_sizes: list[int]
+    first_consented_at: datetime
     consented_at: datetime
-    consent_version: str | None
     source: str
 
 

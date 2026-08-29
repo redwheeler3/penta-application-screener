@@ -40,7 +40,7 @@ def save_subscription(
     )
     action = "replace" if subscription is not None else "add"
     if subscription is None:
-        subscription = VacancySubscription(email=normalized)
+        subscription = VacancySubscription(email=normalized, first_consented_at=now)
         db.add(subscription)
     subscription.wants_one_bedroom = 1 in unit_sizes
     subscription.wants_two_bedroom = 2 in unit_sizes

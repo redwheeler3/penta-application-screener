@@ -151,16 +151,16 @@ export function VacancyNotificationsPanel(props: {
         {subscription ? (
           <dl className="vacancy-subscription-facts">
             <div>
-              <dt>Subscribed</dt>
+              <dt>First subscribed</dt>
+              <dd>{formatPacificDateTime(subscription.firstConsentedAt)}</dd>
+            </div>
+            <div>
+              <dt>Last updated</dt>
               <dd>{formatPacificDateTime(subscription.consentedAt)}</dd>
             </div>
             <div>
               <dt>Source</dt>
               <dd>{subscription.source}</dd>
-            </div>
-            <div>
-              <dt>Consent notice</dt>
-              <dd>{subscription.consentVersion ?? "Not recorded"}</dd>
             </div>
           </dl>
         ) : null}

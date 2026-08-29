@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies import require_current_user
 from app.api.vacancy_subscriptions import signup_limiter
+from app.core.time import as_utc
 from app.db.models import (
     Base,
     User,
@@ -105,6 +106,30 @@ def test_fulfilled_consent_receipt_is_hashed_and_expires_after_one_year() -> Non
     assert purge_expired_consent_receipts(db, today=date(2027, 8, 31)) == 0
     assert purge_expired_consent_receipts(db, today=date(2027, 9, 1)) == 1
     assert db.scalar(select(VacancyConsentReceipt)) is None
+
+
+def test_replacing_preferences_preserves_first_subscription_time() -> None:
+    _, db, _ = _app_and_db()
+    first_at = datetime(2026, 7, 1, 18, tzinfo=UTC)
+    updated_at = datetime(2026, 8, 27, 18, tzinfo=UTC)
+
+    save_subscription(
+        db,
+        email="person@example.com",
+        unit_sizes={1},
+        source="public website",
+        consented_at=first_at,
+    )
+    subscription = save_subscription(
+        db,
+        email="person@example.com",
+        unit_sizes={2, 3},
+        source="public website",
+        consented_at=updated_at,
+    )
+
+    assert as_utc(subscription.first_consented_at) == first_at
+    assert as_utc(subscription.consented_at) == updated_at
 
 
 @pytest.mark.anyio
@@ -243,7 +268,6 @@ async def test_admin_can_lookup_replace_and_delete_exact_email_with_audit() -> N
     audits = list(db.scalars(select(VacancySubscriptionAudit).order_by(VacancySubscriptionAudit.id)))
     assert missing.json() == {"subscription": None}
     assert saved.json()["subscription"]["unitSizes"] == [1, 3]
-    assert saved.json()["subscription"]["consentVersion"] is None
     assert saved.json()["subscription"]["source"] == "Tech support request"
     assert deleted.json() == {"subscription": None}
     assert [audit.action for audit in audits] == ["add", "delete"]
@@ -274,8 +298,8 @@ async def test_admin_lookup_returns_subscription_metadata_with_a_qualified_times
         "subscription": {
             "email": "person@example.com",
             "unitSizes": [2],
+            "firstConsentedAt": "2026-08-27T18:00:00Z",
             "consentedAt": "2026-08-27T18:00:00Z",
-            "consentVersion": VACANCY_CONSENT_VERSION,
             "source": "public website",
         }
     }

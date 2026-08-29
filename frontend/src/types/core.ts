@@ -97,8 +97,8 @@ export type OpeningCreated = {
 export type VacancySubscription = {
   email: string;
   unitSizes: number[];
+  firstConsentedAt: string;
   consentedAt: string;
-  consentVersion: string | null;
   source: string;
 };
 

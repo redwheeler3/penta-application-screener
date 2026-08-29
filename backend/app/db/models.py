@@ -354,6 +354,9 @@ class VacancySubscription(TimestampMixin, Base):
     wants_one_bedroom: Mapped[bool] = mapped_column(Boolean, nullable=False)
     wants_two_bedroom: Mapped[bool] = mapped_column(Boolean, nullable=False)
     wants_three_bedroom: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    first_consented_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     consented_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
     consent_version: Mapped[str | None] = mapped_column(String(30))
     source: Mapped[str] = mapped_column(String(120), nullable=False)
