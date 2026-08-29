@@ -89,6 +89,16 @@ async def test_authenticated_submission_requires_declaration_and_accepts_multipl
     assert version is not None
     assert version.selected_opening_ids == [opening.id, later_opening.id]
     assert version.terms_version == APPLICATION_TERMS_VERSION
+    confirmation = sender.messages[-1].text_body
+    assert confirmation.index("2-bedroom home") < confirmation.index("3-bedroom home")
+    assert (
+        f"{opening.move_in_date.strftime('%B')} {opening.move_in_date.day}, {opening.move_in_date.year}"
+        in confirmation
+    )
+    assert (
+        f"{later_opening.move_in_date.strftime('%B')} {later_opening.move_in_date.day}, {later_opening.move_in_date.year}"
+        in confirmation
+    )
 
 
 @pytest.mark.anyio

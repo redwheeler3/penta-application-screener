@@ -1,5 +1,7 @@
 """Transactional email copy for applicant and committee access links."""
 
+from collections.abc import Sequence
+from dataclasses import dataclass
 from html import escape
 from urllib.parse import quote
 
@@ -25,38 +27,74 @@ COMMON_FOOTER_HTML = (
 )
 
 
+@dataclass(frozen=True)
+class ApplicationOpeningTimeline:
+    unit_size: str
+    close_date: str
+    move_in_date: str
+
+
 def application_confirmation_email(
     *,
     application_id: int,
     email: str,
     token: str,
     submitted: bool,
+    opening_timelines: Sequence[ApplicationOpeningTimeline],
     settings: Settings,
 ) -> OutboundEmail:
     url = _applicant_link_url(settings.applicant_frontend_url, token)
     state = "submitted" if submitted else "saved"
     heading = f"Your application has been {state}"
+    if submitted and not opening_timelines:
+        raise ValueError("a submitted application email requires an opening timeline")
     introduction = (
-        "Your application is now available to the membership committee."
+        "Thank you for submitting your application to Penta Co-operative Housing."
         if submitted
         else "Your private application draft has been saved."
     )
-    text = _with_common_footer(f"""{heading}.
+    self_service = "You can return to the application page to update or withdraw your application."
+    if submitted:
+        timeline_text = _application_timeline_text(opening_timelines)
+        body = f"""{heading}.
+
+{introduction}
+
+{timeline_text}
+
+{self_service}
+
+Use this link to open your application:
+
+{url}
+"""
+    else:
+        body = f"""{heading}.
 
 {introduction}
 
 Use this link to open your application:
 
 {url}
-
-""")
-    html = _email_shell(
-        eyebrow="Application update",
-        heading=heading,
-        introduction=introduction,
-        action_url=url,
-        action_label="Open your application",
-        link_notice=None,
+"""
+    text = _with_common_footer(body)
+    html = (
+        _submitted_application_email_html(
+            heading=heading,
+            introduction=introduction,
+            timelines=opening_timelines,
+            self_service=self_service,
+            action_url=url,
+        )
+        if submitted
+        else _email_shell(
+            eyebrow="Application update",
+            heading=heading,
+            introduction=introduction,
+            action_url=url,
+            action_label="Open your application",
+            link_notice=None,
+        )
     )
     return OutboundEmail(
         kind=f"application_{state}",
@@ -65,6 +103,61 @@ Use this link to open your application:
         subject=heading,
         text_body=text,
         html_body=html,
+    )
+
+
+def _application_timeline_text(
+    timelines: Sequence[ApplicationOpeningTimeline],
+) -> str:
+    return "\n\n".join(
+        f"{timeline.unit_size} home\n{_application_timeline_copy(timeline)}"
+        for timeline in timelines
+    )
+
+
+def _application_timeline_copy(timeline: ApplicationOpeningTimeline) -> str:
+    return (
+        "If your application is shortlisted, we'll contact you between "
+        f"{timeline.close_date} and {timeline.move_in_date}. Whether or not you're "
+        "shortlisted, we'll email you shortly after "
+        f"{timeline.move_in_date} to let you know the final outcome."
+    )
+
+
+def _submitted_application_email_html(
+    *,
+    heading: str,
+    introduction: str,
+    timelines: Sequence[ApplicationOpeningTimeline],
+    self_service: str,
+    action_url: str,
+) -> str:
+    timeline_html = "".join(
+        f"""<div style="margin:0 0 12px;padding:16px 18px;background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
+                <strong style="display:block;margin-bottom:7px;color:#174f35;font-size:15px;">{escape(timeline.unit_size)} home</strong>
+                <p style="margin:0;color:#4b5563;font-size:14px;line-height:1.55;">{escape(_application_timeline_copy(timeline))}</p>
+              </div>"""
+        for timeline in timelines
+    )
+    safe_action_url = escape(action_url, quote=True)
+    content_html = f"""<p style="margin:0 0 22px;color:#4b5563;font-size:16px;line-height:1.6;">{escape(introduction)}</p>
+              {timeline_html}
+              <p style="margin:22px 0;color:#4b5563;font-size:15px;line-height:1.6;">{escape(self_service)}</p>
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="border-radius:8px;background-color:#16a34a;">
+                    <a href="{safe_action_url}" style="display:inline-block;padding:13px 20px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;">Open your application</a>
+                  </td>
+                </tr>
+              </table>"""
+    return _email_shell(
+        eyebrow="Application update",
+        heading=heading,
+        introduction=introduction,
+        action_url=None,
+        action_label=None,
+        link_notice=None,
+        custom_content_html=content_html,
     )
 
 

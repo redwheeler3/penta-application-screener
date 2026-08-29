@@ -182,6 +182,11 @@ until its application open date.
 After each initial or updated submission, the product sends the primary applicant a confirmation
 email with secure application access. There is no opt-in checkbox: the applicant may ignore or delete
 the message, and can request a fresh access email later through the same flow.
+The submitted screen and confirmation email thank the applicant and show a separate timeline for
+each opening in that submission. Each timeline says that shortlisted applicants may be contacted
+between the opening's close date and move-in date, and that every applicant will receive the final
+outcome shortly after the move-in date. Both surfaces remind the applicant that they can return to
+update or withdraw the application themselves.
 
 The access link proves control of the primary email before an existing application can be changed.
 A first guest submission may be published before email control is proven, then its confirmation

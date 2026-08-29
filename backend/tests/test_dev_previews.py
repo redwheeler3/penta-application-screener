@@ -42,6 +42,12 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
     assert "pentacoop.com#" not in response.text
     assert "removed you from the vacancy notification list" in response.text
     assert "https://www.pentacoop.com/apply.html" in response.text
+    submitted = next(preview for preview in previews if preview["key"] == "application-submitted")
+    assert "2-bedroom home" in submitted["html"]
+    assert "3-bedroom home" in submitted["html"]
+    assert "September 15, 2026" in submitted["html"]
+    assert "November 1, 2026" in submitted["html"]
+    assert "Whether or not you&#x27;re shortlisted" in submitted["html"]
 
 
 @pytest.mark.anyio

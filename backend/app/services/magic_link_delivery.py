@@ -30,6 +30,7 @@ from app.services.passwordless_auth import (
     issue_magic_link,
     magic_link_request_allowed,
 )
+from app.services.vacancy_notifications import application_confirmation_timelines
 
 
 class EmailSendOutcome(StrEnum):
@@ -145,6 +146,11 @@ def send_application_confirmation(
         email=application.primary_email,
         token=issued.token,
         submitted=submitted,
+        opening_timelines=(
+            application_confirmation_timelines(db, application.id)
+            if submitted
+            else []
+        ),
         settings=get_settings(),
     )
     return deliver_email(

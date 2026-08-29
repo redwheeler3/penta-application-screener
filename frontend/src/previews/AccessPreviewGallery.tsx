@@ -270,7 +270,7 @@ function ApplicantResultPreviews() {
   return (
     <div className="access-preview-grid">
       <PreviewCard title="Application submitted" description="The application was submitted.">
-        <ApplicationSubmitted />
+        <ApplicationSubmitted openings={previewOpenings()} />
       </PreviewCard>
       <PreviewCard title="Application withdrawn" description="The application was removed from consideration and the applicant was signed out.">
         <ApplicationWithdrawn />
@@ -384,7 +384,7 @@ function previewOpenings(): ApplicantOpening[] {
       housingChargeCents: 125000,
       applicationOpenDate: "2026-08-01",
       applicationCloseDate: "2026-08-20",
-      moveInDate: "2026-10-01",
+      moveInDate: "2026-11-01",
       phase: "closed",
       selected: true,
       participating: true,

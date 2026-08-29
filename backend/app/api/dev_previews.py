@@ -9,6 +9,7 @@ from app.core.config import Settings, get_settings
 from app.core.problems import Problem
 from app.db.models import MagicLinkPurpose, PasswordlessIdentityKind
 from app.services.auth_email import (
+    ApplicationOpeningTimeline,
     application_confirmation_email,
     application_opening_email,
     application_unavailable_email,
@@ -50,6 +51,7 @@ def email_previews(
                 email=email,
                 token=token,
                 submitted=False,
+                opening_timelines=[],
                 settings=settings,
             ),
         ),
@@ -61,6 +63,18 @@ def email_previews(
                 email=email,
                 token=token,
                 submitted=True,
+                opening_timelines=[
+                    ApplicationOpeningTimeline(
+                        unit_size="2-bedroom",
+                        close_date="September 15, 2026",
+                        move_in_date="October 1, 2026",
+                    ),
+                    ApplicationOpeningTimeline(
+                        unit_size="3-bedroom",
+                        close_date="October 15, 2026",
+                        move_in_date="November 1, 2026",
+                    ),
+                ],
                 settings=settings,
             ),
         ),

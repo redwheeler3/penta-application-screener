@@ -272,7 +272,11 @@ export function ApplicantApp() {
         ) : persistence.phase === "session_expired" ? (
           <ApplicationSessionExpired onEmail={() => void persistence.emailSessionAccessLink()} />
         ) : persistence.phase === "submitted" ? (
-          <ApplicationSubmitted />
+          <ApplicationSubmitted
+            openings={persistence.openings.filter((opening) =>
+              persistence.openingIds.includes(opening.id)
+            )}
+          />
         ) : persistence.phase === "access_link_sent" ? (
           <AccessLinkSent
             purpose={persistence.accessPurpose}

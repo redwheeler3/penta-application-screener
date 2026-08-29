@@ -16,8 +16,13 @@ from app.db.models import (
     PasswordlessIdentityKind,
     VacancySubscription,
 )
-from app.services.auth_email import application_opening_email, vacancy_opening_email
+from app.services.auth_email import (
+    ApplicationOpeningTimeline,
+    application_opening_email,
+    vacancy_opening_email,
+)
 from app.services.email_delivery import queue_email
+from app.services.opening_participation import participating_openings
 from app.services.vacancy_subscriptions import matching_subscriptions
 
 
@@ -157,6 +162,24 @@ def opening_email_details(opening: Opening) -> dict[str, str]:
         "close_date": _display_date(opening.application_close_date),
         "household_summary": household,
     }
+
+
+def application_opening_timeline(opening: Opening) -> ApplicationOpeningTimeline:
+    details = opening_email_details(opening)
+    return ApplicationOpeningTimeline(
+        unit_size=details["unit_size"],
+        close_date=details["close_date"],
+        move_in_date=details["move_in_date"],
+    )
+
+
+def application_confirmation_timelines(
+    db: Session, application_id: int
+) -> list[ApplicationOpeningTimeline]:
+    return [
+        application_opening_timeline(opening)
+        for opening in participating_openings(db, application_id)
+    ]
 
 
 def _display_date(value) -> str:

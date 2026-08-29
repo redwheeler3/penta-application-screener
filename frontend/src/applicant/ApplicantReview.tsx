@@ -9,7 +9,7 @@ import {
 import type { ReactNode } from "react";
 
 import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
-import { ApplicantErrorMessage, openingLabel } from "./ApplicantAccessScreens";
+import { ApplicantErrorMessage, formatOpeningDate, openingLabel } from "./ApplicantAccessScreens";
 import {
   type ApplicantDraft,
   type ApplicantOpening,
@@ -237,12 +237,32 @@ export function PrivateChangesNotice() {
   );
 }
 
-export function ApplicationSubmitted() {
+export function ApplicationSubmitted(props: { openings: ApplicantOpening[] }) {
   return (
     <section className="application-complete">
       <CheckCircle2 size={34} />
       <h2>Application submitted</h2>
-      <p>Your application has been submitted. Check your email for a link to edit it later.</p>
+      <p>Thank you for submitting your application to Penta Co-operative Housing.</p>
+      <div className="application-timelines">
+        {props.openings.map((opening) => {
+          const closeDate = formatOpeningDate(opening.applicationCloseDate);
+          const moveInDate = formatOpeningDate(opening.moveInDate);
+          return (
+            <section key={opening.id}>
+              <strong>{opening.unitSizeBedrooms}-bedroom home</strong>
+              <p>
+                If your application is shortlisted, we’ll contact you between <strong>{closeDate}</strong>
+                {" "}and <strong>{moveInDate}</strong>. Whether or not you’re shortlisted, we’ll email
+                you shortly after <strong>{moveInDate}</strong> to let you know the final outcome.
+              </p>
+            </section>
+          );
+        })}
+      </div>
+      <p>
+        You can return to the application page to update or withdraw your application. Check your
+        email for your private link.
+      </p>
     </section>
   );
 }

@@ -450,6 +450,10 @@
 .existing-application-choice h2 { margin: 13px 0 8px; }
 .application-complete p,
 .existing-application-choice p { margin: 0 auto 22px; max-width: 580px; color: #596d7a; line-height: 1.55; }
+.application-timelines { display: grid; gap: 12px; max-width: 680px; margin: 0 auto 22px; text-align: left; }
+.application-timelines section { padding: 16px 18px; background: #f9fafb; border: 1px solid #dbe4e0; border-radius: 9px; }
+.application-timelines section > strong { display: block; margin-bottom: 7px; color: #174f35; }
+.application-timelines section > p { max-width: none; margin: 0; font-size: 0.95rem; }
 .existing-application-choice .review-actions { justify-content: center; }
 .existing-application-choice > .remember-device-choice { justify-content: center; align-items: center; margin: 20px auto 24px; }
 

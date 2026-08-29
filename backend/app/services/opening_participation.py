@@ -112,6 +112,23 @@ def opening_ids_by_application(
     return opening_ids
 
 
+def participating_openings(db: Session, application_id: int) -> list[Opening]:
+    return list(
+        db.scalars(
+            select(Opening)
+            .join(
+                ApplicationParticipation,
+                ApplicationParticipation.opening_id == Opening.id,
+            )
+            .where(
+                ApplicationParticipation.application_id == application_id,
+                ApplicationParticipation.withdrawn_at.is_(None),
+            )
+            .order_by(Opening.move_in_date, Opening.id)
+        )
+    )
+
+
 def application_is_editable(states: list[ApplicantOpeningState]) -> bool:
     return any(
         state.phase == OpeningPhase.OPEN

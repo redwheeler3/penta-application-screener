@@ -28,7 +28,10 @@ from app.services.auth_email import (
 from app.services.email_delivery import attempt_reserved_delivery
 from app.services.email_sender import EmailSender, OutboundEmail
 from app.services.passwordless_auth import issue_magic_link
-from app.services.vacancy_notifications import opening_email_details
+from app.services.vacancy_notifications import (
+    application_confirmation_timelines,
+    opening_email_details,
+)
 from app.services.vacancy_subscriptions import consume_subscription
 
 
@@ -248,6 +251,7 @@ def _build_retry(
     if application is None:
         return None
     if intent_type == "application_confirmation":
+        submitted = bool(intent.get("submitted"))
         issued = issue_magic_link(
             db,
             identity_kind=PasswordlessIdentityKind.APPLICANT,
@@ -262,7 +266,12 @@ def _build_retry(
                 application_id=application.id,
                 email=application.primary_email,
                 token=issued.token,
-                submitted=bool(intent.get("submitted")),
+                submitted=submitted,
+                opening_timelines=(
+                    application_confirmation_timelines(db, application.id)
+                    if submitted
+                    else []
+                ),
                 settings=get_settings(),
             ),
             issued.record,

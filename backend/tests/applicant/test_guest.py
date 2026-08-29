@@ -127,6 +127,17 @@ async def test_guest_can_submit_directly_and_receives_application_access() -> No
     assert db.scalar(select(ApplicationVersion.application_id)) == application.id
     assert db.scalar(select(ApplicationParticipation.opening_id)) == opening.id
     assert len(sender.messages) == 1
+    close_date = f"{opening.application_close_date.strftime('%B')} {opening.application_close_date.day}, {opening.application_close_date.year}"
+    move_in_date = f"{opening.move_in_date.strftime('%B')} {opening.move_in_date.day}, {opening.move_in_date.year}"
+    assert (
+        f"we'll contact you between {close_date} and {move_in_date}"
+        in sender.messages[0].text_body
+    )
+    assert (
+        f"Whether or not you're shortlisted, we'll email you shortly after {move_in_date}"
+        in sender.messages[0].text_body
+    )
+    assert "update or withdraw your application" in sender.messages[0].text_body
 
 
 @pytest.mark.anyio
