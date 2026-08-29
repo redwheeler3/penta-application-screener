@@ -261,12 +261,10 @@ snapshots in `data/backups/` work the same in the container as locally.)
 #### Historical application opening prerequisite
 
 The production database initially contains the submitted Google Form application pool without an
-opening participation. Before scheduling the vacancy-list handoff, implement and verify the guarded
-historical-opening migration command described in the specification. It must create the already-
-closed opening with its original open and close dates and future move-in date, attach every
-submitted, non-withdrawn application using its submission timestamp, and refresh retention in one
-transaction. This command is not implemented yet; do not substitute manual SQL or the normal
-opening-creation endpoint.
+opening participation. The guarded `scripts.create_historical_opening` command creates the already-
+closed opening with its original open and close dates and future move-in date, attaches every
+submitted, non-withdrawn application using its submission timestamp, and refreshes retention in one
+transaction. Do not substitute manual SQL or the normal opening-creation endpoint.
 
 Dry-run output must report the opening details, target application count, existing participation
 count, active vacancy-subscription count, consent-receipt count, and queued-email count. Apply only
@@ -274,7 +272,8 @@ when the target count matches the complete Google Form pool and no target partic
 exists. After applying, verify the opening is closed, every target application is attached, and the
 vacancy-subscription, consent-receipt, and queued-email counts are unchanged. This operation must not
 call the normal opening-creation endpoint because that endpoint immediately queues the vacancy
-audience.
+audience. Apply additionally refuses a zero or mismatched expected count, any existing target
+participation, or an opening with the same facts, making an accidental repeat fail closed.
 
 The Google form and built-in form must not accept responses at the same time during migration. A
 full export applied with `--allow-upsert` could replace a newer built-in preference with an older
@@ -304,7 +303,37 @@ report. The production vacancy list must be empty before the authoritative impor
 controlled test subscription through the narrow administrator interface rather than relying on an
 upsert during migration.
 
-#### 3. Freeze Google and take the authoritative export
+#### 3. Create the historical application opening
+
+From the deployed `backend/` directory, first dry-run with the reviewed original opening facts. All
+dates use `YYYY-MM-DD`; the housing charge is in cents:
+
+```sh
+uv run python -m scripts.create_historical_opening \
+  --unit-size-bedrooms <1-or-2-or-3> \
+  --housing-charge-cents <monthly-charge-in-cents> \
+  --application-open-date <original-open-date> \
+  --application-close-date <original-close-date> \
+  --move-in-date <future-move-in-date>
+```
+
+Reconcile `target applications` to the complete submitted, non-withdrawn Google Form application
+pool. `existing target participations` and `matching openings` must both be zero. Record the vacancy
+subscription, consent-receipt, and queued-email counts. Apply only with that exact reconciled target
+count by repeating the dry-run command and appending both of these arguments:
+
+```sh
+--apply --expected-application-count <reconciled-target-count>
+```
+
+The command applies and verifies the opening and all participations in one transaction, then prints
+the opening ID. Its date guards guarantee that the opening is closed rather than open or archived;
+its post-write checks guarantee every target is attached and all three notification counts are
+unchanged. Repeat the dry run after apply as an independent read-back: `target applications`,
+`existing target participations`, and `matching openings` must read `<count>`, `<count>`, and `1`.
+Stop if any preflight or read-back value differs; do not continue by editing the database manually.
+
+#### 4. Freeze Google and take the authoritative export
 
 Pause the Google form so it no longer accepts responses. Leave the public website online; its
 signup is briefly unavailable until the website deployment in step 5. Export the response sheet
@@ -314,7 +343,7 @@ If validation fails, re-enable Google responses and end the cutover attempt. Res
 data and begin a later attempt with another fresh export. Do not edit an exported CSV into a second
 source of truth.
 
-#### 4. Import and reconcile
+#### 5. Import and reconcile
 
 Transfer the final validated file to production using an encrypted transfer or short-lived remote
 copy and apply it without `--allow-upsert`:
@@ -332,7 +361,7 @@ If the import or reconciliation fails, do not deploy the website form. Re-enable
 diagnose the mismatch, restore the vacancy list to an empty pre-cutover state through an explicitly
 approved production operation, and restart later from a fresh export.
 
-#### 5. Switch the public website
+#### 6. Switch the public website
 
 Deploy the public website with the built-in vacancy form. Verify the reviewed signup notice and
 Privacy Policy, then submit one controlled address. Confirm it appears in the administrator report
@@ -348,7 +377,7 @@ and retention.
 
 After the controlled checks pass, remove the Google form from public use and retire the response
 sheet from operational handling. No migration email is sent. Update the milestone documentation to
-mark M22 complete.
+mark the M22 production cutover complete.
 
 | Task | Command |
 |---|---|

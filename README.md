@@ -264,15 +264,15 @@ experience. Cutover is deliberately operational rather than another software pha
 
 1. Rehearse with a current Google response-sheet export. Dry-run the importer and resolve every
    invalid row or normalized collision without writing to production.
-2. Implement and verify the guarded migration command for the already-closed application-cycle
-   opening.
-3. Deploy the application service and migration while the public website still points to Google,
+2. Deploy the application service and migration while the public website still points to Google,
    then verify the production vacancy list is empty.
-4. Run the historical-opening command. It attaches every existing submitted Google Form
-   application without queueing vacancy emails.
-5. Pause Google responses, take and validate the authoritative final export, import it without
+3. Dry-run `uv run python -m scripts.create_historical_opening` with the original opening facts,
+   reconcile its target count to the complete Google Form application pool, then apply it with the
+   exact expected count. It attaches every existing submitted Google Form application without
+   queueing vacancy emails.
+4. Pause Google responses, take and validate the authoritative final export, import it without
    `--allow-upsert`, and reconcile the active total, bedroom counts, and monthly chart.
-6. Deploy the public website, verify the reviewed legal surfaces and one controlled signup, then
+5. Deploy the public website, verify the reviewed legal surfaces and one controlled signup, then
    remove the controlled record and retire the Google form and sheet without sending a migration
    email.
 

@@ -1124,7 +1124,8 @@ recorded primary email. Records with a missing, duplicated, or inaccessible addr
 administrator-mediated recovery and are never guessed or automatically combined.
 
 The first built-in cycle begins after applications have already closed in the Google Form. Cutover
-requires a guarded migration command that creates that historical opening with its original open
+uses the guarded `scripts.create_historical_opening` migration command to create that historical
+opening with its original open
 and close dates and future move-in date, then attaches every submitted, non-withdrawn application
 already in the database. Those records are the complete current Google Form pool and do not yet
 have opening participations or outcomes, so the migration does not use the ordinary application-
@@ -1134,7 +1135,8 @@ transaction. It does not calculate a vacancy audience, queue email, consume vaca
 or create consent receipts. The opening is immediately closed: an administrator may record the
 selected household or no-household decision, the dashboard requires an unresolved decision at
 move-in, and unsuccessful notices remain blocked until the opening is archived and its outcome is
-final. This command is a pending cutover prerequisite, not part of ordinary opening creation.
+final. The command is implemented and verified in development; running it against production is a
+pending cutover operation, not part of ordinary opening creation.
 
 **Non-goals:** a general-purpose form builder; separate co-applicant access; simultaneous Google
 Form/Sheet and built-in intake; multiple applications per primary applicant; committee-visible

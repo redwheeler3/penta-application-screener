@@ -6,6 +6,28 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/). 
 
 ---
 
+## Milestone 22 — Built-In Vacancy Notifications (Production Cutover Pending)
+
+Implemented the one-notice vacancy subscription flow, administrator reconciliation and narrow
+management tools, opening-audience preview, live SocketLabs usage, and retry-safe delivery. Opening
+an application cycle now durably queues its matching notice audience in the same transaction, while
+direct selection can fill a home from a retained applicant without reopening applications or
+sending a vacancy notice.
+
+The final software prerequisite is complete: `scripts.create_historical_opening` dry-runs the exact
+historical opening facts and reports the target application, existing participation, active
+subscription, consent-receipt, queued-email, and matching-opening counts. Apply requires the exact
+reconciled application count, refuses prior participation or a duplicate opening, attaches every
+submitted non-withdrawn application at its original submission timestamp, refreshes retention, and
+verifies notification state is unchanged before the transaction commits.
+
+The milestone remains operationally open until the explicitly approved production cutover in
+[docs/deploy.md](docs/deploy.md#vacancy-list-production-cutover): create the historical opening,
+freeze and import the authoritative Google vacancy export, reconcile it, switch the public website,
+and retire the Google form and sheet. No production operation is part of this repository change.
+
+---
+
 ## Milestone 21 — Built-In Applications And Committee Access
 
 Replaced the external Google Form/Sheet intake path with the first-party applicant experience at
