@@ -169,6 +169,18 @@ uv run python -m scripts.load_synthetic_applications --opening-id 1 --opening-id
 Repeat `--opening-id` to attach every fixture applicant to each desired local opening. The loader
 is idempotent, sends no email, refuses non-SQLite databases, and will not overwrite an application
 unless it is already stamped synthetic.
+
+To populate the vacancy-notification report and exact-email support controls without touching
+production or sending email, seed four fixed `@jeffo.net` demo records:
+
+```sh
+cd backend
+uv run python -m scripts.seed_demo_vacancy_subscriptions
+```
+
+The command is repeatable, requires the same synthetic SQLite guard as the application fixture, and
+refuses to replace a same-address subscription that it did not create.
+
 On Windows, `dev.ps1` writes per-service output and errors to `.dev-logs/`. If either
 service exits, it prints the last log lines; it also retries the frontend twice before
 leaving the backend running for diagnosis. It uses `watchfiles` to replace the backend process
