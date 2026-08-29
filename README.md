@@ -273,7 +273,9 @@ experience. Cutover is deliberately operational rather than another software pha
    queueing vacancy emails.
 4. Pause Google responses, take and validate the authoritative final export, import it without
    `--allow-upsert`, and reconcile the active total, bedroom counts, and monthly chart.
-5. Deploy the public website, verify the reviewed legal surfaces and one controlled signup, then
+5. Configure SocketLabs in development mode, verify one controlled approved-domain delivery and
+   usage reporting, then enable production delivery.
+6. Deploy the public website, verify the reviewed legal surfaces and one controlled signup, then
    remove the controlled record and retire the Google form and sheet without sending a migration
    email.
 

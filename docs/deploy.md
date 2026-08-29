@@ -309,7 +309,7 @@ Export the current Google response sheet as CSV and validate it locally without 
 
 ```sh
 cd backend
-uv run python scripts/import_vacancy_subscriptions.py path/to/export.csv
+uv run python -m scripts.import_vacancy_subscriptions path/to/export.csv
 ```
 
 The dry run requires the timestamp, email, and preference columns, validates every address and
@@ -360,7 +360,7 @@ Stop if any preflight or read-back value differs; do not continue by editing the
 #### 4. Freeze Google and take the authoritative export
 
 Pause the Google form so it no longer accepts responses. Leave the public website online; its
-signup is briefly unavailable until the website deployment in step 6. Export the response sheet
+signup is briefly unavailable until the website deployment in step 7. Export the response sheet
 again after the pause and run the same dry-run command against this final file.
 
 If validation fails, re-enable Google responses and end the cutover attempt. Resolve the source
@@ -373,7 +373,7 @@ Transfer the final validated file to production using an encrypted transfer or s
 copy and apply it without `--allow-upsert`:
 
 ```sh
-uv run python scripts/import_vacancy_subscriptions.py path/to/export.csv --apply
+uv run python -m scripts.import_vacancy_subscriptions path/to/export.csv --apply
 ```
 
 The importer refuses to write into a non-empty list unless `--allow-upsert` is deliberately passed.
@@ -385,7 +385,22 @@ If the import or reconciliation fails, do not deploy the website form. Re-enable
 diagnose the mismatch, restore the vacancy list to an empty pre-cutover state through an explicitly
 approved production operation, and restart later from a fresh export.
 
-#### 6. Switch the public website
+#### 6. Configure and verify transactional email — TODO
+
+SocketLabs credentials and live delivery are deliberately still absent after the vacancy import,
+so no imported address can receive mail during reconciliation. Before directing applicants to the
+built-in experience, set the SocketLabs Server ID and Injection API key as Fly secrets with
+`EMAIL_DELIVERY_MODE=development`. Development mode fails closed before the provider call unless
+every recipient is exactly at `jeffo.net` or `pentacoop.com`.
+
+After the secret-triggered restart, verify SocketLabs usage reporting and an empty Email Delivery
+issues list. Request one controlled committee email sign-in at an approved-domain address, confirm
+that the message and link work, and verify the provider usage increment. Only after that check passes,
+set `EMAIL_DELIVERY_MODE=production` and verify both hostnames remain healthy. Never exercise a
+vacancy opening merely to test email: creating an application-intake opening queues the entire
+matching audience and consumes subscriptions after provider acceptance.
+
+#### 7. Switch the public website
 
 Deploy the public website with the built-in vacancy form. Verify the reviewed signup notice and
 Privacy Policy, then submit one controlled address. Confirm it appears in the administrator report
