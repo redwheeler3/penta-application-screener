@@ -1301,7 +1301,7 @@ The committee saw a demo and wanted it, so hosting was real scheduled work — p
 
 **Decided (2026-07-25):**
 
-- **Platform: Fly.io**, auto-stop Machines (`suspend`, sub-second resume) + a persistent volume — cheapest option (~$1–5/mo, near-zero idle) that keeps the DB on a durable disk. Deploys from GitHub via `fly.toml` + a `.github/workflows/fly-deploy.yml` workflow (push to `main` ships). Custom domain `screener.pentacoop.com` via A/AAAA records + free auto-TLS.
+- **Platform: Fly.io**, auto-stop Machines (`suspend`, sub-second resume) + a persistent volume — cheapest option (~$1–5/mo, near-zero idle) that keeps the DB on a durable disk. Production deploys are an explicit operator action with `fly deploy --remote-only`; pushing `main` does not release. Custom domains use A/AAAA records + free auto-TLS.
 - **Storage: keep SQLite on the volume for launch** (Jeff) — zero data-layer change; fine for ~5 users. Managed Postgres (and M16's atomic-budget store) is a *later* move, only if that feature is built. This retires the earlier "M17 may re-touch the data layer for a hosted DB" tradeoff: at this scale we deliberately do not.
 
 **Shipped (all verified against the deployed app, 2026-07-26):**

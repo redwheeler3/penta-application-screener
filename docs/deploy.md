@@ -2,8 +2,8 @@
 
 The hosting decision, the full platform tradeoff analysis, and the rationale for keeping
 SQLite live in [ADR 0012](adr/0012-hosting-platform-m17.md). This is the operational
-runbook: how to stand the app up on Fly.io, wire secrets and the domain, deploy on every
-push, and back up / restore the data.
+runbook: how to stand the app up on Fly.io, wire secrets and the domain, deploy deliberately with
+`fly deploy --remote-only`, and back up / restore the data. Pushing `main` does not deploy.
 
 **Shape of the deploy (why the steps are what they are):**
 
