@@ -214,11 +214,25 @@ export function ApplicantApp() {
 
   async function signOut(): Promise<void> {
     if (!(await persistence.signOut())) return;
+    resetApplicantStateAfterExit();
+  }
+
+  async function withdrawApplication(): Promise<void> {
+    if (!(await persistence.withdrawApplication())) return;
+    resetApplicantStateAfterExit();
+  }
+
+  function resetApplicantStateAfterExit(): void {
     setDraft(emptyApplicantDraft());
     setSavedAt(null);
     setReviewing(false);
+    setDeclarationAccepted(false);
     setRememberDeviceState(false);
+    setEmailChangeOpen(false);
+    setWithdrawConfirmOpen(false);
+    setDraftConfirmation(null);
     setGuestStarted(false);
+    setOpeningError(false);
   }
 
   async function cancelPendingEmailChange(): Promise<void> {
@@ -443,16 +457,20 @@ export function ApplicantApp() {
               persistence.clearWithdrawalFeedback();
               setWithdrawConfirmOpen(false);
             }}
-            onWithdraw={() => void persistence.withdrawApplication()}
+            onWithdraw={() => void withdrawApplication()}
           />
         ) : null}
       </main>
 
       <footer className="applicant-footer">
         <p>
-          <a href="https://www.pentacoop.com/privacy.html">Privacy Policy</a>
+          <a href="https://www.pentacoop.com/privacy.html" target="_blank" rel="noopener noreferrer">
+            Privacy Policy
+          </a>
           <span aria-hidden="true">·</span>
-          <a href="https://www.pentacoop.com/terms.html">Terms of Service</a>
+          <a href="https://www.pentacoop.com/terms.html" target="_blank" rel="noopener noreferrer">
+            Terms of Service
+          </a>
         </p>
         <p>
           Website designed by{" "}

@@ -490,10 +490,6 @@ export function useApplicantPersistence(
       setPersistence("phase", "error");
       return false;
     }
-    setDraft((current) => ({
-      ...current,
-      applicant: { ...current.applicant, email: email.trim().toLowerCase() },
-    }));
     setPersistence("message", APPLICATION_ACCESS_EMAIL_MESSAGE);
     setPersistence("phase", "access_link_sent");
     return true;
