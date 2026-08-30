@@ -1487,16 +1487,19 @@ Google claim; or restoring any Google Forms/Sheets intake dependency.
 - Google and email access for the same applicant issue indistinguishable applicant browser sessions
   keyed by `Application.id`, with the same expiry, remembered-device, sign-out, revocation,
   authorization, and no-store behavior.
-- A browser already signed in to another applicant must explicitly keep or switch identities.
-  Google cancellation, denial, and provider failure never revoke the current session.
-- Local guest answers survive Google authentication and cannot overwrite a saved application until
-  the applicant explicitly chooses the saved or guest copy.
+- A browser already signed in to another applicant preserves that current session and requires the
+  applicant to sign out before using a different Google identity. Google cancellation, denial, and
+  provider failure never revoke the current session.
+- Google is offered before a visitor enters the guest form, so no in-page guest answers cross the
+  OAuth redirect. A matching server-side email draft is claimed without overwriting an existing
+  application; the existing saved-versus-guest reconciliation remains authoritative for email-link
+  access to a separately preserved guest copy.
 - Confirming a primary-email change clears the old Google subject in the same transaction as the
   email update. Pending, failed, expired, replaced, and cancelled email changes do not clear it.
   Google can be linked again only when its verified email equals the newly confirmed address.
 - Withdrawal and purge leave no usable applicant Google binding. A retained legal-hold record is
   neither accessible nor exposed as a Google collision.
-- The backend verifies Google credentials and nonce state and persists neither raw ID tokens nor
+- The backend validates the server-side OAuth state and authorization-code exchange and persists no
   Google access/refresh tokens, names, avatars, or profile data. Logs and denial responses contain
   no applicant PII beyond existing bounded operational handling.
 - Committee Google and email sign-in retain their existing UI behavior, allowlist, account-linking,
