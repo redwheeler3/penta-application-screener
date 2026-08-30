@@ -42,7 +42,7 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
     assert "jeffo.net" not in response.text
     assert "pentacoop.com#" not in response.text
     assert "removed you from the vacancy notification list" in response.text
-    assert "Congratulations! Your household has been selected" in response.text
+    assert "Congratulations! Your household has been selected!" in response.text
     assert "pleased to let you know" in response.text
     assert "Your application profile is now locked" in response.text
     assert "No action is required" in response.text

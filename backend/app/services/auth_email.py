@@ -298,7 +298,7 @@ def application_unavailable_email(
 def selected_application_locked_email(
     *, email: str, application_id: int
 ) -> OutboundEmail:
-    heading = "Congratulations! Your household has been selected"
+    heading = "Congratulations! Your household has been selected!"
     introduction = (
         "We're pleased to let you know that your household has been selected for a Penta home."
     )

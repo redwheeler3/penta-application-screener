@@ -260,7 +260,7 @@ function ApplicantGoogleError(props: { result: ApplicantGoogleAccessResult }) {
   if (props.result === "selected") {
     return (
       <div className="application-entry-status" role="status">
-        <strong>Congratulations! Your household has been selected</strong>
+        <strong>Congratulations! Your household has been selected!</strong>
         <span>
           Your application profile is now locked and can no longer be changed online.
         </span>
