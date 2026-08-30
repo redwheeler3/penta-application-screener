@@ -16,6 +16,19 @@ It is both a live operational application and a portfolio project exploring the 
 design: human-in-the-loop review, cost-aware model use, and the judgment of which decisions to keep
 deterministic and which to hand to an LLM.
 
+## Production Proof
+
+This is a live production system, not a demo. Penta's membership committee uses it to review real
+applications and make real housing decisions. Its 2026 cutover retained 232 submitted applications,
+migrated and reconciled 1,478 vacancy-notification subscriptions, and moved applicant intake,
+committee review, transactional email, and retention into one operating system.
+
+Screenshots use the committed synthetic fixture; no real applicant data is published.
+
+![Applicant-facing membership form with privacy notice and opening selection](docs/images/applicant-experience.png)
+
+*The applicant experience collects the real source material the committee and AI-assisted workflow review.*
+
 ## Design Highlights
 
 A few decisions I'm particularly happy with — the ideas that make this more than a wrapper around an LLM call:
@@ -32,41 +45,49 @@ A few decisions I'm particularly happy with — the ideas that make this more th
 
 ## What It Does
 
-The application service owns intake and the durable applicant record. Submitted applications
-appear automatically in the committee interface.
+The product has two browser-facing services backed by one application, database, session model,
+email boundary, and applicant record.
+
+### Applications Service
 
 - Public applicant form with guest entry, private saved working copies, deliberate submission,
   opening selection, emailed access links, and immutable submitted versions.
 - One application can participate in later or simultaneous openings without duplicating the
-  applicant's answers. Only participation in current, non-archived openings enters committee and
-  AI scope.
+  applicant's answers.
 - Applicant-controlled email changes and deletion, collision-safe identity handling, revocable
   sessions, and credential-safe transactional-email retries.
 - Date-driven opening phases, administrator-confirmed selections, unsuccessful-applicant notices,
   and automatic retention: one year for unsuccessful or withdrawn applicants and seven years for
   selected members.
+- One-notice vacancy subscriptions with preference replacement, opening-audience previews,
+  retry-safe delivery, administrative reporting, and narrow exact-address support controls.
+
+### Screener Service
+
+- Submitted applications appear automatically. Only participation in current, non-archived
+  openings enters committee and AI scope.
 - Committee sign-in by Google or emailed magic link, both issuing the same revocable server-side
   session. Google login is identity-only; access and roles come from the application allowlist.
-- Admin-managed openings and configurable eligibility rules, pet limits, AI models, concurrency,
-  spending cap, email-delivery status, access, and operational settings.
 - Deterministic hard filters for clear eligibility issues, computed from the latest submitted fields.
 - Application dashboard, searchable/sortable table, facets, pagination, and candidate detail pages.
 - The committee workflow is **Screen → Rank**; each paid step is gated behind a confirmation card
   with an up-front cost estimate.
-- **Screen:** AI integrity pass flagging suspicious, AI-boilerplate, or low-quality submissions (informational input to human review, never auto-disqualifying).
+- **Screen:** AI integrity pass flagging suspicious, AI-boilerplate, or low-quality submissions and
+  routing them into an explicit AI Flagged review bucket; a human can accept or override the result.
 - **Rank:** one orchestrated AI chain over eligible applicants — parallel pattern discovery → decomposition into one non-overlapping set → identity-match onto prior runs → per-dimension scoring → post-score duplicate consolidation — feeding a weighted ranked list with relative fit bands and per-driver rationale. (Detailed in *The AI Pipeline* below; the ranking math is in *The LLM extracts features; the math does the ranking* above.)
-- **Interactive tier-list weighting:** drag discovered criteria into Critical/Important/Minor/Ignore tiers to instantly re-sort. Re-ranking carries tier placements forward and reuses cached scores (see *Prompt identity as a cache key* above).
+- **Interactive tier-list weighting:** drag discovered criteria into Critical/Important/Minor/Ignore tiers to instantly re-sort. Re-ranking carries tier placements forward and reuses cached scores (see the caching design above).
 - **Reports:** browser print-to-PDF of the ranked view and candidate detail pages, with an `@media print` stylesheet and a text importance-tiers summary.
 - Provider-agnostic AI interface with Strands routes for Bedrock, OpenAI, and Anthropic, plus a deterministic mock provider for tests.
-- Raw source row and raw AI output debug panels, on the candidate detail page (open to any logged-in member — every committee member is a trusted screener).
 - Human status overrides with stale-finding indicators when machine findings change later.
+- Admin-managed eligibility rules, pet limits, AI models, concurrency, spending cap, access, and
+  operational settings.
 
 ## The AI Pipeline
 
 Every AI call is a **named, single-purpose pass** — never a general "agent" deciding what to do next. The orchestration is deterministic code and human-gated workflow steps; no model chooses which pass runs, and no pass calls another. Each is a structured-output call with its own prompt, schema, cache/version, cost line, and reasoning trace. Model tier is chosen per job: cheap-and-fast **Haiku** where call *count* drives cost, stronger **Sonnet** for the once-per-run judgment calls.
 
 **Screen** (one pass, runs on its own):
-- **Screening integrity flags** *(Haiku)* — reads each application and flags placeholder/suspicious names, spam or AI-boilerplate essays, internal inconsistencies, and contact/pet-policy issues. Informational only; never auto-disqualifies.
+- **Screening integrity flags** *(Haiku)* — reads each application and flags placeholder/suspicious names, spam or AI-boilerplate essays, internal inconsistencies, and contact/pet-policy issues. A flag moves the application into the AI Flagged review bucket; human status decisions remain authoritative.
 
 **Rank** (one button, five passes chained deterministically over the eligible pool):
 1. **Pattern discovery** *(Sonnet, ×K in parallel)* — reads the whole pool and discovers the dimensions it actually varies on. Runs K times on fresh contexts; their cross-call disagreement is the diversity the next step needs. Each call is blind except for committee proposals seeded into one worker.
@@ -77,7 +98,13 @@ Every AI call is a **named, single-purpose pass** — never a general "agent" de
 
 Then the ranking itself is **pure deterministic math** over the cached scores and committee tier weights — no model call. Two invariants hold across all of it: **AI output is inert until a human activates it** (a discovered dimension has weight 0 until tiered), and **every pass persists its reasoning + cost** so any number traces back to its evidence.
 
-Two tabs make the AI legible. **Observability** surfaces each run: what each discoverer found, how decomposition settled them, which duplicates consolidation merged and why, how dimensions carried forward, per-pass cost attribution, and operational-metrics trends. **Evals** is an in-app cockpit — property-based invariants, per-pass live evals, and a blind label-auditing LLM judge (evaluation design is documented in [docs/ai-evals.md](docs/ai-evals.md)).
+![Human-weighted ranking criteria arranged into importance tiers](docs/images/human-weighted-ranking.png)
+
+*AI-discovered criteria begin inert; committee members decide what matters by placing them into importance tiers.*
+
+![Candidate AI scores with rationale, evidence, confidence and qualitative bands](docs/images/grounded-candidate-review.png)
+
+*Every candidate score stays inspectable through its rationale, source evidence, confidence, and qualitative band.*
 
 The spec lives in [SPEC.md](SPEC.md); developer architecture notes in
 [docs/app-architecture.md](docs/app-architecture.md), with deeper references in
@@ -85,6 +112,50 @@ The spec lives in [SPEC.md](SPEC.md); developer architecture notes in
 application contract is `backend/app/schemas/applicant/answers.py`. Significant design decisions
 live in [docs/adr/](docs/adr/). Shared agent guidance lives in [.clinerules](.clinerules), with
 [AGENTS.md](AGENTS.md) pointing agents there.
+
+## Observability And Evals
+
+The application treats AI inspectability and model-quality work as product capabilities, not
+offline log archaeology.
+
+### Observability
+
+- Every model call records its pass, model and provider route, prompt version, reasoning summary,
+  structured output, token usage, cost, duration, and failure state.
+- Run audits show what each discoverer proposed, how decomposition settled overlapping ideas,
+  which prior dimensions identity matching carried forward, and why consolidation merged or kept
+  nominated duplicates.
+- Candidate details keep source answers beside AI findings and score evidence. Cost and operational
+  trend views attribute work to the member who triggered it.
+- Cached results remain auditable even when no new provider call or charge is required.
+
+### Evals
+
+- Deterministic software tests cover schemas, orchestration, caching, ranking math, status changes,
+  and safety boundaries.
+- Property evals check invariants that must hold for every Rank, while labelled per-pass golden cases
+  exercise screening, decomposition, matching, scoring, and consolidation against live models.
+- Stability runs repeat non-deterministic cases to expose flips instead of hiding them behind one
+  passing sample.
+- A blind LLM judge audits human labels and reports agreement, Cohen's kappa, and problem-detection
+  recall/precision. Judge results are review signals, never CI gates or production mutations.
+- Applicant-facing eval cases can be harvested only from pools carrying persisted synthetic
+  provenance, keeping real application text out of source control.
+
+**A regression the evals caught:** I changed the screening prompt so one blank optional essay could
+not flag an otherwise substantive application. The new cases passed, but an existing golden exposed
+collateral damage: an unrelated parent-count inconsistency fell to 40% reliability. A targeted
+correction restored it to 100%, while both new essay boundaries also held at 100%. That is exactly
+the kind of semantic regression ordinary unit tests cannot catch.
+
+![In-app screening golden cases and stability eval results](docs/images/evals-regression-safety.png)
+
+*The in-app Evals cockpit runs labelled golden cases and repeated stability checks against live models.*
+
+The in-app **Observability** and **Evals** tabs expose these workflows. Paid evals run only after
+explicit confirmation and never during Rank or the normal test suite. The full design, case schema,
+stability harness, and judge methodology are documented in
+[docs/ai-evals.md](docs/ai-evals.md).
 
 ## Privacy And Test Data
 
@@ -248,50 +319,6 @@ Frontend build/type check:
 cd frontend
 npm run build
 ```
-
-## Manual AI Quality Audit
-
-Run the evals — the blind label-auditing judge, the per-pass live evals (single run +
-stability, `?mode=stability`), and the deterministic invariants — from the in-app
-**Evals** tab. The spending evals make paid Bedrock calls only when you confirm a run;
-nothing here runs during Rank or the test suite. Each subtab shows its cases, runs
-whole-set or per-case, streams the model's reasoning, and persists every run;
-re-baselining the invariant fixture is the tab's "Re-baseline from current Rank" action.
-Growing the golden case sets from a real Rank is done with the harvest scripts under
-`backend/scripts/` (co-authored, then labelled by hand).
-
-## Status And Next Milestone
-
-**Milestones 1–22 are complete.** The system is live in production and used by the Penta Housing
-Co-op membership committee. It includes the built-in applicant experience, revocable server-side
-sessions for applicant and committee access, opening participation, outcomes, transactional email,
-and retention. Production runs as a deliberately small single Fly instance with persistent-volume
-SQLite and daily snapshots retained for 30 days.
-
-**M22 production cutover completed on August 29, 2026.** The application now owns vacancy
-subscriptions, administration, opening audience previews, live SocketLabs usage, and retry-safe
-delivery. Administrators can also fill a home from a retained previous applicant without reopening
-applications or sending email. The always-on public website submits with the agreed bounded recovery
-experience. The guarded historical opening attached all 232 retained applications without email.
-The frozen Google vacancy export imported 1,478 unique subscriptions and reconciled exactly to
-1BR=894, 2BR=707, and 3BR=111, including every monthly chart bucket. A controlled signup,
-preference replacement, deletion, approved-domain SocketLabs delivery, and both production
-hostnames were verified before the Google form and sheet were retired from operational use. No
-migration email was sent.
-
-M22 deliberately uses the existing grandfathered SocketLabs server, where a permanent unsubscribe
-applies to all Penta mail, including application-access links. The reviewed legal and privacy
-changes are deployed.
-
-The detailed M22 contract, non-goals, and definition of done are in
-[SPEC.md](SPEC.md#built-in-vacancy-notifications-m22--complete). Milestone history is in
-[CHANGELOG.md](CHANGELOG.md). Hosting decisions are in
-[ADR 0012](docs/adr/0012-hosting-platform-m17.md); operations are covered by
-[docs/deploy.md](docs/deploy.md) and the
-[scale-to-zero watchdog runbook](ops/fly-watchdog/README.md).
-
-The same codebase still supports a fully local workflow with captured email and synthetic
-applications; no production services or real applicant records are required for development.
 
 ## License
 
