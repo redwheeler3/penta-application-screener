@@ -156,24 +156,28 @@ the applicant starts a blank current application. The retained record is never r
 pre-populated, or exposed as an email collision; it remains linked only as needed to enforce its
 retention and purge date. There is still at most one current application for the address.
 
-Applicants use passwordless email access rather than Google sign-in. A secure application-access flow sends a
-24-hour, single-use link to the primary applicant's email address; consuming it establishes an
+M23 gives applicants optional identity-only Google sign-in alongside passwordless email access;
+both methods establish the same application session and neither creates a separate applicant
+account. The durable identity remains the internal application ID. A secure email-access flow sends
+a 24-hour, single-use link to the primary applicant's email address; consuming it establishes an
 HTTPS-only application session and removes the credential from the browser URL. Tokens are stored
 only as hashes, expire, cannot be reused, and are protected by rate limits and non-enumerating
 responses. Only the primary applicant receives access links and application updates; the
-co-applicant does not have separate editing access.
+co-applicant does not have separate editing access. Google linking and collision behavior are
+specified in [Applicant Google Sign-In](#applicant-google-sign-in-m23-target).
 
-Before showing the form, a signed-out visitor chooses between email access and continuing as a
-guest. The single email action serves both new and returning applicants without revealing which
-addresses the system knows. While applications are open, a new address creates an email-only
-private draft and receives its first access link; a known address receives access to its existing
-draft or application. During the closed phase, new guest applications are unavailable, but an
-applicant already participating in a closed opening may still sign in to edit or withdraw. A known
-applicant with nothing actionable receives an email directing them to the public vacancy page
-instead of a credential. An unknown address receives the same useful email outcome rather than
-silence. Every accepted application-access request shows one non-enumerating **Check your email**
-confirmation in the browser; the email, not the browser response, explains whether an application
-can be opened. Repeated recent requests rely on the message already sent.
+Before showing the form, a signed-out visitor sees Google first, email second, and guest access
+third. Google is the fastest path but remains optional. The single email action serves both new and
+returning applicants without revealing which addresses the system knows. While applications are
+open, a new address creates an email-only private draft and receives its first access link; a known
+address receives access to its existing draft or application. During the closed phase, new guest
+and new Google applications are unavailable, but an applicant already participating in a closed
+opening may still sign in to edit or withdraw. A known applicant with nothing actionable receives
+an email directing them to the public vacancy page instead of a credential. An unknown address
+receives the same useful email outcome rather than silence. Every accepted application-access
+request shows one non-enumerating **Check your email** confirmation in the browser; the email, not
+the browser response, explains whether an application can be opened. Repeated recent requests rely
+on the message already sent.
 If no published opening is open or closed, the entry page disables both
 sign-in and guest access and shows the applications-unavailable state.
 An upcoming opening is visible to administrators for scheduling but remains hidden from applicants
@@ -289,14 +293,15 @@ without asking them to re-enter the address; an invalid link reveals nothing.
 
 ### Browser sessions and shared devices
 
-Opening an applicant access link and committee sign-in both offer **Keep me signed in on this
-device**, unchecked by default. The applicant choice appears on the device that actually opens the
-link, immediately before the link is consumed. Without the opt-in, the app issues a non-persistent
-session cookie and does not retain applicant answers after the page closes. With it, the cookie and
-authenticated applicant draft storage may survive browser restarts. Either kind of server-side
-session expires after 7 days without activity or after 30 days in total, whichever comes first.
-Ordinary activity may extend the idle deadline but never the absolute deadline. These are explicit
-product settings, not framework defaults.
+Opening an applicant access link, starting applicant Google sign-in, and committee sign-in offer
+**Keep me signed in on this device**, unchecked by default. An email-link choice appears on the
+device that actually opens the link, immediately before the link is consumed; the applicant entry
+page's choice applies only to the adjacent Google action. Without the opt-in, the app issues a
+non-persistent session cookie and does not retain applicant answers after the page closes. With it,
+the cookie and authenticated applicant draft storage may survive browser restarts. Either kind of
+server-side session expires after 7 days without activity or after 30 days in total, whichever
+comes first. Ordinary activity may extend the idle deadline but never the absolute deadline. These
+are explicit product settings, not framework defaults.
 
 Closing a window is not treated as a guaranteed security boundary because browsers may restore
 session cookies and tabs. People using a shared device should leave the opt-in unchecked and
@@ -697,6 +702,170 @@ therefore not part of M22. The resulting server-wide suppression is intentional:
 the provider-managed unsubscribe is unsubscribed from all Penta email, including secure application
 access messages.
 
+## Applicant Google Sign-In (M23 Target)
+
+M23 adds optional identity-only Google sign-in to the applicant application. It reuses the
+committee's proven identity shape: the internal record ID is the durable identity, normalized
+email is the email credential, and an optional unique Google subject is a second credential on the
+same record. For applicants, `Application.id` remains the identity carried by access links,
+browser sessions, working copies, submissions, retention, and audit history. Google does not create
+a parallel applicant account or a second application identity.
+
+Google is offered because it is expected to cover much of the applicant population, including the
+many applicants who use Gmail, and removes the wait for an access email on the common path. It is
+never required. Email access remains the universal sign-in and recovery method, and a visitor may
+still complete and submit the whole application as a guest while applications are open.
+
+### Entry UI and hierarchy
+
+The applicant entry panel follows the committee sign-in pattern but keeps applicant-specific state
+and copy. The visual and keyboard order is:
+
+```text
+Application access
+Start or continue an application
+
+[ ] Keep me signed in on this device
+[ G  Continue with Google                 ]  primary path
+
+---------------- or use email ----------------
+Email address
+[                                         ]
+[ Email me a link                         ]  secondary path
+
+-------------------- or ----------------------
+[ Continue as a guest                     ]  tertiary path
+You can save your application and receive a link to open it later.
+```
+
+Google is first and full-width. The button is rendered by the current Google Identity Services
+library rather than recreated in Penta markup; Google's renderer is its recommended way to stay
+within the current branding and accessibility contract. Use a standard large outline button with
+`text: "continue_with"`, rectangular shape, left-aligned logo, and the panel's available width up
+to Google's 400 px maximum. Penta may size and position its container but does not restyle the
+button's logo, font, colours, padding, hover, or focus states. Email is a normal secondary form
+action. Guest access is a quieter tertiary action but remains a real button with a full-width mobile
+target, visible focus treatment, and no wording that implies a lesser application. When no new
+application may be started, the guest divider, button, and note disappear; Google and email remain
+available to eligible returning applicants.
+
+The remembered-device checkbox beside Google applies to the Google action. Email-link visitors
+continue to choose **Keep me signed in on this device** on the device that opens the link, before
+the link is consumed. This preserves the current shared-device guarantee when a link is requested
+on one device and opened on another. Google One Tap, automatic sign-in, and silent sign-in are out
+of scope: `auto_prompt` and `auto_select` remain disabled, choosing the rendered Google button must
+be deliberate, and the applicant must be able to choose the intended Google account on a shared
+browser. If the Google library is blocked or fails to load, email and guest access remain usable;
+the page never waits on Google before rendering those paths.
+
+The applicant surface owns a small wrapper around Google's rendered button so configuration,
+loading/failure behavior, responsive sizing, and remembered-device handoff stay in one place. The
+committee panel remains the visual and interaction reference—Google first, email second—but M23
+does not migrate its already-proven authentication transport merely to share a component. Applicant
+and committee credential endpoints, sessions, authorization, conflict handling, and page copy
+remain separate domains.
+
+### Identity and linking invariant
+
+An accessible current application may store one nullable, unique Google `sub`. The Google Identity
+Services authentication API returns an ID token to a nonce-bound credential flow; the frontend
+passes that credential and the remembered-device choice to the appropriate same-origin endpoint,
+and the backend validates signature, issuer, audience, expiry, nonce, `sub`, email, and
+`email_verified` before resolving an identity. The raw ID token is never logged or persisted. The
+application uses only `sub`, email, and `email_verified`; it stores no Google access token, refresh
+token, name, avatar, or profile data and never invokes Google's authorization API or data
+scopes. Applicant and committee credential endpoints, transient nonce state, return destinations,
+and host-only browser-session cookies remain separate even when one person uses the same Google
+account in both roles.
+
+The normalized verified Google email and the application's normalized primary email must always be
+the same when a Google identity is linked or used. Applicant access deliberately uses the current
+committee rule for every Google account: `email_verified` must be true, the normalized emails must
+match, and the subject/email collision guards below must pass. It does not add separate `hd` or
+email-domain policy. This keeps both audiences on one understandable identity rule and avoids a
+second email-proof state inside Google sign-in.
+
+| Existing Google subject | Current application for verified Google email | Result |
+| --- | --- | --- |
+| Subject is linked to that application | Same application | Sign in and issue the ordinary applicant session. |
+| Subject is not linked | One unlinked application or saved draft | Attach the subject, claim the draft if needed, and issue the ordinary applicant session. |
+| Subject is not linked | No application or draft; applications are open | Create the new private application for that email, attach the subject, and sign in. |
+| Subject is not linked | No application or draft; applications are closed | Do not create a record; show that new applications are unavailable and link to vacancy information. |
+| Subject is linked to a different email | Any | Refuse Google sign-in; never change either email or binding. Offer another Google account, email access, and Tech Support. |
+| Email is linked to a different Google subject | Same email | Refuse Google sign-in; never replace the existing binding. Offer email access and Tech Support. |
+| Subject and email resolve to different applications | Different applications | Refuse Google sign-in; never reveal, merge, or mutate either application. |
+
+Google matching uses only an active, ordinarily accessible application. A withdrawn legal-hold
+record is not returned as a collision and cannot receive Google access. Withdrawal clears the
+Google subject as part of removing ordinary applicant access; physical purge removes it with the
+application. A later application using the same email begins blank and may establish a new Google
+binding without exposing the retained record.
+
+A successful Google claim of an email-only pending draft performs the same claim as its access
+link: it preserves the server-side answers, resolves the draft into the application, and makes old
+draft links recognizable but unusable. If the browser also contains a different in-page guest
+copy, the existing saved-versus-guest comparison appears after Google sign-in; Google credential
+state never carries applicant answers or other PII.
+
+If a different applicant session is already active in the browser, Google authentication does not
+silently replace it. The app shows both email identities and requires **Stay signed in as ...** or
+**Sign in as ...**, matching email-link conflict handling. Cancelling Google, an OAuth/provider
+failure, an unverified email, or a refused collision leaves the existing applicant session intact.
+
+### Changing the primary email
+
+The primary email remains both the application contact address and the email identity to which a
+Google subject may be bound. Changing it continues to require the current explicit flow:
+
+1. An authenticated applicant enters a different address.
+2. Penta sends a single-use confirmation link to the proposed address. Until that link is opened,
+   the primary email and Google binding do not change; replacing or cancelling the pending request
+   leaves the existing Google sign-in working.
+3. Opening the valid link refuses an address already owned by another active application and never
+   merges records.
+4. On success, one transaction updates the primary email and private working answers, clears the
+   existing Google subject, revokes unused applicant links and the affected old sessions, and
+   issues the continuing browser a fresh application session.
+5. Penta sends the existing security notice to the old address. The success screen explicitly says
+   that Google sign-in was disconnected because it belonged to the old email.
+
+The applicant may immediately choose Google again, but it links only when Google's verified email
+matches the newly confirmed primary email. Signing in with the old Google identity fails rather
+than reopening the application or reversing the email change. Google authentication never confirms
+a pending email change, even if Google returns the proposed address; the emailed confirmation link
+remains the proof that Penta can deliver future application communication there.
+
+No separate connected-accounts settings surface is needed for M23. Linking is automatic only on an
+unambiguous email match, and changing the primary email is the supported way to retire a binding
+that belongs to the old address. An applicant who needs a different Google subject for the same
+unchanged email uses email access and Tech Support; the application never silently replaces one
+Google subject with another.
+
+### Additional corner cases and boundaries
+
+- Only the primary applicant may authenticate. A co-applicant's Google account or matching
+  co-applicant email grants no access and cannot be linked.
+- A Google-authenticated applicant may save, submit, revert, withdraw, and request an email change
+  exactly as an email-authenticated applicant; authorization depends only on the resulting
+  `Application.id` session.
+- A pending email change remains visible after either sign-in method. Google sign-in neither
+  confirms nor cancels it.
+- Expired local sessions, Google consent revocation, Google-account deletion, and Google outages
+  fall back to email access. Revoking Google consent does not retroactively revoke an already issued
+  Penta browser session; Penta sign-out, sign-out-all-devices, expiry, withdrawal, and retention
+  rules still govern that session.
+- A provider-wide email suppression may prevent email recovery or email-change confirmation;
+  Google access does not bypass confirmation of a new contact address. Tech Support remains the
+  recovery route.
+- Multiple tabs follow the existing working-revision and pending-copy rules. A Google round trip
+  cannot overwrite newer server answers, publish a guest copy, or bypass explicit reconciliation.
+- Google sign-in does not prefill the applicant's legal name or any application answer. The Google
+  email initializes only the primary email for a genuinely new application.
+- Google sign-in must not reveal whether an arbitrary typed address has an application. The only
+  address involved is the verified address returned for the Google account the visitor controlled.
+- Applicant Google use remains identity-only. It does not restore Google Forms, Sheets, Picker,
+  Drive scopes, imports, or synchronization.
+
 ## Vacancy Email Tone And Content
 
 Vacancy emails follow these operational rules and tone:
@@ -973,7 +1142,10 @@ It is acceptable to send full application context, including names/contact conte
 
 ## Users, Roles, And Authentication
 
-Committee members may sign in with an allowlisted email magic link or identity-only Google OIDC. Applicants use email access only. Access is invitation/approval based when live; Jeff is the initial admin and can invite MOMI members. Roles:
+Committee members may sign in with an allowlisted email magic link or identity-only Google sign-in.
+M23 gives applicants identity-only Google sign-in as an optional primary path while retaining email
+and guest access. Committee access remains invitation/approval based when live; Jeff is the initial
+admin and can invite MOMI members. Roles:
 
 - `Admin`: the initial account; will gate user management once invitations are built.
 - `Member`: a MOMI committee screener — screens independently (own eligibility rules, overrides, tiering, ranking, notes) over the shared cached AI substrate; no merged comparison surface (M15 is isolation, not merge).
@@ -1008,7 +1180,11 @@ This replaced the originally-planned Google Docs generation — print-to-PDF nee
 
 ## MVP Shape And Tech Stack
 
-The MVP is a web app with a **Python/FastAPI** backend, a **Vite + React/TypeScript** frontend, **SQLite** (SQLAlchemy + Alembic), revocable server-side sessions, SocketLabs transactional email, optional identity-only Google OIDC for committee users, and provider-neutral AI routing across Bedrock or direct APIs. Python deps use `uv`; frontend uses `npm`; backend tests use `pytest`.
+The MVP is a web app with a **Python/FastAPI** backend, a **Vite + React/TypeScript** frontend,
+**SQLite** (SQLAlchemy + Alembic), revocable server-side sessions, SocketLabs transactional email,
+optional identity-only Google authentication for committee members and, after M23, applicants, and
+provider-neutral AI routing across Bedrock or direct APIs. Python deps use `uv`; frontend uses
+`npm`; backend tests use `pytest`.
 
 Google setup uses only `openid`, `email`, and `profile` for optional committee identity. It requests no Google data scope and stores no provider access or refresh token. Setup is documented in [docs/google-cloud-oauth-setup.md](docs/google-cloud-oauth-setup.md).
 
@@ -1174,8 +1350,9 @@ separate milestone with its own storage, hostname, and isolation decisions.
 - Automated tests and normal local development capture email without sending it. Explicit live
   development tests send only synthetic messages to exact `@jeffo.net` or `@pentacoop.com`
   recipients, enforced before the provider call with no per-message bypass.
-- The production application accepts built-in submissions at the applicant hostname, the screener
-  reflects new/updated submissions, and Google runtime use is limited to committee identity.
+- At the M21 release gate, the production application accepted built-in submissions at the
+  applicant hostname, the screener reflected new/updated submissions, and Google runtime use was
+  limited to committee identity. M23 deliberately extends identity-only Google use to applicants.
 - The committed canonical synthetic fixture can be loaded into every selected local opening, sends
   no email, and cannot overwrite an application that is not explicitly stamped synthetic.
 - Backend tests, frontend build, database migration against a production-shaped copy, synthetic
@@ -1256,6 +1433,75 @@ matching vacancy notice.
 **Production gate (completed August 29, 2026):** the reviewed notice, privacy copy, email footer,
 consent evidence, and application-withdrawal semantics were deployed together before production
 signups moved to the built-in service.
+
+### Applicant Google Sign-In (M23) — planned
+
+**Goal:** add the optional Google-first applicant access described in
+[Applicant Google Sign-In](#applicant-google-sign-in-m23-target) without creating applicant
+accounts, weakening email ownership, or disturbing the guest and email-link paths.
+
+**Implementation stages:**
+
+1. **Google-rendered-button spike and applicant primitive** — exercise the current Google Identity
+   Services rendered button against a local nonce-bound credential endpoint, including FedCM,
+   account choice, cancellation, remembered-device handoff, CSP, library-load failure, and the
+   responsive 400 px width limit. Pin the supported standard/large/outline/`continue_with` options.
+   Once proven, use the wrapper on the applicant entry panel while keeping email and guest controls
+   independent of the Google library. Preserve the working committee authentication transport.
+2. **Applicant identity binding** — add a nullable unique Google subject to the active application
+   identity. Implement one resolver that checks subject, `email_verified`, and normalized email
+   together, preserves the committee-style collision guards, claims pending drafts, creates a blank
+   private application only while applications are open, and always issues the existing applicant
+   `BrowserSession`.
+3. **Applicant journeys and conflicts** — make Google the first entry action, email secondary, and
+   guest tertiary. Preserve local guest answers across the Google round trip, reuse saved-versus-
+   guest reconciliation, require an explicit choice when another applicant is already signed in,
+   and provide useful Google-denied, cancelled, unavailable, closed-cycle, and Tech Support states.
+4. **Credential lifecycle** — atomically clear the Google subject when a primary-email change is
+   confirmed or an application is withdrawn; leave it intact while an email change is merely
+   pending or cancelled. Revoke affected links and sessions through the existing identity lifecycle,
+   keep the old-address security notice, and state the Google disconnection on the success screen.
+5. **Production configuration and verification** — register the applicant origin and credential
+   endpoint in the existing Google project, apply the additive migration to a production-shaped
+   database, verify both hostnames and their separate cookies, and exercise controlled synthetic
+   Google, email, guest, email-change, collision, withdrawal, and recovery journeys before release.
+
+**Non-goals:** Google-only access; One Tap, automatic, or silent sign-in; Google profile prefill;
+Google API authorization or data scopes; a general social-identity framework; separate applicant
+accounts; co-applicant access; automatic record merging; changing an application email from a
+Google claim; or restoring any Google Forms/Sheets intake dependency.
+
+**Definition of done:**
+
+- The applicant entry panel uses Google's rendered standard **Continue with Google** button first,
+  a secondary email-link form second, and a tertiary guest button third; blocking or failing the
+  Google library leaves the other two paths usable.
+- Any Google identity with `email_verified=true` and a normalized email matching an unlinked active
+  application or draft attaches its stable `sub` and opens that same application. A new matching
+  identity creates a private application only while new applications are open. Applicant and
+  committee access deliberately use the same rule without separate domain or `hd` handling.
+- A linked subject with a different returned email, an email linked to a different subject, and a
+  subject/email pair resolving to different applications are all refused without mutation, merge,
+  or disclosure.
+- Google and email access for the same applicant issue indistinguishable applicant browser sessions
+  keyed by `Application.id`, with the same expiry, remembered-device, sign-out, revocation,
+  authorization, and no-store behavior.
+- A browser already signed in to another applicant must explicitly keep or switch identities.
+  Google cancellation, denial, and provider failure never revoke the current session.
+- Local guest answers survive Google authentication and cannot overwrite a saved application until
+  the applicant explicitly chooses the saved or guest copy.
+- Confirming a primary-email change clears the old Google subject in the same transaction as the
+  email update. Pending, failed, expired, replaced, and cancelled email changes do not clear it.
+  Google can be linked again only when its verified email equals the newly confirmed address.
+- Withdrawal and purge leave no usable applicant Google binding. A retained legal-hold record is
+  neither accessible nor exposed as a Google collision.
+- The backend verifies Google credentials and nonce state and persists neither raw ID tokens nor
+  Google access/refresh tokens, names, avatars, or profile data. Logs and denial responses contain
+  no applicant PII beyond existing bounded operational handling.
+- Committee Google and email sign-in retain their existing UI behavior, allowlist, account-linking,
+  denial, session, and remembered-device behavior; M23 does not migrate that proven auth flow.
+- Focused backend and frontend tests, the full backend suite, frontend build, additive migration,
+  production-shaped upgrade, and synthetic browser verification all pass before release.
 
 ### Reporting (M10 shipped) — ✅ closed, demand-driven from here
 
