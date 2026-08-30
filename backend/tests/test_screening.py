@@ -130,6 +130,30 @@ def test_build_prompt_surfaces_pets_and_essays_and_asks_for_extraction() -> None
     assert "only dogs and cats are allowed" not in prompt
 
 
+def test_prompt_defines_minimal_essay_across_the_whole_essay_set() -> None:
+    db = make_session()
+    app = add_application(
+        db,
+        email="a@x.com",
+        raw_hash="h1",
+        raw_row={
+            "essays": {
+                "household_introduction": "We value shared work and community.",
+                "skills_to_contribute": "",
+                "previous_coop_experience": "None.",
+                "why_coop": "We want to know and support our neighbours.",
+                "additional_information": "",
+            }
+        },
+    )
+
+    prompt = build_prompt(app)
+
+    assert "minimal_essay` only for the essay set as a whole" in prompt
+    assert "blank optional essay" in prompt
+    assert '"label": "Additional information"' in prompt
+
+
 def test_screening_version_is_stable_and_settings_independent() -> None:
     # Pet limits are evaluated outside the prompt, so they do not affect prompt identity.
     from app.ai.screening import screening_prompt_version

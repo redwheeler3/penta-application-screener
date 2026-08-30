@@ -23,7 +23,7 @@ ELIGIBILITY_CHECK_CATALOG = EligibilityCheckCatalog(
     ai=[
         EligibilityCheck(id="pets_over_limit", label="Pet policy", description="The extracted pets exceed your dog, cat, or other-pet limits."),
         EligibilityCheck(id="placeholder_name", label="Placeholder name", description="A name field holds a placeholder or non-name."),
-        EligibilityCheck(id="minimal_essay", label="Minimal essay", description="An essay answer contains no substantive response."),
+        EligibilityCheck(id="minimal_essay", label="Minimal essays", description="The application has no substantive response anywhere in its essay set."),
         EligibilityCheck(id="spam_essay", label="Spam essay", description="An essay is clearly spam or advertising rather than a genuine answer."),
         EligibilityCheck(id="ai_generated_essay", label="AI-generated essay", description="An essay reads as machine-generated rather than written by the applicant."),
         EligibilityCheck(id="internal_inconsistency", label="Internal inconsistency", description="The application contains a direct factual contradiction."),

@@ -860,7 +860,8 @@ Known patterns to detect (intentionally incomplete; grows over time):
 
 - Child names that look like placeholders ("Baby", "TBD", "N/A", "Test")
 - Applicant or child names that appear fake or nonsensical
-- Essay responses that are suspiciously short or minimal
+- An essay set with no substantive response anywhere; one or several short or blank answers do not
+  trigger this when any other essay is substantive, and a blank optional essay is ignored
 - Essay responses that appear to be advertising or spam
 - Essay responses that appear to be AI-generated boilerplate with no personal detail
 - Responses copy-pasted across multiple essay fields

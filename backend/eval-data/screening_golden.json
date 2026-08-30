@@ -1,7 +1,75 @@
 {
-  "_comment": "Golden cases for the LIVE screening eval (app/evals/screening.py). Each case is a real SYNTHETIC applicant (exact slice from the pool), run through the REAL production screening prompt+model. Screening produces (1) a LIST of integrity flags and (2) an extracted PET inventory. The grade is per-CATEGORY for flags — metadata.expected.fires = categories that MUST appear; metadata.expected.absent = categories that must NOT (the over-reach guards — flagging benign things is the costly error since flags gate eligibility) — PLUS, when metadata.expected.pets is set, the extracted pet facts must match (dogs/cats exact; each other_pets noun present). Pets are NO LONGER a flag (M15 1e): the model only EXTRACTS the neutral inventory, and a deterministic per-member hard filter judges the limits downstream — so a pet case grades extraction, never a pet_policy verdict. A clean applicant (no fires, no absent, no pets expectation) must produce zero flags. given.fields (normalized form fields) + given.essays (keyed by the real form-question column) are what the screening prompt receives; metadata is harness-only. See docs/eval-case-schema.md.",
-  "judge_background": "Screening reviews an applicant's fields and essays for INFORMATIONAL integrity concerns — never disqualifying, only surfaced for a human to review — and separately EXTRACTS a neutral inventory of the household's pets. Flag genuine concerns such as: internal inconsistencies between fields/essays; placeholder or fake contact details (keyboard-mash emails, obviously bogus phone numbers); and placeholder names (e.g. a child named 'TBD'). Pets are NEVER a flag: report what animals are present (dogs, cats, other) and let the committee's per-member policy decide — account for negation like 'no pets' and unclear phrasing when counting. The following must not be flagged: a child with a different surname, an email address with a full name in it that doesn't match someone in the household. The cases you must not flag do not indicate a fake contact.",
+  "_comment": "Golden cases for the LIVE screening eval (app/evals/screening.py). Each case is a real SYNTHETIC applicant (exact slice from the pool), run through the REAL production screening prompt+model. Screening produces (1) a LIST of integrity flags and (2) an extracted PET inventory. The grade is per-CATEGORY for flags — metadata.expected.fires = categories that MUST appear; metadata.expected.absent = categories that must NOT (the over-reach guards — flagging benign things is the costly error since flags gate eligibility) — PLUS, when metadata.expected.pets is set, the extracted pet facts must match (dogs/cats exact; each other_pets noun present). Pets are NO LONGER a flag (M15 1e): the model only EXTRACTS the neutral inventory, and a deterministic per-member hard filter judges the limits downstream — so a pet case grades extraction, never a pet_policy verdict. A clean applicant (no fires, no absent, no pets expectation) must produce zero flags. given.fields (normalized form fields) + given.essays (legacy question keys or the nested built-in essay document) are what the screening prompt receives; metadata is harness-only. See docs/eval-case-schema.md.",
+  "judge_background": "Screening reviews an applicant's fields and essays for INFORMATIONAL integrity concerns — never disqualifying, only surfaced for a human to review — and separately EXTRACTS a neutral inventory of the household's pets. Flag genuine concerns such as: internal inconsistencies between fields/essays; placeholder or fake contact details (keyboard-mash emails, obviously bogus phone numbers); and placeholder names (e.g. a child named 'TBD'). The minimal_essay category is application-wide: use it only when the entire essay set contains no substantive response; one or several blank/minimal answers, including a blank optional essay, must not trigger it when any other essay is substantive. Pets are NEVER a flag: report what animals are present (dogs, cats, other) and let the committee's per-member policy decide — account for negation like 'no pets' and unclear phrasing when counting. The following must not be flagged: a child with a different surname, an email address with a full name in it that doesn't match someone in the household. The cases you must not flag do not indicate a fake contact.",
   "cases": [
+    {
+      "key": "mixed_minimal_and_optional_blank_essays_no_flag",
+      "metadata": {
+        "note": "OVER-REACH GUARD: individual essays may be blank or minimal, and the optional additional-information answer is commonly blank. The application still contains substantive household and co-op answers, so minimal_essay must not fire.",
+        "pass": "screening",
+        "source": "synthetic — fabricated for the built-in optional-essay regression; no real applicant data.",
+        "expected": {
+          "fires": [],
+          "absent": [
+            "minimal_essay"
+          ]
+        }
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Avery Morgan",
+          "co_applicant_name": null,
+          "child_details": [],
+          "pets_text": "No pets",
+          "applicant_email": "avery.morgan@example.com",
+          "co_applicant_email": null,
+          "co_applicant_phone": null
+        },
+        "essays": {
+          "essays": {
+            "household_introduction": "I work as a library assistant and spend weekends helping at neighbourhood food drives. I value reliability, kindness, and knowing the people who live around me.",
+            "skills_to_contribute": "Painting.",
+            "previous_coop_experience": "",
+            "why_coop": "I want to share responsibility for my home and contribute regularly to a community where neighbours solve problems together.",
+            "additional_information": ""
+          }
+        }
+      }
+    },
+    {
+      "key": "all_essays_minimal_flag",
+      "metadata": {
+        "note": "POSITIVE BOUNDARY: minimal_essay is application-wide and must fire when no essay contains a substantive response, including when the optional answer is blank.",
+        "pass": "screening",
+        "source": "synthetic — fabricated for the whole-essay-set positive boundary; no real applicant data.",
+        "expected": {
+          "fires": [
+            "minimal_essay"
+          ],
+          "absent": []
+        }
+      },
+      "given": {
+        "fields": {
+          "applicant_name": "Jordan Lee",
+          "co_applicant_name": null,
+          "child_details": [],
+          "pets_text": "No pets",
+          "applicant_email": "jordan.lee@example.com",
+          "co_applicant_email": null,
+          "co_applicant_phone": null
+        },
+        "essays": {
+          "essays": {
+            "household_introduction": "Hi.",
+            "skills_to_contribute": "Handy.",
+            "previous_coop_experience": "None.",
+            "why_coop": "Co-op.",
+            "additional_information": ""
+          }
+        }
+      }
+    },
     {
       "key": "pet_two_dogs_one_cat_extracted",
       "metadata": {
