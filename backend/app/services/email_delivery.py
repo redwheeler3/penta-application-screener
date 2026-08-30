@@ -140,8 +140,13 @@ def _queue_retry(
     delivery.last_error_code = type(error).__name__[:120]
 
 
-def cancel_queued_application_emails(db: Session, application_id: int) -> None:
-    """Discard intents made obsolete when an applicant withdraws the application."""
+def cancel_queued_application_emails(
+    db: Session,
+    application_id: int,
+    *,
+    error_code: str = "ApplicationWithdrawn",
+) -> None:
+    """Discard queued intents made obsolete by an applicant lifecycle change."""
     deliveries = db.scalars(
         select(EmailDelivery).where(
             EmailDelivery.application_id == application_id,
@@ -152,8 +157,7 @@ def cancel_queued_application_emails(db: Session, application_id: int) -> None:
         delivery.state = EmailDeliveryState.FAILED
         delivery.retry_intent = None
         delivery.quota_blocked = False
-        delivery.last_error_code = "ApplicationWithdrawn"
-    db.commit()
+        delivery.last_error_code = error_code
 
 
 def _reserve_delivery(

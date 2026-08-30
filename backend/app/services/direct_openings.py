@@ -18,6 +18,7 @@ from app.db.models import (
 )
 from app.schemas.openings import DirectSelectionOpeningCreate
 from app.services.retention import refresh_application_retention
+from app.services.selected_application import revoke_selected_applicant_access
 
 
 def available_previous_applicants_query() -> Select[tuple[Application]]:
@@ -109,6 +110,7 @@ def create_direct_selection_opening(
         )
         db.flush()
         refresh_application_retention(db, application)
+        revoke_selected_applicant_access(db, application.id, now=now)
         db.commit()
     except IntegrityError as error:
         db.rollback()

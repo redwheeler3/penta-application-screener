@@ -18,6 +18,10 @@ from app.db.models import (
 )
 from app.services.openings import opening_phase
 from app.services.retention import refresh_application_retention
+from app.services.selected_application import (
+    revoke_selected_applicant_access,
+    selected_opening_id,
+)
 
 
 def active_opening_participants(
@@ -54,15 +58,6 @@ def selected_participation(
     return db.scalar(
         select(ApplicationParticipation).where(
             ApplicationParticipation.opening_id == opening_id,
-            ApplicationParticipation.outcome == OpeningOutcome.SELECTED,
-        )
-    )
-
-
-def selected_opening_id(db: Session, application_id: int) -> int | None:
-    return db.scalar(
-        select(ApplicationParticipation.opening_id).where(
-            ApplicationParticipation.application_id == application_id,
             ApplicationParticipation.outcome == OpeningOutcome.SELECTED,
         )
     )
@@ -162,6 +157,7 @@ def confirm_opening_selection(
 
     for application in affected_applications:
         refresh_application_retention(db, application)
+    revoke_selected_applicant_access(db, application_id, now=now)
     opening.no_household_selected_at = None
     opening.no_household_selected_by_user_id = None
     try:

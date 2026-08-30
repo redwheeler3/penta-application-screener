@@ -118,7 +118,9 @@ Applicants can begin filling out the form as guests without authenticating. Gues
 only in the open page until **Save and return later** writes the current answers to a private
 server-side pending draft and emails an access link. The save accepts an incomplete application as
 long as the primary email is valid. It does not enter a separate verification or polling state,
-and the form remains usable after the save. Submission is always a deliberate action after
+and the form remains usable after the save. The email heading is **Your application draft has been
+saved**, explicitly says it has not been submitted to the membership committee, and uses
+**Continue your application** for its return link. Submission is always a deliberate action after
 reviewing the completed application.
 The long form does not carry a private-draft banner that gets lost among its sections. The final
 review instead leads with **This is still a private draft**, explains that nothing has reached the
@@ -263,6 +265,13 @@ After a replacement-link request succeeds, the page shows the same **Check your 
 confirmation rather than attempting to load application data before authentication. A link to a
 draft or application that is no longer editable cannot establish a new session; requesting a
 replacement instead sends the application-access-unavailable email.
+
+A selected application is a separate unavailable state. An email access request always returns the
+same non-enumerating **Check your email** browser response used for known and unknown addresses. The
+verified mailbox receives no credential; it receives a polished **Congratulations! Your household
+has been selected** email that leads with the positive outcome, then explains that the profile is
+locked, no action is required, and Tech Support is the contact only if that status appears mistaken.
+The selected-state email is included in the development preview gallery.
 
 An applicant-session conflict is resolved before link validity changes behavior. Choosing the
 current application leaves its session and browser-local draft untouched. Choosing the linked
@@ -526,7 +535,12 @@ application from Applications, Screen, Rank, and every successful-applicant pick
 it in an administrator-only audit view for seven years from the opening's move-in date. The opening
 closeout continues to show the selected household as a read-only decision summary and links to the
 full retained application. That audit detail is read-only and is available only to administrators;
-it does not restore the household to any live committee workflow. Unsuccessful
+it does not restore the household to any live committee workflow. Selection also locks the
+applicant boundary immediately: the submitted record, working copy, opening choices, primary
+email, and profile status cannot be changed online while any participation is selected. Confirming
+either an application-intake or direct selection revokes every applicant browser session and unused
+access or email-change link. A stale page may retain a device-local copy, but every server mutation
+rejects it. A later opening never makes a selected application editable again. Unsuccessful
 applications remain live in the ordinary committee workflow until their one-year purge date.
 
 While an application-intake opening remains closed, the administrator may undo the confirmed
@@ -536,7 +550,8 @@ scope. A direct-selection undo instead removes that opening and its sole partici
 the applicant's previous scope and retention. Once the opening becomes
 archived, any existing decision is permanent. An archived opening without a decision permits one
 closeout confirmation, which is permanent immediately; archived decisions cannot be undone or
-replaced through the application.
+replaced through the application. Undo does not revive revoked credentials; the applicant must use
+a fresh email link or Google sign-in before editing again.
 
 An opening decision has three explicit states: **pending** (no decision yet), **selected** (one
 household selected), or **no household selected** (the administrator deliberately closes the
@@ -794,6 +809,7 @@ second email-proof state inside Google sign-in.
 | Subject is not linked | One unlinked application or saved draft | Attach the subject, claim the draft if needed, and issue the ordinary applicant session. |
 | Subject is not linked | No application or draft; applications are open | Create the new private application for that email, attach the subject, and sign in. |
 | Subject is not linked | No application or draft; applications are closed | Do not create a record; show that new applications are unavailable and link to vacancy information. |
+| Subject or verified email resolves to a selected application | Selected application | Do not issue a session, create another application, or change the Google binding. Show the verified user that the profile is locked because the household was selected. |
 | Subject is linked to a different email | Any | Refuse Google sign-in; never change either email or binding. Offer another Google account, email access, and Tech Support. |
 | Email is linked to a different Google subject | Same email | Refuse Google sign-in; never replace the existing binding. Offer email access and Tech Support. |
 | Subject and email resolve to different applications | Different applications | Refuse Google sign-in; never reveal, merge, or mutate either application. |

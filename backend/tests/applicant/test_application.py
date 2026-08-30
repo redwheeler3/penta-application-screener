@@ -2,8 +2,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
+from app.api.session_cookie import SESSION_COOKIE_NAMES
 from app.db.models import (
     ApplicantDraft,
     Application,
@@ -12,8 +13,11 @@ from app.db.models import (
     BrowserSession,
     MagicLinkToken,
     Opening,
+    OpeningOutcome,
+    PasswordlessIdentityKind,
 )
 from app.legal import APPLICATION_TERMS_VERSION
+from app.services.passwordless_auth import create_browser_session
 from app.services.retention import one_year_after
 from tests.applicant.support import (
     app_and_db,
@@ -239,6 +243,73 @@ async def test_withdrawal_removes_every_opening_and_revokes_applicant_access() -
     assert messages_after_withdrawal == messages_before_withdrawal
     assert requested_again.json()["emailStatus"] == "sent"
     assert sender.messages[-1].kind == "applicant_magic_link"
+
+
+@pytest.mark.anyio
+async def test_selected_application_rejects_existing_sessions_and_all_mutations() -> None:
+    app, db, _sender = app_and_db()
+    opening = db.scalar(select(Opening))
+    assert opening is not None
+    submitted_answers = sample_answers()
+    application = Application(
+        primary_email="avery@example.com",
+        raw_row=submitted_answers,
+        raw_row_hash="selected-submitted",
+        normalized={},
+        working_answers=submitted_answers,
+        working_content_hash="selected-submitted",
+        working_opening_ids=[opening.id],
+        working_saved_at=datetime.now(UTC),
+        submitted_at=datetime.now(UTC),
+    )
+    db.add(application)
+    db.flush()
+    db.add(
+        ApplicationParticipation(
+            application_id=application.id,
+            opening_id=opening.id,
+            applied_at=datetime.now(UTC),
+            outcome=OpeningOutcome.SELECTED,
+        )
+    )
+    issued = [
+        create_browser_session(
+            db,
+            identity_kind=PasswordlessIdentityKind.APPLICANT,
+            application_id=application.id,
+        )
+        for _ in range(3)
+    ]
+    db.commit()
+    transport = ASGITransport(app=app)
+    cookie_name = SESSION_COOKIE_NAMES[PasswordlessIdentityKind.APPLICANT]
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        client.cookies.set(cookie_name, issued[0].token)
+        opened = await client.get("/applicant/application")
+        client.cookies.set(cookie_name, issued[1].token)
+        submitted = await client.post(
+            "/applicant/application/submit",
+            json={
+                "answers": sample_answers(introduction="Attempted replacement"),
+                "openingIds": [opening.id],
+                "declarationAccepted": True,
+                "baseRevision": application.working_revision,
+            },
+        )
+        client.cookies.set(cookie_name, issued[2].token)
+        deleted = await client.post("/applicant/application/withdraw")
+
+    db.refresh(application)
+    assert opened.status_code == submitted.status_code == deleted.status_code == 401
+    assert application.raw_row == submitted_answers
+    assert application.raw_row_hash == "selected-submitted"
+    assert application.withdrawn_at is None
+    assert db.scalar(select(func.count()).select_from(ApplicationVersion)) == 0
+    assert all(
+        session.revoked_at is not None
+        for session in db.scalars(select(BrowserSession))
+    )
 
 
 @pytest.mark.anyio

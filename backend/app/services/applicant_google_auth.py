@@ -26,6 +26,7 @@ from app.services.opening_participation import (
     application_is_editable,
 )
 from app.services.retention import retention_due_for_opening_ids
+from app.services.selected_application import application_is_selected
 
 
 class ApplicantGoogleIdentityConflict(ValueError):
@@ -34,6 +35,10 @@ class ApplicantGoogleIdentityConflict(ValueError):
 
 class NewApplicationsUnavailable(ValueError):
     """A new Google identity cannot create an application in the current lifecycle."""
+
+
+class SelectedApplicationLocked(ValueError):
+    """The verified Google identity belongs to a selected, immutable application."""
 
 
 def claim_or_create_google_application(
@@ -81,9 +86,9 @@ def claim_or_create_google_application(
         )
 
     application = subject_application or email_application
-    if application is not None and not application_is_editable(
-        applicant_opening_states(db, application)
-    ):
+    if application is not None and application_is_selected(db, application.id):
+        raise SelectedApplicationLocked
+    if application is not None and not application_is_editable(db, application):
         raise NewApplicationsUnavailable
     if application is None:
         available_opening_ids = _open_application_ids(db)

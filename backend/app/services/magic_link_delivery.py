@@ -23,6 +23,7 @@ from app.services.auth_email import (
     application_unavailable_email,
     email_change_notice_email,
     magic_link_email,
+    selected_application_locked_email,
 )
 from app.services.email_delivery import deliver_email
 from app.services.email_sender import EmailSender
@@ -257,5 +258,31 @@ def send_application_unavailable(
             f"application-unavailable:{recipient_key}:{pacific_today(now=now).isoformat()}"
         ),
         retry_intent={"type": "application_unavailable"},
+        now=now,
+    )
+
+
+def send_selected_application_locked(
+    db: Session,
+    sender: EmailSender,
+    application: Application,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    now = now or datetime.now(UTC)
+    return deliver_email(
+        db,
+        sender,
+        selected_application_locked_email(
+            application_id=application.id,
+            email=application.primary_email,
+        ),
+        recipient_kind=PasswordlessIdentityKind.APPLICANT,
+        application_id=application.id,
+        idempotency_key=(
+            f"application-selected-locked:{application.id}:"
+            f"{pacific_today(now=now).isoformat()}"
+        ),
+        retry_intent={"type": "application_selected_locked"},
         now=now,
     )

@@ -15,6 +15,7 @@ from app.api.applicant.support import (
     _pending_email_change,
     _purge_never_submitted_application,
     _require_application_editable,
+    _require_application_not_selected,
     _require_current_revision,
     _require_matching_email,
     _stored_answers,
@@ -146,7 +147,7 @@ def get_applicant_application(
                 or working_opening_ids != submitted_opening_ids
             )
         ),
-        can_edit=application_is_editable(opening_states),
+        can_edit=application_is_editable(db, application, opening_states),
         openings=[_applicant_opening(state) for state in opening_states],
     )
 
@@ -163,6 +164,7 @@ def request_applicant_email_change(
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
 ) -> EmailChangeResponse:
+    _require_application_not_selected(db, application)
     new_email = normalize_email(str(body.new_email))
     if new_email == normalize_email(application.primary_email):
         raise Problem("email_unchanged", detail="Enter a different email address.")
@@ -190,6 +192,7 @@ def cancel_applicant_email_change(
     application: Application = Depends(require_current_application),
     db: Session = Depends(get_db),
 ) -> Response:
+    _require_application_not_selected(db, application)
     revoke_identity_magic_links(
         db,
         identity_kind=PasswordlessIdentityKind.APPLICANT,
@@ -276,6 +279,7 @@ def withdraw_applicant_application(
     db: Session = Depends(get_db),
 ) -> WithdrawApplicationResponse:
     """Withdraw one application and every opening participation from ordinary access."""
+    _require_application_not_selected(db, application)
     now = datetime.now(UTC)
     cancel_queued_application_emails(db, application.id)
     if application.submitted_at is None:

@@ -45,6 +45,7 @@ from app.services.opening_participation import (
 from app.services.passwordless_auth import (
     magic_link_for_token,
 )
+from app.services.selected_application import application_is_selected
 
 
 def _purge_never_submitted_application(db: Session, application: Application) -> None:
@@ -111,14 +112,12 @@ def _access_link_response(
         state = "expired"
     elif link.applicant_draft is not None and not draft_is_available(link.applicant_draft, now=now):
         state = "abandoned"
-    elif link.purpose == MagicLinkPurpose.APPLICANT_ACCESS:
+    else:
         target = _link_target(db, link)
         if target is None:
             state = "abandoned"
         else:
             state = "valid" if _access_target_is_editable(db, target) else "unavailable"
-    else:
-        state = "valid"
     return AccessLinkResponse(
         state=state,
         purpose=link.purpose,
@@ -145,7 +144,13 @@ def _claim_link_target(db: Session, link: MagicLinkToken) -> _ClaimedApplicantLi
     if link.purpose == MagicLinkPurpose.EMAIL_CHANGE:
         return _claim_email_change(db, link)
     if link.application_id is not None:
-        return _ClaimedApplicantLink(_active_application(db, link.application_id))
+        application = _active_application(db, link.application_id)
+        if application is not None and application_is_selected(db, application.id):
+            return _ClaimedApplicantLink(None, state="unavailable")
+        return _ClaimedApplicantLink(
+            application,
+            state="valid" if application is not None else "abandoned",
+        )
     draft = link.applicant_draft
     if draft is None or not draft_is_available(draft):
         return _ClaimedApplicantLink(None)
@@ -186,6 +191,8 @@ def _claim_email_change(db: Session, link: MagicLinkToken) -> _ClaimedApplicantL
     application = _active_application(db, link.application_id)
     if application is None:
         return _ClaimedApplicantLink(None)
+    if application_is_selected(db, application.id):
+        return _ClaimedApplicantLink(None, state="unavailable")
     conflicting = db.scalar(
         select(Application).where(
             Application.primary_email == link.email,
@@ -306,7 +313,7 @@ def _access_target_is_editable(
 ) -> bool:
     application = _application_for_access_target(db, target)
     if application is not None:
-        return application_is_editable(applicant_opening_states(db, application))
+        return application_is_editable(db, application)
     return _new_applications_are_open(db)
 
 
@@ -365,7 +372,12 @@ def _new_applications_are_open(db: Session) -> bool:
 
 
 def _require_application_editable(db: Session, application: Application) -> None:
-    if not application_is_editable(applicant_opening_states(db, application)):
+    if not application_is_editable(db, application):
+        raise Problem("applications_locked", detail="This application cannot be edited right now.")
+
+
+def _require_application_not_selected(db: Session, application: Application) -> None:
+    if application_is_selected(db, application.id):
         raise Problem("applications_locked", detail="This application cannot be edited right now.")
 
 

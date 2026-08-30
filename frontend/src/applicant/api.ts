@@ -13,6 +13,7 @@ const APPLICANT_GOOGLE_ACCESS_RESULTS = [
   "denied",
   "identity_conflict",
   "applications_closed",
+  "selected",
   "session_conflict",
 ] as const;
 

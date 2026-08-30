@@ -45,13 +45,20 @@ def application_confirmation_email(
 ) -> OutboundEmail:
     url = _applicant_link_url(settings.applicant_frontend_url, token)
     state = "submitted" if submitted else "saved"
-    heading = f"Your application has been {state}"
+    heading = (
+        "Your application has been submitted"
+        if submitted
+        else "Your application draft has been saved"
+    )
     if submitted and not opening_timelines:
         raise ValueError("a submitted application email requires an opening timeline")
     introduction = (
         "Thank you for submitting your application to Penta Co-operative Housing."
         if submitted
-        else "Your private application draft has been saved."
+        else (
+            "Your private application draft has been saved. It has not been submitted "
+            "to the membership committee."
+        )
     )
     self_service = "You can return to the application page to update your application or delete your profile."
     if submitted:
@@ -92,7 +99,7 @@ Use this link to open your application:
             heading=heading,
             introduction=introduction,
             action_url=url,
-            action_label="Open your application",
+            action_label="Continue your application",
             link_notice=None,
         )
     )
@@ -281,6 +288,41 @@ def application_unavailable_email(
         recipient_id=(
             f"application:{application_id}" if application_id is not None else "access-request"
         ),
+        to=(email,),
+        subject=heading,
+        text_body=text,
+        html_body=html,
+    )
+
+
+def selected_application_locked_email(
+    *, email: str, application_id: int
+) -> OutboundEmail:
+    heading = "Congratulations! Your household has been selected"
+    introduction = (
+        "We're pleased to let you know that your household has been selected for a Penta home."
+    )
+    notice = (
+        "Your application profile is now locked and can no longer be changed online. "
+        "No action is required. If you believe this is a mistake, email Penta Tech "
+        "Support at techsupport@pentacoop.com."
+    )
+    text = _with_common_footer(f"""{heading}.
+
+{introduction}
+
+{notice}""")
+    html = _email_shell(
+        eyebrow="Application update",
+        heading=heading,
+        introduction=introduction,
+        action_url=None,
+        action_label=None,
+        link_notice=notice,
+    )
+    return OutboundEmail(
+        kind="application_selected_locked",
+        recipient_id=f"application:{application_id}",
         to=(email,),
         subject=heading,
         text_body=text,

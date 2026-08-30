@@ -32,6 +32,7 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
         "email-change-confirmation",
         "email-change-notice",
         "application-unavailable",
+        "selected-profile-locked",
         "application-unsuccessful",
         "vacancy-opening-list-only",
         "vacancy-opening-application-only",
@@ -41,6 +42,15 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
     assert "jeffo.net" not in response.text
     assert "pentacoop.com#" not in response.text
     assert "removed you from the vacancy notification list" in response.text
+    assert "Congratulations! Your household has been selected" in response.text
+    assert "pleased to let you know" in response.text
+    assert "Your application profile is now locked" in response.text
+    assert "No action is required" in response.text
+    assert "techsupport@pentacoop.com" in response.text
+    saved = next(preview for preview in previews if preview["key"] == "application-saved")
+    assert saved["subject"] == "Your application draft has been saved"
+    assert "It has not been submitted to the membership committee" in saved["html"]
+    assert "Continue your application" in saved["html"]
     assert "https://www.pentacoop.com/apply.html" in response.text
     submitted = next(preview for preview in previews if preview["key"] == "application-submitted")
     assert "2-bedroom home" in submitted["html"]

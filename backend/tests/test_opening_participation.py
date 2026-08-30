@@ -5,7 +5,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.core.problems import Problem
-from app.db.models import Application, ApplicationParticipation, Base, Opening
+from app.db.models import (
+    Application,
+    ApplicationParticipation,
+    Base,
+    Opening,
+    OpeningOutcome,
+)
 from app.services.opening_participation import (
     applicant_opening_states,
     application_is_editable,
@@ -126,7 +132,38 @@ def test_closed_participant_can_restore_an_unsubmitted_withdrawal() -> None:
     assert state.selected is False
     assert state.participating is True
     assert state.can_select is True
-    assert application_is_editable([state]) is True
+    assert application_is_editable(db, application, [state]) is True
+
+
+def test_selected_application_stays_locked_when_another_opening_is_open() -> None:
+    db = _session()
+    application = _application(db)
+    selected_opening = _opening(
+        db,
+        open_date=date(2026, 7, 1),
+        close_date=date(2026, 8, 1),
+        move_in_date=date(2026, 9, 1),
+    )
+    _opening(
+        db,
+        open_date=date(2026, 8, 1),
+        close_date=date(2026, 9, 1),
+        move_in_date=date(2026, 10, 1),
+    )
+    db.add(
+        ApplicationParticipation(
+            application_id=application.id,
+            opening_id=selected_opening.id,
+            applied_at=NOW,
+            outcome=OpeningOutcome.SELECTED,
+        )
+    )
+    db.commit()
+
+    states = applicant_opening_states(db, application, today=TODAY)
+
+    assert any(state.phase.value == "open" for state in states)
+    assert application_is_editable(db, application, states) is False
 
 
 def test_submitting_can_withdraw_from_the_only_current_opening() -> None:

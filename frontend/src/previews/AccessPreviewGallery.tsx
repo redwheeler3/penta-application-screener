@@ -209,6 +209,9 @@ function ApplicantAccessPreviews() {
       <PreviewCard title="Google sign-in unavailable" description="The Google identity was refused without hiding email or guest access.">
         <ApplicationEntry allowGuest busy={false} googleError="identity_conflict" googleSignInUrl="#" rememberDevice={false} onRememberDeviceChange={noAction} onContinueGuest={noAction} onEmailLink={emailLinkAccepted} />
       </PreviewCard>
+      <PreviewCard title="Selected profile locked" description="A verified Google identity belongs to a selected household.">
+        <ApplicationEntry allowGuest busy={false} googleError="selected" googleSignInUrl="#" rememberDevice={false} onRememberDeviceChange={noAction} onContinueGuest={noAction} onEmailLink={emailLinkAccepted} />
+      </PreviewCard>
       <PreviewCard title="Applications unavailable" description="No opening currently accepts applications or changes.">
         <ApplicationsUnavailable />
       </PreviewCard>

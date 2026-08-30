@@ -22,12 +22,14 @@ from app.services.auth_email import (
     application_unavailable_email,
     email_change_notice_email,
     magic_link_email,
+    selected_application_locked_email,
     unsuccessful_application_email,
     vacancy_opening_email,
 )
 from app.services.email_delivery import attempt_reserved_delivery
 from app.services.email_sender import EmailSender, OutboundEmail
 from app.services.passwordless_auth import issue_magic_link
+from app.services.selected_application import application_is_selected
 from app.services.vacancy_notifications import (
     application_confirmation_timelines,
     opening_email_details,
@@ -111,7 +113,9 @@ def retry_queued_emails(
     )
 
 
-EXPECTED_FAILURE_CODES = frozenset({"ApplicationWithdrawn", "Superseded"})
+EXPECTED_FAILURE_CODES = frozenset(
+    {"ApplicationSelected", "ApplicationWithdrawn", "Superseded"}
+)
 FAILURE_BANNER_WINDOW = timedelta(days=7)
 
 
@@ -288,6 +292,16 @@ def _build_retry(
     if intent_type == "application_unavailable":
         return (
             application_unavailable_email(
+                application_id=application.id,
+                email=application.primary_email,
+            ),
+            None,
+        )
+    if intent_type == "application_selected_locked":
+        if not application_is_selected(db, application.id):
+            return None
+        return (
+            selected_application_locked_email(
                 application_id=application.id,
                 email=application.primary_email,
             ),

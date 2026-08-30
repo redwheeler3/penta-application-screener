@@ -257,6 +257,16 @@ function ApplicantGoogleAccess(props: {
 }
 
 function ApplicantGoogleError(props: { result: ApplicantGoogleAccessResult }) {
+  if (props.result === "selected") {
+    return (
+      <div className="application-entry-status" role="status">
+        <strong>Congratulations! Your household has been selected</strong>
+        <span>
+          Your application profile is now locked and can no longer be changed online.
+        </span>
+      </div>
+    );
+  }
   const message = props.result === "applications_closed"
     ? "That Google account doesn’t have an application it can open right now."
     : props.result === "session_conflict"

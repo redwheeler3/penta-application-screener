@@ -103,6 +103,7 @@ const EMAIL_KIND_LABELS: Record<string, string> = {
   application_email_change_confirmation: "Email change confirmation",
   application_email_changed: "Email change notice",
   application_unavailable: "Application unavailable",
+  application_selected_locked: "Selected profile locked",
   application_unsuccessful: "Application decision",
   vacancy_opening: "Vacancy notification",
   application_opening: "Opening notification",

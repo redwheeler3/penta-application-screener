@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Application, BrowserSession, PasswordlessIdentityKind
 from app.services.passwordless_auth import authenticate_browser_session
+from app.services.selected_application import application_is_selected
 
 
 @dataclass(frozen=True)
@@ -32,7 +33,11 @@ def authenticate_applicant(
         db.commit()
         return None
     application = db.get(Application, browser_session.application_id)
-    if application is None or application.withdrawn_at is not None:
+    if (
+        application is None
+        or application.withdrawn_at is not None
+        or application_is_selected(db, application.id)
+    ):
         browser_session.revoked_at = now
         db.commit()
         return None

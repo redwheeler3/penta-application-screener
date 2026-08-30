@@ -43,6 +43,7 @@ from app.services.magic_link_delivery import (
     send_application_unavailable,
     send_email_change_notice,
     send_magic_link,
+    send_selected_application_locked,
 )
 from app.services.passwordless_auth import (
     consume_magic_link,
@@ -51,6 +52,7 @@ from app.services.passwordless_auth import (
     revoke_identity_magic_links,
     revoke_identity_sessions,
 )
+from app.services.selected_application import application_is_selected
 
 router = APIRouter()
 
@@ -92,7 +94,7 @@ def open_applicant_access_link(
     claimed = _claim_link_target(db, link)
     if claimed.application is None:
         db.commit()
-        return AccessLinkResponse(state="abandoned")
+        return AccessLinkResponse(state=claimed.state)
     target = claimed.application
 
     current_token = session_token(request, PasswordlessIdentityKind.APPLICANT)
@@ -173,12 +175,16 @@ def regenerate_applicant_access_link(
         )
     if not _access_target_is_editable(db, target):
         application = _application_for_access_target(db, target)
-        sent = send_application_unavailable(
-            db,
-            sender,
-            link.email,
-            application=application,
-            now=now,
+        sent = (
+            send_selected_application_locked(db, sender, application, now=now)
+            if application is not None and application_is_selected(db, application.id)
+            else send_application_unavailable(
+                db,
+                sender,
+                link.email,
+                application=application,
+                now=now,
+            )
         )
         return RegenerateAccessLinkResponse(
             email_sent=sent,

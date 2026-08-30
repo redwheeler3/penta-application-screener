@@ -15,6 +15,7 @@ from app.services.applicant_auth import authenticate_applicant
 from app.services.applicant_google_auth import (
     ApplicantGoogleIdentityConflict,
     NewApplicationsUnavailable,
+    SelectedApplicationLocked,
     claim_or_create_google_application,
 )
 from app.services.passwordless_auth import (
@@ -64,6 +65,9 @@ async def applicant_google_callback(
     except NewApplicationsUnavailable:
         db.rollback()
         return _applicant_redirect("applications_closed")
+    except SelectedApplicationLocked:
+        db.rollback()
+        return _applicant_redirect("selected")
 
     if current_token is not None:
         if current is not None and current.application.id != application.id:

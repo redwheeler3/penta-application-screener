@@ -15,6 +15,7 @@ from app.services.auth_email import (
     application_unavailable_email,
     email_change_notice_email,
     magic_link_email,
+    selected_application_locked_email,
     unsuccessful_application_email,
     vacancy_opening_email,
 )
@@ -127,6 +128,11 @@ def email_previews(
             "application-unavailable",
             "Application access unavailable",
             application_unavailable_email(application_id=1, email=email),
+        ),
+        (
+            "selected-profile-locked",
+            "Selected household congratulations",
+            selected_application_locked_email(application_id=1, email=email),
         ),
         (
             "application-unsuccessful",

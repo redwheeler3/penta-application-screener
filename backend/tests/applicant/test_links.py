@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.time import as_utc, pacific_today
 from app.db.models import (
@@ -10,11 +10,15 @@ from app.db.models import (
     Application,
     ApplicationParticipation,
     BrowserSession,
+    MagicLinkPurpose,
     MagicLinkToken,
     Opening,
+    OpeningOutcome,
+    PasswordlessIdentityKind,
 )
 from app.schemas.applicant.answers import WorkingApplicationAnswers
 from app.services.intake import save_working_copy
+from app.services.passwordless_auth import issue_magic_link
 from tests.applicant.support import (
     app_and_db,
     link_from_email,
@@ -55,6 +59,58 @@ async def test_pending_draft_cannot_be_reopened_after_applications_archive() -> 
     assert regenerated.json()["emailStatus"] == "sent"
     assert len(sender.messages) == 1
     assert sender.messages[0].kind == "application_unavailable"
+
+
+@pytest.mark.anyio
+async def test_email_change_link_cannot_mutate_a_selected_application() -> None:
+    app, db, _sender = app_and_db()
+    opening = db.scalar(select(Opening))
+    assert opening is not None
+    application = Application(
+        primary_email="avery@example.com",
+        raw_row=sample_answers(),
+        raw_row_hash="selected",
+        normalized={},
+        working_answers=sample_answers(),
+        working_content_hash="selected",
+        working_saved_at=datetime.now(UTC),
+        submitted_at=datetime.now(UTC),
+    )
+    db.add(application)
+    db.flush()
+    db.add(
+        ApplicationParticipation(
+            application_id=application.id,
+            opening_id=opening.id,
+            applied_at=datetime.now(UTC),
+            outcome=OpeningOutcome.SELECTED,
+        )
+    )
+    issued = issue_magic_link(
+        db,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
+        email="new-address@example.com",
+        purpose=MagicLinkPurpose.EMAIL_CHANGE,
+        application_id=application.id,
+    )
+    db.commit()
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        inspected = await client.post(
+            "/applicant/access-links/inspect", json={"token": issued.token}
+        )
+        opened = await client.post(
+            "/applicant/access-links/open",
+            json={"token": issued.token, "switchCurrent": False},
+        )
+
+    db.refresh(application)
+    assert inspected.json()["state"] == "unavailable"
+    assert opened.json()["state"] == "unavailable"
+    assert application.primary_email == "avery@example.com"
+    assert application.working_answers["applicant"]["email"] == "avery@example.com"
+    assert db.scalar(select(func.count()).select_from(BrowserSession)) == 0
     assert len(list(db.scalars(select(MagicLinkToken)))) == 1
 
 

@@ -8,7 +8,14 @@ from sqlalchemy import func, select
 from starlette.responses import RedirectResponse
 
 from app.api.session_cookie import SESSION_COOKIE_NAMES
-from app.db.models import Application, BrowserSession, Opening, PasswordlessIdentityKind
+from app.db.models import (
+    Application,
+    ApplicationParticipation,
+    BrowserSession,
+    Opening,
+    OpeningOutcome,
+    PasswordlessIdentityKind,
+)
 from app.services.passwordless_auth import create_browser_session
 from app.services.retention import one_year_after
 from tests.applicant.support import app_and_db, sample_answers, save_draft
@@ -225,6 +232,47 @@ async def test_google_does_not_create_an_application_after_the_deadline(monkeypa
     assert response.status_code == 307
     assert "google_access=applications_closed" in response.headers["location"]
     assert db.scalar(select(func.count()).select_from(Application)) == 0
+
+
+@pytest.mark.anyio
+async def test_verified_google_identity_cannot_open_a_selected_application(monkeypatch) -> None:
+    app, db, _ = app_and_db()
+    opening = db.scalar(select(Opening))
+    assert opening is not None
+    application = Application(
+        google_subject="applicant-google-subject",
+        primary_email="avery@example.com",
+        raw_row=sample_answers(),
+        raw_row_hash="selected",
+        normalized={},
+        submitted_at=datetime.now(UTC),
+    )
+    db.add(application)
+    db.flush()
+    db.add(
+        ApplicationParticipation(
+            application_id=application.id,
+            opening_id=opening.id,
+            applied_at=datetime.now(UTC),
+            outcome=OpeningOutcome.SELECTED,
+        )
+    )
+    db.commit()
+    google = FakeGoogleOAuthClient(google_identity())
+    monkeypatch.setattr(
+        "app.api.applicant.google.get_oauth",
+        lambda: SimpleNamespace(google=google),
+    )
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/applicant/auth/google/callback")
+
+    assert response.status_code == 307
+    assert "google_access=selected" in response.headers["location"]
+    assert db.scalar(select(func.count()).select_from(Application)) == 1
+    assert db.scalar(select(func.count()).select_from(BrowserSession)) == 0
+    assert application.google_subject == "applicant-google-subject"
 
 
 @pytest.mark.anyio

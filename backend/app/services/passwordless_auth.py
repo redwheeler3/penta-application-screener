@@ -5,13 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import exists, func, select, update
+from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.text import normalize_email
 from app.core.time import as_utc
 from app.db.models import (
+    ApplicantDraft,
     BrowserSession,
     EmailDelivery,
     EmailDeliveryState,
@@ -387,14 +388,21 @@ def revoke_identity_magic_links(
         application_id=application_id,
         user_id=user_id,
     )
-    identity_column = (
-        MagicLinkToken.application_id
-        if identity_kind == PasswordlessIdentityKind.APPLICANT
-        else MagicLinkToken.user_id
-    )
     identity_id = identity_values["application_id"] or identity_values["user_id"]
+    identity_filter = (
+        or_(
+            MagicLinkToken.application_id == identity_id,
+            MagicLinkToken.applicant_draft_id.in_(
+                select(ApplicantDraft.id).where(
+                    ApplicantDraft.application_id == identity_id
+                )
+            ),
+        )
+        if identity_kind == PasswordlessIdentityKind.APPLICANT
+        else MagicLinkToken.user_id == identity_id
+    )
     filters = [
-        identity_column == identity_id,
+        identity_filter,
         MagicLinkToken.consumed_at.is_(None),
         MagicLinkToken.revoked_at.is_(None),
     ]

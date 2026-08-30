@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.time import pacific_today
 from app.db.models import (
@@ -12,6 +12,7 @@ from app.db.models import (
     ApplicationVersion,
     MagicLinkToken,
     Opening,
+    OpeningOutcome,
 )
 from app.services.email_sender import get_email_sender
 from tests.applicant.support import (
@@ -244,6 +245,101 @@ async def test_return_link_request_does_not_reveal_whether_application_exists() 
     assert len(sender.messages) == 2
     assert sender.messages[0].to == ("returning@example.com",)
     assert sender.messages[1].to == ("missing@example.com",)
+
+
+@pytest.mark.anyio
+async def test_selected_email_request_is_generic_in_browser_and_specific_in_mailbox() -> None:
+    app, db, sender = app_and_db()
+    opening = db.scalar(select(Opening))
+    assert opening is not None
+    selected_application = Application(
+        primary_email="selected@example.com",
+        applicant_name="Synthetic Selected Applicant",
+        raw_row=sample_answers("selected@example.com"),
+        raw_row_hash="selected-submitted",
+        normalized={},
+        submitted_at=datetime.now(UTC),
+    )
+    db.add(selected_application)
+    db.flush()
+    db.add(
+        ApplicationParticipation(
+            application_id=selected_application.id,
+            opening_id=opening.id,
+            applied_at=datetime.now(UTC),
+            outcome=OpeningOutcome.SELECTED,
+        )
+    )
+    db.commit()
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        selected = await client.post(
+            "/applicant/access-links/request",
+            json={"answers": sample_answers("selected@example.com")},
+        )
+        unknown = await client.post(
+            "/applicant/access-links/request",
+            json={"answers": sample_answers("unknown@example.com")},
+        )
+
+    assert selected.status_code == unknown.status_code == 202
+    assert selected.json() == unknown.json() == {
+        "accepted": True,
+        "currentAnswersSaved": False,
+        "emailStatus": "sent",
+    }
+    assert sender.messages[0].kind == "application_selected_locked"
+    assert sender.messages[0].to == ("selected@example.com",)
+    assert sender.messages[0].subject == "Congratulations! Your household has been selected"
+    assert "Your application profile is now locked" in sender.messages[0].text_body
+    assert sender.messages[1].kind == "applicant_magic_link"
+    assert db.scalar(
+        select(MagicLinkToken).where(
+            MagicLinkToken.application_id == selected_application.id
+        )
+    ) is None
+
+
+@pytest.mark.anyio
+async def test_selected_email_cannot_submit_a_second_application() -> None:
+    app, db, sender = app_and_db()
+    opening = db.scalar(select(Opening))
+    assert opening is not None
+    selected_application = Application(
+        primary_email="selected@example.com",
+        applicant_name="Synthetic Selected Applicant",
+        raw_row=sample_answers("selected@example.com"),
+        raw_row_hash="selected-submitted",
+        normalized={},
+        submitted_at=datetime.now(UTC),
+    )
+    db.add(selected_application)
+    db.flush()
+    db.add(
+        ApplicationParticipation(
+            application_id=selected_application.id,
+            opening_id=opening.id,
+            applied_at=datetime.now(UTC),
+            outcome=OpeningOutcome.SELECTED,
+        )
+    )
+    db.commit()
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/applicant/submissions",
+            json={
+                "answers": sample_answers("selected@example.com"),
+                "openingIds": [opening.id],
+                "declarationAccepted": True,
+            },
+        )
+
+    assert response.status_code == 409
+    assert db.scalar(select(func.count()).select_from(Application)) == 1
+    assert sender.messages[-1].kind == "application_selected_locked"
 
 
 @pytest.mark.anyio

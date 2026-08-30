@@ -16,6 +16,7 @@ from app.db.models import (
     Opening,
     OpeningIntakeMode,
     OpeningOutcome,
+    PasswordlessIdentityKind,
     User,
     UserRole,
     VacancyConsentReceipt,
@@ -24,6 +25,7 @@ from app.db.models import (
 from app.db.session import get_db
 from app.services.application_scope import committee_applications
 from app.services.email_sender import CapturedEmailSender, get_email_sender
+from app.services.passwordless_auth import create_browser_session
 from app.services.retention import one_year_after, years_after
 from tests.app_support import shared_test_app
 
@@ -191,6 +193,11 @@ async def test_direct_selection_is_atomic_and_sends_no_email() -> None:
         source="test",
     )
     db.add(subscription)
+    issued_session = create_browser_session(
+        db,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
+        application_id=candidate.id,
+    )
     db.commit()
     assert {application.id for application in committee_applications(db)} == {
         candidate.id,
@@ -243,6 +250,8 @@ async def test_direct_selection_is_atomic_and_sends_no_email() -> None:
     assert db.scalar(select(func.count()).select_from(VacancyConsentReceipt)) == 0
     assert db.scalar(select(func.count()).select_from(EmailDelivery)) == 0
     assert sender.messages == []
+    db.refresh(issued_session.record)
+    assert issued_session.record.revoked_at is not None
 
 
 @pytest.mark.anyio

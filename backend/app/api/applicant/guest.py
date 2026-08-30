@@ -60,6 +60,7 @@ from app.services.magic_link_delivery import (
     send_application_confirmation,
     send_application_unavailable,
     send_magic_link,
+    send_selected_application_locked,
 )
 from app.services.opening_participation import (
     applicant_opening_states,
@@ -67,6 +68,7 @@ from app.services.opening_participation import (
     validate_opening_selection,
     validate_working_opening_selection,
 )
+from app.services.selected_application import application_is_selected
 
 router = APIRouter()
 
@@ -97,6 +99,13 @@ def check_guest_submission(
     )
     if application is None:
         return GuestSubmissionCheckResponse(can_submit=True)
+    if application_is_selected(db, application.id):
+        sent = send_selected_application_locked(db, sender, application, now=now)
+        return GuestSubmissionCheckResponse(
+            can_submit=False,
+            email_sent=sent,
+            email_status="sent" if sent else "failed",
+        )
     validate_working_opening_selection(db, None, body.opening_ids, now=now)
     draft = save_collision_copy(
         db,
@@ -186,19 +195,24 @@ def submit_guest_application(
         )
     )
     if existing is not None:
-        send_magic_link(
-            db,
-            sender,
-            identity_kind=PasswordlessIdentityKind.APPLICANT,
-            purpose=MagicLinkPurpose.APPLICANT_ACCESS,
-            email=email,
-            recipient_id=existing.id,
-            application_id=existing.id,
-            now=now,
-        )
+        if application_is_selected(db, existing.id):
+            send_selected_application_locked(db, sender, existing, now=now)
+        else:
+            send_magic_link(
+                db,
+                sender,
+                identity_kind=PasswordlessIdentityKind.APPLICANT,
+                purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+                email=email,
+                recipient_id=existing.id,
+                application_id=existing.id,
+                now=now,
+            )
         raise Problem(
             "application_already_exists",
-            detail="An application already exists for this email. Check your inbox for a link to open it.",
+            detail=(
+                "We've emailed you information about starting or continuing your application."
+            ),
         )
 
     openings = validate_opening_selection(db, None, body.opening_ids, now=now)
@@ -270,9 +284,15 @@ def request_applicant_access_link(
                 Application.withdrawn_at.is_(None),
             )
         )
-        if application is not None and not application_is_editable(
-            applicant_opening_states(db, application)
-        ):
+        if application is not None and application_is_selected(db, application.id):
+            sent = send_selected_application_locked(
+                db, sender, application, now=now
+            )
+            return RequestAccessLinkResponse(
+                current_answers_saved=False,
+                email_status="sent" if sent else "failed",
+            )
+        if application is not None and not application_is_editable(db, application):
             sent = send_application_unavailable(
                 db, sender, email, application=application, now=now
             )

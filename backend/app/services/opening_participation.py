@@ -17,6 +17,7 @@ from app.db.models import (
 )
 from app.services.openings import opening_phase
 from app.services.retention import one_year_after
+from app.services.selected_application import application_is_selected
 
 
 @dataclass(frozen=True)
@@ -129,7 +130,14 @@ def participating_openings(db: Session, application_id: int) -> list[Opening]:
     )
 
 
-def application_is_editable(states: list[ApplicantOpeningState]) -> bool:
+def application_is_editable(
+    db: Session,
+    application: Application | None,
+    states: list[ApplicantOpeningState] | None = None,
+) -> bool:
+    if application is not None and application_is_selected(db, application.id):
+        return False
+    states = states if states is not None else applicant_opening_states(db, application)
     return any(
         state.phase == OpeningPhase.OPEN
         or (state.participating and state.phase == OpeningPhase.CLOSED)

@@ -14,8 +14,12 @@ from app.db.models import (
     Application,
     ApplicationParticipation,
     Base,
+    BrowserSession,
+    MagicLinkPurpose,
+    MagicLinkToken,
     Opening,
     OpeningOutcome,
+    PasswordlessIdentityKind,
     User,
     UserRole,
 )
@@ -23,6 +27,7 @@ from app.db.session import get_db
 from app.services.application_scope import committee_applications
 from app.services.email_sender import CapturedEmailSender, get_email_sender
 from app.services.openings import opening_phase
+from app.services.passwordless_auth import create_browser_session, issue_magic_link
 from tests.app_support import shared_test_app
 
 
@@ -332,6 +337,71 @@ async def test_closed_selection_is_reversible_and_changes_committee_scope() -> N
     assert [item.id for item in committee_applications(db)] == [
         application.id for application in applications
     ]
+
+
+@pytest.mark.anyio
+async def test_selection_revokes_credentials_and_undo_does_not_restore_them() -> None:
+    app, db = _app_and_db(UserRole.ADMIN)
+    opening, applications = _opening_with_candidates(db)
+    selected_application = applications[0]
+    issued_session = create_browser_session(
+        db,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
+        application_id=selected_application.id,
+    )
+    issue_magic_link(
+        db,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
+        email=selected_application.primary_email,
+        purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+        application_id=selected_application.id,
+    )
+    issue_magic_link(
+        db,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
+        email="new-address@example.com",
+        purpose=MagicLinkPurpose.EMAIL_CHANGE,
+        application_id=selected_application.id,
+    )
+    draft = ApplicantDraft(
+        email=selected_application.primary_email,
+        intent=ApplicantDraftIntent.SAVE,
+        application_id=selected_application.id,
+        draft_token_hash="selected-collision-draft",
+        working_opening_ids=[opening.id],
+        created_at=datetime.now(UTC),
+        saved_at=datetime.now(UTC),
+        retention_due_on=selected_application.retention_due_on or opening.move_in_date,
+    )
+    db.add(draft)
+    db.flush()
+    issue_magic_link(
+        db,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
+        email=selected_application.primary_email,
+        purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+        applicant_draft_id=draft.id,
+    )
+    db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        selected = await client.post(
+            f"/openings/{opening.id}/selection",
+            json={"applicationId": selected_application.id},
+        )
+        undone = await client.delete(f"/openings/{opening.id}/selection")
+
+    db.expire_all()
+    sessions = db.query(BrowserSession).all()
+    links = db.query(MagicLinkToken).all()
+    assert selected.status_code == 200
+    assert undone.status_code == 200
+    assert len(sessions) == 1
+    assert sessions[0].id == issued_session.record.id
+    assert sessions[0].revoked_at is not None
+    assert len(links) == 3
+    assert all(link.revoked_at is not None for link in links)
 
 
 @pytest.mark.anyio

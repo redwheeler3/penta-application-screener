@@ -404,11 +404,7 @@ export function useApplicantPersistence(
         setPersistence("message", TECH_SUPPORT_ERROR_MESSAGE);
         setPersistence("phase", "error");
       } else {
-        setPersistence("message",
-          body.emailSent
-            ? "An application already exists for this email. Check your inbox for a link to sign in and open it."
-            : "An application already exists for this email. Check your inbox for the link we sent recently.",
-        );
+        setPersistence("message", APPLICATION_ACCESS_EMAIL_MESSAGE);
         setPersistence("phase", "authentication_required");
       }
       return false;
