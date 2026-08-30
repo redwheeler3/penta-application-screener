@@ -1397,9 +1397,9 @@ administrator delivery-status banners are implemented.
    1BR=894, 2BR=707, and 3BR=111, including every monthly chart bucket. The shared grandfathered
    SocketLabs server passed a controlled approved-domain template/link test before production
    delivery was enabled. The public website's built-in signup, preference replacement, and deletion
-   returned the report to the imported baseline. The Google form and response sheet are retired
-   from operational use and temporarily retained only as frozen archives pending deletion; no
-   migration email was sent.
+   returned the report to the imported baseline. The retired Google forms and response sheets stay
+   frozen until opening 1 is finalized; Jeff will delete them after that November 2026 closeout.
+   No migration email was sent.
 
 **Non-goals:** applicant accounts; email-address verification; recurring newsletters; a wait-list
 position or ordering; automatic application creation; multiple notices from one subscription;

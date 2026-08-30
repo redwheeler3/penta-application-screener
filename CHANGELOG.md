@@ -24,6 +24,12 @@ and committee Google sign-in remained healthy. A matching Google identity then l
 submitted synthetic production application 252. The new/returning paths also passed locally and in
 the 643-test backend suite; the frontend production build passed.
 
+Final project closeout made Alembic drift detection green: SQLite-reflected string columns are
+treated as equivalent to their SQLAlchemy enum metadata, and a conditional migration replaces the
+legacy `email_deliveries.applicant_verification_id` index name with the current
+`applicant_draft_id` name. Both the existing database and a fresh migration chain now report no new
+upgrade operations.
+
 ---
 
 ## Milestone 22 — Built-In Vacancy Notifications
@@ -47,9 +53,10 @@ opening 1 attached all 232 retained applications without queueing email. The fro
 imported 1,478 subscriptions and reconciled exactly to 1BR=894, 2BR=707, and 3BR=111 plus every
 monthly bucket. The shared grandfathered SocketLabs server passed a controlled template/link test;
 production delivery was then enabled with an empty queue. The public website signup, replacement,
-and deletion flow returned the report to the imported baseline. The Google form and sheet are no
-longer operational sources and remain only temporarily archived pending deletion. No migration
-email was sent, and local/exported CSV copies were removed after reconciliation.
+and deletion flow returned the report to the imported baseline. The retired Google forms and
+response sheets remain frozen until opening 1 is finalized and are scheduled for deletion after
+that November 2026 closeout. No migration email was sent, and local/exported CSV copies were
+removed after reconciliation.
 
 ---
 
