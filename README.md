@@ -25,9 +25,10 @@ committee review, transactional email, and retention into one operating system.
 
 Screenshots use the committed synthetic fixture; no real applicant data is published.
 
-![Applicant-facing membership form with privacy notice and opening selection](docs/images/applicant-experience.png)
+![Applicant-facing membership form collecting household details](docs/images/applicant-experience.png)
 
-*The applicant experience collects the real source material the committee and AI-assisted workflow review.*
+*The applicant experience begins with structured household details and continues through housing,
+essays, employment, income, review, and submission.*
 
 ## Design Highlights
 
