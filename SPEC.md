@@ -1437,7 +1437,7 @@ matching vacancy notice.
 consent evidence, and application-withdrawal semantics were deployed together before production
 signups moved to the built-in service.
 
-### Applicant Google Sign-In (M23) — implementation complete; production activation pending
+### Applicant Google Sign-In (M23) — complete; production verified August 30, 2026
 
 **Goal:** add the optional Google-first applicant access described in
 [Applicant Google Sign-In](#applicant-google-sign-in-m23-target) without creating applicant
@@ -1504,12 +1504,14 @@ Google claim; or restoring any Google Forms/Sheets intake dependency.
 - Focused backend and frontend tests, the full backend suite, frontend build, additive migration,
   production-shaped upgrade, and synthetic browser verification all pass before release.
 
-The local implementation is complete. The applicant production and local callback URIs were added
-to the existing verified Google OAuth client on August 30, 2026; saving them did not change the
-project's verified-brand or data-access status. Production activation still requires deploying the
-new configuration and migration and exercising the real Google callback plus the applicant access
-gallery on the production host with synthetic identities. Until that gate is completed, M23 is not
-marked shipped.
+The applicant production and local callback URIs were added to the existing verified Google OAuth
+client on August 30, 2026; saving them did not change the project's verified-brand or data-access
+status. The production deploy applied the additive migration and returned Fly Machine version 71
+with its service check passing. A real applicant Google callback authenticated successfully and,
+for an email with no current application while applications were closed, showed the expected
+closed-cycle refusal without creating a record. Committee Google sign-in remained healthy. The
+existing-application branch was then verified against submitted synthetic production application
+252: the matching Google identity linked successfully and opened the application.
 
 ### Reporting (M10 shipped) — ✅ closed, demand-driven from here
 

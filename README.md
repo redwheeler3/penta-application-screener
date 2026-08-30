@@ -172,7 +172,7 @@ The sample CSV in [test-data](test-data) is synthetic and intentionally realisti
 - Authentication: identity-only Google OIDC or email magic links with revocable server-side sessions
 - Transactional email: provider-neutral sender with SocketLabs delivery, a durable retry-safe
   outbox, admin delivery reporting, and capture-only local defaults
-- Google integration: optional identity-only OIDC for committee sign-in
+- Google integration: optional identity-only OIDC for applicant and committee sign-in
 - AI integration: provider-agnostic interface; Strands routes through Bedrock or direct OpenAI/Anthropic APIs; mock provider for tests
 - Hosting: Fly.io (single instance, auto-suspend, persistent-volume SQLite) serving the committee
   and applicant hostnames; FastAPI serves the built SPA; deployed manually with

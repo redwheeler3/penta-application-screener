@@ -6,6 +6,26 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/). 
 
 ---
 
+## Milestone 23 — Applicant Google Sign-In
+
+Added optional Google-first applicant access while retaining email links and guest applications.
+Google and email resolve to the same internal application identity and issue the same revocable
+applicant session. The verified Google email must match the application email; subject/email
+collisions never merge records. Confirmed email changes and withdrawal remove the Google binding.
+
+The applicant and committee entry panels now share the Google-branded control, aligned email/link
+actions, calmer button typography, and explicit sending states. The closed-applications panel leads
+with the deadline and one-email vacancy-notification option. The final review—not the long form—
+carries the private-draft warning immediately before submission.
+
+Production deployed on August 30, 2026. Fly Machine version 71 reported its service check passing.
+Applicant Google authentication reached the expected closed-cycle refusal for an unmatched email,
+and committee Google sign-in remained healthy. A matching Google identity then linked to and opened
+submitted synthetic production application 252. The new/returning paths also passed locally and in
+the 643-test backend suite; the frontend production build passed.
+
+---
+
 ## Milestone 22 — Built-In Vacancy Notifications
 
 Implemented the one-notice vacancy subscription flow, administrator reconciliation and narrow
