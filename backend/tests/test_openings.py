@@ -20,10 +20,10 @@ from app.db.models import (
     UserRole,
 )
 from app.db.session import get_db
-from app.main import create_app
 from app.services.application_scope import committee_applications
 from app.services.email_sender import CapturedEmailSender, get_email_sender
 from app.services.openings import opening_phase
+from tests.app_support import shared_test_app
 
 
 def _app_and_db(role: UserRole) -> tuple:
@@ -37,7 +37,7 @@ def _app_and_db(role: UserRole) -> tuple:
     user = User(email="admin@example.com", display_name="Admin", role=role, is_active=True)
     db.add(user)
     db.commit()
-    app = create_app()
+    app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[require_current_user] = lambda: user
     return app, db

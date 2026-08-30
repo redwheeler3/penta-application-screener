@@ -23,7 +23,6 @@ from app.db.models import (
     VacancySubscription,
 )
 from app.db.session import get_db
-from app.main import create_app
 from app.services.email_outbox import retry_queued_emails
 from app.services.email_sender import (
     CapturedEmailSender,
@@ -34,6 +33,7 @@ from app.services.retention import one_year_after
 from app.services.socketlabs_usage import SocketLabsUsage, get_socketlabs_usage_reader
 from app.services.vacancy_notifications import opening_audience
 from app.services.vacancy_subscriptions import save_subscription
+from tests.app_support import shared_test_app
 
 
 class FakeUsageReader:
@@ -66,7 +66,7 @@ def _app_and_db(sender=None) -> tuple:
     db.add(admin)
     db.commit()
     email_sender = sender or CapturedEmailSender()
-    app = create_app()
+    app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[require_current_user] = lambda: admin
     app.dependency_overrides[get_email_sender] = lambda: email_sender

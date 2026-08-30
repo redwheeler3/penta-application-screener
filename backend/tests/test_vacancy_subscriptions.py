@@ -19,12 +19,12 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.legal import VACANCY_CONSENT_VERSION
-from app.main import create_app
 from app.services.vacancy_subscriptions import (
     consume_subscription,
     purge_expired_consent_receipts,
     save_subscription,
 )
+from tests.app_support import shared_test_app
 
 
 def _app_and_db(role: UserRole = UserRole.ADMIN) -> tuple:
@@ -38,7 +38,7 @@ def _app_and_db(role: UserRole = UserRole.ADMIN) -> tuple:
     user = User(email="admin@example.com", display_name="Admin", role=role, is_active=True)
     db.add(user)
     db.commit()
-    app = create_app()
+    app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[require_current_user] = lambda: user
     signup_limiter.clear()
@@ -236,6 +236,7 @@ async def test_admin_report_counts_overlapping_preferences_and_months() -> None:
         "oneBedroom": 2,
         "twoBedroom": 2,
         "threeBedroom": 1,
+        "latestSignupAt": "2026-09-01T06:00:00Z",
         "months": [
             {"month": "2026-07", "count": 1},
             {"month": "2026-08", "count": 2},

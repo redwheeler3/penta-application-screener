@@ -60,4 +60,5 @@ class VacancySubscriptionReportOut(ResponseModel):
     one_bedroom: int
     two_bedroom: int
     three_bedroom: int
+    latest_signup_at: datetime | None
     months: list[VacancySubscriptionMonthOut]

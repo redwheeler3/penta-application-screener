@@ -22,10 +22,10 @@ from app.db.models import (
     VacancySubscription,
 )
 from app.db.session import get_db
-from app.main import create_app
 from app.services.application_scope import committee_applications
 from app.services.email_sender import CapturedEmailSender, get_email_sender
 from app.services.retention import one_year_after, years_after
+from tests.app_support import shared_test_app
 
 
 def _application(db, email: str, *, name: str, retention_due_on=None) -> Application:
@@ -95,7 +95,7 @@ def _app_and_db():
     db.add(admin)
     db.commit()
     sender = CapturedEmailSender()
-    app = create_app()
+    app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[require_current_user] = lambda: admin
     app.dependency_overrides[get_email_sender] = lambda: sender

@@ -26,7 +26,7 @@ from app.ai.schemas import (
 from app.api.dependencies import get_ai_provider, require_current_user
 from app.db.models import Base, EvalRun, User, UserRole
 from app.db.session import get_db
-from app.main import create_app
+from tests.app_support import shared_test_app
 
 pytestmark = pytest.mark.anyio
 
@@ -45,7 +45,7 @@ def setup_app():
     user = User(email="m@x.com", display_name="M", role=UserRole.MEMBER, is_active=True)
     db.add(user)
     db.commit()
-    app = create_app()
+    app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[require_current_user] = lambda: user
     provider = MockProvider()

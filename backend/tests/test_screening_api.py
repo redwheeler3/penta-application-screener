@@ -23,8 +23,8 @@ from app.db.models import (
     UserRole,
 )
 from app.db.session import get_db
-from app.main import create_app
 from app.services.run_lock import ensure_lock_row
+from tests.app_support import shared_test_app
 from tests.application_support import activate_application
 
 
@@ -65,7 +65,7 @@ def setup_app(role: UserRole | None) -> tuple:
         db.add(user)
         db.commit()
 
-    app = create_app()
+    app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db
     if user is not None:
         app.dependency_overrides[require_current_user] = lambda: user

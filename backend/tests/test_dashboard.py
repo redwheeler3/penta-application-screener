@@ -22,7 +22,7 @@ from app.db.models import (
     UserRole,
 )
 from app.db.session import get_db
-from app.main import create_app
+from tests.app_support import shared_test_app
 from tests.application_support import activate_application
 
 SUBMITTED_AT = datetime(2026, 1, 1, tzinfo=UTC)
@@ -30,7 +30,7 @@ SUBMITTED_AT = datetime(2026, 1, 1, tzinfo=UTC)
 
 @pytest.mark.anyio
 async def test_dashboard_requires_login() -> None:
-    transport = ASGITransport(app=create_app())
+    transport = ASGITransport(app=shared_test_app())
 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.get("/dashboard")
@@ -49,7 +49,7 @@ def _logged_in_app(role: UserRole = UserRole.MEMBER) -> tuple:
     user = User(email="m@x.com", display_name="M", role=role, is_active=True)
     db.add(user)
     db.commit()
-    app = create_app()
+    app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[require_current_user] = lambda: user
     return app, db

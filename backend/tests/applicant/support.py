@@ -11,8 +11,8 @@ from app.db.models import (
     Opening,
 )
 from app.db.session import get_db
-from app.main import create_app
 from app.services.email_sender import CapturedEmailSender, get_email_sender
+from tests.app_support import shared_test_app
 
 
 class FailingEmailSender:
@@ -41,7 +41,7 @@ def app_and_db() -> tuple:
         )
     )
     db.commit()
-    app = create_app()
+    app = shared_test_app()
     sender = CapturedEmailSender()
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_email_sender] = lambda: sender

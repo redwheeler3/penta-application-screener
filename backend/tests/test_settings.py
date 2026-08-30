@@ -6,9 +6,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.db.models import AdminSetting, Base
-from app.main import create_app
 from app.schemas.settings import AppSettings
 from app.services.settings import get_app_settings, save_app_settings
+from tests.app_support import shared_test_app
 
 
 def make_session() -> Session:
@@ -79,7 +79,7 @@ def test_save_app_settings_round_trips_ai_block() -> None:
 
 @pytest.mark.anyio
 async def test_read_settings_requires_login() -> None:
-    transport = ASGITransport(app=create_app())
+    transport = ASGITransport(app=shared_test_app())
 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.get("/settings")
@@ -188,7 +188,7 @@ def _rules_client(role: str = "member") -> tuple:
     user = User(email=f"{role}@x.com", display_name=role, role=user_role, is_active=True)
     db.add(user)
     db.commit()
-    app = create_app()
+    app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[require_current_user] = lambda: user
     return app, db

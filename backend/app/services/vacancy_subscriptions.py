@@ -136,6 +136,7 @@ def unit_sizes(subscription: VacancySubscription) -> list[int]:
 
 def subscription_report(db: Session) -> dict[str, object]:
     rows = list(db.scalars(select(VacancySubscription)))
+    public_signups = [row for row in rows if row.source == "public website"]
     months = Counter(
         as_utc(row.consented_at).astimezone(PACIFIC).strftime("%Y-%m")
         for row in rows
@@ -145,6 +146,10 @@ def subscription_report(db: Session) -> dict[str, object]:
         "one_bedroom": sum(row.wants_one_bedroom for row in rows),
         "two_bedroom": sum(row.wants_two_bedroom for row in rows),
         "three_bedroom": sum(row.wants_three_bedroom for row in rows),
+        "latest_signup_at": max(
+            (as_utc(row.consented_at) for row in public_signups),
+            default=None,
+        ),
         "months": [
             {"month": month, "count": months[month]}
             for month in sorted(months)

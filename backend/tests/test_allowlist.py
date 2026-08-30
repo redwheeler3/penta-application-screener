@@ -17,7 +17,6 @@ from app.db.models import (
     UserRole,
 )
 from app.db.session import get_db
-from app.main import create_app
 from app.services import allowlist
 from app.services.denied_sign_ins import list_denied_sign_ins, record_denied_sign_in
 from app.services.passwordless_auth import create_browser_session, issue_magic_link
@@ -26,6 +25,7 @@ from app.services.users import (
     record_user_activity,
     upsert_google_user,
 )
+from tests.app_support import shared_test_app
 
 
 def setup_app(role: UserRole | None) -> tuple:
@@ -46,7 +46,7 @@ def setup_app(role: UserRole | None) -> tuple:
         db.add(user)
         db.commit()
 
-    app = create_app()
+    app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db
     if user is not None:
         app.dependency_overrides[require_current_user] = lambda: user

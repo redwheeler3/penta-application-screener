@@ -202,12 +202,19 @@ export function VacancyNotificationsPanel(props: {
 
 function VacancySummary({ report }: { report: VacancySubscriptionReport }): ReactNode {
   return (
-    <div className="vacancy-summary-grid">
-      <SummaryCard label="Active total" value={report.total} />
-      <SummaryCard label="1 bedroom" value={report.oneBedroom} />
-      <SummaryCard label="2 bedrooms" value={report.twoBedroom} />
-      <SummaryCard label="3 bedrooms" value={report.threeBedroom} />
-    </div>
+    <>
+      <div className="vacancy-summary-grid">
+        <SummaryCard label="Active total" value={report.total} />
+        <SummaryCard label="1 bedroom" value={report.oneBedroom} />
+        <SummaryCard label="2 bedrooms" value={report.twoBedroom} />
+        <SummaryCard label="3 bedrooms" value={report.threeBedroom} />
+      </div>
+      <p className="panel-hint">
+        Latest website sign-up: {report.latestSignupAt
+          ? formatPacificDateTime(report.latestSignupAt)
+          : "No website sign-ups yet"}
+      </p>
+    </>
   );
 }
 

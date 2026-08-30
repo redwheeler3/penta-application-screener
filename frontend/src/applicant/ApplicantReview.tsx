@@ -35,6 +35,10 @@ export function ReviewRow(props: { label: string; value: string; link?: boolean 
   );
 }
 
+function reviewOpeningLabel(opening: ApplicantOpening): string {
+  return `${openingLabel(opening)} · Move-in ${formatOpeningDate(opening.moveInDate)}`;
+}
+
 export function ApplicationReview(props: {
   draft: ApplicantDraft;
   openings: ApplicantOpening[];
@@ -71,13 +75,13 @@ export function ApplicationReview(props: {
         <ReviewRow
           label="Applying for"
           value={selectedOpenings.length > 0
-            ? selectedOpenings.map(openingLabel).join(", ")
+            ? selectedOpenings.map(reviewOpeningLabel).join(", ")
             : "None"}
         />
         {withdrawnOpenings.length > 0 ? (
           <ReviewRow
             label="Withdrawing from"
-            value={withdrawnOpenings.map(openingLabel).join(", ")}
+            value={withdrawnOpenings.map(reviewOpeningLabel).join(", ")}
           />
         ) : null}
       </ReviewSection>

@@ -2,12 +2,12 @@ import pytest
 from httpx2 import ASGITransport, AsyncClient
 
 from app.core.config import Settings, get_settings
-from app.main import create_app
+from tests.app_support import shared_test_app
 
 
 @pytest.mark.anyio
 async def test_email_preview_renders_every_template_without_real_addresses() -> None:
-    app = create_app()
+    app = shared_test_app()
     app.dependency_overrides[get_settings] = lambda: Settings(
         email_delivery_mode="capture",
         _env_file=None,
@@ -52,7 +52,7 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
 
 @pytest.mark.anyio
 async def test_email_preview_is_not_available_in_production() -> None:
-    app = create_app()
+    app = shared_test_app()
     app.dependency_overrides[get_settings] = lambda: Settings(
         email_delivery_mode="production",
         _env_file=None,

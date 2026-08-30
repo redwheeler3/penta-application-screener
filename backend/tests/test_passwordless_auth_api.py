@@ -23,10 +23,10 @@ from app.db.models import (
     UserRole,
 )
 from app.db.session import get_db
-from app.main import create_app
 from app.services.auth_email import magic_link_email
 from app.services.email_sender import CapturedEmailSender, get_email_sender
 from app.services.passwordless_auth import issue_magic_link
+from tests.app_support import shared_test_app
 
 
 def _app_and_db() -> tuple:
@@ -38,7 +38,7 @@ def _app_and_db() -> tuple:
     Base.metadata.create_all(engine)
     test_session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     db = test_session()
-    app = create_app()
+    app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db
     return app, db
 

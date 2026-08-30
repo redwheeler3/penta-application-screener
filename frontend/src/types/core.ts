@@ -107,6 +107,7 @@ export type VacancySubscriptionReport = {
   oneBedroom: number;
   twoBedroom: number;
   threeBedroom: number;
+  latestSignupAt: string | null;
   months: Array<{ month: string; count: number }>;
 };
 

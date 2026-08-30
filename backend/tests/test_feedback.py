@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 from app.api.dependencies import require_current_user
 from app.db.models import Application, Base, Feedback, User, UserRole
 from app.db.session import get_db
-from app.main import create_app
+from tests.app_support import shared_test_app
 
 
 def setup_app(role: UserRole) -> tuple:
@@ -23,7 +23,7 @@ def setup_app(role: UserRole) -> tuple:
     user = User(email="me@x.com", display_name="Me", role=role, is_active=True)
     db.add(user)
     db.commit()
-    app = create_app()
+    app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[require_current_user] = lambda: user
     return app, db, user

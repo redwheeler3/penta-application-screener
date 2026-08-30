@@ -19,7 +19,7 @@ from app.db.models import (
     UserRole,
 )
 from app.db.session import get_db
-from app.main import create_app
+from tests.app_support import shared_test_app
 
 
 class FakeGoogleOAuthClient:
@@ -47,7 +47,7 @@ def _app_and_db():
     Base.metadata.create_all(engine)
     test_session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     db = test_session()
-    app = create_app()
+    app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db
     return app, db
 
@@ -72,7 +72,7 @@ async def test_me_reports_email_sign_in_capability(
     delivery_mode: str,
     email_sign_in_enabled: bool,
 ) -> None:
-    app = create_app()
+    app = shared_test_app()
     app.dependency_overrides[get_settings] = lambda: Settings(
         email_delivery_mode=delivery_mode,
         _env_file=None,
