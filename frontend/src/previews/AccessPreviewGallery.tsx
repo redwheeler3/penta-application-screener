@@ -137,7 +137,7 @@ export function AccessPreviewGallery() {
         <PreviewSection
           id="applicant-results"
           title="Applicant results"
-          description="Submission and withdrawal outcomes shown after the requested action is complete."
+          description="Submission and profile-deletion outcomes shown after the requested action is complete."
         >
           <ApplicantResultPreviews />
         </PreviewSection>
@@ -282,7 +282,7 @@ function ApplicantResultPreviews() {
       <PreviewCard title="Application submitted as a guest" description="The guest receives a private return link by email.">
         <ApplicationSubmitted authenticated={false} openings={previewOpenings()} />
       </PreviewCard>
-      <PreviewCard title="Application withdrawn" description="The application was removed from consideration and the applicant was signed out.">
+      <PreviewCard title="Profile deleted" description="The applicant was withdrawn from every opening and signed out.">
         <ApplicationWithdrawn />
       </PreviewCard>
     </div>

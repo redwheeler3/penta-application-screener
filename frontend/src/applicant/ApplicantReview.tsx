@@ -258,8 +258,8 @@ export function ApplicationSubmitted(props: {
       </div>
       <p>
         {props.authenticated
-          ? "You can return to this page to update or withdraw your application. We’ve also emailed you a confirmation."
-          : "Check your email for a private link you can use to update or withdraw your application."}
+          ? "You can return to this page to update your application or delete your profile. We’ve also emailed you a confirmation."
+          : "Check your email for a private link you can use to update your application or delete your profile."}
       </p>
     </section>
   );
@@ -269,8 +269,8 @@ export function ApplicationWithdrawn() {
   return (
     <section className="application-complete">
       <CheckCircle2 size={34} />
-      <h2>Application withdrawn</h2>
-      <p>Your application has been removed from consideration, and you have been signed out.</p>
+      <h2>Profile deleted</h2>
+      <p>You have been withdrawn from every opening and signed out.</p>
     </section>
   );
 }
@@ -287,18 +287,17 @@ export function ApplicationWithdrawal(props: {
     return (
       <div className="application-withdraw-entry">
         <button className="applicant-danger-link" type="button" onClick={props.onOpen}>
-          <Trash2 size={16} /> Withdraw application
+          <Trash2 size={16} /> Delete my profile
         </button>
       </div>
     );
   }
   return (
-    <section className="application-action-confirm application-withdraw-confirm" aria-labelledby="withdraw-application-title">
-      <h2 id="withdraw-application-title">Withdraw your application?</h2>
+    <section className="application-action-confirm application-withdraw-confirm" aria-labelledby="delete-profile-title">
+      <h2 id="delete-profile-title">Delete your profile?</h2>
       <p>
-        Your application will be removed from consideration immediately, and you will be signed
-        out. If it has been submitted, Penta will retain a restricted copy until its legal
-        retention period ends, then permanently delete it. This cannot be undone.
+        This will withdraw your application from every opening and remove your access. You’ll be
+        signed out, and this cannot be undone.
       </p>
       {props.message ? (
         <p className={props.status === "error" ? "field-error" : undefined} role="status">
@@ -307,7 +306,7 @@ export function ApplicationWithdrawal(props: {
       ) : null}
       <div className="applicant-action-group">
         <button className="applicant-secondary-button" type="button" onClick={props.onCancel}>
-          Keep application
+          Keep my profile
         </button>
         <button
           className="applicant-danger-button"
@@ -315,7 +314,7 @@ export function ApplicationWithdrawal(props: {
           disabled={props.status === "working"}
           onClick={props.onWithdraw}
         >
-          {props.status === "working" ? "Withdrawing…" : "Withdraw application"}
+          {props.status === "working" ? "Deleting…" : "Delete my profile"}
         </button>
       </div>
     </section>

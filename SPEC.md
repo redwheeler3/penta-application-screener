@@ -135,12 +135,15 @@ open date and move-in date. Before the next open date, or after every published 
 move-in date, application content is read-only. An applicant-withdrawn legal-hold record is not active
 and is not available through this flow.
 
-An authenticated applicant can choose **Withdraw application** without contacting the Privacy
-Officer. After a short confirmation, this immediately retracts every active participation,
+An authenticated applicant can choose **Delete my profile** without contacting the Privacy
+Officer. The profile wording distinguishes this whole-application action from withdrawing from
+individual openings with the selected-opening checkboxes. The confirmation reads **Delete your
+profile?** and **This will withdraw your application from every opening and remove your access.
+You'll be signed out, and this cannot be undone.** Its actions are **Keep my profile** and **Delete
+my profile**. Confirming immediately retracts every active participation,
 excludes the application from all committee views and future consideration, discards unsubmitted
-changes, revokes applicant sessions and unused links, and removes applicant access. The UI and
-explains that the application has been withdrawn and that a restricted copy is retained until its
-scheduled purge. Withdrawal does not send an email.
+changes, revokes applicant sessions and unused links, and removes applicant access. The confirmation
+does not restate the retention policy. Deleting a profile does not send an email.
 A never-submitted draft is physically purged immediately. Submitted information that must be
 retained becomes a read-only legal-hold record excluded from applicant and committee APIs until
 its scheduled purge. Privacy access requests are handled through restricted operational access.
@@ -194,7 +197,7 @@ The submitted screen and confirmation email thank the applicant and show a separ
 each opening in that submission. Each timeline says that shortlisted applicants may be contacted
 between the opening's close date and move-in date, and that every applicant will receive the final
 outcome shortly after the move-in date. Both surfaces remind the applicant that they can return to
-update or withdraw the application themselves.
+update the application or delete their profile themselves.
 
 The access link proves control of the primary email before an existing application can be changed.
 A first guest submission may be published before email control is proven, then its confirmation
@@ -406,7 +409,7 @@ accidental deployment cannot promise an email that will never be delivered.
 
 Every applicant transactional message clearly says that it was sent because the recipient has or
 requested access to a Penta application, not because they are on the vacancy-notification list. It
-links to the authenticated **Withdraw application** flow and explains that withdrawal stops ordinary
+links to the authenticated **Delete my profile** flow and explains that deleting the profile stops ordinary
 application messages, while a required security notice may still be sent.
 The link opens a review/confirmation page and never changes state on its initial `GET`, so an email
 security scanner cannot delete an application by following it.
@@ -609,12 +612,11 @@ itself does not extend retention; submitting for an opening with a later move-in
 a new anchor. Submitted, declined, and retracted applications use this same rule. Accepted-member
 records continue under the existing seven-year policy.
 
-The public privacy policy explains these retention periods and the restricted legal-hold behavior.
-The ordinary applicant interface explains the restricted retention state after a person withdraws
-an application, without exposing internal retention dates.
+The public privacy policy explains these retention periods and the restricted legal-hold behavior;
+the ordinary applicant interface does not restate that policy in the **Delete my profile** confirmation.
 
-There is no advance expiry warning or deletion confirmation. When retention ends, the application
-is purged without preserving personal information solely to deliver another message.
+There is no advance retention-expiry warning or separate purge confirmation. When retention ends,
+the application is purged without preserving personal information solely to deliver another message.
 
 Deletion covers the working and submitted answers, dated application versions,
 application participation, AI outputs and caches, eligibility and

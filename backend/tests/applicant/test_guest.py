@@ -137,7 +137,7 @@ async def test_guest_can_submit_directly_and_receives_application_access() -> No
         f"Whether or not you're shortlisted, we'll email you shortly after {move_in_date}"
         in sender.messages[0].text_body
     )
-    assert "update or withdraw your application" in sender.messages[0].text_body
+    assert "update your application or delete your profile" in sender.messages[0].text_body
 
 
 @pytest.mark.anyio

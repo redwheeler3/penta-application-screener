@@ -121,7 +121,7 @@ export function OpeningSelection(props: {
 function openingPhaseLabel(opening: ApplicantOpening, selected: boolean): string {
   if (opening.phase === "open") return "Applications are open.";
   if (opening.phase === "closed") {
-    if (selected) return "Applications are closed. Unchecking withdraws your application.";
+    if (selected) return "Applications are closed. Unchecking withdraws you from this opening.";
     if (opening.participating) return "Applications are closed. Recheck to remain applied.";
     return "Applications are closed. You can’t apply for this opening.";
   }

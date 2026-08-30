@@ -53,7 +53,7 @@ def application_confirmation_email(
         if submitted
         else "Your private application draft has been saved."
     )
-    self_service = "You can return to the application page to update or withdraw your application."
+    self_service = "You can return to the application page to update your application or delete your profile."
     if submitted:
         timeline_text = _application_timeline_text(opening_timelines)
         body = f"""{heading}.

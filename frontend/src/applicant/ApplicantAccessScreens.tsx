@@ -45,7 +45,7 @@ export function ApplicationEntry(props: {
           <strong>Applications are closed</strong>
           <span>
             New applications aren’t being accepted right now. If you applied before the deadline,
-            you can still review, update, or withdraw your application.
+            you can still review or update your application, or delete your profile.
           </span>
           <span>
             Looking for a future opening? Join the{" "}
