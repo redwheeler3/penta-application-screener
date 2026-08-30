@@ -9,16 +9,23 @@ export function applicantGoogleSignInUrl(rememberDevice = false): string {
   return url(`/applicant/auth/google/login?remember_device=${rememberDevice}`);
 }
 
-export type ApplicantGoogleAccessResult =
-  | "denied"
-  | "identity_conflict"
-  | "applications_closed"
-  | "session_conflict";
+const APPLICANT_GOOGLE_ACCESS_RESULTS = [
+  "denied",
+  "identity_conflict",
+  "applications_closed",
+  "session_conflict",
+] as const;
+
+export type ApplicantGoogleAccessResult = typeof APPLICANT_GOOGLE_ACCESS_RESULTS[number];
+
+function isApplicantGoogleAccessResult(value: string): value is ApplicantGoogleAccessResult {
+  return APPLICANT_GOOGLE_ACCESS_RESULTS.some((result) => result === value);
+}
 
 export function takeApplicantGoogleAccessResult(): ApplicantGoogleAccessResult | null {
   const query = new URLSearchParams(window.location.search);
-  const value = query.get("google_access") as ApplicantGoogleAccessResult | null;
-  if (!value) return null;
+  const value = query.get("google_access");
+  if (value === null) return null;
   query.delete("google_access");
   const remaining = query.toString();
   window.history.replaceState(
@@ -26,7 +33,7 @@ export function takeApplicantGoogleAccessResult(): ApplicantGoogleAccessResult |
     "",
     `${window.location.pathname}${remaining ? `?${remaining}` : ""}${window.location.hash}`,
   );
-  return value;
+  return isApplicantGoogleAccessResult(value) ? value : null;
 }
 
 export function checkGuestSubmission(

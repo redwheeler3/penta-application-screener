@@ -25,6 +25,7 @@ from app.services.opening_participation import (
     applicant_opening_states,
     application_is_editable,
 )
+from app.services.retention import retention_due_for_opening_ids
 
 
 class ApplicantGoogleIdentityConflict(ValueError):
@@ -35,14 +36,14 @@ class NewApplicationsUnavailable(ValueError):
     """A new Google identity cannot create an application in the current lifecycle."""
 
 
-def resolve_google_application(
+def claim_or_create_google_application(
     db: Session,
     *,
     google_subject: str,
     email: str,
     now: datetime | None = None,
 ) -> Application:
-    """Attach or resolve Google exactly as committee access resolves one ``User``."""
+    """Attach Google to one existing, claimed-draft, or new application."""
     now = now or datetime.now(UTC)
     normalized_email = normalize_email(email)
     subject_application = db.scalar(
@@ -85,18 +86,21 @@ def resolve_google_application(
     ):
         raise NewApplicationsUnavailable
     if application is None:
-        opening_ids = _open_application_ids(db)
-        if not opening_ids:
+        available_opening_ids = _open_application_ids(db)
+        if not available_opening_ids:
             raise NewApplicationsUnavailable
         application = _claim_pending_draft(db, normalized_email, now=now)
-    if application is None:
-        application = create_application(
-            db,
-            normalized_email,
-            _empty_working_answers(normalized_email),
-            saved_at=now,
-            opening_ids=opening_ids,
-        )
+        if application is None:
+            application = create_application(
+                db,
+                normalized_email,
+                _empty_working_answers(normalized_email),
+                saved_at=now,
+                opening_ids=[],
+            )
+            application.retention_due_on = retention_due_for_opening_ids(
+                db, available_opening_ids
+            )
 
     application.google_subject = google_subject
     db.flush()

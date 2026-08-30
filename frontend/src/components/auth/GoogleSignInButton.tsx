@@ -1,14 +1,6 @@
-export function GoogleSignInButton(props: {
-  href: string;
-  className?: string;
-  onClick?: () => void;
-}) {
+export function GoogleSignInButton(props: { href: string }) {
   return (
-    <a
-      className={`google-sign-in-button${props.className ? ` ${props.className}` : ""}`}
-      href={props.href}
-      onClick={props.onClick}
-    >
+    <a className="google-sign-in-button" href={props.href}>
       <GoogleMark />
       <span>Continue with Google</span>
     </a>

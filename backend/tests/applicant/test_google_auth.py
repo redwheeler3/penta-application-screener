@@ -1,7 +1,8 @@
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from authlib.integrations.base_client.errors import OAuthError
 from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 from starlette.responses import RedirectResponse
@@ -9,12 +10,14 @@ from starlette.responses import RedirectResponse
 from app.api.session_cookie import SESSION_COOKIE_NAMES
 from app.db.models import Application, BrowserSession, Opening, PasswordlessIdentityKind
 from app.services.passwordless_auth import create_browser_session
+from app.services.retention import one_year_after
 from tests.applicant.support import app_and_db, sample_answers, save_draft
 
 
 class FakeGoogleOAuthClient:
-    def __init__(self, user_info: dict | None = None) -> None:
+    def __init__(self, user_info: dict | None = None, *, oauth_error: bool = False) -> None:
         self.user_info = user_info or {}
+        self.oauth_error = oauth_error
         self.redirect_uri: str | None = None
         self.redirect_kwargs: dict | None = None
 
@@ -24,6 +27,8 @@ class FakeGoogleOAuthClient:
         return RedirectResponse(redirect_uri)
 
     async def authorize_access_token(self, _request) -> dict:
+        if self.oauth_error:
+            raise OAuthError(error="access_denied")
         return {"userinfo": self.user_info}
 
 
@@ -147,6 +152,57 @@ async def test_google_requires_a_verified_email(monkeypatch) -> None:
     assert response.status_code == 307
     assert "google_access=denied" in response.headers["location"]
     assert db.scalar(select(func.count()).select_from(Application)) == 0
+
+
+@pytest.mark.anyio
+async def test_google_handles_a_cancelled_oauth_flow(monkeypatch) -> None:
+    app, db, _ = app_and_db()
+    google = FakeGoogleOAuthClient(oauth_error=True)
+    monkeypatch.setattr(
+        "app.api.applicant.google.get_oauth",
+        lambda: SimpleNamespace(google=google),
+    )
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/applicant/auth/google/callback")
+
+    assert response.status_code == 307
+    assert "google_access=denied" in response.headers["location"]
+    assert db.scalar(select(func.count()).select_from(Application)) == 0
+
+
+@pytest.mark.anyio
+async def test_new_google_application_does_not_preselect_multiple_openings(monkeypatch) -> None:
+    app, db, _ = app_and_db()
+    today = date.today()
+    db.add(
+        Opening(
+            unit_size_bedrooms=3,
+            housing_charge_cents=120_000,
+            application_open_date=today - timedelta(days=1),
+            application_close_date=today + timedelta(days=10),
+            move_in_date=today + timedelta(days=40),
+            published_at=datetime.now(UTC),
+        )
+    )
+    db.commit()
+    google = FakeGoogleOAuthClient(google_identity())
+    monkeypatch.setattr(
+        "app.api.applicant.google.get_oauth",
+        lambda: SimpleNamespace(google=google),
+    )
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.get("/applicant/auth/google/callback")
+        application_response = await client.get("/applicant/application")
+
+    application = db.scalar(select(Application))
+    assert application is not None
+    assert application.working_opening_ids == []
+    assert application.retention_due_on == one_year_after(today + timedelta(days=40))
+    assert all(not opening["selected"] for opening in application_response.json()["openings"])
 
 
 @pytest.mark.anyio

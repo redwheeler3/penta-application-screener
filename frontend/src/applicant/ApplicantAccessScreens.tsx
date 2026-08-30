@@ -55,17 +55,11 @@ export function ApplicationEntry(props: {
         </div>
       ) : null}
       {props.googleError ? <ApplicantGoogleError result={props.googleError} /> : null}
-      <div className="application-google-access">
-        <label className="remember-device-choice">
-          <input
-            type="checkbox"
-            checked={props.rememberDevice}
-            onChange={(event) => props.onRememberDeviceChange(event.target.checked)}
-          />
-          <span>Keep me signed in on this device</span>
-        </label>
-        <GoogleSignInButton href={props.googleSignInUrl} />
-      </div>
+      <ApplicantGoogleAccess
+        googleSignInUrl={props.googleSignInUrl}
+        rememberDevice={props.rememberDevice}
+        onRememberDeviceChange={props.onRememberDeviceChange}
+      />
       <div className="application-entry-divider"><span>or use email</span></div>
       <form onSubmit={sendLink} noValidate>
         <label className="applicant-field">
@@ -224,22 +218,41 @@ export function ApplicationSessionExpired(props: {
       <ShieldCheck size={28} />
       <h2>Sign in to continue</h2>
       <p>For your security, your application session has ended.</p>
-      <div className="application-google-access session-expired-access">
-        <label className="remember-device-choice">
-          <input
-            type="checkbox"
-            checked={props.rememberDevice}
-            onChange={(event) => props.onRememberDeviceChange(event.target.checked)}
-          />
-          <span>Keep me signed in on this device</span>
-        </label>
-        <GoogleSignInButton href={props.googleSignInUrl} />
-      </div>
+      <ApplicantGoogleAccess
+        googleSignInUrl={props.googleSignInUrl}
+        rememberDevice={props.rememberDevice}
+        onRememberDeviceChange={props.onRememberDeviceChange}
+        sessionExpired
+      />
       <div className="application-entry-divider"><span>or use email</span></div>
       <button className="applicant-secondary-button applicant-access-email-button" type="button" onClick={props.onEmail}>
         <Mail size={17} /> Send sign-in link
       </button>
     </section>
+  );
+}
+
+function ApplicantGoogleAccess(props: {
+  googleSignInUrl: string;
+  rememberDevice: boolean;
+  onRememberDeviceChange: (remember: boolean) => void;
+  sessionExpired?: boolean;
+}) {
+  const className = `application-google-access${
+    props.sessionExpired ? " session-expired-access" : ""
+  }`;
+  return (
+    <div className={className}>
+      <label className="remember-device-choice">
+        <input
+          type="checkbox"
+          checked={props.rememberDevice}
+          onChange={(event) => props.onRememberDeviceChange(event.target.checked)}
+        />
+        <span>Keep me signed in on this device</span>
+      </label>
+      <GoogleSignInButton href={props.googleSignInUrl} />
+    </div>
   );
 }
 

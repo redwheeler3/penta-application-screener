@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
+from authlib.integrations.base_client.errors import OAuthError
 from authlib.integrations.starlette_client import OAuth
 from starlette.requests import Request
 
@@ -23,10 +24,13 @@ async def authorized_google_identity(
 ) -> GoogleIdentity | None:
     """Exchange one OIDC callback and return only the identity claims Penta uses."""
     oauth = oauth or get_oauth()
-    token = await oauth.google.authorize_access_token(request)
-    user_info = token.get("userinfo")
-    if not user_info:
-        user_info = await oauth.google.userinfo(token=token)
+    try:
+        token = await oauth.google.authorize_access_token(request)
+        user_info = token.get("userinfo")
+        if not user_info:
+            user_info = await oauth.google.userinfo(token=token)
+    except OAuthError:
+        return None
     subject = user_info.get("sub")
     email = user_info.get("email")
     if (

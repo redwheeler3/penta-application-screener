@@ -2,7 +2,6 @@
 
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from authlib.integrations.base_client.errors import OAuthError
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -16,7 +15,7 @@ from app.services.applicant_auth import authenticate_applicant
 from app.services.applicant_google_auth import (
     ApplicantGoogleIdentityConflict,
     NewApplicationsUnavailable,
-    resolve_google_application,
+    claim_or_create_google_application,
 )
 from app.services.passwordless_auth import (
     create_browser_session,
@@ -41,10 +40,7 @@ async def applicant_google_callback(
     db: Session = Depends(get_db),
 ):
     remember_device = request.session.pop("applicant_remember_device", False)
-    try:
-        identity = await authorized_google_identity(request, get_oauth())
-    except OAuthError:
-        identity = None
+    identity = await authorized_google_identity(request, get_oauth())
     request.session.clear()
     if identity is None:
         return _applicant_redirect("denied")
@@ -57,7 +53,7 @@ async def applicant_google_callback(
     )
 
     try:
-        application = resolve_google_application(
+        application = claim_or_create_google_application(
             db,
             google_subject=identity.subject,
             email=identity.email,

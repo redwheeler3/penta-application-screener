@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+from authlib.integrations.base_client.errors import OAuthError
 from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import sessionmaker
@@ -22,8 +23,9 @@ from app.main import create_app
 
 
 class FakeGoogleOAuthClient:
-    def __init__(self, user_info: dict | None = None) -> None:
+    def __init__(self, user_info: dict | None = None, *, oauth_error: bool = False) -> None:
         self.user_info = user_info or {}
+        self.oauth_error = oauth_error
         self.redirect_kwargs: dict | None = None
 
     async def authorize_redirect(self, _request, redirect_uri: str, **kwargs):
@@ -31,6 +33,8 @@ class FakeGoogleOAuthClient:
         return RedirectResponse(redirect_uri)
 
     async def authorize_access_token(self, _request) -> dict:
+        if self.oauth_error:
+            raise OAuthError(error="access_denied")
         return {"userinfo": self.user_info}
 
 
@@ -144,6 +148,22 @@ async def test_google_login_rejects_an_unverified_email(monkeypatch) -> None:
     )
     db.commit()
     google = FakeGoogleOAuthClient(_google_identity(email_verified=False))
+    monkeypatch.setattr("app.api.auth.get_oauth", lambda: SimpleNamespace(google=google))
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/auth/google/callback")
+
+    assert response.status_code == 307
+    assert response.headers["location"].endswith("?access=denied")
+    assert db.scalar(select(func.count()).select_from(User)) == 0
+    assert db.scalar(select(func.count()).select_from(BrowserSession)) == 0
+
+
+@pytest.mark.anyio
+async def test_google_login_handles_a_cancelled_oauth_flow(monkeypatch) -> None:
+    app, db = _app_and_db()
+    google = FakeGoogleOAuthClient(oauth_error=True)
     monkeypatch.setattr("app.api.auth.get_oauth", lambda: SimpleNamespace(google=google))
     transport = ASGITransport(app=app)
 
