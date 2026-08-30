@@ -282,7 +282,7 @@ function ApplicantResultPreviews() {
 function CommitteeAccessPreviews() {
   return (
     <div className="access-preview-grid">
-      <CommitteePreview title="Google or email" description="Normal committee sign-in when email delivery is configured." />
+      <CommitteePreview title="Google or email" description="Normal committee sign-in, with Google primary and email as a fallback." />
       <CommitteePreview title="Google only" description="Email sign-in is hidden when delivery is not configured." emailSignInEnabled={false} />
       <CommitteePreview title="Checking Google session" description="The existing browser session is being loaded." isLoadingUser />
       <CommitteePreview title="Checking sign-in link" description="A committee sign-in link is being checked." signInState="exchanging" />
@@ -321,7 +321,6 @@ function CommitteePreview(props: {
         signInState={props.signInState ?? "idle"}
         linkConflict={props.linkConflict ?? null}
         linkedEmail={props.linkedEmail ?? null}
-        autoFocusEmail={false}
         onRequestLink={noAsyncAction}
         onKeepCurrent={noAction}
         onOpenLinked={noAsyncAction}

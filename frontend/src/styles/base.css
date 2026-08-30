@@ -336,7 +336,8 @@ h1 {
   border-color: var(--penta-green);
 }
 
-.login-form .primary-button {
+.login-form .primary-button,
+.login-form .secondary-button {
   min-height: 42px;
 }
 

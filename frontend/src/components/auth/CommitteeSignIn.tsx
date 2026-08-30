@@ -13,7 +13,6 @@ type CommitteeSignInProps = {
   signInState: SignInState;
   linkConflict: CommitteeLinkConflict | null;
   linkedEmail: string | null;
-  autoFocusEmail?: boolean;
   onRequestLink: (email: string, rememberDevice: boolean) => Promise<void>;
   onKeepCurrent: () => void;
   onOpenLinked: () => Promise<void>;
@@ -167,8 +166,17 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
             />
             <span>Keep me signed in on this device</span>
           </label>
+          <a
+            className="primary-button login-google-button"
+            href={api.googleSignInUrl(rememberDevice)}
+          >
+            Continue with Google
+          </a>
           {props.emailSignInEnabled ? (
             <>
+              <div className="login-divider" aria-hidden="true">
+                <span>or use email</span>
+              </div>
               <form className="login-form" onSubmit={submit}>
                 <label>
                   <span>Email address</span>
@@ -176,14 +184,13 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
                     type="email"
                     required
                     autoComplete="email"
-                    autoFocus={props.autoFocusEmail ?? true}
                     placeholder="name@example.com"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                   />
                 </label>
                 <button
-                  className={`primary-button${busy ? " is-busy" : ""}`}
+                  className={`secondary-button${busy ? " is-busy" : ""}`}
                   type="submit"
                   disabled={busy}
                 >
@@ -191,17 +198,8 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
                   <span>Send sign-in link</span>
                 </button>
               </form>
-              <div className="login-divider" aria-hidden="true">
-                <span>or use Google</span>
-              </div>
             </>
           ) : null}
-          <a
-            className={`${props.emailSignInEnabled ? "secondary" : "primary"}-button login-google-button`}
-            href={api.googleSignInUrl(rememberDevice)}
-          >
-            Continue with Google
-          </a>
         </>
       ) : null}
 
