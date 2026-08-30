@@ -830,10 +830,13 @@ Google subject may be bound. Changing it continues to require the current explic
    that Google sign-in was disconnected because it belonged to the old email.
 
 The applicant may immediately choose Google again, but it links only when Google's verified email
-matches the newly confirmed primary email. Signing in with the old Google identity fails rather
-than reopening the application or reversing the email change. Google authentication never confirms
-a pending email change, even if Google returns the proposed address; the emailed confirmation link
-remains the proof that Penta can deliver future application communication there.
+matches the newly confirmed primary email. The old Google identity can no longer reopen that
+application or reverse the email change. If its old email no longer belongs to any active
+application and new applications are open, using it later follows the ordinary new-applicant path
+and opens a blank private application form; if applications are closed, it cannot create one.
+Google authentication never confirms a pending email change, even if Google returns the proposed
+address; the emailed confirmation link remains the proof that Penta can deliver future application
+communication there.
 
 No separate connected-accounts settings surface is needed for M23. Linking is automatic only on an
 unambiguous email match, and changing the primary email is the supported way to retire a binding
