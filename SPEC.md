@@ -274,17 +274,18 @@ Google. Both methods prove an allowlisted committee identity and then issue the 
 server-side browser session. Provider choice does not create a second user, cookie, session
 policy, authorization path, or logout/revocation mechanism.
 
-Google is retained only as an identity provider for committee convenience and as an operational
+Google is an optional identity provider for applicants and committee members and an operational
 alternative when transactional email is unavailable. It uses standard OpenID Connect with only
 `openid`, `email`, and `profile`; verifies the returned identity and email; and associates Google's
-stable subject identifier with the existing committee user. It does not request offline access,
-force repeated consent, retain access or refresh tokens, or grant access to Drive, Sheets, or any
-other Google data. Applicants never use Google sign-in.
+stable subject identifier with the existing application or committee user. It does not request
+offline access, force repeated consent, retain access or refresh tokens, or grant access to Drive,
+Sheets, or any other Google data.
 
 Committee access remains allowlist-gated with the existing admin/member roles regardless of the
 authentication provider. Control of an email address or Google account does not grant access
 unless its verified address is active on the allowlist. A Google outage leaves email sign-in
-available, and an email-provider outage leaves Google sign-in available to committee members.
+available, and an email-provider outage leaves Google sign-in available to applicants and committee
+members who otherwise qualify for access.
 
 Committee email credentials use the same 24-hour lifetime as applicant links. Following a stale
 link while its matching committee session remains active simply continues that session. If the
@@ -1185,11 +1186,13 @@ This replaced the originally-planned Google Docs generation — print-to-PDF nee
 
 The MVP is a web app with a **Python/FastAPI** backend, a **Vite + React/TypeScript** frontend,
 **SQLite** (SQLAlchemy + Alembic), revocable server-side sessions, SocketLabs transactional email,
-optional identity-only Google authentication for committee members and, after M23, applicants, and
+optional identity-only Google authentication for applicants and committee members, and
 provider-neutral AI routing across Bedrock or direct APIs. Python deps use `uv`; frontend uses
 `npm`; backend tests use `pytest`.
 
-Google setup uses only `openid`, `email`, and `profile` for optional committee identity. It requests no Google data scope and stores no provider access or refresh token. Setup is documented in [docs/google-cloud-oauth-setup.md](docs/google-cloud-oauth-setup.md).
+Google setup uses only `openid`, `email`, and `profile` for optional applicant and committee
+identity. It requests no Google data scope and stores no provider access or refresh token. Setup is
+documented in [docs/google-cloud-oauth-setup.md](docs/google-cloud-oauth-setup.md).
 
 The settings surfaces: **Eligibility Settings** (per-member) covers income range, min/max children + max child age, min adult age, employment requirements, pet limits, and per-check toggles; **Admin Settings** covers the AI spending cap, provider/model choices, discovery fan-out, committee-default rules, access allowlist, openings, feedback, and AI-quality tools.
 
