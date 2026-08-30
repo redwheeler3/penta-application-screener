@@ -21,6 +21,7 @@ type EmailFlowDependencies = {
   setDraft: Dispatch<SetStateAction<ApplicantDraft>>;
   primaryEmail: string | null;
   workingRevision: number | null;
+  googleSignInLinked: boolean;
 };
 
 export function createApplicantEmailFlow({
@@ -28,10 +29,12 @@ export function createApplicantEmailFlow({
   setDraft,
   primaryEmail,
   workingRevision,
+  googleSignInLinked,
 }: EmailFlowDependencies) {
   async function beginEmailChange(newEmail: string): Promise<void> {
     setPersistence("emailChangeStatus", "sending");
     setPersistence("emailChangeMessage", "");
+    setPersistence("googleDisconnectedByEmailChange", false);
     const response = await requestEmailChange(newEmail);
     if (!response.ok) {
       const problem = await responseProblem(response);
@@ -91,6 +94,7 @@ export function createApplicantEmailFlow({
     const body = (await response.json()) as ApplicationResponse;
     const emailChanged = primaryEmail !== null && body.primaryEmail !== primaryEmail;
     setPersistence("primaryEmail", body.primaryEmail);
+    setPersistence("googleSignInLinked", body.googleSignInLinked);
     setPersistence("submitted", body.submitted);
     setPersistence("serverHasUnsubmittedChanges", body.hasUnsubmittedChanges);
     setPersistence("pendingEmailChange", body.pendingEmailChange);
@@ -101,6 +105,7 @@ export function createApplicantEmailFlow({
     if (emailChanged) {
       setPersistence("emailChangeMessage", "");
       setPersistence("emailChangeStatus", "confirmed");
+      setPersistence("googleDisconnectedByEmailChange", googleSignInLinked);
     }
     if (workingRevision !== null && body.workingRevision !== workingRevision) {
       setPersistence("message", "This application changed in another tab or browser.");

@@ -34,6 +34,7 @@ export function EmailChangeField(props: {
   pendingEmail: string | null;
   status: "idle" | "sending" | "sent" | "confirmed" | "error";
   message: string;
+  googleDisconnected: boolean;
   onRequest: (email: string) => void;
   onCancelPending: () => void;
   onClose: () => void;
@@ -50,6 +51,9 @@ export function EmailChangeField(props: {
         <span>Email address changed</span>
         <div className="email-change-status">
           <span>You are now signed in as {props.currentEmail}.</span>
+          {props.googleDisconnected ? (
+            <span>Google sign-in was disconnected because it belonged to your previous email address.</span>
+          ) : null}
         </div>
         <button className="applicant-secondary-button compact" type="button" onClick={props.onClose}>Done</button>
       </div>

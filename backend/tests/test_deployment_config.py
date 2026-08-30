@@ -16,3 +16,6 @@ def test_fly_config_has_distinct_https_committee_and_applicant_origins() -> None
     assert applicant.hostname == "applications.pentacoop.com"
     assert applicant.geturl() != committee.geturl()
     assert environment["GOOGLE_REDIRECT_URI"].startswith(f"{committee.geturl()}/")
+    assert environment["GOOGLE_APPLICANT_REDIRECT_URI"].startswith(
+        f"{applicant.geturl()}/"
+    )

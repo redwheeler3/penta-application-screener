@@ -28,6 +28,7 @@ primary_region = "iad"   # Ashburn — lower-cost region; Bedrock runs in nearby
   APPLICANT_FRONTEND_URL = "https://applications.pentacoop.com"
   PUBLIC_WEBSITE_URL = "https://www.pentacoop.com"
   GOOGLE_REDIRECT_URI = "https://screener.pentacoop.com/auth/google/callback"
+  GOOGLE_APPLICANT_REDIRECT_URI = "https://applications.pentacoop.com/applicant/auth/google/callback"
   AWS_REGION = "us-east-1"          # Bedrock region (matches settings default)
   AWS_DEFAULT_REGION = "us-east-1"  # botocore reads this one
   # No post-rank auto-snapshot in prod — that was a local heavy-iteration safety net; Fly

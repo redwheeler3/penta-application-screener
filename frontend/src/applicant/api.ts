@@ -1,8 +1,32 @@
-import { request } from "../api/client";
+import { request, url } from "../api/client";
 import type { CanonicalApplicationAnswers, WorkingApplicationAnswers } from "./types";
 
 export function fetchApplicantOpenings(signal?: AbortSignal) {
   return request("/applicant/openings", { signal });
+}
+
+export function applicantGoogleSignInUrl(rememberDevice = false): string {
+  return url(`/applicant/auth/google/login?remember_device=${rememberDevice}`);
+}
+
+export type ApplicantGoogleAccessResult =
+  | "denied"
+  | "identity_conflict"
+  | "applications_closed"
+  | "session_conflict";
+
+export function takeApplicantGoogleAccessResult(): ApplicantGoogleAccessResult | null {
+  const query = new URLSearchParams(window.location.search);
+  const value = query.get("google_access") as ApplicantGoogleAccessResult | null;
+  if (!value) return null;
+  query.delete("google_access");
+  const remaining = query.toString();
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${window.location.pathname}${remaining ? `?${remaining}` : ""}${window.location.hash}`,
+  );
+  return value;
 }
 
 export function checkGuestSubmission(

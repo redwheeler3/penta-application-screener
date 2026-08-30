@@ -148,6 +148,7 @@ def open_applicant_access_link(
             if claimed.reconciliation_draft is not None
             else None
         ),
+        google_disconnected=claimed.google_disconnected,
     )
 
 @router.post(

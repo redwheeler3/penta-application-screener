@@ -69,9 +69,11 @@ visibility return, and every 60 seconds while visible.
 
 ## Authentication and sessions
 
-Committee members may use identity-only Google OIDC or an emailed magic link. Both routes end in
-the same revocable `BrowserSession`. Applicant access is email-link based and uses a separate,
-host-only session cookie so applicant and committee identities can coexist safely.
+Committee members may use identity-only Google OIDC or an emailed magic link. Applicants may use
+identity-only Google OIDC or an emailed magic link, while new applicants may also continue as
+guests. Both authenticated applicant routes end in the same revocable `BrowserSession` keyed by
+`Application.id`. Applicant and committee access use separate host-only cookies so both identities
+can coexist safely.
 
 Session policy is implemented server-side: sessions expire after 7 days of inactivity or 30 days
 in total. Any valid session may perform the actions authorized for its identity and role; there is

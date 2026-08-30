@@ -87,6 +87,8 @@ export function useApplicantPersistence(
     reviewAfterAccess,
     savedAnswers,
     primaryEmail,
+    googleSignInLinked,
+    googleDisconnectedByEmailChange,
     pendingEmailChange,
     emailChangeStatus,
     emailChangeMessage,
@@ -225,6 +227,7 @@ export function useApplicantPersistence(
       setPersistence("pendingEmailChange", null);
       setPersistence("emailChangeMessage", "");
       setPersistence("emailChangeStatus", "confirmed");
+      setPersistence("googleDisconnectedByEmailChange", body.googleDisconnected);
     }
   }
 
@@ -252,6 +255,7 @@ export function useApplicantPersistence(
     setPersistence("submitted", body.submitted);
     setPersistence("serverHasUnsubmittedChanges", body.hasUnsubmittedChanges);
     setPersistence("primaryEmail", body.primaryEmail);
+    setPersistence("googleSignInLinked", body.googleSignInLinked);
     setPersistence("pendingEmailChange", body.pendingEmailChange);
     setPersistence("openings", body.openings);
     setPersistence("canEdit", body.canEdit);
@@ -671,6 +675,7 @@ export function useApplicantPersistence(
     setDraft,
     primaryEmail,
     workingRevision,
+    googleSignInLinked,
   });
   const withdrawalFlow = createApplicantWithdrawalFlow({
     setPersistence,
@@ -721,6 +726,8 @@ export function useApplicantPersistence(
     authenticated: applicationId != null,
     applicationId,
     primaryEmail,
+    googleSignInLinked,
+    googleDisconnectedByEmailChange,
     pendingEmailChange,
     emailChangeStatus,
     emailChangeMessage,

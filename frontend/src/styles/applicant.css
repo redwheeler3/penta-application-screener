@@ -113,20 +113,6 @@
   scroll-margin-top: 110px;
 }
 
-.private-changes-notice {
-  display: flex;
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 3px;
-  padding: 14px 16px;
-  margin: 20px 0;
-  color: #624811;
-  background: #fffbeb;
-  border: 1px solid #ead7a0;
-  border-radius: 10px;
-  font-size: 0.88rem;
-  line-height: 1.45;
-}
 .applicant-opening-section.has-error { border-color: #cf7772; box-shadow: 0 0 0 3px rgb(180 58 53 / 10%); }
 .applicant-opening-heading { display: flex; align-items: flex-start; gap: 14px; }
 .applicant-opening-heading > svg { flex: 0 0 auto; margin-top: 2px; color: var(--applicant-green-dark); }
@@ -276,16 +262,29 @@
 .pending-copy-decision > svg { color: var(--applicant-green); }
 .application-entry h2,
 .pending-copy-decision h2 { margin: 13px 0 8px; }
-.application-entry > p,
+.application-entry > p:not(.application-entry-error),
 .pending-copy-decision > p { max-width: 680px; margin: 0 auto 24px; color: #596d7a; line-height: 1.55; }
-.application-entry form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; max-width: 520px; margin: 0 auto; text-align: left; }
-.application-entry form .applicant-primary-button { white-space: nowrap; }
-.application-entry-divider { display: flex; align-items: center; gap: 12px; max-width: 520px; margin: 24px auto 18px; color: #71818c; }
+.application-google-access { display: grid; gap: 12px; width: min(100%, 520px); margin: 0 auto; text-align: left; }
+.application-google-access .remember-device-choice { margin: 0; }
+.application-entry form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; width: min(100%, 520px); margin: 0 auto; text-align: left; }
+.application-entry form .applicant-field > span { line-height: 18px; }
+.application-entry form .applicant-field input,
+.application-entry form .applicant-secondary-button { height: 44px; }
+.application-entry form .applicant-field input { padding-top: 0; padding-bottom: 0; }
+.application-entry form .applicant-secondary-button { white-space: nowrap; }
+.application-entry form .applicant-access-email-button { margin-top: 25px; }
+.application-entry-divider { display: flex; align-items: center; gap: 12px; width: min(100%, 520px); margin: 22px auto 16px; color: #71818c; font-size: 0.76rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; }
 .application-entry-divider::before,
 .application-entry-divider::after { content: ""; flex: 1; border-top: 1px solid #dbe4e0; }
+.application-entry-guest-divider { margin-top: 22px; }
+.application-entry-error { width: min(100%, 400px); margin: 0 auto 20px; padding: 11px 13px; color: #8f2f2a; background: #fff5f4; border: 1px solid #efc4c0; border-radius: 8px; font-size: 0.86rem; line-height: 1.45; text-align: left; }
+.application-entry-status { display: grid; gap: 4px; width: min(100%, 520px); margin: 0 auto 22px; padding: 13px 15px; color: #62440c; background: #fffbeb; border: 1px solid #f2d88c; border-radius: 9px; font-size: 0.86rem; line-height: 1.45; text-align: left; }
+.application-entry-status strong { color: #573807; }
+.application-entry-status a { color: #68480a; font-weight: 750; }
+.application-session-conflict { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: -10px 0 24px; padding: 14px 16px; color: #743532; background: #fff5f4; border: 1px solid #efc4c0; border-radius: 10px; }
+.application-session-conflict > div { display: grid; gap: 3px; }
+.application-session-conflict span { font-size: 0.86rem; }
 .application-entry > small { display: block; margin-top: 12px; color: #647782; }
-.application-entry-vacancies { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 18px; color: #647782; }
-.application-entry-vacancies a { color: #176c3c; font-weight: 700; }
 .pending-copy-decision { text-align: center; }
 .pending-copy-table { overflow: hidden; margin: 26px 0; text-align: left; border: 1px solid #dbe4e0; border-radius: 10px; }
 .pending-copy-heading,
@@ -306,6 +305,7 @@
 
 .applicant-primary-button,
 .applicant-secondary-button,
+.applicant-tertiary-button,
 .applicant-danger-link {
   display: inline-flex;
   align-items: center;
@@ -316,7 +316,7 @@
   border-radius: 9px;
   font: inherit;
   font-size: 0.88rem;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -324,6 +324,9 @@
 .applicant-primary-button:hover { background: var(--applicant-green-dark); }
 .applicant-secondary-button { color: #173d2a; background: #fff; border: 1px solid #b7d7c3; }
 .applicant-secondary-button:hover { background: #f1faf5; }
+.applicant-access-email-button { font-weight: 500; }
+.applicant-tertiary-button { width: min(100%, 520px); margin: 0 auto; color: #31566e; background: transparent; border: 1px solid #cbd7dd; font-weight: 500; }
+.applicant-tertiary-button:hover { color: #173d2a; background: #f8faf9; border-color: #9fb8ac; }
 .applicant-secondary-button.compact { min-height: 36px; padding: 0 12px; font-size: 0.8rem; }
 .applicant-secondary-button.danger { color: #9b302c; background: transparent; border-color: #dfb8b5; }
 .applicant-secondary-button.danger:hover { background: #fff2f1; }
@@ -341,7 +344,7 @@
   border-radius: 9px;
   font: inherit;
   font-size: 0.88rem;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
 }
 .applicant-danger-button:hover { background: #88302b; }
@@ -456,10 +459,12 @@
 .application-timelines section > p { max-width: none; margin: 0; font-size: 0.95rem; }
 .existing-application-choice .review-actions { justify-content: center; }
 .existing-application-choice > .remember-device-choice { justify-content: center; align-items: center; margin: 20px auto 24px; }
+.session-expired-access { margin-top: 2px; }
+.existing-application-choice > .application-entry-divider { margin-top: 22px; }
 
 @media (max-width: 700px) {
   .application-entry form { grid-template-columns: 1fr; }
-  .application-entry form .applicant-primary-button { width: 100%; }
+  .application-entry form .applicant-secondary-button { width: 100%; margin-top: 0; }
   .pending-copy-heading { display: none; }
   .pending-copy-row { grid-template-columns: 1fr; }
   .pending-copy-row > * + * { border-left: 0; border-top: 1px solid #e6ede9; }
@@ -501,6 +506,7 @@
   .authenticated-email-field.wide .verified-email-control input { flex-basis: auto; width: 100%; }
   .email-change-actions { align-items: stretch; flex-direction: column-reverse; }
   .email-change-actions.confirmation-actions { flex-direction: column; }
+  .application-session-conflict { align-items: stretch; flex-direction: column; }
   .application-intro { padding: 20px; }
   .applicant-opening-section { padding: 20px; }
   .applicant-opening-dates { grid-template-columns: 1fr; gap: 8px; }

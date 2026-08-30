@@ -42,7 +42,6 @@ export function ApplicationReview(props: {
   declarationAccepted: boolean;
   persistencePhase: string;
   persistenceMessage: string;
-  authenticated: boolean;
   onRetry: () => void;
   onReload: () => void;
   onDeclarationChange: (accepted: boolean) => void;
@@ -63,9 +62,9 @@ export function ApplicationReview(props: {
       <div className="review-notice">
         <FileCheck2 size={22} />
         <div>
-          <strong>{props.authenticated ? "Your application is ready to submit." : "This is still a private draft."}</strong>
+          <strong>This is still a private draft.</strong>
           <span>Nothing has been sent to the membership committee.</span>
-          <span>Review your answers before submitting.</span>
+          <span>Review your answers, then submit your application.</span>
         </div>
       </div>
       <ReviewSection title="Openings">
@@ -228,16 +227,10 @@ export function PersistenceActionStatus(props: {
   return null;
 }
 
-export function PrivateChangesNotice() {
-  return (
-    <div className="private-changes-notice" role="status">
-      <strong>Your changes are private</strong>
-      <span>Submit the application when you are ready for the membership committee to see them.</span>
-    </div>
-  );
-}
-
-export function ApplicationSubmitted(props: { openings: ApplicantOpening[] }) {
+export function ApplicationSubmitted(props: {
+  openings: ApplicantOpening[];
+  authenticated: boolean;
+}) {
   return (
     <section className="application-complete">
       <CheckCircle2 size={34} />
@@ -260,8 +253,9 @@ export function ApplicationSubmitted(props: { openings: ApplicantOpening[] }) {
         })}
       </div>
       <p>
-        You can return to the application page to update or withdraw your application. Check your
-        email for your private link.
+        {props.authenticated
+          ? "You can return to this page to update or withdraw your application. We’ve also emailed you a confirmation."
+          : "Check your email for a private link you can use to update or withdraw your application."}
       </p>
     </section>
   );

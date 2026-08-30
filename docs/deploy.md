@@ -132,16 +132,17 @@ fly certs check applications.pentacoop.com
 
 The deployed `APPLICANT_FRONTEND_URL=https://applications.pentacoop.com` setting must be present
 before this activation so applicant access emails use the public hostname and applicant session
-cookies are Secure. Google OAuth remains on the committee hostname only.
+cookies are Secure.
 
 ### 6. Point Google OAuth at prod
 
 In the Google Cloud console, add the authorized redirect URI:
 ```
 https://screener.pentacoop.com/auth/google/callback
+https://applications.pentacoop.com/applicant/auth/google/callback
 ```
-(matches `GOOGLE_REDIRECT_URI` in `fly.toml`). Add `https://screener.pentacoop.com` to authorized
-JavaScript origins too.
+(matches `GOOGLE_REDIRECT_URI` and `GOOGLE_APPLICANT_REDIRECT_URI` in `fly.toml`). The server-side
+OIDC flow does not require an additional applicant JavaScript origin.
 
 ### 7. Seed the first admin
 

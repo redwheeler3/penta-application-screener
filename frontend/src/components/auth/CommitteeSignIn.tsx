@@ -1,10 +1,11 @@
-import { LoaderCircle, LogIn, ShieldCheck } from "lucide-react";
+import { LoaderCircle, Mail, ShieldCheck } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 
 import * as api from "../../api/auth";
 import type { CommitteeLinkConflict, SignInState } from "../../hooks/useSession";
 import type { ServiceRecoveryStage } from "../../serviceRecovery";
 import { TECH_SUPPORT_EMAIL } from "../../support";
+import { GoogleSignInButton } from "./GoogleSignInButton";
 
 type CommitteeSignInProps = {
   emailSignInEnabled: boolean;
@@ -18,10 +19,11 @@ type CommitteeSignInProps = {
   onOpenLinked: () => Promise<void>;
   onEmailNew: () => Promise<void>;
   onReset: () => void;
+  initialEmail?: string;
 };
 
 export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(props.initialEmail ?? "");
   const [rememberDevice, setRememberDevice] = useState(false);
   const busy = props.isLoadingUser || props.signInState === "requesting";
 
@@ -166,18 +168,13 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
             />
             <span>Keep me signed in on this device</span>
           </label>
-          <a
-            className="primary-button login-google-button"
-            href={api.googleSignInUrl(rememberDevice)}
-          >
-            Continue with Google
-          </a>
+          <GoogleSignInButton href={api.googleSignInUrl(rememberDevice)} />
           {props.emailSignInEnabled ? (
             <>
               <div className="login-divider" aria-hidden="true">
                 <span>or use email</span>
               </div>
-              <form className="login-form" onSubmit={submit}>
+              <form className="login-form committee-login-form" onSubmit={submit}>
                 <label>
                   <span>Email address</span>
                   <input
@@ -194,8 +191,17 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
                   type="submit"
                   disabled={busy}
                 >
-                  <LogIn size={16} />
-                  <span>Send sign-in link</span>
+                  {props.signInState === "requesting" ? (
+                    <>
+                      <LoaderCircle className="sign-in-retry-spinner" size={16} />
+                      <span>Sending…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Mail size={16} />
+                      <span>Send sign-in link</span>
+                    </>
+                  )}
                 </button>
               </form>
             </>

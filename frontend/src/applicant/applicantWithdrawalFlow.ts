@@ -36,6 +36,8 @@ export function createApplicantWithdrawalFlow({
     setPersistence("submitted", false);
     setPersistence("serverHasUnsubmittedChanges", false);
     setPersistence("primaryEmail", null);
+    setPersistence("googleSignInLinked", false);
+    setPersistence("googleDisconnectedByEmailChange", false);
     setPersistence("pendingEmailChange", null);
     setPersistence("withdrawalStatus", "idle");
     setPersistence("phase", "withdrawn");
@@ -59,6 +61,8 @@ export function createApplicantWithdrawalFlow({
     setPersistence("submitted", false);
     setPersistence("serverHasUnsubmittedChanges", false);
     setPersistence("primaryEmail", null);
+    setPersistence("googleSignInLinked", false);
+    setPersistence("googleDisconnectedByEmailChange", false);
     setPersistence("pendingEmailChange", null);
     setPersistence("emailChangeStatus", "idle");
     setPersistence("phase", "idle");

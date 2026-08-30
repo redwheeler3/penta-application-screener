@@ -1,10 +1,46 @@
 import json
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
 from authlib.integrations.starlette_client import OAuth
+from starlette.requests import Request
 
 from app.core.config import Settings, get_settings, resolve_backend_path
+
+
+@dataclass(frozen=True)
+class GoogleIdentity:
+    subject: str
+    email: str
+    display_name: str
+    avatar_url: str | None
+
+
+async def authorized_google_identity(
+    request: Request,
+    oauth: OAuth | None = None,
+) -> GoogleIdentity | None:
+    """Exchange one OIDC callback and return only the identity claims Penta uses."""
+    oauth = oauth or get_oauth()
+    token = await oauth.google.authorize_access_token(request)
+    user_info = token.get("userinfo")
+    if not user_info:
+        user_info = await oauth.google.userinfo(token=token)
+    subject = user_info.get("sub")
+    email = user_info.get("email")
+    if (
+        not subject
+        or not email
+        or user_info.get("email_verified") not in (True, "true")
+    ):
+        return None
+    return GoogleIdentity(
+        subject=str(subject),
+        email=str(email),
+        display_name=str(user_info.get("name") or email),
+        avatar_url=(str(user_info["picture"]) if user_info.get("picture") else None),
+    )
 
 
 def load_google_client_config(settings: Settings) -> dict[str, str]:
@@ -47,4 +83,3 @@ def get_oauth() -> OAuth:
         client_kwargs={"scope": settings.google_oauth_scopes},
     )
     return oauth
-

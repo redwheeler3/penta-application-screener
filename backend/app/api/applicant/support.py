@@ -138,6 +138,7 @@ class _ClaimedApplicantLink:
     previous_email: str | None = None
     reconciliation_draft: ApplicantDraft | None = None
     state: str = "valid"
+    google_disconnected: bool = False
 
 
 def _claim_link_target(db: Session, link: MagicLinkToken) -> _ClaimedApplicantLink:
@@ -196,13 +197,19 @@ def _claim_email_change(db: Session, link: MagicLinkToken) -> _ClaimedApplicantL
         return _ClaimedApplicantLink(application, state="email_in_use")
 
     old_email = application.primary_email
+    google_disconnected = application.google_subject is not None
     answers = _stored_answers(application)
     if answers is not None:
         updated_applicant = answers.applicant.model_copy(update={"email": link.email})
         updated_answers = answers.model_copy(update={"applicant": updated_applicant})
         save_working_copy(application, updated_answers, saved_at=datetime.now(UTC))
     application.primary_email = link.email
-    return _ClaimedApplicantLink(application, previous_email=old_email)
+    application.google_subject = None
+    return _ClaimedApplicantLink(
+        application,
+        previous_email=old_email,
+        google_disconnected=google_disconnected,
+    )
 
 
 def _link_targets_other_application(

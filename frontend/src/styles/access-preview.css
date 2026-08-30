@@ -135,7 +135,7 @@
 }
 
 .access-preview-card.is-committee .login-panel {
-  width: min(100%, 480px);
+  width: min(100%, 620px);
   margin: 0;
   box-sizing: border-box;
 }

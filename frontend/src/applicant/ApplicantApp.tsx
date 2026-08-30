@@ -38,8 +38,11 @@ import {
   type DraftConfirmation,
   DraftActionConfirmation,
   PersistenceActionStatus,
-  PrivateChangesNotice,
 } from "./ApplicantReview";
+import {
+  applicantGoogleSignInUrl,
+  takeApplicantGoogleAccessResult,
+} from "./api";
 import {
   hasDraftContent,
   remembersDevice,
@@ -62,6 +65,7 @@ export function ApplicantApp() {
   const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
   const [draftConfirmation, setDraftConfirmation] = useState<DraftConfirmation | null>(null);
   const [guestStarted, setGuestStarted] = useState(false);
+  const [googleAccessResult, setGoogleAccessResult] = useState(takeApplicantGoogleAccessResult);
   const formRef = useRef<HTMLFormElement>(null);
   const invalidTarget = useRef<HTMLElement | null>(null);
   const openingsRef = useRef<HTMLElement | null>(null);
@@ -214,6 +218,7 @@ export function ApplicantApp() {
 
   async function signOut(): Promise<void> {
     if (!(await persistence.signOut())) return;
+    setGoogleAccessResult(null);
     resetApplicantStateAfterExit();
   }
 
@@ -281,12 +286,30 @@ export function ApplicantApp() {
           ) : null}
         </div>
 
+        {persistence.authenticated && googleAccessResult === "session_conflict" ? (
+          <div className="application-session-conflict" role="alert">
+            <div>
+              <strong>Your current application is still open</strong>
+              <span>Sign out before continuing with a different Google account.</span>
+            </div>
+            <button className="applicant-secondary-button compact" type="button" onClick={() => void signOut()}>
+              Sign out
+            </button>
+          </div>
+        ) : null}
+
         {persistence.phase === "withdrawn" ? (
           <ApplicationWithdrawn />
         ) : persistence.phase === "session_expired" ? (
-          <ApplicationSessionExpired onEmail={() => void persistence.emailSessionAccessLink()} />
+          <ApplicationSessionExpired
+            googleSignInUrl={applicantGoogleSignInUrl(rememberDevice)}
+            rememberDevice={rememberDevice}
+            onRememberDeviceChange={changeRememberDevice}
+            onEmail={() => void persistence.emailSessionAccessLink()}
+          />
         ) : persistence.phase === "submitted" ? (
           <ApplicationSubmitted
+            authenticated={persistence.authenticated}
             openings={persistence.openings.filter((opening) =>
               persistence.openingIds.includes(opening.id)
             )}
@@ -336,6 +359,10 @@ export function ApplicantApp() {
           <ApplicationEntry
             allowGuest={hasOpenOpening}
             busy={persistence.busy}
+            googleError={googleAccessResult}
+            googleSignInUrl={applicantGoogleSignInUrl(rememberDevice)}
+            rememberDevice={rememberDevice}
+            onRememberDeviceChange={changeRememberDevice}
             onContinueGuest={() => setGuestStarted(true)}
             onEmailLink={persistence.requestEntryLink}
           />
@@ -347,7 +374,6 @@ export function ApplicantApp() {
             declarationAccepted={declarationAccepted}
             persistencePhase={persistence.phase}
             persistenceMessage={persistence.message}
-            authenticated={persistence.authenticated}
             onRetry={() => void persistence.resendCurrentIntent()}
             onReload={() => void persistence.reloadLatestApplication()}
             onDeclarationChange={setDeclarationAccepted}
@@ -367,7 +393,6 @@ export function ApplicantApp() {
             onInvalid={revealInvalidField}
           >
             <Introduction />
-            {persistence.hasUnsubmittedChanges ? <PrivateChangesNotice /> : null}
             <OpeningSelection
               sectionRef={openingsRef}
               openings={persistence.openings}
@@ -387,6 +412,7 @@ export function ApplicantApp() {
               pendingEmailChange={persistence.pendingEmailChange}
               emailChangeStatus={persistence.emailChangeStatus}
               emailChangeMessage={persistence.emailChangeMessage}
+              googleDisconnectedByEmailChange={persistence.googleDisconnectedByEmailChange}
               onOpenEmailChange={() => {
                 persistence.clearEmailChangeFeedback();
                 setEmailChangeOpen(true);

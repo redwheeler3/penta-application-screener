@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode, type SyntheticEvent } from "react"
 
 import { request } from "../api/client";
 import { APPLICATION_ACCESS_EMAIL_MESSAGE } from "../applicant/accessMessages";
+import { EmailChangeField } from "../applicant/ApplicantEmailFields";
 import type { PendingCopy } from "../applicant/applicantPersistence";
 import {
   AccessLinkDecision,
@@ -200,10 +201,13 @@ function ApplicantAccessPreviews() {
   return (
     <div className="access-preview-grid">
       <PreviewCard title="Applications open" description="A new or returning applicant arrives while guest access is available.">
-        <ApplicationEntry allowGuest busy={false} onContinueGuest={noAction} onEmailLink={emailLinkAccepted} />
+        <ApplicationEntry allowGuest busy={false} googleError={null} googleSignInUrl="#" rememberDevice={false} onRememberDeviceChange={noAction} onContinueGuest={noAction} onEmailLink={emailLinkAccepted} />
       </PreviewCard>
       <PreviewCard title="Applications closed" description="Only an existing applicant may request access.">
-        <ApplicationEntry allowGuest={false} busy={false} onContinueGuest={noAction} onEmailLink={emailLinkAccepted} />
+        <ApplicationEntry allowGuest={false} busy={false} googleError={null} googleSignInUrl="#" rememberDevice={false} onRememberDeviceChange={noAction} onContinueGuest={noAction} onEmailLink={emailLinkAccepted} />
+      </PreviewCard>
+      <PreviewCard title="Google sign-in unavailable" description="The Google identity was refused without hiding email or guest access.">
+        <ApplicationEntry allowGuest busy={false} googleError="identity_conflict" googleSignInUrl="#" rememberDevice={false} onRememberDeviceChange={noAction} onContinueGuest={noAction} onEmailLink={emailLinkAccepted} />
       </PreviewCard>
       <PreviewCard title="Applications unavailable" description="No opening currently accepts applications or changes.">
         <ApplicationsUnavailable />
@@ -212,7 +216,7 @@ function ApplicantAccessPreviews() {
         <ApplicationLoading />
       </PreviewCard>
       <PreviewCard title="Session expired" description="The applicant session reached its inactivity or absolute limit.">
-        <ApplicationSessionExpired onEmail={noAction} />
+        <ApplicationSessionExpired googleSignInUrl="#" rememberDevice={false} onRememberDeviceChange={noAction} onEmail={noAction} />
       </PreviewCard>
       <PreviewCard title="Access link ready" description="A valid applicant link is opened with no conflicting session.">
         <AccessLinkReady email="applicant@example.test" applicationEmail={null} purpose="applicant_access" onOpen={noAction} />
@@ -225,6 +229,9 @@ function ApplicantAccessPreviews() {
       </PreviewCard>
       <PreviewCard title="Email-change confirmation sent" description="The new address must open its confirmation link.">
         <AccessLinkSent purpose="email_change" message="A confirmation link is on its way to new-address@example.test." />
+      </PreviewCard>
+      <PreviewCard title="Email changed, Google disconnected" description="The confirmed address replaced the Google-linked email.">
+        <EmailChangeField currentEmail="new-address@example.test" pendingEmail={null} status="confirmed" message="" googleDisconnected onRequest={noAction} onCancelPending={noAction} onClose={noAction} />
       </PreviewCard>
       <PreviewCard title="Different applicant, valid link" description="Another applicant is signed in when an application link is opened.">
         <AccessLinkDecision conflict={applicantConflict(true)} onKeepCurrent={noAction} onOpenLinked={noAction} onEmailNew={noAction} />
@@ -269,8 +276,11 @@ function ApplicantAccessPreviews() {
 function ApplicantResultPreviews() {
   return (
     <div className="access-preview-grid">
-      <PreviewCard title="Application submitted" description="The application was submitted.">
-        <ApplicationSubmitted openings={previewOpenings()} />
+      <PreviewCard title="Application submitted while signed in" description="The signed-in applicant remains able to return directly.">
+        <ApplicationSubmitted authenticated openings={previewOpenings()} />
+      </PreviewCard>
+      <PreviewCard title="Application submitted as a guest" description="The guest receives a private return link by email.">
+        <ApplicationSubmitted authenticated={false} openings={previewOpenings()} />
       </PreviewCard>
       <PreviewCard title="Application withdrawn" description="The application was removed from consideration and the applicant was signed out.">
         <ApplicationWithdrawn />
@@ -286,7 +296,7 @@ function CommitteeAccessPreviews() {
       <CommitteePreview title="Google only" description="Email sign-in is hidden when delivery is not configured." emailSignInEnabled={false} />
       <CommitteePreview title="Checking Google session" description="The existing browser session is being loaded." isLoadingUser />
       <CommitteePreview title="Checking sign-in link" description="A committee sign-in link is being checked." signInState="exchanging" />
-      <CommitteePreview title="Sending sign-in link" description="A committee sign-in request is in progress." signInState="requesting" />
+      <CommitteePreview title="Sending sign-in link" description="A committee sign-in request is in progress." signInState="requesting" initialEmail="member@example.test" />
       <CommitteePreview title="Check your email" description="A committee member has requested a sign-in link." signInState="emailSent" linkedEmail="member@example.test" />
       <CommitteePreview title="Expired committee link" description="The committee member can request a new sign-in link." signInState="staleLink" linkedEmail="member@example.test" />
       <CommitteePreview title="Different member, valid link" description="The browser and link belong to different committee members." linkConflict={committeeConflict(true)} />
@@ -311,6 +321,7 @@ function CommitteePreview(props: {
   signInState?: SignInState;
   linkConflict?: CommitteeLinkConflict | null;
   linkedEmail?: string | null;
+  initialEmail?: string;
 }) {
   return (
     <PreviewCard title={props.title} description={props.description} committee>
@@ -321,6 +332,7 @@ function CommitteePreview(props: {
         signInState={props.signInState ?? "idle"}
         linkConflict={props.linkConflict ?? null}
         linkedEmail={props.linkedEmail ?? null}
+        initialEmail={props.initialEmail}
         onRequestLink={noAsyncAction}
         onKeepCurrent={noAction}
         onOpenLinked={noAsyncAction}

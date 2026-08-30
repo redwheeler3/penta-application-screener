@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_oauth_client_secrets_file: str = ""
     google_redirect_uri: str = "http://localhost:8000/auth/google/callback"
+    google_applicant_redirect_uri: str = (
+        "http://localhost:8000/applicant/auth/google/callback"
+    )
     # Eval evidence may be exported only from runs explicitly stamped synthetic.
     # This is false by default so a production or copied database fails closed.
     application_data_is_synthetic: bool = False

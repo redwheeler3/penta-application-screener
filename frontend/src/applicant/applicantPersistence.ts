@@ -31,6 +31,7 @@ export type PersistencePhase =
 export type ApplicationResponse = {
   applicationId: number;
   primaryEmail: string;
+  googleSignInLinked: boolean;
   pendingEmailChange: string | null;
   answers: WorkingApplicationAnswers | null;
   workingSavedAt: string | null;
@@ -69,6 +70,7 @@ export type AccessLinkBody = {
   applicationId: number | null;
   pendingIntent: DraftIntent | null;
   pendingCopy: PendingCopy | null;
+  googleDisconnected: boolean;
 };
 
 export function linkBody(response: Response): Promise<AccessLinkBody> {

@@ -268,8 +268,8 @@ h1 {
 .login-panel {
   display: grid;
   gap: 14px;
-  max-width: 480px;
-  padding: 28px;
+  max-width: 620px;
+  padding: 32px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
@@ -284,6 +284,26 @@ h1 {
 .login-form {
   display: grid;
   gap: 14px;
+}
+
+.committee-login-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.login-panel > .google-sign-in-button,
+.login-panel > .committee-login-form,
+.login-panel > .login-divider,
+.login-panel > .remember-device-choice {
+  width: min(100%, 520px);
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.committee-login-form .secondary-button {
+  height: 44px;
+  white-space: nowrap;
 }
 
 .login-form label {
@@ -341,8 +361,45 @@ h1 {
   min-height: 42px;
 }
 
-.login-google-button {
+.google-sign-in-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
   min-height: 42px;
+  padding: 0 40px;
+  color: #1f1f1f;
+  background: #fff;
+  border: 1px solid #747775;
+  border-radius: 4px;
+  font-family: Roboto, Arial, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  text-decoration: none;
+  transition: background-color 120ms, border-color 120ms, box-shadow 120ms;
+}
+
+.google-sign-in-button svg {
+  position: absolute;
+  left: 12px;
+  flex: 0 0 auto;
+}
+
+.google-sign-in-button:hover {
+  background: #f8faff;
+  border-color: #5f6368;
+  box-shadow: 0 1px 2px rgb(60 64 67 / 18%);
+}
+
+.google-sign-in-button:focus-visible {
+  outline: 3px solid rgb(66 133 244 / 28%);
+  outline-offset: 2px;
+}
+
+.google-sign-in-button:active {
+  background: #eef3fe;
 }
 
 .login-divider {
@@ -421,4 +478,10 @@ h1 {
 
 .login-choice-actions > button {
   flex: 1 1 220px;
+}
+
+@media (max-width: 620px) {
+  .login-panel { padding: 26px 22px; }
+  .committee-login-form { grid-template-columns: 1fr; }
+  .committee-login-form .secondary-button { width: 100%; }
 }

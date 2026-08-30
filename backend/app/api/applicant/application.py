@@ -129,6 +129,7 @@ def get_applicant_application(
     return ApplicantApplicationResponse(
         application_id=application.id,
         primary_email=application.primary_email,
+        google_sign_in_linked=application.google_subject is not None,
         pending_email_change=_pending_email_change(db, application.id),
         answers=_stored_answers(application),
         working_saved_at=(
@@ -295,6 +296,7 @@ def withdraw_applicant_application(
                 participation.withdrawn_at = now
 
     application.withdrawn_at = now
+    application.google_subject = None
     application.working_answers = dict(application.raw_row)
     application.working_content_hash = application.raw_row_hash
     application.working_saved_at = now

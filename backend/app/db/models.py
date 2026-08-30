@@ -273,6 +273,7 @@ class Application(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    google_subject: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
     primary_email: Mapped[str] = mapped_column(String(320), nullable=False)
     applicant_name: Mapped[str | None] = mapped_column(String(255))
     co_applicant_name: Mapped[str | None] = mapped_column(String(255))

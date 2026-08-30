@@ -211,6 +211,10 @@ async def test_withdrawal_removes_every_opening_and_revokes_applicant_access() -
                 "baseRevision": restored.json()["workingRevision"],
             },
         )
+        application = db.scalar(select(Application))
+        assert application is not None
+        application.google_subject = "linked-google-subject"
+        db.commit()
         messages_before_withdrawal = len(sender.messages)
         withdrawn = await client.post("/applicant/application/withdraw")
         after_delete = await client.get("/applicant/application")
@@ -227,6 +231,7 @@ async def test_withdrawal_removes_every_opening_and_revokes_applicant_access() -
     assert after_delete.status_code == 401
     assert application is not None
     assert application.withdrawn_at is not None
+    assert application.google_subject is None
     assert application.retention_due_on == one_year_after(opening.move_in_date)
     assert participation is not None
     assert participation.withdrawn_at is not None

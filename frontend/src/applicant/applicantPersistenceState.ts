@@ -31,6 +31,8 @@ export type ApplicantPersistenceState = {
   reviewAfterAccess: boolean;
   savedAnswers: string | null;
   primaryEmail: string | null;
+  googleSignInLinked: boolean;
+  googleDisconnectedByEmailChange: boolean;
   pendingEmailChange: string | null;
   emailChangeStatus: EmailChangeStatus;
   emailChangeMessage: string;
@@ -76,6 +78,8 @@ export const INITIAL_APPLICANT_PERSISTENCE_STATE: ApplicantPersistenceState = {
   reviewAfterAccess: false,
   savedAnswers: null,
   primaryEmail: null,
+  googleSignInLinked: false,
+  googleDisconnectedByEmailChange: false,
   pendingEmailChange: null,
   emailChangeStatus: "idle",
   emailChangeMessage: "",

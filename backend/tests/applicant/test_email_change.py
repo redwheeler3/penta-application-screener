@@ -21,6 +21,10 @@ async def test_verified_email_change_updates_identity_and_private_answers() -> N
             "/applicant/access-links/open",
             json={"token": link_from_email(sender), "switchCurrent": False},
         )
+        application = db.scalar(select(Application))
+        assert application is not None
+        application.google_subject = "linked-google-subject"
+        db.commit()
         requested = await client.post(
             "/applicant/application/email-change",
             json={"newEmail": "new-address@example.com"},
@@ -42,9 +46,11 @@ async def test_verified_email_change_updates_identity_and_private_answers() -> N
     assert inspected.json()["switchRequired"] is False
     assert inspected.json()["applicationEmail"] == "avery@example.com"
     assert opened.json()["state"] == "valid"
+    assert opened.json()["googleDisconnected"] is True
     assert stored.json()["primaryEmail"] == "new-address@example.com"
     assert stored.json()["answers"]["applicant"]["email"] == "new-address@example.com"
     assert application.raw_row == {}
+    assert application.google_subject is None
     assert sender.messages[-2].kind == "application_email_change_confirmation"
     assert sender.messages[-2].to == ("new-address@example.com",)
     assert "will not change unless you confirm it" in sender.messages[-2].text_body

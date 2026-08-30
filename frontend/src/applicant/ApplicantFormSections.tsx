@@ -137,6 +137,7 @@ export function HouseholdSection(props: {
   pendingEmailChange: string | null;
   emailChangeStatus: "idle" | "sending" | "sent" | "confirmed" | "error";
   emailChangeMessage: string;
+  googleDisconnectedByEmailChange: boolean;
   onOpenEmailChange: () => void;
   onCloseEmailChange: () => void;
   onRequestEmailChange: (email: string) => void;
@@ -170,6 +171,7 @@ export function HouseholdSection(props: {
                 pendingEmail={props.pendingEmailChange}
                 status={props.emailChangeStatus}
                 message={props.emailChangeMessage}
+                googleDisconnected={props.googleDisconnectedByEmailChange}
                 onRequest={props.onRequestEmailChange}
                 onCancelPending={props.onCancelEmailChange}
                 onClose={props.onCloseEmailChange}

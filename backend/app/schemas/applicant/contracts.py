@@ -77,6 +77,7 @@ class AccessLinkResponse(ResponseModel):
     application_id: int | None = None
     pending_intent: ApplicantDraftIntent | None = None
     pending_copy: PendingCopyOut | None = None
+    google_disconnected: bool = False
 
 
 class RegenerateAccessLinkResponse(ResponseModel):
@@ -99,6 +100,7 @@ class ApplicantOpeningOut(OpeningDetailsOut):
 class ApplicantApplicationResponse(ResponseModel):
     application_id: int
     primary_email: str
+    google_sign_in_linked: bool
     pending_email_change: str | None = None
     answers: WorkingApplicationAnswers | None = None
     working_saved_at: datetime | None = None

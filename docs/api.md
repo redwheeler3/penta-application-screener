@@ -21,6 +21,8 @@ configuration, committee defaults, Observability, and Evals require an admin.
 | --- | --- | --- | --- |
 | GET | `/auth/google/login` | Start the Google OAuth flow (redirects to Google). | Public |
 | GET | `/auth/google/callback` | Verify Google identity and issue a committee browser session. | Public |
+| GET | `/applicant/auth/google/login` | Start applicant Google sign-in. | Public |
+| GET | `/applicant/auth/google/callback` | Bind or resolve the verified Google identity and issue an applicant browser session. | Public |
 | POST | `/auth/magic-link` | Request an allowlist-gated committee sign-in email. | Public |
 | POST | `/auth/magic-link/consume` | Consume a committee link and issue the same browser session used by Google. | Public |
 | POST | `/auth/magic-link/inspect` | Inspect a committee link and identify a conflicting active committee session without consuming the credential. | Public |

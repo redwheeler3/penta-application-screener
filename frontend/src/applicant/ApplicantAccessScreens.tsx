@@ -2,7 +2,9 @@ import { CalendarDays, LoaderCircle, Mail, ShieldCheck } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
 import { TECH_SUPPORT_EMAIL, TECH_SUPPORT_ERROR_MESSAGE } from "../support";
+import { GoogleSignInButton } from "../components/auth/GoogleSignInButton";
 import type { ServiceRecoveryStage } from "../serviceRecovery";
+import type { ApplicantGoogleAccessResult } from "./api";
 import type { PendingCopy } from "./applicantPersistence";
 import { pendingCopyDifferences } from "./pendingCopyDiff";
 import type { ApplicantOpening } from "./types";
@@ -11,6 +13,10 @@ import { EMAIL_INVALID_MESSAGE, EMAIL_PATTERN } from "./validation";
 export function ApplicationEntry(props: {
   allowGuest: boolean;
   busy: boolean;
+  googleError: ApplicantGoogleAccessResult | null;
+  googleSignInUrl: string;
+  rememberDevice: boolean;
+  onRememberDeviceChange: (remember: boolean) => void;
   onContinueGuest: () => void;
   onEmailLink: (email: string) => Promise<boolean>;
 }) {
@@ -31,11 +37,36 @@ export function ApplicationEntry(props: {
     <section className="application-entry">
       <ShieldCheck size={30} />
       <h2>{props.allowGuest ? "Start or continue an application" : "Continue your application"}</h2>
-      <p>
-        {props.allowGuest
-          ? "Enter your email address. We’ll send you a link to start an application or open one you saved."
-          : "If you applied before the deadline, enter your email address to continue."}
-      </p>
+      <p>{props.allowGuest
+        ? "Choose how you’d like to start a new application or open one you saved."
+        : "Use the Google account or email address connected to your application."}</p>
+      {!props.allowGuest ? (
+        <div className="application-entry-status" role="status">
+          <strong>Applications are closed</strong>
+          <span>
+            New applications aren’t being accepted right now. If you applied before the deadline,
+            you can still review, update, or withdraw your application.
+          </span>
+          <span>
+            Looking for a future opening? Join the{" "}
+            <a href="https://www.pentacoop.com/apply.html">vacancy notification list</a>
+            {" "}to receive one email when a matching home becomes available.
+          </span>
+        </div>
+      ) : null}
+      {props.googleError ? <ApplicantGoogleError result={props.googleError} /> : null}
+      <div className="application-google-access">
+        <label className="remember-device-choice">
+          <input
+            type="checkbox"
+            checked={props.rememberDevice}
+            onChange={(event) => props.onRememberDeviceChange(event.target.checked)}
+          />
+          <span>Keep me signed in on this device</span>
+        </label>
+        <GoogleSignInButton href={props.googleSignInUrl} />
+      </div>
+      <div className="application-entry-divider"><span>or use email</span></div>
       <form onSubmit={sendLink} noValidate>
         <label className="applicant-field">
           <span>Email address</span>
@@ -51,26 +82,23 @@ export function ApplicationEntry(props: {
           />
           {validationMessage ? <small className="field-error">{validationMessage}</small> : null}
         </label>
-        <button className="applicant-primary-button" type="submit" disabled={props.busy}>
-          <Mail size={17} /> Email me a link
+        <button className="applicant-secondary-button applicant-access-email-button" type="submit" disabled={props.busy}>
+          {props.busy ? (
+            <><LoaderCircle className="sign-in-retry-spinner" size={17} /> Sending…</>
+          ) : (
+            <><Mail size={17} /> Send sign-in link</>
+          )}
         </button>
       </form>
       {props.allowGuest ? (
         <>
-          <div className="application-entry-divider"><span>or</span></div>
-          <button className="applicant-secondary-button" type="button" onClick={props.onContinueGuest}>
+          <div className="application-entry-divider application-entry-guest-divider"><span>or</span></div>
+          <button className="applicant-tertiary-button" type="button" onClick={props.onContinueGuest}>
             Continue as a guest
           </button>
           <small>You can save your application and receive a link to open it later.</small>
         </>
-      ) : (
-        <div className="application-entry-vacancies">
-          <small>New applications aren’t being accepted right now.</small>
-          <a href="https://www.pentacoop.com/apply.html">
-            Sign up for vacancy notifications
-          </a>
-        </div>
-      )}
+      ) : null}
     </section>
   );
 }
@@ -185,17 +213,43 @@ export function ApplicationLoadRecovery(props: { stage: ServiceRecoveryStage }) 
   );
 }
 
-export function ApplicationSessionExpired(props: { onEmail: () => void }) {
+export function ApplicationSessionExpired(props: {
+  googleSignInUrl: string;
+  rememberDevice: boolean;
+  onRememberDeviceChange: (remember: boolean) => void;
+  onEmail: () => void;
+}) {
   return (
     <section className="existing-application-choice">
       <ShieldCheck size={28} />
       <h2>Sign in to continue</h2>
-      <p>For your security, you’ve been signed out. We can email you a new sign-in link.</p>
-      <button className="applicant-primary-button" type="button" onClick={props.onEmail}>
-        Email me a sign-in link
+      <p>For your security, your application session has ended.</p>
+      <div className="application-google-access session-expired-access">
+        <label className="remember-device-choice">
+          <input
+            type="checkbox"
+            checked={props.rememberDevice}
+            onChange={(event) => props.onRememberDeviceChange(event.target.checked)}
+          />
+          <span>Keep me signed in on this device</span>
+        </label>
+        <GoogleSignInButton href={props.googleSignInUrl} />
+      </div>
+      <div className="application-entry-divider"><span>or use email</span></div>
+      <button className="applicant-secondary-button applicant-access-email-button" type="button" onClick={props.onEmail}>
+        <Mail size={17} /> Send sign-in link
       </button>
     </section>
   );
+}
+
+function ApplicantGoogleError(props: { result: ApplicantGoogleAccessResult }) {
+  const message = props.result === "applications_closed"
+    ? "That Google account doesn’t have an application it can open right now."
+    : props.result === "session_conflict"
+      ? "Another applicant is already signed in on this browser. Sign out before using a different Google account."
+      : "We couldn’t use that Google account. Try another Google account or use email instead.";
+  return <p className="application-entry-error" role="alert">{message}</p>;
 }
 
 export function AccessLinkReady(props: {

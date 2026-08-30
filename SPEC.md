@@ -120,6 +120,10 @@ server-side pending draft and emails an access link. The save accepts an incompl
 long as the primary email is valid. It does not enter a separate verification or polling state,
 and the form remains usable after the save. Submission is always a deliberate action after
 reviewing the completed application.
+The long form does not carry a private-draft banner that gets lost among its sections. The final
+review instead leads with **This is still a private draft**, explains that nothing has reached the
+membership committee, and tells the applicant to review and then submit. This warning is the same
+for Google, email, and guest access because authentication does not publish an application.
 For an authenticated applicant, the corresponding **Save and review** action first persists the
 private working copy and opens the review only after that save succeeds. A signed-out **Review
 application** action validates and previews the in-page answers without creating a server record or
@@ -730,53 +734,49 @@ Start or continue an application
 
 ---------------- or use email ----------------
 Email address
-[                                         ]
-[ Email me a link                         ]  secondary path
+[                             ][ Send sign-in link ]  secondary path
 
 -------------------- or ----------------------
 [ Continue as a guest                     ]  tertiary path
 You can save your application and receive a link to open it later.
 ```
 
-Google is first and full-width. The button is rendered by the current Google Identity Services
-library rather than recreated in Penta markup; Google's renderer is its recommended way to stay
-within the current branding and accessibility contract. Use a standard large outline button with
-`text: "continue_with"`, rectangular shape, left-aligned logo, and the panel's available width up
-to Google's 400 px maximum. Penta may size and position its container but does not restyle the
-button's logo, font, colours, padding, hover, or focus states. Email is a normal secondary form
-action. Guest access is a quieter tertiary action but remains a real button with a full-width mobile
-target, visible focus treatment, and no wording that implies a lesser application. When no new
-application may be started, the guest divider, button, and note disappear; Google and email remain
-available to eligible returning applicants.
+Google is first and full-width. A shared Penta component follows Google's current light outlined
+button treatment, including the official multicolour mark, approved **Continue with Google**
+wording, padding, type scale, border, and focus treatment, while preserving the existing
+server-side OIDC flow. Email is a normal secondary action: its button sits beside the address field
+on desktop and stacks below it on narrow screens. Guest access is a quieter tertiary action but
+remains a real full-width button with visible focus treatment and no wording that implies a lesser
+application. When no new application may be started, the guest divider, button, and note disappear;
+Google and email remain available to eligible returning applicants.
+
+The closed entry uses **Continue your application** as its heading and places a warm status panel
+before the sign-in controls. The panel says that new applications are not being accepted, explains
+that an existing applicant may still review, update, or withdraw, and links the one-email vacancy
+notification list in that same explanation. The deadline status is never relegated beneath the
+authentication choices.
 
 The remembered-device checkbox beside Google applies to the Google action. Email-link visitors
 continue to choose **Keep me signed in on this device** on the device that opens the link, before
 the link is consumed. This preserves the current shared-device guarantee when a link is requested
 on one device and opened on another. Google One Tap, automatic sign-in, and silent sign-in are out
-of scope: `auto_prompt` and `auto_select` remain disabled, choosing the rendered Google button must
-be deliberate, and the applicant must be able to choose the intended Google account on a shared
-browser. If the Google library is blocked or fails to load, email and guest access remain usable;
-the page never waits on Google before rendering those paths.
+of scope: choosing the Google button must be deliberate, and the applicant must be able to choose
+the intended Google account on a shared browser. Email and guest access render independently and
+remain usable if Google authentication is unavailable.
 
-The applicant surface owns a small wrapper around Google's rendered button so configuration,
-loading/failure behavior, responsive sizing, and remembered-device handoff stay in one place. The
-committee panel remains the visual and interaction reference—Google first, email second—but M23
-does not migrate its already-proven authentication transport merely to share a component. Applicant
-and committee credential endpoints, sessions, authorization, conflict handling, and page copy
-remain separate domains.
+The applicant and committee surfaces use the same branded Google-button component and the same
+620 px access-panel envelope. Both place **Send sign-in link**, with an envelope icon, beside the
+email field on desktop and stack it on mobile. Their callback endpoints, sessions, authorization,
+conflict handling, and page copy remain separate domains.
 
 ### Identity and linking invariant
 
-An accessible current application may store one nullable, unique Google `sub`. The Google Identity
-Services authentication API returns an ID token to a nonce-bound credential flow; the frontend
-passes that credential and the remembered-device choice to the appropriate same-origin endpoint,
-and the backend validates signature, issuer, audience, expiry, nonce, `sub`, email, and
-`email_verified` before resolving an identity. The raw ID token is never logged or persisted. The
-application uses only `sub`, email, and `email_verified`; it stores no Google access token, refresh
-token, name, avatar, or profile data and never invokes Google's authorization API or data
-scopes. Applicant and committee credential endpoints, transient nonce state, return destinations,
-and host-only browser-session cookies remain separate even when one person uses the same Google
-account in both roles.
+An accessible current application may store one nullable, unique Google `sub`. The existing
+server-side OIDC authorization-code flow validates OAuth state and exchanges the callback before
+using `sub`, email, and `email_verified` to resolve an identity. It stores no Google access token,
+refresh token, name, avatar, or profile data and requests no Google data scope. Applicant and
+committee callback endpoints, transient OAuth state, return destinations, and host-only browser-
+session cookies remain separate even when one person uses the same Google account in both roles.
 
 The normalized verified Google email and the application's normalized primary email must always be
 the same when a Google identity is linked or used. Applicant access deliberately uses the current
@@ -1437,7 +1437,7 @@ matching vacancy notice.
 consent evidence, and application-withdrawal semantics were deployed together before production
 signups moved to the built-in service.
 
-### Applicant Google Sign-In (M23) — planned
+### Applicant Google Sign-In (M23) — implementation complete; production activation pending
 
 **Goal:** add the optional Google-first applicant access described in
 [Applicant Google Sign-In](#applicant-google-sign-in-m23-target) without creating applicant
@@ -1445,21 +1445,19 @@ accounts, weakening email ownership, or disturbing the guest and email-link path
 
 **Implementation stages:**
 
-1. **Google-rendered-button spike and applicant primitive** — exercise the current Google Identity
-   Services rendered button against a local nonce-bound credential endpoint, including FedCM,
-   account choice, cancellation, remembered-device handoff, CSP, library-load failure, and the
-   responsive 400 px width limit. Pin the supported standard/large/outline/`continue_with` options.
-   Once proven, use the wrapper on the applicant entry panel while keeping email and guest controls
-   independent of the Google library. Preserve the working committee authentication transport.
+1. **Shared Google button and access layout** — apply Google's current light outlined branding to
+   one shared component while preserving the existing server-side OIDC transport. Use it first in
+   both 620 px applicant and committee panels; keep the email field and link button side by side on
+   desktop and stacked on mobile. Keep applicant guest controls independent of Google availability.
 2. **Applicant identity binding** — add a nullable unique Google subject to the active application
    identity. Implement one resolver that checks subject, `email_verified`, and normalized email
    together, preserves the committee-style collision guards, claims pending drafts, creates a blank
    private application only while applications are open, and always issues the existing applicant
    `BrowserSession`.
 3. **Applicant journeys and conflicts** — make Google the first entry action, email secondary, and
-   guest tertiary. Preserve local guest answers across the Google round trip, reuse saved-versus-
-   guest reconciliation, require an explicit choice when another applicant is already signed in,
-   and provide useful Google-denied, cancelled, unavailable, closed-cycle, and Tech Support states.
+   guest tertiary; reuse saved-draft claiming and saved-versus-guest reconciliation; preserve an
+   existing session when a different Google identity returns; and provide useful Google-denied,
+   unavailable, closed-cycle, session-conflict, and Tech Support states.
 4. **Credential lifecycle** — atomically clear the Google subject when a primary-email change is
    confirmed or an application is withdrawn; leave it intact while an email change is merely
    pending or cancelled. Revoke affected links and sessions through the existing identity lifecycle,
@@ -1476,9 +1474,9 @@ Google claim; or restoring any Google Forms/Sheets intake dependency.
 
 **Definition of done:**
 
-- The applicant entry panel uses Google's rendered standard **Continue with Google** button first,
+- The applicant entry panel uses the shared Google-branded **Continue with Google** button first,
   a secondary email-link form second, and a tertiary guest button third; blocking or failing the
-  Google library leaves the other two paths usable.
+  Google path leaves the other two paths usable. The committee panel uses the same button and width.
 - Any Google identity with `email_verified=true` and a normalized email matching an unlinked active
   application or draft attaches its stable `sub` and opens that same application. A new matching
   identity creates a private application only while new applications are open. Applicant and
@@ -1505,6 +1503,13 @@ Google claim; or restoring any Google Forms/Sheets intake dependency.
   denial, session, and remembered-device behavior; M23 does not migrate that proven auth flow.
 - Focused backend and frontend tests, the full backend suite, frontend build, additive migration,
   production-shaped upgrade, and synthetic browser verification all pass before release.
+
+The local implementation is complete. The applicant production and local callback URIs were added
+to the existing verified Google OAuth client on August 30, 2026; saving them did not change the
+project's verified-brand or data-access status. Production activation still requires deploying the
+new configuration and migration and exercising the real Google callback plus the applicant access
+gallery on the production host with synthetic identities. Until that gate is completed, M23 is not
+marked shipped.
 
 ### Reporting (M10 shipped) — ✅ closed, demand-driven from here
 

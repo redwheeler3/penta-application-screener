@@ -1,8 +1,8 @@
 # Google Cloud And OAuth Setup
 
-Google is an optional identity provider for committee members. Applicant intake and application
-data do not use Google APIs. Email magic links remain available independently when transactional
-email delivery is enabled.
+Google is an optional identity provider for committee members and applicants. It is identity-only:
+application data does not use Google APIs. Email magic links remain available independently when
+transactional email delivery is enabled, and applicants may still continue as guests.
 
 ## Google Cloud project
 
@@ -23,15 +23,22 @@ Local JavaScript origins:
 Local redirect URIs:
 
 - `http://localhost:8000/auth/google/callback`
+- `http://localhost:8000/applicant/auth/google/callback`
 - `http://127.0.0.1:8000/auth/google/callback`
+- `http://127.0.0.1:8000/applicant/auth/google/callback`
 
-Production:
+Production redirect URIs:
 
-- JavaScript origin: `https://screener.pentacoop.com`
-- Redirect URI: `https://screener.pentacoop.com/auth/google/callback`
+- `https://screener.pentacoop.com/auth/google/callback`
+- `https://applications.pentacoop.com/applicant/auth/google/callback`
+
+The current implementation uses the server-side authorization-code flow, so applicant access
+requires the applicant redirect URI but no additional authorized JavaScript origin.
 
 Use only the identity scopes `openid`, `email`, and `profile`. The backend verifies the returned
-identity and then applies the same committee allowlist used by email sign-in.
+identity. Committee access applies the same allowlist used by email sign-in. Applicant access
+requires the verified normalized Google email to match the application email and binds Google's
+stable subject to that application.
 
 ## Local configuration
 
@@ -41,6 +48,7 @@ Set the following in `backend/.env.local`:
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `GOOGLE_REDIRECT_URI`
+- `GOOGLE_APPLICANT_REDIRECT_URI`
 
 Alternatively, place Google's downloaded OAuth client JSON under the ignored
 `backend/secrets/` directory and set `GOOGLE_OAUTH_CLIENT_SECRETS_FILE` to its path. Do not commit

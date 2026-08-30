@@ -16,6 +16,9 @@ def test_local_applicant_links_open_the_applicant_surface() -> None:
     settings = Settings(_env_file=None)
 
     assert settings.applicant_frontend_url == "http://localhost:5173/?applicant"
+    assert settings.google_applicant_redirect_uri == (
+        "http://localhost:8000/applicant/auth/google/callback"
+    )
 
 
 def test_local_db_backups_default_on_for_dev() -> None:
