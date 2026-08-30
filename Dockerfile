@@ -8,18 +8,6 @@ WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-# Vite bakes VITE_* vars into the bundle AT BUILD TIME, so the Google Picker config must be
-# present here (not just at runtime). These come from fly.toml [build.args] (see there). They
-# are NOT secrets — the Picker API key is a browser key (safe to expose; restricted by referrer
-# + Picker-API in Google Cloud), and the client id / project number are public identifiers.
-# Passing them as ENV before the build makes import.meta.env.VITE_* resolve; absent, the Picker
-# shows "not configured" and sheet-linking is unavailable (M18).
-ARG VITE_GOOGLE_PICKER_API_KEY=""
-ARG VITE_GOOGLE_CLIENT_ID=""
-ARG VITE_GOOGLE_PROJECT_NUMBER=""
-ENV VITE_GOOGLE_PICKER_API_KEY=$VITE_GOOGLE_PICKER_API_KEY \
-    VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID \
-    VITE_GOOGLE_PROJECT_NUMBER=$VITE_GOOGLE_PROJECT_NUMBER
 RUN npm run build   # emits /frontend/dist
 
 # ---- Stage 2: the Python runtime --------------------------------------------------------

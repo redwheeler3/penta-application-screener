@@ -573,10 +573,10 @@ administrator merge operation.
 
 ### Intake data boundary
 
-The built-in form writes canonical application fields directly. Google column headings and
-spreadsheet rows cease to define the domain model. The submitted copy retains the exact answers
-needed by the committee and AI passes, while normalized values remain the deterministic screening
-input. Household photo links never enter AI prompts.
+The built-in form writes canonical application fields directly; provider-specific headings do not
+define the domain model. The submitted copy retains the exact answers needed by the committee and
+AI passes, while normalized values remain the deterministic screening input. Household photo links
+never enter AI prompts.
 
 The implementation must preserve the current privacy boundary: drafts and submitted applicant
 data are sensitive PII; they do not enter logs, source control, fixtures, or general operational
@@ -664,7 +664,7 @@ intentional no-verification tradeoff that lets a person update their preferences
 or following a confirmation email; preferences are never merged.
 
 Administrators have a vacancy-list report showing the total active subscriptions, counts for 1-,
-2-, and 3-bedroom preferences, and a monthly bar chart modeled on the existing spreadsheet report.
+2-, and 3-bedroom preferences, and a monthly bar chart grouped by current consent month.
 The size counts overlap because one subscription may request more than one size. The monthly chart
 groups active records by their current consent month, so its bars add up to the displayed active
 total. Routine reporting does not expose email addresses. A separate exact-email lookup shows when
@@ -1022,7 +1022,7 @@ Implementation defaults:
 - Clean changes over backward compatibility for internal APIs, local schemas, fixtures, and UI shapes; backward compatibility is added only when real users or real applicant data require it.
 - Relational tables for workflow data, JSON columns for raw rows, flexible payloads, AI outputs, and debug traces; the relational model stays portable to Postgres.
 
-**Milestones 1–20 are complete** and proven end-to-end against real models (screen → discover fact-aware dimensions → score the pool → rank with tier-list weighting → print a committee-ready PDF), now with per-member independent screening on a shared compute-once substrate, **hosted live at [screener.pentacoop.com](https://screener.pentacoop.com)** for the real committee. Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md). The latest milestones landed as: **17 (hosting / go-live on Fly.io — see [ADR 0012](docs/adr/0012-hosting-platform-m17.md))**, **18 (least-privilege identity-only Google auth)**, **19 (scale-to-zero recovery — health-aware Fly Machine watchdog)**, and **20 (provider-neutral AI routing plus the Luna/Terra bake-off — see [ADR 0013](docs/adr/0013-openai-model-selection.md) and [ADR 0014](docs/adr/0014-multi-provider-model-routing.md))**.
+**Milestones 1–22 are complete** and proven end-to-end against real models (screen → discover fact-aware dimensions → score the pool → rank with tier-list weighting → print a committee-ready PDF), now with first-party application intake, vacancy notifications, and per-member independent screening on a shared compute-once substrate, **hosted live at [screener.pentacoop.com](https://screener.pentacoop.com)** for the real committee. Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md).
 
 ## Milestones And Remaining Open Questions
 
@@ -1126,21 +1126,13 @@ access messages; a returning applicant may claim the existing record only by ver
 recorded primary email. Records with a missing, duplicated, or inaccessible address require
 administrator-mediated recovery and are never guessed or automatically combined.
 
-The first built-in cycle begins after applications have already closed in the Google Form. Cutover
-uses the guarded `scripts.create_historical_opening` migration command to create that historical
-3-bedroom opening: applications opened July 6, 2026 and closed July 31, 2026; the monthly housing
-charge is $1,226; and the move-in date is November 1, 2026. It then attaches every submitted,
-non-withdrawn application
-already in the database. Those records are the complete current Google Form pool and do not yet
-have opening participations or outcomes, so the migration does not use the ordinary application-
-universe query. It preserves existing submissions, creates one active participation per application
-using its submission timestamp, and refreshes retention from the opening's move-in date in one
-transaction. It does not calculate a vacancy audience, queue email, consume vacancy subscriptions,
-or create consent receipts. The opening is immediately closed: an administrator may record the
-selected household or no-household decision, the dashboard requires an unresolved decision at
+The retained pre-cutover applications participate in historical opening 1: a 3-bedroom opening
+that ran from July 6 through July 31, 2026, with a $1,226 monthly housing charge and November 1,
+2026 move-in date. The opening is closed, all 232 submitted non-withdrawn applications retain their
+original submission timestamps, and no vacancy notice was queued by the migration. An administrator
+may record the selected household or no-household decision; the dashboard requires that decision at
 move-in, and unsuccessful notices remain blocked until the opening is archived and its outcome is
-final. The command is implemented and verified in development; running it against production is a
-pending cutover operation, not part of ordinary opening creation.
+final.
 
 **Non-goals:** a general-purpose form builder; separate co-applicant access; simultaneous Google
 Form/Sheet and built-in intake; multiple applications per primary applicant; committee-visible
@@ -1258,8 +1250,8 @@ matching vacancy notice.
 - Every vacancy-list message uses the common SocketLabs permanent-unsubscribe footer. SocketLabs
   owns unsubscribe, hard-bounce, complaint, and durable suppression for all email from the shared
   grandfathered server; unsubscribing also blocks later application-access messages.
-- The production website uses the built-in form and the Google form/sheet and their operational
-  handling are removed after a count-verified migration.
+- The production website uses the built-in form; vacancy subscriptions have no external form,
+  spreadsheet, import, or synchronization dependency.
 
 **Production gate (completed August 29, 2026):** the reviewed notice, privacy copy, email footer,
 consent evidence, and application-withdrawal semantics were deployed together before production
