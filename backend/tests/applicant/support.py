@@ -99,6 +99,57 @@ def sample_answers(email: str = "avery@example.com", introduction: str = "Synthe
     }
 
 
+def legacy_answers() -> dict:
+    return {
+        "First name": "Avery",
+        "Last name": "Ng",
+        "Age": "36",
+        "Email address": "avery@example.com",
+        "Phone number (xxx-xxx-xxxx)": "604-555-0102",
+        "First name [2]": "Morgan",
+        "Last name [2]": "Lee",
+        "Age [2]": "34",
+        "Email address [2]": "morgan@example.com",
+        "Phone number (xxx-xxx-xxxx) [2]": "604-555-0103",
+        "Relationship to applicant": "Partner",
+        "First name [3]": "Casey",
+        "Last name [3]": "Ng",
+        "Age [3]": "8",
+        "Street address": "123 Synthetic Street",
+        "Street address 2": "Unit 4",
+        "City": "Vancouver",
+        "Province / State": "BC",
+        "Postal / Zip Code": "V6R 1A1",
+        "Country": "Canada",
+        "Have you lived at your current address for 2 years or more?": "No",
+        "Do you own real estate (land, house, condominium, etc.)?": "No",
+        "Current landlord name": "Current Reference",
+        "Current landlord email address": "current@example.com",
+        "Current landlord phone number (xxx-xxx-xxxx)": "604-555-0104",
+        "Previous landlord name": "Previous Reference",
+        "Previous landlord email address": "previous@example.com",
+        "Previous landlord phone number (xxx-xxx-xxxx)": "604-555-0105",
+        "Please introduce yourself and your family, including your employment background, interests, and values.": "Synthetic household introduction.",
+        "Please tell us about any skills you and the co-applicant could actively contribute to the running and maintenance of the co-op.": "Synthetic household skills.",
+        "Please tell us about any previous co-op experience you or the co-applicant may have.": "Synthetic co-op experience.",
+        "Describe why you want to live in a co-op and in what ways you would be a valuable member to the co-op.": "Synthetic reasons for co-op living.",
+        "If you have any pets, please describe them here.": "One cat",
+        "If you have a link to a photo of yourself and the members of your household, please include it here.": "https://example.com/household",
+        "Job title": "Teacher",
+        "Company name": "Synthetic School",
+        "Start date at this company": "2020-01-02",
+        "Name of current manager": "Primary Manager",
+        "Email address of current manager": "manager@example.com",
+        "Phone number (xxx-xxx-xxxx) of current manager": "604-555-0106",
+        "Job title [2]": "Coordinator",
+        "Company name [2]": "Synthetic Office",
+        "Start date at this company [2]": "2021-03-04",
+        "Name of current manager [2]": "Co-applicant Manager",
+        "Email address of current manager [2]": "co-manager@example.com",
+        "Phone number (xxx-xxx-xxxx) of current manager [2]": "604-555-0107",
+    }
+
+
 def link_from_email(sender: CapturedEmailSender) -> str:
     match = re.search(r"#applicant-link=([^\s]+)", sender.messages[-1].text_body)
     assert match is not None

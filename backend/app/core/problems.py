@@ -31,7 +31,6 @@ PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     "pending_draft_unavailable": (409, "Pending draft unavailable"),
     "application_already_exists": (409, "Application already exists"),
     "stale_application": (409, "Application changed elsewhere"),
-    "no_submitted_application": (409, "No submitted application"),
     "declaration_required": (422, "Declaration acceptance required"),
     "applications_closed": (409, "Applications are closed"),
     "opening_selection_required": (409, "Choose an opening"),

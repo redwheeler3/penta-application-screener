@@ -106,7 +106,6 @@ class ApplicantApplicationResponse(ResponseModel):
     working_saved_at: datetime | None = None
     working_revision: int
     submitted: bool
-    has_unsubmitted_changes: bool
     can_edit: bool
     openings: list[ApplicantOpeningOut]
 
@@ -119,10 +118,6 @@ class ApplicantOpeningsResponse(ResponseModel):
 class SaveApplicationRequest(RequestModel):
     answers: WorkingApplicationAnswers
     opening_ids: list[int] = Field(default_factory=list, max_length=20)
-    base_revision: int = Field(ge=1)
-
-
-class RevertApplicationRequest(RequestModel):
     base_revision: int = Field(ge=1)
 
 

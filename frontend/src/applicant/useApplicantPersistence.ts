@@ -32,7 +32,6 @@ import {
   regenerateAccessLink,
   reconcilePendingCopy as reconcilePendingCopyRequest,
   requestReturnAccessLink,
-  revertApplication as revertApplicationRequest,
   saveApplication,
   savePendingDraft,
   submitApplication,
@@ -70,8 +69,6 @@ export function useApplicantPersistence(
     message,
     applicationId,
     workingRevision,
-    submitted,
-    serverHasUnsubmittedChanges,
     openings,
     openingIds,
     canEdit,
@@ -238,8 +235,6 @@ export function useApplicantPersistence(
       if (knownId == null) {
         setPersistence("applicationId", null);
         setPersistence("workingRevision", null);
-        setPersistence("submitted", false);
-        setPersistence("serverHasUnsubmittedChanges", false);
         setPersistence("phase", "idle");
         await restorePublicOpenings();
       } else {
@@ -252,8 +247,6 @@ export function useApplicantPersistence(
     const body = (await response.json()) as ApplicationResponse;
     setPersistence("applicationId", body.applicationId);
     setPersistence("workingRevision", body.workingRevision);
-    setPersistence("submitted", body.submitted);
-    setPersistence("serverHasUnsubmittedChanges", body.hasUnsubmittedChanges);
     setPersistence("primaryEmail", body.primaryEmail);
     setPersistence("googleSignInLinked", body.googleSignInLinked);
     setPersistence("pendingEmailChange", body.pendingEmailChange);
@@ -303,8 +296,6 @@ export function useApplicantPersistence(
         : defaultOpeningIds(body.openings)
     ));
     setPersistence("canEdit", body.canStartApplication);
-    setPersistence("submitted", false);
-    setPersistence("serverHasUnsubmittedChanges", false);
     setPersistence("openingsLoaded", true);
   }
 
@@ -445,8 +436,6 @@ export function useApplicantPersistence(
     }
     const body = (await response.json()) as ApplicationResponse;
     setPersistence("workingRevision", body.workingRevision);
-    setPersistence("submitted", body.submitted);
-    setPersistence("serverHasUnsubmittedChanges", body.hasUnsubmittedChanges);
     setPersistence("openings", body.openings);
     setPersistence("canEdit", body.canEdit);
     setPersistence("savedAnswers", workingSnapshot(draftRef.current, openingIds));
@@ -597,39 +586,6 @@ export function useApplicantPersistence(
     setPersistence("phase", "idle");
   }
 
-  async function revertToSubmitted(): Promise<boolean> {
-    if (workingRevision == null) {
-      setPersistence("message", TECH_SUPPORT_ERROR_MESSAGE);
-      setPersistence("phase", "error");
-      return false;
-    }
-    const response = await revertApplicationRequest(workingRevision);
-    if (!response.ok) {
-      await fail(response);
-      return false;
-    }
-    const body = (await response.json()) as ApplicationResponse;
-    if (body.answers === null) {
-      setPersistence("message", TECH_SUPPORT_ERROR_MESSAGE);
-      setPersistence("phase", "error");
-      return false;
-    }
-    const restored = draftFromWorking(body.answers);
-    const restoredOpeningIds = defaultOpeningIds(body.openings);
-    restored.applicant.email = body.primaryEmail;
-    setDraft(restored);
-    setPersistence("openings", body.openings);
-    setPersistence("openingIds", restoredOpeningIds);
-    setPersistence("canEdit", body.canEdit);
-    setPersistence("workingRevision", body.workingRevision);
-    setPersistence("submitted", body.submitted);
-    setPersistence("serverHasUnsubmittedChanges", false);
-    setPersistence("savedAnswers", workingSnapshot(restored, restoredOpeningIds));
-    if (applicationId != null) clearApplicationDraft(applicationId);
-    setPersistence("phase", "idle");
-    return true;
-  }
-
   async function fail(response: Response): Promise<void> {
     const problem = await responseProblem(response);
     if (["applications_closed", "opening_archived", "opening_selection_required"].includes(
@@ -655,8 +611,6 @@ export function useApplicantPersistence(
     setPersistence("openings", body.openings);
     setPersistence("openingIds", (current) => validBrowserOpeningIds(current, body.openings));
     setPersistence("canEdit", body.canEdit);
-    setPersistence("submitted", body.submitted);
-    setPersistence("serverHasUnsubmittedChanges", body.hasUnsubmittedChanges);
     if (workingRevision !== null && body.workingRevision !== workingRevision) {
       setPersistence("message", "This application changed in another tab or browser.");
       setPersistence("phase", "stale_copy");
@@ -705,7 +659,6 @@ export function useApplicantPersistence(
     emailNewAccessLink,
     ...emailFlow,
     discardDraft,
-    revertToSubmitted,
     ...withdrawalFlow,
     reloadLatestApplication: () => restoreApplication(applicationId ?? undefined),
     openings,
@@ -728,10 +681,6 @@ export function useApplicantPersistence(
     emailChangeStatus,
     emailChangeMessage,
     hasUnsavedChanges: savedAnswers !== workingSnapshot(draft, openingIds),
-    hasUnsubmittedChanges: submitted && (
-      serverHasUnsubmittedChanges || savedAnswers !== workingSnapshot(draft, openingIds)
-    ),
-    hasSubmittedApplication: submitted,
     withdrawalStatus,
     withdrawalMessage,
     workingRevision,

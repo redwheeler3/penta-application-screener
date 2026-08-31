@@ -14,8 +14,6 @@ export type ApplicantPersistenceState = {
   message: string;
   applicationId: number | null;
   workingRevision: number | null;
-  submitted: boolean;
-  serverHasUnsubmittedChanges: boolean;
   openings: ApplicantOpening[];
   openingIds: number[];
   canEdit: boolean;
@@ -61,8 +59,6 @@ export const INITIAL_APPLICANT_PERSISTENCE_STATE: ApplicantPersistenceState = {
   message: "",
   applicationId: null,
   workingRevision: null,
-  submitted: false,
-  serverHasUnsubmittedChanges: false,
   openings: [],
   openingIds: [],
   canEdit: false,

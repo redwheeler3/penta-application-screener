@@ -95,8 +95,6 @@ export function createApplicantEmailFlow({
     const emailChanged = primaryEmail !== null && body.primaryEmail !== primaryEmail;
     setPersistence("primaryEmail", body.primaryEmail);
     setPersistence("googleSignInLinked", body.googleSignInLinked);
-    setPersistence("submitted", body.submitted);
-    setPersistence("serverHasUnsubmittedChanges", body.hasUnsubmittedChanges);
     setPersistence("pendingEmailChange", body.pendingEmailChange);
     setDraft((current) => ({
       ...current,

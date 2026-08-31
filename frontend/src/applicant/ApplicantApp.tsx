@@ -1,4 +1,4 @@
-import { ChevronLeft, FileCheck2, Save, Trash2 } from "lucide-react";
+import { FileCheck2, Save, Trash2 } from "lucide-react";
 import { type FormEvent, type InvalidEvent, useEffect, useRef, useState } from "react";
 
 import { BrandLockup } from "../components/shared/BrandLockup";
@@ -35,8 +35,7 @@ import {
   ApplicationWithdrawn,
   ApplicationWithdrawal,
   ApplicationReview,
-  type DraftConfirmation,
-  DraftActionConfirmation,
+  ClearDraftConfirmation,
   PersistenceActionStatus,
 } from "./ApplicantReview";
 import {
@@ -63,7 +62,7 @@ export function ApplicantApp() {
   const [rememberDevice, setRememberDeviceState] = useState(remembersDevice);
   const [emailChangeOpen, setEmailChangeOpen] = useState(false);
   const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
-  const [draftConfirmation, setDraftConfirmation] = useState<DraftConfirmation | null>(null);
+  const [clearingDraft, setClearingDraft] = useState(false);
   const [guestStarted, setGuestStarted] = useState(false);
   const [googleAccessResult, setGoogleAccessResult] = useState(takeApplicantGoogleAccessResult);
   const formRef = useRef<HTMLFormElement>(null);
@@ -140,7 +139,7 @@ export function ApplicantApp() {
   function update(updater: DraftUpdater): void {
     setReviewing(false);
     setDeclarationAccepted(false);
-    setDraftConfirmation(null);
+    setClearingDraft(false);
     setDraft(updater);
   }
 
@@ -194,20 +193,11 @@ export function ApplicantApp() {
   }
 
   function discardLocalDraft(): void {
-    setDraftConfirmation(null);
+    setClearingDraft(false);
     void persistence.discardDraft();
     setDraft(emptyApplicantDraft());
     setSavedAt(null);
     setReviewing(false);
-  }
-
-  async function revertToSubmitted(): Promise<void> {
-    setDraftConfirmation(null);
-    if (await persistence.revertToSubmitted()) {
-      setSavedAt(null);
-      setReviewing(false);
-      setDeclarationAccepted(false);
-    }
   }
 
   function changeRememberDevice(remember: boolean): void {
@@ -235,7 +225,7 @@ export function ApplicantApp() {
     setRememberDeviceState(false);
     setEmailChangeOpen(false);
     setWithdrawConfirmOpen(false);
-    setDraftConfirmation(null);
+    setClearingDraft(false);
     setGuestStarted(false);
     setOpeningError(false);
   }
@@ -427,23 +417,15 @@ export function ApplicantApp() {
             <IncomeSection draft={draft} update={update} />
 
             <div className="applicant-actions">
-              {draftConfirmation ? (
-                <DraftActionConfirmation
-                  action={draftConfirmation}
-                  onCancel={() => setDraftConfirmation(null)}
-                  onConfirm={() => {
-                    if (draftConfirmation === "clear") discardLocalDraft();
-                    else void revertToSubmitted();
-                  }}
+              {clearingDraft ? (
+                <ClearDraftConfirmation
+                  onCancel={() => setClearingDraft(false)}
+                  onConfirm={discardLocalDraft}
                 />
               ) : persistence.authenticated ? (
-                persistence.hasSubmittedApplication && persistence.hasUnsubmittedChanges ? (
-                  <button className="text-button" type="button" onClick={() => setDraftConfirmation("revert")}>
-                    <ChevronLeft size={16} /> Revert to last submitted application
-                  </button>
-                ) : <span />
+                <span />
               ) : (
-                <button className="applicant-danger-link" type="button" onClick={() => setDraftConfirmation("clear")}>
+                <button className="applicant-danger-link" type="button" onClick={() => setClearingDraft(true)}>
                   <Trash2 size={16} /> Clear this draft
                 </button>
               )}

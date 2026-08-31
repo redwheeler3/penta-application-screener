@@ -16,8 +16,6 @@ import {
   householdIncome,
 } from "./types";
 
-export type DraftConfirmation = "clear" | "revert";
-
 export function ReviewSection(props: { title: string; children: ReactNode }) {
   return <section className="review-section"><h2>{props.title}</h2><dl>{props.children}</dl></section>;
 }
@@ -321,27 +319,21 @@ export function ApplicationWithdrawal(props: {
   );
 }
 
-export function DraftActionConfirmation(props: {
-  action: DraftConfirmation;
+export function ClearDraftConfirmation(props: {
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  const reverting = props.action === "revert";
-  const titleId = `${props.action}-draft-title`;
+  const titleId = "clear-draft-title";
   return (
     <section className="application-action-confirm application-draft-confirm" aria-labelledby={titleId}>
-      <h2 id={titleId}>{reverting ? "Revert your changes?" : "Clear this draft?"}</h2>
-      <p>
-        {reverting
-          ? "Your private changes will be replaced by your last submitted application. This cannot be undone."
-          : "The answers in this draft will be removed. This cannot be undone."}
-      </p>
+      <h2 id={titleId}>Clear this draft?</h2>
+      <p>The answers in this draft will be removed. This cannot be undone.</p>
       <div className="applicant-action-group">
         <button className="applicant-secondary-button compact" type="button" autoFocus onClick={props.onCancel}>
           Keep editing
         </button>
         <button className="applicant-danger-button compact" type="button" onClick={props.onConfirm}>
-          {reverting ? "Revert changes" : "Clear draft"}
+          Clear draft
         </button>
       </div>
     </section>

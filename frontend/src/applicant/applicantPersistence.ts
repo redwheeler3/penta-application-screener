@@ -37,7 +37,6 @@ export type ApplicationResponse = {
   workingSavedAt: string | null;
   workingRevision: number;
   submitted: boolean;
-  hasUnsubmittedChanges: boolean;
   canEdit: boolean;
   openings: ApplicantOpening[];
 };

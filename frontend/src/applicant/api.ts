@@ -137,13 +137,6 @@ export function saveApplication(
   );
 }
 
-export function revertApplication(baseRevision: number) {
-  return request(
-    "/applicant/application/revert",
-    jsonRequest("POST", { baseRevision }),
-  );
-}
-
 export function withdrawApplication() {
   return request("/applicant/application/withdraw", { method: "POST" });
 }

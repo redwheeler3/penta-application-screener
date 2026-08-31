@@ -21,10 +21,76 @@ from app.services.passwordless_auth import create_browser_session
 from app.services.retention import one_year_after
 from tests.applicant.support import (
     app_and_db,
+    legacy_answers,
     link_from_email,
     sample_answers,
     save_draft,
 )
+
+
+@pytest.mark.anyio
+async def test_imported_application_opens_prefilled_and_saves_a_native_working_copy() -> None:
+    app, db, _sender = app_and_db()
+    opening = db.scalar(select(Opening))
+    assert opening is not None
+    legacy = legacy_answers()
+    application = Application(
+        primary_email="avery@example.com",
+        applicant_name="Avery Ng",
+        co_applicant_name="Morgan Lee",
+        raw_row=legacy,
+        raw_row_hash="legacy-submitted",
+        normalized={
+            "applicant_name": "Avery Ng",
+            "co_applicant_name": "Morgan Lee",
+            "child_details": [{"first_name": "Casey", "last_name": "Ng", "age": 8}],
+            "has_real_estate": False,
+            "pets_text": "One cat",
+            "applicant_income": 80_000,
+            "co_applicant_income": 60_000,
+        },
+        submitted_at=datetime.now(UTC),
+    )
+    db.add(application)
+    db.flush()
+    db.add(
+        ApplicationParticipation(
+            application_id=application.id,
+            opening_id=opening.id,
+            applied_at=datetime.now(UTC),
+        )
+    )
+    issued = create_browser_session(
+        db,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
+        application_id=application.id,
+    )
+    db.commit()
+    transport = ASGITransport(app=app)
+    cookie_name = SESSION_COOKIE_NAMES[PasswordlessIdentityKind.APPLICANT]
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        client.cookies.set(cookie_name, issued.token)
+        opened = await client.get("/applicant/application")
+        saved = await client.put(
+            "/applicant/application",
+            json={
+                "answers": opened.json()["answers"],
+                "openingIds": [opening.id],
+                "baseRevision": opened.json()["workingRevision"],
+            },
+        )
+
+    db.refresh(application)
+    assert opened.status_code == 200
+    assert opened.json()["answers"]["applicant"]["firstName"] == "Avery"
+    assert opened.json()["answers"]["applicant"]["birthDate"] == ""
+    assert opened.json()["answers"]["applicantEmployment"]["jobTitle"] == "Teacher"
+    assert opened.json()["answers"]["applicantEmployment"]["status"] is None
+    assert saved.status_code == 200
+    assert application.working_answers is not None
+    assert "applicant" in application.working_answers
+    assert application.raw_row == legacy
 
 
 @pytest.mark.anyio
@@ -145,52 +211,6 @@ async def test_stale_browser_cannot_overwrite_a_newer_working_copy() -> None:
     assert latest.json()["answers"]["essays"]["householdIntroduction"] == (
         "Saved by the first browser"
     )
-
-
-@pytest.mark.anyio
-async def test_revert_restores_the_submitted_answers_and_openings() -> None:
-    app, db, sender = app_and_db()
-    opening = db.scalar(select(Opening))
-    assert opening is not None
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await save_draft(client)
-        await client.post(
-            "/applicant/access-links/open",
-            json={"token": link_from_email(sender), "switchCurrent": False},
-        )
-        restored = await client.get("/applicant/application")
-        submitted_answers = sample_answers(introduction="Committee copy")
-        submitted = await client.post(
-            "/applicant/application/submit",
-            json={
-                "answers": submitted_answers,
-                "openingIds": [opening.id],
-                "declarationAccepted": True,
-                "baseRevision": restored.json()["workingRevision"],
-            },
-        )
-        private_answers = sample_answers(introduction="Private edit")
-        saved = await client.put(
-            "/applicant/application",
-            json={
-                "answers": private_answers,
-                "openingIds": [],
-                "baseRevision": submitted.json()["workingRevision"],
-            },
-        )
-        reverted = await client.post(
-            "/applicant/application/revert",
-            json={"baseRevision": saved.json()["workingRevision"]},
-        )
-
-    assert saved.json()["hasUnsubmittedChanges"] is True
-    assert not any(item["selected"] for item in saved.json()["openings"])
-    assert reverted.status_code == 200
-    assert reverted.json()["answers"] == submitted_answers
-    assert reverted.json()["hasUnsubmittedChanges"] is False
-    selected = [item for item in reverted.json()["openings"] if item["selected"]]
-    assert [item["id"] for item in selected] == [opening.id]
 
 
 @pytest.mark.anyio

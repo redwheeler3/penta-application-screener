@@ -151,11 +151,10 @@ retained becomes a read-only legal-hold record excluded from applicant and commi
 its scheduled purge. Privacy access requests are handled through restricted operational access.
 The record cannot be restored into active consideration.
 
-If an authenticated applicant has private edits that differ from the committee copy, the form
-offers **Revert to last submitted application**. This replaces the entire private working copy,
-including pending opening selections, with the last submitted version. Saves and submissions carry
-an optimistic working-copy revision: a stale tab is refused rather than silently overwriting a
-newer save, and the applicant can deliberately reload the latest saved copy.
+Saves and submissions carry an optimistic working-copy revision: a stale tab is refused rather
+than silently overwriting a newer save, and the applicant can deliberately reload the latest saved
+copy. Saved private edits are corrected in the form or replaced by the next submission; there is no
+separate action that restores the last submitted version.
 Destructive actions initiated inside the application use styled, in-page confirmations. Browser-
 native confirmation is reserved for leaving or reloading a page with unsaved answers, where the
 browser controls the warning.
@@ -867,7 +866,7 @@ Google subject with another.
 
 - Only the primary applicant may authenticate. A co-applicant's Google account or matching
   co-applicant email grants no access and cannot be linked.
-- A Google-authenticated applicant may save, submit, revert, withdraw, and request an email change
+- A Google-authenticated applicant may save, submit, withdraw, and request an email change
   exactly as an email-authenticated applicant; authorization depends only on the resulting
   `Application.id` session.
 - A pending email change remains visible after either sign-in method. Google sign-in neither
@@ -1326,6 +1325,13 @@ access messages; a returning applicant may claim the existing record only by ver
 recorded primary email. Records with a missing, duplicated, or inaccessible address require
 administrator-mediated recovery and are never guessed or automatically combined.
 
+While a retained pre-cutover application is editable, its Google Form answers are mapped into the
+current working form. Every fact that maps exactly is prefilled; facts the old form did not collect,
+including birth dates and explicit employment status, remain blank so ordinary validation requires
+them before submission. The read does not mutate the submitted application. The first explicit Save
+persists a native working copy, and Submit remains the only action that replaces the committee-facing
+copy. The form does not offer restoration from the legacy submitted document.
+
 The retained pre-cutover applications participate in historical opening 1: a 3-bedroom opening
 that ran from July 6 through July 31, 2026, with a $1,226 monthly housing charge and November 1,
 2026 move-in date. The opening is closed, all 232 submitted non-withdrawn applications retain their
@@ -1536,148 +1542,6 @@ for an email with no current application while applications were closed, showed 
 closed-cycle refusal without creating a record. Committee Google sign-in remained healthy. The
 existing-application branch was then verified against submitted synthetic production application
 252: the matching Google identity linked successfully and opened the application.
-
-### Retained Application Canonicalization (M24) — next milestone
-
-**Goal:** convert the retained pre-cutover Google Form records to the first explicitly versioned
-native answer representation and remove the runtime paths that understand provider-specific question
-headings. Establish the form-evolution boundary at the same time so later form changes upgrade
-mutable working copies without rewriting truthful historical submissions. The retired importer will
-never return, so its stored shape must not remain a permanent second application model.
-
-**Timing decision:** the production conversion may run while historical opening 1 is closed and
-before its final decision. The 232 imported households have not been directed to
-`applications.pentacoop.com`, and the unsuccessful outcome email contains no application link. The
-migration may make Screen and Rank out of date; that is acceptable, and a later Screen or Rank may
-change eligibility through the application's normal understood workflow. The migration itself must
-not change any member's effective eligibility before a new Screen or Rank: normalized facts, current
-screening findings and pet facts, member rules, and human overrides remain authoritative across the
-write.
-
-**Ongoing form-evolution rule:** a submitted `ApplicationVersion` is an immutable record of the
-questions and answers accepted at that submission. Routine future form changes do not rewrite old
-versions merely to make their JSON resemble the newest form. Instead, every answer document carries
-an explicit answer-schema version and one centralized, stepwise upgrader produces the current
-working shape. Reordering fields, revising help text, or relabelling an unchanged concept keeps its
-stable internal key and needs no answer migration. Adding a question gives older working copies a
-blank value; changing a question's meaning creates a new key rather than silently reinterpreting the
-old answer. A database backfill is reserved for a genuinely changed storage invariant or a lossless
-key conversion, not used by default for every form release.
-
-Enforce that boundary with one focused schema-fingerprint test rather than a separate collaboration
-rule or form-evolution process document. Derive a stable structural fingerprint from the backend
-working and submitted answer schemas, including stored keys, types, requiredness, and defaults while
-excluding presentation-only titles and descriptions. The committed fingerprint is keyed by the
-current answer-schema version. If the structure changes without a version increment and registered
-sequential upgrader, the test fails with those required actions. Layout, ordering, label, and help-
-text changes do not alter the structural fingerprint and therefore do not demand an upgrader. A
-meaning change that retains the same type and key cannot be detected mechanically and remains an
-ordinary code-review judgment: give the new meaning a new key rather than reinterpreting old data.
-
-Age is the important non-inferable case. A retained imported answer that supplied an age but no
-birth date keeps that integer as `age_at_submission` with the original submission date as its
-reference point; its birth date remains explicitly unknown. That historical age remains valid only
-for the historical submission and opening. If the household returns for a later opening, applicant,
-co-applicant, and child birth-date inputs are blank and required. The applicant must provide the
-actual dates before submission, and eligibility then derives fresh ages as of the new submission
-date. Never estimate a birth date from an age or reuse a historical age in a later opening. Any
-workflow that evaluates a retained candidate without a new submission must report an unavailable
-age check as unknown/not evaluated rather than silently treating it as eligible.
-
-Answer-schema version numbers live with the stored answer documents; executable upgrader functions
-live in source control, never in the database. Opening an older mutable working copy runs the
-applicable deterministic upgrader chain in application code. The upgraded copy is persisted on the
-next explicit save; immutable historical submissions stay at the version under which they were
-accepted. The database never deletes upgrader code automatically. A PII-safe inventory command
-reports aggregate counts for every stored answer-schema version and identifies versions with no
-live application, submission, or draft documents. After that count is zero, remove its upgrader,
-old schema types, fixtures, tests, and explanatory comments together in an ordinary reviewed
-release. Backup retention does not delay cleanup: restoring an exceptional older backup must first
-restore the required upgrader from Git into the current code and deploy that compatibility with the
-database recovery. Keeping support for live data is required compatibility; keeping it after the
-last such record is gone is forbidden tombstone logic.
-
-For this MVP, activate a new form schema only between application cycles, after every editable
-application-intake opening is archived and before the next one is published. If overlapping openings
-ever need different forms, each opening must pin a form version and the multi-version interaction
-must be designed explicitly; M24 does not build that speculative complexity.
-
-**Implementation stages:**
-
-1. **Eligibility baseline** — before the backfill, capture a PII-safe digest for every application
-   and member covering effective status and source, deterministic reason codes, active AI flag
-   categories, pet facts, human overrides, and the union eligible pool. Recompute it immediately
-   after conversion and abort or roll back unless it matches exactly. This proves the migration is
-   neutral without promising that a later explicit Screen or Rank will reproduce earlier findings.
-2. **Versioned answer boundary** — define the baseline native answer-schema version and stamp it on
-   private drafts, application working copies, the current submitted projection, and each immutable
-   `ApplicationVersion`. Route every reader through one version-aware answer service rather than
-   allowing UI, AI, or scripts to inspect stored shapes independently. Keep the version values in
-   stored data and the ordered upgrade functions in ordinary version-controlled application code.
-   Add the structural fingerprint test that forces a version increment and registered upgrader when
-   either persisted answer schema changes.
-3. **Lossless legacy conversion** — inventory every stored Google Form key and map it to the baseline
-   native representation. Preserve unavailable facts as explicitly unknown: do not invent birth
-   dates from ages, employment statuses from job text, or current-versus-other property ownership
-   from the legacy combined real-estate answer. Preserve supplied ages as submission-dated historical
-   facts, separate from unknown birth dates. Retain any source fact that cannot be represented
-   losslessly as bounded archival evidence without keeping a second runtime rendering path. This is
-   the exceptional one-time conversion from an external provider shape; it is not the pattern for
-   ordinary future form versions.
-4. **Production-safe backfill** — take and verify an off-box database backup, run a PII-safe dry-run
-   that reports only aggregate mapping coverage, then convert current submitted answers and any
-   corresponding pre-cutover application-version answers consistently into the baseline versioned
-   representation. Recompute content hashes rather than allowing them to lie about the stored
-   document; post-closeout AI cache invalidation is expected. Preserve identities, original
-   submission timestamps, opening participation and outcomes, legal acceptance evidence, retention
-   dates, notes, feedback, stars, and audit history.
-5. **Current working-copy upgrade** — when a prior applicant returns for a later opening, upgrade the
-   latest private working copy, or initialize one from the latest submitted application when no
-   readable working copy exists. Carry forward compatible answers and represent every question the
-   earlier form did not collect as blank. A newly required blank field must be visible in the form
-   and rejected by both browser and backend submission validation until the applicant completes it;
-   saving an incomplete private draft remains allowed.
-6. **Single read path** — make applicant detail rendering, essay extraction, AI inputs, eval
-   harvesting, and future working-copy initialization use the version-aware answer service. Remove
-   legacy field maps, question-key fallbacks, shape sniffing, and their tests; keep historical
-   Alembic revisions as migration history.
-7. **Version inventory and retirement** — add a read-only, PII-safe command that counts current
-   submitted projections, working copies, private drafts, and immutable submission versions by
-   answer-schema version. Use it after retention purges and before a form-version release to identify
-   upgrade code eligible for immediate removal; never let the database mutate or delete deployed
-   source code. Surface a persistent, low-severity administrator banner when an old registered
-   version reaches zero live documents. The banner disappears after the upgrader is removed and the
-   release is deployed; it sends no email because cleanup is non-urgent developer maintenance.
-8. **Reconciliation and release** — prove that every retained record has the same committee-visible
-   factual content before and after migration, no legacy-shaped rows remain, selected and
-   unsuccessful records retain the correct access and retention behavior, and the full backend and
-   frontend checks pass before deployment.
-
-**Non-goals:** reviving spreadsheet import or synchronization; making archived applications
-editable; sending migration or access email; filling facts the old form never collected; changing
-opening outcomes or retention policy; preserving provider-specific headings in active product code;
-building a database-driven form builder; or supporting simultaneous editable openings pinned to
-different form versions. Executable schema migrations or upgrader code never live in database rows,
-and runtime maintenance never edits the source tree or removes compatibility code automatically.
-
-**Definition of done:** production contains no application or application-version answer document
-that requires the old Google Form question map; all answer documents carry an explicit schema
-version; all committee, applicant, AI, and tooling consumers use the centralized version-aware read
-path; the old compatibility code is deleted; and aggregate migration reconciliation is exact. A
-schema-guard regression changes a persisted answer field without changing the version and proves the
-fingerprint test fails with an actionable instruction to increment the version and add the sequential
-upgrader. Another regression scenario starts with a prior-version application, adds a required
-question in the next version, opens a new cycle, and proves that the applicant sees their compatible
-prior answers plus a
-blank new field, cannot submit until completing it, and then creates a new immutable submission
-without changing the earlier version. A separate age regression starts with historical ages and no
-birth dates, proves that the archived decision retains those submission-dated ages, then proves that
-a later working copy shows blank required birth-date fields and cannot reach eligibility screening
-until real dates are supplied. The version inventory reports no applicant data, detects when a
-version has no live documents, and makes that zero count the code-removal gate. A recovery drill or
-runbook proves how to restore a removed upgrader from Git before restoring a backup that contains its
-schema version. The production backup and rollback procedure is verified before the legacy
-conversion runs.
 
 ### Reporting (M10 shipped) — ✅ closed, demand-driven from here
 

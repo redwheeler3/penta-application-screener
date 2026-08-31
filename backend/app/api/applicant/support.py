@@ -33,6 +33,7 @@ from app.schemas.applicant.contracts import (
 from app.services.applicant_drafts import (
     draft_is_available,
 )
+from app.services.application_answers import working_answers_for
 from app.services.intake import (
     create_application,
     save_working_copy,
@@ -382,15 +383,7 @@ def _require_application_not_selected(db: Session, application: Application) -> 
 
 
 def _stored_answers(application: Application) -> WorkingApplicationAnswers | None:
-    stored = application.working_answers
-    if stored is None and "applicant" in (application.raw_row or {}):
-        stored = application.raw_row
-    if stored is None:
-        return None
-    try:
-        return WorkingApplicationAnswers.model_validate(stored)
-    except ValidationError:
-        return None
+    return working_answers_for(application)
 
 
 def _require_matching_email(

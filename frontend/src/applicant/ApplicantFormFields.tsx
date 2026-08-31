@@ -128,7 +128,19 @@ export function ReferenceFields(props: { value: ReferenceDraft; required: boolea
 export function EmploymentFields(props: { value: EmploymentDraft; required: boolean; onChange: (value: EmploymentDraft) => void }) {
   const set = (patch: Partial<EmploymentDraft>) => props.onChange({ ...props.value, ...patch });
   const employed = props.value.status === "employed";
-  const working = employed || props.value.status === "self_employed";
+  const selfEmployed = props.value.status === "self_employed";
+  const preservedDetails = !props.value.status && Boolean(
+    props.value.jobTitle
+    || props.value.companyName
+    || props.value.startDate
+    || props.value.manager.name
+    || props.value.manager.email
+    || props.value.manager.phone
+  );
+  const working = employed || selfEmployed || preservedDetails;
+  const showManager = employed || (preservedDetails && Boolean(
+    props.value.manager.name || props.value.manager.email || props.value.manager.phone
+  ));
   return (
     <div className="employment-fields">
       <SelectField
@@ -146,25 +158,25 @@ export function EmploymentFields(props: { value: EmploymentDraft; required: bool
         <>
           <div className="field-grid three-column employment-detail-grid">
             <TextField
-              label={employed ? "Job title" : "Type of business"}
+              label={selfEmployed ? "Type of business" : "Job title"}
               value={props.value.jobTitle}
               required
               onChange={(jobTitle) => set({ jobTitle })}
             />
             <TextField
-              label={employed ? "Company name" : "Business name"}
+              label={selfEmployed ? "Business name" : "Company name"}
               value={props.value.companyName}
               required
               onChange={(companyName) => set({ companyName })}
             />
             <DateField
-              label={employed ? "Start date" : "Self-employed since"}
+              label={selfEmployed ? "Self-employed since" : "Start date"}
               value={props.value.startDate}
               required
               onChange={(startDate) => set({ startDate })}
             />
           </div>
-          {employed ? (
+          {showManager ? (
             <>
               <h4>Current manager</h4>
               <ReferenceFields

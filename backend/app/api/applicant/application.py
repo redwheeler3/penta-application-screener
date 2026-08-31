@@ -41,7 +41,6 @@ from app.schemas.applicant.contracts import (
     EmailChangeResponse,
     PendingCopyResponse,
     ReconcilePendingCopyRequest,
-    RevertApplicationRequest,
     SaveApplicationRequest,
     SubmitApplicationRequest,
     WithdrawApplicationResponse,
@@ -119,14 +118,6 @@ def get_applicant_application(
     db: Session = Depends(get_db),
 ) -> ApplicantApplicationResponse:
     opening_states = applicant_opening_states(db, application, use_working_copy=True)
-    submitted_opening_ids = {
-        state.opening.id
-        for state in applicant_opening_states(db, application)
-        if state.selected
-    }
-    working_opening_ids = {
-        state.opening.id for state in opening_states if state.selected
-    }
     return ApplicantApplicationResponse(
         application_id=application.id,
         primary_email=application.primary_email,
@@ -140,13 +131,6 @@ def get_applicant_application(
         ),
         working_revision=application.working_revision,
         submitted=application.submitted_at is not None,
-        has_unsubmitted_changes=(
-            application.submitted_at is not None
-            and (
-                application.working_content_hash != application.raw_row_hash
-                or working_opening_ids != submitted_opening_ids
-            )
-        ),
         can_edit=application_is_editable(db, application, opening_states),
         openings=[_applicant_opening(state) for state in opening_states],
     )
@@ -243,33 +227,6 @@ def submit_applicant_application(
     send_application_confirmation(db, sender, application, submitted=True, now=now)
     restored = get_applicant_application(application, db)
     return restored
-
-
-@router.post("/application/revert", response_model=ApplicantApplicationResponse)
-def revert_applicant_application(
-    body: RevertApplicationRequest,
-    application: Application = Depends(require_current_application),
-    db: Session = Depends(get_db),
-) -> ApplicantApplicationResponse:
-    _require_application_editable(db, application)
-    _require_current_revision(application, body.base_revision)
-    if application.submitted_at is None:
-        raise Problem(
-            "no_submitted_application",
-            detail="This application does not have a submitted copy to restore.",
-        )
-    selected_ids = [
-        state.opening.id
-        for state in applicant_opening_states(db, application)
-        if state.selected
-    ]
-    application.working_answers = dict(application.raw_row)
-    application.working_content_hash = application.raw_row_hash
-    application.working_saved_at = datetime.now(UTC)
-    application.working_opening_ids = selected_ids
-    application.working_revision += 1
-    db.commit()
-    return get_applicant_application(application, db)
 
 
 @router.post("/application/withdraw", response_model=WithdrawApplicationResponse)
