@@ -55,6 +55,8 @@ export type AppFacets = {
   source: Record<StatusSource, number>;
   // Count of the member's starred applications under the other active filters.
   favourites: number;
+  // Count of applications on the committee's shared shortlist.
+  shortlist: number;
 };
 
 export type ApplicationSummary = {
@@ -76,6 +78,7 @@ export type ApplicationSummary = {
   // Whether the signed-in member has starred (favourited) this applicant. Private
   // per member; a personal working aid with no effect on ranking or eligibility.
   starredByMe: boolean;
+  shortlisted: boolean;
   openingIds: number[];
 };
 

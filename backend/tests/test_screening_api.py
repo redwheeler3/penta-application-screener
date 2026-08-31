@@ -15,6 +15,7 @@ from app.db.models import (
     Application,
     ApplicationNote,
     ApplicationParticipation,
+    ApplicationShortlist,
     ApplicationStar,
     ApplicationVersion,
     Base,
@@ -209,6 +210,40 @@ async def test_unstar_removes_the_star() -> None:
         db.scalar(select(ApplicationStar).where(ApplicationStar.application_id == application.id))
         is None
     )
+
+
+@pytest.mark.anyio
+async def test_shortlist_is_shared_between_members_and_removal_is_idempotent() -> None:
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    application = add_eligible(db, email="shortlist@x.com", raw_hash="h1")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        added = await client.put(f"/applications/{application.id}/shortlist")
+        assert added.status_code == 200
+        assert added.json()["application"]["shortlisted"] is True
+        again = await client.put(f"/applications/{application.id}/shortlist")
+        assert again.json()["application"]["shortlisted"] is True
+
+        other_member = User(
+            email="other@x.com",
+            display_name="Other",
+            role=UserRole.MEMBER,
+            is_active=True,
+        )
+        db.add(other_member)
+        db.commit()
+        app.dependency_overrides[require_current_user] = lambda: other_member
+
+        detail = (await client.get(f"/applications/{application.id}")).json()["application"]
+        assert detail["shortlisted"] is True
+        listing = (await client.get("/applications")).json()["applications"]
+        assert listing[0]["shortlisted"] is True
+        removed = await client.delete(f"/applications/{application.id}/shortlist")
+        assert removed.json()["application"]["shortlisted"] is False
+        assert (await client.delete(f"/applications/{application.id}/shortlist")).status_code == 200
+
+    assert db.scalar(select(ApplicationShortlist)) is None
 
 
 @pytest.mark.anyio

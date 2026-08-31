@@ -911,7 +911,15 @@ The product proceeds in phases:
 4. Let the committee weight those dimensions (a tier-list), re-sorting the ranked pool instantly.
 5. Produce a MOMI-ready report with recommended interview candidates and justifications.
 
-The screener supports multiple MOMI committee members running their own screening sessions independently (see "Multi-Member MOMI Workflow"). Each member may value different criteria; the app preserves and summarizes each member's criteria, shortlist, and rationale so MOMI can compare both applicant recommendations and the values behind them.
+The screener supports multiple MOMI committee members running their own screening sessions independently (see "Multi-Member MOMI Workflow"). Each member may value different criteria; the app preserves and summarizes each member's criteria, ranked candidate view, and rationale so MOMI can compare both applicant recommendations and the values behind them.
+
+Candidate saving has two deliberately separate meanings. **My favourites** remains a private
+bookmark for one member's broader list. **Shared shortlist** is one committee-visible, reversible
+working set for the households the committee currently wants to keep on its shortlist. Either may be
+changed from Applications, Ranking, or applicant detail; each view can show All, My favourites, or
+Shared shortlist, and printing Ranking follows that active view. Neither marker changes eligibility,
+AI output, rank order, or the final opening-selection outcome. Removing a household from the shared
+shortlist never removes any member's private favourite.
 
 ## Screening Scope
 
@@ -1157,7 +1165,11 @@ It is acceptable to send full application context, including names/contact conte
 
 **Committee-proposed seeds** feed the one shared discovery (the resulting axis is shared), but the "you requested this" badge shows only for the requesting member (`from_committee_request` provenance is already per-run).
 
-**Out of scope (M15):** merged shortlist, disagreement flags, criteria comparison, and cross-member list visibility. Notes remain private to their author, out of AI inputs and reports, on the author's printed candidate detail only. (`require_admin` + the allowlist landed in M15 1a; broader role exercise is M17.)
+**Out of scope (M15):** merged ranking, disagreement flags, criteria comparison, and visibility into
+another member's private ranking or favourites. The later Shared shortlist is a single explicit
+committee working set, not a merge or exposure of those private views. Notes remain private to their
+author, out of AI inputs and reports, on the author's printed candidate detail only. (The
+`require_admin` gate and allowlist landed in M15 1a; broader role exercise is M17.)
 
 *(The per-member-pool / shared-content-cache decision is recorded in [ADR 0011](docs/adr/0011-per-member-eligible-pool-shared-content-cache.md); the sliced build history — allowlist, the `Analysis`/`MemberRanking`/`MemberEligibility` split, per-member rules, pets-as-facts, and the committee-union re-rank — is in [CHANGELOG.md](CHANGELOG.md) M15.)*
 

@@ -1,6 +1,7 @@
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.applications.presentation import (
@@ -15,6 +16,7 @@ from app.db.models import (
     Application,
     ApplicationNote,
     ApplicationParticipation,
+    ApplicationShortlist,
     ApplicationStar,
     ApplicationStatus,
     MemberEligibility,
@@ -42,6 +44,7 @@ from app.services.rules import (
     hard_filter_reasons_for,
     rules_config_for,
 )
+from app.services.shared_shortlist import is_shortlisted, shortlisted_ids
 from app.services.stars import is_starred, starred_ids
 from app.services.status_resolution import (
     findings_fingerprint,
@@ -78,6 +81,7 @@ def list_applications(
     flags = machine_flags_by_app(db, ids)
     facts = pet_facts_by_app(db, ids)
     starred = starred_ids(db, user.id, ids)
+    shortlisted = shortlisted_ids(db, ids)
     overrides = overrides_by_app(db, user.id, ids)
     opening_ids = opening_ids_by_application(db, ids)
     # This member's rules are one ruleset, so resolve once and evaluate the hard filters
@@ -96,6 +100,7 @@ def list_applications(
                 # Active flags drive both status and display; muted categories do neither.
                 flags=active_flags(flags.get(app.id), rules_config.disabled_checks),
                 starred=app.id in starred,
+                shortlisted=app.id in shortlisted,
                 opening_ids=opening_ids[app.id],
             )
             for app in applications
@@ -271,4 +276,45 @@ def remove_star(
         db.delete(star)
         db.commit()
 
+    return ApplicationEnvelope(application=serialize_detail(application, db, user))
+
+
+@router.put("/{application_id}/shortlist", response_model=ApplicationEnvelope)
+def add_to_shortlist(
+    application_id: int,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> ApplicationEnvelope:
+    """Add an applicant to the committee's shared shortlist, idempotently."""
+    application = _get_application_or_404(db, application_id)
+    if not is_shortlisted(db, application_id):
+        db.add(
+            ApplicationShortlist(
+                application_id=application_id,
+                added_by_user_id=user.id,
+            )
+        )
+        try:
+            db.commit()
+        except IntegrityError:
+            # Another member added the same shared row between our read and write.
+            # The requested state already exists, so preserve idempotent PUT semantics.
+            db.rollback()
+    return ApplicationEnvelope(application=serialize_detail(application, db, user))
+
+
+@router.delete("/{application_id}/shortlist", response_model=ApplicationEnvelope)
+def remove_from_shortlist(
+    application_id: int,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> ApplicationEnvelope:
+    """Remove an applicant from the committee's shared shortlist, idempotently."""
+    application = _get_application_or_404(db, application_id)
+    db.execute(
+        delete(ApplicationShortlist).where(
+            ApplicationShortlist.application_id == application_id
+        )
+    )
+    db.commit()
     return ApplicationEnvelope(application=serialize_detail(application, db, user))

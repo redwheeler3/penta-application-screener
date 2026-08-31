@@ -48,6 +48,7 @@ from app.services.rules import (
     pet_facts_from_screening,
     rules_config_for,
 )
+from app.services.shared_shortlist import is_shortlisted
 from app.services.stars import is_starred
 from app.services.status_resolution import (
     effective_status,
@@ -62,6 +63,7 @@ def serialize_summary(
     override: MemberEligibility | None = None,
     flags: list[dict[str, Any]] | None = None,
     starred: bool = False,
+    shortlisted: bool = False,
     opening_ids: list[int] | None = None,
 ) -> ApplicationSummary:
     """One application as the signed-in member sees it. ``status``/``status_source``/``stale``
@@ -90,6 +92,7 @@ def serialize_summary(
         # Distinct flag categories from the latest pass, for the list REASON cell.
         flag_categories=None if flags is None else _distinct_categories(flags),
         starred_by_me=starred,
+        shortlisted=shortlisted,
         opening_ids=opening_ids or [],
     )
 
@@ -170,6 +173,7 @@ def serialize_detail(app: Application, db: Session, user: User) -> ApplicationDe
     summary = serialize_summary(
         app, reasons=reasons, override=override, flags=flags,
         starred=is_starred(db, app.id, user.id),
+        shortlisted=is_shortlisted(db, app.id),
         opening_ids=opening_ids,
     )
     # What the machine would decide from the current findings, independent of this

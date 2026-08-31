@@ -223,6 +223,8 @@ class RankedCandidateOut(ResponseModel):
     contributions: list[DimensionContributionOut]
     # Whether the current member has starred this applicant (private per member).
     starred_by_me: bool = False
+    # Whether the committee has placed this applicant on its shared shortlist.
+    shortlisted: bool = False
 
 
 class RankingResponse(ResponseModel):

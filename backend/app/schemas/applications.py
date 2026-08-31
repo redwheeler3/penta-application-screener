@@ -118,6 +118,9 @@ class ApplicationSummary(ResponseModel):
     # Whether the current member has starred (favourited) this applicant. Private
     # per member; a personal working aid with no effect on ranking or eligibility.
     starred_by_me: bool = False
+    # Committee-shared working shortlist; human-controlled and independent of
+    # eligibility, ranking, and the final opening outcome.
+    shortlisted: bool = False
     opening_ids: list[int] = []
 
 

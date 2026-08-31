@@ -321,6 +321,7 @@ async def test_ranking_orders_pool_and_seeds_equal_weights() -> None:
         provider.route(f'"applicant_id": {weak.id}', _scoring_report(commitment=0.2, skills=0.2))
         provider.route(f'"applicant_id": {strong.id}', _scoring_report(commitment=0.9, skills=0.9))
         await stream_events(client, "/ranking/run")
+        await client.put(f"/applications/{strong.id}/shortlist")
 
         ranking = (await client.get("/ranking")).json()
 
@@ -334,6 +335,8 @@ async def test_ranking_orders_pool_and_seeds_equal_weights() -> None:
         assert [c["applicationId"] for c in candidates] == [strong.id, weak.id]
         assert candidates[0]["fit"] == 0.9
         assert candidates[0]["band"] == "Strong fit"
+        assert candidates[0]["shortlisted"] is True
+        assert candidates[1]["shortlisted"] is False
 
 
 @pytest.mark.anyio

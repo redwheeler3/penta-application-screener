@@ -339,6 +339,20 @@ export function App(props: { authRedirect: AuthRedirect }) {
     if (ranking) loadRanking();
   }
 
+  // The shared shortlist is committee working state, unlike the private star.
+  // Refresh every live surface because all members see the same shortlist membership.
+  async function toggleShortlist(id: number, shortlisted: boolean) {
+    const response = await api.setShortlist(id, shortlisted);
+    if (!response.ok) {
+      showError(shortlisted ? "Could not add to the shared shortlist." : "Could not remove from the shared shortlist.");
+      return;
+    }
+    const payload: { application: ApplicationDetail } = await response.json();
+    if (selectedApp?.id === id) setSelectedApp(payload.application);
+    if (applications.some((a) => a.id === id)) reloadApplications();
+    if (ranking) loadRanking();
+  }
+
 
   return (
     <main className="app-shell">
@@ -444,6 +458,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
                 onClearOverride={clearStatusOverride}
                 onSavePrivateNote={savePrivateNote}
                 onToggleStar={toggleStar}
+                onToggleShortlist={toggleShortlist}
                 readOnly={selectedApplicationReadOnly}
               />
             ) : activeTab === "eligibilitySettings" ? (
@@ -498,6 +513,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
                 onRemoveProposal={removeProposal}
                 onSelectApplication={viewApplication}
                 onToggleStar={toggleStar}
+                onToggleShortlist={toggleShortlist}
                 applicationIdsInOpeningScope={
                   selectedOpeningIds.length > 0 ? applicationIdsInOpeningScope : null
                 }
@@ -537,6 +553,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
                 onToggleSort={toggleSort}
                 onSelectApplication={viewApplication}
                 onToggleStar={toggleStar}
+                onToggleShortlist={toggleShortlist}
                 onRetryLoad={() => void loadInitialApplications()}
               />
             )}

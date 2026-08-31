@@ -36,6 +36,8 @@ export type RankedCandidate = {
   contributions: DimensionContribution[];
   // Whether the signed-in member has starred this applicant (private per member).
   starredByMe: boolean;
+  // Whether the committee has placed this applicant on its shared shortlist.
+  shortlisted: boolean;
 };
 
 export type RankingResponse = {

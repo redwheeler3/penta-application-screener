@@ -229,7 +229,7 @@
 .opening-no-selection-button:hover { color: var(--ink); text-decoration: underline; }
 .danger-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; padding: 0.55rem 0.8rem; border: 1px solid #fca5a5; border-radius: 7px; background: #fff1f2; color: #b91c1c; font-weight: 700; cursor: pointer; }
 .text-danger-button { padding: 0.4rem; border: 0; background: none; color: #b91c1c; font-weight: 700; cursor: pointer; }
-.app-detail-star-spacer { flex: 0 0 1.65rem; }
+.app-detail-star-spacer { flex: 0 0 4rem; }
 
 @media (max-width: 760px) {
   .openings-header,

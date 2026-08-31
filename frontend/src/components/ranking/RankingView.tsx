@@ -1,8 +1,10 @@
-import { Plus, Printer, Star, X } from "lucide-react";
+import { Plus, Printer, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { bandClass, scoreBand } from "../../format";
 import type { RankingResponse, CurrentRunResponse, PoolDimension, Tier } from "../../types";
 import { StarButton } from "../applications/StarButton";
+import { CandidateListSelect, type CandidateListView } from "../applications/CandidateListSelect";
+import { SharedShortlistButton } from "../applications/SharedShortlistButton";
 import { TierList, TierSummaryForPrint } from "./TierList";
 
 // The always-visible description pane beside the tiers. Shows the tapped criterion's
@@ -116,6 +118,7 @@ export function RankingView(props: {
   onRemoveProposal: (text: string) => void;
   onSelectApplication: (id: number) => void;
   onToggleStar: (id: number, starred: boolean) => void;
+  onToggleShortlist: (id: number, shortlisted: boolean) => void;
   applicationIdsInOpeningScope: Set<number> | null;
 }): ReactNode {
   const { ranking, rankingRun, tiers, proposedDimensions } = props;
@@ -126,14 +129,16 @@ export function RankingView(props: {
           props.applicationIdsInOpeningScope!.has(candidate.applicationId),
         )
   ).map((candidate, index) => ({ ...candidate, rank: index + 1 }));
-  // "Favourites only" is a local view filter over this member's stars — the ranked
-  // list is one short page, so it filters client-side (no refetch, no pagination).
-  const [favouritesOnly, setFavouritesOnly] = useState(false);
+  // Saved-list views filter client-side; ranking stays one ordered list and the visible
+  // subset keeps its original rank numbers.
+  const [candidateView, setCandidateView] = useState<CandidateListView>("all");
   const starredCount = candidates.filter((c) => c.starredByMe).length;
-  const favouritesLabel = favouritesOnly
-    ? `Showing favourites (${starredCount})`
-    : `Show favourites (${starredCount})`;
-  const printTitle = favouritesOnly ? "Prints favourite applicants" : "Prints the full ranking";
+  const shortlistedCount = candidates.filter((c) => c.shortlisted).length;
+  const printTitle = candidateView === "favourites"
+    ? "Prints my favourite applicants"
+    : candidateView === "shortlist"
+      ? "Prints the shared shortlist"
+      : "Prints the full ranking";
   const labelFor = (key: string) => rankingRun?.dimensions.find((d) => d.key === key)?.name ?? key;
   // Which criterion's description is open (one at a time, shown below the tiers), and
   // whether the "add your own" composer is revealed. The criteria live as the tier
@@ -219,16 +224,12 @@ export function RankingView(props: {
       ) : (
         <>
         <div className="ranking-list-toolbar no-print">
-          <button
-            type="button"
-            className={`secondary-button favourites-toggle ${favouritesOnly ? "active" : ""}`}
-            aria-pressed={favouritesOnly}
-            disabled={starredCount === 0 && !favouritesOnly}
-            onClick={() => setFavouritesOnly((v) => !v)}
-          >
-            <Star size={13} fill={favouritesOnly ? "currentColor" : "none"} strokeWidth={2} />
-            <span>{favouritesLabel}</span>
-          </button>
+          <CandidateListSelect
+            value={candidateView}
+            favourites={starredCount}
+            shortlist={shortlistedCount}
+            onChange={setCandidateView}
+          />
           <button
             type="button"
             className="secondary-button ranking-print-button"
@@ -239,7 +240,7 @@ export function RankingView(props: {
             Print ranking
           </button>
         </div>
-        <ol className={`ranking-list${favouritesOnly ? " showing-favourites-only" : ""}`}>
+        <ol className={`ranking-list showing-${candidateView}`}>
           {candidates
             .map((candidate) => {
             // Lead with what most moved this candidate's rank — by |impact|, not raw
@@ -252,18 +253,26 @@ export function RankingView(props: {
             return (
               <li
                 key={candidate.applicationId}
-                className={candidate.starredByMe ? undefined : "not-favourite"}
+                className={`${candidate.starredByMe ? "" : "not-favourite"} ${candidate.shortlisted ? "" : "not-shortlisted"}`.trim() || undefined}
                 data-app-id={candidate.applicationId}
               >
                 <div className="ranking-row" onClick={() => props.onSelectApplication(candidate.applicationId)}>
                   <span className="ranking-rank">#{candidate.rank}</span>
                   <div className="ranking-main">
                     <div className="ranking-name-row">
-                      <StarButton
-                        starred={candidate.starredByMe}
-                        onToggle={(next) => props.onToggleStar(candidate.applicationId, next)}
-                        stopPropagation
-                      />
+                      <div className="candidate-save-buttons">
+                        <StarButton
+                          starred={candidate.starredByMe}
+                          onToggle={(next) => props.onToggleStar(candidate.applicationId, next)}
+                          stopPropagation
+                        />
+                        <SharedShortlistButton
+                          shortlisted={candidate.shortlisted}
+                          onToggle={(next) => props.onToggleShortlist(candidate.applicationId, next)}
+                          compact
+                          stopPropagation
+                        />
+                      </div>
                       <span className="ranking-name">{candidate.name || "Unnamed applicant"}</span>
                       <span className={`fit-band band-${bandClass(candidate.band)}`}>{candidate.band}</span>
                     </div>

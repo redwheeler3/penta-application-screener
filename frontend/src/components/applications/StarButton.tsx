@@ -20,13 +20,14 @@ export function StarButton({
   stopPropagation = false,
 }: StarButtonProps) {
   const px = size === "md" ? 22 : 18;
+  const action = starred ? "Remove from my favourites" : "Add to my favourites";
   return (
     <button
       type="button"
       className={`star-button no-print${starred ? " is-starred" : ""} star-${size}`}
       aria-pressed={starred}
-      aria-label={starred ? "Remove from favourites" : "Add to favourites"}
-      title={starred ? "Favourited — click to remove" : "Add to favourites"}
+      aria-label={action}
+      title={`${action}. Private to you.`}
       onClick={(event) => {
         if (stopPropagation) event.stopPropagation();
         onToggle(!starred);

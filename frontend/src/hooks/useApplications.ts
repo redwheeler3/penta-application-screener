@@ -20,7 +20,7 @@ export interface ApplicationsState {
   /** Distinguishes initial loading, a settled list (including an empty one), and a
    * definitively failed initial load. */
   applicationsLoadState: "loading" | "ready" | "error";
-  /** Facet counts (status/source/favourites) derived from the full pool, each
+  /** Facet counts (status/source/saved views) derived from the full pool, each
    * reflecting the OTHER active filters so the groups stay consistent. */
   appFacets: AppFacets;
   appFilter: AppFilter;
@@ -39,8 +39,8 @@ export interface ApplicationsState {
 
 /** The applications-list view state. The whole pool (a few hundred rows at most) is held
  * client-side; filtering, sorting, opening scope, and facet counts are derived here with no server
- * round-trips — so a filter/sort/favourites toggle is instant. Only a data-changing
- * action (screen, status override, star) triggers a refetch. The selected
+ * round-trips — so a filter/sort/saved-view change is instant. Only a data-changing
+ * action (screen, status override, star, shortlist) triggers a refetch. The selected
  * candidate detail is NOT here: it's cross-cutting (tab switches, overrides, settings
  * save all clear it), so it stays in App. */
 export function useApplications(): ApplicationsState {
@@ -104,22 +104,26 @@ export function useApplications(): ApplicationsState {
   );
 
   // Facets reflect every active filter EXCEPT their own group (like the server did),
-  // so the two filter rows stay mutually consistent. Search + favourites apply to both.
+  // so the two filter rows stay mutually consistent. Search + saved view apply to both.
   const appFacets = useMemo<AppFacets>(() => {
     const base = allApplications.filter(
       (application) => matchesSearch(application) && matchesOpening(application),
     );
-    const favBase = appFilter.favourites ? base.filter((a) => a.starredByMe) : base;
+    const savedBase = appFilter.savedView === "favourites"
+      ? base.filter((a) => a.starredByMe)
+      : appFilter.savedView === "shortlist"
+        ? base.filter((a) => a.shortlisted)
+        : base;
     const status: Record<string, number> = { eligible: 0, ineligible: 0 };
     const source: Record<string, number> = { untouched: 0, rules: 0, ai: 0, human: 0 };
     // Status facet ignores the status filter but honours source (+ search/favourites).
-    for (const a of favBase.filter(
+    for (const a of savedBase.filter(
       (a) => !appFilter.statusSource || a.statusSource === appFilter.statusSource,
     )) {
       status[a.status] = (status[a.status] ?? 0) + 1;
     }
     // Source facet ignores the source filter but honours status (+ search/favourites).
-    for (const a of favBase.filter((a) => !appFilter.status || a.status === appFilter.status)) {
+    for (const a of savedBase.filter((a) => !appFilter.status || a.status === appFilter.status)) {
       source[a.statusSource] = (source[a.statusSource] ?? 0) + 1;
     }
     // Favourites count ignores the favourites filter but honours status + source.
@@ -129,10 +133,17 @@ export function useApplications(): ApplicationsState {
         (!appFilter.status || a.status === appFilter.status) &&
         (!appFilter.statusSource || a.statusSource === appFilter.statusSource),
     ).length;
+    const shortlist = base.filter(
+      (a) =>
+        a.shortlisted &&
+        (!appFilter.status || a.status === appFilter.status) &&
+        (!appFilter.statusSource || a.statusSource === appFilter.statusSource),
+    ).length;
     return {
       status: status as AppFacets["status"],
       source: source as AppFacets["source"],
       favourites,
+      shortlist,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allApplications, appFilter, searchTerm, selectedOpeningIds]);
@@ -143,7 +154,8 @@ export function useApplications(): ApplicationsState {
         matchesSearch(a) &&
         (!appFilter.status || a.status === appFilter.status) &&
         (!appFilter.statusSource || a.statusSource === appFilter.statusSource) &&
-        (!appFilter.favourites || a.starredByMe) &&
+        (appFilter.savedView !== "favourites" || a.starredByMe) &&
+        (appFilter.savedView !== "shortlist" || a.shortlisted) &&
         matchesOpening(a),
     );
     return appSort ? sortApplications(filtered, appSort) : filtered;

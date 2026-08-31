@@ -60,7 +60,7 @@ export type SortState = { key: SortKey; direction: "asc" | "desc" } | null;
 export type AppFilter = {
   status?: AppStatus;
   statusSource?: StatusSource;
-  favourites?: boolean;
+  savedView?: "favourites" | "shortlist";
 };
 
 // Live progress emitted by the streaming Rank chain. `stage` is the current sub-step

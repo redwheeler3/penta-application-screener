@@ -47,3 +47,9 @@ export function setStar(id: number, starred: boolean): Promise<Response> {
     method: starred ? "PUT" : "DELETE",
   });
 }
+
+export function setShortlist(id: number, shortlisted: boolean): Promise<Response> {
+  return request(`/applications/${id}/shortlist`, {
+    method: shortlisted ? "PUT" : "DELETE",
+  });
+}

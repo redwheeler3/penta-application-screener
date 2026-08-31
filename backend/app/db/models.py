@@ -721,6 +721,27 @@ class ApplicationStar(TimestampMixin, Base):
     user: Mapped[User] = relationship()
 
 
+class ApplicationShortlist(TimestampMixin, Base):
+    """One application on the committee's shared working shortlist.
+
+    Unlike a private star, this row is visible to every committee member. It is a
+    reversible human working choice with no effect on eligibility, ranking, or the
+    final opening outcome. Row existence is the state; removing the application from
+    the shortlist deletes the row.
+    """
+
+    __tablename__ = "application_shortlist"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
+    )
+    added_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+    application: Mapped[Application] = relationship()
+    added_by: Mapped[User] = relationship()
+
+
 class ApplicationAIResult(TimestampMixin, Base):
     """Cached AI analysis for one application and analysis kind.
 

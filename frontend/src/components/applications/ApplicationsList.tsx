@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Star } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { type ReactNode } from "react";
 import { SOURCE_LABELS, STATUS_LABELS } from "../../constants";
 import { flagCategoryLabel } from "../../format";
@@ -10,6 +10,8 @@ import type {
   SortState,
 } from "../../types";
 import { StarButton } from "./StarButton";
+import { CandidateListSelect, type CandidateListView } from "./CandidateListSelect";
+import { SharedShortlistButton } from "./SharedShortlistButton";
 
 export function ApplicationsList(props: {
   applications: ApplicationSummary[];
@@ -23,6 +25,7 @@ export function ApplicationsList(props: {
   onToggleSort: (key: SortKey) => void;
   onSelectApplication: (id: number) => void;
   onToggleStar: (id: number, starred: boolean) => void;
+  onToggleShortlist: (id: number, shortlisted: boolean) => void;
   onRetryLoad: () => void;
 }): ReactNode {
   const { applications, applicationsLoadState, appFilter, appFacets, appSort } = props;
@@ -51,6 +54,7 @@ export function ApplicationsList(props: {
         <h3>Applications</h3>
       </div>
       <div className="app-controls">
+        <div className="app-filter-axes">
         {/* Each group toggles one axis of the filter, preserving the other, so
             Status and "Decided by" combine (AND). */}
         <div className="filter-group">
@@ -85,27 +89,25 @@ export function ApplicationsList(props: {
             ))}
           </div>
         </div>
-        <div className="filter-group">
-          {/* No "Show" label — the star + "Favourites" is self-explanatory, and dropping it
-              reclaims width on this row for the search. */}
-          <button
-            type="button"
-            className={`tab-button favourites-toggle ${appFilter.favourites ? "active" : ""}`}
-            aria-pressed={!!appFilter.favourites}
-            disabled={appFacets.favourites === 0 && !appFilter.favourites}
-            onClick={() => props.onApplyFilter({ ...appFilter, favourites: !appFilter.favourites })}
-          >
-            <Star size={13} fill={appFilter.favourites ? "currentColor" : "none"} strokeWidth={2} />
-            <span>Favourites ({appFacets.favourites})</span>
-          </button>
         </div>
-        <input
-          className="app-search"
-          type="search"
-          placeholder="Search by name / email"
-          value={props.appSearch}
-          onChange={(event) => props.onSearch(event.target.value)}
-        />
+        <div className="app-control-utilities">
+          <CandidateListSelect
+            value={appFilter.savedView ?? "all"}
+            favourites={appFacets.favourites}
+            shortlist={appFacets.shortlist}
+            onChange={(value: CandidateListView) => props.onApplyFilter({
+              ...appFilter,
+              savedView: value === "all" ? undefined : value,
+            })}
+          />
+          <input
+            className="app-search"
+            type="search"
+            placeholder="Search applicants"
+            value={props.appSearch}
+            onChange={(event) => props.onSearch(event.target.value)}
+          />
+        </div>
       </div>
 
       {applicationsLoadState === "loading" ? (
@@ -122,8 +124,10 @@ export function ApplicationsList(props: {
       ) : applications.length === 0 ? (
         <div className="empty-state">
           <p>
-            {appFilter.favourites
+            {appFilter.savedView === "favourites"
               ? "You haven't favourited any applicants yet."
+              : appFilter.savedView === "shortlist"
+                ? "No applicants are on the shared shortlist yet."
               : appFilter.status || appFilter.statusSource
                 ? "No applications match this filter."
                 : "No submitted applications yet."}
@@ -134,7 +138,7 @@ export function ApplicationsList(props: {
           <table className="app-table">
           <thead>
             <tr>
-              <th className="star-col" aria-label="Favourite" />
+              <th className="saved-col" aria-label="My favourites and shared shortlist" />
               {(
                 [
                   { label: "Applicant", key: "applicant" },
@@ -183,12 +187,20 @@ export function ApplicationsList(props: {
                   onClick={() => props.onSelectApplication(app.id)}
                   className="clickable-row"
                 >
-                  <td className="star-col">
-                    <StarButton
-                      starred={app.starredByMe}
-                      onToggle={(next) => props.onToggleStar(app.id, next)}
-                      stopPropagation
-                    />
+                  <td className="saved-col">
+                    <div className="candidate-save-buttons">
+                      <StarButton
+                        starred={app.starredByMe}
+                        onToggle={(next) => props.onToggleStar(app.id, next)}
+                        stopPropagation
+                      />
+                      <SharedShortlistButton
+                        shortlisted={app.shortlisted}
+                        onToggle={(next) => props.onToggleShortlist(app.id, next)}
+                        compact
+                        stopPropagation
+                      />
+                    </div>
                   </td>
                   <td className="applicant-cell">{app.applicantName || app.primaryEmail}</td>
                   <td>{app.coApplicantName || "—"}</td>

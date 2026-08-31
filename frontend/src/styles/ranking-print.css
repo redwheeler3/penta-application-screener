@@ -40,7 +40,8 @@
   margin-bottom: 0.6rem;
 }
 
-.showing-favourites-only .not-favourite {
+.showing-favourites .not-favourite,
+.showing-shortlist .not-shortlisted {
   display: none;
 }
 
@@ -468,7 +469,7 @@
    rows weigh more; the gradient hints at descending importance. */
 .tier-row {
   display: grid;
-  grid-template-columns: 9rem 1fr;
+  grid-template-columns: 8rem 1fr;
   gap: 0.6rem;
   align-items: start;
   padding: 0.5rem;
@@ -819,4 +820,3 @@
     break-inside: avoid;
   }
 }
-

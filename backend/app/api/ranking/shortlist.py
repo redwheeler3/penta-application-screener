@@ -49,6 +49,7 @@ from app.services.ranking.member_state import (
 )
 from app.services.ranking.view import candidate_scores
 from app.services.run_lock import rank_run_in_progress
+from app.services.shared_shortlist import shortlisted_ids
 from app.services.stars import starred_ids
 
 router = APIRouter(prefix="/ranking")
@@ -107,6 +108,7 @@ def _ranking_payload(db: Session, member_ranking: MemberRanking, user: User) -> 
         if c.application_id in eligible_ids
     ]
     starred = starred_ids(db, user.id, [c.application_id for c in ranked])
+    shortlisted = shortlisted_ids(db, [c.application_id for c in ranked])
     return RankingResponse(
         analysis_id=member_ranking.analysis_id,
         weights=weights,
@@ -123,6 +125,7 @@ def _ranking_payload(db: Session, member_ranking: MemberRanking, user: User) -> 
                     for contribution in c.contributions
                 ],
                 starred_by_me=c.application_id in starred,
+                shortlisted=c.application_id in shortlisted,
             )
             for c in ranked
         ],

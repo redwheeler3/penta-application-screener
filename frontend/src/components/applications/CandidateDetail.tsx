@@ -19,6 +19,7 @@ import type {
 } from "../../types";
 import { buildDetailSections, type DetailField } from "./applicationDetailSections";
 import { StarButton } from "./StarButton";
+import { SharedShortlistButton } from "./SharedShortlistButton";
 
 const MAX_PRIVATE_NOTE_HEIGHT_PX = 192;
 
@@ -46,6 +47,7 @@ export function CandidateDetail(props: {
   onClearOverride: (id: number) => void;
   onSavePrivateNote: (id: number, note: string) => Promise<boolean>;
   onToggleStar: (id: number, starred: boolean) => void;
+  onToggleShortlist: (id: number, shortlisted: boolean) => void;
   readOnly?: boolean;
 }): ReactNode {
   const { app } = props;
@@ -151,11 +153,19 @@ export function CandidateDetail(props: {
       </div>
       <div className="app-detail-identity">
         {props.readOnly ? <span className="app-detail-star-spacer" /> : (
-          <StarButton
-            starred={app.starredByMe}
-            onToggle={(next) => props.onToggleStar(app.id, next)}
-            size="md"
-          />
+          <div className="candidate-save-buttons detail-save-buttons">
+            <StarButton
+              starred={app.starredByMe}
+              onToggle={(next) => props.onToggleStar(app.id, next)}
+              size="md"
+            />
+            <SharedShortlistButton
+              shortlisted={app.shortlisted}
+              onToggle={(next) => props.onToggleShortlist(app.id, next)}
+              compact
+              size="md"
+            />
+          </div>
         )}
         <div className="app-detail-identity-content">
           <div className="app-detail-header">
