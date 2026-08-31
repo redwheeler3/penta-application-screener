@@ -258,6 +258,18 @@ Restore by creating a new volume from a snapshot, then attaching it:
 ```
 fly volumes create screener_data --snapshot-id <snap-id> --region iad --size 1
 ```
+
+### Restore-drill evidence
+
+On 2026-08-31, the newest scheduled production snapshot was restored into a separate encrypted
+1 GB volume and attached to a private disposable Machine with no services or production secrets.
+The restored 22,097,920-byte SQLite file passed `PRAGMA integrity_check`, had zero
+`foreign_key_check` findings, contained all 32 tables, and reported Alembic revision
+`e8f9a0b1c2d3`. Database validation took 0.953 seconds. The observed app-create-through-validation
+drill took about 3.5 minutes, including correcting the first disposable validator command; this
+proves the snapshot can be restored and read, not the full time to replace and route production.
+The disposable Machine, volume, and app were removed after validation.
+
 Production recovery intentionally restores the selected snapshot as-is. There is no separate
 cross-snapshot deletion-ledger reconciliation: a restore can therefore reintroduce applicant data
 deleted after the snapshot was taken. That exposure is bounded by the 30-day snapshot-retention
