@@ -57,7 +57,7 @@ primary_region = "iad"   # Ashburn — lower-cost region; Bedrock runs in nearby
     soft_limit = 20
 
   [[http_service.checks]]
-    # Liveness: the /health route (no auth) confirms the app booted and migrations ran.
+    # Readiness: the /health route (no auth) confirms the app and mounted SQLite DB respond.
     # Grace period covers cold-start + `alembic upgrade head` on a fresh machine.
     method = "get"
     path = "/health"

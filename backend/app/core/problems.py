@@ -25,6 +25,7 @@ PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     "unauthorized": (401, "Authentication required"),
     "invalid_magic_link": (401, "Sign-in link unavailable"),
     "email_delivery_failed": (503, "Email could not be sent"),
+    "database_unavailable": (503, "Database unavailable"),
     "verified_email_required": (409, "Email verification required"),
     "email_unchanged": (400, "Email address unchanged"),
     "pending_draft_unavailable": (409, "Pending draft unavailable"),

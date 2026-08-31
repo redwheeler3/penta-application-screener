@@ -88,8 +88,8 @@ start the container runs `alembic upgrade head` (idempotent) then uvicorn. Watch
 fly logs
 fly status
 ```
-The `/health` check should go green once migrations finish (see the grace period in
-`fly.toml`).
+The `/health` check should go green once migrations finish and the mounted SQLite database
+can serve an application-table read (see the grace period in `fly.toml`).
 
 ### 5. Custom domains
 
