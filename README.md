@@ -271,23 +271,19 @@ If local screening data looks stale or inconsistent, reset the local SQLite data
 ./dev.ps1
 ```
 
-### Backups
+### Database protection
 
-A Rank's output is expensive (paid Bedrock calls) and non-deterministic — it cannot be
-regenerated identically — so the local database is snapshotted. Snapshots use SQLite
-`VACUUM INTO` (a consistent hot copy, safe while the backend is running) and land in
-`backend/data/backups/`, which is gitignored (the snapshots hold applicant PII and must
-never be committed).
+Local durability comes from the machine's daily backup system, while production uses scheduled
+Fly volume snapshots. The reusable local backup service lives in
+`backend/app/services/backup.py` for explicit recovery workflows; any snapshots it creates
+contain applicant PII and must never be committed.
 
-- **Automatic:** every completed Rank snapshots the DB (best-effort — a backup failure
-  never fails the run).
-- **Manual:** `./backup-db.sh [tag]` (`./backup-db.ps1 -Tag <label>` on Windows) — e.g.
-  before anything risky. The newest ~50 snapshots are kept.
-- **Restore:** `./restore-db.sh` lists snapshots and prompts for one (`--latest` for the
-  most recent); `./restore-db.ps1` on Windows. The current DB is snapshotted first (tag
-  `pre-restore`), so a restore is itself reversible. The restore also reapplies the current
-  hard-purge ledger so an older local snapshot cannot resurrect an aggregate already removed by
-  retention. Stop the backend before restoring.
+- **Backup:** `./backup-db.sh [tag]` (`./backup-db.ps1 -Tag <label>` on Windows) creates a
+  consistent hot copy and retains the newest 20 explicit recovery points.
+- **Restore:** `./restore-db.sh` lists recovery points and prompts for one (`--latest` for the
+  most recent); use `./restore-db.ps1` on Windows. Stop the backend before restoring. The current
+  database is snapshotted first, and the current hard-purge ledger is reapplied so an older local
+  copy cannot resurrect an aggregate already removed by retention.
 
 Or run services individually:
 

@@ -241,11 +241,9 @@ gitignored secrets. The two are independent.
 
 ## Backups and restore
 
-**In prod, Fly volume snapshots are the backup mechanism.** The app's own post-rank
-auto-snapshot is a *local-only* safety net from the heavy-iteration days and is **disabled in
-prod** via `LOCAL_DB_BACKUPS = "false"` in `fly.toml [env]` (it would otherwise pile `.db`
-files onto the volume on every rank, duplicating what volume snapshots already cover). It
-stays on for local dev with no config.
+**In prod, Fly volume snapshots are the backup mechanism.** Local durability is handled by the
+machine's daily backup system; the reusable backup service remains available for explicit recovery
+workflows.
 
 ### Fly volume snapshots (the prod backup)
 
@@ -273,9 +271,9 @@ The disposable Machine, volume, and app were removed after validation.
 Production recovery intentionally restores the selected snapshot as-is. There is no separate
 cross-snapshot deletion-ledger reconciliation: a restore can therefore reintroduce applicant data
 deleted after the snapshot was taken. That exposure is bounded by the 30-day snapshot-retention
-window and is the accepted disaster-recovery tradeoff for this small deployment. The local
-`restore-db` scripts provide stronger deletion-ledger handling for local backups; that behavior does
-not apply to a Fly volume replacement.
+window and is the accepted disaster-recovery tradeoff for this small deployment. The local backup
+service provides stronger deletion-ledger handling for local restores; that behavior does not apply
+to a Fly volume replacement.
 
 For a true off-Fly copy (belt and suspenders), pull a consistent snapshot down on demand. Treat the
 download as sensitive applicant data and delete it within the same 30-day retention window.
@@ -285,8 +283,6 @@ fly ssh console -C "sh -c 'cd /app/backend && uv run python -c \"import sqlite3;
 sqlite3.connect(\\\"data/penta_screener.db\\\").execute(\\\"VACUUM INTO \\\\\\\"/tmp/snap.db\\\\\\\"\\\")\"'"
 fly ssh sftp get /tmp/snap.db ./screener-$(date +%Y%m%d).db
 ```
-(Or, if you ever flip `LOCAL_DB_BACKUPS` on temporarily, `restore-db.sh` and the tagged
-snapshots in `data/backups/` work the same in the container as locally.)
 
 ---
 

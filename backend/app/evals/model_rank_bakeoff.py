@@ -140,16 +140,8 @@ def run_rank_copy(
             anthropic_api_key=runtime.anthropic_api_key,
             openai_reasoning_efforts=reasoning,
         )
-        # The endpoint's post-Rank safety copy should follow the isolated DB, but adds no
-        # value here because this file is already the disposable copy.
-        runtime_settings = get_settings()
-        old_backup_setting = runtime_settings.local_db_backups
-        runtime_settings.local_db_backups = False
         started = time.perf_counter()
-        try:
-            events = asyncio.run(_consume(rank_run(user=user, db=db, provider=provider)))
-        finally:
-            runtime_settings.local_db_backups = old_backup_setting
+        events = asyncio.run(_consume(rank_run(user=user, db=db, provider=provider)))
         wall_clock_seconds = time.perf_counter() - started
 
         errors = [event for event in events if event.get("type") == "error"]

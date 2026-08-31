@@ -8,8 +8,8 @@ Backups land in ``backend/data/backups/`` (gitignored under the ``backend/data/*
 they hold real applicant PII and must never be committed). Filenames are timestamped and
 tagged so a restore can pick the right one; ``prune`` keeps the newest N.
 
-Used by both the manual CLI (``python -m app.services.backup``) and the automatic
-post-Rank snapshot (see ``ranking.py``), so the snapshot logic lives in one place.
+The service, its manual CLI (``python -m app.services.backup``), and the root backup/restore
+scripts provide explicit local recovery points.
 """
 
 from __future__ import annotations
@@ -20,13 +20,11 @@ from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import Engine, text
-from sqlalchemy.orm import Session
 
 from app.db.session import engine as default_engine
 
 # Keep this many most-recent backups; older ones are pruned. A snapshot is a few MB and
-# these are the only durable record of a run's (expensive, non-deterministic) output once
-# the live DB moves on — 20 is plenty of recent history without the pile creeping toward a GB.
+# 20 explicit recovery points are ample without the directory creeping toward a GB.
 DEFAULT_KEEP = 20
 
 _TS_FMT = "%Y%m%d_%H%M%S"
@@ -51,19 +49,15 @@ def _sqlite_path(engine: Engine) -> Path:
     and an in-memory DB (``:memory:``, the test engine) has nothing on disk to copy.
 
     Rejecting ``:memory:`` explicitly matters: ``Path(":memory:").resolve()`` would
-    otherwise resolve to ``<cwd>/:memory:``, so ``backups_dir`` would land under the
-    process CWD (``backend/``) and every rank test's auto-snapshot would dump a real
-    backup there. The guard turns that into a clean skip (the auto-snapshot caller
-    treats it as best-effort)."""
+    otherwise resolve to ``<cwd>/:memory:``, so ``backups_dir`` would target an unrelated
+    directory instead of a real database."""
     url = engine.url
     if url.get_backend_name() != "sqlite" or not url.database or url.database == ":memory:":
         raise RuntimeError("DB backups require a file-backed local SQLite database.")
     return Path(url.database).resolve()
 
 
-# The engine to snapshot. Passed explicitly by request-path callers (via the session that
-# is in scope, so a test's overridden engine is honored and its backups land beside its
-# own temp DB) and defaulted to the app engine for CLI use.
+# The engine to snapshot, passed explicitly by tests and defaulted for CLI use.
 def _resolve(engine: Engine | None) -> Engine:
     return engine or default_engine
 
@@ -112,33 +106,11 @@ def prune(keep: int = DEFAULT_KEEP, *, engine: Engine | None = None) -> list[Pat
 
 def create_and_prune(*, engine: Engine | None = None, tag: str = "manual",
                      keep: int = DEFAULT_KEEP) -> Path:
-    """Snapshot then prune — the one call both the CLI and the auto-snapshot use."""
+    """Create an explicit recovery point, then prune older manual snapshots."""
     eng = _resolve(engine)
     dest = create_backup(engine=eng, tag=tag)
     prune(keep=keep, engine=eng)
     return dest
-
-
-def create_from_session(session: Session, *, tag: str, keep: int = DEFAULT_KEEP) -> Path | None:
-    """Snapshot the DB the given ``session`` is bound to, or return None if that DB isn't
-    file-backed (nothing to snapshot). Used by the request path (the auto post-Rank
-    snapshot) so it honors a test's overridden engine instead of the global — otherwise
-    tests would back up the real DB. bind is an Engine for our sessionmakers.
-
-    A test binds an in-memory engine (``:memory:``); there's nothing on disk to copy, so
-    this is a clean no-op (None), NOT an error — the auto-snapshot shouldn't fire, and
-    shouldn't need the caller's try/except to swallow a raise for the normal test path."""
-    bind = session.get_bind()
-    eng = bind if isinstance(bind, Engine) else default_engine
-    if not _is_file_backed(eng):
-        return None
-    return create_and_prune(engine=eng, tag=tag, keep=keep)
-
-
-def _is_file_backed(engine: Engine) -> bool:
-    """True when ``engine`` is a file-backed SQLite DB (so a backup is meaningful)."""
-    url = engine.url
-    return url.get_backend_name() == "sqlite" and bool(url.database) and url.database != ":memory:"
 
 
 def restore_backup(source: Path, *, engine: Engine | None = None) -> Path:

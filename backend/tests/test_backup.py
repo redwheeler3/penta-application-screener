@@ -2,8 +2,7 @@
 
 Uses a real on-disk temp DB with its own engine — VACUUM INTO and integrity checks need
 a genuine SQLite file, not an in-memory one — passed explicitly to the backup functions,
-so nothing touches the project's real database. This also exercises the ``engine=``
-parameter that lets the request path back up a test's overridden DB rather than the app's.
+so nothing touches the project's real database.
 """
 
 from datetime import datetime
@@ -27,11 +26,11 @@ def temp_engine(tmp_path):
 
 
 def test_create_backup_is_a_valid_consistent_copy(temp_engine):
-    dest = backup.create_backup(engine=temp_engine, tag="rank")
+    dest = backup.create_backup(engine=temp_engine, tag="manual")
 
     assert dest.exists()
     assert dest.parent.name == "backups"
-    assert "rank" in dest.name
+    assert "manual" in dest.name
     # The snapshot is a real, queryable DB with the source's rows.
     snap = create_engine(f"sqlite:///{dest}")
     with snap.connect() as conn:
@@ -123,22 +122,6 @@ def test_restore_does_not_resurrect_a_retention_deletion(temp_engine):
         assert conn.execute(text("SELECT count(*) FROM applications")).scalar() == 0
         assert conn.execute(text("SELECT count(*) FROM application_notes")).scalar() == 0
         assert conn.execute(text("SELECT count(*) FROM retention_deletions")).scalar() == 1
-
-
-def test_in_memory_session_snapshot_is_a_noop_not_a_cwd_dump(tmp_path, monkeypatch):
-    # In-memory engines have no file to snapshot and must not create a backup directory.
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import Session
-
-    # A temporary cwd makes any accidental backup write observable to this test.
-    monkeypatch.chdir(tmp_path)
-    mem = create_engine("sqlite:///:memory:")
-    with Session(mem) as session:
-        result = backup.create_from_session(session, tag="rank")
-
-    assert result is None
-    assert not (tmp_path / "backups").exists()
-
 
 def test_sqlite_path_rejects_in_memory(tmp_path):
     from sqlalchemy import create_engine

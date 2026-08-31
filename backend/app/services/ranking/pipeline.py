@@ -1,6 +1,5 @@
 """Streaming criteria, scoring, and consolidation pipeline for a full Rank run."""
 
-import logging
 import time
 from collections.abc import Callable, Generator, Iterator
 from dataclasses import dataclass
@@ -30,7 +29,6 @@ from app.ai.dimension_scoring import applications_to_score, score_dimensions
 from app.ai.pricing import PassCost
 from app.ai.provider import AIProvider
 from app.ai.schemas import DecompositionReport, PoolDimensionReport
-from app.core.config import get_settings
 from app.db.models import Analysis, MemberRanking, User
 from app.schemas.events import ErrorEvent as StreamErrorEvent
 from app.schemas.events import (
@@ -598,16 +596,6 @@ def stream_rank(
         estimated_usd=estimated_usd,
         triggered_by_user_id=user.id,
     )
-
-    if get_settings().local_db_backups:
-        try:
-            from app.services.backup import create_from_session
-
-            create_from_session(db, tag="rank")
-        except Exception:
-            logging.getLogger("app.services.ranking").exception(
-                "Post-rank DB backup failed (run is saved; backup skipped)"
-            )
 
     yield emit(
         RankSummary(

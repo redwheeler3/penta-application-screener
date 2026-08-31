@@ -21,16 +21,6 @@ def test_local_applicant_links_open_the_applicant_surface() -> None:
     )
 
 
-def test_local_db_backups_default_on_for_dev() -> None:
-    # The post-rank auto-snapshot defaults on, so local dev keeps its safety net with no config.
-    assert Settings().local_db_backups is True
-
-
-def test_local_db_backups_can_be_disabled_for_prod() -> None:
-    # Prod (fly.toml [env]) sets it off — env is parsed to a real bool, not the string "false".
-    assert Settings(local_db_backups=False).local_db_backups is False
-
-
 def test_login_scopes_are_identity_only_no_drive_or_sheets() -> None:
     # Google is an optional identity provider only; it receives no application-data access.
     scopes = Settings().google_oauth_scopes.split()
