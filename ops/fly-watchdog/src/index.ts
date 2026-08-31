@@ -3,10 +3,12 @@ import { DurableObject } from "cloudflare:workers";
 import {
   appMachine,
   needsRestart,
-  POLL_INTERVAL_MS,
+  nextPollAt,
+  shouldRetryLookupStatus,
   type FlyMachine,
   watchdogEnabled,
 } from "./decision";
+import { retryOnce } from "./retry";
 
 export interface Env {
   WATCHDOG: DurableObjectNamespace;
@@ -19,7 +21,12 @@ export interface Env {
 const LAST_RESTART_AT_KEY = "last_restart_at";
 const LAST_ERROR_ALERT_AT_KEY = "last_error_alert_at";
 const FLY_REQUEST_TIMEOUT_MS = 10_000;
+const FLY_LOOKUP_RETRY_DELAY_MS = 1_000;
 const ERROR_ALERT_COOLDOWN_MS = 5 * 60_000;
+
+function errorDetail(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error.";
+}
 
 function flyRequest(url: string, token: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
@@ -48,6 +55,7 @@ export class FlyWatchdog extends DurableObject<Env> {
       return;
     }
 
+    const pollStartedAt = Date.now();
     try {
       await this.restartIfUnhealthy();
     } catch (error) {
@@ -55,7 +63,7 @@ export class FlyWatchdog extends DurableObject<Env> {
       throw error;
     } finally {
       if (watchdogEnabled(this.env.WATCHDOG_ENABLED)) {
-        await this.ctx.storage.setAlarm(Date.now() + POLL_INTERVAL_MS);
+        await this.ctx.storage.setAlarm(nextPollAt(pollStartedAt, Date.now()));
       }
     }
   }
@@ -67,10 +75,26 @@ export class FlyWatchdog extends DurableObject<Env> {
   }
 
   private async restartIfUnhealthy(): Promise<void> {
-    const response = await flyRequest(
-      `https://api.machines.dev/v1/apps/${this.env.FLY_APP_NAME}/machines`,
-      this.env.FLY_API_TOKEN,
-    );
+    let response: Response;
+    try {
+      response = await retryOnce(
+        async () => {
+          const lookup = await flyRequest(
+            `https://api.machines.dev/v1/apps/${this.env.FLY_APP_NAME}/machines`,
+            this.env.FLY_API_TOKEN,
+          );
+          if (shouldRetryLookupStatus(lookup.status)) {
+            throw new Error(`Fly machine lookup failed (HTTP ${lookup.status}).`);
+          }
+          return lookup;
+        },
+        FLY_LOOKUP_RETRY_DELAY_MS,
+      );
+    } catch (error) {
+      throw new Error(`Fly machine lookup failed after two attempts: ${errorDetail(error)}`, {
+        cause: error,
+      });
+    }
     if (!response.ok) {
       throw new Error(`Fly machine lookup failed (HTTP ${response.status}).`);
     }
@@ -79,11 +103,22 @@ export class FlyWatchdog extends DurableObject<Env> {
     const lastRestartAt = await this.ctx.storage.get<number>(LAST_RESTART_AT_KEY);
     if (!machine || !needsRestart(machine, Date.now(), lastRestartAt ?? null)) return;
 
-    const restart = await flyRequest(
-      `https://api.machines.dev/v1/apps/${this.env.FLY_APP_NAME}/machines/${machine.id}/restart`,
-      this.env.FLY_API_TOKEN,
-      { method: "POST" },
-    );
+    let restart: Response;
+    try {
+      restart = await flyRequest(
+        `https://api.machines.dev/v1/apps/${this.env.FLY_APP_NAME}/machines/${machine.id}/restart`,
+        this.env.FLY_API_TOKEN,
+        { method: "POST" },
+      );
+    } catch (error) {
+      // The request may have reached Fly even when its response did not reach us. Do not
+      // repeat it inside this poll; the next poll must inspect current state first.
+      throw new Error(
+        `Fly machine restart request failed with an unknown outcome; ` +
+          `the next poll will re-check state: ${errorDetail(error)}`,
+        { cause: error },
+      );
+    }
     if (!restart.ok) {
       throw new Error(`Fly machine restart failed (HTTP ${restart.status}).`);
     }
@@ -98,7 +133,7 @@ export class FlyWatchdog extends DurableObject<Env> {
     const lastAlertAt = await this.ctx.storage.get<number>(LAST_ERROR_ALERT_AT_KEY);
     if (lastAlertAt && Date.now() - lastAlertAt < ERROR_ALERT_COOLDOWN_MS) return;
 
-    const detail = error instanceof Error ? error.message : "Unknown error.";
+    const detail = errorDetail(error);
     await this.ctx.storage.put(LAST_ERROR_ALERT_AT_KEY, Date.now());
     await this.sendAlert(`Fly watchdog error: ${detail}`);
   }

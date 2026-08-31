@@ -1,5 +1,15 @@
 export const POLL_INTERVAL_MS = 30_000;
 export const RESTART_COOLDOWN_MS = 120_000;
+const MINIMUM_NEXT_POLL_DELAY_MS = 1_000;
+const RETRYABLE_LOOKUP_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+
+export function nextPollAt(pollStartedAt: number, now: number): number {
+  return Math.max(pollStartedAt + POLL_INTERVAL_MS, now + MINIMUM_NEXT_POLL_DELAY_MS);
+}
+
+export function shouldRetryLookupStatus(status: number): boolean {
+  return RETRYABLE_LOOKUP_STATUSES.has(status);
+}
 
 export type FlyMachine = {
   id: string;

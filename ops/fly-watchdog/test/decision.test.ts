@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   appMachine,
   needsRestart,
+  nextPollAt,
+  POLL_INTERVAL_MS,
   RESTART_COOLDOWN_MS,
+  shouldRetryLookupStatus,
   type FlyMachine,
   watchdogEnabled,
 } from "../src/decision";
@@ -37,5 +40,19 @@ describe("watchdog decisions", () => {
     expect(watchdogEnabled(undefined)).toBe(true);
     expect(watchdogEnabled("true")).toBe(true);
     expect(watchdogEnabled("false")).toBe(false);
+  });
+
+  it("keeps the polling cadence anchored to the start of each poll", () => {
+    expect(nextPollAt(1_000, 2_000)).toBe(1_000 + POLL_INTERVAL_MS);
+    expect(nextPollAt(1_000, 40_000)).toBe(41_000);
+  });
+
+  it("retries only transient Machine lookup responses", () => {
+    for (const status of [408, 429, 500, 502, 503, 504]) {
+      expect(shouldRetryLookupStatus(status)).toBe(true);
+    }
+    for (const status of [400, 401, 403, 404, 501]) {
+      expect(shouldRetryLookupStatus(status)).toBe(false);
+    }
   });
 });

@@ -4,10 +4,16 @@ This scheduler protects the single production Fly Machine while preserving suspe
 It calls the Fly Machines API only; it never sends an HTTP request to Penta.
 
 - A Durable Object polls the Machine state every 30 seconds using a persisted alarm.
+- The next alarm is anchored to the start of the poll, so retry time does not postpone the
+  following health decision. An overrun gets a one-second minimum before the next poll.
 - The once-per-minute Cloudflare Cron Trigger only ensures that alarm exists after deployment
   or recovery; it does not determine the health-check cadence.
 - Suspended, stopped, startup, and `warning` Machines are ignored. A `started` Machine with an
   explicitly `critical` service check is restarted, at most once every two minutes.
+- A timed-out or transient HTTP-failed Machine lookup is retried once after one second before
+  alerting. Restart requests are never retried inside the same poll; after an ambiguous
+  transport failure, the next poll re-checks Machine state before deciding whether recovery
+  is still required.
 - Public Worker and preview URLs are disabled. Recovery attempts are recorded in Cloudflare
   Worker logs. `ALERT_WEBHOOK_URL` is optional for a Discord webhook.
 
@@ -72,4 +78,13 @@ To investigate a recovery, inspect Cloudflare Worker logs and compare them with:
 ```powershell
 flyctl machines list --app penta-application-screener
 flyctl logs --app penta-application-screener --no-tail
+```
+
+When Wrangler runs inside a managed workspace sandbox, route its local debug log to the
+repository's ignored log directory instead of the Windows profile:
+
+```powershell
+New-Item -ItemType Directory -Path ..\..\.dev-logs\wrangler -Force | Out-Null
+$env:WRANGLER_LOG_PATH = (Resolve-Path ..\..\.dev-logs\wrangler).Path
+npx wrangler deploy --dry-run
 ```
