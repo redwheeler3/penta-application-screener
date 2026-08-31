@@ -1711,11 +1711,13 @@ synthetic 1BR/no-children pool. Two Rank attempts (one direct pipeline rehearsal
 stalled in the five-way parallel discovery phase before the first reasoning delta; the UI attempt was
 disconnected before Analysis creation and released its run lease on the next heartbeat. Recent successful
 Terra discovery phases in the same local history completed in 33–41 seconds, so the 12+ minute silence was
-treated as an abnormal provider run rather than accepted evidence. Repeat the 1BR-vs-2BR discovery and
-cache-reuse/cost inspection before marking M24 validation closed; do not infer judgment quality from the
-green deterministic/mock suite.
-The retry uses a corrected discovery instruction: up to 30 dimensions, with explicitly fewer for a small
-or homogeneous pool, rather than forcing the four-applicant validation pool toward a 15-dimension floor.
+treated as an abnormal provider run rather than accepted evidence. Isolation confirmed an external Bedrock
+Terra failure: a tiny Terra Mantle request and raw HTTP requests in both US regions timed out before response
+headers, while the identical full discovery payload completed on Bedrock Luna in 12.67 seconds and Bedrock
+Sonnet in 36.65 seconds, and direct Terra completed a tiny probe in 5.88 seconds. The original discovery
+prompt was restored. Repeat the 1BR-vs-2BR discovery and cache-reuse/cost inspection after Bedrock Terra
+recovers before marking M24 validation closed; do not infer judgment quality from the green deterministic/mock
+suite. The provider adapter now fails clearly if any model emits no first event within 90 seconds.
 
 **Non-goals:** a combined multi-opening ranking, merged committee ranking, cross-opening shortlist,
 automatic transfer of an override or outcome between openings, reopening selected applicants,

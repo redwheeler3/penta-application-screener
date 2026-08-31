@@ -61,7 +61,7 @@ You describe axes, not individuals; a later step scores and ranks them."""
 # Static instruction text. Shared note fragments are interpolated at import.
 _INSTRUCTIONS = f"""\
 ## Task
-Discover up to 30 dimensions on which this pool genuinely varies. Return only as many as the evidence supports — a small or homogeneous pool may have very few. Draw on BOTH facts and essays — quantitative axes count as much as qualitative ones. Prefer splitting a broad axis into separately-weighable sub-dimensions over merging. Every dimension must be independently meaningful and non-overlapping.
+Discover the dimensions (15-30) on which this pool genuinely varies. Draw on BOTH facts and essays — quantitative axes count as much as qualitative ones. Prefer splitting a broad axis into separately-weighable sub-dimensions over merging. Every dimension must be independently meaningful and non-overlapping.
 
 ## Inputs
 The eligible applicants are in the `<applicant_pool>` block below — each with structured "facts" (household make-up, income and its split, employment tenure, real-estate ownership, pets) and their essay answers.
@@ -135,7 +135,7 @@ def eligible_applications(db: Session, opening_id: int) -> list[Application]:
 
 # Output token weight for the pre-run estimate only (input is the shared
 # per-candidate pool-digest weight; the real call is priced from actual usage).
-# Calibrated to observed spend: a large pool commonly emits 20-30 dimensions and
+# Calibrated to observed spend: at the 20-30 dimension floor, one discovery call emits
 # ~4900 output tokens (each dim carries key/name/definition/why).
 _DISCOVERY_OUTPUT_TOKENS = 4900
 

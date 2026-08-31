@@ -1,5 +1,6 @@
 """Provider-selection tests for every supported model route."""
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -135,6 +136,35 @@ def test_anthropic_direct_client_is_closed_on_the_call_event_loop() -> None:
 
     assert actual.output is output
     model.client.close.assert_awaited_once_with()
+
+
+def test_structured_output_fails_when_provider_emits_no_first_event() -> None:
+    provider = StrandsProvider(
+        region="us-east-1",
+        openai_reasoning_effort="low",
+        first_event_timeout=0.01,
+    )
+    agent = MagicMock(messages=[])
+
+    async def stream_async(*_args: object, **_kwargs: object):
+        await asyncio.sleep(1)
+        yield {"data": "too late"}
+
+    agent.stream_async = stream_async
+    with (
+        patch.object(provider, "_model_for", return_value=MagicMock()),
+        patch("strands.Agent", return_value=agent),
+        pytest.raises(
+            TimeoutError,
+            match=r"openai\.gpt-5\.6-luna produced no response event within 0\.01 seconds",
+        ),
+    ):
+        provider.structured_output(
+            model_id="openai.gpt-5.6-luna",
+            schema=dict,
+            prompt="Synthetic prompt",
+            reasoning_effort="low",
+        )
 
 
 @pytest.mark.parametrize("model_id", ["gpt-5.6-luna", "claude-sonnet-4-6"])

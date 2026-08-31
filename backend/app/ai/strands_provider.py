@@ -43,6 +43,8 @@ class StrandsProvider:
     ``agent.messages`` (read back for the narrative), so each call gets a fresh one.
     """
 
+    DEFAULT_FIRST_EVENT_TIMEOUT = 90
+
     def __init__(
         self,
         region: str,
@@ -52,6 +54,7 @@ class StrandsProvider:
         openai_reasoning_effort: ReasoningEffort | None = None,
         openai_reasoning_efforts: dict[str, ReasoningEffort] | None = None,
         direct_max_retries: int = 5,
+        first_event_timeout: float = DEFAULT_FIRST_EVENT_TIMEOUT,
     ) -> None:
         self._region = region
         self._openai_api_key = openai_api_key
@@ -59,6 +62,7 @@ class StrandsProvider:
         self._openai_reasoning_effort = openai_reasoning_effort
         self._openai_reasoning_efforts = openai_reasoning_efforts or {}
         self._direct_max_retries = direct_max_retries
+        self._first_event_timeout = first_event_timeout
         # Size the pool to the worker count so threads don't queue on sockets.
         self._max_pool_connections = max_pool_connections
         # A timeout or reasoning change needs a distinct configured model client.
@@ -210,15 +214,34 @@ class StrandsProvider:
 
         async def drain() -> object:
             final = None
+            events = agent.stream_async(prompt, structured_output_model=schema)
+
+            def consume(event: object) -> None:
+                nonlocal final
+                if not isinstance(event, dict):
+                    return
+                narrative_delta = _event_narrative_delta(event)
+                if narrative_delta:
+                    sink(narrative_delta)
+                if event.get("result") is not None:
+                    final = event["result"]
+
             try:
-                async for event in agent.stream_async(prompt, structured_output_model=schema):
-                    if not isinstance(event, dict):
-                        continue
-                    narrative_delta = _event_narrative_delta(event)
-                    if narrative_delta:
-                        sink(narrative_delta)
-                    if event.get("result") is not None:
-                        final = event["result"]  # the terminal AgentResult
+                try:
+                    first_event = await asyncio.wait_for(
+                        anext(events), timeout=self._first_event_timeout
+                    )
+                except TimeoutError as exc:
+                    await events.aclose()
+                    raise TimeoutError(
+                        f"{model_id} produced no response event within "
+                        f"{self._first_event_timeout:g} seconds."
+                    ) from exc
+                except StopAsyncIteration:
+                    return None
+                consume(first_event)
+                async for event in events:
+                    consume(event)
                 return final
             finally:
                 if direct_anthropic_model is not None:

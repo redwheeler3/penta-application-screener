@@ -5,7 +5,8 @@ from httpx2 import ASGITransport, AsyncClient
 from app.ai.schemas import (
     DimensionMatchReport,
 )
-from app.db.models import UserRole
+from app.api.dependencies import get_ai_provider
+from app.db.models import RunLock, UserRole
 from app.services.cost_report import RANK_PASS_LABELS
 from tests.ranking_support import (
     _scoring_report,
@@ -397,6 +398,28 @@ async def test_rank_criteria_failure_aborts_before_scoring() -> None:
     # The chain aborted at criteria: scoring never started, no summary was emitted.
     assert "summary" not in kinds
     assert "scores" not in [e.get("phase") for e in events if e["type"] == "phase"]
+    assert db.get(RunLock, 1).holder_user_id is None
+
+
+@pytest.mark.anyio
+async def test_provider_timeout_is_reported_and_releases_rank_lease() -> None:
+    class TimeoutProvider:
+        def structured_output(self, **_kwargs):
+            raise TimeoutError(
+                "openai.gpt-5.6-terra produced no response event within 90 seconds."
+            )
+
+    app, db, _provider = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
+    app.dependency_overrides[get_ai_provider] = lambda: TimeoutProvider()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        events = await stream_events(client, "/ranking/run")
+
+    error = next(event for event in events if event["type"] == "error")
+    assert "produced no response event within 90 seconds" in error["message"]
+    assert db.get(RunLock, 1).holder_user_id is None
 
 
 @pytest.mark.anyio
