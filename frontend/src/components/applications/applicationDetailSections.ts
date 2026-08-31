@@ -203,11 +203,11 @@ function buildCanonicalDetailSections(
         detailField("child_details", "Children", normalized.child_details, {
           normalizedKey: "child_details",
         }),
-        detailField("pets", "Pets", answers.pets, { normalizedKey: "pets_text" }),
         detailField("household_photo_link", "Household photo link", answers.household_photo_link, {
           normalizedKey: "household_photo_link",
           isLink: true,
         }),
+        detailField("pets", "Pets", answers.pets, { normalizedKey: "pets_text" }),
       ],
     },
     {
