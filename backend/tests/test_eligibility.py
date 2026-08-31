@@ -22,7 +22,7 @@ from app.services.eligibility import (
     eligible_application_ids_for,
     union_eligible_application_ids,
 )
-from tests.application_support import activate_application
+from tests.application_support import activate_application, current_opening_id
 
 
 def make_session() -> Session:
@@ -61,7 +61,13 @@ def add_app(
 
 def set_member_rules(db: Session, user_id: int, **overrides: object) -> None:
     """Give a member a diverged ruleset (copy-on-write MemberRules row)."""
-    db.add(MemberRules(user_id=user_id, rules=EligibilityRules(**overrides).model_dump(mode="json")))
+    db.add(
+        MemberRules(
+            opening_id=current_opening_id(db),
+            user_id=user_id,
+            rules=EligibilityRules(**overrides).model_dump(mode="json"),
+        )
+    )
     db.commit()
 
 
@@ -103,7 +109,7 @@ def test_union_includes_machine_eligible_by_default() -> None:
     clean = add_app(db, email="clean@x.com")
     add_app(db, email="rules-no@x.com", rules_ineligible=True)
     # Machine-eligible app is in the union; rules-ineligible is not.
-    assert union_eligible_application_ids(db) == {clean.id}
+    assert union_eligible_application_ids(db, current_opening_id(db)) == {clean.id}
 
 
 def test_union_includes_applicant_one_member_overrode_to_eligible() -> None:
@@ -116,11 +122,12 @@ def test_union_includes_applicant_one_member_overrode_to_eligible() -> None:
     screen_flagged(db, flagged.id)  # machine verdict: ineligible/ai
 
     # Without an override, no member is eligible for it -> not in the union.
-    assert union_eligible_application_ids(db) == set()
+    assert union_eligible_application_ids(db, current_opening_id(db)) == set()
 
     # Alice overrides it to eligible -> it enters the union (eligible for at least one).
     db.add(
         MemberEligibility(
+            opening_id=current_opening_id(db),
             application_id=flagged.id,
             user_id=alice.id,
             status=ApplicationStatus.ELIGIBLE,
@@ -128,7 +135,7 @@ def test_union_includes_applicant_one_member_overrode_to_eligible() -> None:
         )
     )
     db.commit()
-    assert union_eligible_application_ids(db) == {flagged.id}
+    assert union_eligible_application_ids(db, current_opening_id(db)) == {flagged.id}
 
 
 def test_union_drops_machine_eligible_only_when_every_member_rejects() -> None:
@@ -140,22 +147,24 @@ def test_union_drops_machine_eligible_only_when_every_member_rejects() -> None:
     # Only Alice rejects -> Bob still sees the machine verdict -> stays in the union.
     db.add(
         MemberEligibility(
+            opening_id=current_opening_id(db),
             application_id=app.id, user_id=alice.id,
             status=ApplicationStatus.INELIGIBLE, reviewed_fingerprint="fp",
         )
     )
     db.commit()
-    assert union_eligible_application_ids(db) == {app.id}
+    assert union_eligible_application_ids(db, current_opening_id(db)) == {app.id}
 
     # Both members reject -> nobody sees it eligible -> leaves the union.
     db.add(
         MemberEligibility(
+            opening_id=current_opening_id(db),
             application_id=app.id, user_id=bob.id,
             status=ApplicationStatus.INELIGIBLE, reviewed_fingerprint="fp",
         )
     )
     db.commit()
-    assert union_eligible_application_ids(db) == set()
+    assert union_eligible_application_ids(db, current_opening_id(db)) == set()
 
 
 def test_per_member_view_reflects_only_that_members_overrides() -> None:
@@ -169,14 +178,15 @@ def test_per_member_view_reflects_only_that_members_overrides() -> None:
     # Alice overrides the flagged one to eligible; Bob does nothing.
     db.add(
         MemberEligibility(
+            opening_id=current_opening_id(db),
             application_id=flagged.id, user_id=alice.id,
             status=ApplicationStatus.ELIGIBLE, reviewed_fingerprint="fp",
         )
     )
     db.commit()
 
-    assert eligible_application_ids_for(db, alice.id) == {flagged.id, clean.id}
-    assert eligible_application_ids_for(db, bob.id) == {clean.id}
+    assert eligible_application_ids_for(db, alice.id, current_opening_id(db)) == {flagged.id, clean.id}
+    assert eligible_application_ids_for(db, bob.id, current_opening_id(db)) == {clean.id}
 
 
 def test_per_member_rules_change_who_each_member_sees_eligible() -> None:
@@ -203,11 +213,11 @@ def test_per_member_rules_change_who_each_member_sees_eligible() -> None:
     set_member_rules(db, strict.id, income_min=70_000)
     set_member_rules(db, lenient.id, income_min=50_000)
 
-    assert eligible_application_ids_for(db, strict.id) == set()
-    assert eligible_application_ids_for(db, lenient.id) == {borderline.id}
+    assert eligible_application_ids_for(db, strict.id, current_opening_id(db)) == set()
+    assert eligible_application_ids_for(db, lenient.id, current_opening_id(db)) == {borderline.id}
 
     # Eligible under lenient's rules with no override anywhere -> in the union pool.
-    assert union_eligible_application_ids(db) == {borderline.id}
+    assert union_eligible_application_ids(db, current_opening_id(db)) == {borderline.id}
 
 
 def test_per_member_pet_limit_changes_eligibility_from_extracted_facts() -> None:
@@ -232,9 +242,9 @@ def test_per_member_pet_limit_changes_eligibility_from_extracted_facts() -> None
 
     set_member_rules(db, lenient.id, max_dogs=2)
 
-    assert eligible_application_ids_for(db, strict.id) == set()       # over the default limit
-    assert eligible_application_ids_for(db, lenient.id) == {two_dogs.id}
-    assert union_eligible_application_ids(db) == {two_dogs.id}
+    assert eligible_application_ids_for(db, strict.id, current_opening_id(db)) == set()       # over the default limit
+    assert eligible_application_ids_for(db, lenient.id, current_opening_id(db)) == {two_dogs.id}
+    assert union_eligible_application_ids(db, current_opening_id(db)) == {two_dogs.id}
 
 
 def test_pet_facts_absent_before_screening_do_not_gate() -> None:
@@ -255,7 +265,7 @@ def test_pet_facts_absent_before_screening_do_not_gate() -> None:
     set_member_rules(db, strict.id, max_dogs=0, max_cats=0)
 
     # No screening result cached -> no pet facts -> pet check skipped -> still eligible.
-    assert eligible_application_ids_for(db, strict.id) == {unscreened.id}
+    assert eligible_application_ids_for(db, strict.id, current_opening_id(db)) == {unscreened.id}
 
 
 def test_pet_only_ineligible_attributes_to_ai_source(monkeypatch) -> None:
@@ -275,7 +285,7 @@ def test_pet_only_ineligible_attributes_to_ai_source(monkeypatch) -> None:
     )
     screen_pets(db, over.id, dogs=2)  # committee default max_dogs=1 -> over the limit
 
-    status, source = effective_status_for(db, member.id, over)
+    status, source = effective_status_for(db, member.id, current_opening_id(db), over)
     assert status == ApplicationStatus.INELIGIBLE
     assert source == StatusSource.AI
 
@@ -299,7 +309,7 @@ def test_mixed_pet_and_numeric_ineligible_stays_rules_source(monkeypatch) -> Non
     )
     screen_pets(db, over.id, dogs=2)
 
-    status, source = effective_status_for(db, member.id, over)
+    status, source = effective_status_for(db, member.id, current_opening_id(db), over)
     assert status == ApplicationStatus.INELIGIBLE
     assert source == StatusSource.RULES
 
@@ -316,10 +326,10 @@ def test_member_muting_a_flag_category_makes_them_eligible() -> None:
     # lenient mutes fake_contact; picky keeps it.
     set_member_rules(db, lenient.id, disabled_checks=["fake_contact"])
 
-    assert eligible_application_ids_for(db, picky.id) == set()          # still gated
-    assert eligible_application_ids_for(db, lenient.id) == {flagged.id}  # muted -> eligible
+    assert eligible_application_ids_for(db, picky.id, current_opening_id(db)) == set()          # still gated
+    assert eligible_application_ids_for(db, lenient.id, current_opening_id(db)) == {flagged.id}  # muted -> eligible
     # Union includes it: eligible for the lenient member, no override anywhere.
-    assert union_eligible_application_ids(db) == {flagged.id}
+    assert union_eligible_application_ids(db, current_opening_id(db)) == {flagged.id}
 
 
 def test_muted_flag_effective_status_is_untouched_not_ai() -> None:
@@ -331,6 +341,6 @@ def test_muted_flag_effective_status_is_untouched_not_ai() -> None:
     screen_flagged(db, flagged.id)
     set_member_rules(db, member.id, disabled_checks=["fake_contact"])
 
-    status, source = effective_status_for(db, member.id, flagged)
+    status, source = effective_status_for(db, member.id, current_opening_id(db), flagged)
     assert status == ApplicationStatus.ELIGIBLE
     assert source == StatusSource.UNTOUCHED

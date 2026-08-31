@@ -10,9 +10,11 @@ from app.db.models import (
     Application,
     ApplicationAIResult,
     ApplicationNote,
+    ApplicationParticipation,
     ApplicationVersion,
     MemberEligibility,
     Opening,
+    OpeningOutcome,
     User,
 )
 from app.domain.ranking import rank_candidates
@@ -33,6 +35,7 @@ from app.services.eligibility import (
     overrides_by_app,
 )
 from app.services.opening_participation import opening_ids_by_application
+from app.services.opening_selection import opening_decision_exists
 from app.services.openings import opening_phase
 from app.services.ranking.analysis import current_dimension_kinds, get_current_analysis
 from app.services.ranking.dimensions import current_dimension_report
@@ -65,6 +68,7 @@ def serialize_summary(
     starred: bool = False,
     shortlisted: bool = False,
     opening_ids: list[int] | None = None,
+    selected: bool = False,
 ) -> ApplicationSummary:
     """One application as the signed-in member sees it. ``status``/``status_source``/``stale``
     are that member's effective view: their override if present, else the machine verdict
@@ -94,10 +98,11 @@ def serialize_summary(
         starred_by_me=starred,
         shortlisted=shortlisted,
         opening_ids=opening_ids or [],
+        selected=selected,
     )
 
 
-def committee_opening(opening: Opening) -> CommitteeOpeningOut:
+def committee_opening(db: Session, opening: Opening) -> CommitteeOpeningOut:
     return CommitteeOpeningOut(
         id=opening.id,
         unit_size_bedrooms=opening.unit_size_bedrooms,
@@ -106,6 +111,7 @@ def committee_opening(opening: Opening) -> CommitteeOpeningOut:
         application_close_date=opening.application_close_date,
         move_in_date=opening.move_in_date,
         phase=opening_phase(opening).value,
+        outcome_final=opening_decision_exists(db, opening),
     )
 
 
@@ -152,10 +158,12 @@ def _latest_results(
     return latest
 
 
-def serialize_detail(app: Application, db: Session, user: User) -> ApplicationDetail:
+def serialize_detail(
+    app: Application, db: Session, user: User, opening_id: int
+) -> ApplicationDetail:
     # The raw source row and AI narrative are shown to any committee member: they're
     # trusted screeners, and these just back the data the member already sees.
-    rules_config = rules_config_for(db, user.id)
+    rules_config = rules_config_for(db, user.id, opening_id)
     flag_result = _latest_results(db, "screening", [app.id]).get(app.id)
     # Active flags drive both the displayed findings and the member's verdict.
     flags = active_flags(
@@ -163,7 +171,7 @@ def serialize_detail(app: Application, db: Session, user: User) -> ApplicationDe
         rules_config.disabled_checks,
     )
     pet_facts = pet_facts_from_screening(flag_result.output) if flag_result else None
-    override = overrides_by_app(db, user.id, [app.id]).get(app.id)
+    override = overrides_by_app(db, user.id, opening_id, [app.id]).get(app.id)
     opening_ids = opening_ids_by_application(db, [app.id])[app.id]
     reasons = hard_filter_reasons_for(
         rules_config,
@@ -173,8 +181,18 @@ def serialize_detail(app: Application, db: Session, user: User) -> ApplicationDe
     summary = serialize_summary(
         app, reasons=reasons, override=override, flags=flags,
         starred=is_starred(db, app.id, user.id),
-        shortlisted=is_shortlisted(db, app.id),
+        shortlisted=is_shortlisted(db, opening_id, app.id),
         opening_ids=opening_ids,
+        selected=(
+            db.scalar(
+                select(ApplicationParticipation.id).where(
+                    ApplicationParticipation.application_id == app.id,
+                    ApplicationParticipation.opening_id == opening_id,
+                    ApplicationParticipation.outcome == OpeningOutcome.SELECTED,
+                )
+            )
+            is not None
+        ),
     )
     # What the machine would decide from the current findings, independent of this
     # member's override — lets the UI show the live automatic verdict (the result of
@@ -189,7 +207,7 @@ def serialize_detail(app: Application, db: Session, user: User) -> ApplicationDe
         )
     ).one()
 
-    dimension_scores = _dimension_scores(db, app, user)
+    dimension_scores = _dimension_scores(db, app, user, opening_id)
     return ApplicationDetail(
         **summary.model_dump(),
         auto_status=auto_status.value,
@@ -215,7 +233,7 @@ def serialize_detail(app: Application, db: Session, user: User) -> ApplicationDe
         # This candidate's scores against the current run's dimensions, joined to
         # their labels. null = no run, or not scored under it.
         dimension_scores=dimension_scores,
-        dimension_scoring_trace=_dimension_scoring_trace(db, app.id),
+        dimension_scoring_trace=_dimension_scoring_trace(db, opening_id, app.id),
         private_note=_private_note(db, app.id, user.id),
     )
 
@@ -245,9 +263,9 @@ def _result_trace(result: ApplicationAIResult | None) -> AIResultTraceOut | None
 
 
 def _dimension_scoring_trace(
-    db: Session, application_id: int
+    db: Session, opening_id: int, application_id: int
 ) -> DimensionScoringTraceOut | None:
-    kinds = current_dimension_kinds(db)
+    kinds = current_dimension_kinds(db, opening_id)
     if not kinds:
         return None
     latest: dict[str, ApplicationAIResult] = {}
@@ -287,7 +305,7 @@ def _dimension_scoring_trace(
 
 
 def _dimension_scores(
-    db: Session, app: Application, user: User
+    db: Session, app: Application, user: User, opening_id: int
 ) -> list[DimensionContributionOut] | None:
     """The candidate's per-dimension scores under the current analysis, ordered by
     importance to THIS candidate's ranking in the signed-in member's weighting.
@@ -299,7 +317,7 @@ def _dimension_scores(
     this candidate come first. Weight-0 (Ignored) dimensions are dropped — they
     contribute nothing to the ranking.
     """
-    analysis = get_current_analysis(db)
+    analysis = get_current_analysis(db, opening_id)
     report = current_dimension_report(analysis) if analysis is not None else None
     if report is None:
         return None

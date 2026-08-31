@@ -37,6 +37,7 @@ type RankingCoordinator = {
 };
 
 export function useAiRuns(options: {
+  openingId: number | null;
   ranking: RankingCoordinator;
   notifications: Notifications;
   refreshDashboard: () => void;
@@ -91,6 +92,7 @@ export function useAiRuns(options: {
   }
 
   async function requestScreeningEstimate() {
+    if (options.openingId === null) return;
     cancelRankEstimate();
     const requestId = ++screeningEstimateRequest.current;
     const controller = new AbortController();
@@ -98,7 +100,7 @@ export function useAiRuns(options: {
     setScreeningEstimate(null);
     setScreeningEstimateLoading(true);
     try {
-      const estimate = await fetchScreeningEstimate(controller.signal);
+      const estimate = await fetchScreeningEstimate(options.openingId, controller.signal);
       if (requestId === screeningEstimateRequest.current) {
         setScreeningEstimate(estimate);
       }
@@ -117,11 +119,12 @@ export function useAiRuns(options: {
   }
 
   async function runScreening() {
+    if (options.openingId === null) return;
     setScreeningRunning(true);
     setScreeningEstimate(null);
     setScreeningProgress(null);
     try {
-      const response = await startScreeningRequest();
+      const response = await startScreeningRequest(options.openingId);
       if (!response.ok || !response.body) {
         const problem = await readProblem(response);
         options.notifications.error(
@@ -155,6 +158,7 @@ export function useAiRuns(options: {
   }
 
   async function requestRankEstimate() {
+    if (options.openingId === null) return;
     cancelScreeningEstimate();
     const requestId = ++rankEstimateRequest.current;
     const controller = new AbortController();
@@ -165,9 +169,9 @@ export function useAiRuns(options: {
 
     try {
       const [estimate, scoreEstimate] = await Promise.all([
-        fetchRankEstimate(controller.signal),
+        fetchRankEstimate(options.openingId, controller.signal),
         options.ranking.currentRun
-          ? fetchScoreCurrentEstimate(controller.signal)
+          ? fetchScoreCurrentEstimate(options.openingId, controller.signal)
           : Promise.resolve(null),
       ]);
       if (requestId === rankEstimateRequest.current) {
@@ -189,6 +193,7 @@ export function useAiRuns(options: {
   }
 
   async function runRank(mode: "discover" | "score-current") {
+    if (options.openingId === null) return;
     setRankRunning(true);
     cancelRankEstimate();
     setRankProgress(null);
@@ -200,8 +205,8 @@ export function useAiRuns(options: {
 
     try {
       const response = mode === "discover"
-        ? await startRankRequest()
-        : await startScoreCurrentRequest();
+        ? await startRankRequest(options.openingId)
+        : await startScoreCurrentRequest(options.openingId);
       if (!response.ok || !response.body) {
         const problem = await readProblem(response);
         options.notifications.error(problem ? `Ranking failed: ${problem}` : "Ranking failed.");

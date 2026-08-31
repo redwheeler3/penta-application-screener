@@ -144,19 +144,18 @@ def _applicant_block(application: Application) -> str:
 
 
 def kind_for_dimension(dimension_key: str) -> str:
-    """The cache ``kind`` for one dimension's score, keyed by the dimension key.
+    """The cache ``kind`` for one globally reconciled dimension key.
 
-    Cross-run reuse rides on the key: ``adopt_matched_keys`` rewrites a matched
-    re-discovered dimension to the prior key, so it hits the same cache. Cache
-    identity is the key, NOT the definition text (the match pass vouches the concept
-    is the same) — editing a definition would need a new key to force a re-score.
+    The identity-matching pass reconciles every opening against the global dimension
+    history and adopts the prior frozen key and wording. That lets the same applicant
+    reuse a score when a criterion recurs in another opening.
     """
     return f"{KIND_PREFIX}:{dimension_key}"
 
 
-def applications_to_score(db: Session) -> list[Application]:
+def applications_to_score(db: Session, opening_id: int) -> list[Application]:
     """The UNION-eligible applications — same scope as pattern discovery."""
-    return union_eligible_applications(db)
+    return union_eligible_applications(db, opening_id)
 
 
 def _to_score_dimensions(
@@ -186,7 +185,9 @@ def _to_score_dimensions(
         if outcome is None:
             to_score.append(dim)
         else:
-            cached[dim.key] = DimensionScore.model_validate(outcome.output.model_dump())
+            cached[dim.key] = DimensionScore.model_validate(
+                {**outcome.output.model_dump(), "dimension_key": dim.key}
+            )
             cached_saved_usd += outcome.cost_usd
     return to_score, cached, cached_saved_usd
 
@@ -244,11 +245,11 @@ def missing_dimensions_by_application(
 
 
 def applications_needing_scores(
-    db: Session, report: PoolDimensionReport, model_id: str,
+    db: Session, opening_id: int, report: PoolDimensionReport, model_id: str,
     reasoning_effort: ReasoningEffort | None = None,
 ) -> list[Application]:
     """Eligible applicants with at least one missing score for ``report``."""
-    applications = applications_to_score(db)
+    applications = applications_to_score(db, opening_id)
     missing_by_application = missing_dimensions_by_application(
         db, applications, report, model_id, reasoning_effort
     )
@@ -439,7 +440,8 @@ def score_dimensions(
             # loud beats silently skipping.
             score = fresh[dim.key]
             outcome = store_result(
-                db, application, kind=kind_for_dimension(dim.key), model_id=model_id,
+                db, application,
+                kind=kind_for_dimension(dim.key), model_id=model_id,
                 prompt_version=PROMPT_VERSION,
                 reasoning_effort=reasoning_effort,
                 result=AIResult(

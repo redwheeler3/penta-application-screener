@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as api from "../api/ranking";
 import { problemMessage, readProblemBody } from "../api/problems";
 import type { CurrentRunResponse, RankingResponse, Tier } from "../types";
@@ -54,12 +54,26 @@ export interface RankingState {
  * them in lockstep (a tier edit re-sorts; a proposal feeds the next Rank). Talks to the
  * api layer and surfaces failures through the injected ``onError``. The separate
  * ``useAiRuns`` hook owns the discover/score lifecycle and coordinates its refreshes. */
-export function useRanking(onError: (message: string) => void): RankingState {
+export function useRanking(
+  openingId: number | null,
+  onError: (message: string) => void,
+): RankingState {
   const [rankingRun, setRankingRun] = useState<CurrentRunResponse | null>(null);
   const [ranking, setRanking] = useState<RankingResponse | null>(null);
   const [tiers, setTiers] = useState<Tier[] | null>(null);
   const [rankingLoadState, setRankingLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [staleAnalysis, setStaleAnalysis] = useState(false);
+
+  useEffect(() => {
+    // Every value in this hook belongs to one opening. Clear the prior board
+    // synchronously when the opening changes so an unrelated mutation cannot try to
+    // refresh or save the previous opening's ranking.
+    setRankingRun(null);
+    setRanking(null);
+    setTiers(null);
+    setRankingLoadState("idle");
+    setStaleAnalysis(false);
+  }, [openingId]);
 
   // Read the single-use problem body once. A stale analysis opens the reload toast;
   // other failures return their message to the caller.
@@ -88,10 +102,11 @@ export function useRanking(onError: (message: string) => void): RankingState {
   // fetch fails (a transient error shouldn't nag). The reload itself stays a deliberate action
   // (the toast), so a member mid-tiering isn't yanked.
   async function checkForStaleRanking(): Promise<void> {
+    if (openingId === null) return;
     const loadedId = ranking?.analysisId ?? rankingRun?.analysisId;
     if (loadedId === undefined || loadedId === null || staleAnalysis) return;
     try {
-      const current = await api.fetchRankingCurrent();
+      const current = await api.fetchRankingCurrent(openingId);
       if (current && current.analysisId !== loadedId) setStaleAnalysis(true);
     } catch {
       /* transient — try again on the next focus */
@@ -99,16 +114,24 @@ export function useRanking(onError: (message: string) => void): RankingState {
   }
 
   function refreshRankingRun() {
+    if (openingId === null) {
+      setRankingRun(null);
+      return Promise.resolve();
+    }
     return api
-      .fetchRankingCurrent()
+      .fetchRankingCurrent(openingId)
       .then(setRankingRun)
       .catch(() => setRankingRun(null));
   }
 
   async function loadRanking(): Promise<boolean> {
+    if (openingId === null) return false;
     setRankingLoadState("loading");
     try {
-      const [nextRanking, nextTiers] = await Promise.all([api.fetchRanking(), api.fetchTiers()]);
+      const [nextRanking, nextTiers] = await Promise.all([
+        api.fetchRanking(openingId),
+        api.fetchTiers(openingId),
+      ]);
       setRanking(nextRanking);
       setTiers(nextTiers.tiers);
       setRankingLoadState("ready");
@@ -130,7 +153,10 @@ export function useRanking(onError: (message: string) => void): RankingState {
     const analysisId = ranking?.analysisId ?? rankingRun?.analysisId;
     if (analysisId === undefined) return;
     setTiers(next);
-    const response = await api.saveTiers(analysisId, next, acknowledgedKeys, acknowledgedRequestedKeys);
+    if (openingId === null) return;
+    const response = await api.saveTiers(
+      openingId, analysisId, next, acknowledgedKeys, acknowledgedRequestedKeys,
+    );
     if (response.ok) {
       const updated: RankingResponse = await response.json();
       setRanking(updated);
@@ -168,13 +194,13 @@ export function useRanking(onError: (message: string) => void): RankingState {
   // discovery. Optimistically update rankingRun (where the composer reads proposal
   // state) for instant feedback; reconcile from the response.
   async function saveSeeds(next: { proposedDimensions?: string[] }) {
-    if (!rankingRun) return;
+    if (!rankingRun || openingId === null) return;
     const optimistic = {
       ...rankingRun,
       ...(next.proposedDimensions !== undefined ? { proposedDimensions: next.proposedDimensions } : {}),
     };
     setRankingRun(optimistic);
-    const response = await api.saveSeeds(rankingRun.analysisId, {
+    const response = await api.saveSeeds(openingId, rankingRun.analysisId, {
       proposedDimensions: next.proposedDimensions,
     });
     if (response.ok) {

@@ -1151,7 +1151,7 @@ It is acceptable to send full application context, including names/contact conte
 | Discovered dimension set | **shared union** | grown by any member's Rank, de-duped by the existing match pass + `dimension_aliases` |
 | Per-(app, dim) AI scores | **shared** | content-addressed cache key has no member id — sharing is automatic |
 | Cost ledger / traces / evals | shared | + a "triggered-by member" stamp per run; Observability stays committee-wide |
-| Eligibility **rules** (income/age/children/pet thresholds, `disabled_rules`) | **per-member** | one shared committee default; a member's row is copy-on-write, created only when they diverge |
+| Eligibility **rules** (income/age/children/pet thresholds, `disabled_checks`) | **per-opening, per-member** | each opening owns a committee default; a member's row is copy-on-write for that opening |
 | Eligibility **overrides** (per applicant) | **per-member** | |
 | Tier placement + ranking + new/revived/requested badges | **per-member** | weights stay **derived** from tiers, so per-member re-weighting is free math |
 | Notes | per-member | already are, today |
@@ -1183,7 +1183,7 @@ admin and can invite MOMI members. Roles:
 - `Admin`: the initial account; will gate user management once invitations are built.
 - `Member`: a MOMI committee screener — screens independently (own eligibility rules, overrides, tiering, ranking, notes) over the shared cached AI substrate; no merged comparison surface (M15 is isolation, not merge).
 
-Every committee member is a trusted screener, so **the core screening workflow has no admin-only surface** — the raw source row and the raw AI narrative are available to any logged-in member (the outsider-vs-screener boundary is the primary trust boundary). M15 adds a *second*, intra-committee boundary: each member's eligibility rules, overrides, tiering, and ranking are **private per member** — shared artifacts stay open to all, personal judgment does not. The `Admin`/`Member` distinction is now load-bearing (M15 1a): admission is by an **email allowlist** whose entry role becomes the `User`'s role (the "first login = admin" rule is retired), and `require_admin` gates the genuinely admin-only surfaces — the allowlist itself, the committee-default rules, Admin Settings, and the Observability/Evals tabs. The Access subtab shows an account's name, email, role, first activity, and latest authenticated app activity. It stores only those two timestamps per user, refreshing the latest at most once every five minutes; it does not retain activity history or collect pages, IP addresses, devices, or OAuth tokens. Below it, a separate denied-attempts table aggregates unallowlisted Google login attempts by account and retains them for one year. The engineering default remains `require_current_user`; a role gate is added only for a genuinely admin-only capability, as a deliberate decision.
+Every committee member is a trusted screener, so **the core screening workflow has no admin-only surface** — the raw source row and the raw AI narrative are available to any logged-in member (the outsider-vs-screener boundary is the primary trust boundary). M15 adds a *second*, intra-committee boundary: each member's eligibility rules, overrides, tiering, and ranking are **private per member** — shared artifacts stay open to all, personal judgment does not. The `Admin`/`Member` distinction is now load-bearing (M15 1a): admission is by an **email allowlist** whose entry role becomes the `User`'s role (the "first login = admin" rule is retired), and `require_admin` gates the genuinely admin-only capabilities — editing an opening's committee default, the allowlist, Admin Settings, and the Observability/Evals tabs. The Access subtab shows an account's name, email, role, first activity, and latest authenticated app activity. It stores only those two timestamps per user, refreshing the latest at most once every five minutes; it does not retain activity history or collect pages, IP addresses, devices, or OAuth tokens. Below it, a separate denied-attempts table aggregates unallowlisted Google login attempts by account and retains them for one year. The engineering default remains `require_current_user`; a role gate is added only for a genuinely admin-only capability, as a deliberate decision.
 
 AI screening results are shared across users and cached per application content, model, and prompt version. Any logged-in member may run the checks; the cost concern is uncached work, not which member initiates a shared run.
 
@@ -1201,9 +1201,9 @@ Core data model:
 - An `Application` represents one household with a private working document and one current committee-visible submitted projection. `ApplicationVersion` preserves each dated submission; `ApplicationParticipation` links that durable applicant to selected openings.
 - Primary application identity is the normalized primary applicant email plus an internal DB ID. An unauthenticated collision can never overwrite the existing working or submitted copy, and records are never automatically merged.
 - Normalized fields computed on submission include ages as of the submission date, adult and child counts, household income, real-estate ownership, employment state, and other deterministic screening facts.
-- A shared `Analysis` (one current, `get_current_analysis()`) holds a Rank's discovered dimensions (`dimension_report`) and the `rank_inputs_fingerprint`; its 1:1 `analysis_audit` child holds the AI-legibility trail (discovery narrative + match/fan-out/decompose/consolidate audits) so the hot read path stays lean. The committee's mutable view is **per-member** in `MemberRanking` (member × analysis: `run_state` = tiers + new/revived/requested flags + pending proposals; weights are **derived** from the tiers, never stored). Per-member eligibility overrides live in `MemberEligibility` (member × applicant); a member's diverged eligibility rules in a copy-on-write `member_rules` row over the shared `committee_default_rules`. `dimension_aliases` is the sole merge-truth. Per-run/per-pass cost lives in `run_cost_ledger` (+ a nullable `triggered_by_user_id` attributing each shared run) + `run_pass_cost`; eval runs in `eval_runs`. (Schema layout: [docs/app-architecture.md](docs/app-architecture.md); the M15 per-member split: CHANGELOG M15; the M14 split of the old `criteria` blob: CHANGELOG M14 Phase 5.)
+- An opening-scoped `Analysis` (one current per opening, `get_current_analysis(db, opening_id)`) holds a Rank's discovered dimensions (`dimension_report`) and the `rank_inputs_fingerprint`; its 1:1 `analysis_audit` child holds the AI-legibility trail (discovery narrative + match/fan-out/decompose/consolidate audits) so the hot read path stays lean. The committee's mutable view is **per-member** in `MemberRanking` (member × analysis: `run_state` = tiers + new/revived/requested flags + pending proposals; weights are **derived** from the tiers, never stored). Per-member eligibility overrides live in `MemberEligibility` (opening × member × applicant); a member's diverged eligibility rules live in a copy-on-write `member_rules` row over that opening's `opening_rules` default. `dimension_aliases` is the sole merge-truth. Per-run/per-pass cost lives in `run_cost_ledger` (+ a nullable `triggered_by_user_id` attributing each shared run) + `run_pass_cost`; eval runs in `eval_runs`. (Schema layout: [docs/app-architecture.md](docs/app-architecture.md); the M15 per-member split: CHANGELOG M15; the M14 split of the old `criteria` blob: CHANGELOG M14 Phase 5.)
 
-Settings live in the database, not `.env`, split by audience (M15): **Admin Settings** (shared AI spending cap, model choices, discovery fan-out) and per-member **Eligibility Settings** (income/age/children thresholds, employment requirements, pet limits, per-check toggles — over a shared committee default). Local `.env.local` holds secrets and runtime safety controls; `.env.example` holds safe placeholders. Never committed: `.env` files, OAuth credentials, SQLite DB files, applicant exports, AI traces, and raw prompts/outputs containing applicant data. Existing databases change through Alembic migrations rather than resets.
+Settings live in the database, not `.env`, split by scope: **Admin Settings** holds global infrastructure and administration; **Eligibility Settings** holds the selected opening's `My rules` plus its admin-editable `Committee default`. Local `.env.local` holds secrets and runtime safety controls; `.env.example` holds safe placeholders. Never committed: `.env` files, OAuth credentials, SQLite DB files, applicant exports, AI traces, and raw prompts/outputs containing applicant data. Existing databases change through Alembic migrations rather than resets.
 
 ## Reports
 
@@ -1223,7 +1223,7 @@ Google setup uses only `openid`, `email`, and `profile` for optional applicant a
 identity. It requests no Google data scope and stores no provider access or refresh token. Setup is
 documented in [docs/google-cloud-oauth-setup.md](docs/google-cloud-oauth-setup.md).
 
-The settings surfaces: **Eligibility Settings** (per-member) covers income range, min/max children + max child age, min adult age, employment requirements, pet limits, and per-check toggles; **Admin Settings** covers the AI spending cap, provider/model choices, discovery fan-out, committee-default rules, access allowlist, openings, feedback, and AI-quality tools.
+The settings surfaces: **Eligibility Settings** covers the selected opening's per-member rules, with an admin-only `Committee default` subtab; **Admin Settings** covers global AI configuration, access, openings, vacancy notifications, email delivery, and feedback. Observability and Evals are separate admin-only views.
 
 Implementation defaults:
 
@@ -1555,6 +1555,171 @@ closed-cycle refusal without creating a record. Committee Google sign-in remaine
 existing-application branch was then verified against submitted synthetic production application
 252: the matching Google identity linked successfully and opened the application.
 
+### Opening-Specific Committee Workflow (M24) — implementation complete; Rank validation pending
+
+**Goal:** make one selected opening the complete context for committee review. Eligibility policy,
+member decisions, the shared shortlist, Screen, and Rank all belong to that opening's applicant pool
+rather than one global union. This is necessary because openings can have materially different income
+and household-size requirements, and their pools can support different ranking dimensions: a
+children-related axis that differentiates a 2-bedroom family pool may be meaningless in a 1-bedroom
+no-children pool.
+
+M24 is a product and data-model change, not merely a single-select control. The prior implementation
+had one global committee default, one rules row per member, one override per member/application, one
+application-global Shared shortlist, and one globally current Analysis. All opening-dependent state
+now carries the same opening identity so the UI cannot show a ranking, status, or stale indicator
+computed for a different pool.
+
+**One opening context:** the committee opening selector becomes single-select and always identifies
+the workspace shown below it. Prefer the earliest-move-in non-archived opening on first load; when no
+current opening is available, select the most recently archived visible opening. Preserve the last
+valid choice in browser navigation state. If that choice is no longer visible, fall back through the
+same current-then-archived ordering; if no opening qualifies, show the empty Applications state.
+There is no combined `All openings` Screen or Rank mode.
+An application that entered several openings appears independently in each applicable workspace.
+
+The three pool boundaries are deliberately different:
+
+1. **Selector visibility:** show an opening only while at least one retained, non-withdrawn applicant
+   who was not selected for any opening remains attached to it. A selected household never keeps an
+   opening in the selector by itself.
+2. **Committee-visible pool:** while the opening is visible, show its retained non-withdrawn
+   participants plus the household selected for that opening. A household selected elsewhere is not
+   returned to another opening's applicant universe merely because it once participated there. The
+   selected household is read-only and carries its selected outcome, but remains viewable in the
+   opening where it was selected.
+3. **AI pool:** Screen and Rank include only the opening's retained, non-selected applicants. The
+   selected household never affects coverage, eligibility union, discovery, scoring, rank order, or
+   cost estimates.
+
+An opening disappears automatically when its last retained non-selected applicant is purged, even
+though the Opening row and a seven-year selected-member record may remain available through the
+administrator audit. Opening rows themselves do not need a new purge policy.
+
+**Opening-specific human state:**
+
+- Each opening owns a full committee-default `EligibilityRules` document. A newly created
+  application-intake opening copies the committee defaults from the most recently created prior
+  application-intake opening as an independent snapshot; if none exists, it starts from schema
+  defaults. Later edits to either opening do not propagate. The creation/admin flow identifies the
+  source opening and makes the copied defaults immediately available for review and editing before
+  the committee relies on Screen or Rank. Member overrides, eligibility decisions, shortlist state,
+  analyses, rankings, and outcomes never carry forward.
+- A member's diverged rules are keyed by `(opening, member)` and inherit only that opening's committee
+  defaults.
+- A manual eligibility override and its reviewed-findings fingerprint are keyed by
+  `(opening, application, member)` because the same household may legitimately be eligible for one
+  opening and ineligible for another.
+- Shared shortlist membership is keyed by `(opening, application)`. The shortlist in opening A has no
+  effect on opening B. Private favourites and private notes remain application-wide personal context.
+- Application list status, source, facets, details, and stale-override indicators are resolved in the
+  selected opening context.
+
+**Opening-specific AI state:**
+
+- `Analysis` is keyed to one opening; “current analysis” means the newest analysis for that opening.
+  Each member's `MemberRanking` remains a private child of that analysis.
+- Screen scope, Rank scope, estimates, coverage, workflow state, rank-input fingerprints, currentness,
+  score-current, audit endpoints, and run-cost attribution all take the selected opening explicitly.
+  Lower layers receive the resolved application pool rather than calling a global pool helper.
+- Application AI results remain content-addressed shared cache entries. Screening work can be reused
+  across openings when application content, prompt identity, model, reasoning, and applicable rule
+  inputs match. Dimension scores can be reused when the canonical dimension identity also matches.
+- Dimension aliases and the canonical dimension history remain shared across openings. Discovery is
+  still grounded only in the selected pool; matching may recover a genuinely equivalent prior axis,
+  while a children dimension absent from a 1-bedroom pool is never injected merely because another
+  opening once used it.
+
+Separate pools provide isolation, not guaranteed zero cost. Selecting or viewing an existing current
+ranking is free, and cache reuse may make overlapping work cheap. Each opening's first Rank still runs
+pool-specific discovery, decomposition, matching, and consolidation, and different dimensions may
+require fresh scores. Estimates must show that opening's actual expected cost rather than imply that
+another opening already paid for it.
+
+**Archived openings:** archived openings remain selectable while the selector-visibility rule holds.
+Their retained applications, member rules, overrides, favourites, notes, Shared shortlist, screening
+findings, ranking, tiers, and audits remain available in the same opening context. If an archived
+opening has no final selected-household or no-household decision, Screen and Rank may still run. Once
+an archived outcome is final, existing Screen and Rank results remain visible but the paid run actions
+are disabled; rerunning AI after final outcome is not a committee workflow. Ordinary reversible
+committee working state does not alter applicant retention.
+
+**Production migration:** preserve the current live behavior before changing keys.
+
+1. Create opening-default rules for existing openings from the current saved committee default so
+   eligibility does not change merely because M24 deploys. Openings created afterward use the
+   prior-opening snapshot rule above, falling back to schema defaults only when no prior
+   application-intake opening exists.
+2. Copy each member's current rules into every existing opening context they can review, preserving
+   whether the member follows the opening default or has diverged.
+3. Expand each current member/application eligibility override into the retained non-selected opening
+   participations where it presently applies. Preserve status, reviewed fingerprint, timestamps, and
+   author.
+4. Migrate the already-deployed application-global Shared shortlist without guessing. A preflight
+   maps an entry automatically only when its application has exactly one retained non-selected
+   opening context. Zero-context and multi-context entries fail the preflight and are resolved through
+   an explicit private operator mapping; no entry is silently dropped or copied to every opening.
+   Preserve its creator and timestamps in the opening-specific row. The expected current production
+   case is unambiguous because there is one global opening and the shortlist has not been used; the
+   preflight remains the authority rather than relying on that recollection.
+5. Add nullable `opening_id` provenance to existing Analyses and cost ledgers. When exactly one
+   application-intake Opening exists, it is the only possible owner: assign all existing Analyses,
+   their MemberRanking children, and run-cost history to it unconditionally so the production
+   committee's current ranking, tiers, and results do not change at deployment. When several
+   openings exist, assign an existing analysis only when its complete stored rank-input fingerprint
+   exactly matches one opening's AI pool. An unmatched or ambiguous multi-opening analysis stays
+   unscoped audit history and the first opening-specific Rank creates that opening's active analysis.
+   This preservation logic lives only in the migration; do not retain a runtime compatibility path or
+   delete paid historical runs and eval evidence.
+6. Produce a PII-safe before/after reconciliation: opening pool counts, per-member eligibility counts,
+   override counts, shortlist counts, retained selected visibility, and unchanged application content
+   hashes. Apply additive migrations in place; never reset the database.
+
+**Implementation slices:**
+
+1. Opening-scoped pool queries and the selector/view/AI boundary tests.
+2. Single-select opening context threaded through dashboard, Applications, Ranking, settings, and URL
+   navigation.
+3. Opening committee defaults, per-member rules, and opening-specific overrides with production-safe
+   backfill.
+4. Opening-specific Shared shortlist migration and UI; application-wide favourites and notes remain
+   unchanged.
+5. Screen scope, coverage, estimates, currentness, and cost attribution by opening while retaining
+   cross-opening cache reuse.
+6. Analysis/MemberRanking currentness, Rank chain, score-current, audit routes, and print output by
+   opening; retain old unscoped analyses as history only.
+7. Archived-opening lifecycle: visible pools, selected-household inclusion, selector disappearance,
+   final-outcome AI lock, and retained administrative fallback.
+8. Production-shaped migration rehearsal, complete backend/frontend checks, and Chrome verification
+   across multiple current and archived openings on desktop and mobile.
+
+**Definition of done:** switching openings changes every opening-dependent surface together without
+cross-pool leakage; changing rules or running Screen/Rank for opening A does not stale or replace
+opening B; an application can have different effective statuses, overrides, and shortlist membership
+between openings; selected applicants are excluded from AI but viewable in their selected opening
+while another retained non-selected applicant keeps it visible; an opening with only its selected
+applicant is absent from the selector; archived pending openings may run AI, finalized archived
+openings retain readable results with run actions disabled; and all migrated production counts and
+application hashes reconcile exactly. Real-model validation over materially different synthetic or
+PII-safe pools must confirm that pool-specific discovery behaves as intended—for example, a
+no-children 1-bedroom pool does not retain a children differentiator solely because a prior
+2-bedroom analysis used one—and must report actual cache reuse and spend rather than assuming zero
+marginal cost.
+
+**Real-model validation status (2026-08-31):** Screen completed normally for the prepared four-household
+synthetic 1BR/no-children pool. Two Rank attempts (one direct pipeline rehearsal, one through the UI)
+stalled in the five-way parallel discovery phase before the first reasoning delta; the UI attempt was
+disconnected before Analysis creation and released its run lease on the next heartbeat. Recent successful
+Terra discovery phases in the same local history completed in 33–41 seconds, so the 12+ minute silence was
+treated as an abnormal provider run rather than accepted evidence. Repeat the 1BR-vs-2BR discovery and
+cache-reuse/cost inspection before marking M24 validation closed; do not infer judgment quality from the
+green deterministic/mock suite.
+
+**Non-goals:** a combined multi-opening ranking, merged committee ranking, cross-opening shortlist,
+automatic transfer of an override or outcome between openings, reopening selected applicants,
+rerunning AI after an archived outcome is final, a new retention policy for Opening rows, or making
+private favourites and notes opening-specific.
+
 ### Reporting (M10 shipped) — ✅ closed, demand-driven from here
 
 The report is the browser print of the ranked view. Three speculative refinements were considered and **deliberately not built** (Jeff, 2026-07-26): near-misses / filtered-out counts / filtered-out details in the print (today it's the ranked eligible pool only); report-specific applicant personal/contact-detail handling for MOMI reports; and an explicit recommendation + `why not selected` surface beyond the per-candidate rationale lines. Rationale: building report features nobody has asked for is speculative scope. The committee now has the app and an in-app **feedback mechanism** — real requests, not guesses, will drive any future reporting work.
@@ -1563,7 +1728,7 @@ The report is the browser print of the ranked view. Three speculative refinement
 
 M15 shipped: per-member independent screening on a shared compute-once substrate — no merge/disagreement/comparison surface (the earlier open questions on merge formula, disagreement flags, and criteria-comparison layout were dissolved, not answered). The current-state design is in "Multi-Member MOMI Workflow" above; the decision record is [ADR 0011](docs/adr/0011-per-member-eligible-pool-shared-content-cache.md); the full sliced build history (access allowlist + `require_admin`; the `RankingRun` → shared `Analysis` + per-member `MemberRanking`/`MemberEligibility` split; per-member eligibility rules over a committee default; pets-as-deterministic-facts; committee-editable defaults + member reset; the two-phase-mental-model restoration; committee-union re-rank; and the observability triggered-by stamp) is in [CHANGELOG.md](CHANGELOG.md) M15.
 
-Two things were intentionally **not** built: per-*requester* proposal attribution (no deterministic proposal→axis-key link exists to attribute on — the shared "Requested" badge stands; see ADR 0011), and a committee-default-version "your default changed" nudge (the live divergence diff already shows current default values). Per-screening-check descriptions ship as info-icon tooltips (`CheckInfo` in `CheckToggles.tsx`, on both the member Eligibility Settings and admin Committee Defaults surfaces).
+Two things were intentionally **not** built: per-*requester* proposal attribution (no deterministic proposal→axis-key link exists to attribute on — the shared "Requested" badge stands; see ADR 0011), and a committee-default-version "your default changed" nudge (the live divergence diff already shows current default values). Per-screening-check descriptions ship as info-icon tooltips (`CheckInfo` in `CheckToggles.tsx`, on both `My rules` and the admin-only `Committee default` subtab in Eligibility Settings).
 
 **How M15 resolved the single-tenant assumptions** (the load-bearing global singletons, now discharged):
 

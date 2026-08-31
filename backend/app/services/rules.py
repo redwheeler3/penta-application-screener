@@ -7,13 +7,20 @@ bulk callers should use ``eligibility_snapshot`` to avoid one query per applicat
 from __future__ import annotations
 
 from datetime import date
-from typing import Any, Final
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.problems import Problem
 from app.core.time import pacific_date, pacific_today
-from app.db.models import AdminSetting, Application, MemberRules
+from app.db.models import (
+    Application,
+    MemberRules,
+    Opening,
+    OpeningIntakeMode,
+    OpeningRules,
+)
 from app.domain.ages import age_on
 from app.domain.hard_filters import (
     PetFacts,
@@ -22,64 +29,93 @@ from app.domain.hard_filters import (
 )
 from app.schemas.settings import EligibilityRules
 
-COMMITTEE_DEFAULT_RULES_KEY: Final = "committee_default_rules"
 
-
-def committee_default_rules(db: Session) -> EligibilityRules:
+def committee_default_rules(db: Session, opening_id: int) -> EligibilityRules:
     """The shared committee-default rules — the baseline every member reads until they
     diverge. Absent row = schema defaults (the DEFAULT_* thresholds)."""
-    record = db.scalar(
-        select(AdminSetting).where(AdminSetting.key == COMMITTEE_DEFAULT_RULES_KEY)
-    )
+    record = db.scalar(select(OpeningRules).where(OpeningRules.opening_id == opening_id))
     if record is None:
         return EligibilityRules()
-    return EligibilityRules.model_validate(record.value)
+    return EligibilityRules.model_validate(record.rules)
 
 
-def save_committee_default_rules(db: Session, rules: EligibilityRules) -> EligibilityRules:
-    """Upsert the committee-default rules row."""
-    record = db.scalar(
-        select(AdminSetting).where(AdminSetting.key == COMMITTEE_DEFAULT_RULES_KEY)
+def resolve_rules_opening_id(db: Session, opening_id: int | None) -> int:
+    ids = list(
+        db.scalars(
+            select(Opening.id).where(
+                Opening.intake_mode == OpeningIntakeMode.APPLICATIONS,
+                Opening.published_at.is_not(None),
+            )
+        )
     )
-    payload = rules.model_dump(mode="json")
-    if record is None:
-        db.add(AdminSetting(key=COMMITTEE_DEFAULT_RULES_KEY, value=payload))
-    else:
-        record.value = payload
-    db.commit()
-    return rules
+    if opening_id in ids:
+        return opening_id
+    if opening_id is None and len(ids) == 1:
+        return ids[0]
+    raise Problem("opening_required", detail="Choose an opening before editing rules.")
 
 
-def member_rules(db: Session, user_id: int) -> tuple[EligibilityRules, bool]:
-    """This member's effective rules and whether they are the shared committee default.
-
-    Returns ``(rules, is_default)``: the member's own ``MemberRules`` row if it exists
-    (``is_default=False``), else the committee default (``is_default=True``).
-    """
-    record = db.scalar(select(MemberRules).where(MemberRules.user_id == user_id))
-    if record is None:
-        return committee_default_rules(db), True
-    return EligibilityRules.model_validate(record.rules), False
-
-
-def save_member_rules(
-    db: Session, user_id: int, rules: EligibilityRules
+def save_committee_default_rules(
+    db: Session, opening_id: int, rules: EligibilityRules
 ) -> EligibilityRules:
-    """Upsert this member's ``MemberRules`` row — the copy-on-write divergence from the
-    committee default. After this the member reads their own rules, not the default."""
-    record = db.scalar(select(MemberRules).where(MemberRules.user_id == user_id))
+    """Upsert the committee-default rules row."""
+    record = db.scalar(select(OpeningRules).where(OpeningRules.opening_id == opening_id))
     payload = rules.model_dump(mode="json")
     if record is None:
-        db.add(MemberRules(user_id=user_id, rules=payload))
+        db.add(OpeningRules(opening_id=opening_id, rules=payload))
     else:
         record.rules = payload
     db.commit()
     return rules
 
 
-def reset_member_rules(db: Session, user_id: int) -> None:
+def member_rules(
+    db: Session, user_id: int, opening_id: int
+) -> tuple[EligibilityRules, bool]:
+    """This member's effective rules and whether they are the shared committee default.
+
+    Returns ``(rules, is_default)``: the member's own ``MemberRules`` row if it exists
+    (``is_default=False``), else the committee default (``is_default=True``).
+    """
+    record = db.scalar(
+        select(MemberRules).where(
+            MemberRules.user_id == user_id,
+            MemberRules.opening_id == opening_id,
+        )
+    )
+    if record is None:
+        return committee_default_rules(db, opening_id), True
+    return EligibilityRules.model_validate(record.rules), False
+
+
+def save_member_rules(
+    db: Session, user_id: int, opening_id: int, rules: EligibilityRules
+) -> EligibilityRules:
+    """Upsert this member's ``MemberRules`` row — the copy-on-write divergence from the
+    committee default. After this the member reads their own rules, not the default."""
+    record = db.scalar(
+        select(MemberRules).where(
+            MemberRules.user_id == user_id,
+            MemberRules.opening_id == opening_id,
+        )
+    )
+    payload = rules.model_dump(mode="json")
+    if record is None:
+        db.add(MemberRules(user_id=user_id, opening_id=opening_id, rules=payload))
+    else:
+        record.rules = payload
+    db.commit()
+    return rules
+
+
+def reset_member_rules(db: Session, user_id: int, opening_id: int) -> None:
     """Drop this member's override so they follow the committee default. Idempotent."""
-    record = db.scalar(select(MemberRules).where(MemberRules.user_id == user_id))
+    record = db.scalar(
+        select(MemberRules).where(
+            MemberRules.user_id == user_id,
+            MemberRules.opening_id == opening_id,
+        )
+    )
     if record is not None:
         db.delete(record)
         db.commit()
@@ -104,17 +140,44 @@ def rules_config_from(rules: EligibilityRules) -> RulesConfig:
     )
 
 
-def rules_config_for(db: Session, user_id: int) -> RulesConfig:
+def rules_config_for(db: Session, user_id: int, opening_id: int) -> RulesConfig:
     """The domain ``RulesConfig`` for this member's effective rules — what their
     hard-filter evaluation runs under."""
-    return rules_config_from(member_rules(db, user_id)[0])
+    return rules_config_from(member_rules(db, user_id, opening_id)[0])
 
 
-def committee_default_rules_config(db: Session) -> RulesConfig:
+def committee_default_rules_config(db: Session, opening_id: int) -> RulesConfig:
     """The domain ``RulesConfig`` for the shared committee-default ruleset. This is the
     SHARED baseline used by screening and committee-wide eligibility calculations — not any
     one member's rules."""
-    return rules_config_from(committee_default_rules(db))
+    return rules_config_from(committee_default_rules(db, opening_id))
+
+
+def create_opening_rules(db: Session, opening: Opening) -> OpeningRules:
+    """Create an independent rules snapshot for a new application opening.
+
+    The latest prior application opening is the most useful starting point for an admin.
+    A fresh installation falls back to the schema defaults.
+    """
+    previous = db.scalar(
+        select(OpeningRules)
+        .join(Opening, Opening.id == OpeningRules.opening_id)
+        .where(
+            Opening.intake_mode == OpeningIntakeMode.APPLICATIONS,
+            Opening.id != opening.id,
+        )
+        .order_by(Opening.created_at.desc(), Opening.id.desc())
+        .limit(1)
+    )
+    payload = (
+        EligibilityRules.model_validate(previous.rules).model_dump(mode="json")
+        if previous is not None
+        else EligibilityRules().model_dump(mode="json")
+    )
+    record = OpeningRules(opening_id=opening.id, rules=payload)
+    db.add(record)
+    db.flush()
+    return record
 
 
 def _reason_to_payload(reason: Any) -> dict[str, Any]:

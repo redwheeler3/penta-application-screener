@@ -33,6 +33,7 @@ from app.schemas.ranking import (
     TierOut,
     TiersResponse,
 )
+from app.services.application_scope import resolve_visible_opening_id
 from app.services.eligibility import eligible_application_ids_for
 from app.services.ranking.analysis import get_current_analysis
 from app.services.ranking.dimensions import current_dimension_report
@@ -55,16 +56,20 @@ from app.services.stars import starred_ids
 router = APIRouter(prefix="/ranking")
 
 
-def _current_member_view(db: Session, user: User, action: str) -> MemberRanking:
+def _current_member_view(
+    db: Session, user: User, opening_id: int, action: str
+) -> MemberRanking:
     """The signed-in member's view of the current analysis, or a 409 if none exists yet.
     ``action`` fills the "Discover patterns before {action}" message."""
-    analysis = get_current_analysis(db)
+    analysis = get_current_analysis(db, opening_id)
     if analysis is None or current_dimension_report(analysis) is None:
         raise Problem("run_required", detail=f"Discover patterns before {action}.")
     return get_or_create_member_ranking(db, analysis, user)
 
 
-def _require_viewed_analysis(db: Session, analysis_id: int, user: User) -> MemberRanking:
+def _require_viewed_analysis(
+    db: Session, opening_id: int, analysis_id: int, user: User
+) -> MemberRanking:
     """The member's view of the analysis they're editing, but only if it's safe to save.
     Rejects a save against a superseded analysis (another member re-ranked) with 409
     stale_analysis; and rejects a save WHILE a rank run is in flight, because that run has
@@ -78,7 +83,7 @@ def _require_viewed_analysis(db: Session, analysis_id: int, user: User) -> Membe
             detail="A ranking is in progress. Try again in about 10 minutes, then make your "
             "changes on the refreshed criteria.",
         )
-    current = get_current_analysis(db)
+    current = get_current_analysis(db, opening_id)
     if current is None or current_dimension_report(current) is None:
         raise Problem("run_required", detail="Discover patterns before tiering.")
     if current.id != analysis_id:
@@ -101,14 +106,17 @@ def _ranking_payload(db: Session, member_ranking: MemberRanking, user: User) -> 
     # another member's eligible-only applicant is scored but must not appear on this board.
     # Pool means/impact still come from the full scored set (shared math), so a candidate's
     # numbers don't shift with who is filtering; we only drop rows the member excluded.
-    eligible_ids = eligible_application_ids_for(db, user.id)
+    if member_ranking.analysis.opening_id is None:
+        raise ValueError("A current analysis must belong to an opening.")
+    opening_id = member_ranking.analysis.opening_id
+    eligible_ids = eligible_application_ids_for(db, user.id, opening_id)
     ranked = [
         c
         for c in rank_candidates(candidate_scores(db, member_ranking.analysis), weights)
         if c.application_id in eligible_ids
     ]
     starred = starred_ids(db, user.id, [c.application_id for c in ranked])
-    shortlisted = shortlisted_ids(db, [c.application_id for c in ranked])
+    shortlisted = shortlisted_ids(db, opening_id, [c.application_id for c in ranked])
     return RankingResponse(
         analysis_id=member_ranking.analysis_id,
         weights=weights,
@@ -143,6 +151,7 @@ def _ranking_payload(db: Session, member_ranking: MemberRanking, user: User) -> 
 
 @router.get("", response_model=RankingResponse)
 def ranking(
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> RankingResponse:
@@ -153,7 +162,8 @@ def ranking(
     dimension scores, labeled by relative pool position (no fixed cut line). Pure
     math over cached scores.
     """
-    return _ranking_payload(db, _current_member_view(db, user, "ranking"), user)
+    resolved = resolve_visible_opening_id(db, opening_id)
+    return _ranking_payload(db, _current_member_view(db, user, resolved, "ranking"), user)
 
 
 # --- Tier-list weighting -----------------------------------------------------
@@ -164,19 +174,23 @@ def ranking(
 
 @router.get("/tiers", response_model=TiersResponse)
 def get_tiers(
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> TiersResponse:
     """The signed-in member's tier layout for the current analysis (or the default layout if
     they have not tiered yet). 409 before an analysis exists.
     """
-    member_ranking = _current_member_view(db, user, "tiering")
+    member_ranking = _current_member_view(
+        db, user, resolve_visible_opening_id(db, opening_id), "tiering"
+    )
     return TiersResponse(tiers=[TierOut(**t) for t in display_tiers(member_ranking)])
 
 
 @router.put("/tiers", response_model=RankingResponse)
 def update_tiers(
     body: TierLayoutUpdate,
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> RankingResponse:
@@ -184,7 +198,9 @@ def update_tiers(
     re-sorted ranking. Unknown dimension keys are rejected (422); a save against a superseded
     analysis is rejected (409 stale_analysis).
     """
-    member_ranking = _require_viewed_analysis(db, body.analysis_id, user)
+    member_ranking = _require_viewed_analysis(
+        db, resolve_visible_opening_id(db, opening_id), body.analysis_id, user
+    )
     layout = [t.model_dump() for t in body.tiers]
     try:
         set_tiers(
@@ -208,6 +224,7 @@ def update_tiers(
 @router.put("/seeds", response_model=SeedsResponse)
 def update_seeds(
     body: SeedsUpdate,
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> SeedsResponse:
@@ -215,6 +232,8 @@ def update_seeds(
     current seed state. 409 before an analysis exists (nowhere to store yet) or if the viewed
     analysis was superseded (stale_analysis).
     """
-    member_ranking = _require_viewed_analysis(db, body.analysis_id, user)
+    member_ranking = _require_viewed_analysis(
+        db, resolve_visible_opening_id(db, opening_id), body.analysis_id, user
+    )
     set_proposals(db, member_ranking, proposed_dimensions=body.proposed_dimensions)
     return SeedsResponse(proposed_dimensions=proposed_dimensions(member_ranking))

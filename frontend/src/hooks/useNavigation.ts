@@ -29,6 +29,7 @@ function pushLocation(location: BrowserLocation) {
 }
 
 export function useNavigation(options: {
+  openingId: number | null;
   loadRanking: () => Promise<boolean>;
   onError: (message: string) => void;
 }) {
@@ -37,8 +38,10 @@ export function useNavigation(options: {
   const [selectedApplicationReadOnly, setSelectedApplicationReadOnly] = useState(false);
   const loadRankingRef = useRef(options.loadRanking);
   const onErrorRef = useRef(options.onError);
+  const openingIdRef = useRef(options.openingId);
   loadRankingRef.current = options.loadRanking;
   onErrorRef.current = options.onError;
+  openingIdRef.current = options.openingId;
 
   const scrolledDetailId = useRef<number | null>(null);
   useLayoutEffect(() => {
@@ -65,9 +68,17 @@ export function useNavigation(options: {
 
       const loadApplication = location.retainedApplicant
         ? api.fetchRetainedApplication
-        : api.fetchApplication;
+        : (id: number) => {
+            if (openingIdRef.current === null) return Promise.reject();
+            return api.fetchApplication(id, openingIdRef.current);
+          };
       void loadApplication(location.applicantId)
-        .then(setSelectedApplication)
+        .then((application) => {
+          setSelectedApplication(application);
+          setSelectedApplicationReadOnly(
+            Boolean(location.retainedApplicant) || application.selected,
+          );
+        })
         .catch(() => onErrorRef.current("Couldn't load that applicant. Please try again."));
     };
 
@@ -75,16 +86,17 @@ export function useNavigation(options: {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  async function viewApplication(id: number) {
+  async function viewApplication(id: number, openingId = options.openingId) {
+    if (openingId === null) return;
     try {
-      const application = await api.fetchApplication(id);
+      const application = await api.fetchApplication(id, openingId);
       if (selectedApplication?.id === id) {
         setSelectedApplication(application);
         return;
       }
       pushLocation({ screenerLocation: true, tab: activeTab, applicantId: id });
       setSelectedApplication(application);
-      setSelectedApplicationReadOnly(false);
+      setSelectedApplicationReadOnly(application.selected);
     } catch {
       options.onError("Couldn't load that applicant. Please try again.");
     }

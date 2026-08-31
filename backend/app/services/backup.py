@@ -39,6 +39,7 @@ _APPLICATION_CHILD_TABLES = (
     "member_eligibility",
     "application_notes",
     "application_stars",
+    "application_shortlist",
     "application_ai_results",
 )
 

@@ -55,6 +55,13 @@ SCORE_CURRENT_KIND = "rank_scores"
 CACHEABLE_PASSES = {"Screening", "Dimension scoring"}
 
 
+def opening_label(run: RunCostLedger) -> str | None:
+    if run.opening is None:
+        return None
+    move_in = run.opening.move_in_date.strftime("%b %d, %Y").replace(" 0", " ")
+    return f"{run.opening.unit_size_bedrooms}BR, move-in {move_in}"
+
+
 # --- Recording (both Screen and Rank write here) ----------------------------------
 
 
@@ -66,6 +73,7 @@ def record_run_cost(
     durations_ms: dict[str, int] | None = None,
     estimated_usd: float = 0.0,
     triggered_by_user_id: int | None = None,
+    opening_id: int | None = None,
 ) -> None:
     """Persist a completed run's per-pass cost (``kind`` = "screen" | "rank" |
     "rank_scores"), one
@@ -86,6 +94,7 @@ def record_run_cost(
         kind=kind,
         estimated_usd=round(estimated_usd, 6),
         triggered_by_user_id=triggered_by_user_id,
+        opening_id=opening_id,
         passes=[
             RunPassCost(
                 label=label,
@@ -195,6 +204,7 @@ def _last_run(db: Session, kind: str) -> LastRunCost | None:
         estimated_usd=round(row.estimated_usd, 6),
         # Attribution only; omit the stamp when the member relationship is unavailable.
         triggered_by=row.triggered_by.email if row.triggered_by else None,
+        opening=opening_label(row),
         passes=passes,
     )
 
@@ -214,7 +224,9 @@ def last_runs_report(db: Session) -> LastRunsReport:
 _SCORING_HISTORY_WINDOW = 5
 
 
-def recent_pass_fresh_usd(db: Session, pass_label: str = "Dimension scoring") -> float | None:
+def recent_pass_fresh_usd(
+    db: Session, opening_id: int, pass_label: str = "Dimension scoring"
+) -> float | None:
     """A recency-weighted average of what recent Rank runs actually spent (fresh) on the
     named pass — the MEASURED predictor of a re-run's cost for that pass.
 
@@ -240,7 +252,11 @@ def recent_pass_fresh_usd(db: Session, pass_label: str = "Dimension scoring") ->
         db.scalars(
             select(RunPassCost)
             .join(RunCostLedger, RunPassCost.run_id == RunCostLedger.id)
-            .where(RunCostLedger.kind == FULL_RANK_KIND, RunPassCost.label == pass_label)
+            .where(
+                RunCostLedger.kind == FULL_RANK_KIND,
+                RunCostLedger.opening_id == opening_id,
+                RunPassCost.label == pass_label,
+            )
             .order_by(RunCostLedger.id.desc())
             .limit(_SCORING_HISTORY_WINDOW)
         )

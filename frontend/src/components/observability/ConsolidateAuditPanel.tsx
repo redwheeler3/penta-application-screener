@@ -14,8 +14,10 @@ import { RetryLoadError } from "../shared/RetryLoadError";
 //
 // This surfaces every nominated pair, correlation, verdict, and reason. Missing audit
 // data and a run with no nominations have distinct empty states.
-export function ConsolidateAuditPanel(): ReactNode {
-  const { data: audit, state, reload } = useFetchResource(fetchConsolidateAudit);
+export function ConsolidateAuditPanel(props: { openingId: number }): ReactNode {
+  const { data: audit, state, reload } = useFetchResource(
+    () => fetchConsolidateAudit(props.openingId),
+  );
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;
   if (state === "error") {

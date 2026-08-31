@@ -23,6 +23,7 @@ from app.services.rules import (
     committee_default_rules,
     member_rules,
     reset_member_rules,
+    resolve_rules_opening_id,
     save_committee_default_rules,
     save_member_rules,
 )
@@ -116,54 +117,64 @@ def read_eligibility_check_catalog(
 
 @rules_router.get("", response_model=EligibilityRulesResponse)
 def read_eligibility_rules(
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> EligibilityRulesResponse:
     """This member's effective eligibility rules and whether they are the shared committee
     default (no personal divergence yet) or the member's own."""
-    rules, is_default = member_rules(db, user.id)
+    rules, is_default = member_rules(db, user.id, resolve_rules_opening_id(db, opening_id))
     return EligibilityRulesResponse(rules=rules, is_default=is_default)
 
 
 @rules_router.put("", response_model=EligibilityRulesResponse)
 def update_eligibility_rules(
     rules: EligibilityRules,
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> EligibilityRulesResponse:
     """Upsert this member's own rules (copy-on-write divergence from the committee default).
     After saving, the member reads their own rules, so ``is_default`` is False."""
     _validate_rules(rules)
-    saved = save_member_rules(db, user.id, rules)
+    saved = save_member_rules(
+        db, user.id, resolve_rules_opening_id(db, opening_id), rules
+    )
     return EligibilityRulesResponse(rules=saved, is_default=False)
 
 
 @rules_router.delete("", response_model=EligibilityRulesResponse)
 def reset_eligibility_rules(
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> EligibilityRulesResponse:
     """Reset this member to the committee default. Idempotent if they never diverged.
     Returns the now-effective rules, which
     are the committee default (``is_default`` True)."""
-    reset_member_rules(db, user.id)
-    return EligibilityRulesResponse(rules=committee_default_rules(db), is_default=True)
+    opening_id = resolve_rules_opening_id(db, opening_id)
+    reset_member_rules(db, user.id, opening_id)
+    return EligibilityRulesResponse(
+        rules=committee_default_rules(db, opening_id), is_default=True
+    )
 
 
 @rules_router.get("/committee-default", response_model=EligibilityRules)
 def read_committee_default_rules(
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> EligibilityRules:
     """The shared committee-default rules. Any member may read it — it's the baseline they
     follow until they diverge, and the Eligibility Settings page shows it as the "compared to
     committee default" reference."""
-    return committee_default_rules(db)
+    return committee_default_rules(db, resolve_rules_opening_id(db, opening_id))
 
 
 @rules_router.put("/committee-default", response_model=EligibilityRules)
 def update_committee_default_rules(
     rules: EligibilityRules,
+    opening_id: int | None = None,
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> EligibilityRules:
@@ -172,4 +183,6 @@ def update_committee_default_rules(
     member keeps their own rules until they reset; every non-diverged member reads the new
     default on their next read."""
     _validate_rules(rules)
-    return save_committee_default_rules(db, rules)
+    return save_committee_default_rules(
+        db, resolve_rules_opening_id(db, opening_id), rules
+    )

@@ -19,7 +19,7 @@ import type {
 } from "./types";
 import { AdminSettingsPanel, type AdminSubtab } from "./components/admin/AdminSettingsPanel";
 import { AdminActionBanner } from "./components/admin/AdminActionBanner";
-import { EligibilitySettingsPanel } from "./components/admin/EligibilitySettingsPanel";
+import { EligibilitySettingsView } from "./components/admin/EligibilitySettingsView";
 import { ApplicationsList } from "./components/applications/ApplicationsList";
 import { CandidateDetail } from "./components/applications/CandidateDetail";
 import { CommitteeSignIn } from "./components/auth/CommitteeSignIn";
@@ -64,15 +64,6 @@ export function App(props: { authRedirect: AuthRedirect }) {
     logout,
   } = useSession(props.authRedirect);
 
-  const {
-    workflow,
-    coverage,
-    adminActions,
-    loadState: dashboardLoadState,
-    refresh: refreshDashboard,
-    loadInitial: loadInitialDashboard,
-  } = useDashboard();
-
   // Workflow notifications surface as bottom-right toasts (success auto-dismisses;
   // errors/warnings persist until dismissed). See useToasts.
   const { toasts, showToast, showError, showWarning, dismissToast } = useToasts();
@@ -82,8 +73,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
   const {
     applications,
     openings,
-    selectedOpeningIds,
-    applicationIdsInOpeningScope,
+    selectedOpeningId,
     applicationsLoadState,
     appFilter,
     appFacets,
@@ -93,9 +83,17 @@ export function App(props: { authRedirect: AuthRedirect }) {
     loadInitialApplications,
     toggleSort,
     applyFilter,
-    setSelectedOpeningIds,
+    selectOpening,
     search: searchApplications,
   } = useApplications();
+  const {
+    workflow,
+    coverage,
+    adminActions,
+    loadState: dashboardLoadState,
+    refresh: refreshDashboard,
+    loadInitial: loadInitialDashboard,
+  } = useDashboard(selectedOpeningId);
   // The ranking cluster: the current run's dimensions, the ranked shortlist, the
   // committee's tiers, and the pure-persistence handlers that keep them in lockstep.
   // See useRanking. useAiRuns separately coordinates the model-run lifecycle.
@@ -115,7 +113,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
     staleAnalysis,
     checkForStaleRanking,
     reloadStaleRanking,
-  } = useRanking(showError);
+  } = useRanking(selectedOpeningId, showError);
 
   const {
     activeTab,
@@ -126,7 +124,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
     viewRetainedApplication,
     backToList,
     navigateToView,
-  } = useNavigation({ loadRanking, onError: showError });
+  } = useNavigation({ openingId: selectedOpeningId, loadRanking, onError: showError });
   const [adminSubtab, setAdminSubtab] = useState<AdminSubtab>("configuration");
   const {
     draft,
@@ -160,6 +158,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
     cancelRankEstimate,
     resetEstimates,
   } = useAiRuns({
+    openingId: selectedOpeningId,
     ranking: {
       currentRun: rankingRun,
       refreshCurrentRun: refreshRankingRun,
@@ -175,11 +174,36 @@ export function App(props: { authRedirect: AuthRedirect }) {
   useEffect(() => {
     if (!user) return;
     void loadSettings();
-    void loadInitialDashboard();
-    refreshRankingRun();
     void loadInitialApplications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  useEffect(() => {
+    if (!user || selectedOpeningId === null) return;
+    setSelectedApp(null);
+    resetEstimates();
+    void loadInitialDashboard();
+    void refreshRankingRun();
+    // Opening changes intentionally reset every opening-scoped member surface.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, selectedOpeningId]);
+
+  async function changeOpening(openingId: number) {
+    try {
+      await selectOpening(openingId);
+      return true;
+    } catch {
+      showError("Could not load that opening.");
+      return false;
+    }
+  }
+
+  async function viewOpeningApplication(applicationId: number, openingId: number) {
+    if (openingId !== selectedOpeningId) {
+      if (!(await changeOpening(openingId))) return;
+    }
+    await viewApplication(applicationId, openingId);
+  }
 
   // Refresh the lightweight list/dashboard reads while this page is visible and whenever
   // the member returns to it, so new or edited applications appear without a reload.
@@ -304,17 +328,20 @@ export function App(props: { authRedirect: AuthRedirect }) {
   // Human override of an application's status. The backend marks it human-owned and
   // sticky against future machine runs.
   async function overrideStatus(id: number, status: AppStatus) {
-    await applyStatusResponse(await api.overrideStatus(id, status));
+    if (selectedOpeningId === null) return;
+    await applyStatusResponse(await api.overrideStatus(id, selectedOpeningId, status));
   }
 
   // Remove a human override, handing the decision back to the machine. The backend
   // recomputes status from the current findings (see DELETE handler).
   async function clearStatusOverride(id: number) {
-    await applyStatusResponse(await api.clearStatusOverride(id));
+    if (selectedOpeningId === null) return;
+    await applyStatusResponse(await api.clearStatusOverride(id, selectedOpeningId));
   }
 
   async function savePrivateNote(id: number, note: string): Promise<boolean> {
-    const response = await api.savePrivateNote(id, note);
+    if (selectedOpeningId === null) return false;
+    const response = await api.savePrivateNote(id, selectedOpeningId, note);
     if (!response.ok) {
       showError("Could not save your private note.");
       return false;
@@ -328,7 +355,8 @@ export function App(props: { authRedirect: AuthRedirect }) {
   // list, the ranking, or the detail header, so refresh whichever surfaces are live:
   // the detail from the response, and the list/ranking if they hold star state.
   async function toggleStar(id: number, starred: boolean) {
-    const response = await api.setStar(id, starred);
+    if (selectedOpeningId === null) return;
+    const response = await api.setStar(id, selectedOpeningId, starred);
     if (!response.ok) {
       showError(starred ? "Could not add to favourites." : "Could not remove from favourites.");
       return;
@@ -342,7 +370,8 @@ export function App(props: { authRedirect: AuthRedirect }) {
   // The shared shortlist is committee working state, unlike the private star.
   // Refresh every live surface because all members see the same shortlist membership.
   async function toggleShortlist(id: number, shortlisted: boolean) {
-    const response = await api.setShortlist(id, shortlisted);
+    if (selectedOpeningId === null) return;
+    const response = await api.setShortlist(id, selectedOpeningId, shortlisted);
     if (!response.ok) {
       showError(shortlisted ? "Could not add to the shared shortlist." : "Could not remove from the shared shortlist.");
       return;
@@ -353,6 +382,10 @@ export function App(props: { authRedirect: AuthRedirect }) {
     if (ranking) loadRanking();
   }
 
+  const selectedOpening = openings.find((opening) => opening.id === selectedOpeningId) ?? null;
+  const aiActionsDisabled = Boolean(
+    selectedOpening?.phase === "archived" && selectedOpening.outcomeFinal,
+  );
 
   return (
     <main className="app-shell">
@@ -424,8 +457,9 @@ export function App(props: { authRedirect: AuthRedirect }) {
             onRunRank={runRank}
             onCancelRank={cancelRankEstimate}
             openings={openings}
-            selectedOpeningIds={selectedOpeningIds}
-            onOpeningScopeChange={setSelectedOpeningIds}
+            selectedOpeningId={selectedOpeningId}
+            onOpeningChange={(openingId) => void changeOpening(openingId)}
+            aiActionsDisabled={aiActionsDisabled}
           />
 
           {/* Tab row: the data views on the left, the config tabs (Eligibility Settings
@@ -462,7 +496,16 @@ export function App(props: { authRedirect: AuthRedirect }) {
                 readOnly={selectedApplicationReadOnly}
               />
             ) : activeTab === "eligibilitySettings" ? (
-              <EligibilitySettingsPanel onError={showError} onRulesUpdated={refreshEligibilityViews} />
+              selectedOpeningId === null ? (
+                <p className="panel-hint">No retained opening is available.</p>
+              ) : (
+                <EligibilitySettingsView
+                  openingId={selectedOpeningId}
+                  isAdmin={isAdmin}
+                  onError={showError}
+                  onRulesUpdated={refreshEligibilityViews}
+                />
+              )
             ) : activeTab === "adminSettings" && isAdmin ? (
               // Keep the selected admin tab visible while settings load or fail.
               draft ? (
@@ -475,6 +518,9 @@ export function App(props: { authRedirect: AuthRedirect }) {
                   onError={showError}
                   onEligibilityChanged={refreshEligibilityViews}
                   onOpenApplicant={viewApplication}
+                  onOpenOpeningApplicant={(applicationId, openingId) =>
+                    void viewOpeningApplication(applicationId, openingId)
+                  }
                   onOpenView={navigateToView}
                   currentUser={user}
                   subtab={adminSubtab}
@@ -514,9 +560,6 @@ export function App(props: { authRedirect: AuthRedirect }) {
                 onSelectApplication={viewApplication}
                 onToggleStar={toggleStar}
                 onToggleShortlist={toggleShortlist}
-                applicationIdsInOpeningScope={
-                  selectedOpeningIds.length > 0 ? applicationIdsInOpeningScope : null
-                }
               />
             ) : activeTab === "ranking" ? (
               <div className="list-load-state" role={rankingLoadState === "error" ? "alert" : "status"}>
@@ -536,6 +579,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
                 <AIQualityView
                   family={activeTab === "observability" ? "obs" : "eval"}
                   run={rankingRun}
+                  openingId={selectedOpeningId}
                   onToast={showToast}
                   onError={showError}
                 />

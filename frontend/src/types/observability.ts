@@ -57,6 +57,7 @@ export type LastRunCost = {
   estimatedUsd: number; // pre-run projection; 0 when unavailable (show "—")
   // Null when the triggering member is unknown or no longer exists.
   triggeredBy: string | null;
+  opening: string | null;
   passes: LastRunPass[];
 };
 
@@ -73,6 +74,7 @@ export type TrendPoint = {
   cacheHitRate: number | null; // over cacheable units; null when none
   dimensions: number | null; // live dimension count (full rank only)
   triggeredBy: string | null;
+  opening: string | null;
 };
 
 export type EligibilityCheck = { id: string; label: string; description: string };

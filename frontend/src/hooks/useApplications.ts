@@ -14,9 +14,7 @@ export interface ApplicationsState {
   /** The filtered + sorted list the UI renders (derived from the full pool). */
   applications: ApplicationSummary[];
   openings: CommitteeOpening[];
-  selectedOpeningIds: number[];
-  /** Shared opening scope consumed by both this list and the ranking view. */
-  applicationIdsInOpeningScope: Set<number>;
+  selectedOpeningId: number | null;
   /** Distinguishes initial loading, a settled list (including an empty one), and a
    * definitively failed initial load. */
   applicationsLoadState: "loading" | "ready" | "error";
@@ -33,7 +31,7 @@ export interface ApplicationsState {
   loadInitialApplications: () => Promise<void>;
   toggleSort: (key: SortKey) => void;
   applyFilter: (next: AppFilter) => void;
-  setSelectedOpeningIds: (openingIds: number[]) => void;
+  selectOpening: (openingId: number) => Promise<void>;
   search: (value: string) => void;
 }
 
@@ -46,7 +44,7 @@ export interface ApplicationsState {
 export function useApplications(): ApplicationsState {
   const [allApplications, setAllApplications] = useState<ApplicationSummary[]>([]);
   const [openings, setOpenings] = useState<CommitteeOpening[]>([]);
-  const [selectedOpeningIds, setSelectedOpeningIds] = useState<number[]>([]);
+  const [selectedOpeningId, setSelectedOpeningId] = useState<number | null>(null);
   const [applicationsLoadState, setApplicationsLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [appFilter, setAppFilter] = useState<AppFilter>({});
   const [appSearch, setAppSearch] = useState("");
@@ -55,32 +53,33 @@ export function useApplications(): ApplicationsState {
   const acceptApplications = useCallback((response: Awaited<ReturnType<typeof api.fetchApplications>>) => {
     setAllApplications(response.applications);
     setOpenings(response.openings);
-    const currentOpeningIds = new Set(
-      response.openings
-        .filter((opening) => opening.phase !== "archived")
-        .map((opening) => opening.id),
-    );
-    setSelectedOpeningIds((selected) => (
-      selected.filter((openingId) => currentOpeningIds.has(openingId))
-    ));
+    setSelectedOpeningId(response.selectedOpeningId);
+    if (response.selectedOpeningId !== null) {
+      window.localStorage.setItem("penta-selected-opening", String(response.selectedOpeningId));
+    }
     setApplicationsLoadState("ready");
   }, []);
 
   const reloadApplications = useCallback(() => {
     return api
-      .fetchApplications()
+      .fetchApplications(selectedOpeningId)
       .then((response) => {
         acceptApplications(response);
       })
       // Keep the last successful list visible when a background refresh fails. Initial loading
       // uses loadInitialApplications so it can recover deliberately instead of spinning forever.
       .catch(() => {});
-  }, [acceptApplications]);
+  }, [acceptApplications, selectedOpeningId]);
 
   const loadInitialApplications = useCallback(async (): Promise<void> => {
     setApplicationsLoadState("loading");
     try {
-      const response = await retryWithBackoff(api.fetchApplications, 5);
+      const stored = Number(window.localStorage.getItem("penta-selected-opening"));
+      const requestedOpening = Number.isInteger(stored) && stored > 0 ? stored : null;
+      const response = await retryWithBackoff(
+        () => api.fetchApplications(requestedOpening),
+        5,
+      );
       acceptApplications(response);
     } catch {
       setApplicationsLoadState("error");
@@ -94,20 +93,12 @@ export function useApplications(): ApplicationsState {
     [a.applicantName, a.coApplicantName, a.primaryEmail].some((v) =>
       (v ?? "").toLowerCase().includes(searchTerm),
     );
-  const matchesOpening = (a: ApplicationSummary) =>
-    selectedOpeningIds.length === 0 ||
-    selectedOpeningIds.some((openingId) => a.openingIds.includes(openingId));
-  const applicationIdsInOpeningScope = useMemo(
-    () => new Set(allApplications.filter(matchesOpening).map((application) => application.id)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [allApplications, selectedOpeningIds],
-  );
 
   // Facets reflect every active filter EXCEPT their own group (like the server did),
   // so the two filter rows stay mutually consistent. Search + saved view apply to both.
   const appFacets = useMemo<AppFacets>(() => {
     const base = allApplications.filter(
-      (application) => matchesSearch(application) && matchesOpening(application),
+      (application) => matchesSearch(application),
     );
     const savedBase = appFilter.savedView === "favourites"
       ? base.filter((a) => a.starredByMe)
@@ -146,7 +137,7 @@ export function useApplications(): ApplicationsState {
       shortlist,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allApplications, appFilter, searchTerm, selectedOpeningIds]);
+  }, [allApplications, appFilter, searchTerm]);
 
   const applications = useMemo(() => {
     const filtered = allApplications.filter(
@@ -155,12 +146,21 @@ export function useApplications(): ApplicationsState {
         (!appFilter.status || a.status === appFilter.status) &&
         (!appFilter.statusSource || a.statusSource === appFilter.statusSource) &&
         (appFilter.savedView !== "favourites" || a.starredByMe) &&
-        (appFilter.savedView !== "shortlist" || a.shortlisted) &&
-        matchesOpening(a),
+        (appFilter.savedView !== "shortlist" || a.shortlisted),
     );
     return appSort ? sortApplications(filtered, appSort) : filtered;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allApplications, appFilter, searchTerm, appSort, selectedOpeningIds]);
+  }, [allApplications, appFilter, searchTerm, appSort]);
+
+  async function selectOpening(openingId: number): Promise<void> {
+    setApplicationsLoadState("loading");
+    try {
+      acceptApplications(await api.fetchApplications(openingId));
+    } catch (error) {
+      setApplicationsLoadState("ready");
+      throw error;
+    }
+  }
 
   function toggleSort(key: SortKey) {
     // First click sorts ascending; clicking the active column flips direction.
@@ -174,8 +174,7 @@ export function useApplications(): ApplicationsState {
   return {
     applications,
     openings,
-    selectedOpeningIds,
-    applicationIdsInOpeningScope,
+    selectedOpeningId,
     applicationsLoadState,
     appFacets,
     appFilter,
@@ -185,7 +184,7 @@ export function useApplications(): ApplicationsState {
     loadInitialApplications,
     toggleSort,
     applyFilter: setAppFilter,
-    setSelectedOpeningIds,
+    selectOpening,
     search: setAppSearch,
   };
 }

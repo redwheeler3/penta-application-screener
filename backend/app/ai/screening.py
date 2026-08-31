@@ -24,7 +24,7 @@ from app.ai.schemas import ScreeningReport
 from app.db.models import Application
 from app.schemas.settings import AppSettings, effective_reasoning_effort
 from app.services.application_content import extract_essays
-from app.services.application_scope import committee_applications
+from app.services.application_scope import opening_ai_applications
 from app.services.eligibility import rules_eligible_application_ids
 
 KIND = "screening"
@@ -110,7 +110,7 @@ def build_prompt(application: Application) -> str:
     )
 
 
-def applications_for_screening(db: Session) -> list[Application]:
+def applications_for_screening(db: Session, opening_id: int) -> list[Application]:
     """The applications the screening pass should (re-)analyze: every application that is
     RULES-eligible for AT LEAST ONE member (the union of all members' rulesets).
 
@@ -123,18 +123,20 @@ def applications_for_screening(db: Session) -> list[Application]:
     ineligible-for-everyone apps are excluded: their verdict is deterministic, so no AI pass
     could change it. (Member overrides sit on TOP of the baseline and aren't read here.)
     """
-    scope = rules_eligible_application_ids(db)
+    scope = rules_eligible_application_ids(db, opening_id)
     return [
         app
-        for app in committee_applications(db)
+        for app in opening_ai_applications(db, opening_id)
         if app.id in scope
     ]
 
 
-def estimate_screening(db: Session, settings: AppSettings) -> CostEstimate:
+def estimate_screening(
+    db: Session, opening_id: int, settings: AppSettings
+) -> CostEstimate:
     return estimate_cost(
         db,
-        applications=applications_for_screening(db),
+        applications=applications_for_screening(db, opening_id),
         kind=KIND,
         model_id=settings.ai.screening_model,
         prompt_version=screening_prompt_version(),

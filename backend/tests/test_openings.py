@@ -24,7 +24,7 @@ from app.db.models import (
     UserRole,
 )
 from app.db.session import get_db
-from app.services.application_scope import committee_applications
+from app.services.application_scope import opening_ai_applications
 from app.services.email_sender import CapturedEmailSender, get_email_sender
 from app.services.openings import opening_phase
 from app.services.passwordless_auth import create_browser_session, issue_magic_link
@@ -334,7 +334,7 @@ async def test_closed_selection_is_reversible_and_changes_committee_scope() -> N
     ]
     assert undone.json()["selectedApplicationId"] is None
     assert all(participation.outcome is None for participation in participations)
-    assert [item.id for item in committee_applications(db)] == [
+    assert [item.id for item in opening_ai_applications(db, opening.id)] == [
         application.id for application in applications
     ]
 
@@ -431,7 +431,10 @@ async def test_archived_selection_is_permanent() -> None:
         OpeningOutcome.UNSUCCESSFUL,
         OpeningOutcome.UNSUCCESSFUL,
     ]
-    assert committee_applications(db) == []
+    assert [application.id for application in opening_ai_applications(db, opening.id)] == [
+        applications[1].id,
+        applications[2].id,
+    ]
 
 
 @pytest.mark.anyio
@@ -453,7 +456,7 @@ async def test_closed_no_household_decision_is_explicit_and_reversible() -> None
         participation.outcome is None
         for participation in db.query(ApplicationParticipation).all()
     )
-    assert [item.id for item in committee_applications(db)] == [
+    assert [item.id for item in opening_ai_applications(db, opening.id)] == [
         application.id for application in applications
     ]
 
@@ -521,7 +524,7 @@ async def test_selected_household_is_excluded_from_other_opening_picker() -> Non
 
 
 @pytest.mark.anyio
-async def test_admin_can_review_selected_application_only_through_retained_route() -> None:
+async def test_admin_can_review_selected_application_in_its_opening_and_retained_route() -> None:
     app, db = _app_and_db(UserRole.ADMIN)
     opening, applications = _opening_with_candidates(db, archived=True)
     transport = ASGITransport(app=app)
@@ -535,7 +538,7 @@ async def test_admin_can_review_selected_application_only_through_retained_route
             f"/applications/{applications[0].id}/retained"
         )
 
-    assert live_detail.status_code == 404
+    assert live_detail.status_code == 200
     assert retained_detail.status_code == 200
     assert retained_detail.json()["application"]["id"] == applications[0].id
 

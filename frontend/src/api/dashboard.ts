@@ -1,9 +1,9 @@
 import type { AdminActions, Coverage, EmailDeliveryIssue, WorkflowState } from "../types";
 import { getJson } from "./client";
 
-export const fetchDashboard = () =>
+export const fetchDashboard = (openingId: number) =>
   getJson<{ workflow: WorkflowState; coverage: Coverage; adminActions?: AdminActions | null }>(
-    "/dashboard",
+    `/dashboard?opening_id=${openingId}`,
   );
 
 export const fetchEmailDeliveryIssues = () =>

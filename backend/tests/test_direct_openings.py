@@ -23,7 +23,7 @@ from app.db.models import (
     VacancySubscription,
 )
 from app.db.session import get_db
-from app.services.application_scope import committee_applications
+from app.services.application_scope import opening_ai_applications
 from app.services.email_sender import CapturedEmailSender, get_email_sender
 from app.services.passwordless_auth import create_browser_session
 from app.services.retention import one_year_after, years_after
@@ -160,7 +160,7 @@ async def test_admin_can_search_retained_previous_applicants_without_listing_the
     assert too_short.status_code == 422
     assert blank.status_code == 422
     assert retained.status_code == 200
-    assert ordinary.status_code == 404
+    assert ordinary.status_code == 200
 
 
 @pytest.mark.anyio
@@ -199,7 +199,7 @@ async def test_direct_selection_is_atomic_and_sends_no_email() -> None:
         application_id=candidate.id,
     )
     db.commit()
-    assert {application.id for application in committee_applications(db)} == {
+    assert {application.id for application in opening_ai_applications(db, current.id)} == {
         candidate.id,
         other.id,
     }
@@ -245,7 +245,9 @@ async def test_direct_selection_is_atomic_and_sends_no_email() -> None:
     assert participation.application_id == candidate.id
     assert participation.outcome == OpeningOutcome.SELECTED
     assert candidate.retention_due_on == years_after(move_in_date, 7)
-    assert [application.id for application in committee_applications(db)] == [other.id]
+    assert [application.id for application in opening_ai_applications(db, current.id)] == [
+        other.id
+    ]
     assert db.scalar(select(func.count()).select_from(VacancySubscription)) == 1
     assert db.scalar(select(func.count()).select_from(VacancyConsentReceipt)) == 0
     assert db.scalar(select(func.count()).select_from(EmailDelivery)) == 0
@@ -291,7 +293,9 @@ async def test_removing_direct_selection_restores_prior_scope_and_retention() ->
     )
     assert db.get(Opening, direct_id) is None
     assert candidate.retention_due_on == one_year_after(current.move_in_date)
-    assert [application.id for application in committee_applications(db)] == [candidate.id]
+    assert [application.id for application in opening_ai_applications(db, current.id)] == [
+        candidate.id
+    ]
     assert sender.messages == []
 
 

@@ -23,6 +23,7 @@ from app.schemas.ranking import (
     MatchAuditResponse,
     PoolDimensionOut,
 )
+from app.services.application_scope import resolve_visible_opening_id
 from app.services.ranking.analysis import get_current_analysis
 from app.services.ranking.audit import (
     consolidate_audit_view,
@@ -42,11 +43,11 @@ from app.services.ranking.member_state import (
 router = APIRouter(prefix="/ranking")
 
 
-def _run_payload(db: Session, user: User) -> CurrentRunResponse | None:
+def _run_payload(db: Session, user: User, opening_id: int) -> CurrentRunResponse | None:
     """The current analysis's discovered pattern report + the signed-in member's view of it,
     shaped for the UI. The dimensions/narrative are shared; the badges, kept axes, and
     proposals are read off this member's ranking."""
-    analysis = get_current_analysis(db)
+    analysis = get_current_analysis(db, opening_id)
     if analysis is None:
         return None
     report = current_dimension_report(analysis)
@@ -86,15 +87,17 @@ def _run_payload(db: Session, user: User) -> CurrentRunResponse | None:
 
 @router.get("/current", response_model=CurrentRunResponse | None)
 def current(
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> CurrentRunResponse | None:
     """The current analysis's dimensions + this member's view, or null if none discovered yet."""
-    return _run_payload(db, user)
+    return _run_payload(db, user, resolve_visible_opening_id(db, opening_id))
 
 
 @router.get("/current/match-audit", response_model=MatchAuditResponse | None)
 def current_match_audit(
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> MatchAuditResponse | None:
@@ -102,7 +105,7 @@ def current_match_audit(
     pass mapped it onto prior dimensions, and the derived carry-forward rate. Null when
     no analysis or audit exists.
     """
-    analysis = get_current_analysis(db)
+    analysis = get_current_analysis(db, resolve_visible_opening_id(db, opening_id))
     if analysis is None:
         return None
     view = match_audit_view(analysis)
@@ -113,6 +116,7 @@ def current_match_audit(
 
 @router.get("/current/decompose-audit", response_model=DecomposeAuditResponse | None)
 def current_decompose_audit(
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> DecomposeAuditResponse | None:
@@ -120,7 +124,7 @@ def current_decompose_audit(
     settled into one non-overlapping set: each settled axis's source keys + merge/keep
     reasoning, settle-down counts, and folded committee requests. Null when no audit exists.
     """
-    analysis = get_current_analysis(db)
+    analysis = get_current_analysis(db, resolve_visible_opening_id(db, opening_id))
     if analysis is None:
         return None
     view = decompose_audit_view(analysis)
@@ -131,6 +135,7 @@ def current_decompose_audit(
 
 @router.get("/current/consolidate-audit", response_model=ConsolidateAuditResponse | None)
 def current_consolidate_audit(
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> ConsolidateAuditResponse | None:
@@ -138,7 +143,7 @@ def current_consolidate_audit(
     which correlated pairs were nominated and, per pair, whether the confirm call merged
     them (with its reasoning). Null when no audit exists.
     """
-    analysis = get_current_analysis(db)
+    analysis = get_current_analysis(db, resolve_visible_opening_id(db, opening_id))
     if analysis is None:
         return None
     view = consolidate_audit_view(db, analysis)
@@ -149,6 +154,7 @@ def current_consolidate_audit(
 
 @router.get("/current/fan-out-audit", response_model=FanOutAuditResponse | None)
 def current_fan_out_audit(
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> FanOutAuditResponse | None:
@@ -156,7 +162,7 @@ def current_fan_out_audit(
     + reasoning, so the discovery panel can show every discoverer, not just the one that
     streamed live. Null when no audit exists.
     """
-    analysis = get_current_analysis(db)
+    analysis = get_current_analysis(db, resolve_visible_opening_id(db, opening_id))
     if analysis is None:
         return None
     view = fan_out_audit_view(analysis)

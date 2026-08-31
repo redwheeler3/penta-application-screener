@@ -3,20 +3,18 @@ import { type ReactNode, type SyntheticEvent } from "react";
 import type { AppSettings, CurrentUser, SettingsResponse, ViewTab } from "../../types";
 import { AccessPanel } from "./AccessPanel";
 import { AdminConfigurationPanel } from "./AdminConfigurationPanel";
-import { CommitteeDefaultsPanel } from "./CommitteeDefaultsPanel";
 import { EmailDeliveryPanel } from "./EmailDeliveryPanel";
 import { FeedbackPanel } from "./FeedbackPanel";
 import { OpeningsPanel } from "./OpeningsPanel";
 import { VacancyNotificationsPanel } from "./VacancyNotificationsPanel";
 
-export type AdminSubtab = "configuration" | "openings" | "notifications" | "emailDelivery" | "defaults" | "access" | "feedback";
+export type AdminSubtab = "configuration" | "openings" | "notifications" | "emailDelivery" | "access" | "feedback";
 
 const ADMIN_SUBTABS: Array<{ id: AdminSubtab; label: string }> = [
   { id: "configuration", label: "Configuration" },
   { id: "openings", label: "Openings" },
   { id: "notifications", label: "Notifications" },
   { id: "emailDelivery", label: "Email Delivery" },
-  { id: "defaults", label: "Committee Defaults" },
   { id: "access", label: "Access" },
   { id: "feedback", label: "Feedback" },
 ];
@@ -30,6 +28,7 @@ export function AdminSettingsPanel(props: {
   onError: (message: string) => void;
   onEligibilityChanged: () => void;
   onOpenApplicant: (id: number) => void;
+  onOpenOpeningApplicant: (id: number, openingId: number) => void;
   onOpenView: (tab: ViewTab) => void;
   currentUser: CurrentUser;
   subtab: AdminSubtab;
@@ -75,18 +74,13 @@ export function AdminSettingsPanel(props: {
         <OpeningsPanel
           onError={props.onError}
           onPoolChanged={props.onPoolChanged}
-          onOpenApplicant={props.onOpenApplicant}
+          onOpenApplicant={props.onOpenOpeningApplicant}
           onOpenRetainedApplicant={props.onOpenRetainedApplicant}
         />
       ) : subtab === "notifications" ? (
         <VacancyNotificationsPanel onError={props.onError} />
       ) : subtab === "emailDelivery" ? (
         <EmailDeliveryPanel onError={props.onError} />
-      ) : subtab === "defaults" ? (
-        <CommitteeDefaultsPanel
-          onError={props.onError}
-          onEligibilityChanged={props.onEligibilityChanged}
-        />
       ) : (
         <AdminConfigurationPanel
           draft={props.draft}

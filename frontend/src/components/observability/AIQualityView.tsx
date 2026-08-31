@@ -30,6 +30,7 @@ type Tab =
 export function AIQualityView(props: {
   family: AIQualityFamily;
   run: CurrentRunResponse | null;
+  openingId: number | null;
   // Save outcomes (golden case, judge brief) surface as the app's standard toasts, same as
   // Settings and the Rank flows — not inline text.
   onToast: (message: string) => void;
@@ -113,13 +114,13 @@ export function AIQualityView(props: {
       <div className="observability-subtab-body">
         {activeTab === "discovery" && props.run ? (
           // Key by analysisId so an analysis change remounts the panel (its fetch is mount-once).
-          <DiscoveryPanel key={props.run.analysisId} run={props.run} />
+          <DiscoveryPanel key={props.run.analysisId} run={props.run} openingId={props.openingId!} />
         ) : activeTab === "decompose" ? (
-          <DecomposeAuditPanel />
+          <DecomposeAuditPanel openingId={props.openingId!} />
         ) : activeTab === "match" ? (
-          <MatchAuditPanel />
+          <MatchAuditPanel openingId={props.openingId!} />
         ) : activeTab === "consolidate" ? (
-          <ConsolidateAuditPanel />
+          <ConsolidateAuditPanel openingId={props.openingId!} />
         ) : activeTab === "metrics" ? (
           <MetricsPanel />
         ) : activeTab === "invariants" ? (

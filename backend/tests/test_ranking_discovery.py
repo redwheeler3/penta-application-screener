@@ -62,7 +62,10 @@ async def test_rank_estimate_combines_three_passes() -> None:
 
 @pytest.mark.anyio
 async def test_rank_with_no_eligible_is_409() -> None:
-    app, _, _ = setup_app(role=UserRole.MEMBER)
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    application = add_eligible(db, email="ineligible@x.com", raw_hash="h1")
+    application.normalized = {"has_real_estate": True}
+    db.commit()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         assert (await client.get("/ranking/run/estimate")).status_code == 409
@@ -279,7 +282,8 @@ async def test_put_seeds_before_run_is_409() -> None:
 
 @pytest.mark.anyio
 async def test_match_audit_is_null_before_any_run() -> None:
-    app, _, _ = setup_app(role=UserRole.MEMBER)
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         resp = await client.get("/ranking/current/match-audit")

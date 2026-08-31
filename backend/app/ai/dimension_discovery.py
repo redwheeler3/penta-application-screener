@@ -125,10 +125,10 @@ The committee has asked you to STRONGLY CONSIDER the axes in the `<requested_axe
 """
 
 
-def eligible_applications(db: Session) -> list[Application]:
+def eligible_applications(db: Session, opening_id: int) -> list[Application]:
     """The pool pattern discovery reasons over: the UNION-eligible applications — every
     applicant eligible in at least one member's view."""
-    return union_eligible_applications(db)
+    return union_eligible_applications(db, opening_id)
 
 
 # --- Cost estimation (non-prompt) ---

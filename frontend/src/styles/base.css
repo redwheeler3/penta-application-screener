@@ -38,6 +38,15 @@
   box-sizing: border-box;
 }
 
+/* The full-bleed top nav uses 100vw; on browsers with a classic vertical scrollbar,
+     vw includes the scrollbar gutter and creates a few pixels of document overflow.
+     Clip only the document's horizontal overflow. Narrow tables retain their own
+     intentional horizontal scrollers. */
+html,
+body {
+  overflow-x: clip;
+}
+
 body {
   margin: 0;
   min-width: 320px;

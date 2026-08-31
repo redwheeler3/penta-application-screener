@@ -23,6 +23,7 @@ from app.services.ranking.member_state import (
     kept_keys,
     tier_history,
 )
+from tests.application_support import current_opening_id
 
 
 def make_db() -> Session:
@@ -56,7 +57,9 @@ def _run(db: Session, *, report_keys: list[str], tiers: list[dict]) -> MemberRan
     tiers. Ignore is every report key not in a working tier — never stored, matching
     production. Returns the member's ranking (the per-member view)."""
     user = db.scalar(select(User))
-    analysis = Analysis(dimension_report=_report(*report_keys))
+    analysis = Analysis(
+        opening_id=current_opening_id(db), dimension_report=_report(*report_keys)
+    )
     db.add(analysis)
     db.flush()
     ranking = MemberRanking(
@@ -77,7 +80,9 @@ def test_recent_ignore_beats_older_working_placement() -> None:
     _run(db, report_keys=["a"], tiers=[_tier(*CRIT, ["a"])])          # run 1: a Critical
     _run(db, report_keys=["a"], tiers=[_tier(*CRIT, [])])             # run 2: a dragged to Ignore
 
-    _scaffold, tier_by_key = tier_history(db, db.scalar(select(User)))
+    _scaffold, tier_by_key = tier_history(
+        db, db.scalar(select(User)), current_opening_id(db)
+    )
     assert tier_by_key["a"] == IGNORE_TIER_ID  # recent Ignore wins, not the old Critical
 
 
@@ -87,7 +92,9 @@ def test_all_ignore_board_stays_all_ignore_on_rerank() -> None:
     _run(db, report_keys=["a", "b"], tiers=[_tier(*CRIT, ["a", "b"])])  # run 1: both Critical
     _run(db, report_keys=["a", "b"], tiers=[_tier(*CRIT, [])])          # run 2: all dragged to Ignore
 
-    scaffold, tier_by_key = tier_history(db, db.scalar(select(User)))
+    scaffold, tier_by_key = tier_history(
+        db, db.scalar(select(User)), current_opening_id(db)
+    )
     # A re-rank rediscovers the same keys; carry-forward must leave them all unplaced.
     layout, flagged = carry_forward_layout(
         new_report=PoolDimensionReport.model_validate(_report("a", "b")),
@@ -105,7 +112,9 @@ def test_kept_keys_empty_after_all_ignore_rerank() -> None:
     db = make_db()
     _run(db, report_keys=["a", "b"], tiers=[_tier(*CRIT, ["a", "b"])])
     _run(db, report_keys=["a", "b"], tiers=[_tier(*CRIT, [])])
-    scaffold, tier_by_key = tier_history(db, db.scalar(select(User)))
+    scaffold, tier_by_key = tier_history(
+        db, db.scalar(select(User)), current_opening_id(db)
+    )
     layout, _flagged = carry_forward_layout(
         new_report=PoolDimensionReport.model_validate(_report("a", "b")),
         scaffold_tiers=scaffold,
@@ -123,7 +132,9 @@ def test_faded_from_ignore_stays_ignore_on_return() -> None:
     db = make_db()
     _run(db, report_keys=["a", "keep"], tiers=[_tier(*CRIT, ["keep"])])  # run 1: a Ignored
     _run(db, report_keys=["keep"], tiers=[_tier(*CRIT, ["keep"])])       # run 2: a gone from pool
-    _scaffold, tier_by_key = tier_history(db, db.scalar(select(User)))
+    _scaffold, tier_by_key = tier_history(
+        db, db.scalar(select(User)), current_opening_id(db)
+    )
     assert tier_by_key["a"] == IGNORE_TIER_ID  # its last real appearance was Ignore
 
 
@@ -133,5 +144,7 @@ def test_faded_from_working_tier_restores_to_that_tier() -> None:
     db = make_db()
     _run(db, report_keys=["a", "keep"], tiers=[_tier(*CRIT, ["a", "keep"])])  # run 1: a Critical
     _run(db, report_keys=["keep"], tiers=[_tier(*CRIT, ["keep"])])            # run 2: a gone
-    _scaffold, tier_by_key = tier_history(db, db.scalar(select(User)))
+    _scaffold, tier_by_key = tier_history(
+        db, db.scalar(select(User)), current_opening_id(db)
+    )
     assert tier_by_key["a"] == "tier-s"  # last real appearance was Critical → restores there

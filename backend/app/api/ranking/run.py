@@ -23,6 +23,8 @@ from app.schemas.ranking import (
     RankEstimateResponse,
 )
 from app.schemas.settings import AppSettings
+from app.services.application_scope import resolve_visible_opening_id
+from app.services.opening_selection import require_ai_actions_available
 from app.services.ranking.analysis import (
     get_current_analysis,
     ranking_is_current,
@@ -36,17 +38,20 @@ router = APIRouter(prefix="/ranking")
 
 @router.get("/run/estimate", response_model=RankEstimateResponse)
 def rank_estimate(
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> RankEstimateResponse:
+    opening_id = resolve_visible_opening_id(db, opening_id)
+    require_ai_actions_available(db, opening_id)
     settings: AppSettings = get_app_settings(db)
     # Compute the union pool ONCE and thread it through the estimate — the guard, the rank
     # estimate, and the scoring estimate all range over the same ~15ms union, so deriving it
     # once here (instead of each recomputing) is most of the confirm-card latency saved.
-    pool = eligible_applications(db)
+    pool = eligible_applications(db, opening_id)
     if not pool:
         raise Problem("no_eligible_applications", detail="No eligible applications to rank.")
-    result = build_rank_estimate(db, settings, pool=pool)
+    result = build_rank_estimate(db, opening_id, settings, pool=pool)
     cap = settings.ai.spending_cap_usd
     breakdown = result["breakdown"]
     return RankEstimateResponse(
@@ -64,13 +69,14 @@ def rank_estimate(
         # When the pool is unchanged, the ranking is already current; the UI uses
         # this to say "up to date" instead of offering to spend.
         ranking_current=ranking_is_current(
-            db, get_current_analysis(db), settings, applications=pool
+            db, get_current_analysis(db, opening_id), settings, applications=pool
         ),
     )
 
 
 @router.post("/run")
 def rank_run(
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
     provider: AIProvider = Depends(get_ai_provider),
@@ -83,15 +89,17 @@ def rank_run(
     per-candidate passes, then a final ``summary`` with the combined cost.
     Discovery is one call, so it emits a phase line and its result, no progress.
     """
+    opening_id = resolve_visible_opening_id(db, opening_id)
+    require_ai_actions_available(db, opening_id)
     settings: AppSettings = get_app_settings(db)
-    if not eligible_applications(db):
+    if not eligible_applications(db, opening_id):
         raise Problem("no_eligible_applications", detail="No eligible applications to rank.")
 
     # An unchanged pool needs no re-rank, but one is allowed: discovery is nondeterministic,
     # so re-running deliberately gives the committee a fresh set of criteria. The
     # confirmation card is the gate (it flags that nothing requires a re-run); a member who
     # confirms here has opted in on purpose.
-    estimate = build_rank_estimate(db, settings)
+    estimate = build_rank_estimate(db, opening_id, settings)
     try:
         enforce_cap(estimate, settings.ai.spending_cap_usd)
     except SpendingCapExceeded as exc:
@@ -119,6 +127,7 @@ def rank_run(
                 provider,
                 settings,
                 user,
+                opening_id=opening_id,
                 estimated_usd=float(estimate["estimated_usd"]),
             )
         finally:

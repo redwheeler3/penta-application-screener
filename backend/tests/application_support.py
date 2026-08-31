@@ -7,8 +7,8 @@ from app.core.time import pacific_today
 from app.db.models import Application, ApplicationParticipation, Opening
 
 
-def activate_application(db: Session, application: Application) -> Application:
-    """Attach a submitted test application to the shared current opening."""
+def current_opening(db: Session) -> Opening:
+    """Return the shared test opening, creating it when a test has no application yet."""
     today = pacific_today()
     opening = db.scalar(
         select(Opening)
@@ -29,6 +29,17 @@ def activate_application(db: Session, application: Application) -> Application:
             published_at=datetime.now(UTC),
         )
         db.add(opening)
+        db.flush()
+    return opening
+
+
+def current_opening_id(db: Session) -> int:
+    return current_opening(db).id
+
+
+def activate_application(db: Session, application: Application) -> Application:
+    """Attach a submitted test application to the shared current opening."""
+    opening = current_opening(db)
     db.add(application)
     db.flush()
     db.add(

@@ -32,7 +32,9 @@ def candidate_scores(db: Session, analysis) -> list[CandidateScores]:
     skipped (nothing to rank on). Shared across members — scores don't depend on tiers.
     """
     report = current_dimension_report(analysis)
-    applications = applications_to_score(db)
+    if analysis.opening_id is None:
+        return []
+    applications = applications_to_score(db, analysis.opening_id)
     by_id = {app.id: app for app in applications}
 
     # One query per dimension kind, each giving the latest row per candidate. There
@@ -42,7 +44,9 @@ def candidate_scores(db: Session, analysis) -> list[CandidateScores]:
     for dim in report.dimensions:
         rows = db.scalars(
             select(ApplicationAIResult)
-            .where(ApplicationAIResult.kind == kind_for_dimension(dim.key))
+            .where(
+                ApplicationAIResult.kind == kind_for_dimension(dim.key)
+            )
             .where(ApplicationAIResult.application_id.in_(list(by_id)))
             .order_by(ApplicationAIResult.created_at)
         )

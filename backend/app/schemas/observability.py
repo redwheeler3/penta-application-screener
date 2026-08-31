@@ -80,6 +80,7 @@ class LastRunCost(ResponseModel):
     # The member who triggered this shared run. None when unknown or no longer present.
     triggered_by: str | None = None
     passes: list[LastRunPass]
+    opening: str | None = None
 
 
 class LastRunsReport(ResponseModel):
@@ -113,6 +114,7 @@ class TrendPoint(ResponseModel):
     dimensions: int | None = None
     # The triggering member's email; null for older or unattributed history.
     triggered_by: str | None = None
+    opening: str | None = None
 
 
 class PassTrendPoint(ResponseModel):

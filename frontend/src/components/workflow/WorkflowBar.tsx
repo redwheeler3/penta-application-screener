@@ -159,8 +159,9 @@ export function WorkflowBar(props: {
   onRunRank: (mode: "discover" | "score-current") => void;
   onCancelRank: () => void;
   openings: CommitteeOpening[];
-  selectedOpeningIds: number[];
-  onOpeningScopeChange: (openingIds: number[]) => void;
+  selectedOpeningId: number | null;
+  onOpeningChange: (openingId: number) => void;
+  aiActionsDisabled: boolean;
 }): ReactNode {
   const {
     workflow,
@@ -176,7 +177,6 @@ export function WorkflowBar(props: {
   } = props;
   const hasMissingScores = (scoreCurrentEstimate?.toAnalyze ?? 0) > 0;
   const hasPendingProposals = pendingProposals.length > 0;
-  const currentOpenings = props.openings.filter((opening) => opening.phase !== "archived");
   // Screen and Rank are shared actions over the union scope, so both gate on the shared
   // pool being empty — not on this member's personal eligible count.
   const noApplicantsInScope = (coverage.screened?.inScope ?? 0) === 0;
@@ -219,12 +219,15 @@ export function WorkflowBar(props: {
               props.screeningRunning ||
               props.screeningEstimateLoading ||
               screeningEstimate !== null ||
-              noApplicantsInScope
+              noApplicantsInScope ||
+              props.aiActionsDisabled
             }
             disabledTitle={
               !workflow.applicationsAvailable
                 ? "No submitted applications yet."
-                : noApplicantsInScope
+                : props.aiActionsDisabled
+                  ? "This archived opening has a final outcome. Existing results remain available."
+                  : noApplicantsInScope
                   ? "No applicants to screen."
                   : undefined
             }
@@ -250,12 +253,15 @@ export function WorkflowBar(props: {
               props.rankRunning ||
               props.rankEstimateLoading ||
               rankEstimate !== null ||
-              noApplicantsInScope
+              noApplicantsInScope ||
+              props.aiActionsDisabled
             }
             disabledTitle={
               !workflow.screened
                 ? "Run Screen first."
-                : noApplicantsInScope
+                : props.aiActionsDisabled
+                  ? "This archived opening has a final outcome. Existing results remain available."
+                  : noApplicantsInScope
                   ? "No applicants to rank."
                   : undefined
             }
@@ -280,36 +286,24 @@ export function WorkflowBar(props: {
             last
           />
         </ol>
-        {currentOpenings.length > 1 ? (
+        {props.openings.length > 1 && props.selectedOpeningId !== null ? (
           <div className="workflow-opening-scope">
-            <span className="workflow-opening-label">Openings</span>
-            <div
-              className="workflow-opening-options"
-              role="group"
-              aria-label="Filter applications and ranking by current opening"
+            <label className="workflow-opening-label" htmlFor="workflow-opening-select">
+              Opening
+            </label>
+            <select
+              id="workflow-opening-select"
+              className="workflow-opening-select"
+              aria-label="Current opening"
+              value={props.selectedOpeningId}
+              onChange={(event) => props.onOpeningChange(Number(event.target.value))}
             >
-              {currentOpenings.map((opening) => {
-                const selected = props.selectedOpeningIds.includes(opening.id);
-                return (
-                  <button
-                    key={opening.id}
-                    type="button"
-                    className="workflow-opening-filter"
-                    aria-pressed={selected}
-                    onClick={() => props.onOpeningScopeChange(
-                      selected
-                        ? props.selectedOpeningIds.filter((id) => id !== opening.id)
-                        : [...props.selectedOpeningIds, opening.id],
-                    )}
-                  >
-                    <span className="workflow-opening-check" aria-hidden="true">
-                      {selected ? <Check size={12} strokeWidth={3} /> : null}
-                    </span>
-                    {openingLabel(opening)}
-                  </button>
-                );
-              })}
-            </div>
+              {props.openings.map((opening) => (
+                <option key={opening.id} value={opening.id}>
+                  {openingLabel(opening)}{opening.phase === "archived" ? " · Archived" : ""}
+                </option>
+              ))}
+            </select>
           </div>
         ) : null}
       </div>
@@ -549,11 +543,15 @@ function CriteriaThinking(props: { text: string }): ReactNode {
     // Keep the newest text in view as it streams in.
     if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
   }, [props.text]);
-  return props.text ? (
+  return (
     <div className="criteria-thinking">
       <div className="criteria-thinking-stream" ref={boxRef}>
-        <ReactMarkdown>{props.text}</ReactMarkdown>
+        {props.text ? (
+          <ReactMarkdown>{props.text}</ReactMarkdown>
+        ) : (
+          <p className="criteria-thinking-waiting">Waiting for model reasoning…</p>
+        )}
       </div>
     </div>
-  ) : null;
+  );
 }

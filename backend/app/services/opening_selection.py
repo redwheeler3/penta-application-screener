@@ -70,6 +70,21 @@ def opening_decision_exists(db: Session, opening: Opening) -> bool:
     )
 
 
+def require_ai_actions_available(db: Session, opening_id: int) -> Opening:
+    """Reject paid AI work only after an archived opening has a final outcome."""
+    opening = db.get(Opening, opening_id)
+    if opening is None:
+        raise Problem("not_found", detail="Opening not found.")
+    if opening_phase(opening) == OpeningPhase.ARCHIVED and opening_decision_exists(
+        db, opening
+    ):
+        raise Problem(
+            "opening_finalized",
+            detail="Screening and ranking are closed because this archived opening has a final outcome.",
+        )
+    return opening
+
+
 def archived_openings_needing_selection(db: Session) -> list[Opening]:
     openings = db.scalars(
         select(Opening)

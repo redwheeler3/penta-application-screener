@@ -118,7 +118,8 @@
    simple bottom rule separates the bar from the content below it. */
 /* Admin Settings' sub-tabs reuse .subtabs (see Observability/Evals). The tab
    heading sits above them; this just aligns them horizontally with the body content. */
-.admin-settings-subtabs {
+.admin-settings-subtabs,
+.eligibility-settings-subtabs {
   padding: 0 1.25rem;
 }
 
@@ -158,6 +159,12 @@
 .opening-money-input { display: flex; align-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
 .opening-money-input > span { padding-left: 0.65rem; color: var(--muted); }
 .opening-money-input input { border: 0; }
+.opening-money-input:focus-within {
+  border-color: var(--penta-green);
+  outline: 2px solid var(--success-border);
+  outline-offset: 1px;
+}
+.opening-money-input input:focus { outline: none; box-shadow: none; }
 .opening-form-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1rem; }
 .opening-launch-preview { margin-top: 1rem; padding: 1rem; border: 1px solid #86efac; border-radius: 8px; background: #ecfdf3; }
 .opening-launch-preview h5 { margin: 0 0 0.35rem; font-size: 0.95rem; }

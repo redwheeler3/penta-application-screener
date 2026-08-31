@@ -211,11 +211,9 @@
 
 .workflow-opening-scope {
   display: flex;
-  flex: 1 0 100%;
   align-items: center;
   gap: 0.55rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--line);
+  margin-left: auto;
 }
 
 .workflow-opening-label {
@@ -226,50 +224,17 @@
   text-transform: uppercase;
 }
 
-.workflow-opening-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.workflow-opening-filter {
-  display: inline-flex;
-  min-height: 32px;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0 0.7rem;
+.workflow-opening-select {
+  width: auto;
+  max-width: min(18rem, 42vw);
+  min-height: 34px;
+  padding: 0 1.8rem 0 0.65rem;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 6px;
   background: var(--surface);
   color: var(--ink);
   font-size: 0.82rem;
   font-weight: 600;
-  cursor: pointer;
-}
-
-.workflow-opening-filter:hover {
-  background: var(--page);
-}
-
-.workflow-opening-filter[aria-pressed="true"] {
-  border-color: var(--penta-green);
-  background: var(--penta-green-soft);
-}
-
-.workflow-opening-check {
-  display: inline-flex;
-  width: 1rem;
-  height: 1rem;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--muted);
-  border-radius: 3px;
-}
-
-.workflow-opening-filter[aria-pressed="true"] .workflow-opening-check {
-  border-color: var(--penta-green);
-  background: var(--penta-green);
-  color: #ffffff;
 }
 
 .denied-sign-ins {
@@ -484,6 +449,11 @@
 .status-ineligible {
   background: #fee2e2;
   color: var(--danger-text);
+}
+
+.status-selected {
+  background: var(--penta-green-soft);
+  color: var(--penta-green-dark);
 }
 
 /* "Decided by" source badges — secondary info, lighter than status badges */

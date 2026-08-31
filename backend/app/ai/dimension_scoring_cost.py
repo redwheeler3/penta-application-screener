@@ -69,7 +69,9 @@ def _avg_output_tokens_per_dimension(db: Session, model_id: str) -> int:
     return observed[1] if observed is not None else SCORING_FALLBACK_OUTPUT_TOKENS
 
 
-def _per_candidate_input_tokens(db: Session, report: PoolDimensionReport | None) -> int:
+def _per_candidate_input_tokens(
+    db: Session, opening_id: int, report: PoolDimensionReport | None
+) -> int:
     """Input tokens for one candidate's scoring call. Input is a per-CALL constant —
     the candidate's full facts + essays are sent once regardless of how many
     dimensions the call scores — so we measure it from a real built prompt (~chars/4)
@@ -80,7 +82,7 @@ def _per_candidate_input_tokens(db: Session, report: PoolDimensionReport | None)
     """
     if report is None:
         return SCORING_FALLBACK_INPUT_TOKENS_PER_CANDIDATE
-    candidates = applications_to_score(db)
+    candidates = applications_to_score(db, opening_id)
     if not candidates:
         return SCORING_FALLBACK_INPUT_TOKENS_PER_CANDIDATE
     sample = candidates[0]
@@ -90,6 +92,7 @@ def _per_candidate_input_tokens(db: Session, report: PoolDimensionReport | None)
 
 def estimate_dimension_scoring(
     db: Session,
+    opening_id: int,
     settings: AppSettings,
     *,
     prefer_history: bool = True,
@@ -112,15 +115,17 @@ def estimate_dimension_scoring(
     )
     # Reuse a pool the caller already computed when given — the union scope is ~15ms and a
     # full-Rank estimate would otherwise recompute it several times per request.
-    candidates = candidates if candidates is not None else applications_to_score(db)
-    analysis = get_current_analysis(db)
+    candidates = (
+        candidates if candidates is not None else applications_to_score(db, opening_id)
+    )
+    analysis = get_current_analysis(db, opening_id)
     report = current_dimension_report(analysis) if analysis is not None else None
 
     # The full-discovery estimate needs only the measured scoring cost, not the
     # current cache counts. Skip N×dimension cache lookups when history already gives
     # that cost; the score-current estimate keeps ``include_coverage`` true because
     # it must name exactly which applicants still need work.
-    measured = recent_pass_fresh_usd(db) if prefer_history else None
+    measured = recent_pass_fresh_usd(db, opening_id) if prefer_history else None
     if measured is not None and not include_coverage:
         return {
             "total": len(candidates),
@@ -129,7 +134,7 @@ def estimate_dimension_scoring(
             "estimated_usd": round(measured, 4),
         }
 
-    input_tokens = _per_candidate_input_tokens(db, report)
+    input_tokens = _per_candidate_input_tokens(db, opening_id, report)
     output_per_dim = _avg_output_tokens_per_dimension(db, model_id)
 
     def _call_cost(uncached_dims: int) -> float:

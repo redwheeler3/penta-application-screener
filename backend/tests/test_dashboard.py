@@ -23,7 +23,7 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from tests.app_support import shared_test_app
-from tests.application_support import activate_application
+from tests.application_support import activate_application, current_opening_id
 
 SUBMITTED_AT = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -315,7 +315,7 @@ async def test_workflow_flags_track_progress() -> None:
         assert workflow["candidatesScored"] is False
 
         # A screening run exists -> patterns discovered (it's a run, not a result).
-        db.add(Analysis(dimension_report={"dimensions": [
+        db.add(Analysis(opening_id=current_opening_id(db), dimension_report={"dimensions": [
             {"key": "community", "name": "Community", "definition": "d",
              "high_end": "hi", "low_end": "lo", "why_it_differentiates": "w"},
         ]}))
@@ -357,9 +357,9 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
         activate_application(db, first)
 
         # A run whose fingerprint matches the current pool + prompts + models -> current.
-        run = Analysis(
+        run = Analysis(opening_id=current_opening_id(db),
             dimension_report={},
-            rank_inputs_fingerprint=rank_inputs_fingerprint(db, settings),
+            rank_inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), settings),
         )
         db.add(run)
         db.commit()
@@ -382,7 +382,7 @@ async def test_ranking_current_tracks_rank_inputs() -> None:
         # prompt had changed. The dashboard recomputes from live prompts -> mismatch.
         db.delete(second)
         db.commit()
-        run.rank_inputs_fingerprint = rank_inputs_fingerprint(db, settings)
+        run.rank_inputs_fingerprint = rank_inputs_fingerprint(db, current_opening_id(db), settings)
         db.add(run)
         db.commit()
         assert (await client.get("/dashboard")).json()["workflow"]["rankingCurrent"] is True
@@ -399,14 +399,14 @@ def test_rank_fingerprint_tracks_only_effective_reasoning() -> None:
 
     _app, db = _logged_in_app()
     settings = AppSettings()
-    anthropic = rank_inputs_fingerprint(db, settings)
+    anthropic = rank_inputs_fingerprint(db, current_opening_id(db), settings)
     settings.ai.discovery_reasoning_effort = "medium"
-    assert rank_inputs_fingerprint(db, settings) == anthropic
+    assert rank_inputs_fingerprint(db, current_opening_id(db), settings) == anthropic
 
     settings.ai.discovery_model = "openai.gpt-5.6-terra"
-    low = rank_inputs_fingerprint(db, settings)
+    low = rank_inputs_fingerprint(db, current_opening_id(db), settings)
     settings.ai.discovery_reasoning_effort = "high"
-    assert rank_inputs_fingerprint(db, settings) != low
+    assert rank_inputs_fingerprint(db, current_opening_id(db), settings) != low
 
 
 def test_rank_fingerprint_can_reuse_an_already_loaded_pool() -> None:
@@ -425,11 +425,11 @@ def test_rank_fingerprint_can_reuse_an_already_loaded_pool() -> None:
         submitted_at=SUBMITTED_AT,
     ))
     settings = AppSettings()
-    expected = rank_inputs_fingerprint(db, settings)
+    expected = rank_inputs_fingerprint(db, current_opening_id(db), settings)
     applications = list(db.scalars(select(Application).order_by(Application.id.desc())))
 
     # Caller-provided order is irrelevant, and avoids recomputing eligibility.
-    assert rank_inputs_fingerprint(db, settings, applications=applications) == expected
+    assert rank_inputs_fingerprint(db, current_opening_id(db), settings, applications=applications) == expected
 
 
 def test_rank_fingerprint_ignores_provider_but_tracks_the_actual_model() -> None:
@@ -439,17 +439,17 @@ def test_rank_fingerprint_ignores_provider_but_tracks_the_actual_model() -> None
 
     _app, db = _logged_in_app()
     settings = AppSettings()
-    bedrock = rank_inputs_fingerprint(db, settings)
+    bedrock = rank_inputs_fingerprint(db, current_opening_id(db), settings)
 
     settings.ai.discovery_model = MODEL_IDS_BY_ROUTE["direct"]["sonnet"]
     settings.ai.decompose_model = MODEL_IDS_BY_ROUTE["direct"]["sonnet"]
     settings.ai.match_model = MODEL_IDS_BY_ROUTE["direct"]["sonnet"]
     settings.ai.dimension_scoring_model = MODEL_IDS_BY_ROUTE["direct"]["haiku"]
     settings.ai.consolidate_model = MODEL_IDS_BY_ROUTE["direct"]["sonnet"]
-    assert rank_inputs_fingerprint(db, settings) == bedrock
+    assert rank_inputs_fingerprint(db, current_opening_id(db), settings) == bedrock
 
     settings.ai.discovery_model = MODEL_IDS_BY_ROUTE["direct"]["terra"]
-    assert rank_inputs_fingerprint(db, settings) != bedrock
+    assert rank_inputs_fingerprint(db, current_opening_id(db), settings) != bedrock
 
 
 @pytest.mark.anyio
@@ -530,7 +530,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     )
     activate_application(db, a)
     # A run with two dimensions.
-    db.add(Analysis(dimension_report={
+    db.add(Analysis(opening_id=current_opening_id(db), dimension_report={
         "summary": "s",
         "dimensions": [
             {"key": "community", "name": "Community", "definition": "d",
@@ -538,7 +538,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
             {"key": "skills", "name": "Skills", "definition": "d",
              "high_end": "hi", "low_end": "lo", "why_it_differentiates": "w"},
         ],
-    }, rank_inputs_fingerprint=rank_inputs_fingerprint(db, settings)))
+    }, rank_inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), settings)))
     db.commit()
 
     # Score only ONE of the two dimensions -> incomplete.
@@ -569,4 +569,3 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     coverage = dashboard["coverage"]
     assert coverage["candidatesScored"] == {"cached": 1, "inScope": 1}
     assert dashboard["workflow"]["rankingCurrent"] is True
-

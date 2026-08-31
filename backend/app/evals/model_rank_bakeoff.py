@@ -21,7 +21,7 @@ from app.core.config import get_settings
 from app.db.models import Application, RunCostLedger, User, UserRole
 from app.evals.fixture import _to_json, build_fixture, load
 from app.evals.invariants import run_invariants
-from app.services.ranking.analysis import get_current_analysis
+from app.services.ranking.analysis import get_latest_analysis
 from app.services.settings import get_app_settings, save_app_settings
 
 CONFIGURATIONS = {
@@ -153,7 +153,7 @@ def run_rank_copy(
         )
         if ledger is None:
             raise RuntimeError(f"Rank produced no cost ledger; stream errors: {errors}")
-        analysis = get_current_analysis(db)
+        analysis = get_latest_analysis(db)
         if analysis is None:
             raise RuntimeError("Rank completed without a current analysis.")
         fixture = build_fixture(db, analysis)

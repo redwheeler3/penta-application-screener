@@ -19,6 +19,7 @@ from app.services.retention import (
     refresh_application_retention,
     refresh_draft_retention_for_opening,
 )
+from app.services.rules import create_opening_rules
 
 
 def opening_phase(opening: Opening, *, today: date | None = None) -> OpeningPhase:
@@ -97,6 +98,7 @@ def create_opening(
     )
     db.add(opening)
     db.flush()
+    create_opening_rules(db, opening)
     return opening
 
 

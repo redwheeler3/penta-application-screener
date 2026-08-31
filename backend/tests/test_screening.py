@@ -15,7 +15,7 @@ from app.ai.screening import (
 )
 from app.db.models import Application, Base
 from app.schemas.settings import AppSettings
-from tests.application_support import activate_application
+from tests.application_support import activate_application, current_opening_id
 
 
 def make_session() -> Session:
@@ -78,7 +78,10 @@ def test_applications_for_screening_scope() -> None:
     add_application(db, email="clean-2@x.com", raw_hash="h2")
     add_application(db, email="rules-no@x.com", raw_hash="h3", rules_ineligible=True)
 
-    emails = {a.primary_email for a in applications_for_screening(db)}
+    emails = {
+        a.primary_email
+        for a in applications_for_screening(db, current_opening_id(db))
+    }
     assert emails == {"clean@x.com", "clean-2@x.com"}
 
 
@@ -98,11 +101,15 @@ def test_forced_eligible_override_is_screened_despite_rules() -> None:
     db.add(user)
     db.commit()
     db.add(MemberEligibility(
+        opening_id=current_opening_id(db),
         user_id=user.id, application_id=forced.id, status=ApplicationStatus.ELIGIBLE,
     ))
     db.commit()
 
-    emails = {a.primary_email for a in applications_for_screening(db)}
+    emails = {
+        a.primary_email
+        for a in applications_for_screening(db, current_opening_id(db))
+    }
     assert emails == {"rules-no@x.com"}  # forced-eligible in; un-overridden rules-out stays out
 
 
@@ -268,7 +275,7 @@ def test_estimate_counts_analyzable_excluding_rules_ineligible() -> None:
     # Rules-ineligible (a hard filter trips on read): excluded, verdict is deterministic.
     add_application(db, email="d@x.com", raw_hash="h4", rules_ineligible=True)
 
-    est = estimate_screening(db, AppSettings())
+    est = estimate_screening(db, current_opening_id(db), AppSettings())
     assert est["total"] == 3
     assert est["to_analyze"] == 3
     assert est["estimated_usd"] >= 0

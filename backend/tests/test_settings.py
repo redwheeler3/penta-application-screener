@@ -9,6 +9,7 @@ from app.db.models import AdminSetting, Base
 from app.schemas.settings import AppSettings
 from app.services.settings import get_app_settings, save_app_settings
 from tests.app_support import shared_test_app
+from tests.application_support import current_opening_id
 
 
 def make_session() -> Session:
@@ -155,19 +156,22 @@ def test_member_rules_defaults_to_committee_default_then_diverges() -> None:
     )
 
     db = make_session()
-    save_committee_default_rules(db, EligibilityRules(income_min=70_000))
+    opening_id = current_opening_id(db)
+    save_committee_default_rules(db, opening_id, EligibilityRules(income_min=70_000))
 
-    rules, is_default = member_rules(db, user_id=1)
+    rules, is_default = member_rules(db, user_id=1, opening_id=opening_id)
     assert is_default is True
     assert rules.income_min == 70_000
 
     # Copy-on-write divergence: the member now reads their own rules.
-    save_member_rules(db, user_id=1, rules=EligibilityRules(income_min=90_000))
-    rules, is_default = member_rules(db, user_id=1)
+    save_member_rules(
+        db, user_id=1, opening_id=opening_id, rules=EligibilityRules(income_min=90_000)
+    )
+    rules, is_default = member_rules(db, user_id=1, opening_id=opening_id)
     assert is_default is False
     assert rules.income_min == 90_000
     # Another member with no row still sees the committee default.
-    assert member_rules(db, user_id=2)[1] is True
+    assert member_rules(db, user_id=2, opening_id=opening_id)[1] is True
 
 
 def _rules_client(role: str = "member") -> tuple:
@@ -187,6 +191,7 @@ def _rules_client(role: str = "member") -> tuple:
     user_role = UserRole.ADMIN if role == "admin" else UserRole.MEMBER
     user = User(email=f"{role}@x.com", display_name=role, role=user_role, is_active=True)
     db.add(user)
+    current_opening_id(db)
     db.commit()
     app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db

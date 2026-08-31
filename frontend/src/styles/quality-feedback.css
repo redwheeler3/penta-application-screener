@@ -428,13 +428,15 @@
     min-width: 760px;
   }
 
-  .admin-settings-subtabs {
+  .admin-settings-subtabs,
+  .eligibility-settings-subtabs {
     padding: 0 0.9rem;
   }
 
   .subtabs {
     gap: 0.9rem;
     overflow-x: auto;
+    overflow-y: hidden;
     scrollbar-width: thin;
     white-space: nowrap;
   }
@@ -525,4 +527,3 @@
     padding: 0.75rem;
   }
 }
-

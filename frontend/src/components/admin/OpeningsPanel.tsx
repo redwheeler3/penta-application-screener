@@ -35,7 +35,7 @@ const EMPTY_DRAFT: OpeningDraft = {
 export function OpeningsPanel(props: {
   onError: (message: string) => void;
   onPoolChanged: () => void;
-  onOpenApplicant: (id: number) => void;
+  onOpenApplicant: (id: number, openingId: number) => void;
   onOpenRetainedApplicant: (id: number) => void;
 }): ReactNode {
   const [openings, setOpenings] = useState<Opening[] | null>(null);
@@ -320,7 +320,9 @@ export function OpeningsPanel(props: {
           onConfirmNoHousehold={() => void confirmNoHousehold()}
           onBack={() => setPendingCandidate(null)}
           onConfirm={() => void confirmSelection()}
-          onReview={props.onOpenApplicant}
+          onReview={(applicationId) =>
+            props.onOpenApplicant(applicationId, selection.openingId)
+          }
           onReviewSelected={props.onOpenRetainedApplicant}
           onRequestUndo={() => setConfirmingUndo(true)}
           onCancelUndo={() => setConfirmingUndo(false)}

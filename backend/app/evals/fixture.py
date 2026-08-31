@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 from app.ai.score_vectors import load_score_vectors
 from app.db.models import Analysis, RunCostLedger
 from app.evals.paths import FIXTURE_PATH
-from app.services.ranking.analysis import get_current_analysis
+from app.services.ranking.analysis import get_latest_analysis
 from app.services.ranking.audit import (
     consolidate_audit_view,
     decompose_audit_view,
@@ -181,7 +181,7 @@ def record(db: Session, path: Path = FIXTURE_PATH) -> EvalFixture:
     """Record the current Rank to ``path`` (pretty JSON, git-committed). Deliberate:
     re-baseline after blessing a run's output — invoked from the Evals tab
     (POST /evals/baseline), then committed to git."""
-    analysis = get_current_analysis(db)
+    analysis = get_latest_analysis(db)
     if analysis is None:
         raise RuntimeError("No ranking run to record — run a Rank first.")
     fixture = build_fixture(db, analysis)

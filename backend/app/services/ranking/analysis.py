@@ -15,7 +15,7 @@ from app.db.models import (
     User,
 )
 from app.schemas.settings import AppSettings
-from app.services.application_scope import committee_applications
+from app.services.application_scope import opening_ai_applications
 from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.identity import flatten_merges, transfer_merged_tiers
@@ -31,6 +31,7 @@ def create_analysis(
     db: Session,
     *,
     user: User,
+    opening_id: int,
     report: PoolDimensionReport,
     settings: AppSettings,
     narrative: str | None,
@@ -55,8 +56,9 @@ def create_analysis(
     The run consumes pending ``proposed_dimensions``, so the new view starts with an empty list.
     """
     layout = tier_layout if tier_layout is not None else default_tier_layout()
-    applications = committee_applications(db)
+    applications = opening_ai_applications(db, opening_id)
     analysis = Analysis(
+        opening_id=opening_id,
         synthetic_data=bool(applications) and all(
             application.synthetic_data for application in applications
         ),
@@ -64,7 +66,7 @@ def create_analysis(
         # Everything this analysis's ranking depends on — pool + rank-chain prompt and model
         # identity. The next Rank compares it to flag the analysis "out of date" when the pool,
         # any rank-chain prompt, or a model has changed.
-        rank_inputs_fingerprint=rank_inputs_fingerprint(db, settings),
+        rank_inputs_fingerprint=rank_inputs_fingerprint(db, opening_id, settings),
         # The AI-legibility trail lives in the 1:1 child so the hot read path stays lean.
         #   - discovery_narrative: the discovery pass's streamed reasoning.
         #   - match: raw pre-adopt discovery dims + the match map + narrative, so a re-rank's
@@ -164,7 +166,13 @@ def apply_consolidation(
             )
             row = existing.get(drop_key)
             if row is None:
-                db.add(DimensionAlias(alias_key=drop_key, canonical_key=keep_key, reason=reason))
+                db.add(
+                    DimensionAlias(
+                        alias_key=drop_key,
+                        canonical_key=keep_key,
+                        reason=reason,
+                    )
+                )
             else:
                 # Keep the alias pointing at the current canonical key + latest reason.
                 row.canonical_key = keep_key
@@ -187,7 +195,9 @@ def apply_consolidation(
         if resurfaced:
             history = all_known_dimensions(db)
             mint_by_key = {d.key: d for d in history.dimensions} if history else {}
-            _scaffold, most_recent_tier_by_key = tier_history(db, member_ranking.user)
+            _scaffold, most_recent_tier_by_key = tier_history(
+                db, member_ranking.user, analysis.opening_id
+            )
             # Only keys we can actually rebuild from a mint record get surfaced+placed.
             resurfaced = [k for k in resurfaced if k in mint_by_key]
             report_dims.extend(mint_by_key[k].model_dump(mode="json") for k in resurfaced)
@@ -240,8 +250,18 @@ def apply_consolidation(
     return analysis
 
 
-def get_current_analysis(db: Session) -> Analysis | None:
+def get_current_analysis(db: Session, opening_id: int) -> Analysis | None:
     """The most recent shared analysis, or None if discovery has never run."""
+    return db.scalar(
+        select(Analysis)
+        .where(Analysis.opening_id == opening_id)
+        .order_by(Analysis.id.desc())
+        .limit(1)
+    )
+
+
+def get_latest_analysis(db: Session) -> Analysis | None:
+    """Most recent analysis across openings for global admin/eval tooling."""
     return db.scalar(select(Analysis).order_by(Analysis.id.desc()).limit(1))
 
 
@@ -355,26 +375,34 @@ def ranking_is_current(
     stored = analysis.rank_inputs_fingerprint
     if not stored:
         return False
-    return stored == rank_inputs_fingerprint(db, settings, applications=applications)
+    if analysis.opening_id is None:
+        return False
+    return stored == rank_inputs_fingerprint(
+        db, analysis.opening_id, settings, applications=applications
+    )
 
 
 def mark_ranking_current(db: Session, analysis: Analysis, settings: AppSettings) -> None:
     """Record the committee's choice to keep this analysis's dimensions for current inputs
     (stamps ``rank_inputs_fingerprint`` so a score-only run reads as up to date)."""
-    analysis.rank_inputs_fingerprint = rank_inputs_fingerprint(db, settings)
+    if analysis.opening_id is None:
+        raise ValueError("A current analysis must belong to an opening.")
+    analysis.rank_inputs_fingerprint = rank_inputs_fingerprint(
+        db, analysis.opening_id, settings
+    )
     db.add(analysis)
     db.commit()
 
 
 
-def current_dimension_kinds(db: Session) -> set[str]:
+def current_dimension_kinds(db: Session, opening_id: int) -> set[str]:
     """The cache ``kind`` of every dimension in the current analysis (empty if none). The
     per-(applicant, dimension) scoring cache keys on these, so both the coverage count and the
     per-candidate scoring trace resolve which cached rows belong to the live set. Reads the
     shared dimension set only — no per-member view needed."""
     from app.ai.dimension_scoring import kind_for_dimension
 
-    analysis = get_current_analysis(db)
+    analysis = get_current_analysis(db, opening_id)
     report = current_dimension_report(analysis) if analysis is not None else None
     if report is None:
         return set()
@@ -382,7 +410,9 @@ def current_dimension_kinds(db: Session) -> set[str]:
 
 
 
-def committee_kept_keys(db: Session, report: PoolDimensionReport | None) -> set[str]:
+def committee_kept_keys(
+    db: Session, opening_id: int, report: PoolDimensionReport | None
+) -> set[str]:
     """Return every dimension kept by at least one member.
 
     The decomposition must preserve this union so one member's re-rank cannot drop an axis
@@ -400,7 +430,7 @@ def committee_kept_keys(db: Session, report: PoolDimensionReport | None) -> set[
     valid = {d.key for d in report.dimensions}
     kept: set[str] = set()
     for user in db.scalars(select(User)):
-        _, most_recent_tier_by_key = tier_history(db, user)
+        _, most_recent_tier_by_key = tier_history(db, user, opening_id)
         kept.update(
             key
             for key, tier_id in most_recent_tier_by_key.items()

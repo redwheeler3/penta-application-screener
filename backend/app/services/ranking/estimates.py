@@ -24,21 +24,22 @@ from app.services.ranking.dimensions import current_dimension_report
 
 def build_rank_estimate(
     db: Session,
+    opening_id: int,
     settings: AppSettings,
     *,
     pool: list[Application] | None = None,
 ) -> dict[str, Any]:
     """Project the full Rank cost using recent actuals where they exist."""
-    pool = pool if pool is not None else eligible_applications(db)
+    pool = pool if pool is not None else eligible_applications(db, opening_id)
 
-    measured_discovery = recent_pass_fresh_usd(db, "Pattern discovery")
+    measured_discovery = recent_pass_fresh_usd(db, opening_id, "Pattern discovery")
     discovery_usd = (
         measured_discovery
         if measured_discovery is not None
         else estimate_discovery(pool, settings) * settings.ai.discovery_fan_out
     )
 
-    measured_decompose = recent_pass_fresh_usd(db, "Dimension decomposition")
+    measured_decompose = recent_pass_fresh_usd(db, opening_id, "Dimension decomposition")
     if measured_decompose is not None:
         decompose_usd = measured_decompose
     else:
@@ -56,20 +57,23 @@ def build_rank_estimate(
         ]
         decompose_usd = estimate_decompose(projected, settings)
 
-    if get_current_analysis(db) is None:
+    if get_current_analysis(db, opening_id) is None:
         match_usd = 0.0
     else:
-        measured_match = recent_pass_fresh_usd(db, "Dimension matching")
+        measured_match = recent_pass_fresh_usd(db, opening_id, "Dimension matching")
         match_usd = measured_match if measured_match is not None else estimate_match(settings)
 
     scoring_usd = estimate_dimension_scoring(
         db,
+        opening_id,
         settings,
         include_coverage=False,
         candidates=pool,
     )["estimated_usd"]
 
-    measured_consolidate = recent_pass_fresh_usd(db, "Dimension consolidation")
+    measured_consolidate = recent_pass_fresh_usd(
+        db, opening_id, "Dimension consolidation"
+    )
     consolidate_usd = (
         measured_consolidate
         if measured_consolidate is not None
@@ -94,14 +98,17 @@ def build_rank_estimate(
 
 def current_scoring_estimate(
     db: Session,
+    opening_id: int,
     settings: AppSettings,
 ) -> tuple[PoolDimensionReport, dict[str, object]]:
     """Return current criteria and the exact cache-aware score-only estimate."""
-    analysis = get_current_analysis(db)
+    analysis = get_current_analysis(db, opening_id)
     report = current_dimension_report(analysis) if analysis is not None else None
     if report is None:
         raise Problem(
             "run_required",
             detail="Discover ranking criteria before scoring applicants against them.",
         )
-    return report, estimate_dimension_scoring(db, settings, prefer_history=False)
+    return report, estimate_dimension_scoring(
+        db, opening_id, settings, prefer_history=False
+    )

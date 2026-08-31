@@ -34,6 +34,8 @@ PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     "declaration_required": (422, "Declaration acceptance required"),
     "applications_closed": (409, "Applications are closed"),
     "opening_selection_required": (409, "Choose an opening"),
+    "opening_required": (409, "Choose an opening"),
+    "opening_finalized": (409, "Opening outcome finalized"),
     "opening_archived": (409, "Opening is archived"),
     "opening_audience_changed": (409, "Notification audience changed"),
     "session_switch_required": (409, "Choose a committee account"),

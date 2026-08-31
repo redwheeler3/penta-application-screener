@@ -17,6 +17,7 @@ import { useFetchResource } from "../../hooks/useFetchResource";
 // A member starts on the shared committee default and only gets their own rules once
 // they save; `isDefault` tracks that so we can hint that saving forks off the default.
 export function EligibilitySettingsPanel(props: {
+  openingId: number;
   onError: (message: string) => void;
   onRulesUpdated: () => void;
 }): ReactNode {
@@ -35,7 +36,10 @@ export function EligibilitySettingsPanel(props: {
   useEffect(() => {
     let live = true;
     setLoadError(false);
-    Promise.all([api.fetchEligibilityRules(), api.fetchCommitteeDefaultRules()])
+    Promise.all([
+      api.fetchEligibilityRules(props.openingId),
+      api.fetchCommitteeDefaultRules(props.openingId),
+    ])
       .then(([mine, def]) => {
         if (!live) return;
         setDraft(mine.rules);
@@ -51,13 +55,13 @@ export function EligibilitySettingsPanel(props: {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadVersion]);
+  }, [loadVersion, props.openingId]);
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (!draft || saving) return;
     setSaving(true);
-    const response = await api.saveEligibilityRules(draft);
+    const response = await api.saveEligibilityRules(props.openingId, draft);
     setSaving(false);
     if (!response.ok) {
       // The server validates cross-field constraints (e.g. incomeMax >= incomeMin) and
@@ -77,7 +81,7 @@ export function EligibilitySettingsPanel(props: {
   async function reset() {
     if (resetting) return;
     setResetting(true);
-    const response = await api.resetEligibilityRules();
+    const response = await api.resetEligibilityRules(props.openingId);
     setResetting(false);
     if (!response.ok) {
       props.onError((await readProblem(response)) ?? "Could not reset to the committee default.");
@@ -101,11 +105,7 @@ export function EligibilitySettingsPanel(props: {
   }
 
   return (
-    <section className="settings-panel no-print" aria-label="Eligibility rules">
-      <div className="settings-header">
-        <h3>Eligibility Settings</h3>
-      </div>
-      <div className="settings-panel-body">
+    <div className="settings-panel-body">
         {loadError ? (
           <RetryLoadError
             message="Couldn't load your eligibility rules."
@@ -184,8 +184,7 @@ export function EligibilitySettingsPanel(props: {
             </div>
           </form>
         )}
-      </div>
-    </section>
+    </div>
   );
 }
 

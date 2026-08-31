@@ -92,13 +92,24 @@ def _rekey_results(connection: Connection, *, canonical: bool) -> None:
 
 
 def _rank_fingerprint(db: Session, ai: object, *, canonical: bool) -> str:
-    from app.services.ranking.freshness import pool_fingerprint
-
     def identity(model_id: str) -> str:
         return _ROUTE_TO_MODEL_IDENTITY[model_id] if canonical else model_id
 
+    # Frozen, conservative pool approximation for this historical migration. Importing
+    # the live eligibility service here would make a fresh upgrade depend on a future
+    # schema. If this superset differs from the stored eligible-pool hash, the migration
+    # simply leaves the old Rank stale and the committee can rerun it.
+    hashes = db.execute(
+        sa.text(
+            "SELECT raw_row_hash FROM applications "
+            "WHERE submitted_at IS NOT NULL AND withdrawn_at IS NULL"
+        )
+    ).scalars()
+    pool = hashlib.sha256(
+        "\n".join(sorted(hashes)).encode("utf-8")
+    ).hexdigest()[:16]
     parts = [
-        pool_fingerprint(db),
+        pool,
         *[f"{name}:{version}" for name, version in _PROMPT_VERSIONS.items()],
         f"discovery_model:{identity(ai.discovery_model)}",
         f"decompose_model:{identity(ai.decompose_model)}",

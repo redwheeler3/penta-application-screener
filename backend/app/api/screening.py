@@ -28,7 +28,9 @@ from app.schemas.events import (
 )
 from app.schemas.screening import ScreeningEstimateResponse
 from app.schemas.settings import AppSettings
+from app.services.application_scope import resolve_visible_opening_id
 from app.services.cost_report import record_run_cost
+from app.services.opening_selection import require_ai_actions_available
 from app.services.run_lock import acquire_run_lock, release_run_lock
 from app.services.settings import get_app_settings
 
@@ -78,11 +80,14 @@ class RunTally:
 
 @router.get("/run/estimate", response_model=ScreeningEstimateResponse)
 def estimate(
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> ScreeningEstimateResponse:
+    opening_id = resolve_visible_opening_id(db, opening_id)
+    require_ai_actions_available(db, opening_id)
     settings: AppSettings = get_app_settings(db)
-    result = estimate_screening(db, settings)
+    result = estimate_screening(db, opening_id, settings)
     estimated_usd = float(result["estimated_usd"])
     return ScreeningEstimateResponse(
         total=int(result["total"]),
@@ -96,6 +101,7 @@ def estimate(
 
 @router.post("/run")
 def run(
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
     provider: AIProvider = Depends(get_ai_provider),
@@ -107,9 +113,11 @@ def run(
     line. The cap is enforced before streaming starts, so an over-cap run still
     fails fast with a 402.
     """
+    opening_id = resolve_visible_opening_id(db, opening_id)
+    require_ai_actions_available(db, opening_id)
     settings: AppSettings = get_app_settings(db)
 
-    estimate_result = estimate_screening(db, settings)
+    estimate_result = estimate_screening(db, opening_id, settings)
 
     # Block a no-op re-run: nothing uncached means every result is a cache hit
     # reproducing identical output. Mirrors the Rank chain's pool-fingerprint gate.
@@ -131,7 +139,7 @@ def run(
             estimated_usd=estimate_result["estimated_usd"],
         ) from exc
 
-    applications = applications_for_screening(db)
+    applications = applications_for_screening(db, opening_id)
 
     # Serialize against other in-flight runs: a concurrent Screen or Rank would waste
     # shared spend and (for Rank) strand a MemberRanking. Claim the lease before streaming;
@@ -177,6 +185,7 @@ def run(
                 durations_ms={"Screening": round((time.perf_counter() - started) * 1000)},
                 estimated_usd=float(estimate_result["estimated_usd"]),
                 triggered_by_user_id=user.id,
+                opening_id=opening_id,
             )
 
             yield emit(

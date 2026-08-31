@@ -13,7 +13,7 @@ from app.db.models import (
     User,
     UserRole,
 )
-from app.services.application_scope import committee_applications
+from app.services.application_scope import opening_ai_applications, opening_applications
 from app.services.eligibility import (
     rules_eligible_application_ids,
     union_eligible_application_ids,
@@ -135,8 +135,15 @@ def test_committee_scope_requires_a_current_opening() -> None:
     )
     db.commit()
 
-    assert [application.primary_email for application in committee_applications(db)] == [
+    assert [
+        application.primary_email
+        for application in opening_applications(db, current_opening.id)
+    ] == [
         "submitted@example.com",
     ]
-    assert rules_eligible_application_ids(db) == {applications[1].id}
-    assert union_eligible_application_ids(db) == {applications[1].id}
+    assert [
+        application.primary_email
+        for application in opening_ai_applications(db, archived_opening.id)
+    ] == ["archived@example.com"]
+    assert rules_eligible_application_ids(db, current_opening.id) == {applications[1].id}
+    assert union_eligible_application_ids(db, current_opening.id) == {applications[1].id}

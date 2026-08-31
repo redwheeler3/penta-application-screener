@@ -31,7 +31,7 @@ from app.db.models import (
 )
 from app.domain.hard_filters import PetFacts, RulesConfig
 from app.schemas.settings import EligibilityRules
-from app.services.application_scope import committee_applications
+from app.services.application_scope import opening_ai_applications
 from app.services.rules import (
     committee_default_rules_config,
     hard_filter_reasons_for,
@@ -114,7 +114,7 @@ def pet_facts_by_app(
 
 
 def overrides_by_app(
-    db: Session, user_id: int, application_ids: list[int]
+    db: Session, user_id: int, opening_id: int, application_ids: list[int]
 ) -> dict[int, MemberEligibility]:
     """This member's overrides among ``application_ids``, as ``{application_id: override}``.
     Batch-loaded for a page of rows (one query), mirroring ``starred_ids``. Applications the
@@ -126,6 +126,7 @@ def overrides_by_app(
         for override in db.scalars(
             select(MemberEligibility).where(
                 MemberEligibility.user_id == user_id,
+                MemberEligibility.opening_id == opening_id,
                 MemberEligibility.application_id.in_(application_ids),
             )
         )
@@ -133,24 +134,25 @@ def overrides_by_app(
 
 
 def _member_override(
-    db: Session, user_id: int, application_id: int
+    db: Session, user_id: int, opening_id: int, application_id: int
 ) -> MemberEligibility | None:
     return db.scalar(
         select(MemberEligibility).where(
             MemberEligibility.application_id == application_id,
             MemberEligibility.user_id == user_id,
+            MemberEligibility.opening_id == opening_id,
         )
     )
 
 
 def effective_status_for(
-    db: Session, user_id: int, application: Application
+    db: Session, user_id: int, opening_id: int, application: Application
 ) -> tuple[ApplicationStatus, StatusSource]:
     """One member's effective (status, source) for an applicant: their override if any,
     else the computed machine verdict over the current findings (rule reasons evaluated
     under THIS member's rules)."""
-    override = _member_override(db, user_id, application.id)
-    rules_config = rules_config_for(db, user_id)
+    override = _member_override(db, user_id, opening_id, application.id)
+    rules_config = rules_config_for(db, user_id, opening_id)
     flags = machine_flags_by_app(db, [application.id]).get(application.id)
     pet_facts = pet_facts_by_app(db, [application.id]).get(application.id)
     reasons = hard_filter_reasons_for(
@@ -165,16 +167,16 @@ def effective_status_for(
     )
 
 
-def eligible_application_ids_for(db: Session, user_id: int) -> set[int]:
+def eligible_application_ids_for(db: Session, user_id: int, opening_id: int) -> set[int]:
     """The applications eligible in this member's OWN view — their overrides applied over
     the machine verdict computed under THIS member's rules. Drives the member's ranked list.
     One ruleset for the member, so one hard-filter evaluation per application."""
-    applications = committee_applications(db)
+    applications = opening_ai_applications(db, opening_id)
     ids = [app.id for app in applications]
     flags_by_app = machine_flags_by_app(db, ids)
     facts_by_app = pet_facts_by_app(db, ids)
-    rules_config = rules_config_for(db, user_id)
-    overrides = overrides_by_app(db, user_id, ids)
+    rules_config = rules_config_for(db, user_id, opening_id)
+    overrides = overrides_by_app(db, user_id, opening_id, ids)
     eligible: set[int] = set()
     for app in applications:
         reasons = hard_filter_reasons_for(
@@ -192,7 +194,9 @@ def eligible_application_ids_for(db: Session, user_id: int) -> set[int]:
     return eligible
 
 
-def _ruleset_by_user(db: Session) -> tuple[dict[int, RulesConfig], RulesConfig]:
+def _ruleset_by_user(
+    db: Session, opening_id: int
+) -> tuple[dict[int, RulesConfig], RulesConfig]:
     """Each member's effective ``RulesConfig`` plus the shared committee default.
 
     Most members share the default (no ``MemberRules`` row); only diverged members carry
@@ -200,11 +204,13 @@ def _ruleset_by_user(db: Session) -> tuple[dict[int, RulesConfig], RulesConfig]:
     the same key, so the union pass evaluates the hard filters once per distinct ruleset —
     not once per member.
     """
-    default_config = committee_default_rules_config(db)
+    default_config = committee_default_rules_config(db, opening_id)
     ruleset_by_user: dict[int, RulesConfig] = {}
     diverged = {
         row.user_id: EligibilityRules.model_validate(row.rules)
-        for row in db.scalars(select(MemberRules))
+        for row in db.scalars(
+            select(MemberRules).where(MemberRules.opening_id == opening_id)
+        )
     }
     for user_id in db.scalars(select(User.id)):
         rules = diverged.get(user_id)
@@ -214,7 +220,7 @@ def _ruleset_by_user(db: Session) -> tuple[dict[int, RulesConfig], RulesConfig]:
     return ruleset_by_user, default_config
 
 
-def rules_eligible_application_ids(db: Session) -> set[int]:
+def rules_eligible_application_ids(db: Session, opening_id: int) -> set[int]:
     """Every application that is RULES-clean under at least one member's ruleset — the
     deterministic hard filters only, ignoring AI flags and pet facts.
 
@@ -234,8 +240,8 @@ def rules_eligible_application_ids(db: Session) -> set[int]:
     but the reviewer still wants the AI's evidence for fidelity on the application — so we screen
     them too, rather than leaving a forced-eligible applicant with no AI result behind them.
     """
-    applications = committee_applications(db)
-    ruleset_by_user, default_config = _ruleset_by_user(db)
+    applications = opening_ai_applications(db, opening_id)
+    ruleset_by_user, default_config = _ruleset_by_user(db, opening_id)
     # Always include the committee default: it's the shared baseline every member reads
     # unless they diverge, and it keeps the scope well-defined when there are no members
     # yet (an empty member set must not collapse the scope to nothing).
@@ -257,6 +263,7 @@ def rules_eligible_application_ids(db: Session) -> set[int]:
         db.scalars(
             select(MemberEligibility.application_id).where(
                 MemberEligibility.status == ApplicationStatus.ELIGIBLE,
+                MemberEligibility.opening_id == opening_id,
                 MemberEligibility.application_id.in_([app.id for app in applications]),
             )
         )
@@ -264,7 +271,7 @@ def rules_eligible_application_ids(db: Session) -> set[int]:
     return eligible
 
 
-def union_eligible_application_ids(db: Session) -> set[int]:
+def union_eligible_application_ids(db: Session, opening_id: int) -> set[int]:
     """The UNION pool: every application eligible for AT LEAST ONE member.
 
     An application is eligible for member M iff M overrode it to ELIGIBLE, or M has no
@@ -280,12 +287,12 @@ def union_eligible_application_ids(db: Session) -> set[int]:
     committee-default ruleset, computed once and reused. Overrides are sparse, so the
     per-app override bookkeeping is cheap set/counter work.
     """
-    applications = committee_applications(db)
+    applications = opening_ai_applications(db, opening_id)
     ids = [app.id for app in applications]
     flags_by_app = machine_flags_by_app(db, ids)
     facts_by_app = pet_facts_by_app(db, ids)
 
-    ruleset_by_user, _ = _ruleset_by_user(db)
+    ruleset_by_user, _ = _ruleset_by_user(db, opening_id)
     users_per_ruleset: dict[RulesConfig, int] = defaultdict(int)
     for rules_config in ruleset_by_user.values():
         users_per_ruleset[rules_config] += 1
@@ -297,7 +304,10 @@ def union_eligible_application_ids(db: Session) -> set[int]:
     has_eligible_override: set[int] = set()
     override_users_by_app: dict[int, set[int]] = defaultdict(set)
     for override in db.scalars(
-        select(MemberEligibility).where(MemberEligibility.application_id.in_(ids))
+        select(MemberEligibility).where(
+            MemberEligibility.opening_id == opening_id,
+            MemberEligibility.application_id.in_(ids),
+        )
     ):
         override_users_by_app[override.application_id].add(override.user_id)
         if override.status == ApplicationStatus.ELIGIBLE:
@@ -336,11 +346,11 @@ def union_eligible_application_ids(db: Session) -> set[int]:
     return union
 
 
-def union_eligible_applications(db: Session) -> list[Application]:
+def union_eligible_applications(db: Session, opening_id: int) -> list[Application]:
     """The UNION-eligible applications themselves (ordered by id) — the shared pool both
     pattern discovery and dimension scoring range over. Wraps
     ``union_eligible_application_ids`` so that "same scope" is one query, not a copy."""
-    eligible_ids = union_eligible_application_ids(db)
+    eligible_ids = union_eligible_application_ids(db, opening_id)
     return list(
         db.scalars(
             select(Application).where(Application.id.in_(eligible_ids)).order_by(Application.id)

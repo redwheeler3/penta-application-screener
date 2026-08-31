@@ -17,6 +17,7 @@ from app.schemas.openings import OpeningDetailsOut
 
 class CommitteeOpeningOut(OpeningDetailsOut):
     phase: str
+    outcome_final: bool = False
 
 
 class HardFilterReason(ResponseModel):
@@ -121,6 +122,7 @@ class ApplicationSummary(ResponseModel):
     # Committee-shared working shortlist; human-controlled and independent of
     # eligibility, ranking, and the final opening outcome.
     shortlisted: bool = False
+    selected: bool = False
     opening_ids: list[int] = []
 
 
@@ -159,3 +161,4 @@ class ApplicationListResponse(ResponseModel):
     # counts (status/source/favourites) from it.
     applications: list[ApplicationSummary]
     openings: list[CommitteeOpeningOut]
+    selected_opening_id: int | None = None

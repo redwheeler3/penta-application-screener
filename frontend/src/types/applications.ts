@@ -79,11 +79,13 @@ export type ApplicationSummary = {
   // per member; a personal working aid with no effect on ranking or eligibility.
   starredByMe: boolean;
   shortlisted: boolean;
+  selected: boolean;
   openingIds: number[];
 };
 
 export type CommitteeOpening = OpeningDetails & {
   phase: "upcoming" | "open" | "closed" | "archived";
+  outcomeFinal: boolean;
 };
 
 export type Essay = {

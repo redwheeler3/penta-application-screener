@@ -14,6 +14,7 @@ from app.ai.dimension_scoring import applications_to_score
 from app.ai.screening import applications_for_screening as screening_scope
 from app.ai.screening import screening_prompt_version
 from app.api.dependencies import require_admin, require_current_user
+from app.core.problems import Problem
 from app.core.time import as_utc
 from app.db.models import (
     Analysis,
@@ -32,7 +33,10 @@ from app.schemas.dashboard import (
     WorkflowState,
 )
 from app.schemas.settings import effective_reasoning_effort
-from app.services.application_scope import committee_applications
+from app.services.application_scope import (
+    opening_applications,
+    resolve_visible_opening_id,
+)
 from app.services.email_outbox import email_delivery_issues, email_queue_status
 from app.services.opening_selection import archived_openings_needing_selection
 from app.services.ranking.analysis import (
@@ -47,12 +51,18 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 @router.get("", response_model=DashboardResponse)
 def read_dashboard(
+    opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> DashboardResponse:
+    if opening_id is None:
+        try:
+            opening_id = resolve_visible_opening_id(db, None)
+        except Problem:
+            opening_id = 0
     settings = get_app_settings(db)
-    applications = committee_applications(db)
-    coverage = _coverage(db, settings)
+    applications = opening_applications(db, opening_id)
+    coverage = _coverage(db, opening_id, settings)
     scoring_coverage = coverage.get("candidatesScored")
     # A current Rank needs both halves: its criteria fingerprint must still match and
     # every in-scope candidate must have current scores for every live dimension. A
@@ -62,7 +72,7 @@ def read_dashboard(
         and scoring_coverage.in_scope > 0
         and scoring_coverage.cached == scoring_coverage.in_scope
     )
-    current_analysis = get_current_analysis(db)
+    current_analysis = get_current_analysis(db, opening_id)
     current_rank_inputs = ranking_is_current(db, current_analysis, settings)
     email_queue = email_queue_status(db)
 
@@ -71,11 +81,17 @@ def read_dashboard(
         # workflow gating survives a reload.
         workflow=WorkflowState(
             applications_available=bool(applications),
-            screened=_result_exists(db, kind="screening"),
+            screened=_result_exists(
+                db, kind="screening", application_ids=[app.id for app in applications]
+            ),
             # Pattern discovery is a ranking run, not a per-application result.
-            patterns_discovered=_run_exists(db),
+            patterns_discovered=current_analysis is not None,
             # Scoring kinds are per-dimension, so match by prefix.
-            candidates_scored=_result_exists(db, prefix="dimension_scoring:"),
+            candidates_scored=_result_exists(
+                db,
+                prefix="dimension_scoring:",
+                application_ids=[app.id for app in applications],
+            ),
             # Analyses without dimensions have no scoring coverage to require. Once
             # dimensions exist, incomplete coverage always leaves Rank out of date.
             ranking_current=(
@@ -135,14 +151,14 @@ def _as_utc(timestamp: datetime | None) -> datetime | None:
     return as_utc(timestamp) if timestamp is not None else None
 
 
-def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
+def _coverage(db: Session, opening_id: int, settings) -> dict[str, CoverageEntry]:
     # Coverage is a cache-hit count, so each pass must be probed under the model it
     # actually runs on — a cache row's key includes the model. These are separate
     # settings now, so don't share one variable across passes.
 
     # Screening freshness depends only on its prompt and model. Pet limits are evaluated
     # deterministically on read and therefore do not invalidate screening coverage.
-    screening_apps = screening_scope(db)
+    screening_apps = screening_scope(db, opening_id)
     screening_keys = {
         app.id: cache_key(
             application=app, kind="screening",
@@ -166,9 +182,9 @@ def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
     # scored once it has a cached row for EVERY dimension key, so partial coverage reads as
     # not-yet-complete. All expected (candidate × dimension) keys are fetched in one query,
     # then membership is checked in memory.
-    kinds = current_dimension_kinds(db)
+    kinds = current_dimension_kinds(db, opening_id)
     if kinds:
-        applications = applications_to_score(db)
+        applications = applications_to_score(db, opening_id)
         keys_by_app = {
             app.id: [
                 cache_key(
@@ -198,7 +214,13 @@ def _coverage(db: Session, settings) -> dict[str, CoverageEntry]:
     return result
 
 
-def _result_exists(db: Session, *, kind: str | None = None, prefix: str | None = None) -> bool:
+def _result_exists(
+    db: Session,
+    *,
+    kind: str | None = None,
+    prefix: str | None = None,
+    application_ids: list[int] | None = None,
+) -> bool:
     """Whether any ``ApplicationAIResult`` matches — exact ``kind`` or a ``prefix`` of it
     (e.g. ``dimension_scoring:`` matches the per-dimension scoring rows)."""
     match = (
@@ -206,7 +228,12 @@ def _result_exists(db: Session, *, kind: str | None = None, prefix: str | None =
         if prefix is None
         else ApplicationAIResult.kind.startswith(prefix)
     )
-    return db.scalar(select(ApplicationAIResult.id).where(match).limit(1)) is not None
+    query = select(ApplicationAIResult.id).where(match)
+    if application_ids is not None:
+        if not application_ids:
+            return False
+        query = query.where(ApplicationAIResult.application_id.in_(application_ids))
+    return db.scalar(query.limit(1)) is not None
 
 
 def _run_exists(db: Session) -> bool:

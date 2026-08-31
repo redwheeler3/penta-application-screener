@@ -154,7 +154,8 @@ async def test_score_current_fills_only_missing_scores_without_replacing_run() -
 
 @pytest.mark.anyio
 async def test_score_current_requires_existing_criteria() -> None:
-    app, _, _ = setup_app(role=UserRole.MEMBER)
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         assert (await client.get("/ranking/score-current/estimate")).status_code == 409
@@ -403,7 +404,7 @@ async def test_rank_runs_k_parallel_discoveries_and_persists_reports() -> None:
     # Rank persists every parallel discovery report for decomposition and audit. The mock
     # verifies call count and persistence; cross-call diversity requires a real model.
     from app.schemas.settings import AISettings
-    from app.services.ranking.analysis import get_current_analysis
+    from app.services.ranking.analysis import get_latest_analysis
 
     app, db, provider = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
@@ -415,7 +416,7 @@ async def test_rank_runs_k_parallel_discoveries_and_persists_reports() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         await stream_events(client, "/ranking/run")
 
-    run = get_current_analysis(db)
+    run = get_latest_analysis(db)
     audit = (run.audit.fan_out if run.audit else None)
     assert audit is not None, "fan_out_audit must be persisted"
     assert audit["k"] == k

@@ -9,25 +9,25 @@ record. Also the surface a later LLM-judge score would accrue on.
 
 from __future__ import annotations
 
+from collections import defaultdict
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_isoformat
 from app.db.models import Analysis, RunCostLedger
 from app.schemas.observability import MetricsReport, PassTrendPoint, TrendPoint
-from app.services.cost_report import CACHEABLE_PASSES
+from app.services.cost_report import CACHEABLE_PASSES, opening_label
 from app.services.ranking.dimensions import current_dimension_report
 
 
-def _rank_dimension_counts(db: Session) -> list[int]:
-    """Live dimension count per Rank ledger, in ledger order. Rank ledgers and
-    ``Analysis`` rows are created 1:1 in the same request, so the Nth rank ledger pairs
-    with the Nth analysis — correlate by creation order (no FK between them)."""
-    counts: list[int] = []
+def _rank_dimension_counts(db: Session) -> dict[int | None, list[int]]:
+    """Live dimension counts in analysis order, separated by opening provenance."""
+    counts: dict[int | None, list[int]] = defaultdict(list)
     for analysis in db.scalars(select(Analysis).order_by(Analysis.id.asc())):
         report = current_dimension_report(analysis)
-        counts.append(len(report.dimensions) if report else 0)
-    return counts
+        counts[analysis.opening_id].append(len(report.dimensions) if report else 0)
+    return dict(counts)
 
 
 def metrics_report(db: Session) -> MetricsReport:
@@ -39,7 +39,7 @@ def metrics_report(db: Session) -> MetricsReport:
 
     runs: list[TrendPoint] = []
     passes: list[PassTrendPoint] = []
-    rank_seen = 0  # index into dim_counts, advanced per rank ledger
+    rank_seen: dict[int | None, int] = defaultdict(int)
     for ledger in ledgers:
         rows = ledger.passes
         # Cache-hit rate over cacheable units only: a pass that can't cache (discovery)
@@ -51,8 +51,10 @@ def metrics_report(db: Session) -> MetricsReport:
 
         dimensions = None
         if ledger.kind == "rank":
-            dimensions = dim_counts[rank_seen] if rank_seen < len(dim_counts) else None
-            rank_seen += 1
+            opening_counts = dim_counts.get(ledger.opening_id, [])
+            index = rank_seen[ledger.opening_id]
+            dimensions = opening_counts[index] if index < len(opening_counts) else None
+            rank_seen[ledger.opening_id] += 1
 
         runs.append(
             TrendPoint(
@@ -66,6 +68,7 @@ def metrics_report(db: Session) -> MetricsReport:
                 cache_hit_rate=hit_rate,
                 dimensions=dimensions,
                 triggered_by=ledger.triggered_by.email if ledger.triggered_by else None,
+                opening=opening_label(ledger),
             )
         )
         passes.extend(

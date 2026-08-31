@@ -14,11 +14,11 @@ from app.services.eligibility import union_eligible_application_ids
 
 
 def pool_fingerprint(
-    db: Session, *, applications: list[Application] | None = None
+    db: Session, opening_id: int, *, applications: list[Application] | None = None
 ) -> str:
     """Hash the source rows in the union-eligible applicant pool."""
     if applications is None:
-        eligible_ids = union_eligible_application_ids(db)
+        eligible_ids = union_eligible_application_ids(db, opening_id)
         hashes = db.scalars(
             select(Application.raw_row_hash).where(Application.id.in_(eligible_ids))
         ).all()
@@ -29,6 +29,7 @@ def pool_fingerprint(
 
 def rank_inputs_fingerprint(
     db: Session,
+    opening_id: int,
     settings: AppSettings,
     *,
     applications: list[Application] | None = None,
@@ -57,7 +58,7 @@ def rank_inputs_fingerprint(
             settings.ai.consolidate_reasoning_effort,
         ),
     )
-    parts = [pool_fingerprint(db, applications=applications)]
+    parts = [pool_fingerprint(db, opening_id, applications=applications)]
     for pass_name, prompt_version, model_id, configured_effort in passes:
         parts.extend((f"{pass_name}:{prompt_version}", f"{pass_name}_model:{model_identity(model_id)}"))
         effort = effective_reasoning_effort(model_id, configured_effort)

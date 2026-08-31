@@ -29,9 +29,13 @@ def get_or_create_member_ranking(
         return existing
 
     report = current_dimension_report(analysis)
-    scaffold, most_recent = tier_history(db, user)
+    if analysis.opening_id is None:
+        raise ValueError("A current analysis must belong to an opening.")
+    scaffold, most_recent = tier_history(db, user, analysis.opening_id)
     if report is not None and scaffold:
-        immediately_prior = _immediately_prior_keys(db, user, before_analysis_id=analysis.id)
+        immediately_prior = _immediately_prior_keys(
+            db, user, opening_id=analysis.opening_id, before_analysis_id=analysis.id
+        )
         layout, flagged = carry_forward_layout(
             new_report=report,
             scaffold_tiers=scaffold,
@@ -163,7 +167,9 @@ def display_tiers(member_ranking: MemberRanking) -> list[dict]:
     return [*working, {"id": IGNORE_TIER_ID, "label": IGNORE_TIER_LABEL, "dimension_keys": ignored, "ignore": True}]
 
 
-def tier_history(db: Session, user: User) -> tuple[list[dict], dict[str, str]]:
+def tier_history(
+    db: Session, user: User, opening_id: int
+) -> tuple[list[dict], dict[str, str]]:
     """One member's tier intent across ALL their rankings, for carrying placements forward.
 
     Tiering is per-member, so this walks THIS member's ``MemberRanking`` rows (newest analysis
@@ -189,7 +195,7 @@ def tier_history(db: Session, user: User) -> tuple[list[dict], dict[str, str]]:
     """
     rankings = db.scalars(
         select(MemberRanking)
-        .where(MemberRanking.user_id == user.id)
+        .where(MemberRanking.user_id == user.id, Analysis.opening_id == opening_id)
         .join(Analysis)
         .order_by(Analysis.id.desc())
     ).all()
@@ -219,14 +225,20 @@ def tier_history(db: Session, user: User) -> tuple[list[dict], dict[str, str]]:
     return scaffold, most_recent_tier_by_key
 
 
-def _immediately_prior_keys(db: Session, user: User, *, before_analysis_id: int) -> set[str]:
+def _immediately_prior_keys(
+    db: Session, user: User, *, opening_id: int, before_analysis_id: int
+) -> set[str]:
     """The dimension keys of this member's ranking on the analysis IMMEDIATELY BEFORE
     ``before_analysis_id`` — the ones continuous in their view (never flagged). Empty if
     they had no prior ranking. Reads the report off that prior analysis; the member had a
     view of it (that's what "prior ranking" means)."""
     prior = db.scalar(
         select(MemberRanking)
-        .where(MemberRanking.user_id == user.id, MemberRanking.analysis_id < before_analysis_id)
+        .where(
+            MemberRanking.user_id == user.id,
+            MemberRanking.analysis_id < before_analysis_id,
+            Analysis.opening_id == opening_id,
+        )
         .join(Analysis)
         .order_by(Analysis.id.desc())
         .limit(1)
@@ -257,7 +269,10 @@ def revived_flag_keys(db: Session, member_ranking: MemberRanking) -> list[str]:
         return []
     earlier = db.scalars(
         select(Analysis)
-        .where(Analysis.id < member_ranking.analysis_id)
+        .where(
+            Analysis.id < member_ranking.analysis_id,
+            Analysis.opening_id == member_ranking.analysis.opening_id,
+        )
         .order_by(Analysis.id.desc())
     ).all()
     seen_before: set[str] = set()

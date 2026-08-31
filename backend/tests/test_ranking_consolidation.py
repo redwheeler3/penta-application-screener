@@ -15,6 +15,7 @@ from app.ai.schemas import (
     ScoreConfidence,
 )
 from app.db.models import User, UserRole
+from tests.application_support import current_opening_id
 from tests.ranking_support import (
     _decomposition_of,
     add_eligible,
@@ -29,7 +30,7 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
     # three axes but decomposition merges
     # two into one, so the run must end with 2 settled dims (not 3), score against those,
     # and record the merge (source_keys + reasoning) in criteria.decompose_audit.
-    from app.services.ranking.analysis import get_current_analysis
+    from app.services.ranking.analysis import get_latest_analysis
 
     app, db, provider = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
@@ -91,7 +92,7 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
         merged_out = next(d for d in endpoint["settled"] if d["key"] == "commitment")
         assert set(merged_out["sourceKeys"]) == {"commitment_a", "commitment_b"}
 
-    run = get_current_analysis(db)
+    run = get_latest_analysis(db)
     stored_dims = run.dimension_report["dimensions"]
     settled_keys = {d["key"] for d in stored_dims}
     assert settled_keys == {"commitment", "skills_offered"}
@@ -121,7 +122,7 @@ async def test_post_score_consolidation_merges_correlated_duplicate() -> None:
     from sqlalchemy import select
 
     from app.db.models import DimensionAlias
-    from app.services.ranking.analysis import get_current_analysis
+    from app.services.ranking.analysis import get_latest_analysis
 
     app, db, provider = setup_app(role=UserRole.MEMBER)
     apps = [add_eligible(db, email=f"a{i}@x.com", raw_hash=f"h{i}") for i in range(4)]
@@ -163,7 +164,7 @@ async def test_post_score_consolidation_merges_correlated_duplicate() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         await stream_events(client, "/ranking/run")
 
-    run = get_current_analysis(db)
+    run = get_latest_analysis(db)
     keys = {d["key"] for d in run.dimension_report["dimensions"]}
     # Collapsed 2 → 1: the newer key (financial_stewardship) is aliased into the older.
     assert keys == {"financial_literacy"}
@@ -267,7 +268,7 @@ def test_apply_consolidation_transfers_tier_placement_off_a_merged_key() -> None
         PoolDimension(key="financial_stewardship", name="Financial stewardship",
                       definition="bookkeeping", high_end="high", low_end="low", why_it_differentiates="v"),
     ])
-    analysis = create_analysis(db, user=user, report=report, settings=AppSettings(), narrative=None)
+    analysis = create_analysis(db, user=user, opening_id=current_opening_id(db), report=report, settings=AppSettings(), narrative=None)
     mr = get_or_create_member_ranking(db, analysis, user)
     # The committee places ONLY the key that will be merged away into a working tier —
     # the survivor sits in Ignore (unplaced).
@@ -311,7 +312,7 @@ def test_apply_consolidation_reconfirming_an_existing_alias_is_idempotent() -> N
             PoolDimension(key="financial_literacy", name="FL", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
             PoolDimension(key="financial_stewardship", name="FS", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
         ])
-        analysis = create_analysis(db, user=user, report=report, settings=AppSettings(),
+        analysis = create_analysis(db, user=user, opening_id=current_opening_id(db), report=report, settings=AppSettings(),
                                    narrative=None)
         mr = get_or_create_member_ranking(db, analysis, user)
         apply_consolidation(
@@ -358,7 +359,7 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
         PoolDimension(key="b_mid", name="B", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
         PoolDimension(key="c_newest", name="C", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
     ])
-    analysis = create_analysis(db, user=user, report=report, settings=AppSettings(), narrative=None)
+    analysis = create_analysis(db, user=user, opening_id=current_opening_id(db), report=report, settings=AppSettings(), narrative=None)
     mr = get_or_create_member_ranking(db, analysis, user)
     # Place ONLY the innermost link C in a working tier; A and B sit in Ignore.
     set_tiers(db, mr, [{"id": "tier-s", "label": "Critical", "dimension_keys": ["c_newest"]}])
@@ -409,6 +410,7 @@ def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
     # Run 1: mint the canonical key and place it in the Important tier.
     create_analysis(
         db,
+        opening_id=current_opening_id(db),
         user=user,
         report=PoolDimensionReport(dimensions=[
             PoolDimension(key="child_age_profile_community_fit", name="Children's Age Profile",
@@ -427,6 +429,7 @@ def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
     # if the heal renamed it, that re-worded text would ride under the canonical key.
     analysis2 = create_analysis(
         db,
+        opening_id=current_opening_id(db),
         user=user,
         report=PoolDimensionReport(dimensions=[
             PoolDimension(key="child_age_profile", name="Household Children's Ages",
@@ -483,6 +486,7 @@ def test_consolidate_audit_view_resolves_pair_names() -> None:
     # carry NO snapshotted names (the pre-capture shape).
     run = create_analysis(
         db,
+        opening_id=current_opening_id(db),
         user=db.scalar(select(User)),
         report=PoolDimensionReport(dimensions=[_dim("survivor", "Survivor Axis")]),
         settings=AppSettings(), narrative=None,
@@ -521,6 +525,7 @@ def test_consolidate_audit_view_prefers_the_snapshotted_name() -> None:
     _app, db, _ = setup_app(role=UserRole.MEMBER)
     run = create_analysis(
         db,
+        opening_id=current_opening_id(db),
         user=db.scalar(select(User)),
         report=PoolDimensionReport(dimensions=[PoolDimension(
             key="survivor", name="Later Renamed", definition="d",
@@ -566,11 +571,11 @@ def test_merged_alias_does_not_donate_its_definition_to_the_canonical_key() -> N
                              high_end="hi", low_end="lo", why_it_differentiates="v")
 
     # Run 1: mint the narrow key. Its cached scores (not modelled here) belong to THIS text.
-    create_analysis(db, user=user, report=PoolDimensionReport(dimensions=[_dim("licensed_trade", narrow)]),
+    create_analysis(db, user=user, opening_id=current_opening_id(db), report=PoolDimensionReport(dimensions=[_dim("licensed_trade", narrow)]),
                     settings=AppSettings(), narrative=None)
     # Run 2: a broader duplicate appears alongside, and is merged INTO the narrow key
     # (older key wins the merge). This writes the alias hands_on_trade -> licensed_trade.
-    analysis2 = create_analysis(db, user=user, report=PoolDimensionReport(dimensions=[
+    analysis2 = create_analysis(db, user=user, opening_id=current_opening_id(db), report=PoolDimensionReport(dimensions=[
         _dim("licensed_trade", narrow), _dim("hands_on_trade", broad),
     ]), settings=AppSettings(), narrative=None)
     mr2 = get_or_create_member_ranking(db, analysis2, user)
@@ -585,7 +590,7 @@ def test_merged_alias_does_not_donate_its_definition_to_the_canonical_key() -> N
     # does NOT appear on its own. This is the trigger: a newest-first history builder would
     # reach the broad re-discovery (resolved via alias to licensed_trade) BEFORE the narrow
     # canonical's own mint, and donate the broad text to the narrow key.
-    create_analysis(db, user=user, report=PoolDimensionReport(dimensions=[_dim("hands_on_trade", broad)]),
+    create_analysis(db, user=user, opening_id=current_opening_id(db), report=PoolDimensionReport(dimensions=[_dim("hands_on_trade", broad)]),
                     settings=AppSettings(), narrative=None)
 
     # all_known_dimensions (match target set) must report the NARROW mint.
@@ -606,7 +611,7 @@ async def test_post_score_consolidation_keeps_confound_apart() -> None:
     from sqlalchemy import select
 
     from app.db.models import DimensionAlias
-    from app.services.ranking.analysis import get_current_analysis
+    from app.services.ranking.analysis import get_latest_analysis
 
     app, db, provider = setup_app(role=UserRole.MEMBER)
     apps = [add_eligible(db, email=f"b{i}@x.com", raw_hash=f"hb{i}") for i in range(4)]
@@ -645,7 +650,7 @@ async def test_post_score_consolidation_keeps_confound_apart() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         await stream_events(client, "/ranking/run")
 
-    run = get_current_analysis(db)
+    run = get_latest_analysis(db)
     keys = {d["key"] for d in run.dimension_report["dimensions"]}
     assert keys == {"motivation", "followthrough"}  # both kept
     # No pair merged (merges is derived from merged pairs — dimension_aliases is the truth).
@@ -674,7 +679,7 @@ async def test_d9_committee_request_folded_into_merge_is_surfaced_not_lost() -> 
     # do) drops the from_committee_request flag, the guard restores the flag AND records
     # the fold in decompose_audit.folded_requests — surfaced to the committee, never a
     # silent disappearance.
-    from app.services.ranking.analysis import get_current_analysis
+    from app.services.ranking.analysis import get_latest_analysis
 
     app, db, provider = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
@@ -706,7 +711,7 @@ async def test_d9_committee_request_folded_into_merge_is_surfaced_not_lost() -> 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         await stream_events(client, "/ranking/run")
 
-    run = get_current_analysis(db)
+    run = get_latest_analysis(db)
     audit = run.audit.decompose
     # The fold is surfaced: playground_use -> child_wellbeing.
     assert {"request_key": "playground_use", "into_key": "child_wellbeing"} in audit["folded_requests"]
@@ -720,7 +725,7 @@ async def test_d9_silently_dropped_committee_request_is_re_added() -> None:
     # D9: if decomposition drops a committee-requested axis entirely (its key appears in
     # NO settled source_keys), the guard re-adds it as its own settled axis so it cannot
     # vanish.
-    from app.services.ranking.analysis import get_current_analysis
+    from app.services.ranking.analysis import get_latest_analysis
 
     app, db, provider = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
@@ -751,7 +756,7 @@ async def test_d9_silently_dropped_committee_request_is_re_added() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         await stream_events(client, "/ranking/run")
 
-    run = get_current_analysis(db)
+    run = get_latest_analysis(db)
     keys = {d["key"] for d in run.dimension_report["dimensions"]}
     # The dropped request was re-added, so both axes survive.
     assert keys == {"child_wellbeing", "playground_use"}

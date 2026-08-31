@@ -34,7 +34,7 @@ from app.db.models import (
     UserRole,
 )
 from app.schemas.settings import AppSettings
-from tests.application_support import activate_application
+from tests.application_support import activate_application, current_opening_id
 
 
 def make_db() -> Session:
@@ -270,7 +270,7 @@ def test_ceiling_estimate_prices_per_candidate_call() -> None:
 
     # No run yet → fallback per-candidate input + per-dimension output × the
     # first-run dimension count; ceiling assumes nothing cached.
-    est = estimate_dimension_scoring(db, settings)
+    est = estimate_dimension_scoring(db, current_opening_id(db), settings)
     per_candidate = cost_usd(
         settings.ai.dimension_scoring_model,
         Usage(
@@ -303,7 +303,8 @@ def test_rerun_estimate_cache_aware_fallback_when_no_history() -> None:
     report = report_with(keys)
 
     create_analysis(
-        db, user=db.scalar(select(User)), report=report, settings=settings,
+        db, user=db.scalar(select(User)), opening_id=current_opening_id(db),
+        report=report, settings=settings,
         narrative=None,
     )
     provider = MockProvider()
@@ -313,7 +314,7 @@ def test_rerun_estimate_cache_aware_fallback_when_no_history() -> None:
     # NOTE: run_scores does not write a RunCostLedger row (that happens in the API
     # stream), so recent_scoring_fresh_usd() is None here → cache-aware fallback.
 
-    est = estimate_dimension_scoring(db, settings)
+    est = estimate_dimension_scoring(db, current_opening_id(db), settings)
 
     # Everyone fully cached against the current dims → 0 uncached work → $0 estimate.
     assert est["cached"] == 2
@@ -321,7 +322,7 @@ def test_rerun_estimate_cache_aware_fallback_when_no_history() -> None:
     assert est["estimated_usd"] == 0.0
     # A whole-pool, no-cache ceiling would be strictly higher.
     out_per_dim = _avg_output_tokens_per_dimension(db, settings.ai.dimension_scoring_model)
-    inp = _per_candidate_input_tokens(db, report)
+    inp = _per_candidate_input_tokens(db, current_opening_id(db), report)
     ceiling = cost_usd(
         settings.ai.dimension_scoring_model,
         Usage(inp, out_per_dim * ASSUMED_DIMENSIONS_FIRST_RUN),
@@ -343,12 +344,13 @@ def test_rerun_estimate_prefers_measured_history() -> None:
     settings = AppSettings()
     report = report_with(["community", "skills"])
     create_analysis(
-        db, user=db.scalar(select(User)), report=report, settings=settings,
+        db, user=db.scalar(select(User)), opening_id=current_opening_id(db),
+        report=report, settings=settings,
         narrative=None,
     )
 
     def rank_row(scoring_fresh: float) -> None:
-        record_run_cost(db, kind="rank", passes={
+        record_run_cost(db, kind="rank", opening_id=current_opening_id(db), passes={
             "Dimension scoring": PassCost(calls=1, cost_usd=scoring_fresh),
         })
 
@@ -357,7 +359,7 @@ def test_rerun_estimate_prefers_measured_history() -> None:
     rank_row(0.40)
     rank_row(0.10)
 
-    est = estimate_dimension_scoring(db, settings)
+    est = estimate_dimension_scoring(db, current_opening_id(db), settings)
     assert est["estimated_usd"] == round((2 * 0.10 + 1 * 0.40) / 3, 4)
 
 

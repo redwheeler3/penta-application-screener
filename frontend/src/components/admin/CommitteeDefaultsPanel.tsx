@@ -12,6 +12,7 @@ import { PetLimitsFields } from "./PetLimitsFields";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
 export function CommitteeDefaultsPanel(props: {
+  openingId: number;
   onError: (message: string) => void;
   onEligibilityChanged: () => void;
 }): ReactNode {
@@ -26,7 +27,7 @@ export function CommitteeDefaultsPanel(props: {
     let live = true;
     setLoadError(false);
     api
-      .fetchCommitteeDefaultRules()
+      .fetchCommitteeDefaultRules(props.openingId)
       .then((rules) => live && setDraft(rules))
       .catch(() => {
         if (!live) return;
@@ -37,13 +38,13 @@ export function CommitteeDefaultsPanel(props: {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadVersion]);
+  }, [loadVersion, props.openingId]);
 
   async function save(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!draft || saving) return;
     setSaving(true);
-    const response = await api.saveCommitteeDefaultRules(draft);
+    const response = await api.saveCommitteeDefaultRules(props.openingId, draft);
     setSaving(false);
     if (!response.ok) {
       props.onError(
@@ -71,7 +72,7 @@ export function CommitteeDefaultsPanel(props: {
   return (
     <div className="settings-panel-body">
       <div className="settings-subtab-head">
-        <h3>Committee Defaults</h3>
+        <h3>Committee default</h3>
         <p className="panel-hint">
           The shared eligibility baseline every member follows until they personalize their own
           rules. Changing it does not affect members who've already diverged.

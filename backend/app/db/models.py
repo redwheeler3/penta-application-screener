@@ -339,6 +339,20 @@ class Opening(TimestampMixin, Base):
     )
 
 
+class OpeningRules(TimestampMixin, Base):
+    """The committee-default eligibility rules for one application-intake opening."""
+
+    __tablename__ = "opening_rules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    opening_id: Mapped[int] = mapped_column(
+        ForeignKey("openings.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
+    )
+    rules: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+    opening: Mapped[Opening] = relationship()
+
+
 class VacancySubscription(TimestampMixin, Base):
     """One active request for a single future vacancy notification."""
 
@@ -638,11 +652,15 @@ class MemberEligibility(TimestampMixin, Base):
     """
 
     __tablename__ = "member_eligibility"
-    __table_args__ = (UniqueConstraint("application_id", "user_id"),)
+    __table_args__ = (UniqueConstraint("opening_id", "application_id", "user_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(
         ForeignKey("applications.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    # Nullable only for pre-M24 historical rows that had no opening identity.
+    opening_id: Mapped[int | None] = mapped_column(
+        ForeignKey("openings.id", ondelete="CASCADE"), index=True
     )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
     status: Mapped[ApplicationStatus] = mapped_column(
@@ -653,6 +671,7 @@ class MemberEligibility(TimestampMixin, Base):
     reviewed_fingerprint: Mapped[str | None] = mapped_column(String(64))
 
     application: Mapped[Application] = relationship()
+    opening: Mapped[Opening | None] = relationship()
     user: Mapped[User] = relationship()
 
 
@@ -668,12 +687,17 @@ class MemberRules(TimestampMixin, Base):
     """
 
     __tablename__ = "member_rules"
-    __table_args__ = (UniqueConstraint("user_id"),)
+    __table_args__ = (UniqueConstraint("opening_id", "user_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True, nullable=False)
+    # Nullable only for a pre-M24 global row retained as migration history.
+    opening_id: Mapped[int | None] = mapped_column(
+        ForeignKey("openings.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
     rules: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
 
+    opening: Mapped[Opening | None] = relationship()
     user: Mapped[User] = relationship()
 
 
@@ -731,14 +755,19 @@ class ApplicationShortlist(TimestampMixin, Base):
     """
 
     __tablename__ = "application_shortlist"
+    __table_args__ = (UniqueConstraint("opening_id", "application_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(
-        ForeignKey("applications.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    opening_id: Mapped[int] = mapped_column(
+        ForeignKey("openings.id", ondelete="CASCADE"), index=True, nullable=False
     )
     added_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
 
     application: Mapped[Application] = relationship()
+    opening: Mapped[Opening] = relationship()
     added_by: Mapped[User] = relationship()
 
 
@@ -805,8 +834,12 @@ class RunCostLedger(TimestampMixin, Base):
     triggered_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"), nullable=True, index=True
     )
+    opening_id: Mapped[int | None] = mapped_column(
+        ForeignKey("openings.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     triggered_by: Mapped[User | None] = relationship()
+    opening: Mapped[Opening | None] = relationship()
     passes: Mapped[list[RunPassCost]] = relationship(
         back_populates="run", cascade="all, delete-orphan", order_by="RunPassCost.id"
     )
@@ -868,6 +901,10 @@ class Analysis(TimestampMixin, Base):
     __tablename__ = "analyses"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # Null retains pre-M24 global-union analyses as auditable history.
+    opening_id: Mapped[int | None] = mapped_column(
+        ForeignKey("openings.id", ondelete="CASCADE"), index=True
+    )
     # True only when every application in the ranked pool was stamped synthetic.
     synthetic_data: Mapped[bool] = mapped_column(
         default=False, server_default="0", nullable=False
@@ -881,6 +918,7 @@ class Analysis(TimestampMixin, Base):
     audit: Mapped[AnalysisAudit | None] = relationship(
         back_populates="analysis", cascade="all, delete-orphan", uselist=False
     )
+    opening: Mapped[Opening | None] = relationship()
 
 
 class MemberRanking(TimestampMixin, Base):
@@ -950,6 +988,7 @@ class DimensionAlias(TimestampMixin, Base):
     alias_key: Mapped[str] = mapped_column(String(200), unique=True, index=True, nullable=False)
     canonical_key: Mapped[str] = mapped_column(String(200), index=True, nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
 
 
 class EvalRun(TimestampMixin, Base):

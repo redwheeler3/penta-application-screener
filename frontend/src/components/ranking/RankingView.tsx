@@ -119,16 +119,9 @@ export function RankingView(props: {
   onSelectApplication: (id: number) => void;
   onToggleStar: (id: number, starred: boolean) => void;
   onToggleShortlist: (id: number, shortlisted: boolean) => void;
-  applicationIdsInOpeningScope: Set<number> | null;
 }): ReactNode {
   const { ranking, rankingRun, tiers, proposedDimensions } = props;
-  const candidates = (
-    props.applicationIdsInOpeningScope === null
-      ? ranking.candidates
-      : ranking.candidates.filter((candidate) =>
-          props.applicationIdsInOpeningScope!.has(candidate.applicationId),
-        )
-  ).map((candidate, index) => ({ ...candidate, rank: index + 1 }));
+  const candidates = ranking.candidates;
   // Saved-list views filter client-side; ranking stays one ordered list and the visible
   // subset keeps its original rank numbers.
   const [candidateView, setCandidateView] = useState<CandidateListView>("all");
@@ -215,11 +208,7 @@ export function RankingView(props: {
 
       {candidates.length === 0 ? (
         <div className="empty-state">
-          <p>
-            {props.applicationIdsInOpeningScope === null
-              ? "No scored candidates to rank yet. Run scoring first."
-              : "No ranked candidates match the selected opening."}
-          </p>
+          <p>No scored candidates to rank yet. Run scoring first.</p>
         </div>
       ) : (
         <>

@@ -176,7 +176,7 @@ class _CriteriaResult:
 
 
 def _stream_criteria(
-    db: Session, provider: AIProvider, settings: AppSettings, user: User
+    db: Session, provider: AIProvider, settings: AppSettings, user: User, opening_id: int
 ) -> Generator[str, None, _CriteriaResult | None]:
     """Phase 1 — find criteria: K-parallel discovery → decomposition → identity-match onto
     prior dimensions → adopt matched keys → carry the triggering member's tiers forward →
@@ -189,10 +189,10 @@ def _stream_criteria(
     # dimension history); tier carry-forward looks across the TRIGGERING member's prior
     # rankings — a concept that fell out and re-surfaces should re-adopt its existing key
     # (reusing its cached scores) and restore that member's last tier placement.
-    prior_analysis = get_current_analysis(db)
+    prior_analysis = get_current_analysis(db, opening_id)
     prior_report = current_dimension_report(prior_analysis) if prior_analysis else None
     match_history = all_known_dimensions(db)  # every dimension ever, one per key
-    scaffold_tiers, tier_by_key = tier_history(db, user)
+    scaffold_tiers, tier_by_key = tier_history(db, user, opening_id)
     # The immediately-prior run's keys: a dimension present here is continuous in
     # the committee's view (never flagged); one absent-then-present is a presence
     # gap to flag (new or revived). See carry_forward_layout.
@@ -209,7 +209,7 @@ def _stream_criteria(
     # axis survives if ANY member tiered it, and every member's proposals steer the one shared
     # discovery — so one member's re-rank can't drop another's kept axis or ignore their ask.
     # Tier carry-forward below stays per-member (the triggering member's own placements).
-    committee_kept = committee_kept_keys(db, prior_report)
+    committee_kept = committee_kept_keys(db, opening_id, prior_report)
     kept_dims = [
         d
         for d in (prior_report.dimensions if prior_report else [])
@@ -223,7 +223,7 @@ def _stream_criteria(
     # name it ("Running K parallel discovery passes…"). Criteria has no per-item
     # fraction, so `total` is free to repurpose as this count.
     yield emit(PhaseEvent(phase=CRITERIA, total=settings.ai.discovery_fan_out))
-    pool = eligible_applications(db)
+    pool = eligible_applications(db, opening_id)
     worker: StreamWorker[str | _Stage, _CriteriaWork] = StreamWorker()
     # Per-pass wall-clock (ms) for the criteria sub-passes, filled as each runs and
     # read back after the worker joins. On this dict, not the result
@@ -413,7 +413,7 @@ def _stream_criteria(
     # carried forward above ARE their kept set — no separate field to thread through;
     # create_analysis clears the consumed proposals on the new ranking).
     analysis = create_analysis(
-        db, user=user, report=report, settings=settings,
+        db, user=user, opening_id=opening_id, report=report, settings=settings,
         narrative=work.narrative,
         tier_layout=layout, new_dimension_keys=new_dimension_keys,
         match_audit=match_audit,
@@ -441,11 +441,12 @@ def _stream_criteria(
 
 
 def _stream_scoring(
-    db: Session, provider: AIProvider, settings: AppSettings, report: PoolDimensionReport
+    db: Session, provider: AIProvider, settings: AppSettings,
+    opening_id: int, report: PoolDimensionReport
 ) -> Generator[str, None, tuple[ScoreTally, int]]:
     """Phase 2 — score every eligible candidate against the new dimensions, emitting
     per-candidate progress. Returns the run's scoring tally + the pass's wall-clock (ms)."""
-    to_score = applications_to_score(db)
+    to_score = applications_to_score(db, opening_id)
     yield emit(PhaseEvent(phase=SCORES, total=len(to_score)))
     tally = ScoreTally()
     _t0 = time.perf_counter()
@@ -548,10 +549,11 @@ def stream_rank(
     settings: AppSettings,
     user: User,
     *,
+    opening_id: int,
     estimated_usd: float,
 ) -> Iterator[str]:
     """Run all Rank phases and yield their NDJSON events."""
-    criteria = yield from _stream_criteria(db, provider, settings, user)
+    criteria = yield from _stream_criteria(db, provider, settings, user, opening_id)
     if criteria is None:
         return
     total_cost = (
@@ -562,6 +564,7 @@ def stream_rank(
         db,
         provider,
         settings,
+        opening_id,
         criteria.report,
     )
     total_cost += score_tally.cost_usd
@@ -595,6 +598,7 @@ def stream_rank(
         },
         estimated_usd=estimated_usd,
         triggered_by_user_id=user.id,
+        opening_id=opening_id,
     )
 
     yield emit(

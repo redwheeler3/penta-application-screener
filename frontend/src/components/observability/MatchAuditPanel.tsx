@@ -7,8 +7,10 @@ import { RetryLoadError } from "../shared/RetryLoadError";
 
 // Show how settled dimensions map onto prior dimensions. A high reuse rate is expected;
 // individual incorrect mappings are the actionable signal.
-export function MatchAuditPanel(): ReactNode {
-  const { data: audit, state, reload } = useFetchResource(fetchMatchAudit);
+export function MatchAuditPanel(props: { openingId: number }): ReactNode {
+  const { data: audit, state, reload } = useFetchResource(
+    () => fetchMatchAudit(props.openingId),
+  );
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;
   if (state === "error") return <RetryLoadError message="Couldn’t load the matching audit." onRetry={() => void reload()} />;

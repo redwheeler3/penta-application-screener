@@ -20,14 +20,14 @@ export function saveSettings(draft: AppSettings): Promise<Response> {
 // The numeric screening rules each member tunes for themselves. A member reads the
 // shared committee default until they save their own (see EligibilityRulesResponse).
 
-export const fetchEligibilityRules = () =>
-  getJson<EligibilityRulesResponse>("/eligibility-rules");
+export const fetchEligibilityRules = (openingId: number) =>
+  getJson<EligibilityRulesResponse>(`/eligibility-rules?opening_id=${openingId}`);
 
 export const fetchEligibilityCheckCatalog = () =>
   getJson<EligibilityCheckCatalog>("/eligibility-rules/catalog");
 
-export function saveEligibilityRules(rules: EligibilityRules): Promise<Response> {
-  return request("/eligibility-rules", {
+export function saveEligibilityRules(openingId: number, rules: EligibilityRules): Promise<Response> {
+  return request(`/eligibility-rules?opening_id=${openingId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(rules),
@@ -35,17 +35,17 @@ export function saveEligibilityRules(rules: EligibilityRules): Promise<Response>
 }
 
 // Remove the member override and return the committee defaults now in effect.
-export function resetEligibilityRules(): Promise<Response> {
-  return request("/eligibility-rules", { method: "DELETE" });
+export function resetEligibilityRules(openingId: number): Promise<Response> {
+  return request(`/eligibility-rules?opening_id=${openingId}`, { method: "DELETE" });
 }
 
 // The shared baseline a member follows until they save an override.
-export const fetchCommitteeDefaultRules = () =>
-  getJson<EligibilityRules>("/eligibility-rules/committee-default");
+export const fetchCommitteeDefaultRules = (openingId: number) =>
+  getJson<EligibilityRules>(`/eligibility-rules/committee-default?opening_id=${openingId}`);
 
 // Editing the committee default does not rewrite member override rows.
-export function saveCommitteeDefaultRules(rules: EligibilityRules): Promise<Response> {
-  return request("/eligibility-rules/committee-default", {
+export function saveCommitteeDefaultRules(openingId: number, rules: EligibilityRules): Promise<Response> {
+  return request(`/eligibility-rules/committee-default?opening_id=${openingId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(rules),

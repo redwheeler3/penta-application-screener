@@ -12,7 +12,7 @@ const EMPTY_WORKFLOW: WorkflowState = {
   rankingCurrent: false,
 };
 
-export function useDashboard() {
+export function useDashboard(openingId: number | null) {
   const [workflow, setWorkflow] = useState<WorkflowState>(EMPTY_WORKFLOW);
   const [coverage, setCoverage] = useState<Coverage>({});
   const [adminActions, setAdminActions] = useState<AdminActions | null>(null);
@@ -30,17 +30,19 @@ export function useDashboard() {
   }, []);
 
   const refresh = useCallback(() => {
-    return api.fetchDashboard().then(apply).catch(() => {});
-  }, [apply]);
+    if (openingId === null) return Promise.resolve();
+    return api.fetchDashboard(openingId).then(apply).catch(() => {});
+  }, [apply, openingId]);
 
   const loadInitial = useCallback(async (): Promise<void> => {
     setLoadState("loading");
+    if (openingId === null) return;
     try {
-      apply(await retryWithBackoff(api.fetchDashboard, 5));
+      apply(await retryWithBackoff(() => api.fetchDashboard(openingId), 5));
     } catch {
       setLoadState("error");
     }
-  }, [apply]);
+  }, [apply, openingId]);
 
   return { workflow, coverage, adminActions, loadState, refresh, loadInitial };
 }

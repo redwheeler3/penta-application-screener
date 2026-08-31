@@ -172,7 +172,9 @@ export function ApplicationsList(props: {
               // (pets are deterministic but attribute to the AI source because
               // so an AI row's "why" can live in either list; show both). Human: neither.
               const reason =
-                app.statusSource === "rules"
+                app.selected
+                  ? "Selected household"
+                  : app.statusSource === "rules"
                   ? app.hardFilterReasons.map((r) => r.message).join("; ")
                   : app.statusSource === "ai"
                     ? [
@@ -207,10 +209,12 @@ export function ApplicationsList(props: {
                   <td>{app.childCount ?? "?"}</td>
                   <td>{app.householdIncome != null ? `$${app.householdIncome.toLocaleString()}` : "?"}</td>
                   <td>
-                    <span className={`status-badge status-${app.status}`}>{STATUS_LABELS[app.status]}</span>
+                    <span className={`status-badge status-${app.selected ? "selected" : app.status}`}>
+                      {app.selected ? "Selected" : STATUS_LABELS[app.status]}
+                    </span>
                   </td>
                   <td>
-                    {app.statusSource === "untouched" ? (
+                    {app.selected || app.statusSource === "untouched" ? (
                       "—"
                     ) : (
                       <span className={`source-badge source-${app.statusSource}`}>

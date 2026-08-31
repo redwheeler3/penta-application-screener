@@ -7,8 +7,10 @@ import { RetryLoadError } from "../shared/RetryLoadError";
 
 // Show each independent discovery pass and its reasoning. When per-pass data is absent,
 // fall back to the run-level narrative.
-export function DiscoveryPanel(props: { run: CurrentRunResponse }): ReactNode {
-  const { data: audit, state, reload } = useFetchResource(fetchFanOutAudit);
+export function DiscoveryPanel(props: { run: CurrentRunResponse; openingId: number }): ReactNode {
+  const { data: audit, state, reload } = useFetchResource(
+    () => fetchFanOutAudit(props.openingId),
+  );
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;
   if (state === "error") return <RetryLoadError message="Couldn’t load discovery." onRetry={() => void reload()} />;

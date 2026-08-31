@@ -170,8 +170,10 @@ export function CandidateDetail(props: {
         <div className="app-detail-identity-content">
           <div className="app-detail-header">
             <h3>{app.applicantName || app.primaryEmail}</h3>
-            <span className={`status-badge status-${app.status}`}>{STATUS_LABELS[app.status]}</span>
-            {app.statusSource !== "untouched" ? (
+            <span className={`status-badge status-${app.selected ? "selected" : app.status}`}>
+              {app.selected ? "Selected" : STATUS_LABELS[app.status]}
+            </span>
+            {!app.selected && app.statusSource !== "untouched" ? (
               <span className={`source-badge source-${app.statusSource}`}>{SOURCE_LABELS[app.statusSource]}</span>
             ) : null}
           </div>

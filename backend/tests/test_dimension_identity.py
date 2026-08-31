@@ -9,6 +9,7 @@ from app.ai.schemas import (
     PoolDimensionReport,
 )
 from app.db.models import UserRole
+from tests.application_support import current_opening_id
 from tests.ranking_support import (
     a_pattern_report,
     add_eligible,
@@ -25,7 +26,7 @@ def test_fan_out_seeds_only_worker_0_the_rest_stay_blind() -> None:
     add_eligible(db, email="a@x.com", raw_hash="h1")
     from app.ai.dimension_discovery import eligible_applications
 
-    pool = eligible_applications(db)
+    pool = eligible_applications(db, current_opening_id(db))
     k = 4
     for _ in range(k):
         provider.queue(a_pattern_report())

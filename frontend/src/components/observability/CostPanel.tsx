@@ -41,6 +41,10 @@ function triggeredByStamp(run: LastRunCost): ReactNode {
   return <span className="cost-triggered-by">{` · triggered by ${run.triggeredBy}`}</span>;
 }
 
+function openingStamp(run: LastRunCost): ReactNode {
+  return run.opening ? <span className="cost-triggered-by">{` · ${run.opening}`}</span> : null;
+}
+
 const RUN_LABELS: Record<InsightRunKind, string> = {
   screen: "Screen",
   rank: "Discover criteria & rank",
@@ -92,7 +96,9 @@ export function CostPanel(): ReactNode {
               ) : (
                 <tbody key={i}>
                   <tr className="cost-group-head">
-                    <td colSpan={4}>{RUN_LABELS[run.kind]}{triggeredByStamp(run)}{reconciliation(run)}</td>
+                    <td colSpan={4}>
+                      {RUN_LABELS[run.kind]}{openingStamp(run)}{triggeredByStamp(run)}{reconciliation(run)}
+                    </td>
                     <td className="cost-num">{run.cachedSavedUsd > 0 ? money(run.cachedSavedUsd) : "—"}</td>
                     <td className="cost-num">{money(run.freshUsd)}</td>
                   </tr>
