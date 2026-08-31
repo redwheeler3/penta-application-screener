@@ -1539,20 +1539,20 @@ existing-application branch was then verified against submitted synthetic produc
 
 ### Retained Application Canonicalization (M24) — next milestone
 
-**Goal:** after historical opening 1 is finalized and archived, convert the retained pre-cutover
-Google Form records to the first explicitly versioned native answer representation and remove the
-runtime paths that understand provider-specific question headings. Establish the form-evolution
-boundary at the same time so later form changes upgrade mutable working copies without rewriting
-truthful historical submissions. The retired importer will never return, so its stored shape must
-not remain a permanent second application model.
+**Goal:** convert the retained pre-cutover Google Form records to the first explicitly versioned
+native answer representation and remove the runtime paths that understand provider-specific question
+headings. Establish the form-evolution boundary at the same time so later form changes upgrade
+mutable working copies without rewriting truthful historical submissions. The retired importer will
+never return, so its stored shape must not remain a permanent second application model.
 
-**Timing decision:** do not change the submitted records during the active historical opening. The
-232 imported households have not been directed to `applications.pentacoop.com`; the unsuccessful
-outcome email contains no application link; and, after the November 1, 2026 move-in date archives
-the opening, email links, Google sign-in, and existing sessions cannot edit the application. Until
-then, an imported household that independently discovers the site and verifies its recorded email
-would receive a blank native form because its submitted answers cannot populate a working copy.
-That edge case does not justify changing content hashes or AI currentness during the live decision.
+**Timing decision:** the production conversion may run while historical opening 1 is closed and
+before its final decision. The 232 imported households have not been directed to
+`applications.pentacoop.com`, and the unsuccessful outcome email contains no application link. The
+migration may make Screen and Rank out of date; that is acceptable, and a later Screen or Rank may
+change eligibility through the application's normal understood workflow. The migration itself must
+not change any member's effective eligibility before a new Screen or Rank: normalized facts, current
+screening findings and pet facts, member rules, and human overrides remain authoritative across the
+write.
 
 **Ongoing form-evolution rule:** a submitted `ApplicationVersion` is an immutable record of the
 questions and answers accepted at that submission. Routine future form changes do not rewrite old
@@ -1604,8 +1604,11 @@ must be designed explicitly; M24 does not build that speculative complexity.
 
 **Implementation stages:**
 
-1. **Closeout gate** — confirm opening 1 has a recorded selected-household or no-household decision,
-   is archived, and has delivered every due unsuccessful notice before touching retained answers.
+1. **Eligibility baseline** — before the backfill, capture a PII-safe digest for every application
+   and member covering effective status and source, deterministic reason codes, active AI flag
+   categories, pet facts, human overrides, and the union eligible pool. Recompute it immediately
+   after conversion and abort or roll back unless it matches exactly. This proves the migration is
+   neutral without promising that a later explicit Screen or Rank will reproduce earlier findings.
 2. **Versioned answer boundary** — define the baseline native answer-schema version and stamp it on
    private drafts, application working copies, the current submitted projection, and each immutable
    `ApplicationVersion`. Route every reader through one version-aware answer service rather than
