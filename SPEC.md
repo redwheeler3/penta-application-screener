@@ -1714,6 +1714,8 @@ Terra discovery phases in the same local history completed in 33–41 seconds, s
 treated as an abnormal provider run rather than accepted evidence. Repeat the 1BR-vs-2BR discovery and
 cache-reuse/cost inspection before marking M24 validation closed; do not infer judgment quality from the
 green deterministic/mock suite.
+The retry uses a corrected discovery instruction: up to 30 dimensions, with explicitly fewer for a small
+or homogeneous pool, rather than forcing the four-applicant validation pool toward a 15-dimension floor.
 
 **Non-goals:** a combined multi-opening ranking, merged committee ranking, cross-opening shortlist,
 automatic transfer of an override or outcome between openings, reopening selected applicants,
