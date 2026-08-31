@@ -1537,6 +1537,145 @@ closed-cycle refusal without creating a record. Committee Google sign-in remaine
 existing-application branch was then verified against submitted synthetic production application
 252: the matching Google identity linked successfully and opened the application.
 
+### Retained Application Canonicalization (M24) — next milestone
+
+**Goal:** after historical opening 1 is finalized and archived, convert the retained pre-cutover
+Google Form records to the first explicitly versioned native answer representation and remove the
+runtime paths that understand provider-specific question headings. Establish the form-evolution
+boundary at the same time so later form changes upgrade mutable working copies without rewriting
+truthful historical submissions. The retired importer will never return, so its stored shape must
+not remain a permanent second application model.
+
+**Timing decision:** do not change the submitted records during the active historical opening. The
+232 imported households have not been directed to `applications.pentacoop.com`; the unsuccessful
+outcome email contains no application link; and, after the November 1, 2026 move-in date archives
+the opening, email links, Google sign-in, and existing sessions cannot edit the application. Until
+then, an imported household that independently discovers the site and verifies its recorded email
+would receive a blank native form because its submitted answers cannot populate a working copy.
+That edge case does not justify changing content hashes or AI currentness during the live decision.
+
+**Ongoing form-evolution rule:** a submitted `ApplicationVersion` is an immutable record of the
+questions and answers accepted at that submission. Routine future form changes do not rewrite old
+versions merely to make their JSON resemble the newest form. Instead, every answer document carries
+an explicit answer-schema version and one centralized, stepwise upgrader produces the current
+working shape. Reordering fields, revising help text, or relabelling an unchanged concept keeps its
+stable internal key and needs no answer migration. Adding a question gives older working copies a
+blank value; changing a question's meaning creates a new key rather than silently reinterpreting the
+old answer. A database backfill is reserved for a genuinely changed storage invariant or a lossless
+key conversion, not used by default for every form release.
+
+Enforce that boundary with one focused schema-fingerprint test rather than a separate collaboration
+rule or form-evolution process document. Derive a stable structural fingerprint from the backend
+working and submitted answer schemas, including stored keys, types, requiredness, and defaults while
+excluding presentation-only titles and descriptions. The committed fingerprint is keyed by the
+current answer-schema version. If the structure changes without a version increment and registered
+sequential upgrader, the test fails with those required actions. Layout, ordering, label, and help-
+text changes do not alter the structural fingerprint and therefore do not demand an upgrader. A
+meaning change that retains the same type and key cannot be detected mechanically and remains an
+ordinary code-review judgment: give the new meaning a new key rather than reinterpreting old data.
+
+Age is the important non-inferable case. A retained imported answer that supplied an age but no
+birth date keeps that integer as `age_at_submission` with the original submission date as its
+reference point; its birth date remains explicitly unknown. That historical age remains valid only
+for the historical submission and opening. If the household returns for a later opening, applicant,
+co-applicant, and child birth-date inputs are blank and required. The applicant must provide the
+actual dates before submission, and eligibility then derives fresh ages as of the new submission
+date. Never estimate a birth date from an age or reuse a historical age in a later opening. Any
+workflow that evaluates a retained candidate without a new submission must report an unavailable
+age check as unknown/not evaluated rather than silently treating it as eligible.
+
+Answer-schema version numbers live with the stored answer documents; executable upgrader functions
+live in source control, never in the database. Opening an older mutable working copy runs the
+applicable deterministic upgrader chain in application code. The upgraded copy is persisted on the
+next explicit save; immutable historical submissions stay at the version under which they were
+accepted. The database never deletes upgrader code automatically. A PII-safe inventory command
+reports aggregate counts for every stored answer-schema version and identifies versions with no
+live application, submission, or draft documents. After that count is zero, remove its upgrader,
+old schema types, fixtures, tests, and explanatory comments together in an ordinary reviewed
+release. Backup retention does not delay cleanup: restoring an exceptional older backup must first
+restore the required upgrader from Git into the current code and deploy that compatibility with the
+database recovery. Keeping support for live data is required compatibility; keeping it after the
+last such record is gone is forbidden tombstone logic.
+
+For this MVP, activate a new form schema only between application cycles, after every editable
+application-intake opening is archived and before the next one is published. If overlapping openings
+ever need different forms, each opening must pin a form version and the multi-version interaction
+must be designed explicitly; M24 does not build that speculative complexity.
+
+**Implementation stages:**
+
+1. **Closeout gate** — confirm opening 1 has a recorded selected-household or no-household decision,
+   is archived, and has delivered every due unsuccessful notice before touching retained answers.
+2. **Versioned answer boundary** — define the baseline native answer-schema version and stamp it on
+   private drafts, application working copies, the current submitted projection, and each immutable
+   `ApplicationVersion`. Route every reader through one version-aware answer service rather than
+   allowing UI, AI, or scripts to inspect stored shapes independently. Keep the version values in
+   stored data and the ordered upgrade functions in ordinary version-controlled application code.
+   Add the structural fingerprint test that forces a version increment and registered upgrader when
+   either persisted answer schema changes.
+3. **Lossless legacy conversion** — inventory every stored Google Form key and map it to the baseline
+   native representation. Preserve unavailable facts as explicitly unknown: do not invent birth
+   dates from ages, employment statuses from job text, or current-versus-other property ownership
+   from the legacy combined real-estate answer. Preserve supplied ages as submission-dated historical
+   facts, separate from unknown birth dates. Retain any source fact that cannot be represented
+   losslessly as bounded archival evidence without keeping a second runtime rendering path. This is
+   the exceptional one-time conversion from an external provider shape; it is not the pattern for
+   ordinary future form versions.
+4. **Production-safe backfill** — take and verify an off-box database backup, run a PII-safe dry-run
+   that reports only aggregate mapping coverage, then convert current submitted answers and any
+   corresponding pre-cutover application-version answers consistently into the baseline versioned
+   representation. Recompute content hashes rather than allowing them to lie about the stored
+   document; post-closeout AI cache invalidation is expected. Preserve identities, original
+   submission timestamps, opening participation and outcomes, legal acceptance evidence, retention
+   dates, notes, feedback, stars, and audit history.
+5. **Current working-copy upgrade** — when a prior applicant returns for a later opening, upgrade the
+   latest private working copy, or initialize one from the latest submitted application when no
+   readable working copy exists. Carry forward compatible answers and represent every question the
+   earlier form did not collect as blank. A newly required blank field must be visible in the form
+   and rejected by both browser and backend submission validation until the applicant completes it;
+   saving an incomplete private draft remains allowed.
+6. **Single read path** — make applicant detail rendering, essay extraction, AI inputs, eval
+   harvesting, and future working-copy initialization use the version-aware answer service. Remove
+   legacy field maps, question-key fallbacks, shape sniffing, and their tests; keep historical
+   Alembic revisions as migration history.
+7. **Version inventory and retirement** — add a read-only, PII-safe command that counts current
+   submitted projections, working copies, private drafts, and immutable submission versions by
+   answer-schema version. Use it after retention purges and before a form-version release to identify
+   upgrade code eligible for immediate removal; never let the database mutate or delete deployed
+   source code. Surface a persistent, low-severity administrator banner when an old registered
+   version reaches zero live documents. The banner disappears after the upgrader is removed and the
+   release is deployed; it sends no email because cleanup is non-urgent developer maintenance.
+8. **Reconciliation and release** — prove that every retained record has the same committee-visible
+   factual content before and after migration, no legacy-shaped rows remain, selected and
+   unsuccessful records retain the correct access and retention behavior, and the full backend and
+   frontend checks pass before deployment.
+
+**Non-goals:** reviving spreadsheet import or synchronization; making archived applications
+editable; sending migration or access email; filling facts the old form never collected; changing
+opening outcomes or retention policy; preserving provider-specific headings in active product code;
+building a database-driven form builder; or supporting simultaneous editable openings pinned to
+different form versions. Executable schema migrations or upgrader code never live in database rows,
+and runtime maintenance never edits the source tree or removes compatibility code automatically.
+
+**Definition of done:** production contains no application or application-version answer document
+that requires the old Google Form question map; all answer documents carry an explicit schema
+version; all committee, applicant, AI, and tooling consumers use the centralized version-aware read
+path; the old compatibility code is deleted; and aggregate migration reconciliation is exact. A
+schema-guard regression changes a persisted answer field without changing the version and proves the
+fingerprint test fails with an actionable instruction to increment the version and add the sequential
+upgrader. Another regression scenario starts with a prior-version application, adds a required
+question in the next version, opens a new cycle, and proves that the applicant sees their compatible
+prior answers plus a
+blank new field, cannot submit until completing it, and then creates a new immutable submission
+without changing the earlier version. A separate age regression starts with historical ages and no
+birth dates, proves that the archived decision retains those submission-dated ages, then proves that
+a later working copy shows blank required birth-date fields and cannot reach eligibility screening
+until real dates are supplied. The version inventory reports no applicant data, detects when a
+version has no live documents, and makes that zero count the code-removal gate. A recovery drill or
+runbook proves how to restore a removed upgrader from Git before restoring a backup that contains its
+schema version. The production backup and rollback procedure is verified before the legacy
+conversion runs.
+
 ### Reporting (M10 shipped) — ✅ closed, demand-driven from here
 
 The report is the browser print of the ranked view. Three speculative refinements were considered and **deliberately not built** (Jeff, 2026-07-26): near-misses / filtered-out counts / filtered-out details in the print (today it's the ranked eligible pool only); report-specific applicant personal/contact-detail handling for MOMI reports; and an explicit recommendation + `why not selected` surface beyond the per-candidate rationale lines. Rationale: building report features nobody has asked for is speculative scope. The committee now has the app and an in-app **feedback mechanism** — real requests, not guesses, will drive any future reporting work.
