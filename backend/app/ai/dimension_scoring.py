@@ -30,6 +30,7 @@ from app.ai.analysis import (
     derive_prompt_version,
     exception_type_name,
     log,
+    retry_per_application_timeout,
     run_in_pool,
     store_result,
 )
@@ -324,12 +325,15 @@ def _score_all_dimensions(
     last_model_id = model_id
     remaining = to_score
     for attempt in range(MAX_SCORING_RETRIES + 1):  # 1 initial + N retries
-        result = provider.structured_output(
-            model_id=model_id,
-            schema=DimensionScoringReport,
-            prompt=_build_prompt(applicant_block, remaining),
-            system_prompt=SYSTEM_PROMPT,
-            reasoning_effort=reasoning_effort,
+        result = retry_per_application_timeout(
+            lambda: provider.structured_output(
+                model_id=model_id,
+                schema=DimensionScoringReport,
+                prompt=_build_prompt(applicant_block, remaining),
+                system_prompt=SYSTEM_PROMPT,
+                reasoning_effort=reasoning_effort,
+            ),
+            operation="Dimension scoring",
         )
         input_tokens += result.usage.input_tokens
         output_tokens += result.usage.output_tokens

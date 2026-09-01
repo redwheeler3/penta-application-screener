@@ -44,6 +44,7 @@ class StrandsProvider:
     """
 
     DEFAULT_FIRST_EVENT_TIMEOUT = 90
+    DEFAULT_EVENT_IDLE_TIMEOUT = 90
 
     def __init__(
         self,
@@ -55,6 +56,7 @@ class StrandsProvider:
         openai_reasoning_efforts: dict[str, ReasoningEffort] | None = None,
         direct_max_retries: int = 5,
         first_event_timeout: float = DEFAULT_FIRST_EVENT_TIMEOUT,
+        event_idle_timeout: float = DEFAULT_EVENT_IDLE_TIMEOUT,
     ) -> None:
         self._region = region
         self._openai_api_key = openai_api_key
@@ -63,6 +65,7 @@ class StrandsProvider:
         self._openai_reasoning_efforts = openai_reasoning_efforts or {}
         self._direct_max_retries = direct_max_retries
         self._first_event_timeout = first_event_timeout
+        self._event_idle_timeout = event_idle_timeout
         # Size the pool to the worker count so threads don't queue on sockets.
         self._max_pool_connections = max_pool_connections
         # A timeout or reasoning change needs a distinct configured model client.
@@ -240,7 +243,19 @@ class StrandsProvider:
                 except StopAsyncIteration:
                     return None
                 consume(first_event)
-                async for event in events:
+                while True:
+                    try:
+                        event = await asyncio.wait_for(
+                            anext(events), timeout=self._event_idle_timeout
+                        )
+                    except TimeoutError as exc:
+                        await events.aclose()
+                        raise TimeoutError(
+                            f"{model_id} produced no response event for "
+                            f"{self._event_idle_timeout:g} seconds."
+                        ) from exc
+                    except StopAsyncIteration:
+                        break
                     consume(event)
                 return final
             finally:

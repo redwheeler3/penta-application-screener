@@ -9,6 +9,7 @@ from app.ai.analysis import (
     derive_prompt_version,
     enforce_cap,
     estimate_cost,
+    retry_per_application_timeout,
     store_result,
 )
 from app.ai.mock_provider import MockProvider
@@ -377,6 +378,33 @@ def test_enforce_cap_raises_when_over() -> None:
 
 def test_enforce_cap_passes_when_under() -> None:
     enforce_cap({"estimated_usd": 0.04}, cap_usd=5.0)  # no raise
+
+
+def test_per_application_timeout_retries_once() -> None:
+    calls = 0
+
+    def operation() -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise TimeoutError("stalled")
+        return "complete"
+
+    assert retry_per_application_timeout(operation, operation="Scoring") == "complete"
+    assert calls == 2
+
+
+def test_per_application_second_timeout_fails() -> None:
+    calls = 0
+
+    def operation() -> None:
+        nonlocal calls
+        calls += 1
+        raise TimeoutError("stalled")
+
+    with pytest.raises(TimeoutError, match="stalled"):
+        retry_per_application_timeout(operation, operation="Scoring")
+    assert calls == 2
 
 
 def test_default_spending_cap_is_two_dollars() -> None:

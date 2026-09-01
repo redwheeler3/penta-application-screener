@@ -167,6 +167,37 @@ def test_structured_output_fails_when_provider_emits_no_first_event() -> None:
         )
 
 
+def test_structured_output_fails_when_provider_stops_emitting_events() -> None:
+    provider = StrandsProvider(
+        region="us-east-1",
+        openai_reasoning_effort="low",
+        first_event_timeout=1,
+        event_idle_timeout=0.01,
+    )
+    agent = MagicMock(messages=[])
+
+    async def stream_async(*_args: object, **_kwargs: object):
+        yield {"data": "Started"}
+        await asyncio.sleep(1)
+        yield {"data": "too late"}
+
+    agent.stream_async = stream_async
+    with (
+        patch.object(provider, "_model_for", return_value=MagicMock()),
+        patch("strands.Agent", return_value=agent),
+        pytest.raises(
+            TimeoutError,
+            match=r"openai\.gpt-5\.6-luna produced no response event for 0\.01 seconds",
+        ),
+    ):
+        provider.structured_output(
+            model_id="openai.gpt-5.6-luna",
+            schema=dict,
+            prompt="Synthetic prompt",
+            reasoning_effort="low",
+        )
+
+
 @pytest.mark.parametrize("model_id", ["gpt-5.6-luna", "claude-sonnet-4-6"])
 def test_direct_provider_requires_its_api_key(model_id: str) -> None:
     provider = StrandsProvider(region="us-east-1", openai_reasoning_effort="low")

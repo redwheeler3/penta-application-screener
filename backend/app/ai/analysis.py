@@ -374,6 +374,28 @@ def run_in_pool(
                 yield item, None, exc
 
 
+PER_APPLICATION_TIMEOUT_RETRIES = 1
+
+
+def retry_per_application_timeout(
+    call: Callable[[], R], *, operation: str
+) -> R:
+    """Retry one timed-out per-applicant model call once.
+
+    Pool-level synthesis calls are deliberately excluded: silently repeating those can
+    duplicate substantial spend. Screen and scoring calls are small, isolated units, and
+    retrying only the missing applicant lets the rest of the batch stay cached.
+    """
+    for attempt in range(PER_APPLICATION_TIMEOUT_RETRIES + 1):
+        try:
+            return call()
+        except TimeoutError:
+            if attempt == PER_APPLICATION_TIMEOUT_RETRIES:
+                raise
+            log.warning("%s timed out; retrying once", operation)
+    raise AssertionError("unreachable")
+
+
 def screen_applications(
     db: Session,
     provider: AIProvider,
@@ -424,12 +446,15 @@ def screen_applications(
 
     def call_model(item: tuple[Application, str]) -> AIResult:
         # Pure: no session, no ORM — safe to run in a worker thread.
-        return provider.structured_output(
-            model_id=model_id,
-            schema=schema,
-            prompt=item[1],
-            system_prompt=system_prompt,
-            reasoning_effort=reasoning_effort,
+        return retry_per_application_timeout(
+            lambda: provider.structured_output(
+                model_id=model_id,
+                schema=schema,
+                prompt=item[1],
+                system_prompt=system_prompt,
+                reasoning_effort=reasoning_effort,
+            ),
+            operation=f"AI pass {kind!r}",
         )
 
     for (application, _prompt), result, error in run_in_pool(
