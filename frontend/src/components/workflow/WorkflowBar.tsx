@@ -521,13 +521,11 @@ export function WorkflowBar(props: {
               ]}
             </div>
           ) : null}
-          {/* The model's live reasoning box. It fills during the opaque criteria
-              calls (discovery + match) and the consolidation call so those waits
-              read as active work, not a hang. Once populated it PERSISTS through
-              scoring — scoring adds nothing to it, but vanishing the box mid-run
-              looked like the reasoning had been lost. The component self-hides
-              until the first delta, so it's absent only before criteria streams. */}
-          <CriteriaThinking text={props.criteriaThinking} />
+          {/* Only the opaque pool-level calls stream reasoning. Per-candidate scoring
+              has rationale/evidence in its structured result but no live narrative. */}
+          {!rankProgress || rankProgress.phase !== "scores" ? (
+            <CriteriaThinking text={props.criteriaThinking} />
+          ) : null}
         </div>
       ) : null}
     </>
