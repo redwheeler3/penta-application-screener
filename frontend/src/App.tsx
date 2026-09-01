@@ -183,7 +183,12 @@ export function App(props: { authRedirect: AuthRedirect }) {
     setSelectedApp(null);
     resetEstimates();
     void loadInitialDashboard();
-    void refreshRankingRun();
+    void (async () => {
+      const run = await refreshRankingRun();
+      if (activeTab !== "ranking") return;
+      if (run) await loadRanking();
+      else navigateToView("applications");
+    })();
     // Opening changes intentionally reset every opening-scoped member surface.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, selectedOpeningId]);

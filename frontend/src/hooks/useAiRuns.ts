@@ -31,7 +31,7 @@ type Notifications = {
 
 type RankingCoordinator = {
   currentRun: CurrentRunResponse | null;
-  refreshCurrentRun: () => Promise<void>;
+  refreshCurrentRun: () => Promise<unknown>;
   load: () => Promise<boolean>;
   setDisplayedProposals: (proposals: string[]) => void;
 };

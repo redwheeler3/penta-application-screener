@@ -16,7 +16,7 @@ export interface RankingState {
   tiers: Tier[] | null;
   /** Re-fetch the current run's dimensions. Returns the promise so callers can await
    * it before rendering anything that resolves dimension keys to names. */
-  refreshRankingRun: () => Promise<void>;
+  refreshRankingRun: () => Promise<CurrentRunResponse | null>;
   /** Fetch the ranked shortlist + tier layout (pure math, no cost). Returns whether it
    * loaded; callers may switch to the Ranking tab immediately and render this hook's load
    * state while the initial response is in flight. */
@@ -116,12 +116,18 @@ export function useRanking(
   function refreshRankingRun() {
     if (openingId === null) {
       setRankingRun(null);
-      return Promise.resolve();
+      return Promise.resolve(null);
     }
     return api
       .fetchRankingCurrent(openingId)
-      .then(setRankingRun)
-      .catch(() => setRankingRun(null));
+      .then((run) => {
+        setRankingRun(run);
+        return run;
+      })
+      .catch(() => {
+        setRankingRun(null);
+        return null;
+      });
   }
 
   async function loadRanking(): Promise<boolean> {

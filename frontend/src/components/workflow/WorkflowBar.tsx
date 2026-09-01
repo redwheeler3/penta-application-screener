@@ -19,7 +19,7 @@ import type {
 const CRITERIA_STAGE_LABELS: Record<CriteriaStage, string> = {
   discovering: "Running parallel discovery passes…",
   settling: "Settling into one set of criteria…",
-  matching: "Matching criteria to the prior run…",
+  matching: "Matching criteria to past analyses…",
 };
 
 // The green criteria-stage label. Discovering names its fan-out width K (carried on the
@@ -38,7 +38,7 @@ function criteriaStageLabel(stage: CriteriaStage, k: number): string {
 const STAGE_CAPTIONS: Record<CriteriaStage | "scoring" | "consolidate", string> = {
   discovering: "Reading the whole pool and reasoning about what distinguishes it — this can take up to 5 minutes.",
   settling: "Distilling the parallel discoveries into one non-overlapping set of criteria — this can take up to 5 minutes.",
-  matching: "Reusing tier placements and cached scores by matching each criterion to the prior run.",
+  matching: "Reusing cached scores by matching each criterion to ones found in past analyses.",
   scoring: "Scoring applicants against the current criteria.",
   consolidate: "Checking the scored criteria for duplicates and merging any that measure the same thing.",
 };
