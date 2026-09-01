@@ -264,6 +264,10 @@
   letter-spacing: 0.03em;
 }
 
+.app-table th.decided-by-col {
+  white-space: nowrap;
+}
+
 .app-table td {
   padding: 0.6rem 0.75rem;
   border-bottom: 1px solid var(--line);

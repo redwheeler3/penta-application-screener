@@ -161,7 +161,7 @@ export function ApplicationsList(props: {
                   </button>
                 </th>
               ))}
-              <th>Decided by</th>
+              <th className="decided-by-col">Decided by</th>
               <th>Reason</th>
             </tr>
           </thead>
