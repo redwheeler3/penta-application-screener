@@ -121,7 +121,9 @@ export function CostPanel(): ReactNode {
 
       <div className="cost-section">
         <div className="cost-block-head">
-          <span className="observability-label">Cumulative spend</span>
+          <span className="observability-label">
+            Cumulative spend <span className="cost-scope">· All openings</span>
+          </span>
           <span className="cost-block-total">{`$${cost.totalCostUsd.toFixed(2)}`} spent</span>
         </div>
         <table className="cost-table">

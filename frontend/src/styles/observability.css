@@ -162,6 +162,13 @@
   color: var(--muted);
 }
 
+.cost-scope {
+  margin-left: 0.2rem;
+  font-weight: 550;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .observability-narrative {
   margin-top: 1rem;
 }

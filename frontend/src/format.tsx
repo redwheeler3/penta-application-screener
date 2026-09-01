@@ -8,7 +8,7 @@ export function openingLabel(opening: CommitteeOpening): string {
     day: "numeric",
     year: "numeric",
   });
-  return `${opening.unitSizeBedrooms}-bedroom · ${moveIn}`;
+  return `${opening.unitSizeBedrooms}BR · ${moveIn}`;
 }
 
 export function fieldLabel(key: string): string {

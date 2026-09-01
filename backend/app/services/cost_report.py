@@ -59,7 +59,7 @@ def opening_label(run: RunCostLedger) -> str | None:
     if run.opening is None:
         return None
     move_in = run.opening.move_in_date.strftime("%b %d, %Y").replace(" 0", " ")
-    return f"{run.opening.unit_size_bedrooms}BR, move-in {move_in}"
+    return f"{run.opening.unit_size_bedrooms}BR · {move_in}"
 
 
 # --- Recording (both Screen and Rank write here) ----------------------------------
