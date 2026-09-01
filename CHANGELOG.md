@@ -6,6 +6,34 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/). 
 
 ---
 
+## Milestone 24 — Opening-Specific Committee Workflow
+
+Made one selected opening the complete committee workspace. Eligibility defaults, member rules and
+decisions, Shared shortlist membership, analyses, tier layouts, AI pools, currentness, and cost
+attribution are opening-specific. Private favourites and notes remain application-wide; canonical
+dimension history and content-addressed AI results remain shared so genuinely equivalent work can
+still be reused. Archived openings remain available while a retained non-selected applicant keeps
+them relevant, and selected households remain viewable only in the opening where they were selected
+without entering the AI pool.
+
+The production migration preserved the sole opening's two analyses, 11 member rankings, and 46 cost
+runs while assigning every row to its opening and creating the opening's committee defaults. Fly
+Machine version 78 deployed successfully on September 1, 2026, with both applicant and committee
+health checks passing and the configured Bedrock Haiku/Sonnet routes unchanged.
+
+A real-model local run over a four-household synthetic 1BR/no-children pool completed the full
+Screen and Rank workflow. Five discovery branches settled into 13 dimensions without carrying over
+a children-fit differentiator from the earlier 2BR pool; six genuinely matching dimensions reused
+canonical history. The run cost $0.509249 against a $0.6536 estimate, and a follow-up score-current
+pass reused 48 scores while computing four. Bedrock Terra stalls were isolated from the application;
+silent streams now time out, timed-out per-applicant work retries once, and run leases always release.
+The 665-test backend suite, frontend production build, lint checks, migration reconciliation, and
+desktop/mobile browser verification passed.
+
+Key commits: `3da249c`, `81bcf08`, `8d9c6e6`, `9bc56eb`, `822d574`, `c92d0ac`.
+
+---
+
 ## Milestone 23 — Applicant Google Sign-In
 
 Added optional Google-first applicant access while retaining email links and guest applications.

@@ -55,13 +55,15 @@ An `Application` has two meaningful representations:
 
 Saving a draft changes only the working copy. Submitting validates the answers, publishes them
 onto the committee-visible columns, records a version, and updates the selected
-`ApplicationParticipation` rows. Committee queries use `committee_applications`, so private
-drafts cannot accidentally enter screening.
+`ApplicationParticipation` rows. Committee pool queries require an opening and read only its
+submitted participants, so private drafts cannot accidentally enter screening.
 
 Openings are independent records with open, closed, and archived phases derived from their three
 dates. Applicants can join open openings, withdraw from open or closed openings, and cannot
-change archived participation. The committee can filter the application list and ranking by
-current openings; archived openings remain available only in administration and retained history.
+change archived participation. The committee selects one opening as its complete workspace;
+archived openings remain selectable while they retain a non-selected applicant. A selected
+household remains visible in the opening where it was selected, but neither enters its AI pool nor
+keeps that opening in the selector by itself.
 
 Submitted applications flow directly into the database and become available to the committee.
 The committee client refreshes its lightweight application and workflow reads on focus, on
@@ -123,10 +125,12 @@ The visible workflow has two paid steps:
 2. **Rank** discovers criteria, decomposes them, matches prior identities, scores applicants, and
    consolidates duplicate dimensions.
 
-`backend/app/api/dashboard.py` reports whether submitted applications exist and whether each AI
-stage is current. Coverage is content-addressed: an applicant edit changes its content hash and
-makes only affected results stale. The opening filter changes the committee view, not the shared
-analysis pool.
+`backend/app/api/dashboard.py` reports whether the selected opening has submitted applications and
+whether each AI stage is current for that opening. Coverage is content-addressed: an applicant edit
+changes its content hash and makes only affected results stale. Rules, eligibility decisions,
+Shared shortlist membership, analyses, tiers, workflow state, and AI cost attribution all use the
+same selected opening. Private favourites and notes remain application-wide, while canonical
+dimension history and matching caches remain shared so equivalent work can be reused.
 
 The frontend holds the few-hundred-row committee list in memory and derives search, sorting,
 facets, favourites, and opening filters locally. Server reads remain the source of truth after
@@ -193,8 +197,10 @@ The central tables are:
   configuration, participation, and outcomes;
 - `browser_sessions` and token-credential tables: revocable authentication;
 - `application_ai_results`: cached per-application passes;
-- `analyses`, `analysis_audits`, dimension definitions, and scores: shared Rank state;
-- member eligibility overrides, notes, stars, rules, allowlist, feedback, and settings.
+- `analyses`, `analysis_audits`, dimension definitions, and scores: opening-specific Rank runs over
+  shared canonical dimension history and content-addressed scores;
+- opening committee defaults, per-opening member rules and eligibility overrides, opening-specific
+  Shared shortlist membership, application-wide notes and stars, allowlist, feedback, and settings.
 
 SQLAlchemy models live in `backend/app/db/models.py`. Alembic migrations are the only supported
 way to change an existing database. Additive migrations apply in place; never delete the local

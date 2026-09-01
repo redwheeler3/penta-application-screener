@@ -8,9 +8,9 @@ Co-op membership committee uses `screener.pentacoop.com`; applicants use
 
 Applicants can begin without an account, save privately through an emailed access link, submit to
 one or more current openings, and return later to update or reuse their application. The committee
-manages openings and outcomes in the same database, while the screening workflow applies
-deterministic eligibility filters, runs cached AI passes over the submitted pool, and produces a
-committee-weighted shortlist with every AI-influenced number traceable to its evidence.
+manages openings and outcomes in the same database, while each selected opening provides an
+independent eligibility, shortlist, screening, and ranking workspace. Cached AI results are reused
+across openings only when the application content and canonical criterion identity genuinely match.
 
 It is both a live operational application and a portfolio project exploring the craft of AI product
 design: human-in-the-loop review, cost-aware model use, and the judgment of which decisions to keep
@@ -65,18 +65,20 @@ email boundary, and applicant record.
 
 ### Screener Service
 
-- Submitted applications appear automatically. Only participation in current, non-archived
-  openings enters committee and AI scope.
+- Submitted applications appear automatically in a single selected opening. Archived openings
+  remain available while retained non-selected applicants are attached; selected households remain
+  viewable in their selected opening but stay outside the AI pool.
 - Committee sign-in by Google or emailed magic link, both issuing the same revocable server-side
   session. Google login is identity-only; access and roles come from the application allowlist.
-- Deterministic hard filters for clear eligibility issues, computed from the latest submitted fields.
+- Opening-specific committee defaults, member rules, manual decisions, and deterministic hard
+  filters computed from the latest submitted fields.
 - Application dashboard, searchable/sortable table, facets, pagination, and candidate detail pages.
 - The committee workflow is **Screen → Rank**; each paid step is gated behind a confirmation card
   with an up-front cost estimate.
 - **Screen:** AI integrity pass flagging suspicious, AI-boilerplate, or low-quality submissions and
   routing them into an explicit AI Flagged review bucket; a human can accept or override the result.
 - **Rank:** one orchestrated AI chain over eligible applicants — parallel pattern discovery → decomposition into one non-overlapping set → identity-match onto prior runs → per-dimension scoring → post-score duplicate consolidation — feeding a weighted ranked list with relative fit bands and per-driver rationale. (Detailed in *The AI Pipeline* below; the ranking math is in *The LLM extracts features; the math does the ranking* above.)
-- **Interactive tier-list weighting:** drag discovered criteria into Critical/Important/Minor/Ignore tiers to instantly re-sort. Re-ranking carries tier placements forward and reuses cached scores (see the caching design above).
+- **Interactive tier-list weighting:** drag discovered criteria into Critical/Important/Minor/Ignore tiers to instantly re-sort within that opening. Re-ranking carries tier placements forward and reuses matching cached scores (see the caching design above).
 - **Reports:** browser print-to-PDF of the ranked view and candidate detail pages, with an `@media print` stylesheet and a text importance-tiers summary.
 - Provider-agnostic AI interface with Strands routes for Bedrock, OpenAI, and Anthropic, plus a deterministic mock provider for tests.
 - Human status overrides with stale-finding indicators when machine findings change later.

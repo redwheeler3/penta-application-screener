@@ -490,8 +490,8 @@ removed. They do not show an applicant-removal link.
 - Multiple openings may be active at the same time. The applicant form shows every relevant
   opening's three dates, unit size, and housing charge. Opening selection is a multi-select that is
   always visible: exactly one open offering is selected by default, while multiple open offerings
-  start unselected and require at least one selection before submission. Committee views always
-  expose the applicant's selected openings and provide a matches-any multi-select filter.
+  start unselected and require at least one selection before submission. Committee views use one
+  selected opening as the complete eligibility, screening, and ranking workspace.
 - Before and through the application close date, an applicant may select or unselect an opening.
   After the close date and before the move-in date, an existing participant may unselect it to
   withdraw but nobody may newly select it. Because working selections remain private until Submit,
@@ -501,14 +501,15 @@ removed. They do not show an applicant-removal link.
   application record without returning archived-only applicants to ordinary committee workflows.
 - Before submission, the review page separately names every opening the applicant will remain
   enrolled in and every existing participation that the submission will withdraw.
-- Archived openings are history rather than current choices. They remain in the admin opening list
-  and retained administrative application details, but do not appear in the applicant selector or
-  review and are not offered in the screener's shared application/ranking filter.
-- Applications enter ordinary committee and AI workflows only while they participate in at least
-  one non-archived opening. Archived-only applications remain stored for their one-year retention
-  period but are available only through retained administrative history. Retention never enrolls
-  someone in a later opening. Opening-withdrawn, application-withdrawn, and selected applications are also
-  excluded from ordinary committee and AI workflows.
+- Archived openings are not offered in the applicant selector or review. They remain in the admin
+  opening list and are selectable by the committee while at least one retained non-selected
+  applicant remains attached. Their retained applications and existing Screen/Rank results stay
+  available; paid AI actions are disabled after the opening has a final outcome.
+- Applications enter an opening's ordinary committee and AI workflows only through retained,
+  non-withdrawn participation in that opening. A selected household stays committee-visible in the
+  opening where it was selected but is excluded from AI and never keeps an opening selectable by
+  itself. Retention never enrolls someone in a later opening. Opening-withdrawn and
+  application-withdrawn applications are excluded from ordinary committee and AI workflows.
 - Administrators may edit archived opening facts to correct the historical record. Changing a
   move-in date recalculates affected retention dates using the corrected value.
 - The server's Pacific calendar date determines which actions are allowed. Merely receiving an
@@ -1141,29 +1142,29 @@ It is acceptable to send full application context, including names/contact conte
 
 ## Multi-Member MOMI Workflow (Milestone 15)
 
-**M15 is an *isolation* feature, not a merge feature.** Each of the ~5 committee members screens independently — their own eligibility rules, eligibility overrides, dimension tiering, ranking, and notes — layered on a **shared, compute-once substrate**: the applicant pool, the AI-discovered dimension set, and the expensive per-(applicant × dimension) scores. Members bring their own lists to a meeting and debate live; the app does **not** merge, compare, or reconcile them. (This supersedes the earlier merged-shortlist design — there is no merge formula, no disagreement flag, no criteria-comparison surface, and no cross-member visibility inside the app.)
+**M15 is an *isolation* feature, not a merge feature.** Each of the ~5 committee members screens independently — their own eligibility rules, eligibility overrides, dimension tiering, ranking, and notes — layered on a **shared, compute-once substrate within the selected opening**: its applicant pool and AI-discovered dimension set, plus globally reusable per-(applicant × dimension) scores. Members bring their own lists to a meeting and debate live; the app does **not** merge, compare, or reconcile them. (This supersedes the earlier merged-shortlist design — there is no merge formula, no disagreement flag, no criteria-comparison surface, and no cross-member visibility inside the app.)
 
 **Shared / per-member boundary:**
 
 | State | Scope | Notes |
 |---|---|---|
-| Submitted applicant pool | shared | one source of truth |
-| Discovered dimension set | **shared union** | grown by any member's Rank, de-duped by the existing match pass + `dimension_aliases` |
-| Per-(app, dim) AI scores | **shared** | content-addressed cache key has no member id — sharing is automatic |
-| Cost ledger / traces / evals | shared | + a "triggered-by member" stamp per run; Observability stays committee-wide |
+| Submitted applicant pool | per-opening, shared by members | one source of truth for the selected opening |
+| Discovered dimension set | **per-opening, shared by members** | rebuilt from that opening's pool; matched through global canonical history + `dimension_aliases` |
+| Per-(app, dim) AI scores | **global cache** | content-addressed cache key has no member or opening id — sharing is automatic when inputs match |
+| Cost ledger / traces / evals | committee-wide | run costs carry opening attribution; aggregate Observability crosses openings |
 | Eligibility **rules** (income/age/children/pet thresholds, `disabled_checks`) | **per-opening, per-member** | each opening owns a committee default; a member's row is copy-on-write for that opening |
-| Eligibility **overrides** (per applicant) | **per-member** | |
-| Tier placement + ranking + new/revived/requested badges | **per-member** | weights stay **derived** from tiers, so per-member re-weighting is free math |
-| Notes | per-member | already are, today |
+| Eligibility **overrides** (per applicant) | **per-opening, per-member** | |
+| Tier placement + ranking + new/revived/requested badges | **per-opening, per-member** | weights stay **derived** from tiers, so per-member re-weighting is free math |
+| Notes | application-wide, per-member | personal context follows the applicant across openings |
 | AI model/cap settings | shared | infra config, not judgment — split out of the eligibility-rules blob |
 
-**Union eligible pool.** An applicant is **globally eligible** if they pass *any* member's effective screen (that member's rules *or* an explicit override) — a derived predicate over the per-member views, not new stored state. Discovery and scoring operate on this union floor; **globally ineligible** applicants (no member passes them) are never scored — preserving "don't score applicants who won't clear the screen." A member's ranked list is the shared analysis **filtered to their eligible view and weighted by their tiers** — pure math, instant, free.
+**Union eligible pool.** Within the selected opening, an applicant is in the **committee-eligible union** if they pass *any* member's effective screen (that member's rules *or* an explicit override) — a derived predicate over the per-member views, not new stored state. Discovery and scoring operate on this union floor; applicants whom no member passes are never scored — preserving "don't score applicants who won't clear the screen." A member's ranked list is the opening's shared analysis **filtered to their eligible view and weighted by their tiers** — pure math, instant, free.
 
-**How cost stays low (the payoff).** The score cache keys on `(raw_row_hash, dimension_key, model_identity, reasoning, prompt_version)` with no member id or provider route, so sharing rides on *applicant identity*, not pool identity. An applicant scored once (because any member ranked them eligible) is free for every other member who later includes them, and the same pinned model can reuse that work after moving between Bedrock and its direct API. **Staleness is per-member**, and reduces to a cache-gap check: a member sees "re-rank needed" only when their eligible view references an applicant not yet in the shared analysis. Member A marking applicant X eligible ambers only A's badge; once A runs it, X grounds discovery + gets scored, and B — including X later — rides the cache with no new spend. The only real AI cost is an applicant entering the union for the first time (or a rank-chain prompt, model-identity, or reasoning change). A new shared dimension surfaced by one member's Rank lands on every board at **weight 0** (inert until that member tiers it), so it costs others nothing until they opt in. **Screening staleness works the same way per-member:** a member's eligibility-rule values fold into their screening prompt version (as the pet policy already does — see the versioning rule), so changing rules flips that member's screening cache while others' stays valid; members whose rule values coincide share the screening cache automatically. Staleness is detectable the moment an applicant enters a member's view — the amber signals uncached work waiting, before any run.
+**How cost stays low (the payoff).** The score cache keys on `(raw_row_hash, dimension_key, model_identity, reasoning, prompt_version)` with no member id, opening id, or provider route, so sharing rides on *applicant and criterion identity*, not pool identity. An applicant scored once is free for another member or opening when matching inputs recur, and the same pinned model can reuse that work after moving between Bedrock and its direct API. **Staleness is per-opening and per-member**, and reduces to a cache-gap check: a member sees "re-rank needed" only when their eligible view references an applicant not yet in that opening's analysis. Member A marking applicant X eligible ambers only A's badge in that opening; once A runs it, X grounds discovery + gets scored, and B — including X later in the same opening — rides the cache with no new spend. Pool-specific discovery still runs for each opening. A new dimension surfaced by one member's Rank lands on every member's board for that opening at **weight 0** (inert until that member tiers it), so it costs others nothing until they opt in. **Screening staleness works the same way per-member:** a member's eligibility-rule values fold into their screening prompt version (as the pet policy already does — see the versioning rule), so changing rules flips that member's screening cache while others' stays valid; members or openings whose rule values coincide share the screening cache automatically. Staleness is detectable the moment an applicant enters a member's view — the amber signals uncached work waiting, before any run.
 
-**Dimension survival on re-rank:** the shared set keeps any dimension in **any** member's working tier; a dimension drops only when no member has it working-tiered.
+**Dimension survival on re-rank:** an opening's shared set keeps any dimension in **any** member's working tier for that opening; a dimension drops only when no member has it working-tiered there.
 
-**Committee-proposed seeds** feed the one shared discovery (the resulting axis is shared), but the "you requested this" badge shows only for the requesting member (`from_committee_request` provenance is already per-run).
+**Committee-proposed seeds** feed the selected opening's shared discovery (the resulting axis is shared within that opening), but the "you requested this" badge shows only for the requesting member (`from_committee_request` provenance is already per-run).
 
 **Out of scope (M15):** merged ranking, disagreement flags, criteria comparison, and visibility into
 another member's private ranking or favourites. The later Shared shortlist is a single explicit
@@ -1555,7 +1556,7 @@ closed-cycle refusal without creating a record. Committee Google sign-in remaine
 existing-application branch was then verified against submitted synthetic production application
 252: the matching Google identity linked successfully and opened the application.
 
-### Opening-Specific Committee Workflow (M24) — implementation complete; Rank validation pending
+### Opening-Specific Committee Workflow (M24) — ✅ complete
 
 **Goal:** make one selected opening the complete context for committee review. Eligibility policy,
 member decisions, the shared shortlist, Screen, and Rank all belong to that opening's applicant pool
@@ -1706,18 +1707,23 @@ no-children 1-bedroom pool does not retain a children differentiator solely beca
 2-bedroom analysis used one—and must report actual cache reuse and spend rather than assuming zero
 marginal cost.
 
-**Real-model validation status (2026-08-31):** Screen completed normally for the prepared four-household
-synthetic 1BR/no-children pool. Two Rank attempts (one direct pipeline rehearsal, one through the UI)
-stalled in the five-way parallel discovery phase before the first reasoning delta; the UI attempt was
-disconnected before Analysis creation and released its run lease on the next heartbeat. Recent successful
-Terra discovery phases in the same local history completed in 33–41 seconds, so the 12+ minute silence was
-treated as an abnormal provider run rather than accepted evidence. Isolation confirmed an external Bedrock
-Terra failure: a tiny Terra Mantle request and raw HTTP requests in both US regions timed out before response
-headers, while the identical full discovery payload completed on Bedrock Luna in 12.67 seconds and Bedrock
-Sonnet in 36.65 seconds, and direct Terra completed a tiny probe in 5.88 seconds. The original discovery
-prompt was restored. Repeat the 1BR-vs-2BR discovery and cache-reuse/cost inspection after Bedrock Terra
-recovers before marking M24 validation closed; do not infer judgment quality from the green deterministic/mock
-suite. The provider adapter now fails clearly if any model emits no first event within 90 seconds.
+**Validation and production closeout (2026-09-01):** the prepared four-household synthetic
+1BR/no-children pool completed Screen and the full Rank chain on Bedrock Haiku/Sonnet. Five discovery
+branches proposed 8, 10, 10, 13, and 10 dimensions; decomposition and consolidation settled on 13.
+The only dimension mentioning children checked the completeness and consistency of structured household
+facts rather than treating children as a fit differentiator. Six dimensions matched canonical history.
+The run cost $0.509249 against a $0.6536 estimate; a follow-up score-current pass reused 48 scores and
+computed four, costing $0.016567 and avoiding an estimated $0.041136 of work. The original discovery
+prompt remained unchanged.
+
+The production migration assigned the sole existing opening to all two analyses, 11 member rankings,
+and 46 cost runs without changing their counts or the configured Bedrock Haiku/Sonnet routes. It also
+created the opening's default rules and left no unscoped member rules, member eligibility rows, analyses,
+or cost runs. Both public services passed health checks after Fly Machine version 78 deployed, and the
+backend's 665 tests, frontend production build, and lint checks were green. Provider isolation separately
+showed Bedrock Terra stalling before response headers while the same discovery input completed on Luna and
+Sonnet; the adapter now times out silent streams, retries timed-out per-applicant work once, and always
+releases the run lease on failure.
 
 **Non-goals:** a combined multi-opening ranking, merged committee ranking, cross-opening shortlist,
 automatic transfer of an override or outcome between openings, reopening selected applicants,
@@ -1736,7 +1742,7 @@ Two things were intentionally **not** built: per-*requester* proposal attributio
 
 **How M15 resolved the single-tenant assumptions** (the load-bearing global singletons, now discharged):
 
-1. **"Current run" was global-latest-wins** — the old `get_current_run` was `SELECT … ORDER BY id DESC LIMIT 1`, so one member's Rank silently became everyone's. **Resolved:** split into a shared `Analysis` (the AI output, one current, via `get_current_analysis()`) + per-member `MemberRanking` (the view).
+1. **"Current run" was global-latest-wins** — the old `get_current_run` was `SELECT … ORDER BY id DESC LIMIT 1`, so one member's Rank silently became everyone's. **Resolved:** split into an opening-scoped `Analysis` (the AI output, one current per opening via `get_current_analysis(db, opening_id)`) + per-member `MemberRanking` (the view).
 2. **Settings was one global row** — `AdminSetting` keyed `"app_settings"`, last-write-wins. **Resolved:** eligibility rules became per-member (shared committee default + copy-on-write `member_rules`); infra config stays one shared row (last-write-wins is acceptable for ~5 trusted members — a concurrency guard is an M16 concern).
 3. **The spending cap is per-request, read-then-act** — `enforce_cap` checks each run's own projection, not a shared budget. **M15 kept the per-run cap**; a true atomic shared-budget ceiling is M16 concurrency work (below). At ~5 members the caching (only first-time-eligible applicants cost anything) is the practical cost control.
 
