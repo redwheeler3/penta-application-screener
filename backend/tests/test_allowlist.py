@@ -156,6 +156,23 @@ def test_seed_initial_admins_is_idempotent_and_additive(monkeypatch) -> None:
     ).all()
     assert len(rows) == 1
     assert rows[0].role == UserRole.ADMIN
+    assert rows[0].is_seed_admin
+
+
+def test_seed_admin_cannot_be_demoted_or_removed_by_the_service(monkeypatch) -> None:
+    _, db = setup_app(role=None)
+    monkeypatch.setattr(allowlist, "_read_bootstrap_emails", lambda: ["boss@x.com"])
+    allowlist.seed_initial_admins(db)
+
+    with pytest.raises(allowlist.SeedAdminProtectedError):
+        allowlist.upsert_entry(db, email="boss@x.com", role=UserRole.MEMBER)
+    with pytest.raises(allowlist.SeedAdminProtectedError):
+        allowlist.remove_entry(db, "boss@x.com")
+
+    entry = allowlist.get_entry(db, "boss@x.com")
+    assert entry is not None
+    assert entry.role == UserRole.ADMIN
+    assert entry.is_seed_admin
 
 
 # --- Admin-only CRUD + lock-out guards ----------------------------------------
@@ -275,6 +292,35 @@ async def test_admin_cannot_demote_themself_when_another_admin_exists() -> None:
 
     assert demote.status_code == 422
     assert allowlist.get_entry(db, "me@x.com").role == UserRole.ADMIN
+
+
+@pytest.mark.anyio
+async def test_admin_cannot_demote_or_remove_a_seed_admin() -> None:
+    app, db = setup_app(role=UserRole.ADMIN)
+    allowlist.upsert_entry(db, email="me@x.com", role=UserRole.ADMIN)
+    allowlist.upsert_entry(
+        db,
+        email="founder@x.com",
+        role=UserRole.ADMIN,
+        is_seed_admin=True,
+    )
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/allowlist")
+        founder = next(
+            entry for entry in response.json()["entries"] if entry["email"] == "founder@x.com"
+        )
+        demote = await client.put(
+            "/allowlist", json={"email": "founder@x.com", "role": "member"}
+        )
+        remove = await client.delete("/allowlist/founder@x.com")
+
+    assert founder["isSeedAdmin"] is True
+    assert demote.status_code == 422
+    assert demote.json()["detail"] == "The permanent seed admin cannot be demoted."
+    assert remove.status_code == 422
+    assert remove.json()["detail"] == "The permanent seed admin cannot be removed."
+    assert allowlist.get_entry(db, "founder@x.com").role == UserRole.ADMIN
 
 
 def test_role_change_revokes_committee_sessions_and_unused_links() -> None:

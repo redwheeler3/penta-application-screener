@@ -11,6 +11,7 @@ from app.schemas.base import RequestModel, ResponseModel
 class AllowlistEntryOut(ResponseModel):
     email: str
     role: str
+    is_seed_admin: bool
     display_name: str | None = None
     first_active_at: datetime | None = None
     last_active_at: datetime | None = None

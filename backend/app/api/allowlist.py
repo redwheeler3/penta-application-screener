@@ -1,6 +1,6 @@
 """Admin-only management of the access allowlist (who may sign in, with what role).
 
-Every route is admin-gated. The last admin entry can neither be removed nor demoted to member.
+Every route is admin-gated. Seed admins and the last admin cannot be removed or demoted.
 """
 
 from datetime import UTC, datetime
@@ -50,6 +50,7 @@ def _response(db: Session) -> AllowlistResponse:
             AllowlistEntryOut(
                 email=entry.email,
                 role=entry.role.value,
+                is_seed_admin=entry.is_seed_admin,
                 display_name=user.display_name if user else None,
                 first_active_at=_as_utc(user.first_active_at) if user else None,
                 last_active_at=_as_utc(user.last_active_at) if user else None,
@@ -128,7 +129,13 @@ def upsert_allowlist_entry(
             "invalid_settings",
             detail="Cannot demote the last admin; promote another admin first.",
         )
-    allowlist.upsert_entry(db, email=target_email, role=body.role)
+    try:
+        allowlist.upsert_entry(db, email=target_email, role=body.role)
+    except allowlist.SeedAdminProtectedError as exc:
+        raise Problem(
+            "invalid_settings",
+            detail="The permanent seed admin cannot be demoted.",
+        ) from exc
     return _response(db)
 
 
@@ -150,5 +157,11 @@ def remove_allowlist_entry(
             "invalid_settings",
             detail="Cannot remove the last admin; add another admin first.",
         )
-    allowlist.remove_entry(db, email)
+    try:
+        allowlist.remove_entry(db, email)
+    except allowlist.SeedAdminProtectedError as exc:
+        raise Problem(
+            "invalid_settings",
+            detail="The permanent seed admin cannot be removed.",
+        ) from exc
     return _response(db)

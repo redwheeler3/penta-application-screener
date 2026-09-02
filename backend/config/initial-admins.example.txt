@@ -1,7 +1,7 @@
-# Bootstrap admins — seeded onto the access allowlist as admins at startup.
-# Copy this to initial-admins.txt (gitignored) and list the founding admin
+# Seed admins — persisted as permanent admins on the access allowlist at startup.
+# Copy this to initial-admins.txt (gitignored) and list each permanent admin
 # email(s), one per line. Blank lines and '#' comments are ignored.
 #
-# Bootstrap-only: after seeding, admins manage the live allowlist in-app; removing
-# an email here does NOT revoke access (do that in-app).
+# A seeded admin cannot be demoted or removed in-app. Removing an email from this
+# file does not remove its persisted protection.
 admin@example.com

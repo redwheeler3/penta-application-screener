@@ -145,8 +145,8 @@ class AccessAllowlistEntry(TimestampMixin, Base):
 
     Google and email-link sign-ins are admitted only when the verified email matches
     an entry here. The resulting ``User`` takes the entry's role, so this table also
-    owns role management. Initial admins are seeded from a config file at startup;
-    after that admins manage the list in-app.
+    owns role management. Seed admins are permanent administrator entries; other
+    entries are managed in-app.
     """
 
     __tablename__ = "access_allowlist"
@@ -157,6 +157,9 @@ class AccessAllowlistEntry(TimestampMixin, Base):
         Enum(UserRole, values_callable=enum_values),
         default=UserRole.MEMBER,
         nullable=False,
+    )
+    is_seed_admin: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
     )
 
 

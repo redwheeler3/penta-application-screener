@@ -37,9 +37,9 @@ class Settings(BaseSettings):
     magic_link_coalesce_seconds: int = 60
     session_idle_days: int = 7
     session_absolute_days: int = 30
-    # Bootstrap-only: emails seeded onto the access allowlist as admins at startup
-    # (one per line, '#' comments). Once seeded, admins manage the list in-app; this
-    # file does not revoke. Gitignored — real emails are deployment-specific.
+    # Emails persisted as permanent admins at startup (one per line, '#' comments).
+    # Removing an address from this file does not remove its persisted protection.
+    # Gitignored because real email addresses are deployment-specific.
     initial_admins_file: str = "config/initial-admins.txt"
     # Google is identity-only: committee members grant no application-data access.
     # Canonical userinfo.* URIs, not the short aliases: Google echoes

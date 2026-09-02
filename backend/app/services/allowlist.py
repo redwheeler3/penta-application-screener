@@ -2,8 +2,8 @@
 
 Google and email-link sign-ins both require a matching verified address. The
 resulting ``User`` takes the entry's role (see ``services/users``), so an ``admin``
-entry grants admin and a ``member`` entry grants member. Initial admins are seeded
-from a config file at startup; after that admins manage the list in-app.
+entry grants admin and a ``member`` entry grants member. Seed admins are persisted
+as permanent administrators and cannot be demoted or removed in-app.
 """
 
 from pathlib import Path
@@ -25,6 +25,10 @@ from app.services.passwordless_auth import (
 )
 
 
+class SeedAdminProtectedError(ValueError):
+    """Raised when code tries to demote or remove a permanent seed admin."""
+
+
 def get_entry(db: Session, email: str) -> AccessAllowlistEntry | None:
     return db.scalar(
         select(AccessAllowlistEntry).where(
@@ -39,16 +43,30 @@ def list_entries(db: Session) -> list[AccessAllowlistEntry]:
     )
 
 
-def upsert_entry(db: Session, *, email: str, role: UserRole) -> AccessAllowlistEntry:
+def upsert_entry(
+    db: Session,
+    *,
+    email: str,
+    role: UserRole,
+    is_seed_admin: bool = False,
+) -> AccessAllowlistEntry:
     """Add an allowed email or update its role. Idempotent on email."""
     email = normalize_email(email)
     entry = get_entry(db, email)
+    if entry is not None and entry.is_seed_admin and role != UserRole.ADMIN:
+        raise SeedAdminProtectedError
     role_changed = entry is not None and entry.role != role
     if entry is None:
-        entry = AccessAllowlistEntry(email=email, role=role)
+        entry = AccessAllowlistEntry(
+            email=email,
+            role=role,
+            is_seed_admin=is_seed_admin,
+        )
         db.add(entry)
     else:
         entry.role = role
+        if is_seed_admin:
+            entry.is_seed_admin = True
     user = db.scalar(select(User).where(User.email == email))
     if user is not None:
         if role_changed:
@@ -74,6 +92,8 @@ def remove_entry(db: Session, email: str) -> bool:
     entry = get_entry(db, email)
     if entry is None:
         return False
+    if entry.is_seed_admin:
+        raise SeedAdminProtectedError
     user = db.scalar(select(User).where(User.email == entry.email))
     if user is not None:
         user.is_active = False
@@ -107,9 +127,10 @@ def _read_bootstrap_emails() -> list[str]:
 
 
 def seed_initial_admins(db: Session) -> None:
-    """Ensure every email in the bootstrap file is an admin entry. Idempotent and
-    additive — it promotes a listed email to admin but never removes anyone, so it is
-    safe to run on every startup and survives a DB reset. Bootstrap-only: it does not
-    revoke (removing an email from the file has no effect once seeded)."""
+    """Persist every email in the seed file as a permanent admin entry.
+
+    Idempotent and additive: removing an email from the file does not remove its
+    protection after it has been seeded.
+    """
     for email in _read_bootstrap_emails():
-        upsert_entry(db, email=email, role=UserRole.ADMIN)
+        upsert_entry(db, email=email, role=UserRole.ADMIN, is_seed_admin=True)

@@ -23,6 +23,7 @@ export type CurrentUser = {
 export type AllowlistEntry = {
   email: string;
   role: "admin" | "member";
+  isSeedAdmin: boolean;
   displayName: string | null;
   firstActiveAt: string | null;
   lastActiveAt: string | null;

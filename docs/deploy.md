@@ -144,11 +144,13 @@ https://applications.pentacoop.com/applicant/auth/google/callback
 (matches `GOOGLE_REDIRECT_URI` and `GOOGLE_APPLICANT_REDIRECT_URI` in `fly.toml`). The server-side
 OIDC flow does not require an additional applicant JavaScript origin.
 
-### 7. Seed the first admin
+### 7. Seed permanent admins
 
-On every startup the app reads the bootstrap admin file (`initial_admins_file`, default
-`config/initial-admins.txt` — one email per line, `#` comments) and promotes each listed email
-to admin via `seed_initial_admins` (idempotent, additive: it never revokes). The file is
+On every startup the app reads the seed admin file (`initial_admins_file`, default
+`config/initial-admins.txt` — one email per line, `#` comments) and persists each listed email
+as a permanent admin via `seed_initial_admins` (idempotent and additive). A seed admin cannot
+be demoted or removed in-app, and removing the address from this file does not clear that
+persisted protection. The file is
 gitignored (real emails), so it isn't in the image — provide it once on the volume, then
 restart so the lifespan hook seeds it:
 ```
@@ -162,8 +164,8 @@ fly apps restart penta-application-screener      # startup seeds the admin
 > Put it under `data/` if you want it to survive a machine replacement, and point
 > `INITIAL_ADMINS_FILE` at it via `fly.toml [env]` — `config/` is on the image layer, so a
 > redeploy wipes a file written there, whereas `data/` is the volume. For a one-time seed the
-> above is fine (the admin entry itself lives in the DB on the volume, so it persists even
-> after the file is gone). After the first admin exists, manage the allowlist in-app.
+> above is fine: the admin entry and its permanent protection live in the database on the
+> volume after the file is gone. Manage non-seed allowlist entries in-app.
 
 ## Deploying
 

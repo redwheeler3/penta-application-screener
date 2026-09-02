@@ -97,7 +97,7 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
         <p className="panel-hint">
           Only these email addresses can sign in. An <strong>admin</strong> entry can manage this
           list; a <strong>member</strong> screens applicants. Changes take effect immediately. The
-          last admin can't be removed or demoted.
+          last admin can't be removed or demoted. Seed admins are permanent.
         </p>
       </div>
 
@@ -151,6 +151,13 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
                 entry.role === "admin" &&
                 entries.filter((e) => e.role === "admin").length === 1;
               const isCurrentUser = entry.email === props.currentUser.email;
+              const roleLockReason = entry.isSeedAdmin
+                ? "The permanent seed admin can't be demoted"
+                : isLastAdmin
+                  ? "The last admin can't be demoted"
+                  : isCurrentUser
+                    ? "You can't demote your own admin account"
+                    : "Change role";
               return (
                 <tr key={entry.email}>
                   <td>{entry.displayName ?? "—"}</td>
@@ -160,14 +167,10 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
                       className={`access-role-select access-role-select-${entry.role}`}
                       aria-label={`Role for ${entry.email}`}
                       title={
-                        isLastAdmin
-                          ? "The last admin can't be demoted"
-                          : isCurrentUser
-                            ? "You can't demote your own admin account"
-                            : "Change role"
+                        roleLockReason
                       }
                       value={entry.role}
-                      disabled={busy || isLastAdmin}
+                      disabled={busy || isLastAdmin || entry.isSeedAdmin}
                       onChange={(event) =>
                         changeRole(entry.email, event.target.value as "admin" | "member")
                       }
@@ -185,8 +188,14 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
                       type="button"
                       className="icon-button"
                       aria-label={`Remove ${entry.email}`}
-                      title={isLastAdmin ? "The last admin can't be removed" : "Remove"}
-                      disabled={busy || isLastAdmin}
+                      title={
+                        entry.isSeedAdmin
+                          ? "The permanent seed admin can't be removed"
+                          : isLastAdmin
+                            ? "The last admin can't be removed"
+                            : "Remove"
+                      }
+                      disabled={busy || isLastAdmin || entry.isSeedAdmin}
                       onClick={() => removeEntry(entry.email)}
                     >
                       <Trash2 size={16} />
