@@ -1,15 +1,19 @@
 # Case study: the scope you don't ask for — designing auth for the light verification path
 
+> **Historical implementation:** This case study covers the former Google Sheet intake flow.
+> The current product uses first-party application intake; Google is now an optional identity
+> provider only, with no access to Sheets, Drive, or the Picker API.
+
 *A permission you never request can't scare a user, can't fail a security review, and
 can't leak. Narrowing the app's Google scope from "read all your Sheets" to "the one
 file an admin picks" turned a months-long restricted-scope gauntlet into an automated
 branding check — and then two verification rejections taught me that a reviewer is just
 a crawler that doesn't run your JavaScript.*
 
-The screener signs committee members in with Google and reads applications from a Google
-Sheet. Going from "works on my laptop with my personal Google login" to "hosted, used by
-other people, and verified by Google" is where auth stops being a checkbox and becomes a
-design problem. The transferable part isn't the OAuth mechanics. It's four moves:
+At this stage, the screener signed committee members in with Google and read applications from a
+Google Sheet. Going from "works on my laptop with my personal Google login" to "hosted, used by
+other people, and verified by Google" is where auth stops being a checkbox and becomes a design
+problem. The transferable part isn't the OAuth mechanics. It's four moves:
 
 1. **Pick the scope that changes the *verification class*, not just the permission.**
    `drive.file` vs. `spreadsheets.readonly` isn't a small security nicety — it's the
@@ -150,7 +154,7 @@ wait for promises.** Any content a machine must read to approve you — policy, 
 ownership proof — belongs in server-delivered HTML, not behind a client-side router or a
 login.
 
-## What shipped
+## What shipped in this iteration
 
 Identity-only member login; an admin-only Google Picker flow (`drive.file` +
 `setAppId`) that designates a sheet-reader token used for every sync; the whole app on
