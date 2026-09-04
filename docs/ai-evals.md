@@ -431,13 +431,17 @@ Before treating judge agreement as a meaningful quality measure (cases now live 
 per-pass `<pass>_golden.json` files with exact input + label + rationale + provenance; the
 safe substrate for applicant-facing cases is the synthetic-source guard, below):
 
-1. Build a small balanced labelled set: clear merges, clear keeps, narrative/output
-   contradictions, and intentionally ambiguous cases. Seeded so far: clear KEEPs, one clear
-   MERGE, one contested case. Still owed: a narrative/output-contradiction case (the
-   decompose routing-drift signature — golden case #2).
+1. Grow the labelled set from observed behavior: clear merges, clear keeps, narrative/output
+   contradictions, and intentionally ambiguous cases. Add the decompose routing-drift case
+   only when the detector finds a genuine example; do not fabricate one to fill a category.
 2. Calibrate the judge on the clear cases first. Ambiguous cases remain review material,
    not pass/fail scoring.
-3. Add persistence and a trend view only after the labelled set is useful.
+3. Build a trend view from the persisted `EvalRun` history only after repeated runs create a
+   useful time series.
+
+Corpus growth is trigger-driven: a reviewed production failure, prompt regression, or unstable
+judgment becomes a labelled case when its input can be committed safely. Coverage counts alone do
+not justify invented examples.
 
 ## Applicant-facing evals — the synthetic-source guard
 
@@ -483,12 +487,12 @@ The eval harness is step-agnostic — each AI step is just its `given` shape + a
 
 | AI step | Grader | `metadata.expected` | Cases |
 | --- | --- | --- | --- |
-| Screening | per-category fires/absent check | `{fires, absent}` (over-reach guards) | 9 (6 fires, 3 over-reach) |
+| Screening | per-category fires/absent check | `{fires, absent}` (over-reach guards) | 19 |
 | Discovery | *(covered via decomposition — discovery output is its input)* | — | — |
-| Decomposition | exact-match; narrative-vs-routing drift via detector | `merge`/`keep` | 2 folds + drift aid |
-| Matching | exact-match | `matches`/`mismatches` | 3 (2 match, 1 constructed mismatch) |
+| Decomposition | exact-match; narrative-vs-routing drift via detector | `merge`/`keep` | 5 + drift aid |
+| Matching | exact-match | `matches`/`mismatches` | 5 |
 | Consolidation | exact-match | `merge`/`keep` | 5 |
-| Scoring | band-check (score in `[score_min, score_max]`) | `{score_min, score_max, confidence?}` | 5 |
+| Scoring | band-check (score in `[score_min, score_max]`) | `{score_min, score_max, confidence?}` | 6 |
 
 **Screening** reuses the applicant-facing substrate exactly (it also cites applicant
 text), so its cases go through the same synthetic-source guard, and
@@ -604,10 +608,11 @@ Accepted consequence (Jeff, explicit): a candidate who addresses almost nothing 
 neutral and thus ranks **above** one who is explicitly a poor fit — fair, because we have no
 evidence against the silent one. Kept the clean top-down fit formula (confidence
 surfaced-not-folded; confidence-weighting rejected as it would reward strong-but-narrow over
-broad-but-thorough). Two scoring golden cases guard the signed-scale absence rule: an empty
-citation, and evidence saying "not addressed", must each land in a neutral band straddling 0
-(a −1 fails it) — the exact pole-floor bug signature. A real new-behavior case is still to be
-harvested from a Rank under the new prompt, not fabricated (fidelity rule).
+broad-but-thorough). Three scoring golden cases guard the signed-scale absence rule: an empty
+citation, evidence saying "not addressed", and an exact synthetic Rank slice with missing
+employment dates must each land in a neutral band straddling 0 (a −1 fails it) — the exact
+pole-floor bug signature. The harvested case also checks that an otherwise weak application does
+not leak weakness across dimensions.
 
 ## Stability harness
 

@@ -1,12 +1,12 @@
 """Shared helpers for the golden-case harvest scripts (``harvest_scoring_cases``,
 ``harvest_screening_cases``).
 
-Harvesting a scoring/screening golden case means committing an applicant's real evidence
+Harvesting a scoring/screening golden case means committing an applicant's model input
 (essay text, flag quotes), which is only safe on a SYNTHETIC pool — so every harvest routes
 through ``require_synthetic_pool`` (fail-safe: refuses any run not explicitly stamped
 synthetic). These are OPERATOR tools: they PROPOSE unlabelled candidates in the current
 golden envelope (``{key, metadata:{expected…}, given}``) shaped as an EXACT slice of a real
-run's input; a human picks the instructive ones, fills the SET_ME label + note, drops the
+pass input; a human picks the instructive ones, fills the SET_ME label + note, drops the
 HARVEST_ key prefix, and commits them into ``<pass>_golden.json``. Capture never labels.
 
 Run by hand from ``backend/``: ``python -m scripts.harvest_scoring_cases`` /
@@ -33,7 +33,7 @@ def opaque_index(application_ids: list[int]) -> dict[int, int]:
     return {aid: i for i, aid in enumerate(sorted(set(application_ids)))}
 
 
-def open_synthetic_run():
+def open_synthetic_analysis():
     """Open a session + resolve the newest analysis, GATED on the synthetic-pool guard. Returns
     ``(db, analysis, source_label)``; the caller closes ``db``. Raises via ``require_synthetic_pool``
     if the pool isn't stamped synthetic — the fail-safe that keeps real applicant evidence

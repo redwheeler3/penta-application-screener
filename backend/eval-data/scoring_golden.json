@@ -151,6 +151,70 @@
           "low_end": "States no interest or ability in hands-on upkeep."
         }
       }
+    },
+    {
+      "key": "missing_employment_dates_score_neutral_from_rank",
+      "metadata": {
+        "note": "A deliberately weak application gives no employment start dates. Weaknesses on other axes must not become evidence of recent employment; missing tenure evidence is neutral.",
+        "pass": "scoring",
+        "expected": {
+          "score_min": -0.15,
+          "score_max": 0.15,
+          "confidence": "low"
+        },
+        "source": "synthetic application data, analysis 21, applicant idx 1; observed score 0.0"
+      },
+      "given": {
+        "applicant": {
+          "facts": {
+            "adult_count": 2,
+            "child_count": 0,
+            "applicant_age": 52,
+            "co_applicant_age": 52,
+            "child_details": [],
+            "household_income": 102,
+            "applicant_income": 100,
+            "co_applicant_income": 2,
+            "applicant_employment_start": null,
+            "co_applicant_employment_start": null,
+            "pets_text": "No."
+          },
+          "essays": [
+            {
+              "label": "About the household",
+              "question": "About the household",
+              "answer": "No."
+            },
+            {
+              "label": "Skills to contribute",
+              "question": "Skills to contribute",
+              "answer": "No."
+            },
+            {
+              "label": "Previous co-op experience",
+              "question": "Previous co-op experience",
+              "answer": "No."
+            },
+            {
+              "label": "Why a co-op",
+              "question": "Why a co-op",
+              "answer": "No."
+            },
+            {
+              "label": "Additional information",
+              "question": "Additional information",
+              "answer": "No."
+            }
+          ]
+        },
+        "dimension": {
+          "key": "employment_tenure_stability",
+          "name": "Employment Tenure Stability",
+          "definition": "The length of continuous employment for both adults in their current roles, jointly considered, as a proxy for income reliability and likelihood of sustained housing-charge payment capacity.",
+          "high_end": "Both adults have been continuously employed in their current roles for several years (five or more), suggesting stable, tested income streams with low near-term disruption risk.",
+          "low_end": "One or both adults started their current job very recently (within the past year or two), representing limited track record and higher uncertainty about income continuity."
+        }
+      }
     }
   ]
 }

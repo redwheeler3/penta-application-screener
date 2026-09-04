@@ -1234,11 +1234,12 @@ Implementation defaults:
 - Clean changes over backward compatibility for internal APIs, local schemas, fixtures, and UI shapes; backward compatibility is added only when real users or real applicant data require it.
 - Relational tables for workflow data, JSON columns for raw rows, flexible payloads, AI outputs, and debug traces; the relational model stays portable to Postgres.
 
-**Milestones 1–22 are complete** and proven end-to-end against real models (screen → discover fact-aware dimensions → score the pool → rank with tier-list weighting → print a committee-ready PDF), now with first-party application intake, vacancy notifications, and per-member independent screening on a shared compute-once substrate, **hosted live at [screener.pentacoop.com](https://screener.pentacoop.com)** for the real committee. Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md).
+**Milestones 1–24 are complete** and proven end-to-end against real models (screen → discover fact-aware dimensions → score the pool → rank with tier-list weighting → print a committee-ready PDF), now with first-party application intake, vacancy notifications, optional applicant Google sign-in, and opening-specific per-member screening on a shared compute-once substrate, **hosted live at [screener.pentacoop.com](https://screener.pentacoop.com)** for the real committee. Per-milestone detail and every resolved decision/reversal are in [CHANGELOG.md](CHANGELOG.md).
 
-## Milestones And Remaining Open Questions
+## Completed Milestones And Optional Future Work
 
-Delivered and planned milestones, including decisions that can wait until implementation.
+The committed product roadmap is complete. The sections below record delivered milestones and
+ideas that are explicitly optional, out of scope, or demand-driven rather than unfinished work.
 
 ### OpenAI-Versus-Anthropic Model Bake-Off (M20) — complete; production switch is operator-controlled
 
