@@ -371,7 +371,6 @@ export function IncomeSection(props: { draft: ApplicantDraft; update: (fn: Draft
           <strong>{income.toLocaleString("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 })}</strong>
         </div>
       </div>
-      <p className="field-help">If shortlisted, adult household members will be asked for proof of income and the management company will carry out a credit check.</p>
     </FormSection>
   );
 }
