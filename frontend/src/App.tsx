@@ -311,7 +311,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
         type="button"
         role="tab"
         aria-selected={active}
-        className={`tab-button${extraClass ? ` ${extraClass}` : ""}${active ? " active" : ""}`}
+        className={`tab-button${icon ? " tab-button-icon" : ""}${extraClass ? ` ${extraClass}` : ""}${active ? " active" : ""}`}
         onClick={() => navigateToView(tab)}
       >
         {icon}

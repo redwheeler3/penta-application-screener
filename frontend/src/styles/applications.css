@@ -75,12 +75,16 @@
   border-bottom-color: var(--surface);
 }
 
-/* Settings is config, not a third data view — push it to the right, set apart from
-   the data tabs, with the gear icon flagging its different nature. */
-.tab-button-settings {
+/* Keep every icon-and-label tab aligned as one unit instead of relying on inline
+   baseline alignment, which positions different SVG shapes inconsistently. */
+.tab-button-icon {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+}
+
+/* Push the settings tabs to the right, set apart from the data tabs. */
+.tab-button-settings {
   margin-left: auto;
 }
 
