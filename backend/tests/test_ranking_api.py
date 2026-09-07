@@ -406,7 +406,7 @@ async def test_provider_timeout_is_reported_and_releases_rank_lease() -> None:
     class TimeoutProvider:
         def structured_output(self, **_kwargs):
             raise TimeoutError(
-                "openai.gpt-5.6-terra produced no response event within 90 seconds."
+                "global.openai.gpt-5.6-terra produced no response event within 90 seconds."
             )
 
     app, db, _provider = setup_app(role=UserRole.MEMBER)

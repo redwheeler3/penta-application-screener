@@ -413,7 +413,7 @@ async def test_last_run_flags_and_separates_reasoning_changes() -> None:
 
     app, db, _p = setup_app()
     settings = AppSettings()
-    settings.ai.screening_model = "openai.gpt-5.6-luna"
+    settings.ai.screening_model = "global.openai.gpt-5.6-luna"
     settings.ai.screening_reasoning_effort = "medium"
     save_app_settings(db, settings)
     version = screening_prompt_version()

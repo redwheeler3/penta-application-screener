@@ -403,7 +403,7 @@ def test_rank_fingerprint_tracks_only_effective_reasoning() -> None:
     settings.ai.discovery_reasoning_effort = "medium"
     assert rank_inputs_fingerprint(db, current_opening_id(db), settings) == anthropic
 
-    settings.ai.discovery_model = "openai.gpt-5.6-terra"
+    settings.ai.discovery_model = "global.openai.gpt-5.6-terra"
     low = rank_inputs_fingerprint(db, current_opening_id(db), settings)
     settings.ai.discovery_reasoning_effort = "high"
     assert rank_inputs_fingerprint(db, current_opening_id(db), settings) != low

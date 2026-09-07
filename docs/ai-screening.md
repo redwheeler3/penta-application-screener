@@ -44,7 +44,7 @@ The AI code lives in `backend/app/ai/`:
 
 - `provider.py` — the provider-agnostic interface. The rest of the app depends on `AIProvider` (a Protocol), never on a vendor SDK directly. Defines `AIResult` (output + token usage + optional narrative) and `Usage`.
 - `model_catalog.py` — exact supported model routes and capabilities; the only provider-routing authority.
-- `strands_provider.py` — the real implementation, backed by Strands routes for Bedrock, OpenAI, and Anthropic.
+- `strands_provider.py` — the real implementation: Claude through Strands' Bedrock adapter, GPT through Strands' OpenAI adapter (Bedrock Runtime or direct OpenAI), and direct Anthropic.
 - `mock_provider.py` — a deterministic in-memory provider for tests and offline development. No AWS access.
 - `analysis.py` — the shared engine: cache key, cache read/write, cost estimate, spending-cap enforcement, and the concurrent `screen_applications` loop both passes run through. Provider-agnostic.
 - `screening.py` — the screening pass: prompt building, which applications to analyze, and status application via the shared engine.
@@ -127,7 +127,7 @@ An estimate is the product of three things, and it helps to keep them separate:
 estimated cost  =  price rate  ×  token count per call  ×  number of uncached applications
 ```
 
-- **The price rate** (USD per token) is *always* the hardcoded table in `pricing.py`, keyed by the exact current model ID with substring matching retained for historical rows. It is hardcoded because the AWS Price List API does not list the Claude 4.x models we use, so a live lookup would always fall back anyway. The Bedrock Claude entries are `global.` inference profiles and use their global rates; a geographic profile must get a separate, higher-priced entry before it can be offered. An *unknown* model ID falls back to the most expensive known rate (Opus-tier), so a missing table entry never silently under-estimates. This rate is never learned — it is what the selected route charges.
+- **The price rate** (USD per token) is *always* the hardcoded table in `pricing.py`, keyed by the exact current model ID with substring matching retained for historical rows. It is hardcoded because the AWS Price List API does not list the Claude 4.x models we use, so a live lookup would always fall back anyway. Every Bedrock entry is a `global.` inference profile and uses its global rate; a geographic or in-region route must get a separate, higher-priced entry before it can be offered. An *unknown* model ID falls back to the most expensive known rate (Opus-tier), so a missing table entry never silently under-estimates. This rate is never learned — it is what the selected route charges.
 
 - **The token count per call** (how many input/output tokens a call will use) is where the learning happens. It is chosen in three tiers, best first:
   1. The average of recent real calls at the **current `prompt_version`** — the most representative of what the next run will cost.

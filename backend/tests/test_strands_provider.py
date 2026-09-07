@@ -8,6 +8,7 @@ import pytest
 
 from app.ai.strands_provider import (
     StrandsProvider,
+    _bedrock_runtime_api_key,
     _conversation_narrative,
     _event_narrative_delta,
     _system_prompt_for_model,
@@ -27,16 +28,19 @@ def test_claude_uses_bedrock_runtime_model() -> None:
     assert kwargs["boto_client_config"].read_timeout == provider.DEFAULT_READ_TIMEOUT
 
 
-def test_openai_uses_bedrock_mantle_responses_model() -> None:
+def test_openai_uses_bedrock_runtime_responses_model() -> None:
     provider = StrandsProvider(region="us-east-1", openai_reasoning_effort="low")
 
     with patch("strands.models.openai_responses.OpenAIResponsesModel") as model_class:
-        model = provider._model_for("openai.gpt-5.6-luna", read_timeout=321)
+        model = provider._model_for("global.openai.gpt-5.6-luna", read_timeout=321)
 
     assert model is model_class.return_value
     kwargs = model_class.call_args.kwargs
-    assert kwargs["model_id"] == "openai.gpt-5.6-luna"
-    assert kwargs["bedrock_mantle_config"] == {"region": "us-east-1"}
+    assert kwargs["model_id"] == "global.openai.gpt-5.6-luna"
+    assert kwargs["client_args"]["base_url"] == (
+        "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1"
+    )
+    assert callable(kwargs["client_args"]["api_key"])
     assert kwargs["client_args"]["max_retries"] == 5
     assert kwargs["client_args"]["timeout"].read == 321
     assert kwargs["params"] == {
@@ -45,7 +49,14 @@ def test_openai_uses_bedrock_mantle_responses_model() -> None:
     assert kwargs["stateful"] is False
 
 
-def test_openai_direct_uses_api_key_without_mantle() -> None:
+def test_bedrock_runtime_api_key_uses_the_selected_region() -> None:
+    with patch("aws_bedrock_token_generator.provide_token", return_value="token") as provide:
+        assert asyncio.run(_bedrock_runtime_api_key("us-east-1")) == "token"
+
+    provide.assert_called_once_with(region="us-east-1")
+
+
+def test_openai_direct_uses_api_key_without_bedrock_provider() -> None:
     provider = StrandsProvider(
         region="us-east-1", openai_api_key="test-openai-key",
         openai_reasoning_effort="low",
@@ -56,7 +67,7 @@ def test_openai_direct_uses_api_key_without_mantle() -> None:
 
     kwargs = model_class.call_args.kwargs
     assert kwargs["model_id"] == "gpt-5.6-luna"
-    assert "bedrock_mantle_config" not in kwargs
+    assert "provider" not in kwargs["client_args"]
     assert kwargs["client_args"]["api_key"] == "test-openai-key"
 
 
@@ -156,11 +167,11 @@ def test_structured_output_fails_when_provider_emits_no_first_event() -> None:
         patch("strands.Agent", return_value=agent),
         pytest.raises(
             TimeoutError,
-            match=r"openai\.gpt-5\.6-luna produced no response event within 0\.01 seconds",
+            match=r"global\.openai\.gpt-5\.6-luna produced no response event within 0\.01 seconds",
         ),
     ):
         provider.structured_output(
-            model_id="openai.gpt-5.6-luna",
+            model_id="global.openai.gpt-5.6-luna",
             schema=dict,
             prompt="Synthetic prompt",
             reasoning_effort="low",
@@ -187,11 +198,11 @@ def test_structured_output_fails_when_provider_stops_emitting_events() -> None:
         patch("strands.Agent", return_value=agent),
         pytest.raises(
             TimeoutError,
-            match=r"openai\.gpt-5\.6-luna produced no response event for 0\.01 seconds",
+            match=r"global\.openai\.gpt-5\.6-luna produced no response event for 0\.01 seconds",
         ),
     ):
         provider.structured_output(
-            model_id="openai.gpt-5.6-luna",
+            model_id="global.openai.gpt-5.6-luna",
             schema=dict,
             prompt="Synthetic prompt",
             reasoning_effort="low",
@@ -210,7 +221,7 @@ def test_openai_reasoning_effort_can_be_set_for_bakeoff() -> None:
     provider = StrandsProvider(region="us-east-1", openai_reasoning_effort="low")
 
     with patch("strands.models.openai_responses.OpenAIResponsesModel") as model_class:
-        provider._model_for("openai.gpt-5.6-luna")
+        provider._model_for("global.openai.gpt-5.6-luna")
 
     assert model_class.call_args.kwargs["params"] == {
         "reasoning": {"effort": "low", "summary": "auto"}
@@ -221,20 +232,20 @@ def test_openai_requires_an_explicit_reasoning_configuration() -> None:
     provider = StrandsProvider(region="us-east-1")
 
     with pytest.raises(ValueError, match="reasoning_effort is required"):
-        provider._model_for("openai.gpt-5.6-luna")
+        provider._model_for("global.openai.gpt-5.6-luna")
 
 
 def test_openai_reasoning_effort_can_differ_by_model() -> None:
     provider = StrandsProvider(
         region="us-east-1",
         openai_reasoning_effort="none",
-        openai_reasoning_efforts={"gpt-5.6-luna": "low"},
+        openai_reasoning_efforts={"global.openai.gpt-5.6-luna": "low"},
         openai_api_key="test-key",
     )
 
     with patch("strands.models.openai_responses.OpenAIResponsesModel") as model_class:
-        provider._model_for("gpt-5.6-luna")
-        provider._model_for("openai.gpt-5.6-terra")
+        provider._model_for("global.openai.gpt-5.6-luna")
+        provider._model_for("global.openai.gpt-5.6-terra")
 
     assert model_class.call_args_list[0].kwargs["params"] == {
         "reasoning": {"effort": "low", "summary": "auto"}
@@ -249,11 +260,13 @@ def test_models_are_cached_by_model_timeout_and_reasoning() -> None:
     built = MagicMock(side_effect=[MagicMock(), MagicMock(), MagicMock(), MagicMock()])
 
     with patch.object(provider, "_build_model", built):
-        first = provider._model_for("openai.gpt-5.6-luna")
-        same = provider._model_for("openai.gpt-5.6-luna")
-        longer = provider._model_for("openai.gpt-5.6-luna", read_timeout=300)
-        other = provider._model_for("openai.gpt-5.6-terra")
-        medium = provider._model_for("openai.gpt-5.6-luna", reasoning_effort="medium")
+        first = provider._model_for("global.openai.gpt-5.6-luna")
+        same = provider._model_for("global.openai.gpt-5.6-luna")
+        longer = provider._model_for("global.openai.gpt-5.6-luna", read_timeout=300)
+        other = provider._model_for("global.openai.gpt-5.6-terra")
+        medium = provider._model_for(
+            "global.openai.gpt-5.6-luna", reasoning_effort="medium"
+        )
 
     assert same is first
     assert longer is not first

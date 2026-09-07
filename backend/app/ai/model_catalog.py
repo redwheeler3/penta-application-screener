@@ -31,8 +31,8 @@ MODEL_IDS_BY_ROUTE = {
     "bedrock": {
         "haiku": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
         "sonnet": "global.anthropic.claude-sonnet-4-6",
-        "luna": "openai.gpt-5.6-luna",
-        "terra": "openai.gpt-5.6-terra",
+        "luna": "global.openai.gpt-5.6-luna",
+        "terra": "global.openai.gpt-5.6-terra",
     },
     "direct": {
         "haiku": "claude-haiku-4-5-20251001",

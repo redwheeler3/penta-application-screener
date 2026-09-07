@@ -1,14 +1,16 @@
 """Strands implementation of ``AIProvider`` across the supported model routes.
 
 The model catalog owns routing. Callers pass an opaque provider-native model ID;
-this module alone decides whether Strands should use Bedrock Runtime, Bedrock
-Mantle, OpenAI's Responses API, or Anthropic's Messages API.
+this module alone decides whether Strands should use Bedrock's Converse adapter,
+Bedrock Runtime's OpenAI-compatible API, OpenAI's direct Responses API, or
+Anthropic's Messages API.
 """
 
 from __future__ import annotations
 
 import asyncio
 import threading
+from functools import partial
 from typing import TYPE_CHECKING, cast
 
 from app.ai.model_catalog import (
@@ -29,6 +31,13 @@ OPENAI_PREAMBLE_INSTRUCTION = (
     "explaining what you considered and how you reached the result. This update is shown "
     "live to a human reviewer."
 )
+
+
+async def _bedrock_runtime_api_key(region: str) -> str:
+    """Mint a fresh short-lived Runtime bearer token from the AWS credential chain."""
+    from aws_bedrock_token_generator import provide_token
+
+    return provide_token(region=region)
 
 
 class StrandsProvider:
@@ -123,9 +132,16 @@ class StrandsProvider:
                 "max_retries": self._direct_max_retries,
                 "timeout": Timeout(timeout=read_timeout, connect=10),
             }
-            route_args: dict[str, object] = {}
             if spec.provider is ModelProvider.BEDROCK:
-                route_args["bedrock_mantle_config"] = {"region": self._region}
+                # OpenAIResponsesModel opens a fresh client per request. Its async API-key
+                # callable is therefore resolved on every attempt, so a long-lived worker
+                # never holds a bearer token past its expiry.
+                client_args.update(
+                    base_url=(
+                        f"https://bedrock-runtime.{self._region}.amazonaws.com/openai/v1"
+                    ),
+                    api_key=partial(_bedrock_runtime_api_key, self._region),
+                )
             else:
                 if not self._openai_api_key:
                     raise RuntimeError("OPENAI_API_KEY is required for direct OpenAI models.")
@@ -133,7 +149,6 @@ class StrandsProvider:
 
             return OpenAIResponsesModel(
                 model_id=model_id,
-                **route_args,
                 client_args=client_args,
                 params={
                     "reasoning": {

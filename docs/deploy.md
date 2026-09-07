@@ -29,10 +29,11 @@ runbook: how to stand the app up on Fly.io, wire secrets and the domain, deploy 
    — you'll add the prod redirect URI in step 5 below.
 3. **A scoped AWS IAM user for Bedrock.** Because Fly is not on AWS, there's no IAM role — the
    app uses a static key. Create an IAM user with an inline policy allowing **only**
-   `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` for the two Anthropic
-   `global.` inference profiles. Global cross-region inference evaluates three resources, so
-   grant both actions on each profile's ARN in **us-east-1**, its foundation-model ARN in
-   **us-east-1**, and its regionless global foundation-model ARN. Scope the latter two with the
+   `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` for the four Claude and GPT
+   `global.` inference profiles. Global cross-region inference evaluates three model resources,
+   so grant both actions on each profile's ARN in **us-east-1**, its foundation-model ARN in
+   **us-east-1**, and its regionless global foundation-model ARN. Runtime Responses calls also
+   require the account's default Bedrock project. Scope the foundation-model grants with the
    matching `bedrock:InferenceProfileArn`; the global resource evaluation uses
    `aws:RequestedRegion = "unspecified"`. Use AWS's
    [three-part global-profile policy](https://docs.aws.amazon.com/bedrock/latest/userguide/global-cross-region-inference.html#global-cross-region-inference-iam) as the template and grant nothing else. Generate an access key for it.
@@ -40,15 +41,17 @@ runbook: how to stand the app up on Fly.io, wire secrets and the domain, deploy 
    will be enabled. Their keys never replace or broaden the AWS policy.
 4. **DNS access** for `pentacoop.com` (to add the A/AAAA records `fly certs add` prints).
 
-The Claude portion of the app user's policy is three grants. Replace `ACCOUNT_ID`; keep
-the separate Bedrock Mantle statements for GPT routes unchanged:
+The Bedrock portion of the app user's policy is four grants. Replace `ACCOUNT_ID` and
+remove the superseded `bedrock-mantle:*` and conditional Marketplace statements; the app
+derives short-lived Runtime bearer tokens from its AWS credentials and does not let its
+invoke-only user subscribe to products:
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "InvokeGlobalClaudeProfiles",
+      "Sid": "InvokeGlobalProfilesAndProject",
       "Effect": "Allow",
       "Action": [
         "bedrock:InvokeModel",
@@ -56,14 +59,17 @@ the separate Bedrock Mantle statements for GPT routes unchanged:
       ],
       "Resource": [
         "arn:aws:bedrock:us-east-1:ACCOUNT_ID:inference-profile/global.anthropic.claude-haiku-4-5-20251001-v1:0",
-        "arn:aws:bedrock:us-east-1:ACCOUNT_ID:inference-profile/global.anthropic.claude-sonnet-4-6"
+        "arn:aws:bedrock:us-east-1:ACCOUNT_ID:inference-profile/global.anthropic.claude-sonnet-4-6",
+        "arn:aws:bedrock:us-east-1:ACCOUNT_ID:inference-profile/global.openai.gpt-5.6-luna",
+        "arn:aws:bedrock:us-east-1:ACCOUNT_ID:inference-profile/global.openai.gpt-5.6-terra",
+        "arn:aws:bedrock:us-east-1:ACCOUNT_ID:project/default"
       ],
       "Condition": {
         "StringEquals": { "aws:RequestedRegion": "us-east-1" }
       }
     },
     {
-      "Sid": "InvokeGlobalClaudeSourceModels",
+      "Sid": "InvokeGlobalSourceModels",
       "Effect": "Allow",
       "Action": [
         "bedrock:InvokeModel",
@@ -71,20 +77,24 @@ the separate Bedrock Mantle statements for GPT routes unchanged:
       ],
       "Resource": [
         "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
-        "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-6"
+        "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-6",
+        "arn:aws:bedrock:us-east-1::foundation-model/openai.gpt-5.6-luna",
+        "arn:aws:bedrock:us-east-1::foundation-model/openai.gpt-5.6-terra"
       ],
       "Condition": {
         "StringEquals": {
           "aws:RequestedRegion": "us-east-1",
           "bedrock:InferenceProfileArn": [
             "arn:aws:bedrock:us-east-1:ACCOUNT_ID:inference-profile/global.anthropic.claude-haiku-4-5-20251001-v1:0",
-            "arn:aws:bedrock:us-east-1:ACCOUNT_ID:inference-profile/global.anthropic.claude-sonnet-4-6"
+            "arn:aws:bedrock:us-east-1:ACCOUNT_ID:inference-profile/global.anthropic.claude-sonnet-4-6",
+            "arn:aws:bedrock:us-east-1:ACCOUNT_ID:inference-profile/global.openai.gpt-5.6-luna",
+            "arn:aws:bedrock:us-east-1:ACCOUNT_ID:inference-profile/global.openai.gpt-5.6-terra"
           ]
         }
       }
     },
     {
-      "Sid": "InvokeGlobalClaudeModels",
+      "Sid": "InvokeGlobalModels",
       "Effect": "Allow",
       "Action": [
         "bedrock:InvokeModel",
@@ -92,17 +102,27 @@ the separate Bedrock Mantle statements for GPT routes unchanged:
       ],
       "Resource": [
         "arn:aws:bedrock:::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
-        "arn:aws:bedrock:::foundation-model/anthropic.claude-sonnet-4-6"
+        "arn:aws:bedrock:::foundation-model/anthropic.claude-sonnet-4-6",
+        "arn:aws:bedrock:::foundation-model/openai.gpt-5.6-luna",
+        "arn:aws:bedrock:::foundation-model/openai.gpt-5.6-terra"
       ],
       "Condition": {
         "StringEquals": {
           "aws:RequestedRegion": "unspecified",
           "bedrock:InferenceProfileArn": [
             "arn:aws:bedrock:us-east-1:ACCOUNT_ID:inference-profile/global.anthropic.claude-haiku-4-5-20251001-v1:0",
-            "arn:aws:bedrock:us-east-1:ACCOUNT_ID:inference-profile/global.anthropic.claude-sonnet-4-6"
+            "arn:aws:bedrock:us-east-1:ACCOUNT_ID:inference-profile/global.anthropic.claude-sonnet-4-6",
+            "arn:aws:bedrock:us-east-1:ACCOUNT_ID:inference-profile/global.openai.gpt-5.6-luna",
+            "arn:aws:bedrock:us-east-1:ACCOUNT_ID:inference-profile/global.openai.gpt-5.6-terra"
           ]
         }
       }
+    },
+    {
+      "Sid": "AuthenticateToBedrockRuntime",
+      "Effect": "Allow",
+      "Action": "bedrock:CallWithBearerToken",
+      "Resource": "*"
     }
   ]
 }

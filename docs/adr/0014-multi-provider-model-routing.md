@@ -2,7 +2,7 @@
 
 Date: 2026-08-22
 
-Status: accepted
+Status: accepted; GPT-through-Mantle transport superseded by ADR 0016
 
 ## Context
 

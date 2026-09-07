@@ -109,7 +109,7 @@ async def test_settings_lists_supported_model_routes_without_exposing_secrets(mo
     } >= {
         ("global.anthropic.claude-haiku-4-5-20251001-v1:0", "bedrock", True),
         ("claude-haiku-4-5-20251001", "anthropic", False),
-        ("openai.gpt-5.6-luna", "bedrock", True),
+        ("global.openai.gpt-5.6-luna", "bedrock", True),
         ("gpt-5.6-luna", "openai", False),
     }
 

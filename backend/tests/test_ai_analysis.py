@@ -60,16 +60,17 @@ def test_store_result_persists_effective_reasoning_effort() -> None:
     db = make_session()
     app = make_application(db)
     provider = MockProvider()
-    provider.queue(clean_report(), model_id="openai.gpt-5.6-luna")
+    luna = MODEL_IDS_BY_ROUTE["bedrock"]["luna"]
+    provider.queue(clean_report(), model_id=luna)
     result = provider.structured_output(
-        model_id="openai.gpt-5.6-luna", schema=ScreeningReport, prompt="analyze"
+        model_id=luna, schema=ScreeningReport, prompt="analyze"
     )
 
     store_result(
         db,
         app,
         kind=KIND,
-        model_id="openai.gpt-5.6-luna",
+        model_id=luna,
         prompt_version=VERSION,
         result=result,
         reasoning_effort="low",
@@ -115,8 +116,8 @@ def test_sonnet_46_not_shadowed_by_sonnet_4() -> None:
 @pytest.mark.parametrize(
     ("model_id", "input_price", "output_price"),
     [
-        ("openai.gpt-5.6-luna", 0.20, 1.20),
-        ("openai.gpt-5.6-terra", 2.00, 12.00),
+        ("global.openai.gpt-5.6-luna", 0.20, 1.20),
+        ("global.openai.gpt-5.6-terra", 2.00, 12.00),
     ],
 )
 def test_openai_bedrock_models_have_explicit_prices(
