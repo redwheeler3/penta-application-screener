@@ -62,7 +62,12 @@ def _app_and_db(sender=None) -> tuple:
     )
     db = sessionmaker(bind=engine, autoflush=False, autocommit=False)()
     Base.metadata.create_all(engine)
-    admin = User(email="admin@example.com", display_name="Admin", role=UserRole.ADMIN, is_active=True)
+    admin = User(
+        email="admin@example.com",
+        display_name="Admin",
+        role=UserRole.ADMIN,
+        is_active=True,
+    )
     db.add(admin)
     db.commit()
     email_sender = sender or CapturedEmailSender()
@@ -110,8 +115,12 @@ async def test_preview_counts_each_email_variant_and_projects_usage() -> None:
     overlap = _application("overlap@example.com")
     db.add_all([app_only, overlap])
     db.commit()
-    save_subscription(db, email="list@example.com", unit_sizes={2}, source="public website")
-    save_subscription(db, email="overlap@example.com", unit_sizes={2, 3}, source="public website")
+    save_subscription(
+        db, email="list@example.com", unit_sizes={2}, source="public website"
+    )
+    save_subscription(
+        db, email="overlap@example.com", unit_sizes={2, 3}, source="public website"
+    )
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -157,13 +166,19 @@ def test_archived_application_inside_retention_is_in_the_opening_audience() -> N
 @pytest.mark.anyio
 async def test_create_atomically_opens_and_queues_then_delivers_all_variants() -> None:
     app, db, sender = _app_and_db()
-    db.add_all([
-        _application("application@example.com"),
-        _application("overlap@example.com"),
-    ])
+    db.add_all(
+        [
+            _application("application@example.com"),
+            _application("overlap@example.com"),
+        ]
+    )
     db.commit()
-    save_subscription(db, email="list@example.com", unit_sizes={2}, source="public website")
-    save_subscription(db, email="overlap@example.com", unit_sizes={2, 3}, source="public website")
+    save_subscription(
+        db, email="list@example.com", unit_sizes={2}, source="public website"
+    )
+    save_subscription(
+        db, email="overlap@example.com", unit_sizes={2, 3}, source="public website"
+    )
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -195,10 +210,12 @@ async def test_create_atomically_opens_and_queues_then_delivers_all_variants() -
         for message in application_messages
     )
     assert db.scalar(select(func.count()).select_from(VacancySubscription)) == 0
-    receipts = list(db.scalars(select(VacancyConsentReceipt).order_by(VacancyConsentReceipt.id)))
+    receipts = list(
+        db.scalars(select(VacancyConsentReceipt).order_by(VacancyConsentReceipt.id))
+    )
     assert len(receipts) == 2
     assert {tuple(receipt.unit_sizes) for receipt in receipts} == {(2,), (2, 3)}
-    assert all(receipt.email_hash != "" for receipt in receipts)
+    assert all(not hasattr(receipt, "email_hash") for receipt in receipts)
     assert all(
         receipt.retain_until == one_year_after(receipt.fulfilled_at.date())
         for receipt in receipts
@@ -206,9 +223,13 @@ async def test_create_atomically_opens_and_queues_then_delivers_all_variants() -
 
 
 @pytest.mark.anyio
-async def test_create_keeps_subscription_and_intent_when_provider_is_temporary() -> None:
+async def test_create_keeps_subscription_and_intent_when_provider_is_temporary() -> (
+    None
+):
     app, db, _ = _app_and_db(RetryableSender())
-    save_subscription(db, email="list@example.com", unit_sizes={2}, source="public website")
+    save_subscription(
+        db, email="list@example.com", unit_sizes={2}, source="public website"
+    )
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -225,7 +246,9 @@ async def test_create_keeps_subscription_and_intent_when_provider_is_temporary()
 @pytest.mark.anyio
 async def test_create_rejects_a_stale_audience_confirmation() -> None:
     app, db, _ = _app_and_db()
-    save_subscription(db, email="list@example.com", unit_sizes={2}, source="public website")
+    save_subscription(
+        db, email="list@example.com", unit_sizes={2}, source="public website"
+    )
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:

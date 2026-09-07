@@ -106,8 +106,12 @@ class User(TimestampMixin, Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    google_subject: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
+    google_subject: Mapped[str | None] = mapped_column(
+        String(255), unique=True, index=True
+    )
+    email: Mapped[str] = mapped_column(
+        String(320), unique=True, index=True, nullable=False
+    )
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     avatar_url: Mapped[str | None] = mapped_column(String(1000))
     role: Mapped[UserRole] = mapped_column(
@@ -152,7 +156,9 @@ class AccessAllowlistEntry(TimestampMixin, Base):
     __tablename__ = "access_allowlist"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
+    email: Mapped[str] = mapped_column(
+        String(320), unique=True, index=True, nullable=False
+    )
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, values_callable=enum_values),
         default=UserRole.MEMBER,
@@ -227,7 +233,9 @@ class AdminSetting(TimestampMixin, Base):
     __tablename__ = "admin_settings"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    key: Mapped[str] = mapped_column(String(120), unique=True, index=True, nullable=False)
+    key: Mapped[str] = mapped_column(
+        String(120), unique=True, index=True, nullable=False
+    )
     value: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
 
 
@@ -260,7 +268,9 @@ class RetentionDeletion(Base):
     record_id: Mapped[int] = mapped_column(Integer, nullable=False)
     retention_rule: Mapped[str] = mapped_column(String(50), nullable=False)
     due_on: Mapped[date] = mapped_column(Date, nullable=False)
-    deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    deleted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
 
 class Application(TimestampMixin, Base):
@@ -276,13 +286,17 @@ class Application(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    google_subject: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
+    google_subject: Mapped[str | None] = mapped_column(
+        String(255), unique=True, index=True
+    )
     primary_email: Mapped[str] = mapped_column(String(320), nullable=False)
     applicant_name: Mapped[str | None] = mapped_column(String(255))
     co_applicant_name: Mapped[str | None] = mapped_column(String(255))
     raw_row: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     raw_row_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    normalized: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    normalized: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
     # Private applicant edits. The submitted projection above remains unchanged until an
     # explicit publication replaces it, so committee reads and AI caches cannot see drafts.
     working_answers: Mapped[dict[str, Any] | None] = mapped_column(JSON)
@@ -292,8 +306,12 @@ class Application(TimestampMixin, Base):
     working_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     # Null means a never-submitted draft. Retained externally collected rows are
     # submitted; built-in drafts start null.
-    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
-    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    withdrawn_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
     retention_due_on: Mapped[date | None] = mapped_column(Date)
     # Provenance for evidence-bearing eval exports. Production form submissions are
     # false; committed synthetic fixtures and explicitly synthetic local intake are true.
@@ -315,7 +333,9 @@ class Opening(TimestampMixin, Base):
 
     __tablename__ = "openings"
     __table_args__ = (
-        CheckConstraint("unit_size_bedrooms BETWEEN 1 AND 3", name="ck_opening_unit_size"),
+        CheckConstraint(
+            "unit_size_bedrooms BETWEEN 1 AND 3", name="ck_opening_unit_size"
+        ),
         CheckConstraint("housing_charge_cents >= 0", name="ck_opening_housing_charge"),
     )
 
@@ -333,7 +353,9 @@ class Opening(TimestampMixin, Base):
     move_in_date: Mapped[date] = mapped_column(Date, nullable=False)
     # Application-intake openings are published immediately. Pacific calendar dates determine
     # their phase; direct selections stay closed until their move-in date archives them.
-    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
     no_household_selected_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
@@ -349,7 +371,10 @@ class OpeningRules(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     opening_id: Mapped[int] = mapped_column(
-        ForeignKey("openings.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
+        ForeignKey("openings.id", ondelete="CASCADE"),
+        unique=True,
+        index=True,
+        nullable=False,
     )
     rules: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
 
@@ -368,49 +393,59 @@ class VacancySubscription(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
+    email: Mapped[str] = mapped_column(
+        String(320), unique=True, index=True, nullable=False
+    )
     wants_one_bedroom: Mapped[bool] = mapped_column(Boolean, nullable=False)
     wants_two_bedroom: Mapped[bool] = mapped_column(Boolean, nullable=False)
     wants_three_bedroom: Mapped[bool] = mapped_column(Boolean, nullable=False)
     first_consented_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    consented_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    consented_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True, nullable=False
+    )
     consent_version: Mapped[str | None] = mapped_column(String(30))
     source: Mapped[str] = mapped_column(String(120), nullable=False)
-    managed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    managed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), index=True
+    )
 
     managed_by: Mapped[User | None] = relationship()
 
 
 class VacancyConsentReceipt(Base):
-    """Minimal evidence for the consent used to send one vacancy notice."""
+    """Non-contact operational record of one consumed vacancy subscription."""
 
     __tablename__ = "vacancy_consent_receipts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     subscription_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    email_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     unit_sizes: Mapped[list[int]] = mapped_column(JSON, nullable=False)
-    consented_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consented_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     consent_version: Mapped[str | None] = mapped_column(String(30))
     source: Mapped[str] = mapped_column(String(120), nullable=False)
-    fulfilled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    fulfilled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     retain_until: Mapped[date] = mapped_column(Date, index=True, nullable=False)
     email_delivery_id: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class VacancySubscriptionAudit(Base):
-    """PII-minimized audit of manual vacancy-list changes."""
+    """Non-contact audit of manual vacancy-list changes."""
 
     __tablename__ = "vacancy_subscription_audits"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     subscription_id: Mapped[int | None] = mapped_column(index=True)
-    email_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     action: Mapped[str] = mapped_column(String(20), nullable=False)
     source: Mapped[str] = mapped_column(String(120), nullable=False)
-    acted_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    acted_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True, nullable=False
+    )
     acted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     acted_by: Mapped[User] = relationship()
@@ -440,14 +475,20 @@ class ApplicationParticipation(TimestampMixin, Base):
     application_id: Mapped[int] = mapped_column(
         ForeignKey("applications.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    opening_id: Mapped[int] = mapped_column(ForeignKey("openings.id"), index=True, nullable=False)
-    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    opening_id: Mapped[int] = mapped_column(
+        ForeignKey("openings.id"), index=True, nullable=False
+    )
+    applied_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     outcome: Mapped[OpeningOutcome | None] = mapped_column(
         Enum(OpeningOutcome, values_callable=enum_values), index=True
     )
     outcome_decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    outcome_decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    outcome_decided_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id")
+    )
     unsuccessful_notified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
@@ -470,7 +511,9 @@ class ApplicationVersion(Base):
     normalized: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     selected_opening_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    submitted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     terms_version: Mapped[str | None] = mapped_column(String(30))
 
     application: Mapped[Application] = relationship()
@@ -494,7 +537,9 @@ class ApplicantDraft(Base):
     )
     working_answers: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     working_opening_ids: Mapped[list[int] | None] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     retention_due_on: Mapped[date] = mapped_column(Date, nullable=False)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -520,7 +565,9 @@ class MagicLinkToken(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     identity_kind: Mapped[PasswordlessIdentityKind] = mapped_column(
-        Enum(PasswordlessIdentityKind, values_callable=enum_values), nullable=False, index=True
+        Enum(PasswordlessIdentityKind, values_callable=enum_values),
+        nullable=False,
+        index=True,
     )
     email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
     application_id: Mapped[int | None] = mapped_column(
@@ -536,12 +583,18 @@ class MagicLinkToken(Base):
     purpose: Mapped[MagicLinkPurpose] = mapped_column(
         Enum(MagicLinkPurpose, values_callable=enum_values), nullable=False
     )
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    token_hash: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    remember_device: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    remember_device: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -564,7 +617,9 @@ class BrowserSession(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     identity_kind: Mapped[PasswordlessIdentityKind] = mapped_column(
-        Enum(PasswordlessIdentityKind, values_callable=enum_values), nullable=False, index=True
+        Enum(PasswordlessIdentityKind, values_callable=enum_values),
+        nullable=False,
+        index=True,
     )
     application_id: Mapped[int | None] = mapped_column(
         ForeignKey("applications.id", ondelete="CASCADE"), index=True
@@ -573,11 +628,21 @@ class BrowserSession(Base):
         ForeignKey("applicant_drafts.id", ondelete="CASCADE"), index=True
     )
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    idle_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    absolute_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    token_hash: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    last_activity_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    idle_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    absolute_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     application: Mapped[Application | None] = relationship()
@@ -611,7 +676,9 @@ class EmailDelivery(TimestampMixin, Base):
     )
     message_kind: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     recipient_kind: Mapped[PasswordlessIdentityKind] = mapped_column(
-        Enum(PasswordlessIdentityKind, values_callable=enum_values), nullable=False, index=True
+        Enum(PasswordlessIdentityKind, values_callable=enum_values),
+        nullable=False,
+        index=True,
     )
     application_id: Mapped[int | None] = mapped_column(
         ForeignKey("applications.id", ondelete="CASCADE"), index=True
@@ -627,7 +694,9 @@ class EmailDelivery(TimestampMixin, Base):
     # Accepted mail clears it because SocketLabs owns delivery history after acceptance.
     recipient_email: Mapped[str | None] = mapped_column(String(320))
     state: Mapped[EmailDeliveryState] = mapped_column(
-        Enum(EmailDeliveryState, values_callable=enum_values), nullable=False, index=True
+        Enum(EmailDeliveryState, values_callable=enum_values),
+        nullable=False,
+        index=True,
     )
     retry_intent: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     quota_blocked: Mapped[bool] = mapped_column(
@@ -665,7 +734,9 @@ class MemberEligibility(TimestampMixin, Base):
     opening_id: Mapped[int | None] = mapped_column(
         ForeignKey("openings.id", ondelete="CASCADE"), index=True
     )
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True, nullable=False
+    )
     status: Mapped[ApplicationStatus] = mapped_column(
         Enum(ApplicationStatus, values_callable=enum_values), nullable=False
     )
@@ -697,7 +768,9 @@ class MemberRules(TimestampMixin, Base):
     opening_id: Mapped[int | None] = mapped_column(
         ForeignKey("openings.id", ondelete="CASCADE"), index=True
     )
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True, nullable=False
+    )
     rules: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
 
     opening: Mapped[Opening | None] = relationship()
@@ -719,7 +792,9 @@ class ApplicationNote(TimestampMixin, Base):
     application_id: Mapped[int] = mapped_column(
         ForeignKey("applications.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True, nullable=False
+    )
     note: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
     application: Mapped[Application] = relationship()
@@ -742,7 +817,9 @@ class ApplicationStar(TimestampMixin, Base):
     application_id: Mapped[int] = mapped_column(
         ForeignKey("applications.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True, nullable=False
+    )
 
     application: Mapped[Application] = relationship()
     user: Mapped[User] = relationship()
@@ -767,7 +844,9 @@ class ApplicationShortlist(TimestampMixin, Base):
     opening_id: Mapped[int] = mapped_column(
         ForeignKey("openings.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    added_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    added_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), nullable=False
+    )
 
     application: Mapped[Application] = relationship()
     opening: Mapped[Opening] = relationship()
@@ -791,7 +870,9 @@ class ApplicationAIResult(TimestampMixin, Base):
         ForeignKey("applications.id", ondelete="CASCADE"), index=True, nullable=False
     )
     kind: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
-    cache_key: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    cache_key: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )
     model_id: Mapped[str] = mapped_column(String(200), nullable=False)
     # Effective invocation value, not merely the current setting. None means the model did
     # not use reasoning effort or the row predates provenance capture.
@@ -825,10 +906,14 @@ class RunCostLedger(TimestampMixin, Base):
     __tablename__ = "run_cost_ledger"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    kind: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # screen | rank | rank_scores
+    kind: Mapped[str] = mapped_column(
+        String(20), nullable=False, index=True
+    )  # screen | rank | rank_scores
     # The pre-run cost projection (the number the confirmation card showed the committee),
     # captured so estimate-vs-actual drift is queryable. 0.0 means no estimate is available.
-    estimated_usd: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
+    estimated_usd: Mapped[float] = mapped_column(
+        Float, nullable=False, server_default="0"
+    )
     # Runs are shared committee
     # spend, so Observability stays committee-wide — this only makes the shared cost
     # attributable ("who kicked off this Rank"). Nullable + no cascade: a run's cost history
@@ -913,7 +998,9 @@ class Analysis(TimestampMixin, Base):
         default=False, server_default="0", nullable=False
     )
     # The analysis's discovered dimensions (a serialized PoolDimensionReport).
-    dimension_report: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    dimension_report: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
     # Everything the ranking depends on — pool + each rank-chain prompt/model — hashed.
     # The next Rank compares it to flag the analysis "out of date". Indexed: read on every estimate.
     rank_inputs_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
@@ -940,10 +1027,14 @@ class MemberRanking(TimestampMixin, Base):
     analysis_id: Mapped[int] = mapped_column(
         ForeignKey("analyses.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True, nullable=False
+    )
     # The member's mutable view: {tiers, new_dimension_keys, proposed_dimensions,
     # acknowledged_requested_keys}. One blob — all written together, tiers is nested.
-    run_state: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    run_state: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
 
     analysis: Mapped[Analysis] = relationship()
     user: Mapped[User] = relationship()
@@ -962,7 +1053,10 @@ class AnalysisAudit(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     analysis_id: Mapped[int] = mapped_column(
-        ForeignKey("analyses.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
+        ForeignKey("analyses.id", ondelete="CASCADE"),
+        unique=True,
+        index=True,
+        nullable=False,
     )
     discovery_narrative: Mapped[str | None] = mapped_column(Text)
     match: Mapped[dict[str, Any] | None] = mapped_column(JSON)
@@ -988,10 +1082,11 @@ class DimensionAlias(TimestampMixin, Base):
     __tablename__ = "dimension_aliases"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    alias_key: Mapped[str] = mapped_column(String(200), unique=True, index=True, nullable=False)
+    alias_key: Mapped[str] = mapped_column(
+        String(200), unique=True, index=True, nullable=False
+    )
     canonical_key: Mapped[str] = mapped_column(String(200), index=True, nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-
 
 
 class EvalRun(TimestampMixin, Base):

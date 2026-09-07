@@ -706,9 +706,9 @@ the public form so the recipient can create a new one-notice subscription if the
 notifications. Resubscribing creates a new record; it does not reactivate or retain the consumed
 one. SocketLabs applies hard-bounce, complaint, and unsubscribe suppression to future delivery. The
 application does not ingest those events or duplicate SocketLabs' permanent suppression list.
-On consumption, the application retains a one-year consent receipt containing the consent time,
-notice version, source, requested sizes, delivery identifier, and a one-way hash of the normalized
-address. The receipt proves why the notice was sent without retaining another usable contact list.
+On consumption, the application deletes the email address. A one-year operational receipt retains
+the consent time, notice version, source, requested sizes, fulfillment time, and delivery identifier,
+but no address or hash of it.
 
 Every vacancy-list message uses the common SocketLabs unsubscribe footer. Confirming that
 provider-managed link permanently suppresses the address from all Penta email sent through the

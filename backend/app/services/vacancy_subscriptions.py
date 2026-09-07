@@ -2,7 +2,6 @@
 
 from collections import Counter
 from datetime import UTC, date, datetime
-from hashlib import sha256
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -85,7 +84,13 @@ def matching_subscriptions(db: Session, unit_size: int) -> list[VacancySubscript
         2: VacancySubscription.wants_two_bedroom,
         3: VacancySubscription.wants_three_bedroom,
     }[unit_size]
-    return list(db.scalars(select(VacancySubscription).where(column.is_(True)).order_by(VacancySubscription.id)))
+    return list(
+        db.scalars(
+            select(VacancySubscription)
+            .where(column.is_(True))
+            .order_by(VacancySubscription.id)
+        )
+    )
 
 
 def consume_subscription(
@@ -101,7 +106,6 @@ def consume_subscription(
     db.add(
         VacancyConsentReceipt(
             subscription_id=subscription.id,
-            email_hash=sha256(subscription.email.encode()).hexdigest(),
             unit_sizes=unit_sizes(subscription),
             consented_at=subscription.consented_at,
             consent_version=subscription.consent_version,
@@ -138,8 +142,7 @@ def subscription_report(db: Session) -> dict[str, object]:
     rows = list(db.scalars(select(VacancySubscription)))
     public_signups = [row for row in rows if row.source == "public website"]
     months = Counter(
-        as_utc(row.consented_at).astimezone(PACIFIC).strftime("%Y-%m")
-        for row in rows
+        as_utc(row.consented_at).astimezone(PACIFIC).strftime("%Y-%m") for row in rows
     )
     return {
         "total": len(rows),
@@ -151,8 +154,7 @@ def subscription_report(db: Session) -> dict[str, object]:
             default=None,
         ),
         "months": [
-            {"month": month, "count": months[month]}
-            for month in sorted(months)
+            {"month": month, "count": months[month]} for month in sorted(months)
         ],
     }
 
@@ -169,7 +171,6 @@ def _audit(
     db.add(
         VacancySubscriptionAudit(
             subscription_id=subscription.id,
-            email_hash=sha256(subscription.email.encode()).hexdigest(),
             action=action,
             source=source,
             acted_by_user_id=actor.id,

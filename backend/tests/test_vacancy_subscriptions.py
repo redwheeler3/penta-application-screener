@@ -35,7 +35,9 @@ def _app_and_db(role: UserRole = UserRole.ADMIN) -> tuple:
     )
     Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine, autoflush=False, autocommit=False)()
-    user = User(email="admin@example.com", display_name="Admin", role=role, is_active=True)
+    user = User(
+        email="admin@example.com", display_name="Admin", role=role, is_active=True
+    )
     db.add(user)
     db.commit()
     app = shared_test_app()
@@ -79,7 +81,9 @@ async def test_public_signup_replaces_preferences_without_enumerating() -> None:
     assert rows[0].consent_version == VACANCY_CONSENT_VERSION
 
 
-def test_fulfilled_consent_receipt_is_hashed_and_expires_after_one_year() -> None:
+def test_fulfilled_consent_receipt_omits_contact_data_and_expires_after_one_year() -> (
+    None
+):
     _, db, _ = _app_and_db()
     subscription = save_subscription(
         db,
@@ -100,7 +104,7 @@ def test_fulfilled_consent_receipt_is_hashed_and_expires_after_one_year() -> Non
 
     receipt = db.scalar(select(VacancyConsentReceipt))
     assert receipt is not None
-    assert receipt.email_hash != "person@example.com"
+    assert not hasattr(receipt, "email_hash")
     assert receipt.unit_sizes == [1, 3]
     assert receipt.consent_version == VACANCY_CONSENT_VERSION
     assert purge_expired_consent_receipts(db, today=date(2027, 8, 31)) == 0
@@ -266,18 +270,25 @@ async def test_admin_can_lookup_replace_and_delete_exact_email_with_audit() -> N
             json={"email": "help@example.com", "source": "Privacy request"},
         )
 
-    audits = list(db.scalars(select(VacancySubscriptionAudit).order_by(VacancySubscriptionAudit.id)))
+    audits = list(
+        db.scalars(
+            select(VacancySubscriptionAudit).order_by(VacancySubscriptionAudit.id)
+        )
+    )
     assert missing.json() == {"subscription": None}
     assert saved.json()["subscription"]["unitSizes"] == [1, 3]
     assert saved.json()["subscription"]["source"] == "Tech support request"
     assert deleted.json() == {"subscription": None}
     assert [audit.action for audit in audits] == ["add", "delete"]
     assert all(audit.acted_by_user_id == admin.id for audit in audits)
+    assert all(not hasattr(audit, "email_hash") for audit in audits)
     assert db.scalar(select(VacancySubscription)) is None
 
 
 @pytest.mark.anyio
-async def test_admin_lookup_returns_subscription_metadata_with_a_qualified_timestamp() -> None:
+async def test_admin_lookup_returns_subscription_metadata_with_a_qualified_timestamp() -> (
+    None
+):
     app, db, _ = _app_and_db()
     save_subscription(
         db,
