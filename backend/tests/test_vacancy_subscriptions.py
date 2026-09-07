@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
@@ -9,21 +9,9 @@ from sqlalchemy.pool import StaticPool
 from app.api.dependencies import require_current_user
 from app.api.vacancy_subscriptions import signup_limiter
 from app.core.time import as_utc
-from app.db.models import (
-    Base,
-    User,
-    UserRole,
-    VacancyConsentReceipt,
-    VacancySubscription,
-    VacancySubscriptionAudit,
-)
+from app.db.models import Base, User, UserRole, VacancySubscription
 from app.db.session import get_db
-from app.legal import VACANCY_CONSENT_VERSION
-from app.services.vacancy_subscriptions import (
-    consume_subscription,
-    purge_expired_consent_receipts,
-    save_subscription,
-)
+from app.services.vacancy_subscriptions import consume_subscription, save_subscription
 from tests.app_support import shared_test_app
 
 
@@ -57,7 +45,6 @@ async def test_public_signup_replaces_preferences_without_enumerating() -> None:
             json={
                 "email": " Person@Example.com ",
                 "unitSizes": [1, 3],
-                "consentVersion": VACANCY_CONSENT_VERSION,
             },
         )
         second = await client.post(
@@ -65,7 +52,6 @@ async def test_public_signup_replaces_preferences_without_enumerating() -> None:
             json={
                 "email": "person@example.com",
                 "unitSizes": [2],
-                "consentVersion": VACANCY_CONSENT_VERSION,
             },
         )
 
@@ -78,38 +64,22 @@ async def test_public_signup_replaces_preferences_without_enumerating() -> None:
     assert rows[0].wants_one_bedroom is False
     assert rows[0].wants_two_bedroom is True
     assert rows[0].wants_three_bedroom is False
-    assert rows[0].consent_version == VACANCY_CONSENT_VERSION
 
 
-def test_fulfilled_consent_receipt_omits_contact_data_and_expires_after_one_year() -> (
-    None
-):
+def test_consuming_subscription_deletes_the_record() -> None:
     _, db, _ = _app_and_db()
     subscription = save_subscription(
         db,
         email="person@example.com",
         unit_sizes={1, 3},
         source="public website",
-        consent_version=VACANCY_CONSENT_VERSION,
         consented_at=datetime(2026, 8, 27, 18, tzinfo=UTC),
     )
 
-    consume_subscription(
-        db,
-        subscription.id,
-        email_delivery_id=42,
-        fulfilled_at=datetime(2026, 9, 1, 18, tzinfo=UTC),
-    )
+    consume_subscription(db, subscription.id)
     db.commit()
 
-    receipt = db.scalar(select(VacancyConsentReceipt))
-    assert receipt is not None
-    assert not hasattr(receipt, "email_hash")
-    assert receipt.unit_sizes == [1, 3]
-    assert receipt.consent_version == VACANCY_CONSENT_VERSION
-    assert purge_expired_consent_receipts(db, today=date(2027, 8, 31)) == 0
-    assert purge_expired_consent_receipts(db, today=date(2027, 9, 1)) == 1
-    assert db.scalar(select(VacancyConsentReceipt)) is None
+    assert db.get(VacancySubscription, subscription.id) is None
 
 
 def test_replacing_preferences_preserves_first_subscription_time() -> None:
@@ -146,7 +116,6 @@ async def test_public_signup_validates_sizes_and_is_rate_limited() -> None:
             json={
                 "email": "person@example.com",
                 "unitSizes": [4],
-                "consentVersion": VACANCY_CONSENT_VERSION,
             },
         )
         responses = [
@@ -155,7 +124,6 @@ async def test_public_signup_validates_sizes_and_is_rate_limited() -> None:
                 json={
                     "email": f"person-{index}@example.com",
                     "unitSizes": [1],
-                    "consentVersion": VACANCY_CONSENT_VERSION,
                 },
             )
             for index in range(11)
@@ -163,26 +131,6 @@ async def test_public_signup_validates_sizes_and_is_rate_limited() -> None:
 
     assert invalid.status_code == 422
     assert responses[-1].status_code == 429
-
-
-@pytest.mark.anyio
-async def test_public_signup_rejects_an_outdated_consent_notice() -> None:
-    app, _, _ = _app_and_db()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await client.post(
-            "/vacancy-subscriptions",
-            json={
-                "email": "person@example.com",
-                "unitSizes": [1],
-                "consentVersion": "outdated",
-            },
-        )
-
-    assert response.status_code == 422
-    assert response.json()["detail"] == (
-        "Refresh the page before submitting this vacancy request."
-    )
 
 
 @pytest.mark.anyio
@@ -249,8 +197,8 @@ async def test_admin_report_counts_overlapping_preferences_and_months() -> None:
 
 
 @pytest.mark.anyio
-async def test_admin_can_lookup_replace_and_delete_exact_email_with_audit() -> None:
-    app, db, admin = _app_and_db()
+async def test_admin_can_lookup_replace_and_delete_exact_email() -> None:
+    app, db, _ = _app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         missing = await client.post(
@@ -267,21 +215,13 @@ async def test_admin_can_lookup_replace_and_delete_exact_email_with_audit() -> N
         )
         deleted = await client.post(
             "/vacancy-subscriptions/admin/delete",
-            json={"email": "help@example.com", "source": "Privacy request"},
+            json={"email": "help@example.com"},
         )
 
-    audits = list(
-        db.scalars(
-            select(VacancySubscriptionAudit).order_by(VacancySubscriptionAudit.id)
-        )
-    )
     assert missing.json() == {"subscription": None}
     assert saved.json()["subscription"]["unitSizes"] == [1, 3]
     assert saved.json()["subscription"]["source"] == "Tech support request"
     assert deleted.json() == {"subscription": None}
-    assert [audit.action for audit in audits] == ["add", "delete"]
-    assert all(audit.acted_by_user_id == admin.id for audit in audits)
-    assert all(not hasattr(audit, "email_hash") for audit in audits)
     assert db.scalar(select(VacancySubscription)) is None
 
 
@@ -295,7 +235,6 @@ async def test_admin_lookup_returns_subscription_metadata_with_a_qualified_times
         email="person@example.com",
         unit_sizes={2},
         source="public website",
-        consent_version=VACANCY_CONSENT_VERSION,
         consented_at=datetime(2026, 8, 27, 18, tzinfo=UTC),
     )
     transport = ASGITransport(app=app)

@@ -16,7 +16,6 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.db.models import VacancySubscription
 from app.db.session import SessionLocal
-from app.legal import VACANCY_CONSENT_VERSION
 from app.services.vacancy_subscriptions import save_subscription
 
 DEMO_SOURCE = "Local synthetic demo"
@@ -94,7 +93,6 @@ def seed_demo_subscriptions() -> int:
                 email=item.email,
                 unit_sizes=set(item.unit_sizes),
                 source=DEMO_SOURCE,
-                consent_version=VACANCY_CONSENT_VERSION,
                 consented_at=item.consented_at,
                 commit=False,
             )

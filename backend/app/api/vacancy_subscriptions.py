@@ -10,16 +10,14 @@ from app.core.problems import Problem
 from app.core.time import as_utc
 from app.db.models import User
 from app.db.session import get_db
-from app.legal import VACANCY_CONSENT_VERSION
 from app.schemas.vacancy_subscriptions import (
     VacancySubscriptionAdminWrite,
-    VacancySubscriptionDelete,
     VacancySubscriptionLookup,
     VacancySubscriptionLookupOut,
     VacancySubscriptionOut,
     VacancySubscriptionPublicOut,
-    VacancySubscriptionPublicWrite,
     VacancySubscriptionReportOut,
+    VacancySubscriptionWrite,
 )
 from app.services.public_rate_limit import PublicRateLimiter
 from app.services.vacancy_subscriptions import (
@@ -62,16 +60,11 @@ def _out(subscription) -> VacancySubscriptionOut:
 
 @router.post("", response_model=VacancySubscriptionPublicOut)
 def subscribe(
-    body: VacancySubscriptionPublicWrite,
+    body: VacancySubscriptionWrite,
     request: Request,
     db: Session = Depends(get_db),
 ) -> VacancySubscriptionPublicOut:
     _validate_unit_sizes(body.unit_sizes)
-    if body.consent_version != VACANCY_CONSENT_VERSION:
-        raise Problem(
-            "validation_error",
-            detail="Refresh the page before submitting this vacancy request.",
-        )
     if not signup_limiter.allow(_client_key(request)):
         raise Problem(
             "rate_limited",
@@ -82,7 +75,6 @@ def subscribe(
         email=str(body.email),
         unit_sizes=body.unit_sizes,
         source="public website",
-        consent_version=body.consent_version,
     )
     return VacancySubscriptionPublicOut()
 
@@ -110,7 +102,7 @@ def lookup(
 @router.put("/admin", response_model=VacancySubscriptionLookupOut)
 def save_for_support(
     body: VacancySubscriptionAdminWrite,
-    admin: User = Depends(require_admin),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> VacancySubscriptionLookupOut:
     _validate_unit_sizes(body.unit_sizes)
@@ -119,21 +111,18 @@ def save_for_support(
         email=str(body.email),
         unit_sizes=body.unit_sizes,
         source=body.source,
-        actor=admin,
     )
     return VacancySubscriptionLookupOut(subscription=_out(subscription))
 
 
 @router.post("/admin/delete", response_model=VacancySubscriptionLookupOut)
 def delete_for_support(
-    body: VacancySubscriptionDelete,
-    admin: User = Depends(require_admin),
+    body: VacancySubscriptionLookup,
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> VacancySubscriptionLookupOut:
     delete_subscription(
         db,
         email=str(body.email),
-        source=body.source,
-        actor=admin,
     )
     return VacancySubscriptionLookupOut(subscription=None)

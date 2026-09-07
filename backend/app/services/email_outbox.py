@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -54,6 +54,9 @@ class EmailQueueStatus:
     last_attempt_at: datetime | None = None
 
 
+VACANCY_FAILURE_RETENTION = timedelta(days=30)
+
+
 def retry_queued_emails(
     db: Session, sender: EmailSender, *, now: datetime | None = None
 ) -> RetrySummary:
@@ -97,9 +100,9 @@ def retry_queued_emails(
                 consume_subscription(
                     db,
                     int(subscription_id),
-                    email_delivery_id=delivery.id,
-                    fulfilled_at=now,
                 )
+                if delivery.application_id is None:
+                    db.delete(delivery)
         else:
             if delivery.state == EmailDeliveryState.QUEUED:
                 queued += 1
@@ -111,6 +114,24 @@ def retry_queued_emails(
         still_queued=queued,
         quota_blocked=quota_blocked,
     )
+
+
+def purge_expired_vacancy_delivery_failures(
+    db: Session, *, now: datetime | None = None
+) -> int:
+    """Delete terminal list-only vacancy failures after the troubleshooting window."""
+    now = now or datetime.now(UTC)
+    result = db.execute(
+        delete(EmailDelivery).where(
+            EmailDelivery.message_kind == "vacancy_opening",
+            EmailDelivery.application_id.is_(None),
+            EmailDelivery.state == EmailDeliveryState.FAILED,
+            func.coalesce(EmailDelivery.last_attempt_at, EmailDelivery.created_at)
+            <= now - VACANCY_FAILURE_RETENTION,
+        )
+    )
+    db.commit()
+    return int(result.rowcount or 0)
 
 
 EXPECTED_FAILURE_CODES = frozenset(

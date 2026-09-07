@@ -208,7 +208,7 @@ def test_global_openai_migration_updates_an_existing_database(
         get_settings.cache_clear()
 
 
-def test_vacancy_hash_removal_migration_updates_an_existing_database(
+def test_vacancy_privacy_migrations_update_an_existing_database(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -241,10 +241,10 @@ def test_vacancy_hash_removal_migration_updates_an_existing_database(
             )
         engine.dispose()
 
-        command.upgrade(config, "head")
+        command.upgrade(config, "5a6b7c8d9e0f")
 
         engine = create_engine(database_url)
-        with engine.connect() as connection:
+        with engine.begin() as connection:
             receipt_columns = {
                 row[1]
                 for row in connection.exec_driver_sql(
@@ -260,11 +260,67 @@ def test_vacancy_hash_removal_migration_updates_an_existing_database(
             source = connection.exec_driver_sql(
                 "SELECT source FROM vacancy_consent_receipts"
             ).scalar_one()
+            connection.exec_driver_sql(
+                "INSERT INTO vacancy_subscriptions "
+                "(email, wants_one_bedroom, wants_two_bedroom, wants_three_bedroom, "
+                "first_consented_at, consented_at, consent_version, source, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, "
+                "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                ("active@example.com", 1, 0, 0, "2026-08-27", "public website"),
+            )
+            connection.exec_driver_sql(
+                "INSERT INTO email_deliveries "
+                "(idempotency_key, message_kind, recipient_kind, recipient_email, state, "
+                "quota_blocked, attempt_count, last_attempt_at, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, "
+                "CURRENT_TIMESTAMP)",
+                (
+                    "opening:1:subscription:1",
+                    "vacancy_opening",
+                    "applicant",
+                    None,
+                    "accepted",
+                    0,
+                    1,
+                ),
+            )
         engine.dispose()
 
         assert "email_hash" not in receipt_columns
         assert "email_hash" not in audit_columns
         assert source == "public website"
+
+        command.upgrade(config, "head")
+
+        engine = create_engine(database_url)
+        with engine.connect() as connection:
+            tables = {
+                row[0]
+                for row in connection.exec_driver_sql(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            }
+            subscription_columns = {
+                row[1]
+                for row in connection.exec_driver_sql(
+                    "PRAGMA table_info(vacancy_subscriptions)"
+                )
+            }
+            active = connection.exec_driver_sql(
+                "SELECT email, source FROM vacancy_subscriptions"
+            ).one()
+            accepted_vacancy_deliveries = connection.exec_driver_sql(
+                "SELECT COUNT(*) FROM email_deliveries "
+                "WHERE message_kind = 'vacancy_opening' AND state = 'accepted'"
+            ).scalar_one()
+        engine.dispose()
+
+        assert "vacancy_consent_receipts" not in tables
+        assert "vacancy_subscription_audits" not in tables
+        assert "consent_version" not in subscription_columns
+        assert "managed_by_user_id" not in subscription_columns
+        assert active == ("active@example.com", "public website")
+        assert accepted_vacancy_deliveries == 0
     finally:
         get_settings.cache_clear()
 

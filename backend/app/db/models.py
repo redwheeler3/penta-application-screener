@@ -405,51 +405,7 @@ class VacancySubscription(TimestampMixin, Base):
     consented_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), index=True, nullable=False
     )
-    consent_version: Mapped[str | None] = mapped_column(String(30))
     source: Mapped[str] = mapped_column(String(120), nullable=False)
-    managed_by_user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id"), index=True
-    )
-
-    managed_by: Mapped[User | None] = relationship()
-
-
-class VacancyConsentReceipt(Base):
-    """Non-contact operational record of one consumed vacancy subscription."""
-
-    __tablename__ = "vacancy_consent_receipts"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    subscription_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    unit_sizes: Mapped[list[int]] = mapped_column(JSON, nullable=False)
-    consented_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    consent_version: Mapped[str | None] = mapped_column(String(30))
-    source: Mapped[str] = mapped_column(String(120), nullable=False)
-    fulfilled_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    retain_until: Mapped[date] = mapped_column(Date, index=True, nullable=False)
-    email_delivery_id: Mapped[int] = mapped_column(Integer, nullable=False)
-
-
-class VacancySubscriptionAudit(Base):
-    """Non-contact audit of manual vacancy-list changes."""
-
-    __tablename__ = "vacancy_subscription_audits"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    subscription_id: Mapped[int | None] = mapped_column(index=True)
-    action: Mapped[str] = mapped_column(String(20), nullable=False)
-    source: Mapped[str] = mapped_column(String(120), nullable=False)
-    acted_by_user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id"), index=True, nullable=False
-    )
-    acted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-    acted_by: Mapped[User] = relationship()
-
 
 class ApplicationParticipation(TimestampMixin, Base):
     """An applicant's explicit entry into one opening, separate from their durable answers."""
@@ -690,8 +646,8 @@ class EmailDelivery(TimestampMixin, Base):
     applicant_draft_id: Mapped[int | None] = mapped_column(
         ForeignKey("applicant_drafts.id", ondelete="CASCADE"), index=True
     )
-    # Retained for targetless queued or failed mail so administrators can identify the recipient.
-    # Accepted mail clears it because SocketLabs owns delivery history after acceptance.
+    # Retained for targetless queued or recently failed mail so administrators can identify the
+    # recipient. Accepted mail clears it because SocketLabs owns delivery history after acceptance.
     recipient_email: Mapped[str | None] = mapped_column(String(320))
     state: Mapped[EmailDeliveryState] = mapped_column(
         Enum(EmailDeliveryState, values_callable=enum_values),

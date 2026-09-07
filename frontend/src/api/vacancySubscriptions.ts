@@ -22,11 +22,11 @@ export const saveVacancySubscription = (
     body: JSON.stringify({ email, unitSizes, source }),
   });
 
-export const deleteVacancySubscription = (email: string, source: string) =>
+export const deleteVacancySubscription = (email: string) =>
   request("/vacancy-subscriptions/admin/delete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, source }),
+    body: JSON.stringify({ email }),
   });
 
 export type VacancySubscriptionLookup = { subscription: VacancySubscription | null };

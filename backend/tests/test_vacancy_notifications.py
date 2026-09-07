@@ -19,17 +19,18 @@ from app.db.models import (
     OpeningOutcome,
     User,
     UserRole,
-    VacancyConsentReceipt,
     VacancySubscription,
 )
 from app.db.session import get_db
-from app.services.email_outbox import retry_queued_emails
+from app.services.email_outbox import (
+    purge_expired_vacancy_delivery_failures,
+    retry_queued_emails,
+)
 from app.services.email_sender import (
     CapturedEmailSender,
     EmailRetryableError,
     get_email_sender,
 )
-from app.services.retention import one_year_after
 from app.services.socketlabs_usage import SocketLabsUsage, get_socketlabs_usage_reader
 from app.services.vacancy_notifications import opening_audience
 from app.services.vacancy_subscriptions import save_subscription
@@ -52,6 +53,11 @@ class FakeUsageReader:
 class RetryableSender:
     def send(self, _message) -> str:
         raise EmailRetryableError("temporary")
+
+
+class TerminalFailureSender:
+    def send(self, _message) -> str:
+        raise ValueError("terminal")
 
 
 def _app_and_db(sender=None) -> tuple:
@@ -191,8 +197,12 @@ async def test_create_atomically_opens_and_queues_then_delivers_all_variants() -
     assert opening is not None
     assert opening.published_at is not None
     assert opening.application_open_date == pacific_today()
-    assert len(deliveries) == 3
+    assert len(deliveries) == 2
     assert all(delivery.state == EmailDeliveryState.ACCEPTED for delivery in deliveries)
+    assert {delivery.message_kind for delivery in deliveries} == {
+        "application_opening",
+        "application_opening_with_vacancy_notice",
+    }
     assert {message.kind for message in sender.messages} == {
         "vacancy_opening",
         "application_opening",
@@ -210,16 +220,45 @@ async def test_create_atomically_opens_and_queues_then_delivers_all_variants() -
         for message in application_messages
     )
     assert db.scalar(select(func.count()).select_from(VacancySubscription)) == 0
-    receipts = list(
-        db.scalars(select(VacancyConsentReceipt).order_by(VacancyConsentReceipt.id))
+    assert all(delivery.recipient_email is None for delivery in deliveries)
+
+
+@pytest.mark.anyio
+async def test_terminal_vacancy_failure_is_deleted_after_30_days() -> None:
+    app, db, _ = _app_and_db(TerminalFailureSender())
+    save_subscription(
+        db, email="list@example.com", unit_sizes={2}, source="public website"
     )
-    assert len(receipts) == 2
-    assert {tuple(receipt.unit_sizes) for receipt in receipts} == {(2,), (2, 3)}
-    assert all(not hasattr(receipt, "email_hash") for receipt in receipts)
-    assert all(
-        receipt.retain_until == one_year_after(receipt.fulfilled_at.date())
-        for receipt in receipts
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post("/openings", json=_opening_payload(expected=1))
+
+    delivery = db.scalar(select(EmailDelivery))
+    assert response.status_code == 200
+    assert delivery is not None
+    delivery_id = delivery.id
+    failed_at = delivery.last_attempt_at
+    assert failed_at is not None
+    assert delivery.state == EmailDeliveryState.FAILED
+    assert delivery.recipient_email == "list@example.com"
+    assert db.scalar(select(VacancySubscription)) is not None
+
+    assert (
+        purge_expired_vacancy_delivery_failures(
+            db, now=failed_at + timedelta(days=29)
+        )
+        == 0
     )
+    assert db.get(EmailDelivery, delivery_id) is not None
+    assert (
+        purge_expired_vacancy_delivery_failures(
+            db, now=failed_at + timedelta(days=30)
+        )
+        == 1
+    )
+    assert db.get(EmailDelivery, delivery_id) is None
+    assert db.scalar(select(VacancySubscription)) is not None
 
 
 @pytest.mark.anyio

@@ -18,20 +18,12 @@ class VacancySubscriptionWrite(RequestModel):
     unit_sizes: set[int] = Field(min_length=1)
 
 
-class VacancySubscriptionPublicWrite(VacancySubscriptionWrite):
-    consent_version: str = Field(min_length=1, max_length=30)
-
-
 class VacancySubscriptionAdminWrite(VacancySubscriptionWrite):
     source: RequestSource
 
 
 class VacancySubscriptionLookup(RequestModel):
     email: EmailStr
-
-
-class VacancySubscriptionDelete(VacancySubscriptionLookup):
-    source: RequestSource
 
 
 class VacancySubscriptionPublicOut(ResponseModel):

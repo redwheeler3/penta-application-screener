@@ -19,7 +19,6 @@ from app.db.models import (
     PasswordlessIdentityKind,
     User,
     UserRole,
-    VacancyConsentReceipt,
     VacancySubscription,
 )
 from app.db.session import get_db
@@ -249,7 +248,6 @@ async def test_direct_selection_is_atomic_and_sends_no_email() -> None:
         other.id
     ]
     assert db.scalar(select(func.count()).select_from(VacancySubscription)) == 1
-    assert db.scalar(select(func.count()).select_from(VacancyConsentReceipt)) == 0
     assert db.scalar(select(func.count()).select_from(EmailDelivery)) == 0
     assert sender.messages == []
     db.refresh(issued_session.record)

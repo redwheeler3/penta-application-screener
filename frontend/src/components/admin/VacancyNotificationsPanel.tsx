@@ -77,10 +77,10 @@ export function VacancyNotificationsPanel(props: {
   }
 
   async function remove(): Promise<void> {
-    if (!subscription || !source.trim() || busy) return;
+    if (!subscription || busy) return;
     setBusy(true);
     try {
-      const response = await api.deleteVacancySubscription(email, source.trim());
+      const response = await api.deleteVacancySubscription(email);
       if (!response.ok) {
         props.onError((await readProblem(response)) ?? "Could not delete that subscription.");
         return;
@@ -185,7 +185,7 @@ export function VacancyNotificationsPanel(props: {
             </label>
             <div className="opening-form-actions">
               {subscription ? (
-                <button className="danger-button" type="button" onClick={() => void remove()} disabled={busy || !source.trim()}>
+                <button className="danger-button" type="button" onClick={() => void remove()} disabled={busy}>
                   Delete subscription
                 </button>
               ) : null}

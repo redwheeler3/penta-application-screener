@@ -695,7 +695,7 @@ groups active records by their current consent month, so its bars add up to the 
 total. Routine reporting does not expose email addresses. A separate exact-email lookup shows when
 the person first subscribed, when the current preferences were last updated, and the current source;
 it lets an administrator add or replace a subscription after a person requests manual help, or
-delete one on request. Those actions record the acting administrator and their source.
+delete one on request. Added or replaced subscriptions retain the source of the request.
 
 When any requested unit size becomes available, the transactional email provider sends one vacancy
 notice and the entire list record is consumed, even if the person selected other unit sizes.
@@ -706,9 +706,11 @@ the public form so the recipient can create a new one-notice subscription if the
 notifications. Resubscribing creates a new record; it does not reactivate or retain the consumed
 one. SocketLabs applies hard-bounce, complaint, and unsubscribe suppression to future delivery. The
 application does not ingest those events or duplicate SocketLabs' permanent suppression list.
-On consumption, the application deletes the email address. A one-year operational receipt retains
-the consent time, notice version, source, requested sizes, fulfillment time, and delivery identifier,
-but no address or hash of it.
+On consumption, the application deletes the subscription, including the email address, and retains
+no separate consent receipt, vacancy-list audit record, or list-only delivery record. A terminal
+delivery failure retains its delivery record for 30 days so an administrator can investigate; the
+active subscription remains because no notice was accepted. The next maintenance pass deletes the
+failed delivery record after that window ends.
 
 Every vacancy-list message uses the common SocketLabs unsubscribe footer. Confirming that
 provider-managed link permanently suppresses the address from all Penta email sent through the
