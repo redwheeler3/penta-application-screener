@@ -37,15 +37,15 @@ export function Introduction() {
         </p>
         <p>
           We collect and use the information in this form to contact you, assess eligibility for
-          housing, membership, the Home Owner Grant, or an internal move, and, if you are
-          shortlisted, verify housing references, employment, income, and credit.
+          housing, membership, or an internal move, and, if you are shortlisted, verify housing
+          references, employment, income, and credit.
         </p>
         <p>
           Where necessary, your information may be available to Penta&apos;s authorized committee
           members, directors, treasurer, auditor, lawyer, management company, municipal employees
-          processing a Home Owner Grant, and service providers acting for Penta, including hosting,
-          email, and AI-processing providers. It is available to the general membership only when
-          relevant to an appeal you make about a Board decision.
+          and service providers acting for Penta, including hosting, email, and AI-processing
+          providers. It is available to the general membership only when relevant to an appeal you
+          make about a Board decision.
         </p>
         <p>
           Non-member applications are retained until one year after the latest relevant move-in

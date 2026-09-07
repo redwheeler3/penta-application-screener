@@ -21,7 +21,8 @@ The built-in application form begins with opening selection and a point-of-colle
 The notice identifies the purposes for collection, people and service-provider categories that may
 receive information where necessary, opening-based retention periods, and the Privacy Officer. The
 form then collects household details, current housing, essay answers, employment, and income before
-showing the complete review and declaration.
+showing the complete review and declaration. Home Owner Grant information is collected through a
+separate process and is outside the application service.
 
 The applicant/co-applicant section asks for applicant name, date of birth, phone, and email;
 co-applicant name, date of birth, relationship, phone, and email; and the children who will live in
