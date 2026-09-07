@@ -454,9 +454,9 @@ removed. They do not show an applicant-removal link.
   Privacy Officer contact, and privacy-policy link before any server save. The final
   **Declaration** presents the membership conditions and explicit verification and credit-check
   consent. Merely continuing or entering an email is not consent. The primary applicant must
-  accept the declaration before every initial or updated Submit action. Each immutable submitted
-  version stores the current application-terms version as durable evidence of the wording accepted;
-  the submission timestamp is also the acceptance timestamp.
+  accept the declaration before every initial or updated Submit action. The server rejects a Submit
+  action unless that acceptance accompanies it, and the immutable application version records the
+  submission time.
 - Every opening records its intake mode, move-in date, unit size, and monthly housing charge. An
   **Open applications** opening also records its application open and close dates. Creating one is
   the application-open event: its open date is that day and the confirmed notification audience is

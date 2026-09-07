@@ -1,3 +1,0 @@
-"""Version for applicant-facing terms whose acceptance must remain auditable."""
-
-APPLICATION_TERMS_VERSION = "2026-08-27"

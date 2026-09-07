@@ -16,7 +16,6 @@ from app.db.models import (
     Opening,
 )
 from app.domain.ages import age_on
-from app.legal import APPLICATION_TERMS_VERSION
 from app.schemas.applicant.answers import (
     CanonicalApplicationAnswers,
     WorkingApplicationAnswers,
@@ -129,7 +128,6 @@ def publish_working_copy(
             selected_opening_ids=selected_opening_ids,
             content_hash=application.raw_row_hash,
             submitted_at=submitted_at,
-            terms_version=APPLICATION_TERMS_VERSION,
         )
     )
 

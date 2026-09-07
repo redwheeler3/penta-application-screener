@@ -470,7 +470,6 @@ class ApplicationVersion(Base):
     submitted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-    terms_version: Mapped[str | None] = mapped_column(String(30))
 
     application: Mapped[Application] = relationship()
 

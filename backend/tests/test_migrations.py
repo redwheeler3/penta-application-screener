@@ -325,6 +325,59 @@ def test_vacancy_privacy_migrations_update_an_existing_database(
         get_settings.cache_clear()
 
 
+def test_terms_version_removal_preserves_application_versions(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database = tmp_path / "terms-version-removal.db"
+    backend = Path(__file__).parents[1]
+    database_url = f"sqlite:///{database.as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    get_settings.cache_clear()
+    try:
+        config = Config(str(backend / "alembic.ini"))
+        config.set_main_option("script_location", str(backend / "alembic"))
+        command.upgrade(config, "6b7c8d9e0f1a")
+
+        engine = create_engine(database_url)
+        with engine.begin() as connection:
+            inserted = connection.exec_driver_sql(
+                "INSERT INTO applications "
+                "(primary_email, raw_row, raw_row_hash, normalized, working_revision, "
+                "synthetic_data, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                ("applicant@example.com", "{}", "content-hash", "{}", 1, 0),
+            )
+            connection.exec_driver_sql(
+                "INSERT INTO application_versions "
+                "(application_id, answers, normalized, selected_opening_ids, content_hash, "
+                "submitted_at, terms_version) "
+                "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)",
+                (inserted.lastrowid, "{}", "{}", "[]", "content-hash", "2026-08-27"),
+            )
+        engine.dispose()
+
+        command.upgrade(config, "head")
+
+        engine = create_engine(database_url)
+        with engine.connect() as connection:
+            columns = {
+                row[1]
+                for row in connection.exec_driver_sql(
+                    "PRAGMA table_info(application_versions)"
+                )
+            }
+            content_hash = connection.exec_driver_sql(
+                "SELECT content_hash FROM application_versions"
+            ).scalar_one()
+        engine.dispose()
+
+        assert "terms_version" not in columns
+        assert content_hash == "content-hash"
+    finally:
+        get_settings.cache_clear()
+
+
 def test_fresh_schema_keeps_timestamp_defaults_on_opening_scoped_tables(
     tmp_path: Path,
     monkeypatch,

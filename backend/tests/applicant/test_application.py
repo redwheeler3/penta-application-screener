@@ -16,7 +16,6 @@ from app.db.models import (
     OpeningOutcome,
     PasswordlessIdentityKind,
 )
-from app.legal import APPLICATION_TERMS_VERSION
 from app.services.passwordless_auth import create_browser_session
 from app.services.retention import one_year_after
 from tests.applicant.support import (
@@ -158,7 +157,6 @@ async def test_authenticated_submission_requires_declaration_and_accepts_multipl
     version = db.scalar(select(ApplicationVersion))
     assert version is not None
     assert version.selected_opening_ids == [opening.id, later_opening.id]
-    assert version.terms_version == APPLICATION_TERMS_VERSION
     confirmation = sender.messages[-1].text_body
     assert confirmation.index("2-bedroom home") < confirmation.index("3-bedroom home")
     assert (
