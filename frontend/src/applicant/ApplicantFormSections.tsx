@@ -42,8 +42,8 @@ export function Introduction() {
         </p>
         <p>
           Where necessary, your information may be available to Penta&apos;s authorized committee
-          members, directors, treasurer, auditor, lawyer, management company, municipal employees
-          and service providers acting for Penta, including hosting, email, and AI-processing
+          members, directors, treasurer, auditor, lawyer, management company, and service providers
+          acting for Penta, including hosting, email, and AI-processing
           providers. It is available to the general membership only when relevant to an appeal you
           make about a Board decision.
         </p>
