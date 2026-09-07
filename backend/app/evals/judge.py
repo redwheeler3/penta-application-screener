@@ -28,6 +28,7 @@ from collections import Counter
 from dataclasses import dataclass
 
 from app.ai.analysis import derive_prompt_version
+from app.ai.model_catalog import MODEL_IDS_BY_ROUTE
 from app.evals import stability
 from app.evals.paths import (
     CONSOLIDATION_GOLDEN_PATH,
@@ -38,7 +39,7 @@ from app.evals.paths import (
 )
 from app.evals.reproduce import Reproduced
 
-DEFAULT_MODEL = "us.anthropic.claude-sonnet-4-6"
+DEFAULT_MODEL = MODEL_IDS_BY_ROUTE["bedrock"]["sonnet"]
 
 # Each pass's golden file + the reproduce adapter that re-runs that pass blind (see
 # app/evals/reproduce.py). Kept as lazy imports inside the dispatcher so judge.py has no

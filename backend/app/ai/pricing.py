@@ -1,7 +1,9 @@
 """AI token pricing for cost estimates and spending-cap enforcement.
 
 Prices are USD per 1,000,000 tokens. Direct OpenAI and Bedrock prices differ;
-the provider-native model ID therefore selects the route-specific price. Update
+the provider-native model ID therefore selects the route-specific price. Claude's
+Bedrock routes use the lower-priced ``global.`` inference profiles; a geographic
+profile would need its own higher rates rather than reusing these entries. Update
 by hand when provider pricing changes.
 
 Why hardcoded: the AWS Price List API (boto3 "pricing", ServiceCode

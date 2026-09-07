@@ -1,6 +1,7 @@
 from pydantic import Field, field_validator
 
 from app.ai.model_catalog import (
+    MODEL_IDS_BY_ROUTE,
     ModelProvider,
     ReasoningEffort,
     model_spec,
@@ -47,8 +48,8 @@ class AISettings(BridgeModel):
     """
 
     region: str = Field(default="us-east-1")
-    _HAIKU = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-    _SONNET = "us.anthropic.claude-sonnet-4-6"
+    _HAIKU = MODEL_IDS_BY_ROUTE["bedrock"]["haiku"]
+    _SONNET = MODEL_IDS_BY_ROUTE["bedrock"]["sonnet"]
     screening_model: str = Field(default=_HAIKU)
     screening_reasoning_effort: ReasoningEffort = "low"
     dimension_scoring_model: str = Field(default=_HAIKU)

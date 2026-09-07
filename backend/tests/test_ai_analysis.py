@@ -19,7 +19,7 @@ from app.ai.provider import Usage
 from app.ai.schemas import ScreeningReport
 from app.db.models import Application, ApplicationAIResult, Base
 
-MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+MODEL = MODEL_IDS_BY_ROUTE["bedrock"]["haiku"]
 KIND = "screening"
 # A representative derived version for the engine tests (the real passes derive their
 # own from their prompt text; the engine itself is agnostic to which string it is).
@@ -108,7 +108,8 @@ def test_sonnet_46_not_shadowed_by_sonnet_4() -> None:
     # The more specific sonnet keys must win over the broad "sonnet-4" key.
     from app.ai.pricing import price_for_model
 
-    assert price_for_model("us.anthropic.claude-sonnet-4-6").input_per_mtok == 3.0
+    sonnet = MODEL_IDS_BY_ROUTE["bedrock"]["sonnet"]
+    assert price_for_model(sonnet).input_per_mtok == 3.0
 
 
 @pytest.mark.parametrize(
@@ -419,18 +420,18 @@ def test_default_consolidation_correlation_threshold_is_point_eight() -> None:
     assert AISettings().consolidate_correlation_threshold == 0.8
 
 
-def test_anthropic_models_remain_defaults_until_production_access() -> None:
+def test_global_bedrock_claude_models_are_defaults() -> None:
     from app.schemas.settings import AISettings
 
     settings = AISettings()
-    assert settings.decompose_model == "us.anthropic.claude-sonnet-4-6"
-    assert settings.match_model == "us.anthropic.claude-sonnet-4-6"
-    assert settings.consolidate_model == "us.anthropic.claude-sonnet-4-6"
-    assert settings.discovery_model == "us.anthropic.claude-sonnet-4-6"
-    assert settings.screening_model == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-    assert settings.dimension_scoring_model == (
-        "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-    )
+    sonnet = MODEL_IDS_BY_ROUTE["bedrock"]["sonnet"]
+    haiku = MODEL_IDS_BY_ROUTE["bedrock"]["haiku"]
+    assert settings.decompose_model == sonnet
+    assert settings.match_model == sonnet
+    assert settings.consolidate_model == sonnet
+    assert settings.discovery_model == sonnet
+    assert settings.screening_model == haiku
+    assert settings.dimension_scoring_model == haiku
 
 
 def test_prompt_version_is_part_of_key() -> None:

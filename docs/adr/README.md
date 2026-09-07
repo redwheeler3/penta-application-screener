@@ -25,6 +25,7 @@ record states what replaced it and why.
 | [0012](0012-hosting-platform-m17.md) | Hosting platform for go-live (M17) — Fly.io suspend + volume | deployed & verified |
 | [0013](0013-openai-model-selection.md) | Select Luna/Terra and verify the direct OpenAI route (M20) | accepted; production route verified |
 | [0014](0014-multi-provider-model-routing.md) | Route supported models through Bedrock or direct provider APIs | accepted |
+| [0015](0015-global-bedrock-claude-profiles.md) | Route Bedrock Claude through global inference profiles | accepted |
 
 ADRs 0001–0004 capture **superseded/reversed** decisions (the "four superseded strata");
-0005–0013 capture **major decisions that still hold**.
+0005–0015 capture **major decisions that still hold**.

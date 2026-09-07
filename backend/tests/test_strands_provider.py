@@ -18,7 +18,7 @@ def test_claude_uses_bedrock_runtime_model() -> None:
     provider = StrandsProvider(region="us-east-1", max_pool_connections=7)
 
     with patch("strands.models.BedrockModel") as model_class:
-        model = provider._model_for("us.anthropic.claude-haiku-4-5-20251001-v1:0")
+        model = provider._model_for("global.anthropic.claude-haiku-4-5-20251001-v1:0")
 
     assert model is model_class.return_value
     kwargs = model_class.call_args.kwargs
@@ -308,4 +308,4 @@ def test_openai_requests_a_user_visible_preamble() -> None:
 def test_claude_system_prompt_is_unchanged() -> None:
     prompt = "Base instructions\n"
 
-    assert _system_prompt_for_model("us.anthropic.claude-sonnet-4-6", prompt) == prompt
+    assert _system_prompt_for_model("global.anthropic.claude-sonnet-4-6", prompt) == prompt

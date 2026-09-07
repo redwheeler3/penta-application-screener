@@ -127,7 +127,7 @@ An estimate is the product of three things, and it helps to keep them separate:
 estimated cost  =  price rate  ×  token count per call  ×  number of uncached applications
 ```
 
-- **The price rate** (USD per token) is *always* the hardcoded table in `pricing.py`, keyed by a substring of the model ID. It is hardcoded because the AWS Price List API does not list the Claude 4.x models we use, so a live lookup would always fall back anyway. An *unknown* model ID falls back to the most expensive known rate (Opus-tier), so a missing table entry never silently under-estimates. This rate is never learned — it is what AWS charges.
+- **The price rate** (USD per token) is *always* the hardcoded table in `pricing.py`, keyed by the exact current model ID with substring matching retained for historical rows. It is hardcoded because the AWS Price List API does not list the Claude 4.x models we use, so a live lookup would always fall back anyway. The Bedrock Claude entries are `global.` inference profiles and use their global rates; a geographic profile must get a separate, higher-priced entry before it can be offered. An *unknown* model ID falls back to the most expensive known rate (Opus-tier), so a missing table entry never silently under-estimates. This rate is never learned — it is what the selected route charges.
 
 - **The token count per call** (how many input/output tokens a call will use) is where the learning happens. It is chosen in three tiers, best first:
   1. The average of recent real calls at the **current `prompt_version`** — the most representative of what the next run will cost.
