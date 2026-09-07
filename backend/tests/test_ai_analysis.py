@@ -347,7 +347,7 @@ def test_estimate_falls_back_to_earlier_prompt_version_usage() -> None:
     """
     db = make_session()
     app = make_application(db, email="a@x.com", raw_hash="h1")
-    # A stored result from an OLD prompt version (not the current PROMPT_VERSION).
+    # A stored result from a non-current prompt version.
     db.add(
         ApplicationAIResult(
             application_id=app.id,
@@ -368,7 +368,7 @@ def test_estimate_falls_back_to_earlier_prompt_version_usage() -> None:
         fallback_input_tokens=999_000_000, fallback_output_tokens=999_000_000,
     )
     assert est["to_analyze"] == 1
-    # Uses the old version's observed 1M-in/0-out, not the huge fallback.
+    # Uses that version's observed 1M-in/0-out, not the huge fallback.
     assert est["estimated_usd"] == pytest.approx(price_for_model(MODEL).input_per_mtok)
 
 

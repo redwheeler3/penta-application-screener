@@ -62,8 +62,8 @@ class RunTally:
             return
         if result.outcome.cached:
             self.cached += 1
-            # A cache hit spent nothing now. The cached outcome reprices its stored
-            # tokens on the selected route, estimating what regeneration would cost.
+            # A cache hit incurs no cost. Reprice its stored tokens on the selected
+            # route to estimate what regeneration would cost.
             self.cached_saved_usd += result.outcome.cost_usd
         else:
             self.analyzed += 1

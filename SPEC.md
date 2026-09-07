@@ -21,8 +21,7 @@ The built-in application form begins with opening selection and a point-of-colle
 The notice identifies the purposes for collection, people and service-provider categories that may
 receive information where necessary, opening-based retention periods, and the Privacy Officer. The
 form then collects household details, current housing, essay answers, employment, and income before
-showing the complete review and declaration. Home Owner Grant information is collected through a
-separate process and is outside the application service.
+showing the complete review and declaration.
 
 The applicant/co-applicant section asks for applicant name, date of birth, phone, and email;
 co-applicant name, date of birth, relationship, phone, and email; and the children who will live in
@@ -75,11 +74,10 @@ housing references, four required essays, optional additional information, an op
 photo link, pets, employment, and gross yearly income. The canonical contract is
 `backend/app/schemas/applicant/answers.py`.
 
-## Built-In Application Intake (M21)
+## Built-In Application Intake
 
-The application form moves into this product between application cycles. It is a clean cutover,
-not a period of dual external-form and built-in intake. The field reference remains the baseline
-for the built-in form.
+The built-in application form is the sole intake path; there is no parallel external-form intake.
+The field reference remains the baseline for the form.
 
 ### One application, working and submitted copies
 
@@ -165,7 +163,7 @@ the applicant starts a blank current application. The retained record is never r
 pre-populated, or exposed as an email collision; it remains linked only as needed to enforce its
 retention and purge date. There is still at most one current application for the address.
 
-M23 gives applicants optional identity-only Google sign-in alongside passwordless email access;
+Applicants may use optional identity-only Google sign-in alongside passwordless email access;
 both methods establish the same application session and neither creates a separate applicant
 account. The durable identity remains the internal application ID. A secure email-access flow sends
 a 24-hour, single-use link to the primary applicant's email address; consuming it establishes an
@@ -173,7 +171,7 @@ HTTPS-only application session and removes the credential from the browser URL. 
 only as hashes, expire, cannot be reused, and are protected by rate limits and non-enumerating
 responses. Only the primary applicant receives access links and application updates; the
 co-applicant does not have separate editing access. Google linking and collision behavior are
-specified in [Applicant Google Sign-In](#applicant-google-sign-in-m23-target).
+specified in [Applicant Google Sign-In](#applicant-google-sign-in).
 
 Before showing the form, a signed-out visitor sees Google first, email second, and guest access
 third. Google is the fastest path but remains optional. The single email action serves both new and
@@ -347,9 +345,8 @@ nor changes the retention or access rules for that person's application.
 SocketLabs sends applicant access, save-and-return, submission, update, and
 security-notification messages through its Injection API. The application calls it through a
 small provider-neutral email-sender interface so authentication and intake behavior do not depend
-on SocketLabs-specific response shapes. Resend is the documented operational fallback if
-SocketLabs becomes unsuitable, but M21 does not implement or test a Resend adapter. A provider
-change is an explicit operational action, never an automatic retry after an ambiguous send result.
+on SocketLabs-specific response shapes. A provider change is an explicit implementation and
+operational action, never an automatic retry after an ambiguous send result.
 
 SocketLabs uses a dedicated Server ID and Injection API key stored as Fly secrets. The sending
 domain is authenticated with DKIM, SPF, and DMARC. Messages use `Penta Co-operative Housing` as
@@ -429,13 +426,13 @@ removed. They do not show an applicant-removal link.
 
 ### Form behavior
 
-- M21 preserves the current field set and required/optional behavior rather than redesigning the
-  application schema. The deliberate exception is that every applicant, co-applicant, and child
-  age field becomes a date of birth so the application can calculate age on the last submitted edit
-  instead of becoming stale. Committee and AI views receive the calculated age needed for
-  screening, not the raw birth date. Existing submitted integer ages remain unchanged in their
-  historical snapshots; they are never converted into invented birth dates. A returning applicant
-  must provide the missing birth dates in the working copy before submitting for another opening.
+- The form preserves the field-reference questions and required/optional behavior. Applicant,
+  co-applicant, and child ages are collected as dates of birth so the application can calculate age
+  on the last submitted edit instead of becoming stale. Committee and AI views receive the
+  calculated age needed for screening, not the raw birth date. Existing submitted integer ages
+  remain unchanged in their historical snapshots; they are never converted into invented birth
+  dates. A returning applicant must provide the missing birth dates in the working copy before
+  submitting for another opening.
 - The introduction explains the current eligibility criteria, but the form has no eligibility
   hard stops. Every applicant may complete and submit it. Deterministic rules and human overrides
   remain part of committee screening, not intake gating.
@@ -597,8 +594,8 @@ unauthenticated form contains the same address.
 
 Email identity prevents an unauthenticated collision on the same address; it does not attempt to
 prove that similarly named people or households using different verified addresses are the same.
-Those records remain separate applications. M21 performs no automatic merge and provides no
-administrator merge operation.
+Those records remain separate applications. The service performs no automatic merge and provides
+no administrator merge operation.
 
 ### Intake data boundary
 
@@ -655,7 +652,7 @@ service is unused; the first subsequent real use starts the due work in the back
 Scheduled purge physically removes each due aggregate without depending on email delivery. Explicit
 deletion of a never-submitted draft likewise removes the draft and its email address immediately.
 
-## Built-In Vacancy Notification List (M22)
+## Built-In Vacancy Notification List
 
 The application service owns a minimal one-time vacancy-notification list, not a wait list, applicant
 account, newsletter, or promise of consideration.
@@ -720,19 +717,18 @@ subscription has been consumed and offers the public sign-up link for recipients
 permanently unsubscribed.
 
 Vacancy notices use the same grandfathered SocketLabs server as transactional application email;
-the free 2,000-message allowance is tied to that server rather than the account. A second server is
-therefore not part of M22. The resulting server-wide suppression is intentional: someone who uses
+the free 2,000-message allowance is tied to that server rather than the account. The resulting
+server-wide suppression is intentional: someone who uses
 the provider-managed unsubscribe is unsubscribed from all Penta email, including secure application
 access messages.
 
-## Applicant Google Sign-In (M23 Target)
+## Applicant Google Sign-In
 
-M23 adds optional identity-only Google sign-in to the applicant application. It reuses the
-committee's proven identity shape: the internal record ID is the durable identity, normalized
-email is the email credential, and an optional unique Google subject is a second credential on the
-same record. For applicants, `Application.id` remains the identity carried by access links,
-browser sessions, working copies, submissions, retention, and audit history. Google does not create
-a parallel applicant account or a second application identity.
+Applicants may use optional identity-only Google sign-in. The internal record ID is the durable
+identity, normalized email is the email credential, and an optional unique Google subject is a
+second credential on the same record. For applicants, `Application.id` remains the identity carried
+by access links, browser sessions, working copies, submissions, retention, and audit history.
+Google does not create a parallel applicant account or a second application identity.
 
 Google is offered because it is expected to cover much of the applicant population, including the
 many applicants who use Gmail, and removes the wait for an access email on the common path. It is
@@ -858,8 +854,8 @@ Google authentication never confirms a pending email change, even if Google retu
 address; the emailed confirmation link remains the proof that Penta can deliver future application
 communication there.
 
-No separate connected-accounts settings surface is needed for M23. Linking is automatic only on an
-unambiguous email match, and changing the primary email is the supported way to retire a binding
+There is no separate connected-accounts settings surface. Linking is automatic only on an
+unambiguous email match, and changing the primary email is the supported way to disconnect a binding
 that belongs to the old address. An applicant who needs a different Google subject for the same
 unchanged email uses email access and Tech Support; the application never silently replaces one
 Google subject with another.
@@ -1067,9 +1063,11 @@ Known patterns to detect (intentionally incomplete; grows over time):
 - Responses copy-pasted across multiple essay fields
 - Internal inconsistencies between essays and other fields
 - Phone numbers or emails that appear fake beyond format validation
-- Pet descriptions that violate the co-op pet policy (more than 1 dog, more than 1 cat, or exotic/unusual pets — free text, too ambiguous for deterministic parsing)
 
-AI screening flags are stored per-application and shown in the candidate detail view as informational notices, not filter reasons. Implementation depth: [docs/ai-screening.md](docs/ai-screening.md).
+The pass also extracts neutral pet counts and other-pet descriptions. Deterministic per-member hard
+filters judge those facts against the applicable pet limits. AI screening flags are stored
+per-application and shown in the candidate detail view as informational notices, not filter reasons.
+Implementation depth: [docs/ai-screening.md](docs/ai-screening.md).
 
 ## AI-Assisted Screening
 
@@ -1077,7 +1075,7 @@ AI review runs only for candidates who pass deterministic hard filters (or are r
 
 ### Provider And Cost Controls
 
-The AI architecture is provider-adaptable behind an internal `AIProvider` interface, with a deterministic `MockProvider` backing tests. The Strands implementation supports Claude and GPT through Amazon Bedrock plus direct Anthropic and OpenAI routes. One exact model catalog owns routing, capabilities, and the shared provider-neutral model identity for equivalent routes. Provider-native model IDs remain in settings, traces, evals, and cost rows for provenance and route-specific pricing; caches and freshness use the model identity, so moving the same pinned model between Bedrock and its direct API preserves valid work. Credentials are deployment secrets, while admins choose configured routes per pass in the UI. Existing defaults remain Claude on Bedrock. Every Bedrock route uses a `global.` inference profile from the `us-east-1` source region: Claude retains Strands' Bedrock/Converse adapter, while GPT retains Strands' OpenAI Responses adapter pointed at Bedrock Runtime and authenticated with fresh short-lived tokens signed from the AWS credential chain. Bedrock may process a request in any supported commercial AWS Region while keeping traffic on AWS's network. This accepts worldwide processing of applicant prompts and outputs in exchange for the global profiles' lower price and broader capacity; the public privacy policy discloses that service-provider processing may occur outside British Columbia or Canada. See ADRs 0010 and 0014–0016.
+The AI architecture is provider-adaptable behind an internal `AIProvider` interface, with a deterministic `MockProvider` backing tests. The Strands implementation supports Claude and GPT through Amazon Bedrock plus direct Anthropic and OpenAI routes. One exact model catalog owns routing, capabilities, and the shared provider-neutral model identity for equivalent routes. Provider-native model IDs remain in settings, traces, evals, and cost rows for provenance and route-specific pricing; caches and freshness use the model identity, so moving the same pinned model between Bedrock and its direct API preserves valid work. Credentials are deployment secrets, while admins choose configured routes per pass in the UI. Default routes use Claude on Bedrock. Every Bedrock route uses a `global.` inference profile from the `us-east-1` source region: Claude retains Strands' Bedrock/Converse adapter, while GPT retains Strands' OpenAI Responses adapter pointed at Bedrock Runtime and authenticated with fresh short-lived tokens signed from the AWS credential chain. Bedrock may process a request in any supported commercial AWS Region while keeping traffic on AWS's network. This accepts worldwide processing of applicant prompts and outputs in exchange for the global profiles' lower price and broader capacity; the public privacy policy discloses that service-provider processing may occur outside British Columbia or Canada. See ADRs 0010 and 0014–0016.
 
 Cost control is a core requirement. The app prefers: cached AI analysis per application and per run; smaller/cheaper models for high-volume passes and frontier models only for cross-document synthesis; short structured outputs; a visible AI cost estimate before running; and a configurable per-run spending cap (default `$2.00`, enforced against the estimate before any model call — an over-cap run fails fast with 402). Hard filters are computed from submitted application fields; AI review starts only after the user sees the estimate and confirms.
 
@@ -1087,7 +1085,7 @@ The screener discovers the differentiating dimensions of *this* pool rather than
 
 **The assistant does not "cut" candidates.** At ~300 applicants, hard removal is the wrong model. Instead it **stack-ranks the entire qualified pool with a per-row rationale**, and the committee's weighting re-sorts that list. Re-weighting adjusts standing (soft ranking), never removes anyone; the committee reads the stack rank top-down with no fixed cut line. Re-weighting is freely reversible.
 
-**The committee expresses what matters with a tier-list maker** (`@dnd-kit`): the discovered dimensions are draggable chips sorted into self-defined importance tiers (Critical/Important/Minor by default, plus an Ignore zone), and the ranking re-sorts instantly as deterministic math over the cached scores — **no model call per change**. This replaced sequential pairwise narrowing questions; see ADR 0006. A future "Criteria Coach" may *ask* questions to help the committee reflect on the weighting they built (not to elicit it).
+**The committee expresses what matters with a tier-list maker** (`@dnd-kit`; see ADR 0006): the discovered dimensions are draggable chips sorted into self-defined importance tiers (Critical/Important/Minor by default, plus an Ignore zone), and the ranking re-sorts instantly as deterministic math over the cached scores — **no model call per change**. A future "Criteria Coach" may *ask* questions to help the committee reflect on the weighting they built (not to elicit it).
 
 **The defining architectural decision (ADR 0005): the LLM extracts scored features; ranking is deterministic math on top.** The model scores each candidate on the discovered dimensions and never opines on importance. Weights start equal (an honest "no judgment yet" baseline) and only the committee's tiering moves them, so every deviation traces to a recorded human choice, and a weighting change re-runs only the math over cached scores.
 
@@ -1113,7 +1111,7 @@ For debugging and learning, raw AI analysis, traces, prompts, and intermediate o
 
 ### Essay Judgment
 
-Strong negative essay signals include (not limited to): the applicant appears unaware of co-op obligations; treats the unit mainly as cheap rent without understanding shared work; expresses hostility or resistance to shared work; has an unclear or inconsistent household situation. Essay concerns may justify a "do not interview" recommendation — essay review is central, not a low-priority flag. Brief, awkward, translated, or non-native English answers are **not** penalized for writing polish; the AI judges evidence of co-op fit, participation commitment, and relevant signals rather than style or fluency. (The differentiating criteria are *discovered* against the pool at Rank time, not pre-committed; a standalone essay-analysis pass was built then removed — see ADR 0001.)
+Strong negative essay signals include (not limited to): the applicant appears unaware of co-op obligations; treats the unit mainly as cheap rent without understanding shared work; expresses hostility or resistance to shared work; has an unclear or inconsistent household situation. Essay concerns may justify a "do not interview" recommendation — essay review is central, not a low-priority flag. Brief, awkward, translated, or non-native English answers are **not** penalized for writing polish; the AI judges evidence of co-op fit, participation commitment, and relevant signals rather than style or fluency. Differentiating criteria are *discovered* against the pool at Rank time rather than pre-committed (ADR 0001).
 
 ### Observability And Evals
 
@@ -1141,9 +1139,9 @@ Every AI recommendation is reviewable and overrideable, and explains why a candi
 
 It is acceptable to send full application context, including names/contact context, to the AI model. Redaction is not required. Applicant data is still treated as sensitive: deterministic filtering stays separate from AI judgment; prompts, model outputs, filter decisions, ranking rationales, and overrides are auditable. The eval-oriented design (fixtures, schema-consistency checks, grounding/evidence-quality tracking, enough trace data to debug regressions) is built and described above.
 
-## Multi-Member MOMI Workflow (Milestone 15)
+## Multi-Member MOMI Workflow
 
-**M15 is an *isolation* feature, not a merge feature.** Each of the ~5 committee members screens independently — their own eligibility rules, eligibility overrides, dimension tiering, ranking, and notes — layered on a **shared, compute-once substrate within the selected opening**: its applicant pool and AI-discovered dimension set, plus globally reusable per-(applicant × dimension) scores. Members bring their own lists to a meeting and debate live; the app does **not** merge, compare, or reconcile them. (This supersedes the earlier merged-shortlist design — there is no merge formula, no disagreement flag, no criteria-comparison surface, and no cross-member visibility inside the app.)
+Each of the ~5 committee members screens independently — their own eligibility rules, eligibility overrides, dimension tiering, ranking, and notes — layered on a **shared, compute-once substrate within the selected opening**: its applicant pool and AI-discovered dimension set, plus globally reusable per-(applicant × dimension) scores. Members bring their own lists to a meeting and debate live; the app does **not** merge, compare, or reconcile them. There is no merge formula, disagreement flag, criteria-comparison surface, or cross-member visibility inside the app.
 
 **Shared / per-member boundary:**
 
@@ -1161,57 +1159,54 @@ It is acceptable to send full application context, including names/contact conte
 
 **Union eligible pool.** Within the selected opening, an applicant is in the **committee-eligible union** if they pass *any* member's effective screen (that member's rules *or* an explicit override) — a derived predicate over the per-member views, not new stored state. Discovery and scoring operate on this union floor; applicants whom no member passes are never scored — preserving "don't score applicants who won't clear the screen." A member's ranked list is the opening's shared analysis **filtered to their eligible view and weighted by their tiers** — pure math, instant, free.
 
-**How cost stays low (the payoff).** The score cache keys on `(raw_row_hash, dimension_key, model_identity, reasoning, prompt_version)` with no member id, opening id, or provider route, so sharing rides on *applicant and criterion identity*, not pool identity. An applicant scored once is free for another member or opening when matching inputs recur, and the same pinned model can reuse that work after moving between Bedrock and its direct API. **Staleness is per-opening and per-member**, and reduces to a cache-gap check: a member sees "re-rank needed" only when their eligible view references an applicant not yet in that opening's analysis. Member A marking applicant X eligible ambers only A's badge in that opening; once A runs it, X grounds discovery + gets scored, and B — including X later in the same opening — rides the cache with no new spend. Pool-specific discovery still runs for each opening. A new dimension surfaced by one member's Rank lands on every member's board for that opening at **weight 0** (inert until that member tiers it), so it costs others nothing until they opt in. **Screening staleness works the same way per-member:** a member's eligibility-rule values fold into their screening prompt version (as the pet policy already does — see the versioning rule), so changing rules flips that member's screening cache while others' stays valid; members or openings whose rule values coincide share the screening cache automatically. Staleness is detectable the moment an applicant enters a member's view — the amber signals uncached work waiting, before any run.
+**How cost stays low (the payoff).** The score cache keys on `(raw_row_hash, dimension_key, model_identity, reasoning, prompt_version)` with no member id, opening id, or provider route, so sharing rides on *applicant and criterion identity*, not pool identity. An applicant scored once is free for another member or opening when matching inputs recur, and the same pinned model can reuse that work after moving between Bedrock and its direct API. **Staleness is per-opening and per-member**, and reduces to a cache-gap check: a member sees "re-rank needed" only when their eligible view references an applicant not yet in that opening's analysis. Member A marking applicant X eligible ambers only A's badge in that opening; once A runs it, X grounds discovery + gets scored, and B — including X later in the same opening — rides the cache with no new spend. Pool-specific discovery still runs for each opening. A new dimension surfaced by one member's Rank lands on every member's board for that opening at **weight 0** (inert until that member tiers it), so it costs others nothing until they opt in. **Screening is shared within an opening:** its scope is the union of applications that pass at least one member's deterministic rules, and one cached integrity/pet-fact result serves every member when application content, model, reasoning, and prompt version match. Eligibility-rule changes can change that union, but rule values do not enter the screening prompt or its version. Staleness is detectable when an application enters the union without a matching cached result — the amber signal shows uncached work waiting before any run.
 
 **Dimension survival on re-rank:** an opening's shared set keeps any dimension in **any** member's working tier for that opening; a dimension drops only when no member has it working-tiered there.
 
 **Committee-proposed seeds** feed the selected opening's shared discovery (the resulting axis is shared within that opening), but the "you requested this" badge shows only for the requesting member (`from_committee_request` provenance is already per-run).
 
-**Out of scope (M15):** merged ranking, disagreement flags, criteria comparison, and visibility into
-another member's private ranking or favourites. The later Shared shortlist is a single explicit
+**Out of scope:** merged ranking, disagreement flags, criteria comparison, and visibility into
+another member's private ranking or favourites. The Shared shortlist is a single explicit
 committee working set, not a merge or exposure of those private views. Notes remain private to their
-author, out of AI inputs and reports, on the author's printed candidate detail only. (The
-`require_admin` gate and allowlist landed in M15 1a; broader role exercise is M17.)
+author, out of AI inputs and reports, on the author's printed candidate detail only.
 
-*(The per-member-pool / shared-content-cache decision is recorded in [ADR 0011](docs/adr/0011-per-member-eligible-pool-shared-content-cache.md); the sliced build history — allowlist, the `Analysis`/`MemberRanking`/`MemberEligibility` split, per-member rules, pets-as-facts, and the committee-union re-rank — is in [CHANGELOG.md](CHANGELOG.md) M15.)*
+The per-member-pool/shared-content-cache decision is recorded in
+[ADR 0011](docs/adr/0011-per-member-eligible-pool-shared-content-cache.md).
 
 ## Users, Roles, And Authentication
 
 Committee members may sign in with an allowlisted email magic link or identity-only Google sign-in.
-M23 gives applicants identity-only Google sign-in as an optional primary path while retaining email
-and guest access. Committee access remains invitation/approval based when live; Jeff is the initial
-admin and can invite MOMI members. Roles:
+Applicants may use identity-only Google sign-in, email links, or guest access. Committee access is
+allowlist-based. Roles:
 
-- `Admin`: the initial account; will gate user management once invitations are built.
-- `Member`: a MOMI committee screener — screens independently (own eligibility rules, overrides, tiering, ranking, notes) over the shared cached AI substrate; no merged comparison surface (M15 is isolation, not merge).
+- `Admin`: manages committee access, shared settings, opening defaults, and administrative audit surfaces.
+- `Member`: a MOMI committee screener — screens independently (own eligibility rules, overrides, tiering, ranking, notes) over the shared cached AI substrate; there is no merged comparison surface.
 
-Every committee member is a trusted screener, so **the core screening workflow has no admin-only surface** — the raw source row and the raw AI narrative are available to any logged-in member (the outsider-vs-screener boundary is the primary trust boundary). M15 adds a *second*, intra-committee boundary: each member's eligibility rules, overrides, tiering, and ranking are **private per member** — shared artifacts stay open to all, personal judgment does not. The `Admin`/`Member` distinction is now load-bearing (M15 1a): admission is by an **email allowlist** whose entry role becomes the `User`'s role (the "first login = admin" rule is retired), and `require_admin` gates the genuinely admin-only capabilities — editing an opening's committee default, the allowlist, Admin Settings, and the Observability/Evals tabs. Admins persisted by the startup seed are permanent administrators: they cannot be demoted or removed, even by another admin, and removing an address from the seed file does not clear that protection. The Access subtab shows an account's name, email, role, first activity, and latest authenticated app activity. It stores only those two timestamps per user, refreshing the latest at most once every five minutes; it does not retain activity history or collect pages, IP addresses, devices, or OAuth tokens. Below it, a separate denied-attempts table aggregates unallowlisted Google login attempts by account and retains them for one year. The engineering default remains `require_current_user`; a role gate is added only for a genuinely admin-only capability, as a deliberate decision.
+Every committee member is a trusted screener, so **the core screening workflow has no admin-only surface** — the raw source row and the raw AI narrative are available to any logged-in member (the outsider-vs-screener boundary is the primary trust boundary). Within the committee, each member's eligibility rules, overrides, tiering, and ranking are **private per member** — shared artifacts stay open to all, personal judgment does not. Admission is by an **email allowlist** whose entry role becomes the `User`'s role, and `require_admin` gates the genuinely admin-only capabilities — editing an opening's committee default, the allowlist, Admin Settings, and the Observability/Evals tabs. Admins persisted by the startup seed are permanent administrators: they cannot be demoted or removed, even by another admin, and removing an address from the seed file does not clear that protection. The Access subtab shows an account's name, email, role, first activity, and latest authenticated app activity. It stores only those two timestamps per user, refreshing the latest at most once every five minutes; it does not retain activity history or collect pages, IP addresses, devices, or OAuth tokens. Below it, a separate denied-attempts table aggregates unallowlisted Google login attempts by account and retains them for one year. The engineering default remains `require_current_user`; a role gate is added only for a genuinely admin-only capability, as a deliberate decision.
 
 AI screening results are shared across users and cached per application content, model, and prompt version. Any logged-in member may run the checks; the cost concern is uncached work, not which member initiates a shared run.
-
-## Screening Runs
-
-Users may create multiple runs for the same pool ("Jeff first pass", "Jeff revised after thinking"). Each analysis preserves its applicant-content fingerprint and AI provenance. When criteria are revised after a completed run, the default is to update the same run, with the option to create a separate new run. Manual candidate notes are private to their author. AI-generated criteria summaries need no dedicated editing workflow, and an audit log is not required, for the initial design.
 
 ## Data Storage
 
 - The application database is the source of truth for working copies, submitted applications, versions, opening participation, screening, notes, rankings, and reports.
-- SQLite, and it **stays** for go-live: M17 hosts it on a persistent volume rather than moving to Postgres (ADR 0012), because at the expected ~5-member committee with light concurrency (hardened in M16 via WAL + a run lease) the data layer needs no change. The relational model is kept portable to Postgres should real growth or the deferred atomic-budget feature later warrant it — but that is explicitly *not* an M17 concern.
+- Production uses SQLite on a persistent volume (ADR 0012). At the expected ~5-member committee
+  with light concurrency, WAL and a run lease provide sufficient serialization. The relational
+  model stays portable to Postgres if real growth or an atomic shared budget later warrants it.
 
 Core data model:
 
 - An `Application` represents one household with a private working document and one current committee-visible submitted projection. `ApplicationVersion` preserves each dated submission; `ApplicationParticipation` links that durable applicant to selected openings.
 - Primary application identity is the normalized primary applicant email plus an internal DB ID. An unauthenticated collision can never overwrite the existing working or submitted copy, and records are never automatically merged.
 - Normalized fields computed on submission include ages as of the submission date, adult and child counts, household income, real-estate ownership, employment state, and other deterministic screening facts.
-- An opening-scoped `Analysis` (one current per opening, `get_current_analysis(db, opening_id)`) holds a Rank's discovered dimensions (`dimension_report`) and the `rank_inputs_fingerprint`; its 1:1 `analysis_audit` child holds the AI-legibility trail (discovery narrative + match/fan-out/decompose/consolidate audits) so the hot read path stays lean. The committee's mutable view is **per-member** in `MemberRanking` (member × analysis: `run_state` = tiers + new/revived/requested flags + pending proposals; weights are **derived** from the tiers, never stored). Per-member eligibility overrides live in `MemberEligibility` (opening × member × applicant); a member's diverged eligibility rules live in a copy-on-write `member_rules` row over that opening's `opening_rules` default. `dimension_aliases` is the sole merge-truth. Per-run/per-pass cost lives in `run_cost_ledger` (+ a nullable `triggered_by_user_id` attributing each shared run) + `run_pass_cost`; eval runs in `eval_runs`. (Schema layout: [docs/app-architecture.md](docs/app-architecture.md); the M15 per-member split: CHANGELOG M15; the M14 split of the old `criteria` blob: CHANGELOG M14 Phase 5.)
+- An opening-scoped `Analysis` (one current per opening, `get_current_analysis(db, opening_id)`) holds a Rank's discovered dimensions (`dimension_report`) and the `rank_inputs_fingerprint`; its 1:1 `analysis_audit` child holds the AI-legibility trail (discovery narrative + match/fan-out/decompose/consolidate audits) so the hot read path stays lean. The committee's mutable view is **per-member** in `MemberRanking` (member × analysis: `run_state` = tiers + new/revived/requested flags + pending proposals; weights are **derived** from the tiers, never stored). Per-member eligibility overrides live in `MemberEligibility` (opening × member × applicant); a member's diverged eligibility rules live in a copy-on-write `member_rules` row over that opening's `opening_rules` default. `dimension_aliases` is the sole merge-truth. Per-run/per-pass cost lives in `run_cost_ledger` (+ a nullable `triggered_by_user_id` attributing each shared run) + `run_pass_cost`; eval runs in `eval_runs`. See [docs/app-architecture.md](docs/app-architecture.md) for the schema layout.
 
 Settings live in the database, not `.env`, split by scope: **Admin Settings** holds global infrastructure and administration; **Eligibility Settings** holds the selected opening's `My rules` plus its admin-editable `Committee default`. Local `.env.local` holds secrets and runtime safety controls; `.env.example` holds safe placeholders. Never committed: `.env` files, OAuth credentials, SQLite DB files, applicant exports, AI traces, and raw prompts/outputs containing applicant data. Existing databases change through Alembic migrations rather than resets.
 
 ## Reports
 
-**The report format is the browser's print-to-PDF of the ranked view (Milestone 10).** The committee opens the ranking and clicks **Print**; the print stylesheet hides interactive chrome (`no-print`) and renders a clean artifact: the ranked shortlist with each candidate's band and rationale, plus a text **importance-tiers summary** (`TierSummaryForPrint`) so a reader sees which dimensions sat in which tier. The candidate detail page is independently printable.
+**The report format is the browser's print-to-PDF of the ranked view.** The committee opens the ranking and clicks **Print**; the print stylesheet hides interactive chrome (`no-print`) and renders a clean artifact: the ranked shortlist with each candidate's band and rationale, plus a text **importance-tiers summary** (`TierSummaryForPrint`) so a reader sees which dimensions sat in which tier. The candidate detail page is independently printable.
 
-This replaced the originally-planned Google Docs generation — print-to-PDF needs no Docs/Drive scopes, no second OAuth consent, no generated-file storage, and no "regenerate on change" story (the document is a live render). A Google Docs export could return later if a committee wants an editable, collaboratively-commentable artifact.
+Print-to-PDF needs no Docs/Drive scopes, second OAuth consent, or generated-file storage, and the document stays current because it is a live render. A Google Docs export is out of scope unless the committee needs an editable, collaboratively-commentable artifact.
 
 ## MVP Shape And Tech Stack
 
@@ -1483,7 +1478,7 @@ signups moved to the built-in service.
 ### Applicant Google Sign-In (M23) — complete; production verified August 30, 2026
 
 **Goal:** add the optional Google-first applicant access described in
-[Applicant Google Sign-In](#applicant-google-sign-in-m23-target) without creating applicant
+[Applicant Google Sign-In](#applicant-google-sign-in) without creating applicant
 accounts, weakening email ownership, or disturbing the guest and email-link paths.
 
 **Implementation stages:**

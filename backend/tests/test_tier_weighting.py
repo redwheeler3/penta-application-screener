@@ -1,4 +1,4 @@
-"""Unit tests for the pure tier->weights derivation (milestone 9).
+"""Unit tests for the pure tier-to-weights derivation.
 
 No DB — hand-built tier layouts in, weight maps out. These pin the contract that
 the tier-list UI and the ranking engine both depend on.

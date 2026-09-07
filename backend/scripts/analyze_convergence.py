@@ -98,9 +98,7 @@ def main() -> None:
         dec = _decompose(run)
         if dec:
             # Decomposition settle-down: how many raw axes across the K fan-out reports
-            # collapsed into the settled set, and how many of those settled axes are
-            # merges. This replaced the reconcile readout when the fan-out redesign
-            # removed reconcile.
+            # collapse into the settled set, and how many settled axes are merges.
             print(
                 f"   decomposition       : {dec.get('input_dimension_count', 0)} input "
                 f"→ {dec.get('settled_count', 0)} settled ({dec.get('merge_count', 0)} merges)"

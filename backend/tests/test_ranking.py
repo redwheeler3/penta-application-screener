@@ -1,4 +1,4 @@
-"""Unit tests for the pure ranking domain (milestone 8).
+"""Unit tests for the pure ranking domain.
 
 No DB, no AI — hand-built scores in, ranked rows out. These pin the contract:
 weight-normalized fit, confidence never folded in, relative pool-position bands,

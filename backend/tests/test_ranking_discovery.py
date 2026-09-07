@@ -142,7 +142,7 @@ def test_build_prompt_unseeded_has_no_requested_section() -> None:
 
 
 def test_build_prompt_includes_proposed_seeds() -> None:
-    # Only PROPOSALS seed discovery now; favourites inject at decomposition, not here.
+    # Only proposals seed discovery; favourites inject at decomposition.
     from app.ai.dimension_discovery import DiscoverySeeds, build_prompt
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)

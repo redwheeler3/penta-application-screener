@@ -41,10 +41,9 @@ runbook: how to stand the app up on Fly.io, wire secrets and the domain, deploy 
    will be enabled. Their keys never replace or broaden the AWS policy.
 4. **DNS access** for `pentacoop.com` (to add the A/AAAA records `fly certs add` prints).
 
-The Bedrock portion of the app user's policy is four grants. Replace `ACCOUNT_ID` and
-remove the superseded `bedrock-mantle:*` and conditional Marketplace statements; the app
-derives short-lived Runtime bearer tokens from its AWS credentials and does not let its
-invoke-only user subscribe to products:
+The Bedrock portion of the app user's policy is the following four grants with `ACCOUNT_ID`
+replaced. The app derives short-lived Runtime bearer tokens from its AWS credentials and does
+not let its invoke-only user subscribe to products:
 
 ```json
 {

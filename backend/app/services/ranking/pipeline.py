@@ -384,9 +384,9 @@ def _stream_criteria(
         ],
         "new_to_old": work.new_to_old,
         "match_narrative": work.match_narrative,
-        # How many prior dimensions the match pass matched against — now the full
-        # cross-run history (all known keys), not just the last run. 0 on the very
-        # first run (no history), so the audit viewer can tell a first run — where
+        # How many prior dimensions the match pass matched against across the full
+        # cross-run history (all known keys). 0 on the first run (no history), so
+        # the audit viewer can tell a first run — where
         # carry-forward is N/A — from a genuine zero-match re-run.
         "prior_dimension_count": len(match_history.dimensions) if match_history else 0,
         # Prior-key → prior-name (from history), so the audit viewer can show a

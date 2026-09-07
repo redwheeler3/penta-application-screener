@@ -438,8 +438,8 @@ def set_tiers(
     ]
 
     # Recompute the still-flagged set: drop only the explicitly-acknowledged keys. Moving
-    # a chip no longer clears its flag (consistent with the requested pill) — the badge
-    # rides until the ✕ or the next Rank. Keys still valid on this analysis only.
+    # a chip leaves its badge in place until the ✕ or the next Rank. Keep only keys valid
+    # on this analysis.
     acknowledged = set(acknowledged_keys or ())
     prior_flagged = (member_ranking.run_state or {}).get("new_dimension_keys", [])
     surviving = [

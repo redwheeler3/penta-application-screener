@@ -152,9 +152,8 @@ def _as_utc(timestamp: datetime | None) -> datetime | None:
 
 
 def _coverage(db: Session, opening_id: int, settings) -> dict[str, CoverageEntry]:
-    # Coverage is a cache-hit count, so each pass must be probed under the model it
-    # actually runs on — a cache row's key includes the model. These are separate
-    # settings now, so don't share one variable across passes.
+    # Coverage is a cache-hit count, so each pass must be probed under its configured
+    # model — a cache row's key includes the model. Keep pass settings separate.
 
     # Screening freshness depends only on its prompt and model. Pet limits are evaluated
     # deterministically on read and therefore do not invalidate screening coverage.

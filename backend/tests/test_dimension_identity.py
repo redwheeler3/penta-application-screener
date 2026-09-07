@@ -177,7 +177,7 @@ def test_adopt_matched_keys_collapses_two_twins_onto_one_prior() -> None:
         PoolDimension(key="workday_participation", name="Workday participation",
                       definition="fresh b", high_end="high", low_end="low", why_it_differentiates="v"),
     ])
-    # BOTH twins map to the same prior key (the sanitizer now allows this).
+    # Both twins may map to the same prior key.
     adopted = adopt_matched_keys(
         report,
         {"committee_participation": "participation_commitment",

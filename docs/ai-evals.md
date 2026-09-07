@@ -80,12 +80,9 @@ the test suite.
 **invariants** — checks that are ALWAYS a bug regardless of pool (a dimension missing a
 pole; a criterion keyed on a protected class). A breach fails pytest.
 
-The invariant/signal distinction still matters conceptually — a check you'd have to
-soften to keep green is a *signal* (a judgement call), not an invariant, and belongs in
-the LLM-judge evals, not the CI gate. Two such signals once lived here (high-correlation
-dimension pairs; carry-forward rate), but they duplicated — worse — what the **AI Quality
-tab** shows over the *live* run (Consolidation nominations with verdicts; the Matching
-reuse rate), so they were retired. Only invariants remain in `invariants.py`.
+The invariant/signal distinction matters conceptually — a check you'd have to soften to
+keep green is a *signal* (a judgement call), not an invariant, and belongs in the LLM-judge
+evals or the **AI Quality tab**, not the CI gate. `invariants.py` contains only invariants.
 
 ### Manual LLM judge
 
@@ -148,9 +145,7 @@ occasionally to ask "are our labels sound, and is our judge sound?", not as a pe
 routine regression net is the live per-pass evals (cheap, deterministic). The Judge tab **owns
 no case files** — it reads every pass's `<pass>_golden.json` (aggregated by `load_cases()`),
 reproduces each case's output blind, and grades against `metadata.expected` with the pass's own
-grader. The standalone `judge_cases.json` was retired *after* its content was mined into the
-per-pass golden files. One shared case schema serves both consumers — see
-`docs/eval-case-schema.md`.
+grader. One shared case schema serves both consumers — see `docs/eval-case-schema.md`.
 
 ## Production vs. judge identity
 
@@ -267,10 +262,8 @@ A fourth case balances the set with a clear MERGE:
 - `pet_situation_ownership_merge` (r=0.904) — pet ownership vs. pet situation,
   a genuine duplicate the consolidation pass merged. Tests that the judge will
   actually merge a true duplicate, not just resist over-merging. Shows why definition
-  capture matters: the merge removed `pet_situation` from the settled report, so its
-  definition had to be recovered from the raw discovery report. Runs after the fix carry
-  `definition_keep`/`definition_drop` on the `consolidate_audit` pair row, so a merge case
-  is self-contained from the audit alone.
+  capture matters: the settled report omits `pet_situation`, while the `consolidate_audit`
+  pair row carries `definition_keep`/`definition_drop` so the case is self-contained.
 
 A fifth case is deliberately **contested** — a first-class category, not a
 degenerate label:
@@ -311,10 +304,8 @@ report groups by step and coverage across the pipeline is visible:
   exactly as the decomposition call saw them; the model's own merge decision is withheld from the
   judge, per the fidelity rule.
 
-Two earlier generalized historical cases (a health/social merge and a
-decomposition routing drift) were dropped: their source runs were not retained,
-so they could never be made exact, and a generalized case masquerading as exact
-is worse than none.
+Golden cases require a retained source run; generalized reconstructions are excluded because a
+case that only masquerades as exact is worse than none.
 
 ## Human labels and judge disagreements
 
@@ -348,16 +339,6 @@ classify the flip before "fixing" anything — the right response differs comple
   framing*, not the model. Likewise a "modesty-then-correction" essay we first labelled an
   inconsistency: the model's "tone, not a contradiction" read was better than our label. →
   relabel, or make it `contested`.
-- **A taxonomy artifact (right finding, wrong bucket).** A fictional "velociraptor" pet was
-  reliably flagged but filed under `pet_policy` vs. `other` run-to-run — the concern was
-  caught every time; only the *category* wavered (and the policy text literally said "no
-  **other**/exotic pets", colliding with the `other` category). → fix the naming collision;
-  accept an "at least one of {pet_policy, other}" fire — the test is that it's flagged, not
-  which bucket. *(Superseded by M15 1e: pets are no longer a flag at all. The model now
-  EXTRACTS neutral pet facts — the velociraptor lands in `other_pets` — and a deterministic
-  per-member filter judges the limit. The eval grades extraction accuracy, so the bucket-
-  wavering failure mode is gone by construction. Kept here as the reasoning that motivated
-  the redesign.)*
 - **A threshold disagreement (genuinely two-sided).** A "TBD" child name: every run *saw* the
   placeholder but split on whether it crossed the flag bar, each side reasoned coherently. →
   decide the policy and state it in the prompt (we chose "flag it for a human to confirm
@@ -583,17 +564,14 @@ the problem cases. The disagreements resolved into two findings, both handled by
   tune the judge. So **the judge over-flags name/email mismatches** is a measured, documented
   limitation to weigh before trusting it on screening over-reaches.
 
-**Absence policy — settled at NEUTRAL on a signed −1..+1 scale.** An empty-evidence score
-the judge flagged sent us through three superseded positions on how an *unaddressed* dimension
-should score (empty→0.0 with empty evidence; 0.0 with a stated "not addressed" basis; 0.5
-NEUTRAL on a [0,1] scale). Each fell to the same flaw: on a [0,1] scale "nothing" and "worst"
-collide at 0, so **silence pattern-matched the low pole** — a re-score found 66 of 99 zeros
-were absence-worded yet still scored 0.0, most at high confidence, driven by the model's deep
-prior that **0 = nothing** and by many `low_end` poles literally *worded as absence*. Flooring
-absence to 0.0 also ranks someone who said *nothing* **below** someone who explicitly says
-they're a poor fit — an indefensible inversion, because silence is not evidence.
+**Absence policy — NEUTRAL on a signed −1..+1 scale.** On a [0,1] scale, "nothing" and "worst"
+collide at 0, so silence can pattern-match the low pole. A re-score found 66 of 99 zeros were
+absence-worded yet still scored 0.0, most at high confidence, driven by the model's deep prior
+that **0 = nothing** and by many `low_end` poles literally *worded as absence*. Scoring absence
+at the low end also ranks someone who said *nothing* below someone who explicitly says they're
+a poor fit — an indefensible inversion, because silence is not evidence.
 
-The final fix separates "nothing" from "worst" with a **signed −1..+1 scale** (−1 = low_end ·
+The signed **−1..+1 scale** separates "nothing" from "worst" (−1 = low_end ·
 0 = neutral/no-signal · +1 = high_end). The model's "0 = nothing" prior now lands *exactly*
 where we want silence instead of fighting it. It is mathematically identical to 0/0.5/1 (an
 affine remap — all ranking math is scale-invariant: fit, pool_mean, impact, relative bands,
@@ -659,12 +637,11 @@ deterministic even at temp 0).
 
 The evals run from the app under two developer/operator tabs (not committee-facing):
 **Observability** — Discovery/Decomposition/Matching/Consolidation/Cost/Trends, "what the AI
-did + cost" — and **Evals** — "is the AI any good". This is the only run surface; the
-`judge.sh` / `python -m app.evals.*` CLI wrappers were retired. Case *harvesting* is a
-command-line step (`scripts/harvest_*.py`), co-authored then labelled by hand. The eval
-subtabs:
+did + cost" — and **Evals** — "is the AI any good". This is the only run surface. Case
+*harvesting* is a command-line step (`scripts/harvest_*.py`), co-authored then labelled by hand.
+The eval subtabs:
 - **Invariants** — free deterministic checks; a styled "Re-baseline from current Rank"
-  action re-records the committed fixture (replaced the `python -m app.evals.fixture` CLI).
+  action re-records the committed fixture.
 - **Live scoring** — the golden dataset through the real scoring prompt+model.
 - **Judge** — the golden cases across all five passes, run two ways over the *same* cases
   (one-pass agreement, K-repeat stability); cases **grouped by the production pass** each
@@ -682,7 +659,7 @@ case family is editable without a per-family form or a JSON blob.
 Architecture / file hierarchy:
 - **Code** lives in `app/evals/` (modules) and `frontend/src/components/evals/`
   (InlineConfirm, StructuredFields, EvalCaseDetail, EvalCaseEditor, RunnableEval,
-  InvariantsEval). `properties.py` was renamed `invariants.py` (it holds only invariants).
+  InvariantsEval). Deterministic invariant checks live in `invariants.py`.
 - **Data** lives in `backend/eval-data/` — the versioned corpus (the five per-pass
   `<pass>_golden.json` files + `rank_baseline.json`), OUT of the code package. Every module
   reads its path from `app/evals/paths.py`.

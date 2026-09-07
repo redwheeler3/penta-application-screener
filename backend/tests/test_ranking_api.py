@@ -230,8 +230,8 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
         assert by_pass["Dimension scoring"]["freshCalls"] == 2
         # Discovery ran K parallel calls (the fan-out), not 1.
         assert by_pass["Pattern discovery"]["freshCalls"] == AISettings().discovery_fan_out
-        # The per-pass token breakdown is now persisted, not discarded: each fresh pass
-        # records the tokens behind its spend (MockProvider bills 100 in / 50 out a call).
+        # Each fresh pass persists the tokens behind its spend
+        # (MockProvider bills 100 in / 50 out a call).
         assert by_pass["Pattern discovery"]["inputTokens"] == 100 * AISettings().discovery_fan_out
         assert by_pass["Pattern discovery"]["outputTokens"] == 50 * AISettings().discovery_fan_out
         assert by_pass["Dimension scoring"]["inputTokens"] > 0

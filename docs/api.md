@@ -134,7 +134,9 @@ The **Rank chain** and the deterministic ranked shortlist. Rank is one button th
 
 ### Observability — `app/api/observability.py`
 
-Cross-run observability (M13 Pillars 1 + 3): spend and operational trends over every run kind (Screen, Rank, score-current). Top-level, not under `/ranking`, because they span all runs. No model calls.
+Cross-run observability covers spend and operational trends over every run kind (Screen, Rank,
+score-current). It is top-level rather than under `/ranking` because it spans all runs. No model
+calls.
 
 | Method | Path | Purpose | Auth |
 | --- | --- | --- | --- |

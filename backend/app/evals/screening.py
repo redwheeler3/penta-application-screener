@@ -8,9 +8,8 @@ applicant (an exact slice of the pool), and the grade has two parts:
     e.g. fake_contact); ``absent`` = categories that must NOT (the OVER-REACH guards: flagging
     a benign thing is the costly error, since a flag gates eligibility — e.g. a child's
     differing surname must not raise internal_inconsistency).
-  - pets, when ``expected_pets`` is set: the extracted inventory must match (dogs/cats
-    exact; each other-pet noun present). Pets are no longer a flag — the model extracts neutral
-    facts and a deterministic per-member hard filter judges the limits downstream.
+  - pets, when ``expected_pets`` is set: the extracted neutral inventory must match (dogs/cats
+    exact; each other-pet noun present). A deterministic per-member hard filter judges the limits.
 A clean applicant (no fires/absent, no pets expectation) produces zero flags; any flag fails it.
 
 The eval calls the REAL ``screening.build_prompt`` (which reads only ``.normalized`` +
@@ -62,7 +61,7 @@ class ScreeningCase:
     # Expected extracted pet facts, or None to skip pet grading. When set, e.g.
     # {"dogs": 2, "cats": 1, "other_pets": ["rabbit"]}, the case grades the model's neutral
     # pet extraction — dogs/cats counted exactly, each expected other-pet noun present — NOT
-    # any policy verdict (pets are no longer a flag; per-member limits are judged downstream).
+    # a policy verdict; per-member limits are judged downstream.
     expected_pets: dict[str, object] | None = None
     note: str = ""
 
@@ -167,8 +166,8 @@ def _check(case: ScreeningCase, categories: list[str], pets: PetFacts | None = N
     A ``fires`` entry is either a category string (that exact category must fire) OR a list of
     categories meaning "at least ONE of these must fire" — for a concern the model may
     reasonably file under more than one bucket. Pet grading is separate from flags: a pet case
-    checks the EXTRACTED counts (dogs/cats exact, each expected other-pet noun present), never
-    a flag, since pets are no longer flagged (the per-member limit is judged downstream).
+    checks the EXTRACTED counts (dogs/cats exact, each expected other-pet noun present), while
+    the per-member limit is judged downstream.
 
     ``contested`` does NOT affect grading here — expectations (``fires``/``absent``/``pets``)
     are graded the same whether or not a case is contested. Contested only changes how a

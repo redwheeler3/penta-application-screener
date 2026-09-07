@@ -33,8 +33,8 @@ def add_application(
     raw_row: dict | None = None,
     normalized: dict | None = None,
 ) -> Application:
-    """An applicant on the machine baseline. Reasons are no longer stored — they are
-    computed on read from ``normalized`` + the committee-default ruleset, so a
+    """An applicant on the machine baseline. Reasons are computed on read from
+    ``normalized`` + the committee-default ruleset, so a
     rules-ineligible applicant is one whose ``normalized`` trips a hard filter (here,
     owning real estate); everything else is machine-eligible."""
     normalized = dict(normalized or {})

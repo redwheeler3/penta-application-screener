@@ -7,8 +7,8 @@ adapter co-located in its ``live_*.py`` module (so the pass's output schema and 
 derivation live in one place); ``judge.py`` dispatches to them by ``pass``. They all return the
 neutral ``Reproduced`` shape below so judge.py stays pass-agnostic.
 
-Kept here — not in judge.py — so a live module can import the shape/helper without a cycle
-(judge.py imports the live modules). The judge is INDEPENDENT: it sees the background (what the
+This separate module lets live modules import the shape/helper without a cycle because `judge.py`
+imports the live modules. The judge is INDEPENDENT: it sees the background (what the
 pass does) + the given data, and a minimal "produce your answer" instruction — NOT the pass's
 elaborate production instructions, which would make it a re-run rather than a second opinion.
 """

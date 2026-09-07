@@ -490,7 +490,7 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
         cache_key=cache_key(application=a, kind=SCREENING_KIND, model_id=model, prompt_version=SCREENING_VERSION),
         model_id=model, prompt_version=SCREENING_VERSION, output={"flags": []},
     ))
-    # b: a result keyed to OLD content -> does not match its current hash -> stale.
+    # b: a result keyed to prior content -> does not match its current hash -> stale.
     db.add(ApplicationAIResult(
         application_id=b.id, kind=SCREENING_KIND, cache_key="stale-key",
         model_id=model, prompt_version=SCREENING_VERSION, output={"flags": []},

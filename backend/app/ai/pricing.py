@@ -6,12 +6,9 @@ Bedrock routes use the lower-priced ``global.`` inference profiles; a geographic
 profile would need its own higher rates rather than reusing these entries. Update
 by hand when provider pricing changes.
 
-Why hardcoded: the AWS Price List API (boto3 "pricing", ServiceCode
-"AmazonBedrock") carries recent competitor models (Llama 4, Nova 2.0, Qwen3,
-etc.) but, as of 2026-06, lists no Anthropic Claude model past v3 — so it
-cannot price Haiku 4.5 / Sonnet 4.6, the models we actually use. A live lookup
-would always fall back, so the table is the source of truth. Revisit if AWS
-adds Claude 4.x to the Price List API.
+Why hardcoded: the AWS Price List API does not reliably cover every exact model
+in the application catalog. The reviewed table is therefore the source of truth
+rather than a live lookup with incomplete fallback behavior.
 
 Current catalog models use exact IDs. Substring prices remain only for historical
 Claude traces and the conservative unknown-model fallback.
