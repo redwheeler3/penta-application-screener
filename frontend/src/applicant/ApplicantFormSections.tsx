@@ -32,10 +32,6 @@ export function Introduction() {
       <div>
         <h2>Before you begin</h2>
         <p>
-          Penta is a family-oriented housing co-op near Jericho Beach. Please answer every required
-          question so the membership committee has a complete picture of your household.
-        </p>
-        <p>
           We collect and use the information in this form to contact you, assess eligibility for
           housing, membership, or an internal move, and, if you are shortlisted, verify housing
           references, employment, income, and credit.

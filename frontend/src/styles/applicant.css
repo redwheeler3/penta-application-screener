@@ -302,6 +302,7 @@
 .section-divider { height: 1px; margin: 29px 0; background: #e5ebee; }
 .subheading-row { display: flex; justify-content: space-between; align-items: center; gap: 15px; }
 .subheading-row .form-subheading { margin: 0; }
+.subheading-row + .field-help { margin-top: 6px; }
 
 .applicant-primary-button,
 .applicant-secondary-button,
