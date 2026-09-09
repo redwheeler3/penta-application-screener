@@ -30,24 +30,19 @@ export function Introduction() {
     <section className="application-intro">
       <div className="intro-icon"><ShieldCheck size={24} /></div>
       <div>
-        <h2>Before you begin</h2>
+        <h2>How we use your information</h2>
         <p>
-          We collect and use the information in this form to contact you, assess eligibility for
-          housing, membership, or an internal move, and, if you are shortlisted, verify housing
-          references, employment, income, and credit.
+          We use this form to contact you and assess your household for housing, membership, or an
+          internal move. If you are shortlisted, we may verify your housing references, employment,
+          income, and credit.
         </p>
         <p>
-          Where necessary, your information may be available to Penta&apos;s authorized committee
-          members, directors, treasurer, auditor, lawyer, management company, and service providers
-          acting for Penta, including hosting, email, and AI-processing
-          providers. It is available to the general membership only when relevant to an appeal you
-          make about a Board decision.
-        </p>
-        <p>
-          Non-member applications are retained until one year after the latest relevant move-in
-          date; accepted-member records are retained for seven years. Read our{" "}
+          We share your information only as needed with authorized Penta representatives and service
+          providers, or with the general membership if you appeal a Board decision. We keep
+          non-member applications until one year after the latest relevant move-in date and
+          accepted-member records for seven years. Read our{" "}
           <a href="https://www.pentacoop.com/privacy.html" target="_blank" rel="noopener noreferrer">
-            Privacy Policy
+            Privacy Policy for details
           </a>.
         </p>
       </div>
