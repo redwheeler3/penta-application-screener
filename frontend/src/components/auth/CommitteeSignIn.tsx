@@ -166,7 +166,7 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
               checked={rememberDevice}
               onChange={(event) => setRememberDevice(event.target.checked)}
             />
-            <span>After Google sign-in, keep me signed in on this device</span>
+            <span>Stay signed in on this device when using Google</span>
           </label>
           <GoogleSignInButton href={api.googleSignInUrl(rememberDevice)} />
           {props.emailSignInEnabled ? (

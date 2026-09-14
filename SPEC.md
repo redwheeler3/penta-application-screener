@@ -314,8 +314,8 @@ without asking them to re-enter the address; an invalid link reveals nothing.
 ### Browser sessions and shared devices
 
 Opening an applicant access link offers **Keep me signed in on this device**, unchecked by default.
-Applicant and committee Google entry instead say **After Google sign-in, keep me signed in on this
-device** so the choice is visibly scoped to the adjacent Google action. An email-link choice appears
+Applicant and committee Google entry instead say **Stay signed in on this device when using Google**
+so the choice is visibly scoped to the adjacent Google action. An email-link choice appears
 on the device that actually opens the link, immediately before the link is consumed. Without the
 opt-in, the app issues a
 non-persistent session cookie and does not retain applicant answers after the page closes. With it,
@@ -741,7 +741,7 @@ and copy. The visual and keyboard order is:
 Application access
 Start or continue an application
 
-[ ] After Google sign-in, keep me signed in on this device
+[ ] Stay signed in on this device when using Google
 [ G  Continue with Google                 ]  primary path
 
 ---------------- or use email ----------------

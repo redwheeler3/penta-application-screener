@@ -249,7 +249,7 @@ function ApplicantGoogleAccess(props: {
           checked={props.rememberDevice}
           onChange={(event) => props.onRememberDeviceChange(event.target.checked)}
         />
-        <span>After Google sign-in, keep me signed in on this device</span>
+        <span>Stay signed in on this device when using Google</span>
       </label>
       <GoogleSignInButton href={props.googleSignInUrl} />
     </div>
