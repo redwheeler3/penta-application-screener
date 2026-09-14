@@ -160,6 +160,26 @@ def cancel_queued_application_emails(
         delivery.last_error_code = error_code
 
 
+def cancel_queued_committee_emails(
+    db: Session,
+    user_id: int,
+    *,
+    error_code: str = "CommitteeAccessRemoved",
+) -> None:
+    """Discard committee email intents made obsolete by removing access."""
+    deliveries = db.scalars(
+        select(EmailDelivery).where(
+            EmailDelivery.user_id == user_id,
+            EmailDelivery.state == EmailDeliveryState.QUEUED,
+        )
+    ).all()
+    for delivery in deliveries:
+        delivery.state = EmailDeliveryState.FAILED
+        delivery.retry_intent = None
+        delivery.quota_blocked = False
+        delivery.last_error_code = error_code
+
+
 def _reserve_delivery(
     db: Session,
     message: OutboundEmail,

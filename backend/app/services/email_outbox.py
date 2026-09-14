@@ -20,6 +20,7 @@ from app.services.auth_email import (
     application_confirmation_email,
     application_opening_email,
     application_unavailable_email,
+    committee_invitation_email,
     email_change_notice_email,
     magic_link_email,
     selected_application_locked_email,
@@ -135,7 +136,12 @@ def purge_expired_vacancy_delivery_failures(
 
 
 EXPECTED_FAILURE_CODES = frozenset(
-    {"ApplicationSelected", "ApplicationWithdrawn", "Superseded"}
+    {
+        "ApplicationSelected",
+        "ApplicationWithdrawn",
+        "CommitteeAccessRemoved",
+        "Superseded",
+    }
 )
 FAILURE_BANNER_WINDOW = timedelta(days=7)
 
@@ -409,14 +415,22 @@ def _build_magic_link_retry(
         ),
     )
     delivery.magic_link_token_id = issued.record.id
-    return (
-        magic_link_email(
+    message = (
+        committee_invitation_email(
+            user_id=recipient.id,
+            email=email,
+            role=recipient.role,
+            token=issued.token,
+            settings=get_settings(),
+        )
+        if intent.get("committee_invitation")
+        else magic_link_email(
             identity_kind=identity_kind,
             purpose=purpose,
             recipient_id=recipient.id,
             email=email,
             token=issued.token,
             settings=get_settings(),
-        ),
-        issued.record,
+        )
     )
+    return message, issued.record

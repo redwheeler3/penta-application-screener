@@ -12,10 +12,11 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import require_admin
 from app.core.problems import Problem
 from app.core.text import normalize_email
-from app.db.models import User, UserRole
+from app.db.models import MagicLinkPurpose, PasswordlessIdentityKind, User, UserRole
 from app.db.session import get_db
 from app.schemas.allowlist import (
     AllowlistEntryOut,
+    AllowlistMutationResponse,
     AllowlistResponse,
     AllowlistUpsert,
     DeniedSignInAttemptOut,
@@ -23,6 +24,9 @@ from app.schemas.allowlist import (
 )
 from app.services import allowlist
 from app.services.denied_sign_ins import list_denied_sign_ins
+from app.services.email_sender import EmailSender, get_email_sender
+from app.services.magic_link_delivery import send_magic_link
+from app.services.users import upsert_committee_user
 
 router = APIRouter(prefix="/allowlist", tags=["allowlist"])
 
@@ -95,12 +99,13 @@ def read_allowlist(
     return _response(db)
 
 
-@router.put("", response_model=AllowlistResponse)
+@router.put("", response_model=AllowlistMutationResponse)
 def upsert_allowlist_entry(
     body: AllowlistUpsert,
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
-) -> AllowlistResponse:
+    sender: EmailSender = Depends(get_email_sender),
+) -> AllowlistMutationResponse:
     """Add an allowed email or change its role. Adding an ``admin`` entry grants
     admin — the allowlist is the role-management surface."""
     target_email = normalize_email(body.email)
@@ -136,7 +141,25 @@ def upsert_allowlist_entry(
             "invalid_settings",
             detail="The permanent seed admin cannot be demoted.",
         ) from exc
-    return _response(db)
+    user = upsert_committee_user(db, email=target_email, role=body.role)
+    invitation_status = None
+    if existing is None:
+        invitation = send_magic_link(
+            db,
+            sender,
+            identity_kind=PasswordlessIdentityKind.COMMITTEE,
+            purpose=MagicLinkPurpose.COMMITTEE_ACCESS,
+            email=user.email,
+            recipient_id=user.id,
+            user_id=user.id,
+            enforce_request_limits=False,
+            committee_invitation_role=body.role,
+        )
+        invitation_status = "sent" if invitation.email_sent else "failed"
+    return AllowlistMutationResponse(
+        entries=_response(db).entries,
+        invitation_email_status=invitation_status,
+    )
 
 
 @router.delete("/{email}", response_model=AllowlistResponse)

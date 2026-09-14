@@ -69,7 +69,8 @@ email boundary, and applicant record.
   remain available while retained non-selected applicants are attached; selected households remain
   viewable in their selected opening but stay outside the AI pool.
 - Committee sign-in by Google or emailed magic link, both issuing the same revocable server-side
-  session. Google login is identity-only; access and roles come from the application allowlist.
+  session. Google login is identity-only; access and roles come from the application allowlist,
+  and a new allowlist entry receives a role-specific email invitation with a sign-in link.
 - Opening-specific committee defaults, member rules, manual decisions, and deterministic hard
   filters computed from the latest submitted fields.
 - Application dashboard, searchable/sortable table, facets, pagination, and candidate detail pages.

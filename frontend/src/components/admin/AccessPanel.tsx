@@ -18,6 +18,7 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "member">("member");
   const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     let live = true;
@@ -52,14 +53,25 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
     const trimmed = email.trim();
     if (!trimmed || busy) return;
     setBusy(true);
+    setMessage("");
     const response = await api.upsertAllowlistEntry(trimmed, role);
     setBusy(false);
     if (!response.ok) {
       props.onError((await readProblem(response)) ?? "Could not add that email.");
       return;
     }
-    const body: { entries: AllowlistEntry[] } = await response.json();
+    const body: {
+      entries: AllowlistEntry[];
+      invitationEmailStatus: "sent" | "failed" | null;
+    } = await response.json();
     setEntries(body.entries);
+    setMessage(
+      body.invitationEmailStatus === "sent"
+        ? "Access added and invitation email sent."
+        : body.invitationEmailStatus === "failed"
+          ? "Access added, but the invitation email needs attention in Email delivery."
+          : "Access updated.",
+    );
     setEmail("");
     setRole("member");
   }
@@ -67,6 +79,7 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
   async function removeEntry(target: string) {
     if (busy) return;
     setBusy(true);
+    setMessage("");
     const response = await api.removeAllowlistEntry(target);
     setBusy(false);
     if (!response.ok) {
@@ -75,11 +88,13 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
     }
     const body: { entries: AllowlistEntry[] } = await response.json();
     setEntries(body.entries);
+    setMessage("Access removed.");
   }
 
   async function changeRole(target: string, nextRole: "admin" | "member") {
     if (busy) return;
     setBusy(true);
+    setMessage("");
     const response = await api.upsertAllowlistEntry(target, nextRole);
     setBusy(false);
     if (!response.ok) {
@@ -88,6 +103,7 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
     }
     const body: { entries: AllowlistEntry[] } = await response.json();
     setEntries(body.entries);
+    setMessage("Role updated.");
   }
 
   return (
@@ -96,8 +112,9 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
         <h3>Access allowlist</h3>
         <p className="panel-hint">
           Only these email addresses can sign in. An <strong>admin</strong> entry can manage this
-          list; a <strong>member</strong> screens applicants. Changes take effect immediately. The
-          last admin can't be removed or demoted. Seed admins are permanent.
+          list; a <strong>member</strong> screens applicants. New entries receive an invitation email
+          with a sign-in link. Changes take effect immediately. The last admin can't be removed or
+          demoted. Seed admins are permanent.
         </p>
       </div>
 
@@ -119,9 +136,11 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
         </select>
         <button type="submit" className="primary-button" disabled={busy || !email.trim()}>
           <UserPlus size={16} />
-          <span>Add</span>
+          <span>Add and invite</span>
         </button>
       </form>
+
+      {message ? <p className="opening-message" role="status">{message}</p> : null}
 
       {loadError ? (
         <RetryLoadError

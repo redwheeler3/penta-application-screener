@@ -29,6 +29,7 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
         "application-submitted",
         "applicant-access",
         "committee-access",
+        "committee-invitation",
         "email-change-confirmation",
         "email-change-notice",
         "application-unavailable",
@@ -45,6 +46,7 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
     assert "Congratulations! Your household has been selected!" in response.text
     assert "pleased to let you know" in response.text
     assert "Your application profile is now locked" in response.text
+    assert "You&#x27;ve been added to the screener" in response.text
     assert "No action is required" in response.text
     assert "techsupport@pentacoop.com" in response.text
     saved = next(preview for preview in previews if preview["key"] == "application-saved")

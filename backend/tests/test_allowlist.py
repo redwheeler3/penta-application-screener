@@ -11,6 +11,8 @@ from app.db.models import (
     AccessAllowlistEntry,
     Base,
     DeniedSignInAttempt,
+    EmailDelivery,
+    EmailDeliveryState,
     MagicLinkPurpose,
     PasswordlessIdentityKind,
     User,
@@ -19,6 +21,12 @@ from app.db.models import (
 from app.db.session import get_db
 from app.services import allowlist
 from app.services.denied_sign_ins import list_denied_sign_ins, record_denied_sign_in
+from app.services.email_outbox import retry_queued_emails
+from app.services.email_sender import (
+    CapturedEmailSender,
+    EmailQuotaExceededError,
+    get_email_sender,
+)
 from app.services.passwordless_auth import create_browser_session, issue_magic_link
 from app.services.users import (
     GoogleIdentityConflict,
@@ -26,6 +34,11 @@ from app.services.users import (
     upsert_google_user,
 )
 from tests.app_support import shared_test_app
+
+
+class QuotaBlockedSender:
+    def send(self, _message) -> str:
+        raise EmailQuotaExceededError("synthetic quota rejection")
 
 
 def setup_app(role: UserRole | None) -> tuple:
@@ -191,12 +204,15 @@ async def test_allowlist_routes_require_admin() -> None:
 @pytest.mark.anyio
 async def test_admin_can_add_and_remove_entries() -> None:
     app, db = setup_app(role=UserRole.ADMIN)
+    sender = CapturedEmailSender()
+    app.dependency_overrides[get_email_sender] = lambda: sender
     # A second admin so lock-out guards don't block the member operations under test.
     allowlist.upsert_entry(db, email="me@x.com", role=UserRole.ADMIN)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         added = await client.put("/allowlist", json={"email": "Bob@x.com", "role": "member"})
         assert added.status_code == 200
+        assert added.json()["invitationEmailStatus"] == "sent"
         emails = {e["email"] for e in added.json()["entries"]}
         assert "bob@x.com" in emails
 
@@ -204,10 +220,67 @@ async def test_admin_can_add_and_remove_entries() -> None:
         assert promoted.status_code == 200
         bob = next(entry for entry in promoted.json()["entries"] if entry["email"] == "bob@x.com")
         assert bob["role"] == "admin"
+        assert promoted.json()["invitationEmailStatus"] is None
 
         removed = await client.delete("/allowlist/bob@x.com")
         assert removed.status_code == 200
         assert "bob@x.com" not in {e["email"] for e in removed.json()["entries"]}
+
+    invited_user = db.scalar(select(User).where(User.email == "bob@x.com"))
+    assert invited_user is not None
+    assert len(sender.messages) == 1
+    assert sender.messages[0].kind == "committee_invitation"
+    assert "as a committee member" in sender.messages[0].text_body
+    assert "#magic-link=" in sender.messages[0].text_body
+
+
+@pytest.mark.anyio
+async def test_invitation_failure_keeps_access_and_retries_invitation_copy() -> None:
+    app, db = setup_app(role=UserRole.ADMIN)
+    app.dependency_overrides[get_email_sender] = QuotaBlockedSender
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        added = await client.put(
+            "/allowlist",
+            json={"email": "new-admin@x.com", "role": "admin"},
+        )
+
+    assert added.status_code == 200
+    assert added.json()["invitationEmailStatus"] == "failed"
+    assert allowlist.get_entry(db, "new-admin@x.com") is not None
+    user = db.scalar(select(User).where(User.email == "new-admin@x.com"))
+    assert user is not None
+    assert user.role == UserRole.ADMIN
+    delivery = db.scalar(select(EmailDelivery))
+    assert delivery is not None
+    assert delivery.state == EmailDeliveryState.QUEUED
+
+    sender = CapturedEmailSender()
+    assert retry_queued_emails(db, sender).accepted == 1
+    assert len(sender.messages) == 1
+    assert sender.messages[0].kind == "committee_invitation"
+    assert "as an administrator" in sender.messages[0].text_body
+
+
+@pytest.mark.anyio
+async def test_removing_access_cancels_a_queued_invitation() -> None:
+    app, db = setup_app(role=UserRole.ADMIN)
+    app.dependency_overrides[get_email_sender] = QuotaBlockedSender
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.put(
+            "/allowlist",
+            json={"email": "departed@x.com", "role": "member"},
+        )
+        removed = await client.delete("/allowlist/departed@x.com")
+
+    assert removed.status_code == 200
+    delivery = db.scalar(select(EmailDelivery))
+    assert delivery is not None
+    assert delivery.state == EmailDeliveryState.FAILED
+    assert delivery.last_error_code == "CommitteeAccessRemoved"
+    assert delivery.retry_intent is None
+    assert retry_queued_emails(db, CapturedEmailSender()).accepted == 0
 
 
 @pytest.mark.anyio

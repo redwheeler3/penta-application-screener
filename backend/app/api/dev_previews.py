@@ -7,12 +7,13 @@ from pydantic import BaseModel
 
 from app.core.config import Settings, get_settings
 from app.core.problems import Problem
-from app.db.models import MagicLinkPurpose, PasswordlessIdentityKind
+from app.db.models import MagicLinkPurpose, PasswordlessIdentityKind, UserRole
 from app.services.auth_email import (
     ApplicationOpeningTimeline,
     application_confirmation_email,
     application_opening_email,
     application_unavailable_email,
+    committee_invitation_email,
     email_change_notice_email,
     magic_link_email,
     selected_application_locked_email,
@@ -99,6 +100,17 @@ def email_previews(
                 purpose=MagicLinkPurpose.COMMITTEE_ACCESS,
                 recipient_id=1,
                 email="member@example.test",
+                token=token,
+                settings=settings,
+            ),
+        ),
+        (
+            "committee-invitation",
+            "Committee invitation",
+            committee_invitation_email(
+                user_id=1,
+                email="member@example.test",
+                role=UserRole.MEMBER,
                 token=token,
                 settings=settings,
             ),

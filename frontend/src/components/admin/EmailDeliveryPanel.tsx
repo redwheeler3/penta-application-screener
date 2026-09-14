@@ -100,6 +100,7 @@ const EMAIL_KIND_LABELS: Record<string, string> = {
   application_submitted: "Submitted application link",
   applicant_magic_link: "Applicant sign-in link",
   committee_magic_link: "Committee sign-in link",
+  committee_invitation: "Committee invitation",
   application_email_change_confirmation: "Email change confirmation",
   application_email_changed: "Email change notice",
   application_unavailable: "Application unavailable",

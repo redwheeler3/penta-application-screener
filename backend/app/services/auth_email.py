@@ -6,7 +6,7 @@ from html import escape
 from urllib.parse import quote
 
 from app.core.config import Settings
-from app.db.models import MagicLinkPurpose, PasswordlessIdentityKind
+from app.db.models import MagicLinkPurpose, PasswordlessIdentityKind, UserRole
 from app.services.email_sender import OutboundEmail
 
 BRAND_LOGO_URL = "https://www.pentacoop.com/email-house.png"
@@ -195,6 +195,47 @@ def magic_link_email(
         email=email,
         token=token,
         settings=settings,
+    )
+
+
+def committee_invitation_email(
+    *,
+    user_id: int,
+    email: str,
+    role: UserRole,
+    token: str,
+    settings: Settings,
+) -> OutboundEmail:
+    """Welcome a newly allowlisted committee user with their first sign-in link."""
+    url = _magic_link_url(settings.frontend_url, token)
+    role_name = "an administrator" if role == UserRole.ADMIN else "a committee member"
+    introduction = (
+        f"An administrator added you to the Penta Application Screener as {role_name}."
+    )
+    text = _with_common_footer(f"""You've been added to the Penta Application Screener.
+
+{introduction}
+
+Use this private link to sign in:
+
+{url}
+
+If you weren't expecting this invitation, you can ignore this email.""")
+    html = _email_shell(
+        eyebrow="Committee invitation",
+        heading="You've been added to the screener",
+        introduction=introduction,
+        action_url=url,
+        action_label="Sign in to the screener",
+        link_notice="If you weren't expecting this invitation, you can ignore this email.",
+    )
+    return OutboundEmail(
+        kind="committee_invitation",
+        recipient_id=f"user:{user_id}",
+        to=(email,),
+        subject="You've been added to the Penta Application Screener",
+        text_body=text,
+        html_body=html,
     )
 
 

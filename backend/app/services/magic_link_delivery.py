@@ -17,10 +17,12 @@ from app.db.models import (
     EmailDeliveryState,
     MagicLinkPurpose,
     PasswordlessIdentityKind,
+    UserRole,
 )
 from app.services.auth_email import (
     application_confirmation_email,
     application_unavailable_email,
+    committee_invitation_email,
     email_change_notice_email,
     magic_link_email,
     selected_application_locked_email,
@@ -59,8 +61,14 @@ def send_magic_link(
     enforce_request_limits: bool = True,
     remember_device: bool = False,
     initiating_session_id: int | None = None,
+    committee_invitation_role: UserRole | None = None,
 ) -> EmailSendOutcome:
     now = now or datetime.now(UTC)
+    if (
+        committee_invitation_role is not None
+        and identity_kind != PasswordlessIdentityKind.COMMITTEE
+    ):
+        raise ValueError("Only committee users can receive a committee invitation.")
     if enforce_request_limits and not magic_link_request_allowed(
         db,
         identity_kind=identity_kind,
@@ -91,13 +99,23 @@ def send_magic_link(
         remember_device=remember_device,
         initiating_session_id=initiating_session_id,
     )
-    message = magic_link_email(
-        identity_kind=identity_kind,
-        purpose=purpose,
-        recipient_id=recipient_id,
-        email=email,
-        token=issued.token,
-        settings=get_settings(),
+    message = (
+        committee_invitation_email(
+            user_id=recipient_id,
+            email=email,
+            role=committee_invitation_role,
+            token=issued.token,
+            settings=get_settings(),
+        )
+        if committee_invitation_role is not None
+        else magic_link_email(
+            identity_kind=identity_kind,
+            purpose=purpose,
+            recipient_id=recipient_id,
+            email=email,
+            token=issued.token,
+            settings=get_settings(),
+        )
     )
     delivered = deliver_email(
         db,
@@ -113,6 +131,7 @@ def send_magic_link(
             "purpose": purpose.value,
             "remember_device": remember_device,
             "initiating_session_id": initiating_session_id,
+            "committee_invitation": committee_invitation_role is not None,
         },
         now=now,
     )

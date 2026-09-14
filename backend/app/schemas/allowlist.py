@@ -1,6 +1,7 @@
 """Request/response shapes for the access-allowlist admin router."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import EmailStr
 
@@ -19,6 +20,10 @@ class AllowlistEntryOut(ResponseModel):
 
 class AllowlistResponse(ResponseModel):
     entries: list[AllowlistEntryOut]
+
+
+class AllowlistMutationResponse(AllowlistResponse):
+    invitation_email_status: Literal["sent", "failed"] | None = None
 
 
 class DeniedSignInAttemptOut(ResponseModel):

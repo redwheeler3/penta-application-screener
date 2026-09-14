@@ -19,6 +19,7 @@ from app.db.models import (
     User,
     UserRole,
 )
+from app.services.email_delivery import cancel_queued_committee_emails
 from app.services.passwordless_auth import (
     revoke_identity_magic_links,
     revoke_identity_sessions,
@@ -97,6 +98,7 @@ def remove_entry(db: Session, email: str) -> bool:
     user = db.scalar(select(User).where(User.email == entry.email))
     if user is not None:
         user.is_active = False
+        cancel_queued_committee_emails(db, user.id)
         revoke_identity_sessions(
             db,
             identity_kind=PasswordlessIdentityKind.COMMITTEE,

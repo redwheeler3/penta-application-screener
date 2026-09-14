@@ -82,7 +82,9 @@ in total. Any valid session may perform the actions authorized for its identity 
 no separate recent-sign-in window.
 
 The access allowlist gates committee sign-in regardless of identity provider. Google provides
-identity only; it has no access to application data.
+identity only; it has no access to application data. Adding a new allowlist entry creates or
+reactivates its committee user and sends a role-specific magic-link invitation through the durable
+email ledger. Role changes do not resend invitations, and delivery failure does not roll back access.
 
 ## Transactional email boundary
 
