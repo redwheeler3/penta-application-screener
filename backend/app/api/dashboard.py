@@ -38,7 +38,7 @@ from app.services.application_scope import (
     resolve_visible_opening_id,
 )
 from app.services.email_outbox import email_delivery_issues, email_queue_status
-from app.services.opening_selection import archived_openings_needing_selection
+from app.services.opening_selection import overdue_openings_needing_decision
 from app.services.ranking.analysis import (
     current_dimension_kinds,
     get_current_analysis,
@@ -104,13 +104,13 @@ def read_dashboard(
         coverage=coverage,
         admin_actions=(
             AdminActions(
-                archived_openings_needing_selection=[
+                overdue_openings_needing_decision=[
                     OpeningSelectionAction(
                         opening_id=opening.id,
                         unit_size_bedrooms=opening.unit_size_bedrooms,
                         move_in_date=opening.move_in_date,
                     )
-                    for opening in archived_openings_needing_selection(db)
+                    for opening in overdue_openings_needing_decision(db)
                 ],
                 queued_email_count=email_queue.count,
                 quota_blocked_email_count=email_queue.quota_blocked,

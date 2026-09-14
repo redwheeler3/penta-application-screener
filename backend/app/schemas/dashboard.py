@@ -31,7 +31,7 @@ class OpeningSelectionAction(ResponseModel):
 
 
 class AdminActions(ResponseModel):
-    archived_openings_needing_selection: list[OpeningSelectionAction]
+    overdue_openings_needing_decision: list[OpeningSelectionAction]
     queued_email_count: int
     quota_blocked_email_count: int
     recent_failed_email_count: int

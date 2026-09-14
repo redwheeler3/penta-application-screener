@@ -351,16 +351,19 @@ class Opening(TimestampMixin, Base):
     application_open_date: Mapped[date | None] = mapped_column(Date)
     application_close_date: Mapped[date | None] = mapped_column(Date)
     move_in_date: Mapped[date] = mapped_column(Date, nullable=False)
-    # Application-intake openings are published immediately. Pacific calendar dates determine
-    # their phase; direct selections stay closed until their move-in date archives them.
+    # Application-intake openings are published immediately. Calendar dates determine their
+    # pre-decision phase; a recorded committee decision archives the opening.
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), index=True
     )
-    no_household_selected_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
     )
-    no_household_selected_by_user_id: Mapped[int | None] = mapped_column(
+    decided_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id")
+    )
+    no_household_selected: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
     )
 
 
@@ -441,17 +444,12 @@ class ApplicationParticipation(TimestampMixin, Base):
     outcome: Mapped[OpeningOutcome | None] = mapped_column(
         Enum(OpeningOutcome, values_callable=enum_values), index=True
     )
-    outcome_decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    outcome_decided_by_user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id")
-    )
     unsuccessful_notified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
 
     application: Mapped[Application] = relationship()
     opening: Mapped[Opening] = relationship()
-    outcome_decided_by: Mapped[User | None] = relationship()
 
 
 class ApplicationVersion(Base):
@@ -496,7 +494,7 @@ class ApplicantDraft(Base):
         DateTime(timezone=True), nullable=False
     )
     saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    retention_due_on: Mapped[date] = mapped_column(Date, nullable=False)
+    expires_on: Mapped[date] = mapped_column(Date, nullable=False)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

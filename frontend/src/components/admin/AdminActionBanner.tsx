@@ -9,7 +9,7 @@ export function AdminActionBanner(props: {
   onReviewOpenings: () => void;
   onReviewEmailDelivery: () => void;
 }): ReactNode {
-  const openings = props.actions?.archivedOpeningsNeedingSelection ?? [];
+  const openings = props.actions?.overdueOpeningsNeedingDecision ?? [];
   const queuedEmails = props.actions?.queuedEmailCount ?? 0;
   const quotaBlockedEmails = props.actions?.quotaBlockedEmailCount ?? 0;
   const failedEmails = props.actions?.recentFailedEmailCount ?? 0;
@@ -69,8 +69,8 @@ export function AdminActionBanner(props: {
             <strong>Opening decision required</strong>
             <span>
               {openings.length === 1
-                ? "An archived opening needs a final decision before closeout email can be sent."
-                : `${openings.length} archived openings need a final decision before closeout email can be sent.`}
+                ? "An opening has reached its move-in date without a final decision."
+                : `${openings.length} openings have reached their move-in dates without final decisions.`}
             </span>
           </div>
           <button type="button" onClick={props.onReviewOpenings}>

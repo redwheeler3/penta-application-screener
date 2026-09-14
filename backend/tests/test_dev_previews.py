@@ -56,8 +56,7 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
     assert "2-bedroom home" in submitted["html"]
     assert "3-bedroom home" in submitted["html"]
     assert "September 15, 2026" in submitted["html"]
-    assert "November 1, 2026" in submitted["html"]
-    assert "Whether or not you&#x27;re shortlisted" in submitted["html"]
+    assert "finished deciding the openings you applied for" in submitted["html"]
 
 
 @pytest.mark.anyio

@@ -67,13 +67,14 @@ def _participate(
     *,
     outcome: OpeningOutcome | None = None,
 ) -> None:
+    if outcome is not None:
+        opening.decided_at = datetime.now(UTC)
     db.add(
         ApplicationParticipation(
             application_id=application.id,
             opening_id=opening.id,
             applied_at=application.submitted_at,
             outcome=outcome,
-            outcome_decided_at=datetime.now(UTC) if outcome is not None else None,
         )
     )
     db.flush()
@@ -222,7 +223,7 @@ async def test_direct_selection_is_atomic_and_sends_no_email() -> None:
         opening for opening in response.json()["openings"]
         if opening["intakeMode"] == "direct_selection"
     )
-    assert direct["phase"] == "closed"
+    assert direct["phase"] == "archived"
     assert direct["applicationOpenDate"] is None
     assert direct["applicationCloseDate"] is None
     assert direct["publishedAt"] is None
@@ -243,7 +244,7 @@ async def test_direct_selection_is_atomic_and_sends_no_email() -> None:
     assert participation is not None
     assert participation.application_id == candidate.id
     assert participation.outcome == OpeningOutcome.SELECTED
-    assert candidate.retention_due_on == years_after(move_in_date, 7)
+    assert candidate.retention_due_on == years_after(today, 7)
     assert [application.id for application in opening_ai_applications(db, current.id)] == [
         other.id
     ]
@@ -255,48 +256,6 @@ async def test_direct_selection_is_atomic_and_sends_no_email() -> None:
 
 
 @pytest.mark.anyio
-async def test_removing_direct_selection_restores_prior_scope_and_retention() -> None:
-    app, db, sender = _app_and_db()
-    today = pacific_today()
-    current = _opening(db, move_in_offset=45)
-    candidate = _application(
-        db,
-        "candidate@example.com",
-        name="Candidate Household",
-        retention_due_on=one_year_after(current.move_in_date),
-    )
-    _participate(db, candidate, current)
-    db.commit()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        created = await client.post(
-            "/openings/direct-selection",
-            json={
-                "unitSizeBedrooms": 2,
-                "housingChargeCents": 135_000,
-                "moveInDate": (today + timedelta(days=90)).isoformat(),
-                "applicationId": candidate.id,
-            },
-        )
-        direct_id = next(
-            opening["id"] for opening in created.json()["openings"]
-            if opening["intakeMode"] == "direct_selection"
-        )
-        removed = await client.delete(f"/openings/{direct_id}/direct-selection")
-
-    assert removed.status_code == 200
-    assert all(
-        opening["intakeMode"] == "applications"
-        for opening in removed.json()["openings"]
-    )
-    assert db.get(Opening, direct_id) is None
-    assert candidate.retention_due_on == one_year_after(current.move_in_date)
-    assert [application.id for application in opening_ai_applications(db, current.id)] == [
-        candidate.id
-    ]
-    assert sender.messages == []
-
-
 @pytest.mark.anyio
 async def test_direct_selection_revalidates_the_previous_applicant() -> None:
     app, db, _sender = _app_and_db()
@@ -332,7 +291,7 @@ async def test_direct_selection_revalidates_the_previous_applicant() -> None:
 
 
 @pytest.mark.anyio
-async def test_direct_selection_is_permanent_on_the_move_in_date() -> None:
+async def test_direct_selection_is_permanent_immediately() -> None:
     app, db, _sender = _app_and_db()
     today = pacific_today()
     prior = _opening(db, move_in_offset=-30)
@@ -360,11 +319,7 @@ async def test_direct_selection_is_permanent_on_the_move_in_date() -> None:
             opening["id"] for opening in created.json()["openings"]
             if opening["intakeMode"] == "direct_selection"
         )
-        direct = db.get(Opening, direct_id)
-        assert direct is not None
-        direct.move_in_date = today
-        db.commit()
         removed = await client.delete(f"/openings/{direct_id}/direct-selection")
 
-    assert removed.status_code == 422
+    assert removed.status_code == 405
     assert db.get(Opening, direct_id) is not None

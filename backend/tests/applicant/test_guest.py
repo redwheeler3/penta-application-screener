@@ -129,13 +129,12 @@ async def test_guest_can_submit_directly_and_receives_application_access() -> No
     assert db.scalar(select(ApplicationParticipation.opening_id)) == opening.id
     assert len(sender.messages) == 1
     close_date = f"{opening.application_close_date.strftime('%B')} {opening.application_close_date.day}, {opening.application_close_date.year}"
-    move_in_date = f"{opening.move_in_date.strftime('%B')} {opening.move_in_date.day}, {opening.move_in_date.year}"
     assert (
-        f"we'll contact you between {close_date} and {move_in_date}"
+        f"we'll contact you after {close_date}"
         in sender.messages[0].text_body
     )
     assert (
-        f"Whether or not you're shortlisted, we'll email you shortly after {move_in_date}"
+        "We'll email you as soon as the committee has finished deciding"
         in sender.messages[0].text_body
     )
     assert "update your application or delete your profile" in sender.messages[0].text_body
@@ -396,7 +395,7 @@ async def test_email_entry_with_multiple_openings_does_not_preselect_one() -> No
     assert response.status_code == 202
     assert draft is not None
     assert draft.working_opening_ids == []
-    assert draft.retention_due_on > pacific_today()
+    assert draft.expires_on > pacific_today()
     assert len(sender.messages) == 1
 
 

@@ -63,21 +63,12 @@ def selected_participation(
     )
 
 
-def opening_decision_exists(db: Session, opening: Opening) -> bool:
-    return (
-        opening.no_household_selected_at is not None
-        or selected_participation(db, opening.id) is not None
-    )
-
-
 def require_ai_actions_available(db: Session, opening_id: int) -> Opening:
-    """Reject paid AI work only after an archived opening has a final outcome."""
+    """Reject paid AI work after the committee archives an opening."""
     opening = db.get(Opening, opening_id)
     if opening is None:
         raise Problem("not_found", detail="Opening not found.")
-    if opening_phase(opening) == OpeningPhase.ARCHIVED and opening_decision_exists(
-        db, opening
-    ):
+    if opening_phase(opening) == OpeningPhase.ARCHIVED:
         raise Problem(
             "opening_finalized",
             detail="Screening and ranking are closed because this archived opening has a final outcome.",
@@ -85,21 +76,17 @@ def require_ai_actions_available(db: Session, opening_id: int) -> Opening:
     return opening
 
 
-def archived_openings_needing_selection(db: Session) -> list[Opening]:
+def overdue_openings_needing_decision(db: Session) -> list[Opening]:
     openings = db.scalars(
         select(Opening)
         .where(
             Opening.published_at.is_not(None),
             Opening.move_in_date <= pacific_today(),
+            Opening.decided_at.is_(None),
         )
         .order_by(Opening.move_in_date, Opening.id)
     ).all()
-    return [
-        opening
-        for opening in openings
-        if not opening_decision_exists(db, opening)
-        and active_opening_participants(db, opening)
-    ]
+    return [opening for opening in openings if active_opening_participants(db, opening)]
 
 
 def confirm_opening_selection(
@@ -110,7 +97,12 @@ def confirm_opening_selection(
     decided_by: User,
     now: datetime | None = None,
 ) -> None:
-    phase = _selection_phase(opening)
+    existing = selected_participation(db, opening.id)
+    if opening.decided_at is not None:
+        if existing is not None and existing.application_id == application_id:
+            return
+        raise Problem("invalid_settings", detail="The opening decision is permanent.")
+    _require_selection_available(opening)
     now = now or datetime.now(UTC)
     participants = active_opening_participants(db, opening)
     selected_candidate = next(
@@ -127,30 +119,6 @@ def confirm_opening_selection(
             detail="Choose an active applicant from this opening.",
         )
 
-    existing = selected_participation(db, opening.id)
-    if opening.no_household_selected_at is not None:
-        if phase == OpeningPhase.ARCHIVED:
-            raise Problem(
-                "invalid_settings",
-                detail="The archived opening decision is permanent.",
-            )
-        raise Problem(
-            "invalid_settings",
-            detail="Undo the current decision before choosing an applicant.",
-        )
-    if existing is not None:
-        if existing.application_id == application_id:
-            return
-        if phase == OpeningPhase.ARCHIVED:
-            raise Problem(
-                "invalid_settings",
-                detail="The selected applicant is permanent after the opening is archived.",
-            )
-        raise Problem(
-            "invalid_settings",
-            detail="Undo the current selection before choosing another applicant.",
-        )
-
     other_opening_id = selected_opening_id(db, application_id)
     if other_opening_id is not None:
         raise Problem(
@@ -165,16 +133,15 @@ def confirm_opening_selection(
             if application.id == application_id
             else OpeningOutcome.UNSUCCESSFUL
         )
-        participation.outcome_decided_at = now
-        participation.outcome_decided_by_user_id = decided_by.id
         participation.unsuccessful_notified_at = None
         affected_applications.append(application)
 
+    opening.decided_at = now
+    opening.decided_by_user_id = decided_by.id
+    opening.no_household_selected = False
     for application in affected_applications:
         refresh_application_retention(db, application)
     revoke_selected_applicant_access(db, application_id, now=now)
-    opening.no_household_selected_at = None
-    opening.no_household_selected_by_user_id = None
     try:
         db.commit()
     except IntegrityError as error:
@@ -192,63 +159,30 @@ def confirm_no_household_selected(
     decided_by: User,
     now: datetime | None = None,
 ) -> None:
-    phase = _selection_phase(opening)
-    if opening.no_household_selected_at is not None:
-        return
-    if selected_participation(db, opening.id) is not None:
-        if phase == OpeningPhase.ARCHIVED:
-            raise Problem(
-                "invalid_settings",
-                detail="The archived opening decision is permanent.",
-            )
-        raise Problem(
-            "invalid_settings",
-            detail="Undo the current selection before recording no household selected.",
-        )
+    if opening.decided_at is not None:
+        if opening.no_household_selected:
+            return
+        raise Problem("invalid_settings", detail="The opening decision is permanent.")
+    _require_selection_available(opening)
 
     now = now or datetime.now(UTC)
     affected_applications: list[Application] = []
     for participation, application in active_opening_participants(db, opening):
         participation.outcome = OpeningOutcome.UNSUCCESSFUL
-        participation.outcome_decided_at = now
-        participation.outcome_decided_by_user_id = decided_by.id
         participation.unsuccessful_notified_at = None
         affected_applications.append(application)
-    opening.no_household_selected_at = now
-    opening.no_household_selected_by_user_id = decided_by.id
+    opening.decided_at = now
+    opening.decided_by_user_id = decided_by.id
+    opening.no_household_selected = True
     for application in affected_applications:
         refresh_application_retention(db, application)
     db.commit()
 
 
-def undo_opening_selection(db: Session, opening: Opening) -> None:
-    if opening_phase(opening) != OpeningPhase.CLOSED:
-        raise Problem(
-            "invalid_settings",
-            detail="A selection can be undone only while the opening is closed.",
-        )
-    if not opening_decision_exists(db, opening):
-        return
-
-    affected_applications: list[Application] = []
-    for participation, application in active_opening_participants(db, opening):
-        participation.outcome = None
-        participation.outcome_decided_at = None
-        participation.outcome_decided_by_user_id = None
-        participation.unsuccessful_notified_at = None
-        affected_applications.append(application)
-    for application in affected_applications:
-        refresh_application_retention(db, application)
-    opening.no_household_selected_at = None
-    opening.no_household_selected_by_user_id = None
-    db.commit()
-
-
-def _selection_phase(opening: Opening) -> OpeningPhase:
+def _require_selection_available(opening: Opening) -> None:
     phase = opening_phase(opening)
-    if phase not in {OpeningPhase.CLOSED, OpeningPhase.ARCHIVED}:
+    if phase != OpeningPhase.CLOSED:
         raise Problem(
             "invalid_settings",
             detail="Select the successful applicant after applications close.",
         )
-    return phase

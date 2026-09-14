@@ -209,7 +209,7 @@ async def test_email_delivery_report_requires_admin() -> None:
 
 
 @pytest.mark.anyio
-async def test_admin_dashboard_flags_archived_opening_without_selection() -> None:
+async def test_admin_dashboard_flags_overdue_opening_without_decision() -> None:
     app, db = _logged_in_app(UserRole.ADMIN)
     today = pacific_today()
     opening = Opening(
@@ -242,7 +242,7 @@ async def test_admin_dashboard_flags_archived_opening_without_selection() -> Non
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.get("/dashboard")
 
-    actions = response.json()["adminActions"]["archivedOpeningsNeedingSelection"]
+    actions = response.json()["adminActions"]["overdueOpeningsNeedingDecision"]
     assert actions == [
         {
             "openingId": opening.id,
@@ -251,12 +251,13 @@ async def test_admin_dashboard_flags_archived_opening_without_selection() -> Non
         }
     ]
 
-    opening.no_household_selected_at = datetime.now(UTC)
-    opening.no_household_selected_by_user_id = db.query(User).one().id
+    opening.decided_at = datetime.now(UTC)
+    opening.decided_by_user_id = db.query(User).one().id
+    opening.no_household_selected = True
     db.commit()
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         finalized = await client.get("/dashboard")
-    assert finalized.json()["adminActions"]["archivedOpeningsNeedingSelection"] == []
+    assert finalized.json()["adminActions"]["overdueOpeningsNeedingDecision"] == []
 
 
 @pytest.mark.anyio

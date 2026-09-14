@@ -8,23 +8,19 @@ from sqlalchemy.orm import Session
 from app.core.problems import Problem
 from app.core.time import pacific_today
 from app.db.models import (
-    Application,
     ApplicationParticipation,
     Opening,
     OpeningIntakeMode,
     OpeningPhase,
 )
 from app.schemas.openings import OpeningCreate, OpeningWrite
-from app.services.retention import (
-    refresh_application_retention,
-    refresh_draft_retention_for_opening,
-)
+from app.services.retention import refresh_draft_retention_for_opening
 from app.services.rules import create_opening_rules
 
 
 def opening_phase(opening: Opening, *, today: date | None = None) -> OpeningPhase:
     current_date = today or pacific_today()
-    if current_date >= opening.move_in_date:
+    if opening.decided_at is not None:
         return OpeningPhase.ARCHIVED
     if opening.intake_mode == OpeningIntakeMode.DIRECT_SELECTION:
         return OpeningPhase.CLOSED
@@ -111,22 +107,7 @@ def update_opening(db: Session, opening: Opening, values: OpeningWrite) -> Openi
     for field, value in values.model_dump().items():
         setattr(opening, field, value)
     db.flush()
-    _refresh_participant_retention(db, opening.id)
     refresh_draft_retention_for_opening(db, opening.id)
     db.commit()
     db.refresh(opening)
     return opening
-
-
-def _refresh_participant_retention(db: Session, opening_id: int) -> None:
-    application_ids = list(
-        db.scalars(
-            select(ApplicationParticipation.application_id).where(
-                ApplicationParticipation.opening_id == opening_id
-            )
-        )
-    )
-    for application_id in set(application_ids):
-        application = db.get(Application, application_id)
-        if application is not None:
-            refresh_application_retention(db, application)

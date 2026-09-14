@@ -17,7 +17,6 @@ from app.db.models import (
     PasswordlessIdentityKind,
 )
 from app.services.passwordless_auth import create_browser_session
-from app.services.retention import one_year_after
 from tests.applicant.support import app_and_db, sample_answers, save_draft
 
 
@@ -208,7 +207,7 @@ async def test_new_google_application_does_not_preselect_multiple_openings(monke
     application = db.scalar(select(Application))
     assert application is not None
     assert application.working_opening_ids == []
-    assert application.retention_due_on == one_year_after(today + timedelta(days=40))
+    assert application.retention_due_on == today + timedelta(days=11)
     assert all(not opening["selected"] for opening in application_response.json()["openings"])
 
 

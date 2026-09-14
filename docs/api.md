@@ -62,7 +62,6 @@ configuration, committee defaults, Observability, and Evals require an admin.
 | POST | `/openings` | Open applications immediately and atomically queue the confirmed notification audience. | Admin |
 | POST | `/openings/previous-applicants/search` | Search retained, available previous applicants by name or email without exposing them to ordinary workflows. | Admin |
 | POST | `/openings/direct-selection` | Atomically create a filled opening and select one previous applicant without queueing email. | Admin |
-| DELETE | `/openings/{id}/direct-selection` | Remove a directly filled opening before move-in and restore the applicant's prior scope and retention. | Admin |
 | PUT | `/openings/{id}` | Update an application-intake opening, including an archived historical record. | Admin |
 
 ### Vacancy notifications — `app/api/vacancy_subscriptions.py`

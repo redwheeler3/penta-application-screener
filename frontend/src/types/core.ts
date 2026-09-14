@@ -59,7 +59,6 @@ export type Opening = Omit<OpeningDetails, "applicationOpenDate" | "applicationC
   selectedApplicationId: number | null;
   selectedApplicantName: string | null;
   noHouseholdSelected: boolean;
-  decisionPermanent: boolean;
   needsDecision: boolean;
   createdAt: string;
   updatedAt: string;
@@ -125,7 +124,6 @@ export type OpeningSelection = {
   selectedApplicationId: number | null;
   selectedApplicantName: string | null;
   noHouseholdSelected: boolean;
-  decisionPermanent: boolean;
   activeParticipantCount: number;
   candidates: OpeningSelectionCandidate[];
 };

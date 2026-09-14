@@ -100,7 +100,7 @@ def test_due_unclaimed_draft_is_completely_purged() -> None:
         draft_token_hash="synthetic-draft-token",
         created_at=datetime(2025, 8, 26, tzinfo=UTC),
         saved_at=datetime(2025, 8, 26, tzinfo=UTC),
-        retention_due_on=date(2026, 8, 26),
+        expires_on=date(2026, 8, 26),
     )
     db.add(draft)
     db.commit()
@@ -114,4 +114,4 @@ def test_due_unclaimed_draft_is_completely_purged() -> None:
     assert deletion is not None
     assert deletion.record_kind == "applicant_draft"
     assert deletion.record_id == draft_id
-    assert deletion.retention_rule == "one_year"
+    assert deletion.retention_rule == "draft_actionability"

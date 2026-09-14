@@ -59,7 +59,6 @@ class OpeningOut(ResponseModel):
     selected_application_id: int | None
     selected_applicant_name: str | None
     no_household_selected: bool
-    decision_permanent: bool
     needs_decision: bool
     created_at: datetime
     updated_at: datetime
@@ -116,7 +115,6 @@ class OpeningSelectionOut(ResponseModel):
     selected_application_id: int | None
     selected_applicant_name: str | None
     no_household_selected: bool
-    decision_permanent: bool
     active_participant_count: int
     candidates: list[OpeningSelectionCandidateOut]
 

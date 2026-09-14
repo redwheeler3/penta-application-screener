@@ -389,7 +389,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
 
   const selectedOpening = openings.find((opening) => opening.id === selectedOpeningId) ?? null;
   const aiActionsDisabled = Boolean(
-    selectedOpening?.phase === "archived" && selectedOpening.outcomeFinal,
+    selectedOpening?.phase === "archived",
   );
 
   return (

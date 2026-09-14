@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app.core.time import pacific_today
@@ -63,8 +63,11 @@ def purge_due_applicant_data(db: Session, *, now: datetime | None = None) -> Pur
     drafts = db.scalars(
         select(ApplicantDraft)
         .where(
-            ApplicantDraft.application_id.is_(None),
-            ApplicantDraft.retention_due_on <= today,
+            or_(
+                ApplicantDraft.resolved_at.is_not(None),
+                ApplicantDraft.revoked_at.is_not(None),
+                ApplicantDraft.expires_on <= today,
+            )
         )
         .order_by(ApplicantDraft.id)
     ).all()
@@ -73,8 +76,8 @@ def purge_due_applicant_data(db: Session, *, now: datetime | None = None) -> Pur
             db,
             record_kind="applicant_draft",
             record_id=draft.id,
-            retention_rule="one_year",
-            due_on=draft.retention_due_on,
+            retention_rule="draft_actionability",
+            due_on=min(draft.expires_on, today),
             now=now,
         )
         db.delete(draft)

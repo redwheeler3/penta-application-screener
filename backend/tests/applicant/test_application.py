@@ -17,7 +17,6 @@ from app.db.models import (
     PasswordlessIdentityKind,
 )
 from app.services.passwordless_auth import create_browser_session
-from app.services.retention import one_year_after
 from tests.applicant.support import (
     app_and_db,
     legacy_answers,
@@ -159,14 +158,7 @@ async def test_authenticated_submission_requires_declaration_and_accepts_multipl
     assert version.selected_opening_ids == [opening.id, later_opening.id]
     confirmation = sender.messages[-1].text_body
     assert confirmation.index("2-bedroom home") < confirmation.index("3-bedroom home")
-    assert (
-        f"{opening.move_in_date.strftime('%B')} {opening.move_in_date.day}, {opening.move_in_date.year}"
-        in confirmation
-    )
-    assert (
-        f"{later_opening.move_in_date.strftime('%B')} {later_opening.move_in_date.day}, {later_opening.move_in_date.year}"
-        in confirmation
-    )
+    assert "finished deciding the openings you applied for" in confirmation
 
 
 @pytest.mark.anyio
@@ -254,7 +246,7 @@ async def test_withdrawal_removes_every_opening_and_revokes_applicant_access() -
     assert application is not None
     assert application.withdrawn_at is not None
     assert application.google_subject is None
-    assert application.retention_due_on == one_year_after(opening.move_in_date)
+    assert application.retention_due_on is None
     assert participation is not None
     assert participation.withdrawn_at is not None
     assert all(session.revoked_at is not None for session in db.scalars(select(BrowserSession)))

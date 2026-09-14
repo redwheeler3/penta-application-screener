@@ -94,6 +94,8 @@ def create_direct_selection_opening(
         application_close_date=None,
         move_in_date=values.move_in_date,
         published_at=None,
+        decided_at=now,
+        decided_by_user_id=decided_by.id,
     )
     db.add(opening)
     db.flush()
@@ -104,8 +106,6 @@ def create_direct_selection_opening(
                 opening_id=opening.id,
                 applied_at=now,
                 outcome=OpeningOutcome.SELECTED,
-                outcome_decided_at=now,
-                outcome_decided_by_user_id=decided_by.id,
             )
         )
         db.flush()
@@ -120,29 +120,3 @@ def create_direct_selection_opening(
         ) from error
     db.refresh(opening)
     return opening
-
-
-def remove_direct_selection_opening(db: Session, opening: Opening) -> None:
-    if opening.intake_mode != OpeningIntakeMode.DIRECT_SELECTION:
-        raise Problem("invalid_settings", detail="This is not a direct-selection opening.")
-    if opening.move_in_date <= pacific_today():
-        raise Problem(
-            "invalid_settings",
-            detail="A direct selection is permanent after the move-in date.",
-        )
-    participation = db.scalar(
-        select(ApplicationParticipation).where(
-            ApplicationParticipation.opening_id == opening.id,
-            ApplicationParticipation.outcome == OpeningOutcome.SELECTED,
-        )
-    )
-    if participation is None:
-        raise Problem("invalid_settings", detail="This opening has no selected applicant.")
-    application = db.get(Application, participation.application_id)
-    db.delete(participation)
-    db.flush()
-    db.delete(opening)
-    db.flush()
-    if application is not None:
-        refresh_application_retention(db, application)
-    db.commit()

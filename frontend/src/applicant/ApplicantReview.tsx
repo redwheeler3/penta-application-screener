@@ -241,14 +241,12 @@ export function ApplicationSubmitted(props: {
       <div className="application-timelines">
         {props.openings.map((opening) => {
           const closeDate = formatOpeningDate(opening.applicationCloseDate);
-          const moveInDate = formatOpeningDate(opening.moveInDate);
           return (
             <section key={opening.id}>
               <strong>{opening.unitSizeBedrooms}-bedroom home</strong>
               <p>
-                If your application is shortlisted, we’ll contact you between <strong>{closeDate}</strong>
-                {" "}and <strong>{moveInDate}</strong>. Whether or not you’re shortlisted, we’ll email
-                you shortly after <strong>{moveInDate}</strong> to let you know the final outcome.
+                If your application is shortlisted, we’ll contact you after <strong>{closeDate}</strong>.
+                {" "}We’ll email you as soon as the committee has finished deciding the openings you applied for.
               </p>
             </section>
           );

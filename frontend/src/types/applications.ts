@@ -24,7 +24,7 @@ export type Coverage = Partial<
 >;
 
 export type AdminActions = {
-  archivedOpeningsNeedingSelection: Array<{
+  overdueOpeningsNeedingDecision: Array<{
     openingId: number;
     unitSizeBedrooms: number;
     moveInDate: string;
@@ -85,7 +85,6 @@ export type ApplicationSummary = {
 
 export type CommitteeOpening = OpeningDetails & {
   phase: "upcoming" | "open" | "closed" | "archived";
-  outcomeFinal: boolean;
 };
 
 export type Essay = {

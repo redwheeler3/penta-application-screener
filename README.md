@@ -57,9 +57,9 @@ email boundary, and applicant record.
   applicant's answers.
 - Applicant-controlled email changes and deletion, collision-safe identity handling, revocable
   sessions, and credential-safe transactional-email retries.
-- Date-driven opening phases, administrator-confirmed selections, unsuccessful-applicant notices,
-  and automatic retention: one year for unsuccessful or withdrawn applicants and seven years for
-  selected members.
+- Date-driven upcoming, open, and closed phases; a permanent committee decision archives the
+  opening and sends eligible unsuccessful-applicant notices immediately. Submitted applications
+  are retained from that decision for one year, or seven years when selected.
 - One-notice vacancy subscriptions with preference replacement, opening-audience previews,
   retry-safe delivery, administrative reporting, and narrow exact-address support controls.
 
@@ -229,9 +229,9 @@ The backend runs at `http://localhost:8000`. The frontend runs at `http://localh
 Open `http://localhost:5173/?applicant` to exercise the applicant form.
 Open `http://localhost:5173/?preview=access` to review every access screen and transactional
 email with synthetic data. The preview is available only in local development and never sends email.
-Save and return later accepts an incomplete application, stores a private pending draft, and sends
-a 24-hour access link. Submitting still requires a deliberate action and at least one selectable
-opening.
+Save and return later accepts an incomplete application, stores a private pending draft until its
+last applicable opening closes, and sends a 24-hour access link. Submitting still requires a
+deliberate action and at least one selectable opening.
 
 To seed a wholly synthetic local database from the committed fixture, publish an opening,
 set `APPLICATION_DATA_IS_SYNTHETIC=true`, then run from `backend/`:

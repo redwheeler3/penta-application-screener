@@ -17,7 +17,6 @@ from app.schemas.openings import OpeningDetailsOut
 
 class CommitteeOpeningOut(OpeningDetailsOut):
     phase: str
-    outcome_final: bool = False
 
 
 class HardFilterReason(ResponseModel):

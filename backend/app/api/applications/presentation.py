@@ -35,7 +35,6 @@ from app.services.eligibility import (
     overrides_by_app,
 )
 from app.services.opening_participation import opening_ids_by_application
-from app.services.opening_selection import opening_decision_exists
 from app.services.openings import opening_phase
 from app.services.ranking.analysis import current_dimension_kinds, get_current_analysis
 from app.services.ranking.dimensions import current_dimension_report
@@ -111,7 +110,6 @@ def committee_opening(db: Session, opening: Opening) -> CommitteeOpeningOut:
         application_close_date=opening.application_close_date,
         move_in_date=opening.move_in_date,
         phase=opening_phase(opening).value,
-        outcome_final=opening_decision_exists(db, opening),
     )
 
 

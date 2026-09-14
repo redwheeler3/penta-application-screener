@@ -131,10 +131,10 @@ application** action validates and previews the in-page answers without creating
 sending email. **Submit application** then publishes the application immediately and emails a
 confirmation with secure access for future edits; initial submission does not wait for the
 applicant to follow that link.
-An authenticated primary applicant may edit while at least one published opening is between its
-open date and move-in date. Before the next open date, or after every published opening reaches its
-move-in date, application content is read-only. An applicant-withdrawn legal-hold record is not active
-and is not available through this flow.
+An authenticated primary applicant may edit while at least one published opening is open or while
+they participate in a closed opening that has no decision. Before the next open date, or after every
+relevant opening has a decision, application content is read-only. An applicant-withdrawn legal-hold
+record is not active and is not available through this flow.
 
 An authenticated applicant can choose **Delete my profile** without contacting the Privacy
 Officer. The profile wording distinguishes this whole-application action from withdrawing from
@@ -195,9 +195,9 @@ email with secure application access. There is no opt-in checkbox: the applicant
 the message, and can request a fresh access email later through the same flow.
 The submitted screen and confirmation email thank the applicant and show a separate timeline for
 each opening in that submission. Each timeline says that shortlisted applicants may be contacted
-between the opening's close date and move-in date, and that every applicant will receive the final
-outcome shortly after the move-in date. Both surfaces remind the applicant that they can return to
-update the application or delete their profile themselves.
+after the opening's close date and that the applicant will receive an email as soon as the committee
+has completed every decision affecting their application. Both surfaces remind the applicant that
+they can return to update the application or delete their profile themselves.
 
 The access link proves control of the primary email before an existing application can be changed.
 A first guest submission may be published before email control is proven, then its confirmation
@@ -245,8 +245,7 @@ open page into private server-side draft storage and emails the primary applican
 This is the only way an unauthenticated, unsubmitted draft leaves the page. It lets an applicant
 preserve unfinished work across browsers or devices without creating a password. Once signed in,
 the same action saves directly to the authenticated private working copy and does not send an
-unnecessary email. An unclaimed pending draft follows the same opening-anchored retention lifecycle
-as the application it will become.
+unnecessary email. An unclaimed pending draft expires after its last applicable opening closes.
 
 Access-link handling follows one explicit decision table:
 
@@ -462,8 +461,8 @@ removed. They do not show an applicant-removal link.
   the application-open event: its open date is that day and the confirmed notification audience is
   durably queued in the same transaction. Its later phase is derived from the dates rather than
   maintained with manual Open and Close actions. The dates may be equal but cannot run backward:
-  open is on or before close, which is on or before move-in; archiving takes precedence when dates
-  share a boundary.
+  open is on or before close, which is on or before move-in. A committee decision, not a calendar
+  date, archives the opening.
 - **Fill from previous applicants** is a separate production intake mode for a home offered to
   someone from a retained prior pool. An administrator searches by name or email across submitted,
   non-withdrawn, non-selected applications that still have a prior participation and have not
@@ -473,11 +472,9 @@ removed. They do not show an applicant-removal link.
   that applicant. The opening and selected participation are committed atomically. No application
   period is invented, no other applicant participates or becomes unsuccessful, no vacancy audience
   is calculated or consumed, and no email is queued. The selected application immediately leaves
-  ordinary committee and AI scope and is retained for seven years after the new move-in date.
-- A direct-selection opening is **closed** until move-in and **archived** on that date. It never
-  appears in applicant opening choices. Before move-in, removing it deletes its sole direct
-  participation and restores the applicant's prior scope and retention. After move-in, the
-  selection is permanent.
+  ordinary committee and AI scope and is retained for seven years after the decision date.
+- A direct-selection opening is archived immediately and never appears in applicant opening
+  choices. Its confirmed selection is permanent.
 - Application-close timing does not prevent an existing application's information from being
   reused for a later opening. Each opening has a separate participation record that says the
   applicant affirmatively wants their one application considered for that opening. Participation
@@ -491,11 +488,11 @@ removed. They do not show an applicant-removal link.
   start unselected and require at least one selection before submission. Committee views use one
   selected opening as the complete eligibility, screening, and ranking workspace.
 - Before and through the application close date, an applicant may select or unselect an opening.
-  After the close date and before the move-in date, an existing participant may unselect it to
+  After the close date and before the committee decision, an existing participant may unselect it to
   withdraw but nobody may newly select it. Because working selections remain private until Submit,
-  the participant may reverse that pending choice in either direction before submitting. On the
-  move-in date the opening is archived and its participation can neither be selected nor
-  withdrawn. If another opening still permits editing, a later publication updates the retained
+  the participant may reverse that pending choice in either direction before submitting. Once the
+  committee records the opening decision, it is archived and its participation can neither be
+  selected nor withdrawn. If another opening still permits editing, a later publication updates the retained
   application record without returning archived-only applicants to ordinary committee workflows.
 - Before submission, the review page separately names every opening the applicant will remain
   enrolled in and every existing participation that the submission will withdraw.
@@ -509,7 +506,7 @@ removed. They do not show an applicant-removal link.
   itself. Retention never enrolls someone in a later opening. Opening-withdrawn and
   application-withdrawn applications are excluded from ordinary committee and AI workflows.
 - Administrators may edit archived opening facts to correct the historical record. Changing a
-  move-in date recalculates affected retention dates using the corrected value.
+  move-in date does not change application retention.
 - The server's Pacific calendar date determines which actions are allowed. Merely receiving an
   announcement, following its access link, editing, saving, or reviewing does not create
   participation. Submission creates or updates participation for the selected openings.
@@ -520,9 +517,9 @@ removed. They do not show an applicant-removal link.
 
 ### Opening decision closeout
 
-An administrator may select and confirm the successful applicant at any time while an opening is
-**closed** or **archived**. This committee closeout is independent of the date-derived opening
-phase: the opening remains **closed** until its move-in date and then becomes **archived**.
+An administrator may select and confirm the successful applicant after an opening closes. The
+committee decision archives the opening immediately; the move-in date remains the expected
+occupancy date and makes an undecided opening overdue for administrator action.
 Applicants cannot newly apply after the close date, regardless of whether the committee has
 completed closeout. The candidate picker can filter the already-loaded candidates by name or email;
 the filter does not make another request or change the candidate set. Confirming the selection
@@ -530,7 +527,7 @@ records the selected participation and records every other active participation 
 unsuccessful. AI
 eligibility and ranking never imply that decision. Selecting an applicant immediately removes that
 application from Applications, Screen, Rank, and every successful-applicant picker while retaining
-it in an administrator-only audit view for seven years from the opening's move-in date. The opening
+it in an administrator-only audit view for seven years from the decision date. The opening
 closeout continues to show the selected household as a read-only decision summary and links to the
 full retained application. That audit detail is read-only and is available only to administrators;
 it does not restore the household to any live committee workflow. Selection also locks the
@@ -541,36 +538,27 @@ access or email-change link. A stale page may retain a device-local copy, but ev
 rejects it. A later opening never makes a selected application editable again. Unsuccessful
 applications remain live in the ordinary committee workflow until their one-year purge date.
 
-While an application-intake opening remains closed, the administrator may undo the confirmed
-selection. Undo returns every active participation in that opening to a pending outcome,
-recalculates retention, and returns the selected applicant to ordinary committee and AI
-scope. A direct-selection undo instead removes that opening and its sole participation, restoring
-the applicant's previous scope and retention. Once the opening becomes
-archived, any existing decision is permanent. An archived opening without a decision permits one
-closeout confirmation, which is permanent immediately; archived decisions cannot be undone or
-replaced through the application. Undo does not revive revoked credentials; the applicant must use
-a fresh email link or Google sign-in before editing again.
+Every confirmed decision is permanent. It cannot be undone or replaced through the application,
+because eligible outcome messages leave the system immediately and cannot be recalled. A household
+that later declines is a new operational event rather than a reason to rewrite the archived decision.
 
 An opening decision has three explicit states: **pending** (no decision yet), **selected** (one
 household selected), or **no household selected** (the administrator deliberately closes the
 opening without choosing a household). “No household selected” records every active participation
-as unsuccessful and follows the same finality rule: it can be undone while closed and is permanent
-once archived. It is not inferred from a missing selected applicant, so an archived pending opening
-still demands administrator action.
+as unsuccessful and archives the opening. It is not inferred from a missing selected applicant, so
+an overdue closed opening still demands administrator action.
 
-The selection confirmation previews its consequences, but no unsuccessful email is sent while the
-opening remains closed. Once the opening becomes archived, the service automatically sends eligible
-unsuccessful notices. If the opening reaches archived without a confirmed selection, the screener
-requires an administrator to choose one; confirming it then releases the eligible notices. A notice
-is eligible only when every opening that applicant actively entered is archived and has a confirmed
-selection, and none selected that applicant. This avoids sending an unsuccessful notice to someone
+The selection confirmation previews its permanent consequences. Confirming archives the opening and
+immediately releases eligible unsuccessful notices. A notice is eligible only when every opening
+that applicant actively entered has a confirmed decision and none selected that applicant. This
+avoids sending an unsuccessful notice to someone
 whose result in another simultaneous opening remains pending or who was selected elsewhere. The
 operation is retry-safe and records enough provider state to prevent duplicate sends. The message
 closes the loop and invites the applicant to join the vacancy notification list for future openings.
 
-The committee screener shows administrators an action banner when an archived opening still needs a
-successful applicant selected. Closed openings may be finalized early but do not demand action.
-The banner links to the relevant review flow and disappears after confirmation. Whether a second
+The committee screener shows administrators an action banner when an opening reaches its move-in
+date without a decision. The banner links to the relevant review flow and disappears after
+confirmation. Whether a second
 banner should require an administrator to review one-year purges is still an open decision.
 
 ### Committee intake awareness
@@ -608,22 +596,22 @@ The implementation must preserve the current privacy boundary: drafts and submit
 data are sensitive PII; they do not enter logs, source control, fixtures, or general operational
 reports.
 
-Drafts do not have a separate inactivity expiry. Private working changes remain part of the same
-application record and are purged with that applicant. For an application that has never been
-submitted, the retention anchor is one year after the latest move-in date among the openings saved
-in its draft; this prevents an abandoned draft from retaining PII forever. Remembered-device draft
+Drafts do not have a separate retention period. A never-submitted server draft remains available
+only while at least one applicable opening accepts submissions and is deleted after the last such
+opening closes. Resolved, superseded, and revoked temporary copies are deleted once they no longer
+serve the access flow. Private working changes on a submitted application do not extend retention
+and are discarded once all relevant openings have decisions. Remembered-device draft
 storage likewise has no independent 30-day timer and is removed by sign-out, clearing the device,
 or an explicit application-withdrawal flow. Server retention cleanup cannot erase storage on a
 browser that never returns; remembered-device storage is therefore an applicant-controlled device
 copy rather than part of the server retention guarantee.
 
-Once an applicant affirmatively submits for one or more openings, the application is retained
-until one year after the latest effective move-in date among those participating openings. All
-selection decisions must be complete before the applicable move-in date, and the recorded
-retention anchor is updated if an offering's move-in date changes. A later working-copy edit by
-itself does not extend retention; submitting for an opening with a later move-in date establishes
-a new anchor. Submitted, declined, and retracted applications use this same rule. Accepted-member
-records continue under the existing seven-year policy.
+Once an applicant affirmatively submits for one or more openings, the latest committee decision
+affecting that application is its single retention anchor. Applications with no selected
+participation are retained for one year after that decision; a withdrawal changes access and scope
+but does not create or restart a retention clock. A selected application is retained for seven
+years after its selected opening's decision. When an application spans simultaneous openings, its
+one-year period begins after the last decision. Move-in dates do not change retention.
 
 The public privacy policy explains these retention periods and the restricted legal-hold behavior;
 the ordinary applicant interface does not restate that policy in the **Delete my profile** confirmation.
@@ -1314,16 +1302,16 @@ path is deployed and verified at the applicant hostname.
 4. **Publication and opening behavior (complete)** — configure and publish dated openings;
    atomically publish initial and updated working copies; keep drafts invisible; record dated
    application versions and explicit multi-opening participation; and enforce open, closed, and
-   archived behavior from the opening dates.
+   archived behavior from the opening decision.
 5. **Committee intake workflow (complete)** — remove the Sync step; refresh submitted applications
    automatically; keep the list compact; show submission/version metadata in coherent application
    details; and derive stale Screen/Rank state from the submitted pool without routine committee
    email.
 6. **Retention and opening closeout (complete)** — add explicit per-opening
    selected/unsuccessful outcomes,
-   selected-applicant confirmation during the closed or archived phase, automatic eligible
-   unsuccessful email after archive, seven-year retention for selected members, opening-anchored retention for
-   never-submitted drafts, complete one-year application purge, credential-safe lifecycle email delivery,
+   permanent selected-applicant confirmation after close, immediate eligible unsuccessful email,
+   decision-anchored retention for submitted applications, close-anchored expiry for never-submitted
+   drafts, complete application purge, credential-safe lifecycle email delivery,
    and once-per-Pacific-day automatic maintenance.
 7. **Between-cycle cutover (complete)** — configure and verify the applicant hostname, exercise
    SocketLabs in production with controlled data, and retain existing production records as
@@ -1350,8 +1338,7 @@ that ran from July 6 through July 31, 2026, with a $1,226 monthly housing charge
 2026 move-in date. The opening is closed, all 232 submitted non-withdrawn applications retain their
 original submission timestamps, and no vacancy notice was queued by the migration. An administrator
 may record the selected household or no-household decision; the dashboard requires that decision at
-move-in, and unsuccessful notices remain blocked until the opening is archived and its outcome is
-final.
+move-in. Recording its outcome archives it immediately and releases eligible unsuccessful notices.
 
 **Non-goals:** a general-purpose form builder; separate co-applicant access; simultaneous Google
 Form/Sheet and built-in intake; multiple applications per primary applicant; committee-visible
@@ -1380,10 +1367,10 @@ separate milestone with its own storage, hostname, and isolation decisions.
   choice. Role/access changes revoke those sessions server-side.
 - The optional household photo link is private until submission, is available to the committee
   afterward, and is excluded from AI prompts.
-- An administrator may confirm the selected applicant while an opening is closed or archived. No
-  unsuccessful email sends before archive; after archive, the service sends only to applicants for
-  whom every entered opening is finalized and archived and none selected them. An archived opening
-  without a selection produces an administrator action banner rather than guessing an outcome.
+- An administrator may permanently confirm the selected applicant after an opening closes.
+  Confirmation archives the opening and sends only to applicants for whom every entered opening has
+  a decision and none selected them. An opening that reaches move-in without a decision produces an
+  administrator action banner rather than guessing an outcome.
 - Unsuccessful and withdrawn applications are completely purged one year after their retention
   anchor. Selected-member applications use the seven-year period. Purge notices and unsuccessful
   notices invite the recipient to join the vacancy notification list without subscribing them.
@@ -1639,11 +1626,10 @@ another opening already paid for it.
 
 **Archived openings:** archived openings remain selectable while the selector-visibility rule holds.
 Their retained applications, member rules, overrides, favourites, notes, Shared shortlist, screening
-findings, ranking, tiers, and audits remain available in the same opening context. If an archived
-opening has no final selected-household or no-household decision, Screen and Rank may still run. Once
-an archived outcome is final, existing Screen and Rank results remain visible but the paid run actions
-are disabled; rerunning AI after final outcome is not a committee workflow. Ordinary reversible
-committee working state does not alter applicant retention.
+findings, ranking, tiers, and audits remain available in the same opening context. Archival means the
+opening has a permanent selected-household or no-household decision, so existing Screen and Rank
+results remain visible but paid run actions are disabled; rerunning AI after final outcome is not a
+committee workflow.
 
 **Production migration:** preserve the current live behavior before changing keys.
 
@@ -1699,8 +1685,8 @@ cross-pool leakage; changing rules or running Screen/Rank for opening A does not
 opening B; an application can have different effective statuses, overrides, and shortlist membership
 between openings; selected applicants are excluded from AI but viewable in their selected opening
 while another retained non-selected applicant keeps it visible; an opening with only its selected
-applicant is absent from the selector; archived pending openings may run AI, finalized archived
-openings retain readable results with run actions disabled; and all migrated production counts and
+applicant is absent from the selector; closed undecided openings may run AI, archived openings retain
+readable results with run actions disabled; and all migrated production counts and
 application hashes reconcile exactly. Real-model validation over materially different synthetic or
 PII-safe pools must confirm that pool-specific discovery behaves as intended—for example, a
 no-children 1-bedroom pool does not retain a children differentiator solely because a prior

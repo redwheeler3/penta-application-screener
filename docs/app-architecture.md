@@ -58,9 +58,9 @@ onto the committee-visible columns, records a version, and updates the selected
 `ApplicationParticipation` rows. Committee pool queries require an opening and read only its
 submitted participants, so private drafts cannot accidentally enter screening.
 
-Openings are independent records with open, closed, and archived phases derived from their three
-dates. Applicants can join open openings, withdraw from open or closed openings, and cannot
-change archived participation. The committee selects one opening as its complete workspace;
+Openings are independent records. Their dates derive upcoming, open, and closed phases; a permanent
+committee decision archives an opening. Applicants can join open openings, withdraw from open or
+closed openings, and cannot change archived participation. The committee selects one opening as its complete workspace;
 archived openings remain selectable while they retain a non-selected applicant. A selected
 household remains visible in the opening where it was selected, but neither enters its AI pool nor
 keeps that opening in the selector by itself.

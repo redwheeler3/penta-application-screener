@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin
 from app.core.problems import Problem
+from app.core.time import pacific_today
 from app.db.models import Application, Opening, User
 from app.db.session import get_db
 from app.schemas.openings import (
@@ -28,7 +29,6 @@ from app.schemas.openings import (
 )
 from app.services.direct_openings import (
     create_direct_selection_opening,
-    remove_direct_selection_opening,
     search_previous_applicants,
 )
 from app.services.email_sender import EmailSender, get_email_sender
@@ -40,7 +40,6 @@ from app.services.opening_selection import (
     confirm_opening_selection,
     selectable_opening_candidates,
     selected_participation,
-    undo_opening_selection,
 )
 from app.services.openings import (
     create_opening,
@@ -88,7 +87,7 @@ def _opening_out(db: Session, opening: Opening, submission_count: int) -> Openin
         db.get(Application, selected.application_id) if selected is not None else None
     )
     phase = opening_phase(opening)
-    decision_exists = selected is not None or opening.no_household_selected_at is not None
+    decision_exists = opening.decided_at is not None
     return OpeningOut(
         id=opening.id,
         intake_mode=opening.intake_mode,
@@ -106,10 +105,9 @@ def _opening_out(db: Session, opening: Opening, submission_count: int) -> Openin
         selected_applicant_name=(
             selected_application.applicant_name if selected_application is not None else None
         ),
-        no_household_selected=opening.no_household_selected_at is not None,
-        decision_permanent=phase.value == "archived" and decision_exists,
+        no_household_selected=opening.no_household_selected,
         needs_decision=(
-            phase.value == "archived"
+            opening.move_in_date <= pacific_today()
             and not decision_exists
             and submission_count > 0
         ),
@@ -146,16 +144,6 @@ def add_direct_selection_opening(
     db: Session = Depends(get_db),
 ) -> OpeningsResponse:
     create_direct_selection_opening(db, body, decided_by=admin)
-    return _response(db)
-
-
-@router.delete("/{opening_id}/direct-selection", response_model=OpeningsResponse)
-def delete_direct_selection_opening(
-    opening_id: int,
-    _admin: User = Depends(require_admin),
-    db: Session = Depends(get_db),
-) -> OpeningsResponse:
-    remove_direct_selection_opening(db, _opening(db, opening_id))
     return _response(db)
 
 
@@ -298,17 +286,6 @@ def select_no_household(
     return _selection_response(db, opening)
 
 
-@router.delete("/{opening_id}/selection", response_model=OpeningSelectionOut)
-def undo_successful_applicant(
-    opening_id: int,
-    _admin: User = Depends(require_admin),
-    db: Session = Depends(get_db),
-) -> OpeningSelectionOut:
-    opening = _opening(db, opening_id)
-    undo_opening_selection(db, opening)
-    return _selection_response(db, opening)
-
-
 def _selection_response(db: Session, opening: Opening) -> OpeningSelectionOut:
     phase = opening_phase(opening)
     selected = selected_participation(db, opening.id)
@@ -316,7 +293,6 @@ def _selection_response(db: Session, opening: Opening) -> OpeningSelectionOut:
     selected_application = (
         db.get(Application, selected.application_id) if selected is not None else None
     )
-    decision_exists = selected is not None or opening.no_household_selected_at is not None
     return OpeningSelectionOut(
         opening_id=opening.id,
         intake_mode=opening.intake_mode,
@@ -325,8 +301,7 @@ def _selection_response(db: Session, opening: Opening) -> OpeningSelectionOut:
         selected_applicant_name=(
             selected_application.applicant_name if selected_application is not None else None
         ),
-        no_household_selected=opening.no_household_selected_at is not None,
-        decision_permanent=phase.value == "archived" and decision_exists,
+        no_household_selected=opening.no_household_selected,
         active_participant_count=len(participants),
         candidates=[
             OpeningSelectionCandidateOut(

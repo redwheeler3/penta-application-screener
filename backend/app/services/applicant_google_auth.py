@@ -25,7 +25,7 @@ from app.services.opening_participation import (
     applicant_opening_states,
     application_is_editable,
 )
-from app.services.retention import retention_due_for_opening_ids
+from app.services.retention import draft_expiry_for_opening_ids
 from app.services.selected_application import application_is_selected
 
 
@@ -103,7 +103,7 @@ def claim_or_create_google_application(
                 saved_at=now,
                 opening_ids=[],
             )
-            application.retention_due_on = retention_due_for_opening_ids(
+            application.retention_due_on = draft_expiry_for_opening_ids(
                 db, available_opening_ids
             )
 

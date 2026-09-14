@@ -16,7 +16,7 @@ from app.db.models import (
     OpeningPhase,
 )
 from app.services.openings import opening_phase
-from app.services.retention import one_year_after
+from app.services.retention import refresh_application_retention
 from app.services.selected_application import application_is_selected
 
 
@@ -72,8 +72,8 @@ def applicant_opening_states(
             ApplicantOpeningState(
                 opening=opening,
                 phase=phase,
-                # A pending private withdrawal becomes immaterial once the move-in date
-                # archives the participation and makes that history immutable.
+                # A pending private withdrawal becomes immaterial once the committee
+                # archives the opening and makes that history immutable.
                 selected=(
                     opening.id in selected_ids
                     or (phase == OpeningPhase.ARCHIVED and participating)
@@ -262,21 +262,8 @@ def apply_opening_selection(
         else:
             participation.withdrawn_at = None
 
-    all_move_in_dates = list(
-        db.scalars(
-            select(Opening.move_in_date)
-            .join(
-                ApplicationParticipation,
-                ApplicationParticipation.opening_id == Opening.id,
-            )
-            .where(ApplicationParticipation.application_id == application.id)
-        )
-    )
-    all_move_in_dates.extend(
-        opening.move_in_date for opening in selected_openings if opening.id not in existing
-    )
-    if all_move_in_dates:
-        application.retention_due_on = one_year_after(max(all_move_in_dates))
+    db.flush()
+    refresh_application_retention(db, application)
 
 
 def _selected_opening_ids(db: Session, application: Application | None) -> set[int]:

@@ -167,7 +167,7 @@ export function DirectSelectionOpeningForm(props: {
           <h5>Create this filled opening?</h5>
           <p>
             Selecting <strong>{selected.applicantName ?? selected.primaryEmail}</strong> removes them
-            from the active pool and retains their application for seven years after move-in.
+            from the active pool and retains their application for seven years after this decision.
           </p>
           <p>No vacancy or applicant email will be sent.</p>
           <div className="opening-form-actions">

@@ -41,6 +41,7 @@ def test_committee_scope_requires_a_current_opening() -> None:
         application_close_date=today - timedelta(days=40),
         move_in_date=today - timedelta(days=1),
         published_at=submitted_at,
+        decided_at=submitted_at,
     )
     applications = [
         Application(
@@ -111,14 +112,12 @@ def test_committee_scope_requires_a_current_opening() -> None:
                 opening_id=archived_opening.id,
                 applied_at=submitted_at,
                 outcome=OpeningOutcome.UNSUCCESSFUL,
-                outcome_decided_at=submitted_at,
             ),
             ApplicationParticipation(
                 application_id=applications[3].id,
                 opening_id=archived_opening.id,
                 applied_at=submitted_at,
                 outcome=OpeningOutcome.SELECTED,
-                outcome_decided_at=submitted_at,
             ),
             ApplicationParticipation(
                 application_id=applications[4].id,

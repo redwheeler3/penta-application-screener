@@ -40,6 +40,7 @@ def _opening(db, *, archived: bool) -> Opening:
         application_close_date=today - timedelta(days=10),
         move_in_date=today if archived else today + timedelta(days=10),
         published_at=datetime.now(UTC),
+        decided_at=datetime.now(UTC) if archived else None,
     )
     db.add(opening)
     db.flush()
@@ -68,14 +69,13 @@ def _participate(
         opening_id=opening.id,
         applied_at=datetime.now(UTC),
         outcome=outcome,
-        outcome_decided_at=datetime.now(UTC) if outcome is not None else None,
     )
     db.add(participation)
     db.commit()
     return participation
 
 
-def test_notice_waits_until_every_active_opening_is_archived_and_final() -> None:
+def test_notice_waits_until_every_active_opening_has_a_decision() -> None:
     db = _db()
     sender = CapturedEmailSender()
     application = _application(db, "applicant@example.com")
@@ -83,11 +83,12 @@ def test_notice_waits_until_every_active_opening_is_archived_and_final() -> None
     closed = _opening(db, archived=False)
     closed.unit_size_bedrooms = 3
     first = _participate(db, application, archived, OpeningOutcome.UNSUCCESSFUL)
-    second = _participate(db, application, closed, OpeningOutcome.UNSUCCESSFUL)
+    second = _participate(db, application, closed, None)
 
     assert send_due_unsuccessful_notices(db, sender) == 0
 
-    closed.move_in_date = pacific_today()
+    closed.decided_at = datetime.now(UTC)
+    second.outcome = OpeningOutcome.UNSUCCESSFUL
     db.commit()
     assert send_due_unsuccessful_notices(db, sender) == 1
     assert len(sender.messages) == 1

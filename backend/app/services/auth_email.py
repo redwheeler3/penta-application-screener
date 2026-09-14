@@ -124,10 +124,9 @@ def _application_timeline_text(
 
 def _application_timeline_copy(timeline: ApplicationOpeningTimeline) -> str:
     return (
-        "If your application is shortlisted, we'll contact you between "
-        f"{timeline.close_date} and {timeline.move_in_date}. Whether or not you're "
-        "shortlisted, we'll email you shortly after "
-        f"{timeline.move_in_date} to let you know the final outcome."
+        f"If your application is shortlisted, we'll contact you after {timeline.close_date}. "
+        "We'll email you as soon as the committee has finished deciding the openings "
+        "you applied for."
     )
 
 

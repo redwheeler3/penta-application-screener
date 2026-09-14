@@ -35,6 +35,7 @@ def _opening(
     open_date: date,
     close_date: date,
     move_in_date: date,
+    decided: bool = False,
 ) -> Opening:
     opening = Opening(
         unit_size_bedrooms=2,
@@ -43,6 +44,7 @@ def _opening(
         application_close_date=close_date,
         move_in_date=move_in_date,
         published_at=NOW,
+        decided_at=NOW if decided else None,
     )
     db.add(opening)
     db.flush()
@@ -81,6 +83,7 @@ def test_open_closed_and_archived_openings_have_distinct_selection_permissions()
         open_date=date(2026, 5, 1),
         close_date=date(2026, 6, 1),
         move_in_date=date(2026, 8, 1),
+        decided=True,
     )
     db.add_all(
         ApplicationParticipation(
@@ -195,6 +198,7 @@ def test_archived_history_does_not_satisfy_current_selection_requirement() -> No
         open_date=date(2026, 5, 1),
         close_date=date(2026, 6, 1),
         move_in_date=date(2026, 8, 1),
+        decided=True,
     )
     _opening(
         db,
@@ -223,6 +227,7 @@ def test_archiving_discards_an_unsubmitted_private_withdrawal() -> None:
         open_date=date(2026, 5, 1),
         close_date=date(2026, 6, 1),
         move_in_date=date(2026, 8, 1),
+        decided=True,
     )
     application.working_opening_ids = []
     db.add(
@@ -256,6 +261,7 @@ def test_closed_opening_allows_withdrawal_but_archived_opening_does_not() -> Non
         open_date=date(2026, 5, 1),
         close_date=date(2026, 6, 1),
         move_in_date=date(2026, 8, 1),
+        decided=True,
     )
     db.add_all(
         ApplicationParticipation(
@@ -267,7 +273,7 @@ def test_closed_opening_allows_withdrawal_but_archived_opening_does_not() -> Non
     )
     db.commit()
 
-    with pytest.raises(Problem, match="move-in date"):
+    with pytest.raises(Problem, match="cannot be changed"):
         validate_opening_selection(db, application, [closed_offering.id], now=NOW)
 
     selected = validate_opening_selection(db, application, [archived_offering.id], now=NOW)
@@ -285,4 +291,4 @@ def test_closed_opening_allows_withdrawal_but_archived_opening_does_not() -> Non
     )
     assert closed_state.participating is False
     assert closed_state.has_participated is True
-    assert application.retention_due_on == date(2027, 9, 1)
+    assert application.retention_due_on is None

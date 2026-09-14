@@ -38,6 +38,7 @@ async def test_pending_draft_cannot_be_reopened_after_applications_archive() -> 
         assert opening is not None
         opening.application_close_date = pacific_today() - timedelta(days=2)
         opening.move_in_date = pacific_today() - timedelta(days=1)
+        opening.decided_at = datetime.now(UTC)
         db.commit()
         sender.messages.clear()
 
@@ -133,6 +134,7 @@ async def test_application_link_cannot_start_a_session_after_openings_archive() 
         token = link_from_email(sender)
         opening.application_close_date = pacific_today() - timedelta(days=2)
         opening.move_in_date = pacific_today() - timedelta(days=1)
+        opening.decided_at = datetime.now(UTC)
         db.commit()
 
         inspected = await client.post(
@@ -379,7 +381,7 @@ async def test_draft_past_its_opening_retention_date_cannot_be_opened_or_regener
         token = link_from_email(sender)
         draft = db.scalar(select(ApplicantDraft))
         assert draft is not None
-        draft.retention_due_on = pacific_today() - timedelta(days=1)
+        draft.expires_on = pacific_today() - timedelta(days=1)
         db.commit()
         inspected = await client.post("/applicant/access-links/inspect", json={"token": token})
         regenerated = await client.post(

@@ -28,6 +28,7 @@ from app.services.application_scope import opening_ai_applications
 from app.services.email_sender import CapturedEmailSender, get_email_sender
 from app.services.openings import opening_phase
 from app.services.passwordless_auth import create_browser_session, issue_magic_link
+from app.services.retention import one_year_after, years_after
 from tests.app_support import shared_test_app
 
 
@@ -127,7 +128,7 @@ async def test_opening_dates_must_be_chronological() -> None:
     assert all_dates_equal.status_code == 200
 
 
-def test_phase_is_derived_from_pacific_calendar_dates() -> None:
+def test_phase_is_date_derived_until_a_decision_archives_the_opening() -> None:
     opening = Opening(
         unit_size_bedrooms=2,
         housing_charge_cents=125_000,
@@ -141,10 +142,12 @@ def test_phase_is_derived_from_pacific_calendar_dates() -> None:
     assert opening_phase(opening, today=date(2026, 9, 1)).value == "open"
     assert opening_phase(opening, today=date(2026, 9, 15)).value == "open"
     assert opening_phase(opening, today=date(2026, 9, 16)).value == "closed"
-    assert opening_phase(opening, today=date(2026, 10, 1)).value == "archived"
+    assert opening_phase(opening, today=date(2026, 10, 1)).value == "closed"
+    opening.decided_at = datetime(2026, 9, 20, tzinfo=UTC)
+    assert opening_phase(opening, today=date(2026, 9, 20)).value == "archived"
 
 
-def test_move_in_date_archives_when_it_equals_the_close_date() -> None:
+def test_move_in_date_does_not_override_the_application_close_date() -> None:
     opening = Opening(
         unit_size_bedrooms=2,
         housing_charge_cents=125_000,
@@ -155,7 +158,8 @@ def test_move_in_date_archives_when_it_equals_the_close_date() -> None:
     )
 
     assert opening_phase(opening, today=date(2026, 9, 14)).value == "open"
-    assert opening_phase(opening, today=date(2026, 9, 15)).value == "archived"
+    assert opening_phase(opening, today=date(2026, 9, 15)).value == "open"
+    assert opening_phase(opening, today=date(2026, 9, 16)).value == "closed"
 
 
 @pytest.mark.anyio
@@ -168,6 +172,7 @@ async def test_admin_can_edit_an_archived_opening() -> None:
         application_close_date=date(2020, 1, 15),
         move_in_date=date(2020, 2, 1),
         published_at=datetime(2020, 1, 1, tzinfo=UTC),
+        decided_at=datetime(2020, 1, 20, tzinfo=UTC),
     )
     db.add(opening)
     db.commit()
@@ -189,7 +194,7 @@ async def test_admin_can_edit_an_archived_opening() -> None:
 
 
 @pytest.mark.anyio
-async def test_changing_move_in_date_updates_participant_retention() -> None:
+async def test_changing_move_in_date_does_not_set_participant_retention() -> None:
     app, db = _app_and_db(UserRole.ADMIN)
     application = Application(
         primary_email="applicant@example.com",
@@ -226,11 +231,11 @@ async def test_changing_move_in_date_updates_participant_retention() -> None:
         )
 
     assert response.status_code == 200
-    assert application.retention_due_on == date(2027, 11, 1)
+    assert application.retention_due_on == date(2027, 10, 1)
 
 
 @pytest.mark.anyio
-async def test_changing_move_in_date_updates_private_draft_retention() -> None:
+async def test_changing_close_date_updates_private_draft_expiry() -> None:
     app, db = _app_and_db(UserRole.ADMIN)
     opening = Opening(
         unit_size_bedrooms=2,
@@ -246,7 +251,7 @@ async def test_changing_move_in_date_updates_private_draft_retention() -> None:
         raw_row_hash="claimed-draft",
         normalized={},
         working_opening_ids=[],
-        retention_due_on=date(2027, 10, 1),
+        retention_due_on=date(2026, 9, 16),
     )
     db.add_all([opening, application])
     db.flush()
@@ -258,7 +263,7 @@ async def test_changing_move_in_date_updates_private_draft_retention() -> None:
         working_opening_ids=[opening.id],
         created_at=datetime.now(UTC),
         saved_at=datetime.now(UTC),
-        retention_due_on=date(2027, 10, 1),
+        expires_on=date(2026, 9, 16),
     )
     db.add(pending)
     db.commit()
@@ -267,12 +272,15 @@ async def test_changing_move_in_date_updates_private_draft_retention() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.put(
             f"/openings/{opening.id}",
-            json=_opening_payload(moveInDate="2026-11-01"),
+            json=_opening_payload(
+                applicationCloseDate="2026-10-15",
+                moveInDate="2026-11-01",
+            ),
         )
 
     assert response.status_code == 200
-    assert application.retention_due_on == date(2027, 11, 1)
-    assert pending.retention_due_on == date(2027, 11, 1)
+    assert application.retention_due_on == date(2026, 10, 16)
+    assert pending.expires_on == date(2026, 10, 16)
 
 
 def _opening_with_candidates(db, *, archived: bool = False) -> tuple[Opening, list[Application]]:
@@ -311,8 +319,10 @@ def _opening_with_candidates(db, *, archived: bool = False) -> tuple[Opening, li
 
 
 @pytest.mark.anyio
-async def test_closed_selection_is_reversible_and_changes_committee_scope() -> None:
+async def test_selection_archives_permanently_and_sends_unsuccessful_notices() -> None:
     app, db = _app_and_db(UserRole.ADMIN)
+    sender = CapturedEmailSender()
+    app.dependency_overrides[get_email_sender] = lambda: sender
     opening, applications = _opening_with_candidates(db)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -321,26 +331,39 @@ async def test_closed_selection_is_reversible_and_changes_committee_scope() -> N
             json={"applicationId": applications[0].id},
         )
         picker_after_selection = await client.get(f"/openings/{opening.id}/selection")
-        undone = await client.delete(f"/openings/{opening.id}/selection")
+        repeated = await client.post(
+            f"/openings/{opening.id}/selection",
+            json={"applicationId": applications[0].id},
+        )
 
     participations = db.query(ApplicationParticipation).order_by(
         ApplicationParticipation.application_id
     ).all()
     assert selected.status_code == 200
-    assert selected.json()["decisionPermanent"] is False
+    assert repeated.status_code == 200
+    assert selected.json()["phase"] == "archived"
     assert [candidate["applicationId"] for candidate in picker_after_selection.json()["candidates"]] == [
         applications[1].id,
         applications[2].id,
     ]
-    assert undone.json()["selectedApplicationId"] is None
-    assert all(participation.outcome is None for participation in participations)
-    assert [item.id for item in opening_ai_applications(db, opening.id)] == [
-        application.id for application in applications
+    assert len(sender.messages) == 2
+    assert [participation.outcome for participation in participations] == [
+        OpeningOutcome.SELECTED,
+        OpeningOutcome.UNSUCCESSFUL,
+        OpeningOutcome.UNSUCCESSFUL,
     ]
+    assert [item.id for item in opening_ai_applications(db, opening.id)] == [
+        application.id for application in applications[1:]
+    ]
+    assert applications[0].retention_due_on == years_after(pacific_today(), 7)
+    assert all(
+        application.retention_due_on == one_year_after(pacific_today())
+        for application in applications[1:]
+    )
 
 
 @pytest.mark.anyio
-async def test_selection_revokes_credentials_and_undo_does_not_restore_them() -> None:
+async def test_selection_revokes_credentials() -> None:
     app, db = _app_and_db(UserRole.ADMIN)
     opening, applications = _opening_with_candidates(db)
     selected_application = applications[0]
@@ -371,7 +394,7 @@ async def test_selection_revokes_credentials_and_undo_does_not_restore_them() ->
         working_opening_ids=[opening.id],
         created_at=datetime.now(UTC),
         saved_at=datetime.now(UTC),
-        retention_due_on=selected_application.retention_due_on or opening.move_in_date,
+        expires_on=opening.application_close_date + timedelta(days=1),
     )
     db.add(draft)
     db.flush()
@@ -390,13 +413,11 @@ async def test_selection_revokes_credentials_and_undo_does_not_restore_them() ->
             f"/openings/{opening.id}/selection",
             json={"applicationId": selected_application.id},
         )
-        undone = await client.delete(f"/openings/{opening.id}/selection")
 
     db.expire_all()
     sessions = db.query(BrowserSession).all()
     links = db.query(MagicLinkToken).all()
     assert selected.status_code == 200
-    assert undone.status_code == 200
     assert len(sessions) == 1
     assert sessions[0].id == issued_session.record.id
     assert sessions[0].revoked_at is not None
@@ -405,16 +426,15 @@ async def test_selection_revokes_credentials_and_undo_does_not_restore_them() ->
 
 
 @pytest.mark.anyio
-async def test_archived_selection_is_permanent() -> None:
+async def test_overdue_opening_can_receive_one_permanent_selection() -> None:
     app, db = _app_and_db(UserRole.ADMIN)
     opening, applications = _opening_with_candidates(db, archived=True)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        selected = await client.post(
+        await client.post(
             f"/openings/{opening.id}/selection",
             json={"applicationId": applications[0].id},
         )
-        undone = await client.delete(f"/openings/{opening.id}/selection")
         replaced = await client.post(
             f"/openings/{opening.id}/selection",
             json={"applicationId": applications[1].id},
@@ -423,8 +443,6 @@ async def test_archived_selection_is_permanent() -> None:
     outcomes = db.query(ApplicationParticipation).order_by(
         ApplicationParticipation.application_id
     ).all()
-    assert selected.json()["decisionPermanent"] is True
-    assert undone.status_code == 422
     assert replaced.status_code == 422
     assert [participation.outcome for participation in outcomes] == [
         OpeningOutcome.SELECTED,
@@ -438,22 +456,20 @@ async def test_archived_selection_is_permanent() -> None:
 
 
 @pytest.mark.anyio
-async def test_closed_no_household_decision_is_explicit_and_reversible() -> None:
+async def test_no_household_decision_archives_permanently() -> None:
     app, db = _app_and_db(UserRole.ADMIN)
     opening, applications = _opening_with_candidates(db)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         decided = await client.post(f"/openings/{opening.id}/selection/no-household")
-        undone = await client.delete(f"/openings/{opening.id}/selection")
 
     assert decided.status_code == 200
     assert decided.json()["selectedApplicationId"] is None
     assert decided.json()["noHouseholdSelected"] is True
-    assert decided.json()["decisionPermanent"] is False
-    assert undone.json()["noHouseholdSelected"] is False
-    assert opening.no_household_selected_at is None
+    assert decided.json()["phase"] == "archived"
+    assert opening.no_household_selected is True
     assert all(
-        participation.outcome is None
+        participation.outcome == OpeningOutcome.UNSUCCESSFUL
         for participation in db.query(ApplicationParticipation).all()
     )
     assert [item.id for item in opening_ai_applications(db, opening.id)] == [
@@ -462,7 +478,7 @@ async def test_closed_no_household_decision_is_explicit_and_reversible() -> None
 
 
 @pytest.mark.anyio
-async def test_archived_no_household_decision_is_permanent_and_sends_notices() -> None:
+async def test_overdue_no_household_decision_sends_notices() -> None:
     app, db = _app_and_db(UserRole.ADMIN)
     sender = CapturedEmailSender()
     app.dependency_overrides[get_email_sender] = lambda: sender
@@ -470,12 +486,9 @@ async def test_archived_no_household_decision_is_permanent_and_sends_notices() -
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         decided = await client.post(f"/openings/{opening.id}/selection/no-household")
-        undone = await client.delete(f"/openings/{opening.id}/selection")
 
     assert decided.status_code == 200
     assert decided.json()["noHouseholdSelected"] is True
-    assert decided.json()["decisionPermanent"] is True
-    assert undone.status_code == 422
     assert len(sender.messages) == len(applications)
     assert all(
         participation.outcome == OpeningOutcome.UNSUCCESSFUL

@@ -19,7 +19,7 @@ from app.db.models import (
     MagicLinkToken,
 )
 from app.schemas.applicant.answers import WorkingApplicationAnswers
-from app.services.retention import retention_due_for_opening_ids
+from app.services.retention import draft_expiry_for_opening_ids
 from app.services.token_credentials import new_token, token_hash
 
 
@@ -45,10 +45,10 @@ def save_pending_draft(
     if record is not None and record.email != email:
         record = None
 
-    retention_due_on = retention_due_for_opening_ids(
+    expires_on = draft_expiry_for_opening_ids(
         db, retention_opening_ids if retention_opening_ids is not None else opening_ids
     )
-    if retention_due_on is None:
+    if expires_on is None:
         raise ValueError("A pending draft must belong to at least one opening.")
 
     raw_token = draft_token if record is not None else new_token()
@@ -66,14 +66,14 @@ def save_pending_draft(
             draft_token_hash=token_hash(raw_token),
             created_at=now,
             saved_at=now,
-            retention_due_on=retention_due_on,
+            expires_on=expires_on,
         )
         db.add(record)
     record.intent = intent
     record.working_answers = answers.model_dump(mode="json")
     record.working_opening_ids = list(opening_ids)
     record.saved_at = now
-    record.retention_due_on = retention_due_on
+    record.expires_on = expires_on
     record.resolved_at = None
     record.revoked_at = None
     db.flush()
@@ -91,8 +91,8 @@ def save_collision_copy(
     """Preserve the latest guest copy without invalidating an email already in flight."""
     now = now or datetime.now(UTC)
     record = latest_pending_draft_for_email(db, application.primary_email, now=now)
-    retention_due_on = retention_due_for_opening_ids(db, opening_ids)
-    if retention_due_on is None:
+    expires_on = draft_expiry_for_opening_ids(db, opening_ids)
+    if expires_on is None:
         raise ValueError("A pending copy must belong to at least one opening.")
     if record is None or record.application_id not in {None, application.id}:
         record = ApplicantDraft(
@@ -102,7 +102,7 @@ def save_collision_copy(
             draft_token_hash=token_hash(new_token()),
             created_at=now,
             saved_at=now,
-            retention_due_on=retention_due_on,
+            expires_on=expires_on,
         )
         db.add(record)
     record.application_id = application.id
@@ -110,7 +110,7 @@ def save_collision_copy(
     record.working_answers = answers.model_dump(mode="json")
     record.working_opening_ids = list(opening_ids)
     record.saved_at = now
-    record.retention_due_on = retention_due_on
+    record.expires_on = expires_on
     record.resolved_at = None
     record.revoked_at = None
     db.flush()
@@ -140,7 +140,7 @@ def latest_pending_draft_for_email(
             ApplicantDraft.email == normalize_email(email),
             ApplicantDraft.revoked_at.is_(None),
             ApplicantDraft.resolved_at.is_(None),
-            ApplicantDraft.retention_due_on > pacific_today(now=now),
+            ApplicantDraft.expires_on > pacific_today(now=now),
         )
         .order_by(ApplicantDraft.saved_at.desc())
         .limit(1)
@@ -171,7 +171,7 @@ def draft_is_available(record: ApplicantDraft, *, now: datetime | None = None) -
     return (
         record.revoked_at is None
         and record.resolved_at is None
-        and record.retention_due_on > pacific_today(now=now)
+        and record.expires_on > pacific_today(now=now)
     )
 
 

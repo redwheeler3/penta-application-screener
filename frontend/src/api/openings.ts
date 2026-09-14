@@ -70,9 +70,6 @@ export function createDirectSelectionOpening(
   });
 }
 
-export const removeDirectSelectionOpening = (id: number) =>
-  request(`/openings/${id}/direct-selection`, { method: "DELETE" });
-
 export function confirmOpeningSelection(id: number, applicationId: number): Promise<Response> {
   return request(`/openings/${id}/selection`, {
     method: "POST",
@@ -83,6 +80,3 @@ export function confirmOpeningSelection(id: number, applicationId: number): Prom
 
 export const confirmNoHouseholdSelected = (id: number) =>
   request(`/openings/${id}/selection/no-household`, { method: "POST" });
-
-export const undoOpeningSelection = (id: number) =>
-  request(`/openings/${id}/selection`, { method: "DELETE" });

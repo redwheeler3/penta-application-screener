@@ -39,8 +39,8 @@ export function Introduction() {
         <p>
           We share your information only as needed with authorized Penta representatives and service
           providers, or with the general membership if you appeal a Board decision. We keep
-          non-member applications until one year after the latest relevant move-in date and
-          accepted-member records for seven years. Read our{" "}
+          submitted applications for one year after the committee’s final decision, or seven years
+          if a household is selected. Read our{" "}
           <a href="https://www.pentacoop.com/privacy.html" target="_blank" rel="noopener noreferrer">
             Privacy Policy for details
           </a>.
