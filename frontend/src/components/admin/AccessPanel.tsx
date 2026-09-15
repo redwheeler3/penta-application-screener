@@ -110,12 +110,7 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
     <section className="access-panel no-print" aria-label="Access allowlist">
       <div className="access-panel-head">
         <h3>Access allowlist</h3>
-        <p className="panel-hint">
-          Only these email addresses can sign in. An <strong>admin</strong> entry can manage this
-          list; a <strong>member</strong> screens applicants. New entries receive an invitation email
-          with a sign-in link. Changes take effect immediately. The last admin can't be removed or
-          demoted. Seed admins are permanent.
-        </p>
+        <p className="panel-hint">Only people on this list can sign in.</p>
       </div>
 
       <form className="access-add" onSubmit={addEntry}>
