@@ -133,10 +133,7 @@ async def test_guest_can_submit_directly_and_receives_application_access() -> No
         f"we'll contact you after {close_date}"
         in sender.messages[0].text_body
     )
-    assert (
-        "We'll email you as soon as the committee has finished deciding"
-        in sender.messages[0].text_body
-    )
+    assert "We'll email you as soon as a decision has been made." in sender.messages[0].text_body
     assert "update your application or delete your profile" in sender.messages[0].text_body
 
 
@@ -290,7 +287,10 @@ async def test_selected_email_request_is_generic_in_browser_and_specific_in_mail
     }
     assert sender.messages[0].kind == "application_selected_locked"
     assert sender.messages[0].to == ("selected@example.com",)
-    assert sender.messages[0].subject == "Congratulations! Your household has been selected!"
+    assert (
+        sender.messages[0].subject
+        == "Congratulations! Your household has been selected for a Penta home!"
+    )
     assert "Your application profile is now locked" in sender.messages[0].text_body
     assert sender.messages[1].kind == "applicant_magic_link"
     assert db.scalar(

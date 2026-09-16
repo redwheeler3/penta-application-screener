@@ -320,7 +320,7 @@ export function HousingSection(props: {
       </div>
       <div className="field-grid">
         <YesNoField label="Do you own the home where you currently live?" value={draft.ownsCurrentHome} onChange={(value) => update((current) => ({ ...current, ownsCurrentHome: value }))} />
-        <YesNoField label="Do you own any other real estate?" value={draft.ownsOtherRealEstate} onChange={(value) => update((current) => ({ ...current, ownsOtherRealEstate: value }))} />
+        <YesNoField label="Do you own another home or land?" value={draft.ownsOtherRealEstate} onChange={(value) => update((current) => ({ ...current, ownsOtherRealEstate: value }))} />
       </div>
 
       {draft.ownsCurrentHome === "no" ? (

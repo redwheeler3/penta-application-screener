@@ -39,7 +39,10 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
         "vacancy-opening-application-only",
         "vacancy-opening-overlap",
     ]
-    assert all(preview["subject"] and "PENTA HOUSING CO-OP" in preview["html"] for preview in previews)
+    assert all(
+        "Penta" in preview["subject"] and "PENTA HOUSING CO-OP" in preview["html"]
+        for preview in previews
+    )
     assert "jeffo.net" not in response.text
     assert "pentacoop.com#" not in response.text
     assert "removed you from the vacancy notification list" in response.text
@@ -50,7 +53,7 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
     assert "No action is required" in response.text
     assert "techsupport@pentacoop.com" in response.text
     saved = next(preview for preview in previews if preview["key"] == "application-saved")
-    assert saved["subject"] == "Your application draft has been saved"
+    assert saved["subject"] == "Your Penta application draft has been saved"
     assert "It has not been submitted to the membership committee" in saved["html"]
     assert "Continue your application" in saved["html"]
     assert "https://www.pentacoop.com/apply.html" in response.text
@@ -58,7 +61,7 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
     assert "2-bedroom home" in submitted["html"]
     assert "3-bedroom home" in submitted["html"]
     assert "September 15, 2026" in submitted["html"]
-    assert "finished deciding the openings you applied for" in submitted["html"]
+    assert "as soon as a decision has been made" in submitted["html"]
 
 
 @pytest.mark.anyio

@@ -257,7 +257,7 @@ export function ApplicationSubmitted(props: {
               <strong>{opening.unitSizeBedrooms}-bedroom home</strong>
               <p>
                 If your application is shortlisted, we’ll contact you after <strong>{closeDate}</strong>.
-                {" "}We’ll email you as soon as the committee has finished deciding the openings you applied for.
+                {" "}We’ll email you as soon as a decision has been made.
               </p>
             </section>
           );

@@ -158,7 +158,7 @@ async def test_authenticated_submission_requires_declaration_and_accepts_multipl
     assert version.selected_opening_ids == [opening.id, later_opening.id]
     confirmation = sender.messages[-1].text_body
     assert confirmation.index("2-bedroom home") < confirmation.index("3-bedroom home")
-    assert "finished deciding the openings you applied for" in confirmation
+    assert "as soon as a decision has been made" in confirmation
 
 
 @pytest.mark.anyio

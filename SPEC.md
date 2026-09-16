@@ -453,7 +453,7 @@ removed. They do not show an applicant-removal link.
   provide employer and manager details; self-employed adults provide business details without an
   artificial manager reference; unemployed adults are not asked for inapplicable employer fields.
 - Housing ownership uses two plain questions: whether the applicant owns the home where they
-  currently live, and whether they own any other real estate. Either answer supplies the broader
+  currently live, and whether they own another home or land. Either answer supplies the broader
   real-estate ownership fact used by screening. Current-landlord fields are shown only to renters;
   previous-landlord fields are shown only to renters whose required residence history extends
   beyond their current home. Committee details keep each stored address structured but display it

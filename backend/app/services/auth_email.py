@@ -50,6 +50,11 @@ def application_confirmation_email(
         if submitted
         else "Your application draft has been saved"
     )
+    subject = (
+        "Your Penta application has been submitted"
+        if submitted
+        else "Your Penta application draft has been saved"
+    )
     if submitted and not opening_timelines:
         raise ValueError("a submitted application email requires an opening timeline")
     introduction = (
@@ -107,7 +112,7 @@ Use this link to open your application:
         kind=f"application_{state}",
         recipient_id=f"application:{application_id}",
         to=(email,),
-        subject=heading,
+        subject=subject,
         text_body=text,
         html_body=html,
     )
@@ -125,8 +130,7 @@ def _application_timeline_text(
 def _application_timeline_copy(timeline: ApplicationOpeningTimeline) -> str:
     return (
         f"If your application is shortlisted, we'll contact you after {timeline.close_date}. "
-        "We'll email you as soon as the committee has finished deciding the openings "
-        "you applied for."
+        "We'll email you as soon as a decision has been made."
     )
 
 
@@ -329,7 +333,7 @@ def application_unavailable_email(
             f"application:{application_id}" if application_id is not None else "access-request"
         ),
         to=(email,),
-        subject=heading,
+        subject="Penta application access isn't available",
         text_body=text,
         html_body=html,
     )
@@ -364,7 +368,7 @@ def selected_application_locked_email(
         kind="application_selected_locked",
         recipient_id=f"application:{application_id}",
         to=(email,),
-        subject=heading,
+        subject="Congratulations! Your household has been selected for a Penta home!",
         text_body=text,
         html_body=html,
     )
@@ -558,7 +562,7 @@ If you're not interested in this opening, you don't need to do anything. Ignorin
         ),
         recipient_id=f"application:{application_id}",
         to=(email,),
-        subject=f"A new {unit_size} opening may match your household",
+        subject=f"A new {unit_size} home at Penta may match your household",
         text_body=text,
         html_body=html,
     )
