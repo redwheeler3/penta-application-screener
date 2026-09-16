@@ -98,27 +98,39 @@ async def test_admin_creation_opens_an_opening_immediately() -> None:
 
 @pytest.mark.anyio
 async def test_opening_dates_must_be_chronological() -> None:
+    today = pacific_today()
+    tomorrow = today + timedelta(days=1)
+    day_after_tomorrow = today + timedelta(days=2)
     app, _ = _app_and_db(UserRole.ADMIN)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         close_in_past = await client.post(
             "/openings",
-            json=_opening_payload(applicationCloseDate="2026-08-26"),
+            json=_opening_payload(
+                applicationCloseDate=(today - timedelta(days=1)).isoformat(),
+                moveInDate=tomorrow.isoformat(),
+            ),
         )
         move_in_before_close = await client.post(
             "/openings",
-            json=_opening_payload(moveInDate="2026-09-14"),
+            json=_opening_payload(
+                applicationCloseDate=day_after_tomorrow.isoformat(),
+                moveInDate=tomorrow.isoformat(),
+            ),
         )
         move_in_on_close = await client.post(
             "/openings",
-            json=_opening_payload(moveInDate="2026-09-15"),
+            json=_opening_payload(
+                applicationCloseDate=tomorrow.isoformat(),
+                moveInDate=tomorrow.isoformat(),
+            ),
         )
         all_dates_equal = await client.post(
             "/openings",
             json=_opening_payload(
-                applicationOpenDate="2026-09-15",
-                applicationCloseDate="2026-09-15",
-                moveInDate="2026-09-15",
+                applicationOpenDate=tomorrow.isoformat(),
+                applicationCloseDate=tomorrow.isoformat(),
+                moveInDate=tomorrow.isoformat(),
             ),
         )
 
