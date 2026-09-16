@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.problems import Problem
 from app.core.time import pacific_today
 from app.db.models import (
     Application,
@@ -96,6 +97,7 @@ def publish_working_copy(
     submitted_at: datetime,
 ) -> None:
     """Atomically replace the committee projection and selected opening participation."""
+    validate_residence_history(answers, openings)
     selected_opening_ids = [opening.id for opening in openings]
     save_working_copy(
         application,
@@ -137,6 +139,34 @@ def publish_working_copy(
         openings,
         submitted_at=submitted_at,
     )
+
+
+def validate_residence_history(
+    answers: CanonicalApplicationAnswers,
+    openings: list[Opening],
+) -> None:
+    """Require addresses back through two years before the earliest selected close date."""
+    cutoff = two_years_before(min(opening.application_close_date for opening in openings))
+    oldest_move_in = (
+        answers.previous_residences[-1].move_in_date
+        if answers.previous_residences
+        else answers.current_address_move_in_date
+    )
+    if oldest_move_in > cutoff:
+        raise Problem(
+            "validation_error",
+            detail=(
+                "Provide previous addresses until the residence history reaches "
+                f"{cutoff.isoformat()}."
+            ),
+        )
+
+
+def two_years_before(value: date) -> date:
+    try:
+        return value.replace(year=value.year - 2)
+    except ValueError:
+        return value.replace(year=value.year - 2, day=28)
 
 
 def normalize_answers(

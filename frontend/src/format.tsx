@@ -87,6 +87,11 @@ export function formatArrayItem(item: unknown): string {
   const obj = item as Record<string, unknown>;
   if ("first_name" in obj || "last_name" in obj) {
     const name = [obj.first_name, obj.last_name].filter(Boolean).join(" ");
+    const birthDate = typeof obj.birth_date === "string"
+      ? formatDateOnly(obj.birth_date)
+      : null;
+    if (birthDate && obj.age != null) return `${name} · ${birthDate} (${obj.age})`;
+    if (birthDate) return `${name} · ${birthDate}`;
     return obj.age != null ? `${name} (${obj.age})` : name || "—";
   }
   return Object.values(obj).filter((v) => v != null && v !== "").join(", ");

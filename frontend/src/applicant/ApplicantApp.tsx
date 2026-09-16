@@ -51,6 +51,7 @@ import {
 import {
   type ApplicantDraft,
   emptyApplicantDraft,
+  residenceHistoryCutoff,
 } from "./types";
 import { useApplicantPersistence } from "./useApplicantPersistence";
 
@@ -70,6 +71,7 @@ export function ApplicantApp() {
   const openingsRef = useRef<HTMLElement | null>(null);
   const [openingError, setOpeningError] = useState(false);
   const persistence = useApplicantPersistence(draft, setDraft, changeRememberDevice);
+  const housingHistoryCutoff = residenceHistoryCutoff(persistence.openings);
 
   useEffect(() => {
     if (
@@ -303,6 +305,12 @@ export function ApplicantApp() {
             openings={persistence.openings.filter((opening) =>
               persistence.openingIds.includes(opening.id)
             )}
+            onReturn={() => {
+              persistence.returnToApplication();
+              setReviewing(false);
+              setDeclarationAccepted(false);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
           />
         ) : persistence.phase === "access_link_sent" ? (
           <AccessLinkSent
@@ -411,7 +419,11 @@ export function ApplicantApp() {
               onRequestEmailChange={(email) => void persistence.beginEmailChange(email)}
               onCancelEmailChange={() => void cancelPendingEmailChange()}
             />
-            <HousingSection draft={draft} update={update} />
+            <HousingSection
+              draft={draft}
+              update={update}
+              residenceHistoryCutoff={housingHistoryCutoff}
+            />
             <EssaysSection draft={draft} update={update} />
             <EmploymentSection draft={draft} update={update} />
             <IncomeSection draft={draft} update={update} />

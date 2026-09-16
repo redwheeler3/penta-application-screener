@@ -64,9 +64,7 @@ export function ApplicationReview(props: {
       <div className="review-notice">
         <FileCheck2 size={22} />
         <div>
-          <strong>This is still a private draft.</strong>
-          <span>Nothing has been sent to the membership committee.</span>
-          <span>Review your answers, then submit your application.</span>
+          <strong>Review your answers, then submit your application.</strong>
         </div>
       </div>
       <ReviewSection title="Openings">
@@ -95,6 +93,12 @@ export function ApplicationReview(props: {
       <ReviewSection title="Current housing">
         <ReviewRow label="Address" value={`${d.currentAddress.street}, ${d.currentAddress.city}, ${d.currentAddress.provinceOrState}`} />
         <ReviewRow label="Current landlord" value={d.currentLandlord.name} />
+      </ReviewSection>
+      <ReviewSection title="Employment">
+        <ReviewRow label="Primary applicant" value={reviewEmployment(d.applicantEmployment)} />
+        {d.hasCoApplicant ? (
+          <ReviewRow label="Co-applicant" value={reviewEmployment(d.coApplicantEmployment)} />
+        ) : null}
       </ReviewSection>
       <ReviewSection title="Income">
         <ReviewRow label="Yearly household income" value={householdIncome(d).toLocaleString("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 })} />
@@ -159,6 +163,12 @@ export function ApplicationReview(props: {
       </div>
     </div>
   );
+}
+
+function reviewEmployment(value: ApplicantDraft["applicantEmployment"]): string {
+  if (value.status === "unemployed") return "Not currently employed";
+  const status = value.status === "self_employed" ? "Self-employed" : "Employed";
+  return [status, value.jobTitle, value.companyName].filter(Boolean).join(" · ");
 }
 
 export function PersistenceActionStatus(props: {
@@ -232,6 +242,7 @@ export function PersistenceActionStatus(props: {
 export function ApplicationSubmitted(props: {
   openings: ApplicantOpening[];
   authenticated: boolean;
+  onReturn: () => void;
 }) {
   return (
     <section className="application-complete">
@@ -252,11 +263,16 @@ export function ApplicationSubmitted(props: {
           );
         })}
       </div>
-      <p>
-        {props.authenticated
-          ? "You can return to this page to update your application or delete your profile. We’ve also emailed you a confirmation."
-          : "Check your email for a private link you can use to update your application or delete your profile."}
-      </p>
+      {!props.authenticated ? (
+        <p>Check your email for a private link you can use to update your application or delete your profile.</p>
+      ) : null}
+      {props.authenticated ? (
+        <div className="review-actions">
+          <button className="applicant-primary-button" type="button" onClick={props.onReturn}>
+            <ChevronLeft size={17} /> Back to my application
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

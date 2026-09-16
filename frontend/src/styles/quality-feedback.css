@@ -399,7 +399,7 @@
 /* The app's less-frequent reviewer surfaces still need to stay legible on a phone. Keep
    their desktop information hierarchy, but let dense controls wrap or scroll deliberately
    instead of squeezing labels and tables into unreadable fragments. */
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   /* The Applications table begins with its primary row action on the left. Keep the
      persistent feedback control on the opposite edge so it never covers applicant
      names; notifications rise above it while they are present. */
@@ -472,6 +472,11 @@
   }
 
   .app-detail-fields dl {
+    grid-template-columns: 1fr;
+  }
+
+  .app-detail-fields .columns-2 dl,
+  .app-detail-fields .columns-4 dl {
     grid-template-columns: 1fr;
   }
 

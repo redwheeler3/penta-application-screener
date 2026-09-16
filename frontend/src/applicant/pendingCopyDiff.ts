@@ -45,8 +45,11 @@ function displayedValues(
     field("Children", answers.children.map((child) => (
       `${name(child.firstName, child.lastName)}${child.birthDate ? ` (${child.birthDate})` : ""}`
     )).join("\n")),
-    field("Current address", address(answers)),
-    field("Lived at current address for two years", yesNo(answers.livedAtCurrentAddressTwoYears)),
+    field("Current address", address(answers.currentAddress)),
+    field("Moved into current address", answers.currentAddressMoveInDate),
+    field("Previous address", answers.previousResidences.map((residence) => (
+      `${address(residence.address)}\nMoved in ${residence.moveInDate}`
+    )).join("\n\n")),
     field("Owns current home", yesNo(answers.ownsCurrentHome)),
     field("Owns another home or land", yesNo(answers.ownsOtherRealEstate)),
     field("Current landlord", reference(answers.currentLandlord)),
@@ -73,8 +76,7 @@ function name(first: string, last: string): string {
   return [first, last].filter(Boolean).join(" ");
 }
 
-function address(answers: WorkingApplicationAnswers): string {
-  const value = answers.currentAddress;
+function address(value: WorkingApplicationAnswers["currentAddress"]): string {
   return [
     value.street,
     value.street2,

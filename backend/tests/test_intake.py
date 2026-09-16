@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from app.core.problems import Problem
 from app.core.time import as_utc
 from app.db.models import (
     Application,
@@ -22,6 +23,7 @@ from app.schemas.applicant.answers import (
     EssayAnswers,
     PersonAnswers,
     ReferenceAnswers,
+    ResidenceAnswers,
 )
 from app.services.intake import (
     canonical_answers,
@@ -29,6 +31,8 @@ from app.services.intake import (
     normalize_answers,
     publish_working_copy,
     save_working_copy,
+    two_years_before,
+    validate_residence_history,
 )
 from app.services.rules import hard_filter_reasons_for
 
@@ -59,7 +63,7 @@ def _answers() -> CanonicalApplicationAnswers:
             postal_or_zip_code="V0V 0V0",
             country="Canada",
         ),
-        lived_at_current_address_two_years=True,
+        current_address_move_in_date=date(2020, 1, 1),
         owns_current_home=False,
         owns_other_real_estate=False,
         current_landlord=reference,
@@ -124,7 +128,7 @@ def test_housing_references_follow_current_home_and_residency_answers() -> None:
     homeowner = _answers().model_dump()
     homeowner.update(
         owns_current_home=True,
-        lived_at_current_address_two_years=False,
+        previous_residences=[],
         current_landlord=None,
         previous_landlord=None,
     )
@@ -139,9 +143,34 @@ def test_housing_references_follow_current_home_and_residency_answers() -> None:
         CanonicalApplicationAnswers.model_validate(renter_without_landlord)
 
     recent_mover = _answers().model_dump()
-    recent_mover["lived_at_current_address_two_years"] = False
+    recent_mover["previous_residences"] = [
+        ResidenceAnswers(
+            address=AddressAnswers(
+                street="2 Earlier Street",
+                city="Vancouver",
+                province_or_state="BC",
+                postal_or_zip_code="V0V 0V0",
+                country="Canada",
+            ),
+            move_in_date=date(2019, 1, 1),
+        ).model_dump()
+    ]
     with pytest.raises(ValueError, match="previous housing reference"):
         CanonicalApplicationAnswers.model_validate(recent_mover)
+
+
+def test_residence_move_in_dates_run_from_newest_to_oldest() -> None:
+    data = _answers().model_dump()
+    data["owns_current_home"] = True
+    data["previous_residences"] = [
+        {
+            "address": data["current_address"],
+            "move_in_date": date(2021, 1, 1),
+        }
+    ]
+
+    with pytest.raises(ValueError, match="newest to oldest"):
+        CanonicalApplicationAnswers.model_validate(data)
 
 
 def test_canonical_answers_allow_every_child_without_intake_eligibility_block() -> None:
@@ -239,6 +268,51 @@ def test_publication_records_participation_and_an_application_version() -> None:
     assert version.content_hash == application.raw_row_hash
     assert application.normalized["household_photo_link"] == "https://example.com/synthetic-household-photo"
     assert version.answers["household_photo_link"] == "https://example.com/synthetic-household-photo"
+
+
+def test_publication_requires_two_years_of_residence_history_before_close() -> None:
+    db = _session()
+    application = Application(
+        primary_email="avery@example.com",
+        raw_row={},
+        raw_row_hash=content_hash({}),
+        normalized={},
+    )
+    opening = Opening(
+        unit_size_bedrooms=2,
+        housing_charge_cents=100_000,
+        application_open_date=date(2026, 8, 1),
+        application_close_date=date(2026, 9, 1),
+        move_in_date=date(2026, 10, 1),
+        published_at=datetime(2026, 7, 1, tzinfo=UTC),
+    )
+    incomplete = _answers().model_copy(update={"current_address_move_in_date": date(2025, 1, 1)})
+
+    with pytest.raises(Problem, match="2024-09-01"):
+        publish_working_copy(
+            db,
+            application,
+            incomplete,
+            [opening],
+            submitted_at=datetime(2026, 8, 15, tzinfo=UTC),
+        )
+
+
+def test_residence_history_uses_earliest_selected_close_date() -> None:
+    answers = _answers().model_copy(
+        update={"current_address_move_in_date": date(2024, 9, 15)}
+    )
+    openings = [
+        Opening(application_close_date=date(2026, 10, 1)),
+        Opening(application_close_date=date(2026, 9, 1)),
+    ]
+
+    with pytest.raises(Problem, match="2024-09-01"):
+        validate_residence_history(answers, openings)
+
+
+def test_two_year_residence_cutoff_handles_leap_day() -> None:
+    assert two_years_before(date(2024, 2, 29)) == date(2022, 2, 28)
 
 
 def test_age_checks_are_anchored_to_last_submitted_edit() -> None:

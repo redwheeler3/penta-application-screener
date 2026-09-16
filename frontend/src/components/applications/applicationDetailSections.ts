@@ -12,6 +12,8 @@ export type DetailField = {
 export type DetailSection = {
   title: string;
   fields: DetailField[];
+  columns?: 2 | 4;
+  printColumns?: 2;
 };
 
 type RetainedApplicationField = {
@@ -77,6 +79,43 @@ function displayDate(value: unknown): unknown {
   return typeof value === "string" ? formatDateOnly(value) : value;
 }
 
+function birthDateAndAge(birthDate: unknown, age: unknown): unknown {
+  if (typeof birthDate !== "string") return age == null ? birthDate : `Age ${age}`;
+  const formattedBirthDate = displayDate(birthDate);
+  return age == null ? formattedBirthDate : `${formattedBirthDate} (${age})`;
+}
+
+function compactAddress(value: AnswerRecord): string {
+  return [
+    value.street,
+    value.street_2,
+    [value.city, value.province_or_state, value.postal_or_zip_code]
+      .filter(Boolean)
+      .join(", "),
+    value.country,
+  ].filter(Boolean).join(", ");
+}
+
+function previousResidenceFields(value: unknown): DetailField[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item, index) => {
+    if (!isRecord(item)) return [];
+    const address = nested(item, "address") ?? {};
+    return presentFields([
+      detailField(
+        `previous_residences.${index}.address`,
+        "Previous address",
+        compactAddress(address),
+      ),
+      detailField(
+        `previous_residences.${index}.move_in_date`,
+        "Moved into previous address",
+        displayDate(item.move_in_date),
+      ),
+    ]);
+  });
+}
+
 function personFields(options: {
   prefix: "applicant" | "co_applicant";
   person: AnswerRecord;
@@ -95,7 +134,7 @@ function personFields(options: {
       [person.first_name, person.last_name].filter(Boolean).join(" "),
       { normalizedKey: options.nameKey },
     ),
-    detailField(options.ageKey, "Age", options.age, {
+    detailField(`${prefix}.birth_date`, "Date of birth (age)", birthDateAndAge(person.birth_date, options.age), {
       normalizedKey: options.ageKey,
     }),
     detailField(`${prefix}.email`, "Email address", person.email, {
@@ -135,6 +174,7 @@ function employmentSection(
   const selfEmployed = employment.status === "self_employed";
   return {
     title,
+    columns: 4,
     fields: presentFields([
       detailField(`${prefix}.status`, "Employment status", readableChoice(employment.status)),
       detailField(
@@ -173,6 +213,7 @@ function buildCanonicalDetailSections(
   const sections: Array<DetailSection | null> = [
     {
       title: "Applicant",
+      columns: 4,
       fields: personFields({
         prefix: "applicant",
         person: applicant,
@@ -185,6 +226,7 @@ function buildCanonicalDetailSections(
     coApplicant
       ? {
           title: "Co-applicant",
+          columns: 4,
           fields: personFields({
             prefix: "co_applicant",
             person: coApplicant,
@@ -199,6 +241,7 @@ function buildCanonicalDetailSections(
       : null,
     {
       title: "Household",
+      printColumns: 2,
       fields: [
         detailField("child_details", "Children", normalized.child_details, {
           normalizedKey: "child_details",
@@ -212,26 +255,19 @@ function buildCanonicalDetailSections(
     },
     {
       title: "Current housing",
-      fields: [
-        detailField("current_address.street", "Street address", address.street),
-        detailField("current_address.street_2", "Apartment or unit", address.street_2),
-        detailField("current_address.city", "City", address.city),
+      columns: 2,
+      fields: presentFields([
         detailField(
-          "current_address.province_or_state",
-          "Province or state",
-          address.province_or_state,
+          "current_address",
+          "Current address",
+          compactAddress(address),
         ),
         detailField(
-          "current_address.postal_or_zip_code",
-          "Postal or ZIP code",
-          address.postal_or_zip_code,
+          "current_address_move_in_date",
+          "Moved into current address",
+          displayDate(answers.current_address_move_in_date),
         ),
-        detailField("current_address.country", "Country", address.country),
-        detailField(
-          "lived_at_current_address_two_years",
-          "At this address for at least two years",
-          answers.lived_at_current_address_two_years,
-        ),
+        ...previousResidenceFields(answers.previous_residences),
         detailField("owns_current_home", "Owns current home", answers.owns_current_home, {
           normalizedKey: "has_real_estate",
         }),
@@ -241,17 +277,17 @@ function buildCanonicalDetailSections(
           answers.owns_other_real_estate,
           { normalizedKey: "has_real_estate" },
         ),
-      ],
+      ]),
     },
     currentLandlord
       ? {
-          title: "Current housing reference",
+          title: "Current landlord",
           fields: referenceFields("current_landlord", currentLandlord),
         }
       : null,
     previousLandlord
       ? {
-          title: "Previous housing reference",
+          title: "Previous landlord",
           fields: referenceFields("previous_landlord", previousLandlord),
         }
       : null,
@@ -267,6 +303,7 @@ function buildCanonicalDetailSections(
     ),
     {
       title: "Income",
+      columns: coApplicant ? undefined : 2,
       fields: presentFields([
         detailField("applicant_income", "Applicant annual income", answers.applicant_income, {
           normalizedKey: "applicant_income",

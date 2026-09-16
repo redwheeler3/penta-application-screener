@@ -67,9 +67,8 @@ def _answers(row: dict[str, str]) -> dict:
         "co_applicant": co_applicant or None,
         "children": json.loads(row["children_json"]),
         "current_address": _nested(row, "current_address"),
-        "lived_at_current_address_two_years": _boolean(
-            row, "lived_at_current_address_two_years"
-        ),
+        "current_address_move_in_date": row["current_address_move_in_date"],
+        "previous_residences": json.loads(row["previous_residences_json"]),
         "owns_current_home": _boolean(row, "owns_current_home"),
         "owns_other_real_estate": _boolean(row, "owns_other_real_estate"),
         "current_landlord": _reference(row, "current_landlord"),

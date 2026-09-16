@@ -1,6 +1,6 @@
 import { emptyApplicantDraft, type ApplicantDraft } from "./types";
 
-const DRAFTS_KEY = "penta-application-drafts-v4";
+const DRAFTS_KEY = "penta-application-drafts-v5";
 const REMEMBER_DEVICE_KEY = "penta-application-remember-device-v1";
 
 type StoredDraft = {
@@ -101,7 +101,11 @@ export function hasAnswersBeyondEmail(draft: ApplicantDraft): boolean {
       draft.currentAddress.postalOrZipCode.trim() ||
       draft.currentAddress.provinceOrState !== "BC" ||
       draft.currentAddress.country !== "Canada" ||
-      draft.livedAtCurrentAddressTwoYears ||
+      draft.currentAddressMoveInDate.trim() ||
+      draft.previousResidences.some((residence) => (
+        residence.moveInDate.trim()
+        || Object.values(residence.address).some((value) => value.trim())
+      )) ||
       draft.ownsCurrentHome ||
       draft.ownsOtherRealEstate ||
       references.some((reference) => Object.values(reference).some((value) => value.trim())) ||

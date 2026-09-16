@@ -2,6 +2,7 @@
 
 from datetime import date
 from enum import StrEnum
+from itertools import pairwise
 
 from pydantic import EmailStr, Field, HttpUrl, model_validator
 
@@ -103,6 +104,16 @@ class WorkingReferenceAnswers(BridgeModel):
     phone: str = ""
 
 
+class ResidenceAnswers(BridgeModel):
+    address: AddressAnswers
+    move_in_date: date
+
+
+class WorkingResidenceAnswers(BridgeModel):
+    address: AddressAnswers
+    move_in_date: str = ""
+
+
 class WorkingEmploymentAnswers(BridgeModel):
     status: EmploymentStatus | None = None
     job_title: str | None = None
@@ -118,7 +129,8 @@ class WorkingApplicationAnswers(BridgeModel):
     co_applicant: WorkingCoApplicantAnswers | None = None
     children: list[WorkingChildAnswers] = Field(default_factory=list)
     current_address: AddressAnswers
-    lived_at_current_address_two_years: bool | None = None
+    current_address_move_in_date: str = ""
+    previous_residences: list[WorkingResidenceAnswers] = Field(default_factory=list)
     owns_current_home: bool | None = None
     owns_other_real_estate: bool | None = None
     current_landlord: WorkingReferenceAnswers | None = None
@@ -144,7 +156,8 @@ class CanonicalApplicationAnswers(BridgeModel):
     co_applicant: CoApplicantAnswers | None = None
     children: list[ChildAnswers] = Field(default_factory=list)
     current_address: AddressAnswers
-    lived_at_current_address_two_years: bool
+    current_address_move_in_date: date
+    previous_residences: list[ResidenceAnswers] = Field(default_factory=list)
     owns_current_home: bool
     owns_other_real_estate: bool
     current_landlord: ReferenceAnswers | None = None
@@ -163,10 +176,20 @@ class CanonicalApplicationAnswers(BridgeModel):
             raise ValueError("a current landlord is required for renters")
         if (
             not self.owns_current_home
-            and not self.lived_at_current_address_two_years
+            and self.previous_residences
             and self.previous_landlord is None
         ):
             raise ValueError("a previous housing reference is required")
+        return self
+
+    @model_validator(mode="after")
+    def validate_residence_order(self) -> "CanonicalApplicationAnswers":
+        move_in_dates = [
+            self.current_address_move_in_date,
+            *(residence.move_in_date for residence in self.previous_residences),
+        ]
+        if any(older >= newer for newer, older in pairwise(move_in_dates)):
+            raise ValueError("residence move-in dates must run from newest to oldest")
         return self
 
     @property

@@ -386,8 +386,10 @@
 .conditional-fields { padding: 20px; margin-top: 12px; background: #fafcfb; border: 1px solid #e0e8e4; border-radius: 11px; }
 
 .repeat-grid { display: grid; gap: 12px; }
+.previous-residence-list { margin-top: 29px; }
 .repeat-card { padding: 17px; border: 1px solid #dbe4e8; border-radius: 11px; background: #fbfcfc; }
 .repeat-card .field-grid { margin-bottom: 0; }
+.repeat-card .previous-residence-date { margin-top: 17px; }
 .repeat-card-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .text-button { padding: 4px 7px; color: #31566e; background: none; border: 0; font: inherit; font-size: 0.8rem; font-weight: 750; cursor: pointer; }
 .text-button.danger { color: #a03833; }
@@ -458,6 +460,7 @@
 .application-timelines section { padding: 16px 18px; background: #f9fafb; border: 1px solid #dbe4e0; border-radius: 9px; }
 .application-timelines section > strong { display: block; margin-bottom: 7px; color: #174f35; }
 .application-timelines section > p { max-width: none; margin: 0; font-size: 0.95rem; }
+.application-complete .review-actions,
 .existing-application-choice .review-actions { justify-content: center; }
 .existing-application-choice > .remember-device-choice { justify-content: center; align-items: center; margin: 20px auto 24px; }
 .session-expired-access { margin-top: 2px; }

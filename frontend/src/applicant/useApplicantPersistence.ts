@@ -49,6 +49,7 @@ import {
   type ApplicantOpening,
   canonicalAnswers,
   draftFromWorking,
+  residenceHistoryCutoff,
   workingAnswers,
 } from "./types";
 
@@ -406,7 +407,7 @@ export function useApplicantPersistence(
 
   async function persistGuestApplication(): Promise<void> {
     const response = await submitGuestApplication(
-      canonicalAnswers(draftRef.current),
+      canonicalAnswers(draftRef.current, residenceHistoryCutoff(openings)),
       true,
       openingIds,
       pendingDraftToken,
@@ -424,7 +425,7 @@ export function useApplicantPersistence(
     }
     const response = intent === "submit"
       ? await submitApplication(
-          canonicalAnswers(draftRef.current),
+          canonicalAnswers(draftRef.current, residenceHistoryCutoff(openings)),
           true,
           openingIds,
           workingRevision,
@@ -528,6 +529,11 @@ export function useApplicantPersistence(
         ? "idle"
         : current
     ));
+  }
+
+  function returnToApplication(): void {
+    setPersistence("message", "");
+    setPersistence("phase", "idle");
   }
 
   async function openLinkedApplication(rememberDevice: boolean): Promise<void> {
@@ -645,6 +651,7 @@ export function useApplicantPersistence(
     reviewAfterAccess,
     clearReviewAfterAccess: () => setPersistence("reviewAfterAccess", false),
     clearActionFeedback,
+    returnToApplication,
     start,
     prepareGuestReview,
     saveForReview,

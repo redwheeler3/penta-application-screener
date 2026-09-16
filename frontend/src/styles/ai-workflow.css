@@ -326,6 +326,14 @@
   margin: 0;
 }
 
+.app-detail-fields .columns-2 dl {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.app-detail-fields .columns-4 dl {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .app-detail-fields dl > div {
   display: flex;
   flex-direction: column;

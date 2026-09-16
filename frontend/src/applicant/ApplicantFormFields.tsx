@@ -31,7 +31,7 @@ export function Subheading(props: { title: string; required?: boolean }) {
 
 export function Required() { return <span className="required-mark" aria-label="required">*</span>; }
 
-export function TextField(props: { label: string; value: string; onChange: (value: string) => void; type?: string; email?: boolean; phone?: boolean; url?: boolean; required?: boolean; wide?: boolean; help?: string; inputMode?: "numeric"; maxLength?: number; placeholder?: string }) {
+export function TextField(props: { label: string; value: string; onChange: (value: string) => void; type?: string; email?: boolean; phone?: boolean; url?: boolean; required?: boolean; wide?: boolean; help?: string; inputMode?: "numeric"; maxLength?: number; placeholder?: string; autoComplete?: string }) {
   return (
     <label className={`applicant-field${props.wide ? " wide" : ""}`}>
       <span>{props.label}{props.required ? <Required /> : null}</span>
@@ -40,16 +40,21 @@ export function TextField(props: { label: string; value: string; onChange: (valu
         type={props.email || props.phone ? "text" : props.type ?? "text"}
         value={props.value}
         required={props.required}
+        autoComplete={props.autoComplete}
         inputMode={props.email ? "email" : props.phone ? "tel" : props.url ? "url" : props.inputMode}
         data-email={props.email ? "true" : undefined}
         data-phone={props.phone ? "true" : undefined}
         data-url={props.url ? "true" : undefined}
-        maxLength={props.maxLength}
+        maxLength={props.phone ? 20 : props.maxLength}
         placeholder={props.placeholder}
         onInput={(event) => event.currentTarget.setCustomValidity("")}
         onChange={(event) => {
           event.currentTarget.setCustomValidity("");
-          props.onChange(event.target.value);
+          const inputEvent = event.nativeEvent as InputEvent;
+          if (props.phone && insertedNonDigit(inputEvent)) return;
+          props.onChange(props.phone
+            ? formatPhone(event.currentTarget.value, inputEvent.inputType.startsWith("delete"))
+            : event.currentTarget.value);
         }}
       />
     </label>
@@ -77,7 +82,12 @@ export function DateField(props: {
         maxLength={10}
         onInput={(event) => event.currentTarget.setCustomValidity("")}
         onChange={(event) => {
-          const value = formatIsoDate(event.currentTarget.value);
+          const inputEvent = event.nativeEvent as InputEvent;
+          if (insertedNonDigit(inputEvent)) return;
+          const value = formatIsoDate(
+            event.currentTarget.value,
+            inputEvent.inputType.startsWith("delete"),
+          );
           props.onChange(value);
         }}
       />
@@ -108,7 +118,7 @@ export function PersonFields(props: {
       <TextField label="First name" value={props.value.firstName} required={props.required} onChange={(firstName) => set({ firstName })} />
       <TextField label="Last name" value={props.value.lastName} required={props.required} onChange={(lastName) => set({ lastName })} />
       <DateField label="Date of birth" value={props.value.birthDate} required={props.required} autoComplete="bday" onChange={(birthDate) => set({ birthDate })} />
-      <TextField label="Phone" phone maxLength={12} placeholder="XXX-XXX-XXXX" value={props.value.phone} required={props.required} onChange={(phone) => set({ phone: formatPhone(phone) })} />
+      <TextField label="Phone" phone placeholder="XXX-XXX-XXXX" value={props.value.phone} required={props.required} onChange={(phone) => set({ phone })} />
     </div>
   );
 }
@@ -118,9 +128,9 @@ export function ReferenceFields(props: { value: ReferenceDraft; required: boolea
   const set = (patch: Partial<ReferenceDraft>) => props.onChange({ ...props.value, ...patch });
   return (
     <div className="field-grid three-column">
-      <TextField label="Name" value={props.value.name} required={props.required} onChange={(name) => set({ name })} />
-      <TextField label="Email" email value={props.value.email} required={props.required} onChange={(email) => set({ email })} />
-      <TextField label="Phone" phone maxLength={12} placeholder="XXX-XXX-XXXX" value={props.value.phone} required={props.required} onChange={(phone) => set({ phone: formatPhone(phone) })} />
+      <TextField label="Name" autoComplete="off" value={props.value.name} required={props.required} onChange={(name) => set({ name })} />
+      <TextField label="Email" email autoComplete="off" value={props.value.email} required={props.required} onChange={(email) => set({ email })} />
+      <TextField label="Phone" phone autoComplete="off" placeholder="XXX-XXX-XXXX" value={props.value.phone} required={props.required} onChange={(phone) => set({ phone })} />
     </div>
   );
 }
@@ -159,12 +169,14 @@ export function EmploymentFields(props: { value: EmploymentDraft; required: bool
           <div className="field-grid three-column employment-detail-grid">
             <TextField
               label={selfEmployed ? "Type of business" : "Job title"}
+              autoComplete="organization-title"
               value={props.value.jobTitle}
               required
               onChange={(jobTitle) => set({ jobTitle })}
             />
             <TextField
               label={selfEmployed ? "Business name" : "Company name"}
+              autoComplete="organization"
               value={props.value.companyName}
               required
               onChange={(companyName) => set({ companyName })}
@@ -173,6 +185,7 @@ export function EmploymentFields(props: { value: EmploymentDraft; required: bool
               label={selfEmployed ? "Self-employed since" : "Start date"}
               value={props.value.startDate}
               required
+              autoComplete="off"
               onChange={(startDate) => set({ startDate })}
             />
           </div>
@@ -253,29 +266,42 @@ export function updateChild(update: (fn: DraftUpdater) => void, id: string, patc
   }));
 }
 
-function formatPhone(value: string): string {
+function insertedNonDigit(event: InputEvent): boolean {
+  return event.inputType === "insertText" && Boolean(event.data && /\D/.test(event.data));
+}
+
+function formatPhone(value: string, deleting: boolean): string {
   if (
-    /^[0-9]{0,3}$/.test(value) ||
-    /^[0-9]{3}-[0-9]{0,3}$/.test(value) ||
+    /^[0-9]{0,2}$/.test(value) ||
+    /^[0-9]{3}-[0-9]{0,2}$/.test(value) ||
     /^[0-9]{3}-[0-9]{3}-[0-9]{0,4}$/.test(value)
   ) {
     return value;
   }
+  if (/^[0-9]{3}$/.test(value)) return deleting ? value : `${value}-`;
+  if (/^[0-9]{3}-[0-9]{3}$/.test(value)) return deleting ? value : `${value}-`;
   const digits = value.replace(/\D/g, "").slice(0, 10);
   if (!digits) return "";
-  if (digits.length <= 3) return digits;
-  if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  if (digits.length < 3) return digits;
+  if (digits.length === 3) return deleting ? digits : `${digits}-`;
+  if (digits.length < 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  if (digits.length === 6) {
+    const formatted = `${digits.slice(0, 3)}-${digits.slice(3)}`;
+    return deleting ? formatted : `${formatted}-`;
+  }
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
-function formatIsoDate(value: string): string {
+function formatIsoDate(value: string, deleting: boolean): string {
   if (
-    /^[0-9]{0,4}$/.test(value) ||
-    /^[0-9]{4}-[0-9]{0,2}$/.test(value) ||
+    /^[0-9]{0,3}$/.test(value) ||
+    /^[0-9]{4}-[0-9]?$/.test(value) ||
     /^[0-9]{4}-[0-9]{2}-[0-9]{0,2}$/.test(value)
   ) {
     return value;
   }
+  if (/^[0-9]{4}$/.test(value)) return deleting ? value : `${value}-`;
+  if (/^[0-9]{4}-[0-9]{2}$/.test(value)) return deleting ? value : `${value}-`;
   const digits = value.replace(/\D/g, "").slice(0, 8);
   if (digits.length <= 4) return digits;
   if (digits.length <= 6) return `${digits.slice(0, 4)}-${digits.slice(4)}`;

@@ -19,10 +19,13 @@ import {
   YesNoField,
 } from "./ApplicantFormFields";
 import {
+  type AddressDraft,
   type ApplicantDraft,
   type ApplicantOpening,
   householdIncome,
   newChild,
+  previousResidencesForCutoff,
+  type ResidenceDraft,
 } from "./types";
 
 export function Introduction() {
@@ -263,48 +266,146 @@ export function HouseholdSection(props: {
   );
 }
 
-export function HousingSection(props: { draft: ApplicantDraft; update: (fn: DraftUpdater) => void }) {
+export function HousingSection(props: {
+  draft: ApplicantDraft;
+  update: (fn: DraftUpdater) => void;
+  residenceHistoryCutoff: string | null;
+}) {
   const { draft, update } = props;
-  const setAddress = (patch: Partial<ApplicantDraft["currentAddress"]>) =>
-    update((current) => ({ ...current, currentAddress: { ...current.currentAddress, ...patch } }));
+  const needsPreviousResidence = Boolean(
+    props.residenceHistoryCutoff
+    && draft.currentAddressMoveInDate
+    && draft.currentAddressMoveInDate > props.residenceHistoryCutoff,
+  );
+  const enteredResidences = previousResidencesForCutoff(
+    draft,
+    props.residenceHistoryCutoff,
+  );
+  const lastResidence = enteredResidences.at(-1);
+  const showBlankResidence = needsPreviousResidence && (
+    !lastResidence
+    || Boolean(
+      lastResidence.moveInDate
+      && props.residenceHistoryCutoff
+      && lastResidence.moveInDate > props.residenceHistoryCutoff,
+    )
+  );
+  const shownResidences = showBlankResidence
+    ? [...enteredResidences, emptyPreviousResidence(enteredResidences.length)]
+    : enteredResidences;
+
+  const setPreviousResidence = (index: number, residence: ResidenceDraft) =>
+    update((current) => {
+      const previousResidences = [...current.previousResidences];
+      previousResidences[index] = residence;
+      return { ...current, previousResidences };
+    });
   return (
-    <FormSection number="2" title="Current housing" description="Tell us where you live now and about your housing history.">
+    <FormSection number="2" title="Current housing" description="Tell us where you’ve lived over the last two years.">
       <Subheading title="Current address" required />
+      <AddressFields
+        value={draft.currentAddress}
+        onChange={(currentAddress) => update((current) => ({ ...current, currentAddress }))}
+      />
       <div className="field-grid">
-        <TextField label="Street address" value={draft.currentAddress.street} required wide onChange={(street) => setAddress({ street })} />
-        <TextField label="Apartment, suite, etc." value={draft.currentAddress.street2} wide onChange={(street2) => setAddress({ street2 })} />
-        <TextField label="City" value={draft.currentAddress.city} required onChange={(city) => setAddress({ city })} />
-        <TextField label="Province or state" value={draft.currentAddress.provinceOrState} required onChange={(provinceOrState) => setAddress({ provinceOrState })} />
-        <TextField label="Postal or ZIP code" value={draft.currentAddress.postalOrZipCode} required onChange={(postalOrZipCode) => setAddress({ postalOrZipCode })} />
-        <TextField label="Country" value={draft.currentAddress.country} required onChange={(country) => setAddress({ country })} />
+        <DateField
+          label="When did you move here?"
+          value={draft.currentAddressMoveInDate}
+          required
+          onChange={(currentAddressMoveInDate) => update((current) => ({
+            ...current,
+            currentAddressMoveInDate,
+          }))}
+        />
       </div>
       <div className="field-grid">
-        <YesNoField label="Have you lived here for two years or more?" value={draft.livedAtCurrentAddressTwoYears} onChange={(value) => update((current) => ({ ...current, livedAtCurrentAddressTwoYears: value }))} />
         <YesNoField label="Do you own the home where you currently live?" value={draft.ownsCurrentHome} onChange={(value) => update((current) => ({ ...current, ownsCurrentHome: value }))} />
         <YesNoField label="Do you own any other real estate?" value={draft.ownsOtherRealEstate} onChange={(value) => update((current) => ({ ...current, ownsOtherRealEstate: value }))} />
       </div>
 
       {draft.ownsCurrentHome === "no" ? (
-        <div className="conditional-fields">
-          <Subheading title="Current landlord" required />
+        <>
+          <Subheading title="Landlord" required />
           <p className="field-help">
             We contact your landlord only if you are selected for an interview.
           </p>
           <ReferenceFields value={draft.currentLandlord} required onChange={(currentLandlord) => update((current) => ({ ...current, currentLandlord }))} />
-        </div>
+        </>
       ) : null}
 
-      {draft.ownsCurrentHome === "no" && draft.livedAtCurrentAddressTwoYears === "no" ? (
-        <div className="conditional-fields">
-          <Subheading title="Previous landlord or housing reference" required />
-          <p className="field-help">
-            Because you have lived at your current address for less than two years, please include
-            your previous landlord or housing reference.
-          </p>
-          <ReferenceFields value={draft.previousLandlord} required onChange={(previousLandlord) => update((current) => ({ ...current, previousLandlord }))} />
+      {shownResidences.length ? (
+        <div className="repeat-grid previous-residence-list">
+          {shownResidences.map((residence, index) => (
+            <div className="repeat-card" key={residence.id}>
+              <div className="repeat-card-heading">
+                <strong>Previous address</strong>
+              </div>
+              <AddressFields
+                value={residence.address}
+                onChange={(address) => setPreviousResidence(index, { ...residence, address })}
+              />
+              <div className="field-grid previous-residence-date">
+                <DateField
+                  label="When did you move there?"
+                  value={residence.moveInDate}
+                  required
+                  onChange={(moveInDate) => setPreviousResidence(index, {
+                    ...residence,
+                    id: draft.previousResidences[index]?.id ?? crypto.randomUUID(),
+                    moveInDate,
+                  })}
+                />
+              </div>
+              {index === 0 && draft.ownsCurrentHome === "no" ? (
+                <>
+                  <Subheading title="Previous landlord" required />
+                  <ReferenceFields
+                    value={draft.previousLandlord}
+                    required
+                    onChange={(previousLandlord) => update((current) => ({
+                      ...current,
+                      previousLandlord,
+                    }))}
+                  />
+                </>
+              ) : null}
+            </div>
+          ))}
         </div>
       ) : null}
     </FormSection>
+  );
+}
+
+function emptyPreviousResidence(index: number): ResidenceDraft {
+  return {
+    id: `new-${index}`,
+    address: {
+      street: "",
+      street2: "",
+      city: "",
+      provinceOrState: "BC",
+      postalOrZipCode: "",
+      country: "Canada",
+    },
+    moveInDate: "",
+  };
+}
+
+function AddressFields(props: {
+  value: AddressDraft;
+  onChange: (value: AddressDraft) => void;
+}) {
+  const set = (patch: Partial<AddressDraft>) => props.onChange({ ...props.value, ...patch });
+  return (
+    <div className="field-grid">
+      <TextField label="Street address" value={props.value.street} required wide onChange={(street) => set({ street })} />
+      <TextField label="Apartment, suite, etc." value={props.value.street2} wide onChange={(street2) => set({ street2 })} />
+      <TextField label="City" value={props.value.city} required onChange={(city) => set({ city })} />
+      <TextField label="Province or state" value={props.value.provinceOrState} required onChange={(provinceOrState) => set({ provinceOrState })} />
+      <TextField label="Postal or ZIP code" value={props.value.postalOrZipCode} required onChange={(postalOrZipCode) => set({ postalOrZipCode })} />
+      <TextField label="Country" value={props.value.country} required onChange={(country) => set({ country })} />
+    </div>
   );
 }
 

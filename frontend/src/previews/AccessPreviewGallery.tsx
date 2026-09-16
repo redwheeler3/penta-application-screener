@@ -280,10 +280,10 @@ function ApplicantResultPreviews() {
   return (
     <div className="access-preview-grid">
       <PreviewCard title="Application submitted while signed in" description="The signed-in applicant remains able to return directly.">
-        <ApplicationSubmitted authenticated openings={previewOpenings()} />
+        <ApplicationSubmitted authenticated openings={previewOpenings()} onReturn={noAction} />
       </PreviewCard>
       <PreviewCard title="Application submitted as a guest" description="The guest receives a private return link by email.">
-        <ApplicationSubmitted authenticated={false} openings={previewOpenings()} />
+        <ApplicationSubmitted authenticated={false} openings={previewOpenings()} onReturn={noAction} />
       </PreviewCard>
       <PreviewCard title="Profile deleted" description="The applicant was withdrawn from every opening and signed out.">
         <ApplicationWithdrawn />

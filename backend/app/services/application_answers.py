@@ -114,9 +114,8 @@ def _legacy_working_answers(
                 "postal_or_zip_code": _text(row.get("Postal / Zip Code")),
                 "country": _text(row.get("Country")),
             },
-            "lived_at_current_address_two_years": _yes_no(
-                row.get("Have you lived at your current address for 2 years or more?")
-            ),
+            "current_address_move_in_date": "",
+            "previous_residences": [],
             "owns_current_home": owns_current_home,
             "owns_other_real_estate": owns_other_real_estate,
             "current_landlord": _reference(row, "Current landlord"),
@@ -197,15 +196,6 @@ def _household_photo_link(
         )
         or None
     )
-
-
-def _yes_no(value: Any) -> bool | None:
-    text = _text(value).lower()
-    if text in {"yes", "y", "true", "1"}:
-        return True
-    if text in {"no", "n", "false", "0"}:
-        return False
-    return None
 
 
 def _text(value: Any) -> str:

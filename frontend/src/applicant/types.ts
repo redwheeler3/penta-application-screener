@@ -40,20 +40,29 @@ export type ChildDraft = {
   birthDate: string;
 };
 
+export type AddressDraft = {
+  street: string;
+  street2: string;
+  city: string;
+  provinceOrState: string;
+  postalOrZipCode: string;
+  country: string;
+};
+
+export type ResidenceDraft = {
+  id: string;
+  address: AddressDraft;
+  moveInDate: string;
+};
+
 export type ApplicantDraft = {
   applicant: PersonDraft;
   coApplicant: PersonDraft & { relationship: string };
   hasCoApplicant: boolean;
   children: ChildDraft[];
-  currentAddress: {
-    street: string;
-    street2: string;
-    city: string;
-    provinceOrState: string;
-    postalOrZipCode: string;
-    country: string;
-  };
-  livedAtCurrentAddressTwoYears: YesNo;
+  currentAddress: AddressDraft;
+  currentAddressMoveInDate: string;
+  previousResidences: ResidenceDraft[];
   ownsCurrentHome: YesNo;
   ownsOtherRealEstate: YesNo;
   currentLandlord: ReferenceDraft;
@@ -85,7 +94,11 @@ export type CanonicalApplicationAnswers = {
     postalOrZipCode: string;
     country: string;
   };
-  livedAtCurrentAddressTwoYears: boolean;
+  currentAddressMoveInDate: string;
+  previousResidences: {
+    address: CanonicalApplicationAnswers["currentAddress"];
+    moveInDate: string;
+  }[];
   ownsCurrentHome: boolean;
   ownsOtherRealEstate: boolean;
   currentLandlord: ReferenceDraft | null;
@@ -101,7 +114,6 @@ export type CanonicalApplicationAnswers = {
 
 export type WorkingApplicationAnswers = Omit<
   CanonicalApplicationAnswers,
-  | "livedAtCurrentAddressTwoYears"
   | "ownsCurrentHome"
   | "ownsOtherRealEstate"
   | "applicantEmployment"
@@ -109,7 +121,6 @@ export type WorkingApplicationAnswers = Omit<
   | "applicantIncome"
   | "coApplicantIncome"
 > & {
-  livedAtCurrentAddressTwoYears: boolean | null;
   ownsCurrentHome: boolean | null;
   ownsOtherRealEstate: boolean | null;
   applicantEmployment: WorkingEmployment;
@@ -142,6 +153,15 @@ const emptyPerson = (): PersonDraft => ({
 
 const emptyReference = (): ReferenceDraft => ({ name: "", email: "", phone: "" });
 
+const emptyAddress = (): AddressDraft => ({
+  street: "",
+  street2: "",
+  city: "",
+  provinceOrState: "BC",
+  postalOrZipCode: "",
+  country: "Canada",
+});
+
 const emptyEmployment = (): EmploymentDraft => ({
   status: "",
   jobTitle: "",
@@ -156,15 +176,9 @@ export function emptyApplicantDraft(): ApplicantDraft {
     coApplicant: { ...emptyPerson(), relationship: "" },
     hasCoApplicant: true,
     children: [],
-    currentAddress: {
-      street: "",
-      street2: "",
-      city: "",
-      provinceOrState: "BC",
-      postalOrZipCode: "",
-      country: "Canada",
-    },
-    livedAtCurrentAddressTwoYears: "",
+    currentAddress: emptyAddress(),
+    currentAddressMoveInDate: "",
+    previousResidences: [],
     ownsCurrentHome: "",
     ownsOtherRealEstate: "",
     currentLandlord: emptyReference(),
@@ -199,8 +213,44 @@ export function householdIncome(draft: ApplicantDraft): number {
   return numberValue(draft.applicantIncome) + coApplicantIncome;
 }
 
-export function canonicalAnswers(draft: ApplicantDraft): CanonicalApplicationAnswers {
+export function residenceHistoryCutoff(
+  openings: ApplicantOpening[],
+): string | null {
+  const visibleCloseDates = openings
+    .filter((opening) => opening.phase === "open" || opening.phase === "closed")
+    .map((opening) => opening.applicationCloseDate)
+    .sort();
+  const earliestCloseDate = visibleCloseDates[0];
+  if (!earliestCloseDate) return null;
+  const [year, month, day] = earliestCloseDate.split("-").map(Number);
+  const candidate = new Date(Date.UTC(year - 2, month - 1, day));
+  if (candidate.getUTCMonth() !== month - 1) candidate.setUTCDate(0);
+  return candidate.toISOString().slice(0, 10);
+}
+
+export function previousResidencesForCutoff(
+  draft: ApplicantDraft,
+  cutoff: string | null,
+): ResidenceDraft[] {
+  if (
+    !cutoff
+    || !draft.currentAddressMoveInDate
+    || draft.currentAddressMoveInDate <= cutoff
+  ) return cutoff ? [] : draft.previousResidences;
+  const oldestRequiredIndex = draft.previousResidences.findIndex(
+    (residence) => residence.moveInDate && residence.moveInDate <= cutoff,
+  );
+  return oldestRequiredIndex < 0
+    ? draft.previousResidences
+    : draft.previousResidences.slice(0, oldestRequiredIndex + 1);
+}
+
+export function canonicalAnswers(
+  draft: ApplicantDraft,
+  residenceCutoff: string | null = null,
+): CanonicalApplicationAnswers {
   const currentRenter = draft.ownsCurrentHome === "no";
+  const previousResidences = previousResidencesForCutoff(draft, residenceCutoff);
   return {
     applicant: draft.applicant,
     coApplicant: draft.hasCoApplicant ? draft.coApplicant : null,
@@ -213,12 +263,16 @@ export function canonicalAnswers(draft: ApplicantDraft): CanonicalApplicationAns
       ...draft.currentAddress,
       street2: draft.currentAddress.street2 || null,
     },
-    livedAtCurrentAddressTwoYears: draft.livedAtCurrentAddressTwoYears === "yes",
+    currentAddressMoveInDate: draft.currentAddressMoveInDate,
+    previousResidences: previousResidences.map(({ address, moveInDate }) => ({
+      address: { ...address, street2: address.street2 || null },
+      moveInDate,
+    })),
     ownsCurrentHome: draft.ownsCurrentHome === "yes",
     ownsOtherRealEstate: draft.ownsOtherRealEstate === "yes",
     currentLandlord: currentRenter ? draft.currentLandlord : null,
     previousLandlord:
-      currentRenter && draft.livedAtCurrentAddressTwoYears === "no"
+      currentRenter && previousResidences.length > 0
         ? draft.previousLandlord
         : null,
     essays: draft.essays,
@@ -237,7 +291,6 @@ export function workingAnswers(draft: ApplicantDraft): WorkingApplicationAnswers
   const currentRenter = draft.ownsCurrentHome === "no";
   return {
     ...canonicalAnswers(draft),
-    livedAtCurrentAddressTwoYears: yesNoValue(draft.livedAtCurrentAddressTwoYears),
     ownsCurrentHome: yesNoValue(draft.ownsCurrentHome),
     ownsOtherRealEstate: yesNoValue(draft.ownsOtherRealEstate),
     applicantEmployment: workingEmployment(draft.applicantEmployment),
@@ -250,7 +303,7 @@ export function workingAnswers(draft: ApplicantDraft): WorkingApplicationAnswers
       : null,
     currentLandlord: currentRenter ? draft.currentLandlord : null,
     previousLandlord:
-      currentRenter && draft.livedAtCurrentAddressTwoYears === "no"
+      currentRenter && draft.previousResidences.length > 0
         ? draft.previousLandlord
         : null,
   };
@@ -265,7 +318,12 @@ export function draftFromWorking(answers: WorkingApplicationAnswers): ApplicantD
     hasCoApplicant: answers.coApplicant !== null,
     children: answers.children.map((child) => ({ ...child, id: crypto.randomUUID() })),
     currentAddress: { ...answers.currentAddress, street2: answers.currentAddress.street2 ?? "" },
-    livedAtCurrentAddressTwoYears: yesNoDraft(answers.livedAtCurrentAddressTwoYears),
+    currentAddressMoveInDate: answers.currentAddressMoveInDate,
+    previousResidences: answers.previousResidences.map((residence) => ({
+      id: crypto.randomUUID(),
+      address: { ...residence.address, street2: residence.address.street2 ?? "" },
+      moveInDate: residence.moveInDate,
+    })),
     ownsCurrentHome: yesNoDraft(answers.ownsCurrentHome),
     ownsOtherRealEstate: yesNoDraft(answers.ownsOtherRealEstate),
     currentLandlord: answers.currentLandlord ?? draft.currentLandlord,

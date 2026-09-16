@@ -327,7 +327,14 @@ export function CandidateDetail(props: {
         <div className="app-detail-fields">
           <h5>Applicant data</h5>
           {detailSections.map((section) => (
-            <section key={section.title} className="app-detail-field-group">
+            <section
+              key={section.title}
+              className={[
+                "app-detail-field-group",
+                section.columns ? `columns-${section.columns}` : "",
+                section.printColumns ? `print-columns-${section.printColumns}` : "",
+              ].filter(Boolean).join(" ")}
+            >
               <h6>{section.title}</h6>
               <dl>
                 {section.fields.map((field) => {

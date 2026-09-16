@@ -36,7 +36,8 @@ def test_legacy_answers_prefill_known_fields_and_leave_unknowns_blank() -> None:
     assert answers.children[0].first_name == "Casey"
     assert answers.children[0].birth_date == ""
     assert answers.current_address.street == "123 Synthetic Street"
-    assert answers.lived_at_current_address_two_years is False
+    assert answers.current_address_move_in_date == ""
+    assert answers.previous_residences == []
     assert answers.owns_current_home is False
     assert answers.owns_other_real_estate is False
     assert answers.essays.household_introduction == "Synthetic household introduction."

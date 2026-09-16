@@ -35,7 +35,11 @@ Opening cards state the applicable household-size requirements:
 
 The children section collects first name, last name, and age for up to 4 children, ordered from oldest to fourth oldest.
 
-The housing section asks for address, whether the applicant has lived there for at least 2 years, whether the applicant owns real estate, current landlord contact, and previous landlord contact. The form explains that landlord reference checks are required before membership acceptance, will be performed only if selected for interview, and that owner-occupiers should enter their own contact information. Applicants who moved less than 2 years ago are asked to include previous landlord information.
+The housing section asks for the current address and move-in date, then collects earlier addresses
+and their move-in dates until the history reaches two years before the earliest application close
+date shown on the form. It also asks whether the applicant owns real estate and collects current
+and previous landlord contacts. The form explains that landlord reference checks are required
+before membership acceptance and will be performed only if selected for interview.
 
 The essay section tells applicants that members must share responsibility for operating and maintaining the co-op, attend the AGM and special general meetings, serve on one or more committees, and attend committee meetings. It says willingness to participate is a decisive selection factor and encourages detailed answers.
 
@@ -69,7 +73,7 @@ The declaration states that applicants understand:
 The final declaration checkbox text is: `I / We have read and agree to be bound by the conditions outlined above`.
 
 Current application answers include applicant and co-applicant identity and contact fields,
-household children, current address and duration, real-estate ownership, current and previous
+household children, structured residence history, real-estate ownership, current and previous
 housing references, four required essays, optional additional information, an optional household
 photo link, pets, employment, and gross yearly income. The canonical contract is
 `backend/app/schemas/applicant/answers.py`.
@@ -451,8 +455,9 @@ removed. They do not show an applicant-removal link.
 - Housing ownership uses two plain questions: whether the applicant owns the home where they
   currently live, and whether they own any other real estate. Either answer supplies the broader
   real-estate ownership fact used by screening. Current-landlord fields are shown only to renters;
-  previous-landlord fields are shown only to renters who have lived at their current address for
-  less than two years.
+  previous-landlord fields are shown only to renters whose required residence history extends
+  beyond their current home. Committee details keep each stored address structured but display it
+  as one compact row, followed by its move-in date.
 - The form accepts one optional web link to a household photo. Applicants are reminded to use a
   link the committee can open. The link follows the same private-working-copy and submitted-copy
   visibility rules as every other answer and never enters AI prompts.
@@ -1004,7 +1009,7 @@ Rules run in a defined order. An application that fails any enabled rule is `fil
 
 ### Rule Behavior Notes
 
-- Living at the current address for less than 2 years is not disqualifying.
+- Moving within the two-year residence-history period is not disqualifying.
 - Applicants outside Vancouver, BC, or Canada are eligible.
 - Applications should be complete at submission time. The screener does not create applicant follow-up workflows.
 - Applicants with an application already on file are not treated differently.

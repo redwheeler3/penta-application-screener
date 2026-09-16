@@ -22,7 +22,7 @@ def test_every_synthetic_row_matches_the_canonical_application_schema() -> None:
 
 def test_fixture_reader_rejects_ambiguous_booleans(tmp_path) -> None:
     header, row = FIXTURE.read_text(encoding="utf-8").splitlines()[:2]
-    broken = row.replace(",false,false,false,", ",maybe,false,false,", 1)
+    broken = row.replace(",false,false,Landlord", ",maybe,false,Landlord", 1)
     fixture = tmp_path / "invalid.csv"
     fixture.write_text(f"{header}\n{broken}\n", encoding="utf-8")
 
