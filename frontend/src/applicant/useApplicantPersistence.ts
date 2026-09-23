@@ -141,6 +141,9 @@ export function useApplicantPersistence(
     setPersistence("accessToken", token);
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
     void inspectLink(token);
+    // Link inspection is intentionally one-shot. Depending on these render-local
+    // workflow functions would repeat a single-use credential exchange.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -151,6 +154,9 @@ export function useApplicantPersistence(
     };
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => document.removeEventListener("visibilitychange", refreshWhenVisible);
+    // The primitive lifecycle keys above own this subscription. The workflow
+    // functions are render-local and would resubscribe on every state transition.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applicationId, openingsLoaded, workingRevision]);
 
   async function inspectLink(token: string): Promise<void> {

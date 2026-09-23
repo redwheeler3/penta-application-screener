@@ -9,6 +9,7 @@ import { RetryLoadError } from "../shared/RetryLoadError";
 export function VacancyNotificationsPanel(props: {
   onError: (message: string) => void;
 }): ReactNode {
+  const { onError } = props;
   const [report, setReport] = useState<VacancySubscriptionReport | null>(null);
   const [loadVersion, setLoadVersion] = useState(0);
   const [loadError, setLoadError] = useState(false);
@@ -28,10 +29,10 @@ export function VacancyNotificationsPanel(props: {
     }).catch(() => {
       if (!live) return;
       setLoadError(true);
-      props.onError("Could not load the vacancy notification report.");
+      onError("Could not load the vacancy notification report.");
     });
     return () => { live = false; };
-  }, [loadVersion, props.onError]);
+  }, [loadVersion, onError]);
 
   async function lookup(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();

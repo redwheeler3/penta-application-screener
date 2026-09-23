@@ -1,6 +1,7 @@
 import { CalendarDays, LoaderCircle, Mail, ShieldCheck } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
+import { formatDateOnly, formatHousingCharge } from "../format";
 import { TECH_SUPPORT_EMAIL, TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import { GoogleSignInButton } from "../components/auth/GoogleSignInButton";
 import type { ServiceRecoveryStage } from "../serviceRecovery";
@@ -442,15 +443,10 @@ export function ApplicantErrorMessage(props: { message: string }) {
 
 export function openingLabel(opening: ApplicantOpening): string {
   const unit = `${opening.unitSizeBedrooms}-bedroom home`;
-  const charge = (opening.housingChargeCents / 100).toLocaleString("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    maximumFractionDigits: opening.housingChargeCents % 100 === 0 ? 0 : 2,
-  });
+  const charge = formatHousingCharge(opening.housingChargeCents);
   return `${unit} · ${charge} per month`;
 }
 
 export function formatOpeningDate(value: string): string {
-  return new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeZone: "UTC" })
-    .format(new Date(`${value}T12:00:00Z`));
+  return formatDateOnly(value);
 }

@@ -320,12 +320,24 @@ export function App(props: { authRedirect: AuthRedirect }) {
     );
   }
 
+  async function applicationFromResponse(
+    response: Response,
+    failureMessage?: string,
+  ): Promise<ApplicationDetail | null> {
+    if (!response.ok) {
+      if (failureMessage) showError(failureMessage);
+      return null;
+    }
+    const payload: { application: ApplicationDetail } = await response.json();
+    return payload.application;
+  }
+
   // Apply a status-mutation response: show the updated applicant and refresh the
   // derived eligibility surfaces. No-op on a failed response.
   async function applyStatusResponse(response: Response) {
-    if (response.ok) {
-      const payload: { application: ApplicationDetail } = await response.json();
-      setSelectedApp(payload.application);
+    const application = await applicationFromResponse(response);
+    if (application) {
+      setSelectedApp(application);
       refreshEligibilityViews();
     }
   }
@@ -346,13 +358,12 @@ export function App(props: { authRedirect: AuthRedirect }) {
 
   async function savePrivateNote(id: number, note: string): Promise<boolean> {
     if (selectedOpeningId === null) return false;
-    const response = await api.savePrivateNote(id, selectedOpeningId, note);
-    if (!response.ok) {
-      showError("Could not save your private note.");
-      return false;
-    }
-    const payload: { application: ApplicationDetail } = await response.json();
-    setSelectedApp(payload.application);
+    const application = await applicationFromResponse(
+      await api.savePrivateNote(id, selectedOpeningId, note),
+      "Could not save your private note.",
+    );
+    if (!application) return false;
+    setSelectedApp(application);
     return true;
   }
 
@@ -360,12 +371,9 @@ export function App(props: { authRedirect: AuthRedirect }) {
     response: Response,
     failureMessage: string,
   ): Promise<boolean> {
-    if (!response.ok) {
-      showError(failureMessage);
-      return false;
-    }
-    const payload: { application: ApplicationDetail } = await response.json();
-    setSelectedApp(payload.application);
+    const application = await applicationFromResponse(response, failureMessage);
+    if (!application) return false;
+    setSelectedApp(application);
     return true;
   }
 
@@ -403,12 +411,12 @@ export function App(props: { authRedirect: AuthRedirect }) {
   async function toggleStar(id: number, starred: boolean) {
     if (selectedOpeningId === null) return;
     const response = await api.setStar(id, selectedOpeningId, starred);
-    if (!response.ok) {
-      showError(starred ? "Could not add to favourites." : "Could not remove from favourites.");
-      return;
-    }
-    const payload: { application: ApplicationDetail } = await response.json();
-    if (selectedApp?.id === id) setSelectedApp(payload.application);
+    const application = await applicationFromResponse(
+      response,
+      starred ? "Could not add to favourites." : "Could not remove from favourites.",
+    );
+    if (!application) return;
+    if (selectedApp?.id === id) setSelectedApp(application);
     if (applications.some((a) => a.id === id)) reloadApplications();
     if (ranking) loadRanking();
   }
@@ -418,12 +426,14 @@ export function App(props: { authRedirect: AuthRedirect }) {
   async function toggleShortlist(id: number, shortlisted: boolean) {
     if (selectedOpeningId === null) return;
     const response = await api.setShortlist(id, selectedOpeningId, shortlisted);
-    if (!response.ok) {
-      showError(shortlisted ? "Could not add to the shared shortlist." : "Could not remove from the shared shortlist.");
-      return;
-    }
-    const payload: { application: ApplicationDetail } = await response.json();
-    if (selectedApp?.id === id) setSelectedApp(payload.application);
+    const application = await applicationFromResponse(
+      response,
+      shortlisted
+        ? "Could not add to the shared shortlist."
+        : "Could not remove from the shared shortlist.",
+    );
+    if (!application) return;
+    if (selectedApp?.id === id) setSelectedApp(application);
     if (applications.some((a) => a.id === id)) reloadApplications();
     if (ranking) loadRanking();
   }

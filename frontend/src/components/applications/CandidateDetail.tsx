@@ -184,6 +184,7 @@ export function CandidateDetail(props: {
 
       {!props.readOnly ? (
         <CandidateNotes
+          key={app.id}
           applicationId={app.id}
           privateNote={app.privateNote}
           committeeNotes={app.committeeNotes}
@@ -195,6 +196,7 @@ export function CandidateDetail(props: {
       ) : null}
       {props.readOnly && (app.privateNote || app.committeeNotes.length > 0) ? (
         <CandidateNotes
+          key={app.id}
           applicationId={app.id}
           privateNote={app.privateNote}
           committeeNotes={app.committeeNotes}

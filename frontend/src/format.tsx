@@ -50,9 +50,20 @@ export function formatPacificDate(value: string): string {
 }
 
 export function formatDateOnly(value: string): string {
-  return new Intl.DateTimeFormat("en-CA", { dateStyle: "medium" }).format(
-    new Date(`${value}T12:00:00`),
+  return new Intl.DateTimeFormat("en-CA", {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(
+    new Date(`${value}T12:00:00Z`),
   );
+}
+
+export function formatHousingCharge(cents: number): string {
+  return (cents / 100).toLocaleString("en-CA", {
+    style: "currency",
+    currency: "CAD",
+    maximumFractionDigits: cents % 100 === 0 ? 0 : 2,
+  });
 }
 
 export function flagCategoryLabel(category: string): string {

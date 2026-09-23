@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { fetchMetrics } from "../../api/observability";
 import { formatPacificDateTime, money } from "../../format";
 import { useFetchResource } from "../../hooks/useFetchResource";
-import type { MetricsReport, TrendPoint } from "../../types";
+import type { TrendPoint } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
 // Operational trends across runs. Reads the same

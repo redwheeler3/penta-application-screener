@@ -81,6 +81,9 @@ export function useSession(authRedirect: AuthRedirect) {
     if (exchangeStarted.current) return;
     exchangeStarted.current = true;
     void inspectMagicLink(authRedirect.magicLinkToken);
+    // A magic link is a single-use credential. Only a new token may trigger an
+    // exchange; depending on the render-local workflow function would replay it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authRedirect.magicLinkToken]);
 
   async function inspectMagicLink(token: string): Promise<void> {

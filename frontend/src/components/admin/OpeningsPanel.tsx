@@ -3,6 +3,7 @@ import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 
 import * as api from "../../api/openings";
 import { readProblem } from "../../api/problems";
+import { formatDateOnly, formatHousingCharge } from "../../format";
 import type {
   Opening,
   OpeningCreate,
@@ -32,6 +33,22 @@ const EMPTY_DRAFT: OpeningDraft = {
   moveInDate: "",
 };
 
+type OpeningPanelMode =
+  | { kind: "list" }
+  | {
+      kind: "form";
+      editingId: number | null;
+      draft: OpeningDraft;
+      launchPreview: OpeningPreview | null;
+    }
+  | { kind: "direct" }
+  | {
+      kind: "selection";
+      selection: OpeningSelection;
+      pendingCandidate: OpeningSelectionCandidate | null;
+      confirmingNoHousehold: boolean;
+    };
+
 export function OpeningsPanel(props: {
   onError: (message: string) => void;
   onPoolChanged: () => void;
@@ -41,15 +58,9 @@ export function OpeningsPanel(props: {
   const [openings, setOpenings] = useState<Opening[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [loadVersion, setLoadVersion] = useState(0);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [draft, setDraft] = useState<OpeningDraft | null>(null);
+  const [mode, setMode] = useState<OpeningPanelMode>({ kind: "list" });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [selection, setSelection] = useState<OpeningSelection | null>(null);
-  const [pendingCandidate, setPendingCandidate] = useState<OpeningSelectionCandidate | null>(null);
-  const [confirmingNoHousehold, setConfirmingNoHousehold] = useState(false);
-  const [launchPreview, setLaunchPreview] = useState<OpeningPreview | null>(null);
-  const [fillingDirectly, setFillingDirectly] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -66,20 +77,18 @@ export function OpeningsPanel(props: {
   }, [loadVersion]);
 
   function beginCreate(): void {
-    setEditingId(null);
-    setDraft({ ...EMPTY_DRAFT });
+    setMode({
+      kind: "form",
+      editingId: null,
+      draft: { ...EMPTY_DRAFT },
+      launchPreview: null,
+    });
     setMessage("");
-    setSelection(null);
-    setLaunchPreview(null);
-    setFillingDirectly(false);
   }
 
   function beginDirectSelection(): void {
-    setDraft(null);
-    setEditingId(null);
-    setSelection(null);
+    setMode({ kind: "direct" });
     setMessage("");
-    setFillingDirectly(true);
   }
 
   function beginEdit(opening: Opening): void {
@@ -88,33 +97,35 @@ export function OpeningsPanel(props: {
       || opening.applicationOpenDate === null
       || opening.applicationCloseDate === null
     ) return;
-    setEditingId(opening.id);
-    setDraft({
-      unitSizeBedrooms: opening.unitSizeBedrooms,
-      housingChargeDollars: opening.housingChargeCents / 100,
-      applicationOpenDate: opening.applicationOpenDate,
-      applicationCloseDate: opening.applicationCloseDate,
-      moveInDate: opening.moveInDate,
+    setMode({
+      kind: "form",
+      editingId: opening.id,
+      draft: {
+        unitSizeBedrooms: opening.unitSizeBedrooms,
+        housingChargeDollars: opening.housingChargeCents / 100,
+        applicationOpenDate: opening.applicationOpenDate,
+        applicationCloseDate: opening.applicationCloseDate,
+        moveInDate: opening.moveInDate,
+      },
+      launchPreview: null,
     });
     setMessage("");
-    setSelection(null);
-    setLaunchPreview(null);
   }
 
   async function save(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!draft || busy) return;
+    if (mode.kind !== "form" || busy) return;
     const payload: OpeningWrite = {
-      unitSizeBedrooms: draft.unitSizeBedrooms,
-      housingChargeCents: Math.round(draft.housingChargeDollars * 100),
-      applicationOpenDate: draft.applicationOpenDate,
-      applicationCloseDate: draft.applicationCloseDate,
-      moveInDate: draft.moveInDate,
+      unitSizeBedrooms: mode.draft.unitSizeBedrooms,
+      housingChargeCents: Math.round(mode.draft.housingChargeDollars * 100),
+      applicationOpenDate: mode.draft.applicationOpenDate,
+      applicationCloseDate: mode.draft.applicationCloseDate,
+      moveInDate: mode.draft.moveInDate,
     };
-    if (editingId === null && launchPreview === null) {
+    if (mode.editingId === null && mode.launchPreview === null) {
       setBusy(true);
       try {
-        setLaunchPreview(await api.previewOpening(createPayload(payload)));
+        setMode({ ...mode, launchPreview: await api.previewOpening(createPayload(payload)) });
       } catch {
         props.onError("Could not preview the opening and notification audience.");
       } finally {
@@ -122,23 +133,22 @@ export function OpeningsPanel(props: {
       }
       return;
     }
-    if (editingId === null && launchPreview !== null) {
+    if (mode.editingId === null && mode.launchPreview !== null) {
       setBusy(true);
       try {
         const createResponse = await api.createOpening(
           createPayload(payload),
-          launchPreview.audienceCount,
+          mode.launchPreview.audienceCount,
         );
         if (!createResponse.ok) {
           const problem = await readProblem(createResponse);
-          if (createResponse.status === 409) setLaunchPreview(null);
+          if (createResponse.status === 409) setMode({ ...mode, launchPreview: null });
           props.onError(problem ?? "Could not create that opening.");
           return;
         }
         const created = (await createResponse.json()) as OpeningCreated;
         setOpenings(created.openings);
-        setDraft(null);
-        setLaunchPreview(null);
+        setMode({ kind: "list" });
         setMessage(
           `Applications are open and ${created.queuedNotificationCount} ${created.queuedNotificationCount === 1 ? "email is" : "emails are"} queued.`,
         );
@@ -147,21 +157,24 @@ export function OpeningsPanel(props: {
         setBusy(false);
       }
     }
-    const response = await mutate(api.updateOpening(editingId as number, payload));
+    if (mode.editingId === null) return;
+    const response = await mutate(api.updateOpening(mode.editingId, payload));
     if (!response) return;
     setOpenings(response);
-    setDraft(null);
-    setEditingId(null);
+    setMode({ kind: "list" });
     setMessage("Opening updated.");
   }
 
   async function manageSelection(opening: Opening): Promise<void> {
     setBusy(true);
     setMessage("");
-    setPendingCandidate(null);
-    setConfirmingNoHousehold(false);
     try {
-      setSelection(await api.fetchOpeningSelection(opening.id));
+      setMode({
+        kind: "selection",
+        selection: await api.fetchOpeningSelection(opening.id),
+        pendingCandidate: null,
+        confirmingNoHousehold: false,
+      });
     } catch {
       props.onError("Could not load the opening selection.");
     } finally {
@@ -170,19 +183,22 @@ export function OpeningsPanel(props: {
   }
 
   async function confirmSelection(): Promise<void> {
-    if (!selection || !pendingCandidate || busy) return;
+    if (mode.kind !== "selection" || !mode.pendingCandidate || busy) return;
     setBusy(true);
     try {
       const response = await api.confirmOpeningSelection(
-        selection.openingId,
-        pendingCandidate.applicationId,
+        mode.selection.openingId,
+        mode.pendingCandidate.applicationId,
       );
       if (!response.ok) {
         props.onError((await readProblem(response)) ?? "Could not save the selection.");
         return;
       }
-      setSelection((await response.json()) as OpeningSelection);
-      setPendingCandidate(null);
+      setMode({
+        ...mode,
+        selection: (await response.json()) as OpeningSelection,
+        pendingCandidate: null,
+      });
       setOpenings(await api.fetchOpenings());
       setMessage("Successful applicant selected.");
       props.onPoolChanged();
@@ -192,16 +208,19 @@ export function OpeningsPanel(props: {
   }
 
   async function confirmNoHousehold(): Promise<void> {
-    if (!selection || busy) return;
+    if (mode.kind !== "selection" || busy) return;
     setBusy(true);
     try {
-      const response = await api.confirmNoHouseholdSelected(selection.openingId);
+      const response = await api.confirmNoHouseholdSelected(mode.selection.openingId);
       if (!response.ok) {
         props.onError((await readProblem(response)) ?? "Could not save the decision.");
         return;
       }
-      setSelection((await response.json()) as OpeningSelection);
-      setConfirmingNoHousehold(false);
+      setMode({
+        ...mode,
+        selection: (await response.json()) as OpeningSelection,
+        confirmingNoHousehold: false,
+      });
       setOpenings(await api.fetchOpenings());
       setMessage("Opening decision recorded.");
       props.onPoolChanged();
@@ -235,7 +254,7 @@ export function OpeningsPanel(props: {
             applicants.
           </p>
         </div>
-        {!draft && !fillingDirectly ? (
+        {mode.kind === "list" ? (
           <div className="opening-header-actions">
             <button className="secondary-button" type="button" onClick={beginDirectSelection}>
               <UserCheck size={16} /> Fill from previous applicants
@@ -247,12 +266,12 @@ export function OpeningsPanel(props: {
         ) : null}
       </div>
 
-      {fillingDirectly ? (
+      {mode.kind === "direct" ? (
         <DirectSelectionOpeningForm
-          onCancel={() => setFillingDirectly(false)}
+          onCancel={() => setMode({ kind: "list" })}
           onCreated={(items, applicant) => {
             setOpenings(items);
-            setFillingDirectly(false);
+            setMode({ kind: "list" });
             setMessage(`${applicant.applicantName ?? applicant.primaryEmail} selected for the new opening.`);
             props.onPoolChanged();
           }}
@@ -261,39 +280,35 @@ export function OpeningsPanel(props: {
         />
       ) : null}
 
-      {draft ? (
+      {mode.kind === "form" ? (
         <OpeningForm
-          draft={draft}
-          editing={editingId !== null}
+          draft={mode.draft}
+          editing={mode.editingId !== null}
           busy={busy}
-          onChange={(next) => { setDraft(next); setLaunchPreview(null); }}
-          onCancel={() => { setDraft(null); setEditingId(null); setLaunchPreview(null); }}
+          onChange={(next) => setMode({ ...mode, draft: next, launchPreview: null })}
+          onCancel={() => setMode({ kind: "list" })}
           onSubmit={save}
-          launchPreview={launchPreview}
+          launchPreview={mode.launchPreview}
         />
       ) : null}
 
-      {selection ? (
+      {mode.kind === "selection" ? (
         <OpeningSelectionPanel
-          selection={selection}
-          pendingCandidate={pendingCandidate}
-          confirmingNoHousehold={confirmingNoHousehold}
+          selection={mode.selection}
+          pendingCandidate={mode.pendingCandidate}
+          confirmingNoHousehold={mode.confirmingNoHousehold}
           busy={busy}
-          onChoose={setPendingCandidate}
-          onRequestNoHousehold={() => setConfirmingNoHousehold(true)}
-          onCancelNoHousehold={() => setConfirmingNoHousehold(false)}
+          onChoose={(pendingCandidate) => setMode({ ...mode, pendingCandidate })}
+          onRequestNoHousehold={() => setMode({ ...mode, confirmingNoHousehold: true })}
+          onCancelNoHousehold={() => setMode({ ...mode, confirmingNoHousehold: false })}
           onConfirmNoHousehold={() => void confirmNoHousehold()}
-          onBack={() => setPendingCandidate(null)}
+          onBack={() => setMode({ ...mode, pendingCandidate: null })}
           onConfirm={() => void confirmSelection()}
           onReview={(applicationId) =>
-            props.onOpenApplicant(applicationId, selection.openingId)
+            props.onOpenApplicant(applicationId, mode.selection.openingId)
           }
           onReviewSelected={props.onOpenRetainedApplicant}
-          onClose={() => {
-            setSelection(null);
-            setPendingCandidate(null);
-            setConfirmingNoHousehold(false);
-          }}
+          onClose={() => setMode({ kind: "list" })}
         />
       ) : null}
 
@@ -660,17 +675,4 @@ function OpeningSelectionPanel(props: {
       )}
     </section>
   );
-}
-
-function formatDateOnly(value: string): string {
-  return new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeZone: "UTC" })
-    .format(new Date(`${value}T12:00:00Z`));
-}
-
-function formatHousingCharge(cents: number): string {
-  return (cents / 100).toLocaleString("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
-  });
 }

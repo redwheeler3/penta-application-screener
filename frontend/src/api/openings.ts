@@ -2,7 +2,6 @@ import type {
   DirectSelectionOpeningCreate,
   Opening,
   OpeningCreate,
-  OpeningCreated,
   OpeningPreview,
   OpeningSelection,
   OpeningSelectionCandidate,

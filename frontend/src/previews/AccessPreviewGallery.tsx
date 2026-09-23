@@ -23,7 +23,6 @@ import { BrandLockup } from "../components/shared/BrandLockup";
 import { CommitteeSignIn } from "../components/auth/CommitteeSignIn";
 import type { CommitteeLinkConflict, SignInState } from "../hooks/useSession";
 import type { ServiceRecoveryStage } from "../serviceRecovery";
-import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import "../styles/access-preview.css";
 
 type EmailPreview = {

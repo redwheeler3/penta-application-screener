@@ -49,7 +49,6 @@ import {
   setRememberDevice,
 } from "./draftStorage";
 import {
-  type ApplicantDraft,
   emptyApplicantDraft,
   residenceHistoryCutoff,
 } from "./types";
@@ -103,7 +102,10 @@ export function ApplicantApp() {
     if (!persistence.reviewAfterAccess) return;
     setReviewing(true);
     persistence.clearReviewAfterAccess();
-  }, [persistence.reviewAfterAccess]);
+    // The persistence facade is rebuilt as its state changes. This transition is
+    // owned only by the primitive flag; depending on the facade would loop it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persistence.clearReviewAfterAccess, persistence.reviewAfterAccess]);
 
   useEffect(() => {
     if (
@@ -127,7 +129,11 @@ export function ApplicantApp() {
     ) {
       setEmailChangeOpen(true);
     }
-  }, [persistence.emailChangeStatus, persistence.pendingEmailChange]);
+  }, [
+    persistence.emailChangeMessage,
+    persistence.emailChangeStatus,
+    persistence.pendingEmailChange,
+  ]);
 
   useEffect(() => {
     if (!persistence.pendingEmailChange) return;
@@ -136,7 +142,10 @@ export function ApplicantApp() {
     };
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => document.removeEventListener("visibilitychange", refreshWhenVisible);
-  }, [persistence.pendingEmailChange]);
+    // The pending-change flag owns this subscription. The persistence facade is
+    // render-local and would otherwise replace the listener on every state change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persistence.pendingEmailChange, persistence.refreshEmailIdentity]);
 
   function update(updater: DraftUpdater): void {
     setReviewing(false);

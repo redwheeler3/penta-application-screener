@@ -32,19 +32,6 @@ export function CandidateNotes(props: {
   const privateRevision = useRef(0);
   const savedPrivateNote = useRef(props.privateNote);
 
-  useEffect(() => {
-    if (pendingPrivateSave.current !== null) clearTimeout(pendingPrivateSave.current);
-    privateRevision.current += 1;
-    savedPrivateNote.current = props.privateNote;
-    setPrivateNote(props.privateNote);
-    setPrivateStatus("saved");
-    setNewNote("");
-    setAdding(false);
-    setEditingId(null);
-    setDeletingId(null);
-    setCommitteeError(null);
-  }, [props.applicationId]);
-
   useEffect(
     () => () => {
       if (pendingPrivateSave.current !== null) clearTimeout(pendingPrivateSave.current);
