@@ -378,18 +378,25 @@ def unsuccessful_application_email(
     *, application_id: int, email: str, opening_labels: list[str]
 ) -> OutboundEmail:
     heading = "An update on your Penta application"
-    introduction = (
-        "Thank you for the time you took to apply. We're sorry to let you know that "
-        f"your household was not selected for {_natural_list(opening_labels)}. We wish "
-        "you all the best in your housing search."
+    decision = (
+        "Thank you for the time and care you put into your application. We're sorry to "
+        "let you know that your household was not selected for "
+        f"{_natural_list(opening_labels)}."
+    )
+    acknowledgement = (
+        "We know that applying for housing takes time and effort, and we appreciate "
+        "your interest in making Penta your home. We wish you all the best in your "
+        "housing search."
     )
     notice = (
-        "If you'd like to hear when another unit becomes available, you're welcome "
-        "to join our vacancy notification list."
+        "If you'd like to hear about future openings at Penta, you're welcome to join "
+        "our vacancy notification list."
     )
     text = _with_common_footer(f"""{heading}.
 
-{introduction}
+{decision}
+
+{acknowledgement}
 
 {notice}
 
@@ -397,10 +404,11 @@ def unsuccessful_application_email(
     html = _email_shell(
         eyebrow="Application update",
         heading=heading,
-        introduction=introduction,
+        introduction=decision,
         action_url=VACANCY_LIST_URL,
         action_label="Join the vacancy notification list",
         link_notice=notice,
+        additional_paragraphs=(acknowledgement,),
     )
     return OutboundEmail(
         kind="application_unsuccessful",
@@ -740,6 +748,7 @@ def _email_shell(
     action_label: str | None,
     link_notice: str | None,
     custom_content_html: str | None = None,
+    additional_paragraphs: Sequence[str] = (),
 ) -> str:
     action_html = ""
     if action_url is not None and action_label is not None:
@@ -757,7 +766,11 @@ def _email_shell(
         notice_html = f"""<div style="margin-top:{notice_margin};padding:16px 18px;background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
                 <p style="margin:0;color:#166534;font-size:14px;line-height:1.55;">{escape(link_notice)}</p>
               </div>"""
-    content_html = custom_content_html or f"""<p style="margin:0 0 24px;color:#4b5563;font-size:16px;line-height:1.6;">{escape(introduction)}</p>
+    paragraph_html = "".join(
+        f'<p style="margin:0 0 24px;color:#4b5563;font-size:16px;line-height:1.6;">{escape(paragraph)}</p>'
+        for paragraph in (introduction, *additional_paragraphs)
+    )
+    content_html = custom_content_html or f"""{paragraph_html}
               {action_html}
               {notice_html}"""
     return f"""<!doctype html>

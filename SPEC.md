@@ -567,7 +567,8 @@ that applicant actively entered has a confirmed decision and none selected that 
 avoids sending an unsuccessful notice to someone
 whose result in another simultaneous opening remains pending or who was selected elsewhere. The
 operation is retry-safe and records enough provider state to prevent duplicate sends. The message
-closes the loop and invites the applicant to join the vacancy notification list for future openings.
+acknowledges the time and effort involved in applying, closes the loop without implying fault, and
+invites the applicant to join the vacancy notification list for future openings.
 
 The committee screener shows administrators an action banner when an opening reaches its move-in
 date without a decision. The banner links to the relevant review flow and disappears after

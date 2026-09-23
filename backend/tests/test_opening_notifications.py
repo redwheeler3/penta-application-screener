@@ -92,10 +92,12 @@ def test_notice_waits_until_every_active_opening_has_a_decision() -> None:
     db.commit()
     assert send_due_unsuccessful_notices(db, sender) == 1
     assert len(sender.messages) == 1
+    assert "time and care you put into your application" in sender.messages[0].text_body
     assert "your household was not selected" in sender.messages[0].text_body
     assert "the 2-bedroom home" in sender.messages[0].text_body
     assert " or the 3-bedroom home" in sender.messages[0].text_body
     assert "move-in)" in sender.messages[0].text_body
+    assert "applying for housing takes time and effort" in sender.messages[0].text_body
     assert "all the best in your housing search" in sender.messages[0].text_body
     assert "https://www.pentacoop.com/apply.html" in sender.messages[0].text_body
     assert first.unsuccessful_notified_at is not None

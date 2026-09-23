@@ -49,6 +49,8 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
     assert "Your application is now closed" in response.text
     assert "Your household is now a member of Penta" in response.text
     assert "your application has been finalized" in response.text
+    assert "time and care you put into your application" in response.text
+    assert "applying for housing takes time and effort" in response.text
     assert "You&#x27;ve been added to the screener" in response.text
     assert "No action is required" in response.text
     assert "techsupport@pentacoop.com" in response.text
@@ -62,6 +64,16 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
     assert "3-bedroom home" in submitted["html"]
     assert "September 15, 2026" in submitted["html"]
     assert "as soon as a decision has been made" in submitted["html"]
+    unsuccessful = next(
+        preview for preview in previews if preview["key"] == "application-unsuccessful"
+    )
+    decision_end = unsuccessful["html"].index(
+        "</p>", unsuccessful["html"].index("Thank you for the time and care")
+    )
+    acknowledgement_start = unsuccessful["html"].index(
+        "We know that applying for housing"
+    )
+    assert decision_end < acknowledgement_start
 
 
 @pytest.mark.anyio
