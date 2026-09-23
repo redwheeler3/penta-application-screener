@@ -5,7 +5,7 @@ import { takeAuthRedirect } from "./authRedirect";
 import { isApplicantSurface } from "./surface";
 import "./styles.css";
 import "./styles/applicant.css";
-import "./styles/ranking-print.css";
+import "./styles/print.css";
 import "./styles/quality-feedback.css";
 
 const applicantSurface = isApplicantSurface();

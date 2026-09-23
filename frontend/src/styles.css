@@ -3,6 +3,7 @@
 @import "./styles/workspace.css";
 @import "./styles/applications.css";
 @import "./styles/application-detail.css";
+@import "./styles/candidate-notes.css";
 @import "./styles/ai-workflow.css";
 @import "./styles/application-answers.css";
 @import "./styles/observability.css";

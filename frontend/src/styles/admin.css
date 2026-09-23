@@ -304,6 +304,36 @@
   border-top: none;
 }
 
+@media screen and (max-width: 760px) {
+  .access-panel {
+    padding: 0.9rem;
+  }
+
+  .access-add input[type="email"] {
+    flex-basis: 100%;
+  }
+
+  .access-table {
+    min-width: 760px;
+  }
+
+  .admin-settings-subtabs,
+  .eligibility-settings-subtabs {
+    padding: 0 0.9rem;
+  }
+
+  .divergence-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .divergence-diff {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
 .divergence-mine {
   font-weight: 600;
 }

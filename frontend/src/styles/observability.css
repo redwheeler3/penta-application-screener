@@ -42,6 +42,8 @@
 }
 
 
+
+
 .match-audit-table {
   width: 100%;
   border-collapse: collapse;
@@ -298,4 +300,242 @@
   border: none;
   border-top: 1px solid var(--line);
   margin: 0.8rem 0;
+}
+
+.observability-view {
+  /* Like .ranking-view: .panel has no padding, so the view supplies its own inset. */
+  padding: 1.25rem;
+}
+
+.observability-header {
+  margin-bottom: 1rem;
+}
+
+/* Subtabs: a secondary level below the folder tabs, so they use a quieter
+   underline style (not the green folder-tab treatment) to read as subordinate. */
+.subtabs {
+  display: flex;
+  gap: 1.25rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 1.25rem;
+}
+
+.subtab {
+  padding: 0 0 0.5rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px; /* overlap the container border so the active underline sits on it */
+}
+
+.subtab:hover {
+  color: var(--ink);
+}
+
+.subtab.active {
+  color: var(--penta-green-dark);
+  border-bottom-color: var(--penta-green);
+  font-weight: 600;
+}
+
+/* Cost subtab: cumulative and current-run spend, by pass. */
+.cost-report {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.cost-section {
+  display: flex;
+  flex-direction: column;
+}
+
+/* On the Trends tab the two run tables (Rank, Screen) are stacked cost-sections;
+   space the second off the first so they don't read as one table. */
+.metrics-report .cost-section + .cost-section {
+  margin-top: 1.5rem;
+}
+
+.cost-muted {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.cost-block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.cost-block-total {
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Fixed layout + explicit column widths so every table and group lines up: the two
+   money columns are identical width everywhere (Last runs and Total spend both). */
+.cost-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  margin-top: 0.75rem;
+}
+
+.cost-col-count {
+  width: 6rem;
+}
+
+/* Wider than a plain count: holds the "148.0k → 23.2k" in→out token pair. */
+.cost-col-tokens {
+  width: 9rem;
+}
+
+/* Latency carries an inline bar + a time like "210.5s", so it needs the same room as
+   the cost column (a plain count column truncates it). */
+.cost-col-latency {
+  width: 8rem;
+}
+
+.cost-col-money {
+  width: 8rem;
+}
+
+/* Column header row (the labels above the two money columns). */
+.cost-table thead th {
+  text-align: right;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.cost-table thead th.cost-col-label {
+  text-align: left;
+}
+
+.cost-table td {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Run group header row (Screen / Rank) with its subtotals. */
+.cost-group-head td {
+  border-bottom: 2px solid var(--line);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+  padding-top: 0.75rem;
+}
+
+.cost-group-head td:first-child {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+/* Estimate-vs-actual reconciliation note, inline after the run label. Muted normal
+   weight so it reads as secondary to the run name; amber only when actual > estimate. */
+.cost-recon {
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.cost-recon-over {
+  color: var(--warning-text-strong);
+}
+/* "· triggered by <member>" attribution on a shared run. */
+.cost-triggered-by {
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* Passes indent under their run group. */
+.cost-pass-name {
+  padding-left: 1.5rem !important;
+  color: var(--muted);
+}
+
+/* Trends: a crude inline bar before a numeric cell, so a column reads as a
+   rough sparkline down the rows. Decorative scale only, not a precise axis. */
+.metric-bar {
+  display: inline-block;
+  width: 34px;
+  height: 5px;
+  margin-right: 6px;
+  vertical-align: middle;
+  background: var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.metric-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--penta-green);
+}
+
+/* A nonzero failure count is the one number that should catch the eye. */
+.metric-failed {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.cost-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+/* The spent column (last) reads as the hard number; saved (its left) stays muted. */
+.cost-group-head .cost-num {
+  color: var(--ink);
+}
+
+.observability-header h3 {
+  margin: 0;
+}
+
+@media screen and (max-width: 760px) {
+  .subtabs {
+    gap: 0.9rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    white-space: nowrap;
+  }
+
+  .subtab {
+    flex: 0 0 auto;
+  }
+
+  .cost-block-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .cost-section {
+    overflow-x: auto;
+  }
+
+  .cost-table {
+    min-width: 640px;
+  }
+
+  .metrics-table {
+    min-width: 740px;
+  }
 }

@@ -396,9 +396,8 @@
   color: var(--penta-green);
 }
 
-/* The app's less-frequent reviewer surfaces still need to stay legible on a phone. Keep
-   their desktop information hierarchy, but let dense controls wrap or scroll deliberately
-   instead of squeezing labels and tables into unreadable fragments. */
+/* Feedback and eval surfaces on narrow screens. Other domains keep their responsive
+   rules beside their owning desktop styles. */
 @media screen and (max-width: 760px) {
   /* The Applications table begins with its primary row action on the left. Keep the
      persistent feedback control on the opposite edge so it never covers applicant
@@ -414,114 +413,6 @@
     right: 0.75rem;
     bottom: 4rem;
     width: calc(100vw - 1.5rem);
-  }
-
-  .access-panel {
-    padding: 0.9rem;
-  }
-
-  .access-add input[type="email"] {
-    flex-basis: 100%;
-  }
-
-  .access-table {
-    min-width: 760px;
-  }
-
-  .admin-settings-subtabs,
-  .eligibility-settings-subtabs {
-    padding: 0 0.9rem;
-  }
-
-  .subtabs {
-    gap: 0.9rem;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: thin;
-    white-space: nowrap;
-  }
-
-  .subtab {
-    flex: 0 0 auto;
-  }
-
-  .divergence-head,
-  .cost-block-head {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .divergence-diff {
-    display: block;
-    overflow-x: auto;
-  }
-
-  .run-confirm-actions {
-    flex-wrap: wrap;
-    width: 100%;
-  }
-
-  .app-detail-header {
-    align-items: flex-start;
-  }
-
-  .app-detail-actions {
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-
-  .app-detail-fields dl {
-    grid-template-columns: 1fr;
-  }
-
-  .app-detail-fields .columns-2 dl,
-  .app-detail-fields .columns-4 dl {
-    grid-template-columns: 1fr;
-  }
-
-  .app-detail-field-group {
-    padding: 0.75rem;
-  }
-
-  .criteria-composer-row {
-    flex-wrap: wrap;
-  }
-
-  .criteria-composer-row input {
-    flex-basis: 100%;
-  }
-
-  .tier-list-head {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .tier-list-actions {
-    flex-wrap: wrap;
-    width: 100%;
-  }
-
-  .ranking-list-toolbar {
-    justify-content: flex-start;
-  }
-
-  .ranking-row {
-    gap: 0.6rem;
-    padding: 0.75rem;
-  }
-
-  .cost-section {
-    overflow-x: auto;
-  }
-
-  .cost-table {
-    min-width: 640px;
-  }
-
-  .metrics-table {
-    min-width: 740px;
   }
 
   .eval-detail-actions .eval-detail-edit {
