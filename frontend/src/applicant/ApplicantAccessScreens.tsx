@@ -260,9 +260,9 @@ function ApplicantGoogleError(props: { result: ApplicantGoogleAccessResult }) {
   if (props.result === "selected") {
     return (
       <div className="application-entry-status" role="status">
-        <strong>Congratulations! Your household has been selected!</strong>
+        <strong>Your application is now closed</strong>
         <span>
-          Your application profile is now locked and can no longer be changed online.
+          Your household is now a member of Penta, so your application has been finalized and can no longer be changed online.
         </span>
       </div>
     );

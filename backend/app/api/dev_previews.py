@@ -143,7 +143,7 @@ def email_previews(
         ),
         (
             "selected-profile-locked",
-            "Selected household congratulations",
+            "Current member tries to access their application",
             selected_application_locked_email(application_id=1, email=email),
         ),
         (

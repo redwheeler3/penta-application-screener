@@ -269,10 +269,11 @@ replacement instead sends the application-access-unavailable email.
 
 A selected application is a separate unavailable state. An email access request always returns the
 same non-enumerating **Check your email** browser response used for known and unknown addresses. The
-verified mailbox receives no credential; it receives a polished **Congratulations! Your household
-has been selected!** email that leads with the positive outcome, then explains that the profile is
-locked, no action is required, and Tech Support is the contact only if that status appears mistaken.
-The selected-state email is included in the development preview gallery.
+verified mailbox receives no credential; it receives a factual **Your Penta application is
+complete** email explaining that the household is now a member and the finalized application can no
+longer be changed online. No action is required, and Tech Support is the contact only if the message
+appears mistaken. A verified Google identity receives the same member-and-finalized explanation in
+the browser without a new session. Both states are included in the development preview galleries.
 
 An applicant-session conflict is resolved before link validity changes behavior. Choosing the
 current application leaves its session and browser-local draft untouched. Choosing the linked

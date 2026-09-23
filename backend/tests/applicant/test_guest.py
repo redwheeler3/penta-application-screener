@@ -289,9 +289,10 @@ async def test_selected_email_request_is_generic_in_browser_and_specific_in_mail
     assert sender.messages[0].to == ("selected@example.com",)
     assert (
         sender.messages[0].subject
-        == "Congratulations! Your household has been selected for a Penta home!"
+        == "Your Penta application is complete"
     )
-    assert "Your application profile is now locked" in sender.messages[0].text_body
+    assert "Your household is now a member of Penta" in sender.messages[0].text_body
+    assert "your application has been finalized" in sender.messages[0].text_body
     assert sender.messages[1].kind == "applicant_magic_link"
     assert db.scalar(
         select(MagicLinkToken).where(

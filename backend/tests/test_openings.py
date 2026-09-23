@@ -50,12 +50,13 @@ def _app_and_db(role: UserRole) -> tuple:
 
 
 def _opening_payload(**overrides) -> dict:
+    today = pacific_today()
     payload = {
         "unitSizeBedrooms": 2,
         "housingChargeCents": 125_000,
-        "applicationOpenDate": "2026-09-01",
-        "applicationCloseDate": "2026-09-15",
-        "moveInDate": "2026-10-01",
+        "applicationOpenDate": today.isoformat(),
+        "applicationCloseDate": (today + timedelta(days=14)).isoformat(),
+        "moveInDate": (today + timedelta(days=30)).isoformat(),
         "expectedAudienceCount": 0,
     }
     payload.update(overrides)
@@ -74,16 +75,17 @@ async def test_opening_routes_are_admin_only() -> None:
 @pytest.mark.anyio
 async def test_admin_creation_opens_an_opening_immediately() -> None:
     app, db = _app_and_db(UserRole.ADMIN)
+    payload = _opening_payload()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        created = await client.post("/openings", json=_opening_payload())
+        created = await client.post("/openings", json=payload)
         opening = created.json()["openings"][0]
         opening_id = opening["id"]
 
         assert created.status_code == 200
         assert opening["phase"] == "open"
         assert opening["applicationOpenDate"] == pacific_today().isoformat()
-        assert opening["applicationCloseDate"] == "2026-09-15"
+        assert opening["applicationCloseDate"] == payload["applicationCloseDate"]
         assert opening["publishedAt"] is not None
         assert opening["submissionCount"] == 0
 

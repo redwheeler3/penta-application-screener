@@ -342,14 +342,14 @@ def application_unavailable_email(
 def selected_application_locked_email(
     *, email: str, application_id: int
 ) -> OutboundEmail:
-    heading = "Congratulations! Your household has been selected!"
+    heading = "Your application is now closed"
     introduction = (
-        "We're pleased to let you know that your household has been selected for a Penta home."
+        "Your household is now a member of Penta, so your application has been "
+        "finalized and can no longer be changed online."
     )
     notice = (
-        "Your application profile is now locked and can no longer be changed online. "
-        "No action is required. If you believe this is a mistake, email Penta Tech "
-        "Support at techsupport@pentacoop.com."
+        "No action is required. If you believe you received this message by mistake, "
+        "email Penta Tech Support at techsupport@pentacoop.com."
     )
     text = _with_common_footer(f"""{heading}.
 
@@ -368,7 +368,7 @@ def selected_application_locked_email(
         kind="application_selected_locked",
         recipient_id=f"application:{application_id}",
         to=(email,),
-        subject="Congratulations! Your household has been selected for a Penta home!",
+        subject="Your Penta application is complete",
         text_body=text,
         html_body=html,
     )
