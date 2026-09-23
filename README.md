@@ -313,10 +313,12 @@ cd backend
 uv run pytest
 ```
 
-Frontend build/type check:
+Frontend tests, lint, and production build/type check:
 
 ```sh
 cd frontend
+npm run test
+npm run lint
 npm run build
 ```
 

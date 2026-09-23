@@ -509,6 +509,11 @@
 }
 
 @media screen and (max-width: 760px) {
+  .observability-view {
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
+  }
+
   .subtabs {
     gap: 0.9rem;
     overflow-x: auto;

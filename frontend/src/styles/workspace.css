@@ -235,19 +235,6 @@
 }
 
 @media (max-width: 760px) {
-  .app-shell {
-    width: min(100vw - 24px, 1120px);
-    padding: 0 0 20px;
-  }
-
-  .page-heading {
-    margin: 20px 0 18px;
-  }
-
-  .penta-header-inner {
-    gap: 12px;
-  }
-
   .workflow-bar {
     padding: 12px;
   }
@@ -264,64 +251,10 @@
     width: 14px;
   }
 
-  /* Keep the folder-tab affordance intact; sideways scrolling is clearer than a second
-     wrapped row that no longer visually joins the panel beneath it. */
-  .view-tabs {
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 0;
-    scrollbar-width: thin;
-  }
-
-  .view-tabs .tab-button {
-    flex: 0 0 auto;
-    padding: 0.5rem 0.8rem;
-  }
-
-  .tab-button-settings {
-    margin-left: 0;
-  }
-
-  .settings-form,
-  .settings-grid,
-  .pet-limits-row {
-    grid-template-columns: 1fr;
-  }
-
-  .settings-header,
-  .settings-panel-body,
-  .applications-header,
-  .app-controls,
-  .ranking-view,
-  .observability-view,
-  .app-detail {
-    padding-left: 0.9rem;
-    padding-right: 0.9rem;
-  }
-
-  .app-table {
-    min-width: 680px;
-  }
-
   .toast {
     right: 0.75rem;
     bottom: 0.75rem;
     width: calc(100vw - 1.5rem);
   }
 
-}
-
-@media (min-width: 640px) {
-  .penta-header-inner { padding-right: 24px; padding-left: 24px; }
-}
-
-@media (min-width: 1024px) {
-  .penta-header-inner { padding-right: 32px; padding-left: 32px; }
-}
-
-@media (max-width: 639px) {
-  .penta-brand-lockup { gap: 8px; }
-  .penta-brand-lockup > span { font-size: 1.125rem; line-height: 1.75rem; }
-  .brand-name-full { display: none; }
-  .brand-name-short { display: inline; }
 }

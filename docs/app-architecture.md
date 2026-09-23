@@ -37,6 +37,11 @@ string in development:
 `ApplicantApp.tsx` owns intake. Shared branding and account controls live in small components
 rather than being duplicated between them.
 
+`frontend/src/styles.css` is the single ordered stylesheet entrypoint. Screen, responsive, and
+print rules live with their owning surface (`applications`, candidate detail/notes, ranking,
+observability, evals, feedback, and print) rather than relying on a cross-feature catch-all.
+`components/ai/AIWorkspaceView.tsx` is the shared shell for the Observability and Evals tabs.
+
 Applicant persistence is orchestrated by `useApplicantPersistence.ts`; its related UI state and
 typed transitions are centralized in `applicantPersistenceState.ts` so restoring, saving,
 submitting, and access-link handling do not each grow independent state conventions.
@@ -88,8 +93,10 @@ email ledger. Role changes do not resend invitations, and delivery failure does 
 
 ## Transactional email boundary
 
-Email templates and delivery orchestration are provider-neutral. `email_sender.py` translates
-`OutboundEmail` into SocketLabs requests at the final adapter boundary.
+Email templates and delivery orchestration are provider-neutral. Templates are grouped by
+recipient journey under `services/transactional_email/`; `layout.py` owns the branded primitives
+used by applicant, access, and opening messages. `email_sender.py` translates `OutboundEmail` into
+SocketLabs requests at the final adapter boundary.
 
 `EMAIL_DELIVERY_MODE` has three values:
 

@@ -292,6 +292,11 @@
 }
 
 @media screen and (max-width: 760px) {
+  .app-detail {
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
+  }
+
   .app-detail-header {
     align-items: flex-start;
   }

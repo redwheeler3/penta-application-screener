@@ -176,3 +176,17 @@ input[type="radio"] {
   visibility: visible;
   transition-delay: 0.2s; /* the show delay — sub-second, per spec */
 }
+
+@media (max-width: 760px) {
+  .settings-form,
+  .settings-grid,
+  .pet-limits-row {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-header,
+  .settings-panel-body {
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
+  }
+}

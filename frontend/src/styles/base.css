@@ -274,6 +274,36 @@ h1 {
   cursor: wait;
 }
 
+@media (max-width: 760px) {
+  .app-shell {
+    width: min(100vw - 24px, 1120px);
+    padding: 0 0 20px;
+  }
+
+  .page-heading {
+    margin: 20px 0 18px;
+  }
+
+  .penta-header-inner {
+    gap: 12px;
+  }
+}
+
+@media (min-width: 640px) {
+  .penta-header-inner { padding-right: 24px; padding-left: 24px; }
+}
+
+@media (min-width: 1024px) {
+  .penta-header-inner { padding-right: 32px; padding-left: 32px; }
+}
+
+@media (max-width: 639px) {
+  .penta-brand-lockup { gap: 8px; }
+  .penta-brand-lockup > span { font-size: 1.125rem; line-height: 1.75rem; }
+  .brand-name-full { display: none; }
+  .brand-name-short { display: inline; }
+}
+
 .login-panel {
   display: grid;
   gap: 14px;

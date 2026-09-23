@@ -608,6 +608,36 @@
   }
 }
 
+@media (max-width: 760px) {
+  /* Keep folder tabs on one horizontally scrollable row so they remain attached
+     to the panel beneath them. */
+  .view-tabs {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0;
+    scrollbar-width: thin;
+  }
+
+  .view-tabs .tab-button {
+    flex: 0 0 auto;
+    padding: 0.5rem 0.8rem;
+  }
+
+  .tab-button-settings {
+    margin-left: 0;
+  }
+
+  .applications-header,
+  .app-controls {
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
+  }
+
+  .app-table {
+    min-width: 680px;
+  }
+}
+
 @media (max-width: 620px) {
   .app-filter-axes {
     display: grid;
