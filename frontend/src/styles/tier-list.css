@@ -1,0 +1,301 @@
+/* --- Tier-list maker ---------------------------------------------------- */
+
+.tier-list {
+  margin: 0 0 1.25rem;
+  padding: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--page);
+}
+
+.tier-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+
+.tier-list-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+/* The two "+ Add" actions (criterion / tier) grouped at the right of the head. */
+.tier-list-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.tier-add {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.78rem;
+}
+
+/* "Add criterion" while its composer is open: hold the green-tint look so the button
+   reads as active/toggled-on (clicking again closes the composer). */
+.tier-add[aria-expanded="true"] {
+  border-color: var(--penta-green);
+  background: var(--penta-green-soft);
+  color: var(--penta-green-dark);
+}
+
+/* Each tier is a row: a label/controls header on the left of a chip area. Higher
+   rows weigh more; the gradient hints at descending importance. */
+.tier-row {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.6rem;
+  align-items: start;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.tier-row + .tier-row {
+  margin-top: 0.4rem;
+}
+
+/* Drop-target highlight while dragging a chip over a row. Forces a solid border so
+   the highlight looks identical over the Ignore zone (which is dashed by default). */
+.tier-row-over {
+  border-color: var(--penta-green);
+  border-style: solid;
+  box-shadow: 0 0 0 2px var(--penta-green-soft);
+}
+
+.tier-row-ignore {
+  background: #f9fafb;
+  border-style: dashed;
+}
+
+.tier-row-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.tier-label-input {
+  width: 100%;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.tier-label-ignore {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0.25rem 0.4rem;
+}
+
+.tier-controls {
+  display: flex;
+  gap: 0.25rem;
+}
+
+/* The chip area: a min-height drop zone so an empty tier is still a target. */
+.tier-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-height: 2.2rem;
+  padding: 0.3rem;
+  border-radius: 6px;
+}
+
+.tier-empty {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-style: italic;
+  align-self: center;
+}
+
+.tier-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.8rem;
+  font-weight: 500;
+  user-select: none;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.05);
+}
+
+/* The whole chip is the drag handle (and a click opens its description), so it
+   shows the grab cursor across its full area. */
+.tier-chip-draggable {
+  cursor: grab;
+  /* Let dnd-kit receive touch drags while keeping the rest of the page scrollable. */
+  touch-action: none;
+}
+
+.tier-chip-draggable:active {
+  cursor: grabbing;
+}
+
+.tier-chip-draggable:hover {
+  border-color: var(--penta-green);
+}
+
+.tier-chip-label {
+  padding: 0.05rem 0.1rem;
+}
+
+/* The criterion whose description is currently open in the side panel. */
+.tier-chip-open {
+  border-color: var(--penta-green);
+  box-shadow: 0 0 0 1px var(--penta-green);
+}
+
+/* The floating DragOverlay copy: lifted off the page and showing the grabbing
+   cursor while it tracks the pointer across tiers. */
+.tier-chip-overlay {
+  cursor: grabbing;
+  box-shadow: 0 6px 16px rgba(17, 24, 39, 0.18);
+  border-color: var(--penta-green);
+}
+
+.tier-chip-grip {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+/* Chip tints. A chip picks up the tint of its most-urgent badge (see chipTintClass):
+   the amber "new" / blue "revived" triage alarm wins over the green "requested"
+   provenance tint. Each pairs a soft fill with a matching border. */
+.tier-chip-new {
+  /* Newly-discovered, awaiting triage — amber "needs attention", loud to the human
+     though silent to the math (weight 0). */
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+}
+
+.tier-chip-revived {
+  /* Seen in an earlier run, dropped, now back — a softer heads-up than New (the
+     committee saw it before), so the calm blue of the score-band "moderate". */
+  border-color: #93c5fd;
+  background: var(--info-bg);
+}
+
+.tier-chip-requested {
+  /* A member proposed this axis THIS run — violet provenance, matching the "Add
+     criterion" composer where proposals are entered (#ddd6fe / #f5f3ff / #7c3aed). Only
+     tints when no triage alarm outranks it. */
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+}
+
+/* The three badges share ONE pill shape (base) and differ only by colour. Fixed height
+   + line-height:1 so the box is identical whether or not the chip label wraps; aligned
+   to the chip's first line. */
+.tier-chip-new-badge,
+.tier-chip-revived-badge,
+.tier-chip-requested-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: 0.1rem;
+  padding: 0 0.2rem 0 0.4rem;
+  height: 16px;
+  align-self: flex-start;
+  margin-top: 1px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.tier-chip-new-badge {
+  background: #f59e0b;
+}
+
+.tier-chip-revived-badge {
+  background: #3b82f6;
+}
+
+.tier-chip-requested-badge {
+  /* Violet solid pill — matches the composer accent (#7c3aed) where proposals originate. */
+  background: #7c3aed;
+}
+
+/* The ✕ inside any badge: acknowledge/dismiss this chip's flag in place (keep its
+   placement). One class for all three kinds — a solid white circle so the ✕ stays
+   legible at small size against any badge colour. Its own button so a click doesn't
+   start a drag (pointerdown is stopped in the handler). */
+.tier-chip-badge-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  /* Neutral-dark ✕ reads on white against every badge colour (amber/blue/green). */
+  color: #374151;
+  cursor: pointer;
+}
+
+.tier-chip-badge-dismiss:hover {
+  color: #111827;
+}
+
+/* Tier-agnostic "clear flags" control: lives inline in the tier-list head, before the
+   Add actions. Deliberately QUIET — clearing flags is a minor dismissal, so it's a
+   muted borderless text button, lighter than the neutral Add buttons beside it (never
+   an amber alert, which would overweight a throwaway action). Only shown when flags
+   exist; clears new + revived across ALL tiers. */
+.tier-clear-flags {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tier-clear-flags:hover {
+  background: rgba(17, 24, 39, 0.05);
+  color: var(--ink);
+}
+
+@media screen and (max-width: 760px) {
+  .criteria-composer-row {
+    flex-wrap: wrap;
+  }
+
+  .criteria-composer-row input {
+    flex-basis: 100%;
+  }
+
+  .tier-list-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .tier-list-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+}
