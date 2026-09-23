@@ -2,20 +2,18 @@ from types import SimpleNamespace
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.db.models import AdminSetting, Base
+from app.db.models import AdminSetting
 from app.schemas.settings import AppSettings
 from app.services.settings import get_app_settings, save_app_settings
 from tests.app_support import shared_test_app
 from tests.application_support import current_opening_id
+from tests.db_support import memory_session
 
 
 def make_session() -> Session:
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    return Session(engine)
+    return memory_session()
 
 
 def test_get_app_settings_returns_defaults_when_none_saved() -> None:
@@ -175,19 +173,11 @@ def test_member_rules_defaults_to_committee_default_then_diverges() -> None:
 
 
 def _rules_client(role: str = "member") -> tuple:
-    from sqlalchemy.pool import StaticPool
-
     from app.api.dependencies import require_current_user
     from app.db.models import User, UserRole
     from app.db.session import get_db
 
-    engine = create_engine(
-        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
-    )
-    Base.metadata.create_all(engine)
-    from sqlalchemy.orm import sessionmaker
-
-    db = sessionmaker(bind=engine, autoflush=False, autocommit=False)()
+    db = memory_session()
     user_role = UserRole.ADMIN if role == "admin" else UserRole.MEMBER
     user = User(email=f"{role}@x.com", display_name=role, role=user_role, is_active=True)
     db.add(user)

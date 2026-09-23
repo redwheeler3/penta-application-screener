@@ -1,13 +1,10 @@
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy import select
 
 from app.core.time import as_utc
 from app.db.models import (
     Application,
-    Base,
     EmailDelivery,
     EmailDeliveryState,
     MagicLinkPurpose,
@@ -23,6 +20,7 @@ from app.services.magic_link_delivery import (
     send_application_unavailable,
     send_magic_link,
 )
+from tests.db_support import memory_session
 
 
 class QuotaBlockedSender:
@@ -36,13 +34,7 @@ class TerminalFailureSender:
 
 
 def _db():
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-    return sessionmaker(bind=engine, autoflush=False, autocommit=False)()
+    return memory_session()
 
 
 def test_quota_blocked_magic_link_retries_with_a_fresh_credential() -> None:

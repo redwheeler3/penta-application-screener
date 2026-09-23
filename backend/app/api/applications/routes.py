@@ -80,6 +80,16 @@ def _get_mutable_application_or_404(
     return application
 
 
+def _application_envelope(
+    application: Application,
+    db: Session,
+    user: User,
+    opening_id: int,
+) -> ApplicationEnvelope:
+    detail = serialize_detail(application, db, user, opening_id)
+    return ApplicationEnvelope(application=detail)
+
+
 @router.get("", response_model=ApplicationListResponse)
 def list_applications(
     opening_id: int | None = None,
@@ -163,9 +173,7 @@ def get_application(
 ) -> ApplicationEnvelope:
     opening_id = resolve_visible_opening_id(db, opening_id)
     application = _get_application_or_404(db, opening_id, application_id)
-    return ApplicationEnvelope(
-        application=serialize_detail(application, db, user, opening_id)
-    )
+    return _application_envelope(application, db, user, opening_id)
 
 
 @router.get("/{application_id}/retained", response_model=ApplicationEnvelope)
@@ -193,9 +201,7 @@ def get_retained_application(
     )
     if context_opening_id is None:
         raise Problem("not_found", detail="Retained application has no opening context.")
-    return ApplicationEnvelope(
-        application=serialize_detail(application, db, admin, context_opening_id)
-    )
+    return _application_envelope(application, db, admin, context_opening_id)
 
 
 class StatusOverride(RequestModel):
@@ -251,9 +257,7 @@ def override_status(
         override.reviewed_fingerprint = fingerprint
     db.commit()
 
-    return ApplicationEnvelope(
-        application=serialize_detail(application, db, user, opening_id)
-    )
+    return _application_envelope(application, db, user, opening_id)
 
 
 @router.delete("/{application_id}/status", response_model=ApplicationEnvelope)
@@ -282,9 +286,7 @@ def clear_status_override(
         db.delete(override)
         db.commit()
 
-    return ApplicationEnvelope(
-        application=serialize_detail(application, db, user, opening_id)
-    )
+    return _application_envelope(application, db, user, opening_id)
 
 
 @router.put("/{application_id}/note", response_model=ApplicationEnvelope)
@@ -311,9 +313,7 @@ def save_private_note(
         note.note = body.note
     db.commit()
 
-    return ApplicationEnvelope(
-        application=serialize_detail(application, db, user, opening_id)
-    )
+    return _application_envelope(application, db, user, opening_id)
 
 
 def _committee_note_or_404(
@@ -360,9 +360,7 @@ def add_committee_note(
         )
     )
     db.commit()
-    return ApplicationEnvelope(
-        application=serialize_detail(application, db, user, opening_id)
-    )
+    return _application_envelope(application, db, user, opening_id)
 
 
 @router.patch(
@@ -383,9 +381,7 @@ def update_committee_note(
     _require_committee_note_author(note, user)
     note.body = body.body
     db.commit()
-    return ApplicationEnvelope(
-        application=serialize_detail(application, db, user, opening_id)
-    )
+    return _application_envelope(application, db, user, opening_id)
 
 
 @router.delete(
@@ -405,9 +401,7 @@ def delete_committee_note(
     _require_committee_note_author(note, user)
     db.delete(note)
     db.commit()
-    return ApplicationEnvelope(
-        application=serialize_detail(application, db, user, opening_id)
-    )
+    return _application_envelope(application, db, user, opening_id)
 
 
 @router.put("/{application_id}/star", response_model=ApplicationEnvelope)
@@ -426,9 +420,7 @@ def add_star(
         db.add(ApplicationStar(application_id=application_id, user_id=user.id))
         db.commit()
 
-    return ApplicationEnvelope(
-        application=serialize_detail(application, db, user, opening_id)
-    )
+    return _application_envelope(application, db, user, opening_id)
 
 
 @router.delete("/{application_id}/star", response_model=ApplicationEnvelope)
@@ -451,9 +443,7 @@ def remove_star(
         db.delete(star)
         db.commit()
 
-    return ApplicationEnvelope(
-        application=serialize_detail(application, db, user, opening_id)
-    )
+    return _application_envelope(application, db, user, opening_id)
 
 
 @router.put("/{application_id}/shortlist", response_model=ApplicationEnvelope)
@@ -480,9 +470,7 @@ def add_to_shortlist(
             # Another member added the same shared row between our read and write.
             # The requested state already exists, so preserve idempotent PUT semantics.
             db.rollback()
-    return ApplicationEnvelope(
-        application=serialize_detail(application, db, user, opening_id)
-    )
+    return _application_envelope(application, db, user, opening_id)
 
 
 @router.delete("/{application_id}/shortlist", response_model=ApplicationEnvelope)
@@ -502,6 +490,4 @@ def remove_from_shortlist(
         )
     )
     db.commit()
-    return ApplicationEnvelope(
-        application=serialize_detail(application, db, user, opening_id)
-    )
+    return _application_envelope(application, db, user, opening_id)

@@ -1,19 +1,15 @@
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-
 from app.core.time import pacific_today
 from app.db.models import (
     Application,
     ApplicationParticipation,
-    Base,
     Opening,
     OpeningOutcome,
 )
 from app.services.email_sender import CapturedEmailSender
 from app.services.opening_notifications import send_due_unsuccessful_notices
+from tests.db_support import memory_session
 
 
 class FailingEmailSender:
@@ -22,13 +18,7 @@ class FailingEmailSender:
 
 
 def _db():
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-    return sessionmaker(bind=engine, autoflush=False, autocommit=False)()
+    return memory_session()
 
 
 def _opening(db, *, archived: bool) -> Opening:

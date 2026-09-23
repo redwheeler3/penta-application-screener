@@ -1,36 +1,23 @@
 from datetime import UTC, date, datetime
 
-from sqlalchemy import create_engine, event, select
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy import select
 
 from app.db.models import (
     ApplicantDraft,
     ApplicantDraftIntent,
     Application,
     ApplicationAIResult,
-    Base,
     Feedback,
     RetentionDeletion,
     User,
     UserRole,
 )
 from app.services.retention_purge import purge_due_applicant_data
+from tests.db_support import memory_session
 
 
 def _db():
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-
-    @event.listens_for(engine, "connect")
-    def enable_foreign_keys(dbapi_connection, _connection_record) -> None:
-        dbapi_connection.execute("PRAGMA foreign_keys=ON")
-
-    Base.metadata.create_all(engine)
-    return sessionmaker(bind=engine, autoflush=False, autocommit=False)()
+    return memory_session(foreign_keys=True)
 
 
 def _due_application(db) -> Application:

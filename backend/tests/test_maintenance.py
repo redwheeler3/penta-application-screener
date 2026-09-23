@@ -2,24 +2,17 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy import select
 
-from app.db.models import Base, DailyMaintenanceRun
+from app.db.models import DailyMaintenanceRun
 from app.main import create_app
 from app.services.email_sender import CapturedEmailSender
 from app.services.maintenance import run_due_maintenance_with
+from tests.db_support import memory_session
 
 
 def _db():
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-    return sessionmaker(bind=engine, autoflush=False, autocommit=False)()
+    return memory_session()
 
 
 def test_maintenance_claims_once_per_pacific_day() -> None:
