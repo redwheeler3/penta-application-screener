@@ -156,6 +156,14 @@
   margin-bottom: 1.25rem;
 }
 
+.dimension-scores .detail-section-heading {
+  margin: 1rem 0 0.75rem;
+}
+
+.dimension-scores .detail-content-heading {
+  margin: 0;
+}
+
 .detail-section-scroll-link {
   padding: 0.35rem 0.55rem;
   font-size: 0.78rem;

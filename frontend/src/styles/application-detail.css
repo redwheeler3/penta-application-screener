@@ -187,12 +187,16 @@
   font-size: 0.95rem;
 }
 
-.app-detail-fields h5 {
+h4.detail-content-heading,
+h5.detail-content-heading {
   font-size: 0.85rem;
-  margin: 1rem 0 0.5rem;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+.app-detail-fields .detail-content-heading {
+  margin: 1rem 0 0.5rem;
 }
 
 .app-detail-field-group {

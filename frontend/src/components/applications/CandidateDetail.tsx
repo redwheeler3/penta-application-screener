@@ -262,19 +262,8 @@ export function CandidateDetail(props: {
             </button>
           ) : null}
         </div>
-        {hasEssayResponses ? (
-          <div className="app-detail-essays">
-            <h5>Essay responses</h5>
-            {app.essays.map((essay) => (
-              <div key={essay.question} className="essay-block">
-                <h6>{essay.label}</h6>
-                {essay.answer ? <p>{essay.answer}</p> : <p className="essay-empty">No response provided.</p>}
-              </div>
-            ))}
-          </div>
-        ) : null}
         <div className="app-detail-fields">
-          <h5>Applicant data</h5>
+          <h5 className="detail-content-heading">Applicant data</h5>
           {detailSections.map((section) => (
             <section
               key={section.title}
@@ -301,11 +290,22 @@ export function CandidateDetail(props: {
             </section>
           ))}
         </div>
+        {hasEssayResponses ? (
+          <div className="app-detail-essays">
+            <h5 className="detail-content-heading">Essay responses</h5>
+            {app.essays.map((essay) => (
+              <div key={essay.question} className="essay-block">
+                <h6>{essay.label}</h6>
+                {essay.answer ? <p>{essay.answer}</p> : <p className="essay-empty">No response provided.</p>}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </section>
       {app.dimensionScores && app.dimensionScores.length > 0 ? (
         <section ref={aiScoringRef} className="dimension-scores" tabIndex={-1}>
           <div className="detail-section-heading">
-            <h4>AI scoring</h4>
+            <h4 className="detail-content-heading">AI scoring</h4>
           </div>
           <ul>
             {app.dimensionScores.map((s) => {
