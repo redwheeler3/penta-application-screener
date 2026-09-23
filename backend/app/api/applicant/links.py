@@ -1,4 +1,4 @@
-"""Applicant-owned pending drafts, identity links, and published applications."""
+"""Applicant access-link inspection, exchange, conflict resolution, and renewal."""
 
 from datetime import UTC, datetime
 

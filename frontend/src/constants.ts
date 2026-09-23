@@ -121,7 +121,7 @@ export const ELIGIBILITY_NUMERIC_FIELDS = [
 
 // The five AI passes in PIPELINE order — screening first, then the Rank chain (decompose →
 // match → score → consolidate). Single source of truth for the eval subtab order
-// (AIQualityView) and the judge's per-pass case grouping (RunnableEval), so the two render
+// (AIWorkspaceView) and the judge's per-pass case grouping (RunnableEval), so the two render
 // the way the app runs and can't drift out of order.
 export const AI_PASS_PIPELINE_ORDER = [
   "screening",

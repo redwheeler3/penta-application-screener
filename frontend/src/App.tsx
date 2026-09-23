@@ -36,8 +36,8 @@ import { useDashboard } from "./hooks/useDashboard";
 import { useNavigation } from "./hooks/useNavigation";
 import { useAiRuns } from "./hooks/useAiRuns";
 
-const AIQualityView = lazy(() =>
-  import("./components/observability/AIQualityView").then((module) => ({ default: module.AIQualityView })),
+const AIWorkspaceView = lazy(() =>
+  import("./components/ai/AIWorkspaceView").then((module) => ({ default: module.AIWorkspaceView })),
 );
 
 const aiQualityLoading = (
@@ -635,7 +635,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
               </div>
             ) : activeTab === "observability" || activeTab === "evals" ? (
               <Suspense fallback={aiQualityLoading}>
-                <AIQualityView
+                <AIWorkspaceView
                   family={activeTab === "observability" ? "obs" : "eval"}
                   run={rankingRun}
                   openingId={selectedOpeningId}

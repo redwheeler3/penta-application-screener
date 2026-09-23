@@ -1,4 +1,4 @@
-"""Applicant-owned pending drafts, identity links, and published applications."""
+"""Authenticated applicant reads, edits, submission, email change, and withdrawal."""
 
 from datetime import UTC, datetime
 

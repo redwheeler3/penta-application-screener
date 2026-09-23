@@ -2,15 +2,15 @@ import { type ReactNode, useEffect, useState } from "react";
 import { fetchEvalCatalog } from "../../api/evals";
 import { AI_PASS_PIPELINE_ORDER } from "../../constants";
 import type { CurrentRunResponse, EvalDescriptor } from "../../types";
-import { ConsolidateAuditPanel } from "./ConsolidateAuditPanel";
-import { CostPanel } from "./CostPanel";
-import { DecomposeAuditPanel } from "./DecomposeAuditPanel";
-import { DiscoveryPanel } from "./DiscoveryPanel";
 import { InvariantsEval } from "../evals/InvariantsEval";
 import { JudgeBackgrounds } from "../evals/JudgeBackgrounds";
 import { RunnableEval, type RunMode } from "../evals/RunnableEval";
-import { MatchAuditPanel } from "./MatchAuditPanel";
-import { MetricsPanel } from "./MetricsPanel";
+import { ConsolidateAuditPanel } from "../observability/ConsolidateAuditPanel";
+import { CostPanel } from "../observability/CostPanel";
+import { DecomposeAuditPanel } from "../observability/DecomposeAuditPanel";
+import { DiscoveryPanel } from "../observability/DiscoveryPanel";
+import { MatchAuditPanel } from "../observability/MatchAuditPanel";
+import { MetricsPanel } from "../observability/MetricsPanel";
 
 // The developer/operator surface for inspecting + judging the AI (not committee-facing),
 // split into two top-level tabs by PURPOSE (App.tsx passes `family`):
@@ -21,14 +21,14 @@ import { MetricsPanel } from "./MetricsPanel";
 // consolidate), so both tabs read left-to-right along the process. Eval subtabs drop the
 // "Live" prefix — the tab is already "Evals", so the pass name alone reads clean.
 
-export type AIQualityFamily = "obs" | "eval";
+export type AIWorkspaceFamily = "obs" | "eval";
 
 type Tab =
   | "discovery" | "decompose" | "match" | "consolidate" | "cost" | "metrics"
   | "invariants" | "scoring" | "consolidation" | "matching" | "decomposition" | "screening" | "judge";
 
-export function AIQualityView(props: {
-  family: AIQualityFamily;
+export function AIWorkspaceView(props: {
+  family: AIWorkspaceFamily;
   run: CurrentRunResponse | null;
   openingId: number | null;
   // Save outcomes (golden case, judge brief) surface as the app's standard toasts, same as

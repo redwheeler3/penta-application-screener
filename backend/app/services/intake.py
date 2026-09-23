@@ -1,4 +1,4 @@
-"""Pure intake-copy operations shared by the future applicant API and retention jobs."""
+"""Pure intake-copy operations shared by the applicant API and retention jobs."""
 
 import hashlib
 import json
