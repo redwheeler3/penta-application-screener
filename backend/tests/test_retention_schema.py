@@ -15,6 +15,7 @@ APPLICATION_OWNED_FOREIGN_KEYS = {
     ("email_deliveries", "applicant_draft_id", "applicant_drafts"),
     ("member_eligibility", "application_id", "applications"),
     ("application_notes", "application_id", "applications"),
+    ("application_committee_notes", "application_id", "applications"),
     ("application_stars", "application_id", "applications"),
     ("application_shortlist", "application_id", "applications"),
     ("application_ai_results", "application_id", "applications"),

@@ -1158,7 +1158,8 @@ Each of the ~5 committee members screens independently — their own eligibility
 | Eligibility **rules** (income/age/children/pet thresholds, `disabled_checks`) | **per-opening, per-member** | each opening owns a committee default; a member's row is copy-on-write for that opening |
 | Eligibility **overrides** (per applicant) | **per-opening, per-member** | |
 | Tier placement + ranking + new/revived/requested badges | **per-opening, per-member** | weights stay **derived** from tiers, so per-member re-weighting is free math |
-| Notes | application-wide, per-member | personal context follows the applicant across openings |
+| Private notes | application-wide, per-member | personal context follows the applicant across openings |
+| Committee notes | application-wide, shared by members | attributed entries follow the applicant across openings |
 | AI model/cap settings | shared | infra config, not judgment — split out of the eligibility-rules blob |
 
 **Union eligible pool.** Within the selected opening, an applicant is in the **committee-eligible union** if they pass *any* member's effective screen (that member's rules *or* an explicit override) — a derived predicate over the per-member views, not new stored state. Discovery and scoring operate on this union floor; applicants whom no member passes are never scored — preserving "don't score applicants who won't clear the screen." A member's ranked list is the opening's shared analysis **filtered to their eligible view and weighted by their tiers** — pure math, instant, free.
@@ -1171,8 +1172,11 @@ Each of the ~5 committee members screens independently — their own eligibility
 
 **Out of scope:** merged ranking, disagreement flags, criteria comparison, and visibility into
 another member's private ranking or favourites. The Shared shortlist is a single explicit
-committee working set, not a merge or exposure of those private views. Notes remain private to their
-author, out of AI inputs and reports, on the author's printed candidate detail only.
+committee working set, not a merge or exposure of those private views. Private notes remain visible
+only to their author. Committee notes are a separate attributed stream visible to all members; only
+the author may edit or delete an entry. Neither kind of note enters AI inputs or applicant-facing
+responses. Candidate-detail printing includes the current member's private note and the attributed
+committee notes.
 
 The per-member-pool/shared-content-cache decision is recorded in
 [ADR 0011](docs/adr/0011-per-member-eligible-pool-shared-content-cache.md).
@@ -1613,7 +1617,7 @@ administrator audit. Opening rows themselves do not need a new purge policy.
   `(opening, application, member)` because the same household may legitimately be eligible for one
   opening and ineligible for another.
 - Shared shortlist membership is keyed by `(opening, application)`. The shortlist in opening A has no
-  effect on opening B. Private favourites and private notes remain application-wide personal context.
+  effect on opening B. Private favourites, private notes, and committee notes remain application-wide.
 - Application list status, source, facets, details, and stale-override indicators are resolved in the
   selected opening context.
 
@@ -1683,8 +1687,8 @@ committee workflow.
    navigation.
 3. Opening committee defaults, per-member rules, and opening-specific overrides with production-safe
    backfill.
-4. Opening-specific Shared shortlist migration and UI; application-wide favourites and notes remain
-   unchanged.
+4. Opening-specific Shared shortlist migration and UI; application-wide favourites and private notes
+   remain unchanged. Committee notes later add an explicitly shared application-wide stream.
 5. Screen scope, coverage, estimates, currentness, and cost attribution by opening while retaining
    cross-opening cache reuse.
 6. Analysis/MemberRanking currentness, Rank chain, score-current, audit routes, and print output by

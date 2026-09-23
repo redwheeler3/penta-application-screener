@@ -273,21 +273,31 @@
 
 .application-openings {
   display: flex;
+  min-height: 22px;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
   margin: 0;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.8rem;
+  line-height: 1;
 }
 
 .application-openings strong {
-  padding: 0.2rem 0.45rem;
+  display: inline-flex;
+  box-sizing: border-box;
+  min-height: 22px;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: #f8fafc;
   color: var(--ink);
-  font-weight: 600;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .detail-section-heading h4 {

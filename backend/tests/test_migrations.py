@@ -397,6 +397,7 @@ def test_fresh_schema_keeps_timestamp_defaults_on_opening_scoped_tables(
                 "member_rules",
                 "member_eligibility",
                 "application_shortlist",
+                "application_committee_notes",
             ):
                 columns = {
                     row[1]: row[4]

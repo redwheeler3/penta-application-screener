@@ -356,6 +356,47 @@ export function App(props: { authRedirect: AuthRedirect }) {
     return true;
   }
 
+  async function applyCommitteeNoteResponse(
+    response: Response,
+    failureMessage: string,
+  ): Promise<boolean> {
+    if (!response.ok) {
+      showError(failureMessage);
+      return false;
+    }
+    const payload: { application: ApplicationDetail } = await response.json();
+    setSelectedApp(payload.application);
+    return true;
+  }
+
+  async function addCommitteeNote(id: number, body: string): Promise<boolean> {
+    if (selectedOpeningId === null) return false;
+    return applyCommitteeNoteResponse(
+      await api.addCommitteeNote(id, selectedOpeningId, body),
+      "Could not add the committee note.",
+    );
+  }
+
+  async function updateCommitteeNote(
+    id: number,
+    noteId: number,
+    body: string,
+  ): Promise<boolean> {
+    if (selectedOpeningId === null) return false;
+    return applyCommitteeNoteResponse(
+      await api.updateCommitteeNote(id, selectedOpeningId, noteId, body),
+      "Could not update the committee note.",
+    );
+  }
+
+  async function deleteCommitteeNote(id: number, noteId: number): Promise<boolean> {
+    if (selectedOpeningId === null) return false;
+    return applyCommitteeNoteResponse(
+      await api.deleteCommitteeNote(id, selectedOpeningId, noteId),
+      "Could not delete the committee note.",
+    );
+  }
+
   // Toggle the current member's private star on an applicant. Invokable from the
   // list, the ranking, or the detail header, so refresh whichever surfaces are live:
   // the detail from the response, and the list/ranking if they hold star state.
@@ -496,6 +537,9 @@ export function App(props: { authRedirect: AuthRedirect }) {
                 onOverrideStatus={overrideStatus}
                 onClearOverride={clearStatusOverride}
                 onSavePrivateNote={savePrivateNote}
+                onAddCommitteeNote={addCommitteeNote}
+                onUpdateCommitteeNote={updateCommitteeNote}
+                onDeleteCommitteeNote={deleteCommitteeNote}
                 onToggleStar={toggleStar}
                 onToggleShortlist={toggleShortlist}
                 readOnly={selectedApplicationReadOnly}

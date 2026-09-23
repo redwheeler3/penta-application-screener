@@ -803,26 +803,41 @@
 
   /* Disabled controls normally print in pale gray. The pressed segment is the
      applicant's recorded decision, so give it an ink-safe selected treatment. */
-  .status-panel .segment {
+  .identity-decision-panel .segment {
     color: #111 !important;
     opacity: 1 !important;
   }
-  .status-panel .segment[aria-pressed="true"] {
+  .identity-decision-panel .segment[aria-pressed="true"] {
     outline: 2px solid #111;
     outline-offset: -2px;
     font-weight: 700;
   }
-  .status-panel .segment[aria-pressed="true"]::after {
+  .identity-decision-panel .segment[aria-pressed="true"]::after {
     content: " ✓";
   }
-  .private-note-panel textarea {
-    display: none;
-  }
-  .private-note-print {
+  .notes-print {
     display: block;
-    min-height: 2.8rem;
     font-size: 0.85rem;
     line-height: 1.4;
+  }
+  .notes-print section + section {
+    margin-top: 0.8rem;
+  }
+  .notes-print h5 {
+    margin: 0 0 0.35rem;
+    font-size: 0.86rem;
+  }
+  .notes-print article {
+    break-inside: avoid;
+    margin-bottom: 0.55rem;
+  }
+  .notes-print article span {
+    margin-left: 0.4rem;
+    color: #555;
+    font-size: 0.75rem;
+  }
+  .notes-print p {
+    margin: 0;
     white-space: pre-wrap;
   }
 

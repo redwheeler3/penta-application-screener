@@ -135,7 +135,9 @@ whether each AI stage is current for that opening. Coverage is content-addressed
 changes its content hash and makes only affected results stale. Rules, eligibility decisions,
 Shared shortlist membership, analyses, tiers, workflow state, and AI cost attribution all use the
 same selected opening. Private favourites and notes remain application-wide, while canonical
-dimension history and matching caches remain shared so equivalent work can be reused.
+dimension history and matching caches remain shared so equivalent work can be reused. Attributed
+committee notes are also application-wide and shared with every committee member; neither private
+nor committee notes enter AI inputs.
 
 The frontend holds the few-hundred-row committee list in memory and derives search, sorting,
 facets, favourites, and opening filters locally. Server reads remain the source of truth after
@@ -205,7 +207,8 @@ The central tables are:
 - `analyses`, `analysis_audits`, dimension definitions, and scores: opening-specific Rank runs over
   shared canonical dimension history and content-addressed scores;
 - opening committee defaults, per-opening member rules and eligibility overrides, opening-specific
-  Shared shortlist membership, application-wide notes and stars, allowlist, feedback, and settings.
+  Shared shortlist membership, application-wide private and committee notes, stars, allowlist,
+  feedback, and settings.
 
 SQLAlchemy models live in `backend/app/db/models.py`. Alembic migrations are the only supported
 way to change an existing database. Additive migrations apply in place; never delete the local

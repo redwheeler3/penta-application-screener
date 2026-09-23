@@ -7,9 +7,10 @@ free-form dicts — their keys are raw form-field names (data like
 ``household_income``), not schema field names, so they pass through untouched.
 """
 
+from datetime import datetime
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from app.schemas.base import RequestModel, ResponseModel
 from app.schemas.openings import OpeningDetailsOut
@@ -141,8 +142,32 @@ class ApplicationDetail(ApplicationSummary):
     dimension_scores: list[DimensionContributionOut] | None = None
     dimension_scoring_trace: DimensionScoringTraceOut | None = None
     # The current reviewer's private note. It is intentionally not part of the
-    # application, source row, AI input, or any shared report.
+    # application, source row, AI input, or another member's view.
     private_note: str = ""
+    # Attributed application-wide notes shared by committee members. Human context
+    # only: excluded from AI inputs and applicant-facing responses.
+    committee_notes: list["CommitteeNoteOut"] = []
+
+
+class CommitteeNoteOut(ResponseModel):
+    id: int
+    author_name: str
+    body: str
+    created_at: datetime
+    updated_at: datetime
+    editable_by_me: bool
+
+
+class CommitteeNoteWrite(RequestModel):
+    body: str = Field(min_length=1, max_length=10_000)
+
+    @field_validator("body")
+    @classmethod
+    def body_must_contain_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Committee note cannot be blank.")
+        return stripped
 
 
 class PrivateNoteUpdate(RequestModel):

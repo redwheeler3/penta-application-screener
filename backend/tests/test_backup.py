@@ -90,6 +90,12 @@ def test_restore_does_not_resurrect_a_retention_deletion(temp_engine):
         )
         conn.execute(
             text(
+                "CREATE TABLE application_committee_notes (id INTEGER PRIMARY KEY, "
+                "application_id INTEGER NOT NULL)"
+            )
+        )
+        conn.execute(
+            text(
                 "CREATE TABLE retention_deletions (id INTEGER PRIMARY KEY, "
                 "record_kind VARCHAR(30) NOT NULL, record_id INTEGER NOT NULL, "
                 "retention_rule VARCHAR(50) NOT NULL, due_on DATE NOT NULL, "
@@ -100,10 +106,16 @@ def test_restore_does_not_resurrect_a_retention_deletion(temp_engine):
         conn.execute(
             text("INSERT INTO application_notes (application_id) VALUES (42)")
         )
+        conn.execute(
+            text("INSERT INTO application_committee_notes (application_id) VALUES (42)")
+        )
     before_deletion = backup.create_backup(engine=temp_engine, tag="before-deletion")
 
     with temp_engine.begin() as conn:
         conn.execute(text("DELETE FROM application_notes WHERE application_id = 42"))
+        conn.execute(
+            text("DELETE FROM application_committee_notes WHERE application_id = 42")
+        )
         conn.execute(text("DELETE FROM applications WHERE id = 42"))
         conn.execute(
             text(
@@ -121,6 +133,10 @@ def test_restore_does_not_resurrect_a_retention_deletion(temp_engine):
     with restored.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM applications")).scalar() == 0
         assert conn.execute(text("SELECT count(*) FROM application_notes")).scalar() == 0
+        assert (
+            conn.execute(text("SELECT count(*) FROM application_committee_notes")).scalar()
+            == 0
+        )
         assert conn.execute(text("SELECT count(*) FROM retention_deletions")).scalar() == 1
 
 def test_sqlite_path_rejects_in_memory(tmp_path):

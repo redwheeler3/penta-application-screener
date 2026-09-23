@@ -109,6 +109,15 @@ export type AIResultTrace = {
   costUsd: number;
 };
 
+export type CommitteeNote = {
+  id: number;
+  authorName: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  editableByMe: boolean;
+};
+
 export type DimensionScoringTrace = {
   dimensionCount: number;
   models: Array<{
@@ -149,4 +158,6 @@ export type ApplicationDetail = ApplicationSummary & {
   dimensionScoringTrace?: DimensionScoringTrace | null;
   // Private to the signed-in committee member; never included in AI inputs.
   privateNote: string;
+  // Attributed human notes visible to every committee member; never included in AI inputs.
+  committeeNotes: CommitteeNote[];
 };

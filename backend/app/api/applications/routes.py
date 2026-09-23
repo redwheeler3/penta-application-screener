@@ -14,6 +14,7 @@ from app.core.problems import Problem
 from app.core.time import as_utc
 from app.db.models import (
     Application,
+    ApplicationCommitteeNote,
     ApplicationNote,
     ApplicationParticipation,
     ApplicationShortlist,
@@ -27,6 +28,7 @@ from app.db.session import get_db
 from app.schemas.applications import (
     ApplicationEnvelope,
     ApplicationListResponse,
+    CommitteeNoteWrite,
     PrivateNoteUpdate,
 )
 from app.schemas.base import RequestModel
@@ -309,6 +311,100 @@ def save_private_note(
         note.note = body.note
     db.commit()
 
+    return ApplicationEnvelope(
+        application=serialize_detail(application, db, user, opening_id)
+    )
+
+
+def _committee_note_or_404(
+    db: Session, application_id: int, note_id: int
+) -> ApplicationCommitteeNote:
+    note = db.scalar(
+        select(ApplicationCommitteeNote).where(
+            ApplicationCommitteeNote.id == note_id,
+            ApplicationCommitteeNote.application_id == application_id,
+        )
+    )
+    if note is None:
+        raise Problem("not_found", detail="Committee note not found.")
+    return note
+
+
+def _require_committee_note_author(
+    note: ApplicationCommitteeNote, user: User
+) -> None:
+    if note.author_user_id != user.id:
+        raise Problem(
+            "forbidden",
+            title="Cannot change this committee note",
+            detail="Only the member who added this note can change it.",
+        )
+
+
+@router.post("/{application_id}/committee-notes", response_model=ApplicationEnvelope)
+def add_committee_note(
+    application_id: int,
+    body: CommitteeNoteWrite,
+    opening_id: int | None = None,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> ApplicationEnvelope:
+    """Add one attributed application-wide note visible to the committee."""
+    opening_id = resolve_visible_opening_id(db, opening_id)
+    application = _get_mutable_application_or_404(db, opening_id, application_id)
+    db.add(
+        ApplicationCommitteeNote(
+            application_id=application_id,
+            author_user_id=user.id,
+            body=body.body,
+        )
+    )
+    db.commit()
+    return ApplicationEnvelope(
+        application=serialize_detail(application, db, user, opening_id)
+    )
+
+
+@router.patch(
+    "/{application_id}/committee-notes/{note_id}",
+    response_model=ApplicationEnvelope,
+)
+def update_committee_note(
+    application_id: int,
+    note_id: int,
+    body: CommitteeNoteWrite,
+    opening_id: int | None = None,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> ApplicationEnvelope:
+    opening_id = resolve_visible_opening_id(db, opening_id)
+    application = _get_mutable_application_or_404(db, opening_id, application_id)
+    note = _committee_note_or_404(db, application_id, note_id)
+    _require_committee_note_author(note, user)
+    note.body = body.body
+    db.commit()
+    return ApplicationEnvelope(
+        application=serialize_detail(application, db, user, opening_id)
+    )
+
+
+@router.delete(
+    "/{application_id}/committee-notes/{note_id}",
+    response_model=ApplicationEnvelope,
+)
+def delete_committee_note(
+    application_id: int,
+    note_id: int,
+    opening_id: int | None = None,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> ApplicationEnvelope:
+    opening_id = resolve_visible_opening_id(db, opening_id)
+    application = _get_mutable_application_or_404(db, opening_id, application_id)
+    note = _committee_note_or_404(db, application_id, note_id)
+    _require_committee_note_author(note, user)
+    db.delete(note)
+    db.commit()
     return ApplicationEnvelope(
         application=serialize_detail(application, db, user, opening_id)
     )

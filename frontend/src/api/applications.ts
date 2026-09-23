@@ -42,6 +42,37 @@ export function savePrivateNote(id: number, openingId: number, note: string): Pr
   });
 }
 
+export function addCommitteeNote(id: number, openingId: number, body: string): Promise<Response> {
+  return request(`/applications/${id}/committee-notes?opening_id=${openingId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+}
+
+export function updateCommitteeNote(
+  id: number,
+  openingId: number,
+  noteId: number,
+  body: string,
+): Promise<Response> {
+  return request(`/applications/${id}/committee-notes/${noteId}?opening_id=${openingId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+}
+
+export function deleteCommitteeNote(
+  id: number,
+  openingId: number,
+  noteId: number,
+): Promise<Response> {
+  return request(`/applications/${id}/committee-notes/${noteId}?opening_id=${openingId}`, {
+    method: "DELETE",
+  });
+}
+
 // Toggle the current member's star on an applicant. PUT adds, DELETE removes —
 // the row's existence is the state, so both are idempotent.
 export function setStar(id: number, openingId: number, starred: boolean): Promise<Response> {

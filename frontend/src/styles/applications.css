@@ -440,11 +440,16 @@
 
 /* Status badges */
 .status-badge {
-  display: inline-block;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.72rem;
-  font-weight: 600;
+  display: inline-flex;
+  box-sizing: border-box;
+  min-height: 22px;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
@@ -452,26 +457,33 @@
 .status-eligible {
   background: var(--success-bg);
   color: var(--success-text);
+  border-color: #bbf7d0;
 }
 
 .status-ineligible {
   background: #fee2e2;
   color: var(--danger-text);
+  border-color: #fecaca;
 }
 
 .status-selected {
   background: var(--penta-green-soft);
   color: var(--penta-green-dark);
+  border-color: #bbf7d0;
 }
 
 /* "Decided by" source badges — secondary info, lighter than status badges */
 .source-badge {
-  display: inline-block;
-  padding: 0.15rem 0.45rem;
+  display: inline-flex;
+  box-sizing: border-box;
+  min-height: 22px;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
   border-radius: 999px;
   border: 1px solid transparent;
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   font-weight: 700;
+  line-height: 1;
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
@@ -505,24 +517,6 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-}
-
-/* Status panel (candidate detail): source line, staleness, human override */
-.detail-review-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-  margin: 0 0 1.25rem;
-}
-
-.status-panel {
-  display: grid;
-  gap: 0.5rem;
-  margin: 0;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
 }
 
 .status-source-line {
@@ -604,51 +598,304 @@
   color: var(--muted);
 }
 
-/* Reviewer-owned context stays beside the decision controls, but is visually and
-   semantically separate from shared application data and AI findings. */
-.private-note-panel {
-  margin: 0;
+/* Private and committee notes share one compact workspace. Visibility stays explicit
+   inside each tab so equal visual weight never blurs who can read what. */
+.notes-panel {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.28fr) minmax(0, 1fr);
+  min-width: 0;
+  gap: 1rem;
+  margin: 0 0 1.25rem;
   padding: 0.75rem 1rem;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
 }
 
-.private-note-heading {
+.notes-heading {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: stretch;
+  flex-direction: column;
+  justify-content: flex-start;
   gap: 0.75rem;
-  margin-bottom: 0.5rem;
+  margin: 0;
+  padding-right: 1rem;
+  border-right: 1px solid var(--line);
 }
 
-.private-note-heading h4 {
+.notes-heading h4 {
   margin: 0;
   font-size: 0.9rem;
 }
 
-.private-note-panel p {
-  margin: 0;
+.notes-tabs {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--page);
+}
+
+.notes-tab {
+  flex: 1 1 auto;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.notes-tab {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.65rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
   color: var(--muted);
   font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 
-.private-note-panel textarea {
+.notes-tab:hover {
+  color: var(--ink);
+}
+
+.notes-tab[aria-selected="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.notes-tab:focus-visible {
+  outline: 2px solid var(--penta-green);
+  outline-offset: 1px;
+}
+
+.notes-count {
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--penta-green-soft);
+  color: var(--penta-green-dark);
+  font-size: 0.68rem;
+}
+
+.notes-tab-panel {
+  min-width: 0;
+}
+
+.notes-visibility {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 18px;
+  margin: 0 0 0.45rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.notes-panel textarea {
   box-sizing: border-box;
   width: 100%;
-  margin-bottom: 0.35rem;
+  min-height: 58px;
+  margin: 0;
   overflow-y: hidden;
   resize: none;
+  line-height: 1.4;
 }
 
-.private-note-print {
+.notes-save-status {
+  min-height: 1rem;
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+.notes-save-status.is-error,
+.committee-note-error {
+  color: var(--danger-text);
+}
+
+.committee-notes-list {
+  display: grid;
+  max-height: 142px;
+  gap: 0.45rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.committee-notes-empty {
+  margin: 0.25rem 0 0.6rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.committee-note {
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--page);
+}
+
+.committee-note-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.72rem;
+}
+
+.committee-note-meta strong {
+  color: var(--ink);
+  font-size: 0.76rem;
+}
+
+.committee-note-meta span {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.committee-note-meta-trailing {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.committee-note-body,
+.notes-read-only-body {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.notes-read-only-body {
+  min-height: 58px;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--muted);
+}
+
+.committee-note-actions,
+.committee-note-confirm,
+.committee-note-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+.committee-note-meta .committee-note-actions {
+  margin-top: 0;
+}
+
+.committee-note-actions button,
+.committee-note-confirm button,
+.committee-note-form-actions button {
+  padding: 0.18rem 0.35rem;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.committee-note-actions button:hover,
+.committee-note-confirm button:hover,
+.committee-note-form-actions button:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.committee-note-confirm span {
+  margin-right: auto;
+  color: var(--danger-text);
+  font-size: 0.72rem;
+}
+
+.committee-note-confirm button.is-danger {
+  color: var(--danger-text);
+}
+
+.committee-note-form-actions button.is-primary {
+  background: var(--penta-green);
+  color: #fff;
+}
+
+.committee-note-form-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.committee-note-composer {
+  margin-top: 0.55rem;
+}
+
+.add-committee-note {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0;
+  padding: 0 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--penta-green-dark);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notes-heading .add-committee-note {
+  align-self: flex-start;
+}
+
+.add-committee-note:hover {
+  border-color: var(--penta-green);
+  background: var(--penta-green-soft);
+}
+
+.committee-note-error {
+  margin: 0;
+  padding-top: 0.35rem;
+  font-size: 0.75rem;
+}
+
+.notes-print {
   display: none;
 }
 
 @media (max-width: 720px) {
-  .detail-review-row {
+  .notes-panel {
     grid-template-columns: 1fr;
   }
+
+  .notes-heading {
+    padding: 0 0 0.65rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .notes-tabs {
+    width: 100%;
+  }
+
 }
 
 @media (max-width: 1040px) {

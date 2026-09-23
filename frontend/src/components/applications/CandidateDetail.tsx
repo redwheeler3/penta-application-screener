@@ -1,5 +1,5 @@
 import { ArrowDown, ChevronLeft, Printer } from "lucide-react";
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import { REASON_FIELDS, SOURCE_DESCRIPTIONS, SOURCE_LABELS, STATUS_LABELS } from "../../constants";
 import {
@@ -18,10 +18,9 @@ import type {
   DimensionScoringTrace,
 } from "../../types";
 import { buildDetailSections, type DetailField } from "./applicationDetailSections";
+import { CandidateNotes } from "./CandidateNotes";
 import { StarButton } from "./StarButton";
 import { SharedShortlistButton } from "./SharedShortlistButton";
-
-const MAX_PRIVATE_NOTE_HEIGHT_PX = 192;
 
 // Render a field's value, rendering it as a new-tab link when the field is marked isLink and
 // the value is an http(s) URL. Anything else (blank, or a non-URL answer someone typed instead
@@ -46,74 +45,15 @@ export function CandidateDetail(props: {
   onOverrideStatus: (id: number, status: AppStatus) => void;
   onClearOverride: (id: number) => void;
   onSavePrivateNote: (id: number, note: string) => Promise<boolean>;
+  onAddCommitteeNote: (id: number, body: string) => Promise<boolean>;
+  onUpdateCommitteeNote: (id: number, noteId: number, body: string) => Promise<boolean>;
+  onDeleteCommitteeNote: (id: number, noteId: number) => Promise<boolean>;
   onToggleStar: (id: number, starred: boolean) => void;
   onToggleShortlist: (id: number, shortlisted: boolean) => void;
   readOnly?: boolean;
 }): ReactNode {
   const { app } = props;
-  const [privateNote, setPrivateNote] = useState(app.privateNote);
-  const [noteStatus, setNoteStatus] = useState<"saved" | "saving" | "error">("saved");
-  const privateNoteRef = useRef<HTMLTextAreaElement>(null);
   const aiScoringRef = useRef<HTMLElement>(null);
-  const pendingNoteSave = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const noteRevision = useRef(0);
-  const savedNote = useRef(app.privateNote);
-
-  useEffect(() => {
-    if (pendingNoteSave.current !== null) clearTimeout(pendingNoteSave.current);
-    noteRevision.current += 1;
-    savedNote.current = app.privateNote;
-    setPrivateNote(app.privateNote);
-    setNoteStatus("saved");
-  }, [app.id]);
-
-  useEffect(
-    () => () => {
-      if (pendingNoteSave.current !== null) clearTimeout(pendingNoteSave.current);
-    },
-    [],
-  );
-
-  useLayoutEffect(() => {
-    const textarea = privateNoteRef.current;
-    if (!textarea) return;
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, MAX_PRIVATE_NOTE_HEIGHT_PX)}px`;
-    textarea.style.overflowY = textarea.scrollHeight > MAX_PRIVATE_NOTE_HEIGHT_PX ? "auto" : "hidden";
-  }, [privateNote]);
-
-  function persistPrivateNote(note: string, revision: number) {
-    if (note === savedNote.current) {
-      if (revision === noteRevision.current) setNoteStatus("saved");
-      return;
-    }
-    setNoteStatus("saving");
-    props.onSavePrivateNote(app.id, note).then((saved) => {
-      if (revision !== noteRevision.current) return;
-      if (saved) {
-        savedNote.current = note;
-        setNoteStatus("saved");
-      } else {
-        setNoteStatus("error");
-      }
-    });
-  }
-
-  function updatePrivateNote(note: string) {
-    setPrivateNote(note);
-    const revision = (noteRevision.current += 1);
-    if (pendingNoteSave.current !== null) clearTimeout(pendingNoteSave.current);
-    setNoteStatus("saving");
-    pendingNoteSave.current = setTimeout(() => persistPrivateNote(note, revision), 600);
-  }
-
-  function flushPrivateNote() {
-    if (pendingNoteSave.current !== null) {
-      clearTimeout(pendingNoteSave.current);
-      pendingNoteSave.current = null;
-    }
-    persistPrivateNote(privateNote, noteRevision.current);
-  }
 
   const flaggedFields = new Set(
     app.hardFilterReasons.flatMap((reason) => REASON_FIELDS[reason.code] ?? []),
@@ -177,87 +117,94 @@ export function CandidateDetail(props: {
               <span className={`source-badge source-${app.statusSource}`}>{SOURCE_LABELS[app.statusSource]}</span>
             ) : null}
           </div>
-          {app.coApplicantName ? <p className="co-applicant-line">Co-applicant: {app.coApplicantName}</p> : null}
-          <div className="application-openings" aria-label="Applied openings">
-            <span>Applied for</span>
-            {app.openingIds.length ? (
-              app.openingIds.map((openingId) => {
-                const opening = props.openings.find((candidate) => candidate.id === openingId);
-                return opening ? <strong key={opening.id}>{openingLabel(opening)}</strong> : null;
-              })
-            ) : (
-              <strong>No current opening</strong>
-            )}
+          <div className="app-detail-context">
+            {app.coApplicantName ? <p className="co-applicant-line">Co-applicant: {app.coApplicantName}</p> : null}
+            <div className="application-openings" aria-label="Applied openings">
+              <span>Applied for:</span>
+              {app.openingIds.length ? (
+                app.openingIds.map((openingId) => {
+                  const opening = props.openings.find((candidate) => candidate.id === openingId);
+                  return opening ? <strong key={opening.id}>{openingLabel(opening)}</strong> : null;
+                })
+              ) : (
+                <strong>No current opening</strong>
+              )}
+            </div>
           </div>
         </div>
+        {!props.readOnly ? (
+          <div className="identity-decision-panel">
+            <p className="status-source-line">{SOURCE_DESCRIPTIONS[app.statusSource]}</p>
+            {app.stale ? (
+              <p className="stale-note">New AI findings since this was last reviewed — you may want to look again.</p>
+            ) : null}
+            {/* The toggle is source ownership: "Automatic" (machine-decided) vs. a
+                human-pinned status. Automatic clears the override; the helper line
+                shows the current automatic verdict. */}
+            <div className="status-decider">
+              <span className="status-decider-label">Decided by:</span>
+              <div className="segmented" role="group" aria-label="Status decided by">
+                <button
+                  type="button"
+                  className="segment"
+                  aria-pressed={!isHuman}
+                  disabled={!isHuman}
+                  onClick={() => props.onClearOverride(app.id)}
+                >
+                  Automatic
+                </button>
+                <button
+                  type="button"
+                  className="segment"
+                  aria-pressed={isHuman && app.status === "eligible"}
+                  disabled={isHuman && app.status === "eligible"}
+                  onClick={() => props.onOverrideStatus(app.id, "eligible")}
+                >
+                  Eligible
+                </button>
+                <button
+                  type="button"
+                  className="segment"
+                  aria-pressed={isHuman && app.status === "ineligible"}
+                  disabled={isHuman && app.status === "ineligible"}
+                  onClick={() => props.onOverrideStatus(app.id, "ineligible")}
+                >
+                  Ineligible
+                </button>
+              </div>
+              {isHuman ? (
+                <p className="status-decider-hint">
+                  Reviewer override. Automatic would mark this {autoLabel.toLowerCase()}.
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
 
-      {!props.readOnly ? <div className="detail-review-row">
-        <div className="status-panel">
-          <p className="status-source-line">{SOURCE_DESCRIPTIONS[app.statusSource]}</p>
-          {app.stale ? (
-            <p className="stale-note">New AI findings since this was last reviewed — you may want to look again.</p>
-          ) : null}
-          {/* The toggle is source ownership: "Automatic" (machine-decided) vs. a
-              human-pinned status. Automatic clears the override; the helper line
-              shows the current automatic verdict. */}
-          <div className="status-decider">
-            <span className="status-decider-label">Decided by:</span>
-            <div className="segmented" role="group" aria-label="Status decided by">
-              <button
-                type="button"
-                className="segment"
-                aria-pressed={!isHuman}
-                disabled={!isHuman}
-                onClick={() => props.onClearOverride(app.id)}
-              >
-                Automatic
-              </button>
-              <button
-                type="button"
-                className="segment"
-                aria-pressed={isHuman && app.status === "eligible"}
-                disabled={isHuman && app.status === "eligible"}
-                onClick={() => props.onOverrideStatus(app.id, "eligible")}
-              >
-                Eligible
-              </button>
-              <button
-                type="button"
-                className="segment"
-                aria-pressed={isHuman && app.status === "ineligible"}
-                disabled={isHuman && app.status === "ineligible"}
-                onClick={() => props.onOverrideStatus(app.id, "ineligible")}
-              >
-                Ineligible
-              </button>
-            </div>
-            {isHuman ? (
-              <p className="status-decider-hint">
-                Reviewer override. Automatic would mark this {autoLabel.toLowerCase()}.
-              </p>
-            ) : null}
-          </div>
-        </div>
-        <section className="private-note-panel">
-          <div className="private-note-heading">
-            <h4>My notes</h4>
-          </div>
-          <textarea
-            ref={privateNoteRef}
-            aria-label="Private notes"
-            value={privateNote}
-            onChange={(event) => updatePrivateNote(event.target.value)}
-            onBlur={flushPrivateNote}
-            placeholder="Add a private note about this applicant…"
-            rows={2}
-          />
-          <div className="private-note-print">{privateNote}</div>
-          {noteStatus !== "saved" ? (
-            <p>{noteStatus === "saving" ? "Saving…" : "Could not save — try again."}</p>
-          ) : null}
-        </section>
-      </div> : null}
+      {!props.readOnly ? (
+        <CandidateNotes
+          applicationId={app.id}
+          privateNote={app.privateNote}
+          committeeNotes={app.committeeNotes}
+          onSavePrivateNote={props.onSavePrivateNote}
+          onAddCommitteeNote={props.onAddCommitteeNote}
+          onUpdateCommitteeNote={props.onUpdateCommitteeNote}
+          onDeleteCommitteeNote={props.onDeleteCommitteeNote}
+        />
+      ) : null}
+      {props.readOnly && (app.privateNote || app.committeeNotes.length > 0) ? (
+        <CandidateNotes
+          applicationId={app.id}
+          privateNote={app.privateNote}
+          committeeNotes={app.committeeNotes}
+          onSavePrivateNote={props.onSavePrivateNote}
+          onAddCommitteeNote={props.onAddCommitteeNote}
+          onUpdateCommitteeNote={props.onUpdateCommitteeNote}
+          onDeleteCommitteeNote={props.onDeleteCommitteeNote}
+          readOnly
+        />
+      ) : null}
       {ruleReasons.length > 0 ? (
         <div className="filter-reasons">
           <strong>Deterministic rules</strong>

@@ -13,6 +13,7 @@ from app.api.dependencies import require_current_user
 from app.api.screening import get_ai_provider
 from app.db.models import (
     Application,
+    ApplicationCommitteeNote,
     ApplicationNote,
     ApplicationParticipation,
     ApplicationShortlist,
@@ -144,7 +145,7 @@ async def test_private_notes_are_scoped_to_the_current_member() -> None:
         db.commit()
         app.dependency_overrides[require_current_user] = lambda: other_member
 
-        # Another member sees neither the first member's note nor a shared note field.
+        # Another member cannot see the first member's private note.
         detail = (await client.get(f"/applications/{application.id}")).json()["application"]
         assert detail["privateNote"] == ""
         await client.put(f"/applications/{application.id}/note", json={"note": "Review income source."})
@@ -154,6 +155,81 @@ async def test_private_notes_are_scoped_to_the_current_member() -> None:
         assert detail["privateNote"] == "Call references."
 
     assert db.scalar(select(ApplicationNote).where(ApplicationNote.application_id == application.id)) is not None
+
+
+@pytest.mark.anyio
+async def test_committee_notes_are_shared_attributed_and_author_owned() -> None:
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    application = add_eligible(db, email="committee-note@x.com", raw_hash="h1")
+    first_member = db.scalar(select(User).where(User.email == "admin@x.com"))
+    assert first_member is not None
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        added = await client.post(
+            f"/applications/{application.id}/committee-notes",
+            json={"body": "Call references before the meeting."},
+        )
+        assert added.status_code == 200
+        first_note = added.json()["application"]["committeeNotes"][0]
+        assert first_note["authorName"] == first_member.display_name
+        assert first_note["body"] == "Call references before the meeting."
+        assert first_note["editableByMe"] is True
+        assert first_note["createdAt"].endswith("Z")
+        assert first_note["updatedAt"].endswith("Z")
+
+        other_member = User(
+            email="other@x.com",
+            display_name="",
+            role=UserRole.MEMBER,
+            is_active=True,
+        )
+        db.add(other_member)
+        db.commit()
+        app.dependency_overrides[require_current_user] = lambda: other_member
+
+        detail = (await client.get(f"/applications/{application.id}")).json()[
+            "application"
+        ]
+        assert detail["committeeNotes"][0]["body"] == first_note["body"]
+        assert detail["committeeNotes"][0]["editableByMe"] is False
+        forbidden_update = await client.patch(
+            f"/applications/{application.id}/committee-notes/{first_note['id']}",
+            json={"body": "Overwrite another member's note."},
+        )
+        assert forbidden_update.status_code == 403
+
+        second = await client.post(
+            f"/applications/{application.id}/committee-notes",
+            json={"body": "Interview availability confirmed."},
+        )
+        second_note = next(
+            note
+            for note in second.json()["application"]["committeeNotes"]
+            if note["body"] == "Interview availability confirmed."
+        )
+        assert second_note["authorName"] == other_member.email
+        assert second_note["editableByMe"] is True
+
+        updated = await client.patch(
+            f"/applications/{application.id}/committee-notes/{second_note['id']}",
+            json={"body": "  Interview availability confirmed for Tuesday.  "},
+        )
+        updated_note = next(
+            note
+            for note in updated.json()["application"]["committeeNotes"]
+            if note["id"] == second_note["id"]
+        )
+        assert updated_note["body"] == "Interview availability confirmed for Tuesday."
+        assert (
+            await client.delete(
+                f"/applications/{application.id}/committee-notes/{second_note['id']}"
+            )
+        ).status_code == 200
+
+    notes = list(db.scalars(select(ApplicationCommitteeNote)))
+    assert len(notes) == 1
+    assert notes[0].body == first_note["body"]
 
 
 @pytest.mark.anyio

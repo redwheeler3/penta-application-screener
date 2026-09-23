@@ -5,10 +5,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai.model_catalog import supports_reasoning_effort
-from app.core.time import pacific_date, pacific_today, utc_isoformat
+from app.core.time import as_utc, pacific_date, pacific_today, utc_isoformat
 from app.db.models import (
     Application,
     ApplicationAIResult,
+    ApplicationCommitteeNote,
     ApplicationNote,
     ApplicationParticipation,
     ApplicationVersion,
@@ -23,6 +24,7 @@ from app.schemas.applications import (
     AIResultTraceOut,
     ApplicationDetail,
     ApplicationSummary,
+    CommitteeNoteOut,
     CommitteeOpeningOut,
     DimensionContributionOut,
     DimensionScoringTraceOut,
@@ -233,6 +235,7 @@ def serialize_detail(
         dimension_scores=dimension_scores,
         dimension_scoring_trace=_dimension_scoring_trace(db, opening_id, app.id),
         private_note=_private_note(db, app.id, user.id),
+        committee_notes=_committee_notes(db, app.id, user.id),
     )
 
 
@@ -244,6 +247,31 @@ def _private_note(db: Session, application_id: int, user_id: int) -> str:
         )
     )
     return note or ""
+
+
+def _committee_notes(
+    db: Session, application_id: int, current_user_id: int
+) -> list[CommitteeNoteOut]:
+    rows = db.execute(
+        select(ApplicationCommitteeNote, User)
+        .join(User, User.id == ApplicationCommitteeNote.author_user_id)
+        .where(ApplicationCommitteeNote.application_id == application_id)
+        .order_by(
+            ApplicationCommitteeNote.created_at.desc(),
+            ApplicationCommitteeNote.id.desc(),
+        )
+    ).all()
+    return [
+        CommitteeNoteOut(
+            id=note.id,
+            author_name=author.display_name.strip() or author.email,
+            body=note.body,
+            created_at=as_utc(note.created_at),
+            updated_at=as_utc(note.updated_at),
+            editable_by_me=note.author_user_id == current_user_id,
+        )
+        for note, author in rows
+    ]
 
 
 def _result_trace(result: ApplicationAIResult | None) -> AIResultTraceOut | None:

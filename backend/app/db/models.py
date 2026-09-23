@@ -754,6 +754,29 @@ class ApplicationNote(TimestampMixin, Base):
     user: Mapped[User] = relationship()
 
 
+class ApplicationCommitteeNote(TimestampMixin, Base):
+    """One attributed note shared with the full committee for an application.
+
+    Committee notes are application-wide human context. They never enter AI prompts or
+    applicant-facing responses. Each entry keeps its own author so members collaborate
+    without overwriting one shared document.
+    """
+
+    __tablename__ = "application_committee_notes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    author_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True, nullable=False
+    )
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+
+    application: Mapped[Application] = relationship()
+    author: Mapped[User] = relationship()
+
+
 class ApplicationStar(TimestampMixin, Base):
     """A reviewer's private star (favourite) on one application.
 
