@@ -2,7 +2,7 @@
    inside each tab so equal visual weight never blurs who can read what. */
 .notes-panel {
   display: grid;
-  grid-template-columns: minmax(210px, 0.28fr) minmax(0, 1fr);
+  grid-template-columns: max-content minmax(0, 1fr);
   min-width: 0;
   gap: 1rem;
   margin: 0 0 1.25rem;
