@@ -23,9 +23,9 @@ from app.db.models import (
     UserRole,
 )
 from app.db.session import get_db
-from app.services.auth_email import magic_link_email
 from app.services.email_sender import CapturedEmailSender, get_email_sender
 from app.services.passwordless_auth import issue_magic_link
+from app.services.transactional_email import magic_link_email
 from tests.app_support import shared_test_app
 
 

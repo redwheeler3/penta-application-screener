@@ -16,13 +16,13 @@ from app.db.models import (
     PasswordlessIdentityKind,
     VacancySubscription,
 )
-from app.services.auth_email import (
+from app.services.email_delivery import queue_email
+from app.services.opening_participation import participating_openings
+from app.services.transactional_email import (
     ApplicationOpeningTimeline,
     application_opening_email,
     vacancy_opening_email,
 )
-from app.services.email_delivery import queue_email
-from app.services.opening_participation import participating_openings
 from app.services.vacancy_subscriptions import matching_subscriptions
 
 

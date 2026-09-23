@@ -13,10 +13,10 @@ from app.db.models import (
     OpeningPhase,
     PasswordlessIdentityKind,
 )
-from app.services.auth_email import unsuccessful_application_email
 from app.services.email_delivery import deliver_email
 from app.services.email_sender import EmailSender
 from app.services.openings import opening_phase
+from app.services.transactional_email import unsuccessful_application_email
 
 
 def send_due_unsuccessful_notices(

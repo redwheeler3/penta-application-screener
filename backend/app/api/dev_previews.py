@@ -8,7 +8,8 @@ from pydantic import BaseModel
 from app.core.config import Settings, get_settings
 from app.core.problems import Problem
 from app.db.models import MagicLinkPurpose, PasswordlessIdentityKind, UserRole
-from app.services.auth_email import (
+from app.services.email_sender import OutboundEmail
+from app.services.transactional_email import (
     ApplicationOpeningTimeline,
     application_confirmation_email,
     application_opening_email,
@@ -20,7 +21,6 @@ from app.services.auth_email import (
     unsuccessful_application_email,
     vacancy_opening_email,
 )
-from app.services.email_sender import OutboundEmail
 
 router = APIRouter(prefix="/dev/previews", tags=["development previews"])
 

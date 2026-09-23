@@ -19,19 +19,19 @@ from app.db.models import (
     PasswordlessIdentityKind,
     UserRole,
 )
-from app.services.auth_email import (
+from app.services.email_delivery import deliver_email
+from app.services.email_sender import EmailSender
+from app.services.passwordless_auth import (
+    issue_magic_link,
+    magic_link_request_allowed,
+)
+from app.services.transactional_email import (
     application_confirmation_email,
     application_unavailable_email,
     committee_invitation_email,
     email_change_notice_email,
     magic_link_email,
     selected_application_locked_email,
-)
-from app.services.email_delivery import deliver_email
-from app.services.email_sender import EmailSender
-from app.services.passwordless_auth import (
-    issue_magic_link,
-    magic_link_request_allowed,
 )
 from app.services.vacancy_notifications import application_confirmation_timelines
 
