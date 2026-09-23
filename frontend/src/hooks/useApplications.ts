@@ -9,6 +9,7 @@ import type {
   SortKey,
   SortState,
 } from "../types";
+import { deriveApplicationFacets, selectApplications } from "./applicationSelectors";
 
 export interface ApplicationsState {
   /** The filtered + sorted list the UI renders (derived from the full pool). */
@@ -87,70 +88,15 @@ export function useApplications(): ApplicationsState {
   }, [acceptApplications]);
 
   // Everything below is derived from the full pool — no fetch on filter/sort/search.
-  const searchTerm = appSearch.trim().toLowerCase();
-  const matchesSearch = (a: ApplicationSummary) =>
-    !searchTerm ||
-    [a.applicantName, a.coApplicantName, a.primaryEmail].some((v) =>
-      (v ?? "").toLowerCase().includes(searchTerm),
-    );
+  const appFacets = useMemo<AppFacets>(
+    () => deriveApplicationFacets(allApplications, appFilter, appSearch),
+    [allApplications, appFilter, appSearch],
+  );
 
-  // Facets reflect every active filter EXCEPT their own group (like the server did),
-  // so the two filter rows stay mutually consistent. Search + saved view apply to both.
-  const appFacets = useMemo<AppFacets>(() => {
-    const base = allApplications.filter(
-      (application) => matchesSearch(application),
-    );
-    const savedBase = appFilter.savedView === "favourites"
-      ? base.filter((a) => a.starredByMe)
-      : appFilter.savedView === "shortlist"
-        ? base.filter((a) => a.shortlisted)
-        : base;
-    const status: Record<string, number> = { eligible: 0, ineligible: 0 };
-    const source: Record<string, number> = { untouched: 0, rules: 0, ai: 0, human: 0 };
-    // Status facet ignores the status filter but honours source (+ search/favourites).
-    for (const a of savedBase.filter(
-      (a) => !appFilter.statusSource || a.statusSource === appFilter.statusSource,
-    )) {
-      status[a.status] = (status[a.status] ?? 0) + 1;
-    }
-    // Source facet ignores the source filter but honours status (+ search/favourites).
-    for (const a of savedBase.filter((a) => !appFilter.status || a.status === appFilter.status)) {
-      source[a.statusSource] = (source[a.statusSource] ?? 0) + 1;
-    }
-    // Favourites count ignores the favourites filter but honours status + source.
-    const favourites = base.filter(
-      (a) =>
-        a.starredByMe &&
-        (!appFilter.status || a.status === appFilter.status) &&
-        (!appFilter.statusSource || a.statusSource === appFilter.statusSource),
-    ).length;
-    const shortlist = base.filter(
-      (a) =>
-        a.shortlisted &&
-        (!appFilter.status || a.status === appFilter.status) &&
-        (!appFilter.statusSource || a.statusSource === appFilter.statusSource),
-    ).length;
-    return {
-      status: status as AppFacets["status"],
-      source: source as AppFacets["source"],
-      favourites,
-      shortlist,
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allApplications, appFilter, searchTerm]);
-
-  const applications = useMemo(() => {
-    const filtered = allApplications.filter(
-      (a) =>
-        matchesSearch(a) &&
-        (!appFilter.status || a.status === appFilter.status) &&
-        (!appFilter.statusSource || a.statusSource === appFilter.statusSource) &&
-        (appFilter.savedView !== "favourites" || a.starredByMe) &&
-        (appFilter.savedView !== "shortlist" || a.shortlisted),
-    );
-    return appSort ? sortApplications(filtered, appSort) : filtered;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allApplications, appFilter, searchTerm, appSort]);
+  const applications = useMemo(
+    () => selectApplications(allApplications, appFilter, appSearch, appSort),
+    [allApplications, appFilter, appSearch, appSort],
+  );
 
   async function selectOpening(openingId: number): Promise<void> {
     setApplicationsLoadState("loading");
@@ -187,30 +133,4 @@ export function useApplications(): ApplicationsState {
     selectOpening,
     search: setAppSearch,
   };
-}
-
-// Sort keys map to a comparable value; missing values sort last in both directions.
-const SORT_VALUE: Record<SortKey, (a: ApplicationSummary) => string | number | null> = {
-  applicant: (a) => a.applicantName,
-  co_applicant: (a) => a.coApplicantName,
-  children: (a) => a.childCount,
-  income: (a) => a.householdIncome,
-  status: (a) => a.status,
-};
-
-function sortApplications(rows: ApplicationSummary[], sort: SortState): ApplicationSummary[] {
-  if (!sort) return rows;
-  const value = SORT_VALUE[sort.key];
-  const dir = sort.direction === "desc" ? -1 : 1;
-  return [...rows].sort((a, b) => {
-    const va = value(a);
-    const vb = value(b);
-    // Missing values always sort last, regardless of direction.
-    if (va == null && vb == null) return 0;
-    if (va == null) return 1;
-    if (vb == null) return -1;
-    if (va < vb) return -1 * dir;
-    if (va > vb) return 1 * dir;
-    return 0;
-  });
 }
