@@ -269,13 +269,17 @@ function buildCanonicalDetailSections(
         ),
         ...previousResidenceFields(answers.previous_residences),
         detailField("owns_current_home", "Owns current home", answers.owns_current_home, {
-          normalizedKey: "has_real_estate",
+          normalizedKey: answers.owns_current_home ? "has_real_estate" : undefined,
         }),
         detailField(
           "owns_other_real_estate",
           "Owns another home or land",
           answers.owns_other_real_estate,
-          { normalizedKey: "has_real_estate" },
+          {
+            normalizedKey: answers.owns_other_real_estate
+              ? "has_real_estate"
+              : undefined,
+          },
         ),
       ]),
     },
