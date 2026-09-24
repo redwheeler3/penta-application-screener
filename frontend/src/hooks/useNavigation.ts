@@ -75,9 +75,7 @@ export function useNavigation(options: {
       void loadApplication(location.applicantId)
         .then((application) => {
           setSelectedApplication(application);
-          setSelectedApplicationReadOnly(
-            Boolean(location.retainedApplicant) || application.selected,
-          );
+          setSelectedApplicationReadOnly(Boolean(location.retainedApplicant));
         })
         .catch(() => onErrorRef.current("Couldn't load that applicant. Please try again."));
     };
@@ -96,7 +94,7 @@ export function useNavigation(options: {
       }
       pushLocation({ screenerLocation: true, tab: activeTab, applicantId: id });
       setSelectedApplication(application);
-      setSelectedApplicationReadOnly(application.selected);
+      setSelectedApplicationReadOnly(false);
     } catch {
       options.onError("Couldn't load that applicant. Please try again.");
     }

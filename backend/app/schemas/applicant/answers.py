@@ -6,6 +6,7 @@ from itertools import pairwise
 
 from pydantic import EmailStr, Field, HttpUrl, model_validator
 
+from app.core.time import pacific_today
 from app.schemas.base import BridgeModel
 
 
@@ -16,6 +17,12 @@ class PersonAnswers(BridgeModel):
     phone: str
     email: EmailStr
 
+    @model_validator(mode="after")
+    def validate_birth_date(self) -> "PersonAnswers":
+        if self.birth_date > pacific_today():
+            raise ValueError("date of birth cannot be in the future")
+        return self
+
 
 class CoApplicantAnswers(PersonAnswers):
     relationship: str
@@ -25,6 +32,12 @@ class ChildAnswers(BridgeModel):
     first_name: str
     last_name: str
     birth_date: date
+
+    @model_validator(mode="after")
+    def validate_birth_date(self) -> "ChildAnswers":
+        if self.birth_date > pacific_today():
+            raise ValueError("date of birth cannot be in the future")
+        return self
 
 
 class AddressAnswers(BridgeModel):
@@ -73,6 +86,8 @@ class EmploymentAnswers(BridgeModel):
             return self
         if not self.job_title or not self.company_name or self.start_date is None:
             raise ValueError("employment details are required for this status")
+        if self.start_date > pacific_today():
+            raise ValueError("employment start date cannot be in the future")
         if self.status == EmploymentStatus.EMPLOYED and self.manager is None:
             raise ValueError("manager details are required for employed applicants")
         if self.status == EmploymentStatus.SELF_EMPLOYED:

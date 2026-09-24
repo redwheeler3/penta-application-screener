@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies import require_current_user
+from app.api.openings import get_outbox_runner
 from app.core.time import pacific_today
 from app.db.models import (
     ApplicantDraft,
@@ -55,6 +56,7 @@ def _app_and_db(role: UserRole) -> tuple:
     app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[require_current_user] = lambda: user
+    app.dependency_overrides[get_outbox_runner] = lambda: (lambda _sender: None)
     return app, db
 
 

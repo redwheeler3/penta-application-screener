@@ -454,6 +454,13 @@
   letter-spacing: 0.02em;
 }
 
+.application-status-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
+
 .status-eligible {
   background: var(--success-bg);
   color: var(--success-text);
@@ -467,9 +474,9 @@
 }
 
 .status-selected {
-  background: var(--penta-green-soft);
-  color: var(--penta-green-dark);
-  border-color: #bbf7d0;
+  background: #f5f3ff;
+  color: #6d28d9;
+  border-color: #c4b5fd;
 }
 
 /* "Decided by" source badges — secondary info, lighter than status badges */

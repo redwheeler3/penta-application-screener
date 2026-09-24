@@ -537,13 +537,14 @@ Applicants cannot newly apply after the close date, regardless of whether the co
 completed closeout. The candidate picker can filter the already-loaded candidates by name or email;
 the filter does not make another request or change the candidate set. Confirming the selection
 records the selected participation and records every other active participation in that opening as
-unsuccessful. AI eligibility and ranking never imply that decision. Selecting an applicant
-immediately removes that application from Applications, Screen, Rank, and every successful-applicant
-picker while retaining it in an administrator-only audit view for seven years from the decision
-date. The opening card shows the selected household as an ordinary read-only fact and links to the
-full retained application. Only an undecided closed opening offers the action to record a decision; a finalized
-opening has no second decision-management surface. That audit detail is read-only and is available
-only to administrators; it does not restore the household to any live committee workflow. Selection also locks the
+unsuccessful. AI eligibility and ranking never imply that decision. Selecting an applicant excludes
+that application from future Screen and Rank work and every successful-applicant picker, while the
+Applications list and detail view retain the committee's ordinary review tools and persisted AI
+evidence. The detail view shows both the purple Selected state and the member's underlying
+Eligible/Ineligible status; status filters continue to use that underlying eligibility. The opening
+card shows the selected household as an ordinary read-only fact and links to the full retained
+application. Only an undecided closed opening offers the action to record a decision; a finalized
+opening has no second decision-management surface. Selection also locks the
 applicant boundary immediately: the submitted record, working copy, opening choices, primary
 email, and profile status cannot be changed online while any participation is selected. Confirming
 either an application-intake or direct selection revokes every applicant browser session and unused
@@ -955,7 +956,8 @@ Each rule has:
 - **Description**: explains what the rule checks and why
 - **Outcome**: `filtered_out` (the only outcome — any rule that fires disqualifies)
 - **Parameters**: configurable thresholds or values (e.g. income min/max, min/max children, max child age, max pets). Not all rules have parameters.
-- **Enabled**: toggle on/off per screening configuration
+- **Enabled**: toggle on/off per screening configuration. The employment requirement is controlled
+  only by its dedicated dropdown.
 
 Rules are stored in the database as part of admin settings. The Admin settings UI shows the full rule list with toggles and parameter inputs. Disabled rules do not run during screening.
 
@@ -969,7 +971,6 @@ Rules run in a defined order. An application that fails any enabled rule is `fil
 
 | Rule ID | Description |
 |---------|-------------|
-| `child_count_mismatch` | Declared child count does not match the number of complete child detail blocks (first + last name + age all filled). |
 | `too_few_children` | Household child count is below the configured minimum. Parameter: min_children (default 1). |
 | `too_many_children` | Household child count is above the configured maximum. Parameter: max_children (default 4). |
 
@@ -988,7 +989,6 @@ Rules run in a defined order. An application that fails any enabled rule is `fil
 |---------|-------------|
 | `income_below_range` | Household gross income is below the configured minimum. Parameter: min_income (default $70,000). |
 | `income_above_range` | Household gross income is above the configured maximum. Parameter: max_income (default $150,000). |
-| `income_arithmetic_mismatch` | Applicant income + co-applicant income does not exactly equal the stated household total. No tolerance. |
 
 **Employment rules:**
 
@@ -1002,14 +1002,6 @@ Rules run in a defined order. An application that fails any enabled rule is `fil
 |---------|-------------|
 | `owns_real_estate` | Applicant owns real estate. |
 
-**Data integrity rules:**
-
-| Rule ID | Description |
-|---------|-------------|
-| `negative_number` | Any whole-number-validated field (age, income) contains a negative value. |
-| `future_employment_start` | Employment start date is in the future. |
-| `co_applicant_incomplete` | Some co-applicant fields are filled but others are blank (partially filled). |
-
 ### Rule Behavior Notes
 
 - Moving within the two-year residence-history period is not disqualifying.
@@ -1019,6 +1011,9 @@ Rules run in a defined order. An application that fails any enabled rule is `fil
 - Email-list signup date and notification history must not influence screening.
 - Applicant, co-applicant, and child ages are calculated from their dates of birth as of the
   application's last submitted edit.
+- The built-in form derives child count and household income, requires a complete co-applicant when
+  one is present, rejects negative income, and rejects future birth and employment start dates.
+  These are submission constraints rather than eligibility decisions.
 
 ### Application Status Model
 
@@ -1822,7 +1817,7 @@ The mock suite proves plumbing, not judgment, so these judgment-dependent claims
 
 1. **Reconcile-era behavior is moot** (that subsystem was deleted; see ADR 0007). No action.
 2. **Carry-forward cost win in the wild — ✅ validated (2026-07-25), with a caveat.** Across 17 real rank runs the recorded cache savings grow run-over-run as the pool stabilizes ($0 → ~$1.25/run), confirming per-dimension score reuse works in practice — the core claim. **Caveat found:** the re-rank cost *estimate* is NOT a guaranteed upper bound. It's a recency-weighted **average** of recent runs' actual scoring cost (`recent_pass_fresh_usd`), so by construction it's exceeded roughly half the time (8/17 runs came in over, up to ~142%) — a full discovery re-mints dimensions whose fresh scoring can outrun the historical mean. All runs stayed well under the spending cap regardless. Deliberately kept as an *expected*-cost estimate (the honest number to show at the confirm card) rather than padded into a false ceiling; the true atomic budget guard is M16/M17. Docstrings + this item corrected to say "expected cost," not "upper bound."
-3. **Pet-fact extraction accuracy (M15 1e) — ✅ validated on a real run (2026-07-24).** A real Bedrock screening run over the live pool confirmed extraction is reliable across the phrasings that matter: multi-pet ("Three dogs, two cats, and a parrot" → `{3, 2, ['parrot']}`), multiple exotics ("penguin and iguana" → both in `other_pets`), three negation flavors ("I don't have any pets" / "No pets" / "N/A - no animals" → all zeros), and rabbit → `other_pets`. Every spot-check matched the source text. 57 of 58 screened apps carry pet facts on their latest result; the one exception (app 55) is rules-ineligible under the committee default (`child_count_mismatch`), so the screening gate correctly skips it — not a gap. The structural goldens hold against real output; no tuning needed. First real run also re-populated the screening cache under the new `screening_prompt_version()` (old results lacked `pets`).
+3. **Pet-fact extraction accuracy (M15 1e) — ✅ validated on a real run (2026-07-24).** A real Bedrock screening run over the live pool confirmed extraction is reliable across the phrasings that matter: multi-pet ("Three dogs, two cats, and a parrot" → `{3, 2, ['parrot']}`), multiple exotics ("penguin and iguana" → both in `other_pets`), three negation flavors ("I don't have any pets" / "No pets" / "N/A - no animals" → all zeros), and rabbit → `other_pets`. Every spot-check matched the source text. 57 of 58 screened apps carry pet facts on their latest result; the one exception was rules-ineligible under the committee default, so the screening gate correctly skipped it — not a gap. The structural goldens hold against real output; no tuning needed. First real run also re-populated the screening cache under the new `screening_prompt_version()` (old results lacked `pets`).
 
 ### UI Consistency Walkthrough (✅ done 2026-07-25)
 

@@ -254,7 +254,7 @@ export function HouseholdSection(props: {
               <div className="field-grid three-column">
                 <TextField label="First name" value={child.firstName} required onChange={(firstName) => updateChild(update, child.id, { firstName })} />
                 <TextField label="Last name" value={child.lastName} required onChange={(lastName) => updateChild(update, child.id, { lastName })} />
-                <DateField label="Date of birth" value={child.birthDate} required autoComplete="bday" onChange={(birthDate) => updateChild(update, child.id, { birthDate })} />
+                <DateField label="Date of birth" value={child.birthDate} required autoComplete="bday" notFuture onChange={(birthDate) => updateChild(update, child.id, { birthDate })} />
               </div>
             </div>
           ))}

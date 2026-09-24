@@ -160,40 +160,6 @@ def test_co_applicant_age_none_does_not_trigger() -> None:
     assert result.status == FilterStatus.ELIGIBLE
 
 
-def test_child_count_mismatch_is_filtered_out() -> None:
-    result = evaluate_hard_filters(eligible_application(
-        child_count=2,
-        child_details=[{"first_name": "Maya", "last_name": "Garcia", "age": 5}],
-    ))
-
-    assert result.status == FilterStatus.FILTERED_OUT
-    assert "child_count_mismatch" in reason_codes(result)
-
-
-def test_child_count_matches_complete_blocks_passes() -> None:
-    result = evaluate_hard_filters(eligible_application(
-        child_count=2,
-        child_details=[
-            {"first_name": "Maya", "last_name": "Garcia", "age": 5},
-            {"first_name": "Leo", "last_name": "Garcia", "age": 3},
-        ],
-    ))
-
-    assert "child_count_mismatch" not in reason_codes(result)
-
-
-def test_partial_child_block_not_counted_as_complete() -> None:
-    result = evaluate_hard_filters(eligible_application(
-        child_count=1,
-        child_details=[
-            {"first_name": "Maya", "last_name": "Garcia", "age": 5},
-            {"first_name": "Kira", "last_name": None, "age": None},
-        ],
-    ))
-
-    assert "child_count_mismatch" not in reason_codes(result)
-
-
 def test_child_age_exceeds_parent_is_filtered_out() -> None:
     result = evaluate_hard_filters(eligible_application(
         applicant_age=25,
@@ -203,67 +169,6 @@ def test_child_age_exceeds_parent_is_filtered_out() -> None:
 
     assert result.status == FilterStatus.FILTERED_OUT
     assert "child_age_exceeds_parent" in reason_codes(result)
-
-
-def test_income_arithmetic_mismatch_is_filtered_out() -> None:
-    result = evaluate_hard_filters(eligible_application(
-        applicant_income=50_000,
-        co_applicant_income=45_000,
-        household_income=120_000,
-    ))
-
-    assert result.status == FilterStatus.FILTERED_OUT
-    assert "income_arithmetic_mismatch" in reason_codes(result)
-
-
-def test_income_arithmetic_exact_match_passes() -> None:
-    result = evaluate_hard_filters(eligible_application(
-        applicant_income=50_000,
-        co_applicant_income=45_000,
-        household_income=95_000,
-    ))
-
-    assert "income_arithmetic_mismatch" not in reason_codes(result)
-
-
-def test_income_arithmetic_off_by_any_amount_is_filtered_out() -> None:
-    # No tolerance: even a $1 discrepancy is a mismatch.
-    result = evaluate_hard_filters(eligible_application(
-        applicant_income=50_000,
-        co_applicant_income=45_000,
-        household_income=95_001,
-    ))
-
-    assert "income_arithmetic_mismatch" in reason_codes(result)
-
-
-def test_negative_age_is_filtered_out() -> None:
-    result = evaluate_hard_filters(eligible_application(
-        child_details=[{"first_name": "Bug", "last_name": "Test", "age": -2}],
-    ))
-
-    assert result.status == FilterStatus.FILTERED_OUT
-    assert "negative_number" in reason_codes(result)
-
-
-def test_negative_income_is_filtered_out() -> None:
-    result = evaluate_hard_filters(eligible_application(applicant_income=-5000))
-
-    assert result.status == FilterStatus.FILTERED_OUT
-    assert "negative_number" in reason_codes(result)
-
-
-
-
-def test_future_employment_start_is_filtered_out() -> None:
-    rules = RulesConfig(today=date(2026, 6, 11))
-    result = evaluate_hard_filters(
-        eligible_application(applicant_employment_start=date(2027, 3, 1)),
-        rules,
-    )
-
-    assert result.status == FilterStatus.FILTERED_OUT
-    assert "future_employment_start" in reason_codes(result)
 
 
 def test_at_least_one_employed_adult_accepts_either_applicant() -> None:
@@ -326,22 +231,6 @@ def test_employment_requirement_skips_legacy_records_without_explicit_status() -
     assert "employment_requirement_not_met" not in reason_codes(result)
 
 
-def test_co_applicant_incomplete_is_filtered_out() -> None:
-    result = evaluate_hard_filters(eligible_application(
-        co_applicant_name="Partial Person",
-        co_applicant_age=30,
-        co_applicant_phone=None,
-        co_applicant_email=None,
-    ))
-
-    assert result.status == FilterStatus.FILTERED_OUT
-    assert "co_applicant_incomplete" in reason_codes(result)
-
-
-
-
-
-
 def test_disabled_rule_is_skipped() -> None:
     rules = RulesConfig(disabled_checks=("owns_real_estate",))
     result = evaluate_hard_filters(eligible_application(has_real_estate=True), rules)
@@ -350,15 +239,20 @@ def test_disabled_rule_is_skipped() -> None:
     assert "owns_real_estate" not in reason_codes(result)
 
 
-def test_disabled_rule_skips_filtered_out() -> None:
-    rules = RulesConfig(disabled_checks=("child_count_mismatch",))
-    result = evaluate_hard_filters(eligible_application(
-        child_count=2,
-        child_details=[{"first_name": "Maya", "last_name": "Garcia", "age": 5}],
-    ), rules)
+def test_employment_dropdown_cannot_be_disabled_by_a_stale_check_value() -> None:
+    rules = RulesConfig(
+        employment_requirement=EmploymentRequirement.AT_LEAST_ONE,
+        disabled_checks=("employment_requirement_not_met",),
+    )
+    result = evaluate_hard_filters(
+        eligible_application(
+            applicant_employment_status="unemployed",
+            co_applicant_employment_status="unemployed",
+        ),
+        rules,
+    )
 
-    assert result.status == FilterStatus.ELIGIBLE
-    assert "child_count_mismatch" not in reason_codes(result)
+    assert "employment_requirement_not_met" in reason_codes(result)
 
 
 

@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { type ReactNode } from "react";
-import { SOURCE_LABELS, STATUS_LABELS } from "../../constants";
+import { SOURCE_LABELS } from "../../constants";
 import { flagCategoryLabel } from "../../format";
 import type {
   AppFacets,
@@ -10,6 +10,7 @@ import type {
   SortState,
 } from "../../types";
 import { StarButton } from "./StarButton";
+import { ApplicationStatusBadges } from "./ApplicationStatusBadges";
 import { CandidateListSelect, type CandidateListView } from "./CandidateListSelect";
 import { SharedShortlistButton } from "./SharedShortlistButton";
 
@@ -172,9 +173,7 @@ export function ApplicationsList(props: {
               // (pets are deterministic but attribute to the AI source because
               // so an AI row's "why" can live in either list; show both). Human: neither.
               const reason =
-                app.selected
-                  ? "Selected household"
-                  : app.statusSource === "rules"
+                app.statusSource === "rules"
                   ? app.hardFilterReasons.map((r) => r.message).join("; ")
                   : app.statusSource === "ai"
                     ? [
@@ -209,12 +208,10 @@ export function ApplicationsList(props: {
                   <td>{app.childCount ?? "?"}</td>
                   <td>{app.householdIncome != null ? `$${app.householdIncome.toLocaleString()}` : "?"}</td>
                   <td>
-                    <span className={`status-badge status-${app.selected ? "selected" : app.status}`}>
-                      {app.selected ? "Selected" : STATUS_LABELS[app.status]}
-                    </span>
+                    <ApplicationStatusBadges selected={app.selected} status={app.status} />
                   </td>
                   <td>
-                    {app.selected || app.statusSource === "untouched" ? (
+                    {app.statusSource === "untouched" ? (
                       "—"
                     ) : (
                       <span className={`source-badge source-${app.statusSource}`}>

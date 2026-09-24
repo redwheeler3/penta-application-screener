@@ -99,7 +99,6 @@ def evaluate_hard_filters(
     """
     reasons: list[FilterReason] = []
 
-    reasons.extend(_child_count_mismatch(application))
     reasons.extend(_too_few_children(application, rules))
     reasons.extend(_too_many_children(application, rules))
     reasons.extend(_child_age_over_max(application, rules))
@@ -108,44 +107,20 @@ def evaluate_hard_filters(
     reasons.extend(_child_age_exceeds_parent(application))
     reasons.extend(_income_below_range(application, rules))
     reasons.extend(_income_above_range(application, rules))
-    reasons.extend(_income_arithmetic_mismatch(application))
     reasons.extend(_owns_real_estate(application))
-    reasons.extend(_negative_number(application))
-    reasons.extend(_employment_requirement(application, rules))
-    reasons.extend(_future_employment_start(application, rules))
-    reasons.extend(_co_applicant_incomplete(application))
     if pet_facts is not None:
         reasons.extend(_pets_over_limit(pet_facts, rules))
 
     if rules.disabled_checks:
         reasons = [r for r in reasons if r.code not in rules.disabled_checks]
 
+    # Employment is configured by its dedicated dropdown rather than the generic
+    # check toggles. Append it after disabled-check filtering so a stale persisted
+    # value cannot silently override the dropdown.
+    reasons.extend(_employment_requirement(application, rules))
+
     status = FilterStatus.FILTERED_OUT if reasons else FilterStatus.ELIGIBLE
     return FilterResult(status, reasons)
-
-
-def _child_count_mismatch(application: dict[str, Any]) -> list[FilterReason]:
-    child_count = application.get("child_count")
-    child_details = application.get("child_details", [])
-
-    if not isinstance(child_count, int) or child_count == 0:
-        return []
-
-    complete_blocks = sum(
-        1
-        for child in child_details
-        if child.get("first_name") and child.get("last_name") and child.get("age") is not None
-    )
-
-    if complete_blocks != child_count:
-        return [
-            FilterReason(
-                code="child_count_mismatch",
-                message=f"Child count ({child_count}) doesn't match child details provided ({complete_blocks}).",
-                details={"declared_count": child_count, "complete_blocks": complete_blocks},
-            )
-        ]
-    return []
 
 
 def _child_age_over_max(
@@ -294,40 +269,6 @@ def _income_above_range(
     return []
 
 
-def _income_arithmetic_mismatch(application: dict[str, Any]) -> list[FilterReason]:
-    applicant_income = application.get("applicant_income")
-    co_applicant_income = application.get("co_applicant_income")
-    household_income = application.get("household_income")
-
-    if not isinstance(household_income, int | float):
-        return []
-
-    parts = []
-    if isinstance(applicant_income, int | float):
-        parts.append(applicant_income)
-    if isinstance(co_applicant_income, int | float):
-        parts.append(co_applicant_income)
-
-    if not parts:
-        return []
-
-    expected = sum(parts)
-    if expected != household_income:
-        return [
-            FilterReason(
-                code="income_arithmetic_mismatch",
-                message=f"Stated household income (${household_income:,.0f}) doesn't match sum of individual incomes (${expected:,.0f}).",
-                details={
-                    "applicant_income": applicant_income,
-                    "co_applicant_income": co_applicant_income,
-                    "household_income": household_income,
-                    "expected_total": expected,
-                },
-            )
-        ]
-    return []
-
-
 def _pets_over_limit(pet_facts: PetFacts, rules: RulesConfig) -> list[FilterReason]:
     """The per-member pet policy, applied deterministically to extracted pet counts.
     One reason per violated category (too many dogs, too many cats, a disallowed other
@@ -375,56 +316,6 @@ def _owns_real_estate(application: dict[str, Any]) -> list[FilterReason]:
     return []
 
 
-def _negative_number(application: dict[str, Any]) -> list[FilterReason]:
-    checks = [
-        ("applicant_age", application.get("applicant_age")),
-        ("co_applicant_age", application.get("co_applicant_age")),
-        ("household_income", application.get("household_income")),
-        ("applicant_income", application.get("applicant_income")),
-        ("co_applicant_income", application.get("co_applicant_income")),
-    ]
-
-    for child in application.get("child_details", []):
-        age = child.get("age")
-        if age is not None:
-            checks.append((f"child_age_{child.get('first_name', '?')}", age))
-
-    reasons = []
-    for field_name, value in checks:
-        if isinstance(value, int | float) and value < 0:
-            reasons.append(
-                FilterReason(
-                    code="negative_number",
-                    message=f"Field '{field_name}' has negative value ({value}).",
-                    details={"field": field_name, "value": value},
-                )
-            )
-
-    return reasons
-
-
-def _future_employment_start(
-    application: dict[str, Any], rules: RulesConfig
-) -> list[FilterReason]:
-    reasons = []
-    for field_key in ("applicant_employment_start", "co_applicant_employment_start"):
-        start_date = application.get(field_key)
-        if isinstance(start_date, str):
-            try:
-                start_date = date.fromisoformat(start_date)
-            except ValueError:
-                start_date = None
-        if isinstance(start_date, date) and start_date > rules.today:
-            reasons.append(
-                FilterReason(
-                    code="future_employment_start",
-                    message=f"Employment start date ({start_date}) is in the future.",
-                    details={"field": field_key, "start_date": str(start_date), "today": str(rules.today)},
-                )
-            )
-    return reasons
-
-
 def _employment_requirement(
     application: dict[str, Any], rules: RulesConfig
 ) -> list[FilterReason]:
@@ -457,25 +348,4 @@ def _employment_requirement(
             details={"requirement": rules.employment_requirement.value},
         )
     ]
-
-
-def _co_applicant_incomplete(application: dict[str, Any]) -> list[FilterReason]:
-    co_app_fields = [
-        application.get("co_applicant_name"),
-        application.get("co_applicant_age"),
-        application.get("co_applicant_phone"),
-        application.get("co_applicant_email"),
-    ]
-
-    filled = [f for f in co_app_fields if f]
-    if 0 < len(filled) < len(co_app_fields):
-        return [
-            FilterReason(
-                code="co_applicant_incomplete",
-                message=f"Co-applicant details are partially filled ({len(filled)}/{len(co_app_fields)} fields).",
-                details={"filled_count": len(filled), "total_fields": len(co_app_fields)},
-            )
-        ]
-    return []
-
 

@@ -101,4 +101,21 @@ describe("application selectors", () => {
       .toEqual([4, 1, 3, 2]);
     expect(applications).toEqual(original);
   });
+
+  it("filters selected households by their underlying eligibility", () => {
+    const selectedEligible = application(5, { selected: true, status: "eligible" });
+    const selectedIneligible = application(6, { selected: true, status: "ineligible" });
+
+    expect(
+      selectApplications(
+        [selectedEligible, selectedIneligible],
+        { status: "eligible" },
+        "",
+        null,
+      ).map(({ id }) => id),
+    ).toEqual([5]);
+    expect(
+      deriveApplicationFacets([selectedEligible, selectedIneligible], {}, "").status,
+    ).toEqual({ eligible: 1, ineligible: 1 });
+  });
 });

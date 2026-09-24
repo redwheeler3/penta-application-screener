@@ -66,6 +66,7 @@ export function DateField(props: {
   value: string;
   required?: boolean;
   autoComplete?: string;
+  notFuture?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
@@ -76,6 +77,7 @@ export function DateField(props: {
         inputMode="numeric"
         autoComplete={props.autoComplete}
         data-date="true"
+        data-not-future={props.notFuture ? "true" : undefined}
         placeholder="YYYY-MM-DD"
         value={props.value}
         required={props.required}
@@ -117,7 +119,7 @@ export function PersonFields(props: {
       {props.leadingFields}
       <TextField label="First name" value={props.value.firstName} required={props.required} onChange={(firstName) => set({ firstName })} />
       <TextField label="Last name" value={props.value.lastName} required={props.required} onChange={(lastName) => set({ lastName })} />
-      <DateField label="Date of birth" value={props.value.birthDate} required={props.required} autoComplete="bday" onChange={(birthDate) => set({ birthDate })} />
+      <DateField label="Date of birth" value={props.value.birthDate} required={props.required} autoComplete="bday" notFuture onChange={(birthDate) => set({ birthDate })} />
       <TextField label="Phone" phone placeholder="XXX-XXX-XXXX" value={props.value.phone} required={props.required} onChange={(phone) => set({ phone })} />
     </div>
   );
@@ -186,6 +188,7 @@ export function EmploymentFields(props: { value: EmploymentDraft; required: bool
               value={props.value.startDate}
               required
               autoComplete="off"
+              notFuture
               onChange={(startDate) => set({ startDate })}
             />
           </div>
@@ -317,8 +320,18 @@ export function validateFormFields(form: HTMLFormElement | null): void {
   form?.querySelectorAll<HTMLInputElement>("input[data-email]").forEach(validateEmailField);
   form?.querySelectorAll<HTMLInputElement>("input[data-date]").forEach((input) => {
     const value = input.value;
+    const today = new Date();
+    const localToday = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, "0"),
+      String(today.getDate()).padStart(2, "0"),
+    ].join("-");
     input.setCustomValidity(
-      value && !isValidIsoDate(value) ? "Enter a valid date in YYYY-MM-DD format." : "",
+      value && !isValidIsoDate(value)
+        ? "Enter a valid date in YYYY-MM-DD format."
+        : value && input.dataset.notFuture === "true" && value > localToday
+          ? "Enter today’s date or an earlier date."
+          : "",
     );
   });
   form?.querySelectorAll<HTMLInputElement>("input[data-phone]").forEach((input) => {

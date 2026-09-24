@@ -18,24 +18,36 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.dimension_scoring import applications_to_score, kind_for_dimension
-from app.db.models import ApplicationAIResult
+from app.db.models import Application, ApplicationAIResult
 from app.domain.ranking import CandidateScores, ScoredDimension
 from app.services.ranking.dimensions import current_dimension_report
 
 
-def candidate_scores(db: Session, analysis) -> list[CandidateScores]:
+def candidate_scores(
+    db: Session,
+    analysis,
+    *,
+    include_application: Application | None = None,
+) -> list[CandidateScores]:
     """Every eligible candidate with its per-dimension scores under ``analysis``,
     joined to dimension labels. A candidate's score for each dimension is read
     from its **per-key** cache row (``dimension_scoring:<dimension_key>``), so
     scores reused from a prior analysis (matched dimensions share the prior key) are
     picked up transparently. A candidate with no scored dimensions at all is
     skipped (nothing to rank on). Shared across members — scores don't depend on tiers.
+
+    ``include_application`` adds one historical candidate to the assembled score set
+    without changing the active ranking pool. The applicant detail view uses this for a
+    selected household, whose persisted scores remain reviewable after selection removes
+    the household from future AI work.
     """
     report = current_dimension_report(analysis)
     if analysis.opening_id is None:
         return []
     applications = applications_to_score(db, analysis.opening_id)
     by_id = {app.id: app for app in applications}
+    if include_application is not None:
+        by_id.setdefault(include_application.id, include_application)
 
     # One query per dimension kind, each giving the latest row per candidate. There
     # are ~15-30 dimensions, so this is a handful of small indexed lookups.

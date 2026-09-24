@@ -51,17 +51,13 @@ export const FLAG_CATEGORY_LABELS: Record<string, string> = {
 export const REASON_FIELDS: Record<string, string[]> = {
   income_below_range: ["household_income"],
   income_above_range: ["household_income"],
-  income_arithmetic_mismatch: ["household_income", "applicant_income", "co_applicant_income"],
   owns_real_estate: ["has_real_estate"],
   applicant_under_min_age: ["applicant_age"],
   co_applicant_under_min_age: ["co_applicant_age"],
-  child_count_mismatch: ["child_count", "child_details"],
   child_age_over_max: ["child_details"],
   too_few_children: ["child_count"],
   too_many_children: ["child_count"],
   child_age_exceeds_parent: ["child_details", "applicant_age", "co_applicant_age"],
-  co_applicant_incomplete: ["co_applicant_name", "co_applicant_age", "co_applicant_phone", "co_applicant_email"],
-  future_employment_start: ["applicant_employment_start", "co_applicant_employment_start"],
   pets_over_limit: ["pets_text"],
 };
 

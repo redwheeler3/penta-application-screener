@@ -19,6 +19,7 @@ import type {
 } from "../../types";
 import { buildDetailSections, type DetailField } from "./applicationDetailSections";
 import { CandidateNotes } from "./CandidateNotes";
+import { ApplicationStatusBadges } from "./ApplicationStatusBadges";
 import { StarButton } from "./StarButton";
 import { SharedShortlistButton } from "./SharedShortlistButton";
 
@@ -118,10 +119,8 @@ export function CandidateDetail(props: {
         <div className="app-detail-identity-content">
           <div className="app-detail-header">
             <h3>{app.applicantName || app.primaryEmail}</h3>
-            <span className={`status-badge status-${app.selected ? "selected" : app.status}`}>
-              {app.selected ? "Selected" : STATUS_LABELS[app.status]}
-            </span>
-            {!app.selected && app.statusSource !== "untouched" ? (
+            <ApplicationStatusBadges selected={app.selected} status={app.status} />
+            {app.statusSource !== "untouched" ? (
               <span className={`source-badge source-${app.statusSource}`}>{SOURCE_LABELS[app.statusSource]}</span>
             ) : null}
           </div>

@@ -97,4 +97,30 @@ describe("CandidateDetail", () => {
         .map((button) => button.textContent?.trim()),
     ).toEqual(["View essay responses", "View AI scoring"]);
   });
+
+  it("keeps selected applications fully reviewable and shows both statuses", () => {
+    render(
+      <CandidateDetail
+        app={{ ...application, selected: true }}
+        openings={openings}
+        onBack={vi.fn()}
+        onOverrideStatus={vi.fn()}
+        onClearOverride={vi.fn()}
+        onSavePrivateNote={vi.fn().mockResolvedValue(true)}
+        onAddCommitteeNote={vi.fn().mockResolvedValue(true)}
+        onUpdateCommitteeNote={vi.fn().mockResolvedValue(true)}
+        onDeleteCommitteeNote={vi.fn()}
+        onToggleStar={vi.fn()}
+        onToggleShortlist={vi.fn()}
+      />,
+    );
+
+    const selectedBadge = screen.getByText("Selected");
+    const badges = selectedBadge.parentElement as HTMLElement;
+    expect(selectedBadge).toHaveClass("status-selected");
+    expect(within(badges).getByText("Eligible")).toHaveClass("status-eligible");
+    expect(screen.getByText("Decided by:")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Notes" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "AI scoring" })).toBeInTheDocument();
+  });
 });

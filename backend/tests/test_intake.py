@@ -218,6 +218,37 @@ def test_employed_applicant_requires_manager() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("applicant", {"birth_date": date(2999, 1, 1)}),
+        ("co_applicant", {"birth_date": date(2999, 1, 1)}),
+    ],
+)
+def test_adult_birth_dates_cannot_be_in_the_future(field: str, value: dict) -> None:
+    data = _answers().model_dump()
+    data[field].update(value)
+
+    with pytest.raises(ValueError, match="date of birth cannot be in the future"):
+        CanonicalApplicationAnswers.model_validate(data)
+
+
+def test_child_birth_date_cannot_be_in_the_future() -> None:
+    data = _answers().model_dump()
+    data["children"][0]["birth_date"] = date(2999, 1, 1)
+
+    with pytest.raises(ValueError, match="date of birth cannot be in the future"):
+        CanonicalApplicationAnswers.model_validate(data)
+
+
+def test_employment_start_date_cannot_be_in_the_future() -> None:
+    data = _answers().model_dump()
+    data["applicant_employment"]["start_date"] = date(2999, 1, 1)
+
+    with pytest.raises(ValueError, match="employment start date cannot be in the future"):
+        CanonicalApplicationAnswers.model_validate(data)
+
+
 def test_working_copy_does_not_replace_submitted_projection() -> None:
     saved_at = datetime(2026, 8, 23, tzinfo=UTC)
     application = Application(

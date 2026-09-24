@@ -1,12 +1,18 @@
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
+from sqlalchemy import select
 
 from app.ai.schemas import (
     DimensionMatchReport,
 )
 from app.api.dependencies import get_ai_provider
-from app.db.models import RunLock, UserRole
+from app.db.models import (
+    ApplicationParticipation,
+    OpeningOutcome,
+    RunLock,
+    UserRole,
+)
 from app.services.cost_report import RANK_PASS_LABELS
 from tests.ranking_support import (
     _scoring_report,
@@ -96,6 +102,24 @@ async def test_full_flow_rank_then_detail() -> None:
         assert trace["inputTokens"] == 100
         assert trace["outputTokens"] == 50
         assert trace["costUsd"] > 0
+
+        # Selection removes the household from future AI work, but its persisted
+        # decision evidence remains available to the committee. Keep another
+        # retained applicant in the opening so it remains a visible workspace.
+        add_eligible(db, email="remaining@x.com", raw_hash="h2")
+        participation = db.scalar(
+            select(ApplicationParticipation).where(
+                ApplicationParticipation.application_id == application.id,
+            )
+        )
+        assert participation is not None
+        participation.outcome = OpeningOutcome.SELECTED
+        db.commit()
+        selected_detail = (
+            await client.get(f"/applications/{application.id}")
+        ).json()["application"]
+        assert selected_detail["selected"] is True
+        assert len(selected_detail["dimensionScores"]) == 2
 
 
 @pytest.mark.anyio

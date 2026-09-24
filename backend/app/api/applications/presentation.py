@@ -178,21 +178,22 @@ def serialize_detail(
         app,
         pet_facts=pet_facts,
     )
+    is_selected = (
+        db.scalar(
+            select(ApplicationParticipation.id).where(
+                ApplicationParticipation.application_id == app.id,
+                ApplicationParticipation.opening_id == opening_id,
+                ApplicationParticipation.outcome == OpeningOutcome.SELECTED,
+            )
+        )
+        is not None
+    )
     summary = serialize_summary(
         app, reasons=reasons, override=override, flags=flags,
         starred=is_starred(db, app.id, user.id),
         shortlisted=is_shortlisted(db, opening_id, app.id),
         opening_ids=opening_ids,
-        selected=(
-            db.scalar(
-                select(ApplicationParticipation.id).where(
-                    ApplicationParticipation.application_id == app.id,
-                    ApplicationParticipation.opening_id == opening_id,
-                    ApplicationParticipation.outcome == OpeningOutcome.SELECTED,
-                )
-            )
-            is not None
-        ),
+        selected=is_selected,
     )
     # What the machine would decide from the current findings, independent of this
     # member's override — lets the UI show the live automatic verdict (the result of
@@ -207,7 +208,13 @@ def serialize_detail(
         )
     ).one()
 
-    dimension_scores = _dimension_scores(db, app, user, opening_id)
+    dimension_scores = _dimension_scores(
+        db,
+        app,
+        user,
+        opening_id,
+        include_historical=is_selected,
+    )
     return ApplicationDetail(
         **summary.model_dump(),
         auto_status=auto_status.value,
@@ -331,7 +338,12 @@ def _dimension_scoring_trace(
 
 
 def _dimension_scores(
-    db: Session, app: Application, user: User, opening_id: int
+    db: Session,
+    app: Application,
+    user: User,
+    opening_id: int,
+    *,
+    include_historical: bool,
 ) -> list[DimensionContributionOut] | None:
     """The candidate's per-dimension scores under the current analysis, ordered by
     importance to THIS candidate's ranking in the signed-in member's weighting.
@@ -357,7 +369,14 @@ def _dimension_scores(
         return []
 
     weights = dimension_weights(member_ranking)
-    ranked = rank_candidates(candidate_scores(db, analysis), weights)
+    ranked = rank_candidates(
+        candidate_scores(
+            db,
+            analysis,
+            include_application=app if include_historical else None,
+        ),
+        weights,
+    )
     candidate = next((c for c in ranked if c.application_id == app.id), None)
     if candidate is None:
         return None
