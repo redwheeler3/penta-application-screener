@@ -190,9 +190,9 @@ def application_unavailable_email(
 def selected_application_locked_email(
     *, email: str, application_id: int
 ) -> OutboundEmail:
-    heading = "Your application is now closed"
+    heading = "Your application is closed"
     introduction = (
-        "Your household is now a member of Penta, so your application has been "
+        "Your household is a member of Penta, so your application has been "
         "finalized and can no longer be changed online."
     )
     notice = (

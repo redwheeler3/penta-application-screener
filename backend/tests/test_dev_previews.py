@@ -46,8 +46,8 @@ async def test_email_preview_renders_every_template_without_real_addresses() -> 
     assert "jeffo.net" not in response.text
     assert "pentacoop.com#" not in response.text
     assert "removed you from the vacancy notification list" in response.text
-    assert "Your application is now closed" in response.text
-    assert "Your household is now a member of Penta" in response.text
+    assert "Your application is closed" in response.text
+    assert "Your household is a member of Penta" in response.text
     assert "your application has been finalized" in response.text
     assert "time and care you put into your application" in response.text
     assert "applying for housing takes time and effort" in response.text
