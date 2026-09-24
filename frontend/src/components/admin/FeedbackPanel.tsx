@@ -1,8 +1,9 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import * as api from "../../api/feedback";
 import { readProblem } from "../../api/problems";
 import { formatPacificDateTime } from "../../format";
+import { useFetchResource } from "../../hooks/useFetchResource";
 import type { FeedbackItem, ViewTab } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
@@ -29,28 +30,16 @@ export function FeedbackPanel(props: {
   onOpenApplicant: (id: number) => void;
   onOpenView: (tab: ViewTab) => void;
 }): ReactNode {
-  const [items, setItems] = useState<FeedbackItem[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
-  const [loadVersion, setLoadVersion] = useState(0);
   const [showResolved, setShowResolved] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
-
-  useEffect(() => {
-    let live = true;
-    setLoadError(false);
-    api
-      .fetchFeedback(showResolved)
-      .then((list) => live && setItems(list))
-      .catch(() => {
-        if (!live) return;
-        setLoadError(true);
-        props.onError("Could not load feedback.");
-      });
-    return () => {
-      live = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showResolved, loadVersion]);
+  const feedback = useFetchResource<FeedbackItem[]>(
+    () => api.fetchFeedback(showResolved),
+    {
+      reloadKey: showResolved,
+      onError: () => props.onError("Could not load feedback."),
+    },
+  );
+  const items = feedback.data;
 
   async function act(id: number, action: "resolve" | "reopen") {
     setBusyId(id);
@@ -62,10 +51,7 @@ export function FeedbackPanel(props: {
       props.onError((await readProblem(response)) ?? `Could not ${action} the feedback item.`);
       return;
     }
-    api
-      .fetchFeedback(showResolved)
-      .then(setItems)
-      .catch(() => props.onError("Could not refresh feedback."));
+    void feedback.reload();
   }
 
   return (
@@ -87,10 +73,10 @@ export function FeedbackPanel(props: {
           <span>Show resolved</span>
         </label>
       </div>
-      {loadError ? (
+      {feedback.state === "error" ? (
         <RetryLoadError
           message="Couldn't load feedback."
-          onRetry={() => setLoadVersion((version) => version + 1)}
+          onRetry={feedback.reload}
         />
       ) : items === null ? (
         <p className="panel-hint">Loading…</p>

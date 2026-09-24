@@ -1,8 +1,9 @@
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useMemo, useState } from "react";
 
 import * as api from "../../api/vacancySubscriptions";
 import { readProblem } from "../../api/problems";
 import { formatPacificDateTime } from "../../format";
+import { useFetchResource } from "../../hooks/useFetchResource";
 import type { VacancySubscription, VacancySubscriptionReport } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
@@ -10,9 +11,11 @@ export function VacancyNotificationsPanel(props: {
   onError: (message: string) => void;
 }): ReactNode {
   const { onError } = props;
-  const [report, setReport] = useState<VacancySubscriptionReport | null>(null);
-  const [loadVersion, setLoadVersion] = useState(0);
-  const [loadError, setLoadError] = useState(false);
+  const reportResource = useFetchResource<VacancySubscriptionReport>(
+    api.fetchVacancySubscriptionReport,
+    { onError: () => onError("Could not load the vacancy notification report.") },
+  );
+  const report = reportResource.data;
   const [email, setEmail] = useState("");
   const [unitSizes, setUnitSizes] = useState<number[]>([]);
   const [source, setSource] = useState("Tech support request");
@@ -20,19 +23,6 @@ export function VacancyNotificationsPanel(props: {
   const [lookedUp, setLookedUp] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    let live = true;
-    setLoadError(false);
-    api.fetchVacancySubscriptionReport().then((next) => {
-      if (live) setReport(next);
-    }).catch(() => {
-      if (!live) return;
-      setLoadError(true);
-      onError("Could not load the vacancy notification report.");
-    });
-    return () => { live = false; };
-  }, [loadVersion, onError]);
 
   async function lookup(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -69,7 +59,7 @@ export function VacancyNotificationsPanel(props: {
       const result = (await response.json()) as api.VacancySubscriptionLookup;
       setSubscription(result.subscription);
       setMessage("Subscription saved.");
-      setLoadVersion((version) => version + 1);
+      void reportResource.reload();
     } catch {
       props.onError("Could not save that subscription.");
     } finally {
@@ -89,7 +79,7 @@ export function VacancyNotificationsPanel(props: {
       setSubscription(null);
       setUnitSizes([]);
       setMessage("Subscription deleted.");
-      setLoadVersion((version) => version + 1);
+      void reportResource.reload();
     } catch {
       props.onError("Could not delete that subscription.");
     } finally {
@@ -111,10 +101,10 @@ export function VacancyNotificationsPanel(props: {
           Active one-time requests. Bedroom counts overlap when someone chose more than one size.
         </p>
       </div>
-      {loadError ? (
+      {reportResource.state === "error" ? (
         <RetryLoadError
           message="Couldn't load vacancy notifications."
-          onRetry={() => setLoadVersion((version) => version + 1)}
+          onRetry={reportResource.reload}
         />
       ) : report === null ? (
         <p className="panel-hint">Loading…</p>

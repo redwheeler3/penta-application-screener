@@ -1,40 +1,61 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
-// Shared read-only resource state. A panel owns its copy and wording, while this hook owns the
-// request lifecycle and gives every failed load an in-place retry without remounting the tab.
+// Shared reloadable resource state. This hook owns request ordering and retry state; callers may
+// replace the cached data directly when a successful mutation already returned the new value.
 export type FetchState = "loading" | "ready" | "error";
 
-export function useFetchResource<T>(fetcher: () => Promise<T>): {
+export function useFetchResource<T>(
+  fetcher: () => Promise<T>,
+  options: {
+    reloadKey?: string | number | boolean | null;
+    onError?: () => void;
+  } = {},
+): {
   data: T | null;
   state: FetchState;
   reload: () => Promise<void>;
+  setData: Dispatch<SetStateAction<T | null>>;
 } {
   const [data, setData] = useState<T | null>(null);
   const [state, setState] = useState<FetchState>("loading");
   const fetcherRef = useRef(fetcher);
-  const live = useRef(true);
+  const onErrorRef = useRef(options.onError);
+  const mounted = useRef(false);
+  const requestVersion = useRef(0);
 
   fetcherRef.current = fetcher;
+  onErrorRef.current = options.onError;
 
   const reload = useCallback(async (): Promise<void> => {
+    const version = ++requestVersion.current;
     setState("loading");
     try {
       const next = await fetcherRef.current();
-      if (!live.current) return;
+      if (!mounted.current || version !== requestVersion.current) return;
       setData(next);
       setState("ready");
     } catch {
-      if (live.current) setState("error");
+      if (!mounted.current || version !== requestVersion.current) return;
+      setState("error");
+      onErrorRef.current?.();
     }
   }, []);
 
   useEffect(() => {
-    live.current = true;
+    mounted.current = true;
     void reload();
     return () => {
-      live.current = false;
+      mounted.current = false;
+      requestVersion.current += 1;
     };
-  }, [reload]);
+  }, [reload, options.reloadKey]);
 
-  return { data, state, reload };
+  return { data, state, reload, setData };
 }

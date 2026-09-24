@@ -1,9 +1,10 @@
 import { CalendarDays, Eye, Pencil, Plus, UserCheck, UserX } from "lucide-react";
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useState } from "react";
 
 import * as api from "../../api/openings";
 import { readProblem } from "../../api/problems";
 import { formatDateOnly, formatHousingCharge } from "../../format";
+import { useFetchResource } from "../../hooks/useFetchResource";
 import type {
   Opening,
   OpeningCreate,
@@ -55,26 +56,14 @@ export function OpeningsPanel(props: {
   onOpenApplicant: (id: number, openingId: number) => void;
   onOpenRetainedApplicant: (id: number) => void;
 }): ReactNode {
-  const [openings, setOpenings] = useState<Opening[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
-  const [loadVersion, setLoadVersion] = useState(0);
+  const openingsResource = useFetchResource<Opening[]>(api.fetchOpenings, {
+    onError: () => props.onError("Could not load openings."),
+  });
+  const openings = openingsResource.data;
+  const setOpenings = openingsResource.setData;
   const [mode, setMode] = useState<OpeningPanelMode>({ kind: "list" });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    let live = true;
-    setLoadError(false);
-    api.fetchOpenings().then((items) => {
-      if (live) setOpenings(items);
-    }).catch(() => {
-      if (!live) return;
-      setLoadError(true);
-      props.onError("Could not load openings.");
-    });
-    return () => { live = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadVersion]);
 
   function beginCreate(): void {
     setMode({
@@ -313,10 +302,10 @@ export function OpeningsPanel(props: {
       ) : null}
 
       {message ? <p className="opening-message" role="status">{message}</p> : null}
-      {loadError ? (
+      {openingsResource.state === "error" ? (
         <RetryLoadError
           message="Couldn't load openings."
-          onRetry={() => setLoadVersion((version) => version + 1)}
+          onRetry={openingsResource.reload}
         />
       ) : openings === null ? (
         <p className="panel-hint">Loading…</p>

@@ -1,4 +1,4 @@
-import { type ReactNode, type SyntheticEvent, useEffect, useState } from "react";
+import { type ReactNode, type SyntheticEvent, useState } from "react";
 
 import * as api from "../../api/settings";
 import { ELIGIBILITY_GENERAL_NUMERIC_FIELDS } from "../../constants";
@@ -17,28 +17,17 @@ export function CommitteeDefaultsPanel(props: {
   onEligibilityChanged: () => void;
 }): ReactNode {
   const checks = useFetchResource(api.fetchEligibilityCheckCatalog);
-  const [draft, setDraft] = useState<EligibilityRules | null>(null);
-  const [loadError, setLoadError] = useState(false);
-  const [loadVersion, setLoadVersion] = useState(0);
+  const rules = useFetchResource(
+    () => api.fetchCommitteeDefaultRules(props.openingId),
+    {
+      reloadKey: props.openingId,
+      onError: () => props.onError("Could not load the committee default rules."),
+    },
+  );
+  const draft = rules.data;
+  const setDraft = rules.setData;
   const [saving, setSaving] = useState(false);
   const [savedTick, setSavedTick] = useState(false);
-
-  useEffect(() => {
-    let live = true;
-    setLoadError(false);
-    api
-      .fetchCommitteeDefaultRules(props.openingId)
-      .then((rules) => live && setDraft(rules))
-      .catch(() => {
-        if (!live) return;
-        setLoadError(true);
-        props.onError("Could not load the committee default rules.");
-      });
-    return () => {
-      live = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadVersion, props.openingId]);
 
   async function save(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -78,10 +67,10 @@ export function CommitteeDefaultsPanel(props: {
           rules. Changing it does not affect members who've already diverged.
         </p>
       </div>
-      {loadError ? (
+      {rules.state === "error" ? (
         <RetryLoadError
           message="Couldn't load the committee default rules."
-          onRetry={() => setLoadVersion((version) => version + 1)}
+          onRetry={rules.reload}
         />
       ) : !draft ? (
         <p className="panel-hint">Loading…</p>

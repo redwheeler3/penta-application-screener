@@ -1,39 +1,22 @@
 import { RefreshCw } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode } from "react";
 
 import { fetchEmailDeliveryIssues } from "../../api/dashboard";
 import { formatPacificDateTime } from "../../format";
+import { useFetchResource } from "../../hooks/useFetchResource";
 import type { EmailDeliveryIssue } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
 export function EmailDeliveryPanel(props: { onError: (message: string) => void }): ReactNode {
-  const [issues, setIssues] = useState<EmailDeliveryIssue[] | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
-  const [loadVersion, setLoadVersion] = useState(0);
-
-  useEffect(() => {
-    let live = true;
-    setLoadFailed(false);
-    fetchEmailDeliveryIssues()
-      .then(({ items }) => {
-        if (live) setIssues(items);
-      })
-      .catch(() => {
-        if (!live) return;
-        setLoadFailed(true);
-        props.onError("Could not load email delivery.");
-      });
-    return () => {
-      live = false;
-    };
-    // The parent toast callback is recreated when toast state changes. Retrying only when the
-    // requested load version changes prevents a failed request from triggering a fetch loop.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadVersion]);
+  const delivery = useFetchResource<EmailDeliveryIssue[]>(
+    async () => (await fetchEmailDeliveryIssues()).items,
+    { onError: () => props.onError("Could not load email delivery.") },
+  );
+  const issues = delivery.data;
 
   const refresh = () => {
-    setIssues(null);
-    setLoadVersion((version) => version + 1);
+    delivery.setData(null);
+    void delivery.reload();
   };
 
   return (
@@ -52,7 +35,7 @@ export function EmailDeliveryPanel(props: { onError: (message: string) => void }
         </button>
       </div>
 
-      {loadFailed ? (
+      {delivery.state === "error" ? (
         <RetryLoadError message="Couldn't load email delivery." onRetry={refresh} />
       ) : issues === null ? (
         <p className="panel-hint">Loading…</p>

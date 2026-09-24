@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { ELIGIBILITY_GENERAL_NUMERIC_FIELDS, ELIGIBILITY_NUMERIC_FIELDS } from "../../constants";
 import * as api from "../../api/settings";
 import { readProblem } from "../../api/problems";
@@ -21,41 +21,38 @@ export function EligibilitySettingsPanel(props: {
   onError: (message: string) => void;
   onRulesUpdated: () => void;
 }): ReactNode {
-  const [draft, setDraft] = useState<EligibilityRules | null>(null);
-  const [loadError, setLoadError] = useState(false);
-  const [loadVersion, setLoadVersion] = useState(0);
-  const [isDefault, setIsDefault] = useState(true);
+  const rules = useFetchResource(
+    async () => {
+      const [mine, committeeDefault] = await Promise.all([
+        api.fetchEligibilityRules(props.openingId),
+        api.fetchCommitteeDefaultRules(props.openingId),
+      ]);
+      return { draft: mine.rules, isDefault: mine.isDefault, committeeDefault };
+    },
+    {
+      reloadKey: props.openingId,
+      onError: () => props.onError("Could not load your eligibility rules."),
+    },
+  );
+  const draft = rules.data?.draft ?? null;
+  const isDefault = rules.data?.isDefault ?? true;
+  // The divergence display compares against the current committee default on every load;
+  // no separate diff is persisted.
+  const committeeDefault = rules.data?.committeeDefault ?? null;
   const [saving, setSaving] = useState(false);
   const [savedTick, setSavedTick] = useState(false);
-  // The current committee default, for the "compared to committee default" divergence diff
-  // Computed on read from the member override and current default; no diff is stored.
-  const [committeeDefault, setCommitteeDefault] = useState<EligibilityRules | null>(null);
   const [resetting, setResetting] = useState(false);
   const checks = useFetchResource(api.fetchEligibilityCheckCatalog);
 
-  useEffect(() => {
-    let live = true;
-    setLoadError(false);
-    Promise.all([
-      api.fetchEligibilityRules(props.openingId),
-      api.fetchCommitteeDefaultRules(props.openingId),
-    ])
-      .then(([mine, def]) => {
-        if (!live) return;
-        setDraft(mine.rules);
-        setIsDefault(mine.isDefault);
-        setCommitteeDefault(def);
-      })
-      .catch(() => {
-        if (!live) return;
-        setLoadError(true); // show an inline error instead of a perpetual "Loading…"
-        props.onError("Could not load your eligibility rules.");
-      });
-    return () => {
-      live = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadVersion, props.openingId]);
+  function setDraft(next: EligibilityRules): void {
+    rules.setData((current) => current ? { ...current, draft: next } : current);
+  }
+
+  function setEffectiveRules(next: EligibilityRules, nextIsDefault: boolean): void {
+    rules.setData((current) => current
+      ? { ...current, draft: next, isDefault: nextIsDefault }
+      : current);
+  }
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -70,8 +67,7 @@ export function EligibilitySettingsPanel(props: {
       return;
     }
     const payload: { rules: EligibilityRules; isDefault: boolean } = await response.json();
-    setDraft(payload.rules);
-    setIsDefault(payload.isDefault);
+    setEffectiveRules(payload.rules, payload.isDefault);
     props.onRulesUpdated();
     // Transient "Saved" confirmation, matching CommitteeDefaultsPanel.
     setSavedTick(true);
@@ -89,8 +85,7 @@ export function EligibilitySettingsPanel(props: {
     }
     // Server returns the now-effective (default) rules; adopt them and drop divergence.
     const payload: { rules: EligibilityRules; isDefault: boolean } = await response.json();
-    setDraft(payload.rules);
-    setIsDefault(payload.isDefault);
+    setEffectiveRules(payload.rules, payload.isDefault);
     props.onRulesUpdated();
   }
 
@@ -106,84 +101,84 @@ export function EligibilitySettingsPanel(props: {
 
   return (
     <div className="settings-panel-body">
-        {loadError ? (
-          <RetryLoadError
-            message="Couldn't load your eligibility rules."
-            onRetry={() => setLoadVersion((version) => version + 1)}
-          />
-        ) : !draft ? (
-          <p className="panel-hint">Loading…</p>
-        ) : (
-          <form className="settings-form" onSubmit={save}>
-            {isDefault ? (
-              <p className="panel-hint eligibility-default-hint">
-                You're using the committee default — saving creates your own copy to tune.
-              </p>
-            ) : (
-              <DivergencePanel
-                mine={draft}
-                committeeDefault={committeeDefault}
-                onReset={reset}
-                resetting={resetting}
+      {rules.state === "error" ? (
+        <RetryLoadError
+          message="Couldn't load your eligibility rules."
+          onRetry={rules.reload}
+        />
+      ) : !draft ? (
+        <p className="panel-hint">Loading…</p>
+      ) : (
+        <form className="settings-form" onSubmit={save}>
+          {isDefault ? (
+            <p className="panel-hint eligibility-default-hint">
+              You're using the committee default — saving creates your own copy to tune.
+            </p>
+          ) : (
+            <DivergencePanel
+              mine={draft}
+              committeeDefault={committeeDefault}
+              onReset={reset}
+              resetting={resetting}
+            />
+          )}
+          {ELIGIBILITY_GENERAL_NUMERIC_FIELDS.map((f) => (
+            <label key={f.key}>
+              <span>{f.label}</span>
+              <NumberInput
+                min={f.min}
+                max={f.max}
+                value={draft[f.key] as number}
+                onChange={(v) => setDraft({ ...draft, [f.key]: v ?? 0 })}
               />
-            )}
-            {ELIGIBILITY_GENERAL_NUMERIC_FIELDS.map((f) => (
-              <label key={f.key}>
-                <span>{f.label}</span>
-                <NumberInput
-                  min={f.min}
-                  max={f.max}
-                  value={draft[f.key] as number}
-                  onChange={(v) => setDraft({ ...draft, [f.key]: v ?? 0 })}
+            </label>
+          ))}
+          <PetLimitsFields
+            value={draft}
+            onChange={(patch) => setDraft({ ...draft, ...patch })}
+          />
+          <EmploymentRequirementField
+            value={draft.employmentRequirement}
+            onChange={(employmentRequirement) =>
+              setDraft({ ...draft, employmentRequirement })
+            }
+          />
+          <div className="rules-section">
+            <h4>Screening checks</h4>
+            <p className="rules-hint">
+              Uncheck a check to disable it for your own list — it won't flag or exclude an
+              applicant for you. Others' lists are unaffected.
+            </p>
+            {checks.state === "error" ? (
+              <RetryLoadError message="Couldn't load the screening checks." onRetry={checks.reload} />
+            ) : checks.data ? (
+              <>
+                <CheckGroup
+                  title="Deterministic rules"
+                  hint="Threshold checks decided directly from application fields."
+                  checks={checks.data.deterministic}
+                  disabledChecks={draft.disabledChecks}
+                  onToggle={toggleCheck}
                 />
-              </label>
-            ))}
-            <PetLimitsFields
-              value={draft}
-              onChange={(patch) => setDraft({ ...draft, ...patch })}
-            />
-            <EmploymentRequirementField
-              value={draft.employmentRequirement}
-              onChange={(employmentRequirement) =>
-                setDraft({ ...draft, employmentRequirement })
-              }
-            />
-            <div className="rules-section">
-              <h4>Screening checks</h4>
-              <p className="rules-hint">
-                Uncheck a check to disable it for your own list — it won't flag or exclude an
-                applicant for you. Others' lists are unaffected.
-              </p>
-              {checks.state === "error" ? (
-                <RetryLoadError message="Couldn't load the screening checks." onRetry={checks.reload} />
-              ) : checks.data ? (
-                <>
-                  <CheckGroup
-                    title="Deterministic rules"
-                    hint="Threshold checks decided directly from application fields."
-                    checks={checks.data.deterministic}
-                    disabledChecks={draft.disabledChecks}
-                    onToggle={toggleCheck}
-                  />
-                  <CheckGroup
-                    title="AI screening checks"
-                    hint="Decided at Screen — the AI reads the application (pets are judged from what it extracts)."
-                    checks={checks.data.ai}
-                    disabledChecks={draft.disabledChecks}
-                    onToggle={toggleCheck}
-                  />
-                </>
-              ) : (
-                <p className="rules-hint">Loading screening checks…</p>
-              )}
-            </div>
-            <div className="settings-actions">
-              <button className="primary-button" type="submit" disabled={saving}>
-                {saving ? "Saving…" : savedTick ? "Saved" : "Save eligibility rules"}
-              </button>
-            </div>
-          </form>
-        )}
+                <CheckGroup
+                  title="AI screening checks"
+                  hint="Decided at Screen — the AI reads the application (pets are judged from what it extracts)."
+                  checks={checks.data.ai}
+                  disabledChecks={draft.disabledChecks}
+                  onToggle={toggleCheck}
+                />
+              </>
+            ) : (
+              <p className="rules-hint">Loading screening checks…</p>
+            )}
+          </div>
+          <div className="settings-actions">
+            <button className="primary-button" type="submit" disabled={saving}>
+              {saving ? "Saving…" : savedTick ? "Saved" : "Save eligibility rules"}
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

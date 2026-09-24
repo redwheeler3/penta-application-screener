@@ -1,8 +1,9 @@
 import { Trash2, UserPlus } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import * as api from "../../api/access";
 import { readProblem } from "../../api/problems";
 import { formatPacificDateTime } from "../../format";
+import { useFetchResource } from "../../hooks/useFetchResource";
 import type { AllowlistEntry, CurrentUser, DeniedSignInAttempt } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
@@ -10,43 +11,18 @@ import { RetryLoadError } from "../shared/RetryLoadError";
 // The mutation endpoints return the full updated list, so this holds the list in local
 // state and replaces it from each response (no separate refetch).
 export function AccessPanel(props: { currentUser: CurrentUser; onError: (message: string) => void }): ReactNode {
-  const [entries, setEntries] = useState<AllowlistEntry[] | null>(null);
-  const [deniedAttempts, setDeniedAttempts] = useState<DeniedSignInAttempt[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
-  const [deniedLoadError, setDeniedLoadError] = useState(false);
-  const [loadVersion, setLoadVersion] = useState(0);
+  const allowlist = useFetchResource<AllowlistEntry[]>(api.fetchAllowlist, {
+    onError: () => props.onError("Could not load the access allowlist."),
+  });
+  const deniedSignIns = useFetchResource<DeniedSignInAttempt[]>(api.fetchDeniedSignInAttempts, {
+    onError: () => props.onError("Could not load denied sign-in attempts."),
+  });
+  const entries = allowlist.data;
+  const deniedAttempts = deniedSignIns.data;
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "member">("member");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    let live = true;
-    setLoadError(false);
-    setDeniedLoadError(false);
-    api
-      .fetchAllowlist()
-      .then((list) => live && setEntries(list))
-      .catch(() => {
-        if (!live) return;
-        // Record the failure so the panel shows an inline error instead of sitting on
-        // "Loading…" forever (the toast is ephemeral; the panel would otherwise mislead).
-        setLoadError(true);
-        props.onError("Could not load the access allowlist.");
-      });
-    api
-      .fetchDeniedSignInAttempts()
-      .then((attempts) => live && setDeniedAttempts(attempts))
-      .catch(() => {
-        if (!live) return;
-        setDeniedLoadError(true);
-        props.onError("Could not load denied sign-in attempts.");
-      });
-    return () => {
-      live = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadVersion]);
 
   async function addEntry(event: React.FormEvent) {
     event.preventDefault();
@@ -64,7 +40,7 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
       entries: AllowlistEntry[];
       invitationEmailStatus: "sent" | "failed" | null;
     } = await response.json();
-    setEntries(body.entries);
+    allowlist.setData(body.entries);
     setMessage(
       body.invitationEmailStatus === "sent"
         ? "Access added and invitation email sent."
@@ -87,7 +63,7 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
       return;
     }
     const body: { entries: AllowlistEntry[] } = await response.json();
-    setEntries(body.entries);
+    allowlist.setData(body.entries);
     setMessage("Access removed.");
   }
 
@@ -102,7 +78,7 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
       return;
     }
     const body: { entries: AllowlistEntry[] } = await response.json();
-    setEntries(body.entries);
+    allowlist.setData(body.entries);
     setMessage("Role updated.");
   }
 
@@ -137,10 +113,10 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
 
       {message ? <p className="opening-message" role="status">{message}</p> : null}
 
-      {loadError ? (
+      {allowlist.state === "error" ? (
         <RetryLoadError
           message="Couldn't load the access allowlist."
-          onRetry={() => setLoadVersion((version) => version + 1)}
+          onRetry={allowlist.reload}
         />
       ) : entries === null ? (
         <p className="panel-hint">Loading…</p>
@@ -227,10 +203,10 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
           <h3>Denied sign-in attempts</h3>
           <p className="panel-hint">Accounts rejected by the allowlist in the last year.</p>
         </div>
-        {deniedLoadError ? (
+        {deniedSignIns.state === "error" ? (
           <RetryLoadError
             message="Couldn't load denied sign-in attempts."
-            onRetry={() => setLoadVersion((version) => version + 1)}
+            onRetry={deniedSignIns.reload}
           />
         ) : deniedAttempts === null ? (
           <p className="panel-hint">Loading…</p>
