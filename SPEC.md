@@ -537,13 +537,13 @@ Applicants cannot newly apply after the close date, regardless of whether the co
 completed closeout. The candidate picker can filter the already-loaded candidates by name or email;
 the filter does not make another request or change the candidate set. Confirming the selection
 records the selected participation and records every other active participation in that opening as
-unsuccessful. AI
-eligibility and ranking never imply that decision. Selecting an applicant immediately removes that
-application from Applications, Screen, Rank, and every successful-applicant picker while retaining
-it in an administrator-only audit view for seven years from the decision date. The opening
-closeout continues to show the selected household as a read-only decision summary and links to the
-full retained application. That audit detail is read-only and is available only to administrators;
-it does not restore the household to any live committee workflow. Selection also locks the
+unsuccessful. AI eligibility and ranking never imply that decision. Selecting an applicant
+immediately removes that application from Applications, Screen, Rank, and every successful-applicant
+picker while retaining it in an administrator-only audit view for seven years from the decision
+date. The opening card shows the selected household as an ordinary read-only fact and links to the
+full retained application. Only an undecided closed opening offers the action to record a decision; a finalized
+opening has no second decision-management surface. That audit detail is read-only and is available
+only to administrators; it does not restore the household to any live committee workflow. Selection also locks the
 applicant boundary immediately: the submitted record, working copy, opening choices, primary
 email, and profile status cannot be changed online while any participation is selected. Confirming
 either an application-intake or direct selection revokes every applicant browser session and unused
@@ -566,9 +566,10 @@ immediately releases eligible unsuccessful notices. A notice is eligible only wh
 that applicant actively entered has a confirmed decision and none selected that applicant. This
 avoids sending an unsuccessful notice to someone
 whose result in another simultaneous opening remains pending or who was selected elsewhere. The
-operation is retry-safe and records enough provider state to prevent duplicate sends. The message
-acknowledges the time and effort involved in applying, closes the loop without implying fault, and
-invites the applicant to join the vacancy notification list for future openings.
+confirmation streams provider-backed progress for the due notices, including processed and accepted
+counts, while the operation remains retry-safe and records enough provider state to prevent duplicate
+sends. The message acknowledges the time and effort involved in applying, closes the loop without
+implying fault, and invites the applicant to join the vacancy notification list for future openings.
 
 The committee screener shows administrators an action banner when an opening reaches its move-in
 date without a decision. The banner links to the relevant review flow and disappears after

@@ -1,8 +1,9 @@
 """Admin-only opening configuration and lifecycle endpoints."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 
 from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin
@@ -10,11 +11,14 @@ from app.core.problems import Problem
 from app.core.time import pacific_today
 from app.db.models import Application, Opening, User
 from app.db.session import get_db
+from app.schemas.events import emit
 from app.schemas.openings import (
     DirectSelectionOpeningCreate,
     OpeningCreate,
     OpeningCreateConfirmation,
     OpeningCreatedOut,
+    OpeningDecisionProgressOut,
+    OpeningDecisionSummaryOut,
     OpeningNotificationVariantOut,
     OpeningOut,
     OpeningPreviewOut,
@@ -33,7 +37,7 @@ from app.services.direct_openings import (
 )
 from app.services.email_sender import EmailSender, get_email_sender
 from app.services.maintenance import run_email_outbox
-from app.services.opening_notifications import send_due_unsuccessful_notices
+from app.services.opening_notifications import stream_due_unsuccessful_notices
 from app.services.opening_selection import (
     active_opening_participants,
     confirm_no_household_selected,
@@ -254,14 +258,14 @@ def read_opening_selection(
     return _selection_response(db, _opening(db, opening_id))
 
 
-@router.post("/{opening_id}/selection", response_model=OpeningSelectionOut)
+@router.post("/{opening_id}/selection")
 def select_successful_applicant(
     opening_id: int,
     body: OpeningSelectionRequest,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
-) -> OpeningSelectionOut:
+) -> StreamingResponse:
     opening = _opening(db, opening_id)
     confirm_opening_selection(
         db,
@@ -269,21 +273,57 @@ def select_successful_applicant(
         body.application_id,
         decided_by=admin,
     )
-    send_due_unsuccessful_notices(db, sender)
-    return _selection_response(db, opening)
+    return _decision_stream(db, opening, sender)
 
 
-@router.post("/{opening_id}/selection/no-household", response_model=OpeningSelectionOut)
+@router.post("/{opening_id}/selection/no-household")
 def select_no_household(
     opening_id: int,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
-) -> OpeningSelectionOut:
+) -> StreamingResponse:
     opening = _opening(db, opening_id)
     confirm_no_household_selected(db, opening, decided_by=admin)
-    send_due_unsuccessful_notices(db, sender)
-    return _selection_response(db, opening)
+    return _decision_stream(db, opening, sender)
+
+
+def _decision_stream(
+    db: Session,
+    opening: Opening,
+    sender: EmailSender,
+) -> StreamingResponse:
+    participant_ids = {
+        application.id
+        for _, application in active_opening_participants(db, opening)
+    }
+
+    def stream() -> Iterator[str]:
+        last_total = 0
+        last_sent = 0
+        for progress in stream_due_unsuccessful_notices(
+            db,
+            sender,
+            application_ids=participant_ids,
+        ):
+            last_total = progress.total
+            last_sent = progress.sent
+            yield emit(
+                OpeningDecisionProgressOut(
+                    processed=progress.processed,
+                    total=progress.total,
+                    sent=progress.sent,
+                )
+            )
+        yield emit(
+            OpeningDecisionSummaryOut(
+                sent=last_sent,
+                total=last_total,
+                selection=_selection_response(db, opening),
+            )
+        )
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
 
 
 def _selection_response(db: Session, opening: Opening) -> OpeningSelectionOut:

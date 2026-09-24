@@ -1,5 +1,10 @@
 import { apiBaseUrl } from "../constants";
-import type { EvalStreamEvent, RankingStreamEvent, ScreeningStreamEvent } from "../types";
+import type {
+  EvalStreamEvent,
+  OpeningDecisionStreamEvent,
+  RankingStreamEvent,
+  ScreeningStreamEvent,
+} from "../types";
 
 const GET_TIMEOUT_MS = 15_000;
 const ACTION_REQUEST_TIMEOUT_MS = 30_000;
@@ -52,7 +57,11 @@ export function streamRequest(path: string): Promise<Response> {
 }
 
 export async function streamNdjson<
-  TEvent extends ScreeningStreamEvent | RankingStreamEvent | EvalStreamEvent,
+  TEvent extends
+    | ScreeningStreamEvent
+    | RankingStreamEvent
+    | EvalStreamEvent
+    | OpeningDecisionStreamEvent,
 >(
   body: ReadableStream<Uint8Array>,
   onEvent: (event: TEvent) => void,

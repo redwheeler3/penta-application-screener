@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -30,6 +31,14 @@ from app.services.openings import opening_phase
 from app.services.passwordless_auth import create_browser_session, issue_magic_link
 from app.services.retention import one_year_after, years_after
 from tests.app_support import shared_test_app
+
+
+def _stream_events(response) -> list[dict]:
+    return [json.loads(line) for line in response.text.splitlines() if line]
+
+
+def _stream_summary(response) -> dict:
+    return _stream_events(response)[-1]
 
 
 def _app_and_db(role: UserRole) -> tuple:
@@ -355,7 +364,10 @@ async def test_selection_archives_permanently_and_sends_unsuccessful_notices() -
     ).all()
     assert selected.status_code == 200
     assert repeated.status_code == 200
-    assert selected.json()["phase"] == "archived"
+    events = _stream_events(selected)
+    assert [event["processed"] for event in events[:-1]] == [0, 1, 2]
+    assert [event["sent"] for event in events[:-1]] == [0, 1, 2]
+    assert events[-1]["selection"]["phase"] == "archived"
     assert [candidate["applicationId"] for candidate in picker_after_selection.json()["candidates"]] == [
         applications[1].id,
         applications[2].id,
@@ -478,9 +490,10 @@ async def test_no_household_decision_archives_permanently() -> None:
         decided = await client.post(f"/openings/{opening.id}/selection/no-household")
 
     assert decided.status_code == 200
-    assert decided.json()["selectedApplicationId"] is None
-    assert decided.json()["noHouseholdSelected"] is True
-    assert decided.json()["phase"] == "archived"
+    summary = _stream_summary(decided)
+    assert summary["selection"]["selectedApplicationId"] is None
+    assert summary["selection"]["noHouseholdSelected"] is True
+    assert summary["selection"]["phase"] == "archived"
     assert opening.no_household_selected is True
     assert all(
         participation.outcome == OpeningOutcome.UNSUCCESSFUL
@@ -502,7 +515,7 @@ async def test_overdue_no_household_decision_sends_notices() -> None:
         decided = await client.post(f"/openings/{opening.id}/selection/no-household")
 
     assert decided.status_code == 200
-    assert decided.json()["noHouseholdSelected"] is True
+    assert _stream_summary(decided)["selection"]["noHouseholdSelected"] is True
     assert len(sender.messages) == len(applications)
     assert all(
         participation.outcome == OpeningOutcome.UNSUCCESSFUL

@@ -1,7 +1,7 @@
 """Admin opening-management request and response shapes."""
 
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, StringConstraints, model_validator
 
@@ -117,6 +117,20 @@ class OpeningSelectionOut(ResponseModel):
     no_household_selected: bool
     active_participant_count: int
     candidates: list[OpeningSelectionCandidateOut]
+
+
+class OpeningDecisionProgressOut(ResponseModel):
+    type: Literal["progress"] = "progress"
+    processed: int
+    total: int
+    sent: int
+
+
+class OpeningDecisionSummaryOut(ResponseModel):
+    type: Literal["summary"] = "summary"
+    sent: int
+    total: int
+    selection: OpeningSelectionOut
 
 
 class PreviousApplicantSearch(RequestModel):

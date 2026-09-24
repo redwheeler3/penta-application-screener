@@ -8,7 +8,10 @@ from app.db.models import (
     OpeningOutcome,
 )
 from app.services.email_sender import CapturedEmailSender
-from app.services.opening_notifications import send_due_unsuccessful_notices
+from app.services.opening_notifications import (
+    send_due_unsuccessful_notices,
+    stream_due_unsuccessful_notices,
+)
 from tests.db_support import memory_session
 
 
@@ -139,3 +142,33 @@ def test_failed_notice_is_retried_without_marking_the_applicant_notified() -> No
     assert send_due_unsuccessful_notices(db, sender) == 1
     assert len(sender.messages) == 1
     assert participation.unsuccessful_notified_at is not None
+
+
+def test_streamed_progress_is_scoped_to_the_finalized_opening_participants() -> None:
+    db = _db()
+    sender = CapturedEmailSender()
+    opening = _opening(db, archived=True)
+    target = _application(db, "target@example.com")
+    unrelated = _application(db, "unrelated@example.com")
+    target_participation = _participate(
+        db, target, opening, OpeningOutcome.UNSUCCESSFUL
+    )
+    unrelated_participation = _participate(
+        db, unrelated, opening, OpeningOutcome.UNSUCCESSFUL
+    )
+
+    progress = list(
+        stream_due_unsuccessful_notices(
+            db,
+            sender,
+            application_ids={target.id},
+        )
+    )
+
+    assert [(item.processed, item.total, item.sent) for item in progress] == [
+        (0, 1, 0),
+        (1, 1, 1),
+    ]
+    assert [message.to for message in sender.messages] == [("target@example.com",)]
+    assert target_participation.unsuccessful_notified_at is not None
+    assert unrelated_participation.unsuccessful_notified_at is None

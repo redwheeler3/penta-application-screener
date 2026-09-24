@@ -128,6 +128,10 @@ export type OpeningSelection = {
   candidates: OpeningSelectionCandidate[];
 };
 
+export type OpeningDecisionStreamEvent =
+  | { type: "progress"; processed: number; total: number; sent: number }
+  | { type: "summary"; sent: number; total: number; selection: OpeningSelection };
+
 export type DirectSelectionOpeningCreate = {
   unitSizeBedrooms: number;
   housingChargeCents: number;

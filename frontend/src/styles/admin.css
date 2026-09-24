@@ -203,19 +203,15 @@
 .vacancy-support-editor > label span { margin-bottom: 0.4rem; color: var(--muted); font-size: 0.78rem; font-weight: 700; }
 .vacancy-support-editor fieldset label { display: flex; align-items: center; gap: 0.35rem; }
 .vacancy-support-editor > label { display: grid; margin-top: 0.8rem; }
-.opening-selection-summary { display: flex; align-items: center; gap: 0.65rem; margin-top: 0.9rem; padding: 0.65rem 0.75rem; border: 1px solid #bfe5ce; border-radius: 8px; background: #f5fbf7; color: var(--success-text); }
-.opening-selection-summary > span { display: grid; gap: 0.08rem; font-size: 0.75rem; }
-.opening-selection-summary strong { color: var(--ink); font-size: 0.88rem; }
-.opening-selection-summary small { margin-left: auto; color: var(--muted); }
-.opening-no-selection-summary { border-color: var(--line); background: #fff; color: var(--muted); }
 .opening-selection-needed { color: #92400e !important; font-weight: 700; }
 .opening-selection-panel { margin-bottom: 1rem; padding: 1rem; border: 1px solid #bfe5ce; border-radius: 10px; background: #f5fbf7; }
 .opening-selection-panel h4 { margin: 0 0 0.35rem; }
 .opening-selection-panel > p { margin: 0.35rem 0; line-height: 1.5; }
 .opening-selection-panel .opening-form-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
-.opening-selected-detail { display: flex; align-items: center; gap: 0.65rem; margin-top: 1rem; padding: 0.75rem; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
-.opening-selected-detail > div { display: grid; flex: 1; gap: 0.12rem; }
-.opening-selected-detail span { color: var(--muted); font-size: 0.8rem; }
+.opening-decision-progress { display: grid; gap: 0.5rem; margin-top: 0.85rem; padding: 0.75rem; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.opening-decision-progress > div { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.opening-decision-progress span { color: var(--muted); font-size: 0.78rem; }
+.opening-decision-progress progress { width: 100%; accent-color: var(--penta-green); }
 .opening-candidate-filter { display: grid; gap: 0.35rem; margin-top: 1rem; }
 .opening-candidate-filter span { color: var(--muted); font-size: 0.78rem; font-weight: 700; }
 .opening-candidate-filter input { width: 100%; padding: 0.55rem 0.65rem; border: 1px solid var(--line); border-radius: 7px; }
@@ -246,7 +242,7 @@
   .opening-header-actions button { flex: 1; }
   .opening-card-actions button { flex: 1; }
   .opening-form-grid { grid-template-columns: 1fr; }
-  .opening-selected-detail,
+  .opening-decision-progress > div { align-items: flex-start; flex-direction: column; gap: 0.15rem; }
   .opening-candidate-row { align-items: stretch; flex-direction: column; }
   .direct-applicant-search > label > div { align-items: stretch; flex-direction: column; }
   .vacancy-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
