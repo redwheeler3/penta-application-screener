@@ -23,7 +23,7 @@ export function useFetchResource<T>(
   reload: () => Promise<void>;
   setData: Dispatch<SetStateAction<T | null>>;
 } {
-  const [data, setData] = useState<T | null>(null);
+  const [data, setStoredData] = useState<T | null>(null);
   const [state, setState] = useState<FetchState>("loading");
   const fetcherRef = useRef(fetcher);
   const onErrorRef = useRef(options.onError);
@@ -39,7 +39,7 @@ export function useFetchResource<T>(
     try {
       const next = await fetcherRef.current();
       if (!mounted.current || version !== requestVersion.current) return;
-      setData(next);
+      setStoredData(next);
       setState("ready");
     } catch {
       if (!mounted.current || version !== requestVersion.current) return;
@@ -56,6 +56,13 @@ export function useFetchResource<T>(
       requestVersion.current += 1;
     };
   }, [reload, options.reloadKey]);
+
+  const setData = useCallback<Dispatch<SetStateAction<T | null>>>((next) => {
+    // A mutation response is newer server truth than any GET already in flight.
+    requestVersion.current += 1;
+    setStoredData(next);
+    setState("ready");
+  }, []);
 
   return { data, state, reload, setData };
 }

@@ -46,4 +46,15 @@ describe("useFetchResource", () => {
     await act(async () => first.resolve("first"));
     expect(result.current.data).toBe("second");
   });
+
+  it("does not let an older fetch overwrite data returned by a mutation", async () => {
+    const pending = deferred<string>();
+    const { result } = renderHook(() => useFetchResource(() => pending.promise));
+
+    act(() => result.current.setData("mutation response"));
+    await act(async () => pending.resolve("stale fetch"));
+
+    expect(result.current.state).toBe("ready");
+    expect(result.current.data).toBe("mutation response");
+  });
 });
