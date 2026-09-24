@@ -57,6 +57,7 @@ function WorkflowStep(props: {
   // The line-1 verb while running; line 2's count comes from `progress`.
   busyLabel: string;
   disabled: boolean;
+  locked?: boolean;
   onClick: () => void;
   last?: boolean;
   coverage?: { cached: number; inScope: number };
@@ -69,38 +70,47 @@ function WorkflowStep(props: {
   outOfDate?: boolean;
   // Tooltip shown when stale, overriding the default coverage-based one.
   staleTitle?: string;
-  // Tooltip explaining why the step is disabled. Stale takes precedence if both apply.
+  // Tooltip explaining why the step is disabled. Locked, then stale, takes precedence.
   disabledTitle?: string;
 }): ReactNode {
-  const { n, title, icon, done, busy, busyLabel, disabled, onClick, last, coverage, progress, caption, outOfDate, staleTitle, disabledTitle } = props;
+  const {
+    n, title, icon, done, busy, busyLabel, disabled, locked = false, onClick,
+    last, coverage, progress, caption, outOfDate, staleTitle, disabledTitle,
+  } = props;
   // Stale only applies once done — from the explicit out-of-date signal when given
   // (Rank), else coverage falling short of the current scope.
   const stale =
-    done &&
+    !locked && done &&
     (outOfDate !== undefined
       ? outOfDate
       : coverage !== undefined && coverage.cached < coverage.inScope);
-  const showDone = done && !stale;
+  const showCheck = done && !stale;
+  const showDone = showCheck && !locked;
   // Line 2 priority: live progress, then settled coverage, then a standalone caption.
-  const fraction = busy
-    ? progress && progress.total > 0
-      ? `${progress.processed}/${progress.total}`
-      : null
-    : coverage && (coverage.cached > 0 || coverage.inScope > 0)
-      ? `${coverage.cached}/${coverage.inScope}`
-      : caption ?? null;
+  const fraction = locked
+    ? (done ? "Finalized" : "Not run")
+    : busy
+      ? progress && progress.total > 0
+        ? `${progress.processed}/${progress.total}`
+        : null
+      : coverage && (coverage.cached > 0 || coverage.inScope > 0)
+        ? `${coverage.cached}/${coverage.inScope}`
+        : caption ?? null;
   return (
     <li className="workflow-step">
       <button
         type="button"
         className={
           `workflow-step-button${showDone ? " is-done" : ""}` +
-          `${busy ? " is-busy" : ""}${stale ? " is-stale" : ""}`
+          `${busy ? " is-busy" : ""}${stale ? " is-stale" : ""}` +
+          `${locked ? " is-locked" : ""}`
         }
         onClick={onClick}
         disabled={disabled}
         title={
-          stale
+          locked
+            ? disabledTitle
+            : stale
             ? staleTitle ?? `${coverage!.cached}/${coverage!.inScope} current — re-run to cover everyone`
             : disabled
               ? disabledTitle
@@ -108,7 +118,7 @@ function WorkflowStep(props: {
         }
       >
         <span className="workflow-step-badge">
-          {stale ? <AlertTriangle size={13} /> : showDone ? <Check size={14} /> : n}
+          {stale ? <AlertTriangle size={13} /> : showCheck ? <Check size={14} /> : n}
         </span>
         {icon}
         <span className="workflow-step-text">
@@ -209,6 +219,7 @@ export function WorkflowBar(props: {
             done={workflow.screened}
             busy={props.screeningRunning}
             busyLabel="Screening…"
+            locked={props.aiActionsDisabled}
             // Needs submitted applicants in the shared screening scope and no estimate
             // prompt open. Emptiness is the union scope (coverage.screened.inScope), NOT
             // this member's own eligible count — Screen is a shared action over the union
@@ -226,7 +237,7 @@ export function WorkflowBar(props: {
               !workflow.applicationsAvailable
                 ? "No submitted applications yet."
                 : props.aiActionsDisabled
-                  ? "This archived opening has a final outcome. Existing results remain available."
+                  ? "This archived opening has a final outcome. Existing results are read-only."
                   : noApplicantsInScope
                   ? "No applicants to screen."
                   : undefined
@@ -244,6 +255,7 @@ export function WorkflowBar(props: {
             done={workflow.candidatesScored}
             busy={props.rankRunning}
             busyLabel="Ranking…"
+            locked={props.aiActionsDisabled}
             // Needs a screening run, applicants in the SHARED pool, and no open estimate.
             // Emptiness is the union scope (coverage.screened.inScope — the shared pool Rank
             // scores over), NOT this member's own eligible count: Rank is a shared action, so
@@ -260,7 +272,7 @@ export function WorkflowBar(props: {
               !workflow.screened
                 ? "Run Screen first."
                 : props.aiActionsDisabled
-                  ? "This archived opening has a final outcome. Existing results remain available."
+                  ? "This archived opening has a final outcome. Existing results are read-only."
                   : noApplicantsInScope
                   ? "No applicants to rank."
                   : undefined

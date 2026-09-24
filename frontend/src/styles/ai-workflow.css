@@ -38,6 +38,25 @@
   cursor: not-allowed;
 }
 
+/* A finalized opening keeps its workflow history visible without presenting stale
+   results as an actionable warning. Completed steps retain their check in neutral ink. */
+.workflow-step-button.is-locked:disabled {
+  border-color: var(--line);
+  background: var(--page);
+  color: var(--muted);
+  opacity: 1;
+}
+
+.workflow-step-button.is-locked .workflow-step-badge {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.workflow-step-button.is-locked .workflow-step-fraction {
+  color: var(--muted);
+}
+
 /* A completed step reads as quietly done (green tint + check badge). */
 /* A completed step recedes: white button, a green check, green text. It reads
    as quietly done rather than as a primary action competing in the header. */
