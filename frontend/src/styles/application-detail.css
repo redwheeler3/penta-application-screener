@@ -195,8 +195,29 @@ h5.detail-content-heading {
   letter-spacing: 0.03em;
 }
 
-.app-detail-fields .detail-content-heading {
+.detail-content-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   margin: 1rem 0 0.5rem;
+}
+
+.detail-content-heading-row .detail-content-heading {
+  margin: 0;
+}
+
+.detail-section-scroll-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.detail-section-scroll-link {
+  padding: 0.35rem 0.55rem;
+  font-size: 0.78rem;
 }
 
 .app-detail-field-group {

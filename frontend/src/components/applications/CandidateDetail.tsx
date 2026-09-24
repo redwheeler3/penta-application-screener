@@ -53,6 +53,7 @@ export function CandidateDetail(props: {
   readOnly?: boolean;
 }): ReactNode {
   const { app } = props;
+  const essayResponsesRef = useRef<HTMLDivElement>(null);
   const aiScoringRef = useRef<HTMLElement>(null);
 
   const flaggedFields = new Set(
@@ -71,6 +72,13 @@ export function CandidateDetail(props: {
   const autoLabel = STATUS_LABELS[app.autoStatus];
   const detailSections = buildDetailSections(app);
   const hasEssayResponses = app.essays.length > 0;
+
+  function scrollToEssayResponses() {
+    const essayResponses = essayResponsesRef.current;
+    if (!essayResponses) return;
+    essayResponses.scrollIntoView({ behavior: "smooth", block: "start" });
+    essayResponses.focus({ preventScroll: true });
+  }
 
   function scrollToAiScoring() {
     const aiScoring = aiScoringRef.current;
@@ -253,17 +261,34 @@ export function CandidateDetail(props: {
         </div>
       ) : null}
       <section className="application-answers-section">
-        <div className="detail-section-heading">
-          <h4>Application answers</h4>
-          {app.dimensionScores && app.dimensionScores.length > 0 ? (
-            <button type="button" className="secondary-button detail-section-scroll-link no-print" onClick={scrollToAiScoring}>
-              View AI scoring
-              <ArrowDown size={15} aria-hidden="true" />
-            </button>
-          ) : null}
-        </div>
         <div className="app-detail-fields">
-          <h5 className="detail-content-heading">Applicant data</h5>
+          <div className="detail-content-heading-row">
+            <h5 className="detail-content-heading">Applicant data</h5>
+            {hasEssayResponses || (app.dimensionScores && app.dimensionScores.length > 0) ? (
+              <div className="detail-section-scroll-links no-print">
+                {hasEssayResponses ? (
+                  <button
+                    type="button"
+                    className="secondary-button detail-section-scroll-link"
+                    onClick={scrollToEssayResponses}
+                  >
+                    View essay responses
+                    <ArrowDown size={15} aria-hidden="true" />
+                  </button>
+                ) : null}
+                {app.dimensionScores && app.dimensionScores.length > 0 ? (
+                  <button
+                    type="button"
+                    className="secondary-button detail-section-scroll-link"
+                    onClick={scrollToAiScoring}
+                  >
+                    View AI scoring
+                    <ArrowDown size={15} aria-hidden="true" />
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           {detailSections.map((section) => (
             <section
               key={section.title}
@@ -291,7 +316,7 @@ export function CandidateDetail(props: {
           ))}
         </div>
         {hasEssayResponses ? (
-          <div className="app-detail-essays">
+          <div ref={essayResponsesRef} className="app-detail-essays" tabIndex={-1}>
             <h5 className="detail-content-heading">Essay responses</h5>
             {app.essays.map((essay) => (
               <div key={essay.question} className="essay-block">

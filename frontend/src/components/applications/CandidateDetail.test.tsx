@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ApplicationDetail, CommitteeOpening } from "../../types";
@@ -83,6 +83,7 @@ describe("CandidateDetail", () => {
     const applicantData = screen.getByRole("heading", { name: "Applicant data" });
     const essayResponses = screen.getByRole("heading", { name: "Essay responses" });
     const aiScoring = screen.getByRole("heading", { name: "AI scoring" });
+    expect(screen.queryByRole("heading", { name: "Application answers" })).not.toBeInTheDocument();
     expect(applicantData.compareDocumentPosition(essayResponses))
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(essayResponses.compareDocumentPosition(aiScoring))
@@ -90,6 +91,10 @@ describe("CandidateDetail", () => {
     expect(applicantData).toHaveClass("detail-content-heading");
     expect(essayResponses).toHaveClass("detail-content-heading");
     expect(aiScoring).toHaveClass("detail-content-heading");
-    expect(screen.getByRole("button", { name: /View AI scoring/ })).toBeInTheDocument();
+    expect(
+      within(applicantData.parentElement as HTMLElement)
+        .getAllByRole("button")
+        .map((button) => button.textContent?.trim()),
+    ).toEqual(["View essay responses", "View AI scoring"]);
   });
 });
