@@ -24,7 +24,7 @@ export function EmailDeliveryPanel(props: { onError: (message: string) => void }
   };
 
   return (
-    <section className="access-panel no-print" aria-label="Email delivery">
+    <section className="access-panel email-delivery-panel no-print" aria-label="Email delivery">
       <div className="settings-subtab-head openings-header">
         <div>
           <h3>Email delivery</h3>

@@ -37,18 +37,25 @@
 .email-delay-notice {
   display: flex;
   align-items: flex-start;
-  gap: 0.55rem;
-  padding: 0.7rem 0.8rem;
-  border: 1px solid var(--warning-border-soft);
+  gap: 9px;
+  width: min(100%, 520px);
+  margin-right: auto;
+  margin-left: auto;
+  padding: 11px 13px;
+  border: 1px solid #f2d88c;
   border-radius: 8px;
   background: var(--warning-bg);
-  color: var(--warning-text-strong);
-  line-height: 1.4;
+  color: #62440c;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  text-align: left;
 }
+
+.email-delay-notice strong { color: #573807; }
 
 .email-delay-notice svg {
   flex: 0 0 auto;
-  margin-top: 0.08rem;
+  margin-top: 1px;
 }
 
 * {

@@ -170,7 +170,7 @@ retention and purge date. There is still at most one current application for the
 Applicants may use optional identity-only Google sign-in alongside passwordless email access;
 both methods establish the same application session and neither creates a separate applicant
 account. The durable identity remains the internal application ID. A secure email-access flow sends
-a 24-hour, single-use link to the primary applicant's email address; consuming it establishes an
+a seven-day, single-use link to the primary applicant's email address; consuming it establishes an
 HTTPS-only application session and removes the credential from the browser URL. Tokens are stored
 only as hashes, expire, cannot be reused, and are protected by rate limits and non-enumerating
 responses. Only the primary applicant receives access links and application updates; the
@@ -210,7 +210,7 @@ separate email-verification transaction. A save request gives the same response 
 is new or already known, so it does not reveal which people have applications.
 
 After sign-in, the verified primary email is read-only in the application form. **Change email
-address** sends a 24-hour, single-use confirmation link to the proposed address and leaves the current
+address** sends a seven-day, single-use confirmation link to the proposed address and leaves the current
 identity unchanged until that link is consumed. Confirmation atomically updates the application
 identity and private working answers, sends the previous address a security notice naming the new
 address and directing an unexpected change to Penta Tech Support, revokes other application
@@ -259,11 +259,11 @@ Access-link handling follows one explicit decision table:
 | Valid link; no applicant session | Offer the remembered-device choice, then consume the link, open or create the application, and establish a session. |
 | Valid link; same applicant session | Offer the remembered-device choice, then consume the link, refresh the session, and open the application. |
 | Expired, used, or replaced link; same applicant session | Ignore the stale credential and open the already-authenticated application. |
-| Expired, used, or replaced link; no applicant session | Explain that the application remains saved and offer to email a fresh 24-hour link without asking for the address again. |
-| Recognizable link; different applicant session | Before consuming or replacing anything, show who is signed in now and who received the link, then require a choice. A valid link offers **Stay signed in as [current email]** or **Sign in as [link email]**; a stale link offers the same stay-signed-in action or **Email a new link to [link email]**. |
+| Expired, used, or replaced link; no applicant session | Explain that the application remains saved and offer to email a fresh seven-day link without asking for the address again. |
+| Recognizable link; different applicant session | Before consuming anything or requesting another link, show who is signed in now and who received the link, then require a choice. A valid link offers **Stay signed in as [current email]** or **Sign in as [link email]**; a stale link offers the same stay-signed-in action or **Email a new link to [link email]**. |
 | Invalid or abandoned-draft link | Do not reveal an address or establish a session; direct the visitor back to the application entry point. |
 
-After a replacement-link request succeeds, the page shows the same **Check your email**
+After a fresh-link request succeeds, the page shows the same **Check your email**
 confirmation rather than attempting to load application data before authentication. A link to a
 draft or application that is no longer editable cannot establish a new session; requesting a
 replacement instead sends the application-access-unavailable email.
@@ -308,7 +308,7 @@ magic link. Changing an existing entry's role does not send another invitation. 
 saved if delivery fails; retryable delivery stays in the durable email queue and the Access panel
 reports whether the invitation was sent or needs attention.
 
-Committee email credentials use the same 24-hour lifetime as applicant links. Following a stale
+Committee email credentials use the same seven-day lifetime as applicant links. Following a stale
 link while its matching committee session remains active simply continues that session. If the
 browser is signed in as a different committee member, the screener shows both email addresses
 before doing anything: a valid link offers to keep the current member or explicitly switch, while
@@ -1297,7 +1297,7 @@ The work is delivered in internal stages and released only when the end-to-end r
 ready.
 
 All seven delivery stages are complete. The browser form includes
-immediate private Save and return later, 24-hour access links with regeneration and cross-session
+immediate private Save and return later, seven-day access links with regeneration and cross-session
 choice, declaration acceptance, and restoration of an existing application without allowing
 pending answers to overwrite it. Applicant and committee sign-in default to shared-device-safe
 non-persistent browser credentials with an explicit remembered-device opt-in. Private

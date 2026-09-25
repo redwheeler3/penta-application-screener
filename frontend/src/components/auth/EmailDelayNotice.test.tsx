@@ -21,7 +21,14 @@ describe("email delay guidance", () => {
         onEmailLink={vi.fn().mockResolvedValue(true)}
       />,
     );
-    expect(applicant.getByText(notice)).toBeInTheDocument();
+    const applicantNotice = applicant.getByText(notice);
+    const applicantDivider = applicant.getByText("or use email");
+    const applicantForm = applicant.getByRole("textbox", { name: "Email address" }).closest("form") as HTMLElement;
+    expect(applicantNotice).toBeInTheDocument();
+    expect(applicantDivider.compareDocumentPosition(applicantNotice))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(applicantNotice.compareDocumentPosition(applicantForm))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     applicant.unmount();
 
     render(
@@ -40,7 +47,14 @@ describe("email delay guidance", () => {
         onReset={vi.fn()}
       />,
     );
-    expect(screen.getByText(notice)).toBeInTheDocument();
+    const committeeNotice = screen.getByText(notice);
+    const committeeDivider = screen.getByText("or use email");
+    const committeeForm = screen.getByRole("textbox", { name: "Email address" }).closest("form") as HTMLElement;
+    expect(committeeNotice).toBeInTheDocument();
     expect(screen.getByText(/Google sign-in is immediate/)).toBeInTheDocument();
+    expect(committeeDivider.compareDocumentPosition(committeeNotice))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(committeeNotice.compareDocumentPosition(committeeForm))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 });

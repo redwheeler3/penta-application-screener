@@ -162,7 +162,6 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
 
       {!props.isLoadingUser ? (
         <>
-          {props.emailDelayed && props.emailSignInEnabled ? <EmailDelayNotice /> : null}
           <label className="remember-device-choice">
             <input
               type="checkbox"
@@ -177,6 +176,7 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
               <div className="login-divider" aria-hidden="true">
                 <span>or use email</span>
               </div>
+              {props.emailDelayed ? <EmailDelayNotice /> : null}
               <form className="login-form committee-login-form" onSubmit={submit}>
                 <label>
                   <span>Email address</span>

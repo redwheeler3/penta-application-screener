@@ -58,13 +58,13 @@ export function ApplicationEntry(props: {
         </div>
       ) : null}
       {props.googleError ? <ApplicantGoogleError result={props.googleError} /> : null}
-      {props.emailDelayed ? <EmailDelayNotice /> : null}
       <ApplicantGoogleAccess
         googleSignInUrl={props.googleSignInUrl}
         rememberDevice={props.rememberDevice}
         onRememberDeviceChange={props.onRememberDeviceChange}
       />
       <div className="application-entry-divider"><span>or use email</span></div>
+      {props.emailDelayed ? <EmailDelayNotice /> : null}
       <form onSubmit={sendLink} noValidate>
         <label className="applicant-field">
           <span>Email address</span>

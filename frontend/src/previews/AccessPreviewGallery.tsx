@@ -250,7 +250,7 @@ function ApplicantAccessPreviews() {
       <PreviewCard title="Email change, expired confirmation" description="The browser has another applicant’s application open and the confirmation has expired.">
         <AccessLinkDecision conflict={emailChangeConflict(false)} onKeepCurrent={noAction} onOpenLinked={noAction} onEmailNew={noAction} />
       </PreviewCard>
-      <PreviewCard title="Applicant link expired" description="The applicant can request a fresh 24-hour link.">
+      <PreviewCard title="Applicant link expired" description="The applicant can request a fresh seven-day link.">
         <ExpiredAccessLink purpose="applicant_access" onEmailNew={noAction} />
       </PreviewCard>
       <PreviewCard title="Email-change link expired" description="The address remains unchanged until a new confirmation is opened.">

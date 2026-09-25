@@ -266,6 +266,7 @@
 .pending-copy-decision > p { max-width: 680px; margin: 0 auto 24px; color: #596d7a; line-height: 1.55; }
 .application-google-access { display: grid; gap: 12px; width: min(100%, 520px); margin: 0 auto; text-align: left; }
 .application-google-access .remember-device-choice { margin: 0; }
+.application-entry > .email-delay-notice { margin-bottom: 16px; }
 .application-entry form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; width: min(100%, 520px); margin: 0 auto; text-align: left; }
 .application-entry form .applicant-field > span { line-height: 18px; }
 .application-entry form .applicant-field input,
