@@ -35,8 +35,7 @@ export function EmailDeliveryPanel(props: { onError: (message: string) => void }
         <div>
           <h3>Email delivery</h3>
           <p className="panel-hint">
-            Emails waiting for another attempt and emails that could not be sent. Accepted emails
-            are not listed.
+            Delivery status in the Application Screener and at SocketLabs.
           </p>
         </div>
         <button className="secondary-button" type="button" onClick={refresh}>
@@ -45,16 +44,70 @@ export function EmailDeliveryPanel(props: { onError: (message: string) => void }
         </button>
       </div>
 
-      {socketlabs ? <SocketLabsStatus status={socketlabs} /> : null}
+      <SocketLabsStatus status={socketlabs} />
+      <ScreenerDeliveryStatus
+        state={delivery.state}
+        issues={issues}
+        onRetry={refresh}
+      />
+    </section>
+  );
+}
 
-      {delivery.state === "error" ? (
-        <RetryLoadError message="Couldn't load email delivery." onRetry={refresh} />
-      ) : issues === null ? (
+function SocketLabsStatus(props: { status: SocketLabsQueueStatus | null }): ReactNode {
+  const { status } = props;
+  if (status === null) {
+    return (
+      <section className="email-delivery-status" aria-label="SocketLabs delivery queue">
+        <h4>SocketLabs delivery queue</h4>
+        <div className="email-delivery-status-details"><span>Loading…</span></div>
+      </section>
+    );
+  }
+  const details = !status.available ? (
+    <span>Current status unavailable. The Application Screener will continue sending normally.</span>
+  ) : (
+    <>
+      <span>
+        {status.queuedCount === 0
+          ? "No messages are waiting at SocketLabs."
+          : `${status.queuedCount} message${status.queuedCount === 1 ? " is" : "s are"} waiting at SocketLabs.`}
+      </span>
+      {status.oldestQueuedAt ? (
+        <span>Oldest waiting since: {formatPacificDateTime(status.oldestQueuedAt)}</span>
+      ) : null}
+      {status.retrievedAt ? (
+        <span>Checked: {formatPacificDateTime(status.retrievedAt)}</span>
+      ) : null}
+    </>
+  );
+  return (
+    <section
+      className={`email-delivery-status${status.delayed ? " is-delayed" : ""}`}
+      aria-label="SocketLabs delivery queue"
+    >
+      <h4>SocketLabs delivery queue</h4>
+      <div className="email-delivery-status-details">{details}</div>
+    </section>
+  );
+}
+
+function ScreenerDeliveryStatus(props: {
+  state: "loading" | "ready" | "error";
+  issues: EmailDeliveryIssue[] | null;
+  onRetry: () => void;
+}): ReactNode {
+  return (
+    <section className="email-delivery-status" aria-label="Application Screener delivery queue">
+      <h4>Application Screener delivery queue</h4>
+      {props.state === "error" ? (
+        <RetryLoadError message="Couldn't load Application Screener email delivery." onRetry={props.onRetry} />
+      ) : props.issues === null ? (
         <p className="panel-hint">Loading…</p>
-      ) : issues.length === 0 ? (
-        <p className="panel-hint">No emails are waiting or failed.</p>
+      ) : props.issues.length === 0 ? (
+        <p className="panel-hint">No emails are waiting to retry or failed.</p>
       ) : (
-        <div className="access-table-scroll" role="region" aria-label="Email delivery issues">
+        <div className="access-table-scroll" role="region" aria-label="Application Screener email delivery issues">
           <table className="access-table">
             <thead>
               <tr>
@@ -67,7 +120,7 @@ export function EmailDeliveryPanel(props: { onError: (message: string) => void }
               </tr>
             </thead>
             <tbody>
-              {issues.map((issue) => (
+              {props.issues.map((issue) => (
                 <tr key={issue.id}>
                   <td>{formatPacificDateTime(issue.attemptedAt)}</td>
                   <td>{issue.recipientEmail}</td>
@@ -82,34 +135,6 @@ export function EmailDeliveryPanel(props: { onError: (message: string) => void }
         </div>
       )}
     </section>
-  );
-}
-
-function SocketLabsStatus(props: { status: SocketLabsQueueStatus }): ReactNode {
-  const { status } = props;
-  if (!status.available) {
-    return (
-      <div className="email-provider-status">
-        <strong>SocketLabs delivery queue</strong>
-        <span>Unavailable. Penta will continue sending email normally.</span>
-      </div>
-    );
-  }
-  return (
-    <div className={`email-provider-status${status.delayed ? " is-delayed" : ""}`}>
-      <strong>SocketLabs delivery queue</strong>
-      <span>
-        {status.queuedCount === 0
-          ? "No messages are waiting at SocketLabs."
-          : `${status.queuedCount} message${status.queuedCount === 1 ? " is" : "s are"} waiting at SocketLabs.`}
-      </span>
-      {status.oldestQueuedAt ? (
-        <span>Oldest waiting since: {formatPacificDateTime(status.oldestQueuedAt)}</span>
-      ) : null}
-      {status.retrievedAt ? (
-        <span>Checked: {formatPacificDateTime(status.retrievedAt)}</span>
-      ) : null}
-    </div>
   );
 }
 

@@ -395,9 +395,9 @@
   color: var(--muted);
   font-size: 0.92rem;
 }
-.email-provider-status {
+.email-delivery-status {
   display: grid;
-  gap: 3px;
+  gap: 8px;
   padding: 11px 13px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -408,8 +408,10 @@
 }
 
 .email-delivery-panel .settings-subtab-head { margin-bottom: 0; }
-.email-provider-status strong { color: var(--ink); font-size: 0.86rem; }
-.email-provider-status.is-delayed {
+.email-delivery-status h4 { margin: 0; color: var(--ink); font-size: 0.86rem; }
+.email-delivery-status-details { display: grid; gap: 3px; }
+.email-delivery-status .panel-hint { margin: 0; }
+.email-delivery-status.is-delayed {
   border-color: var(--warning-border-soft);
   background: var(--warning-bg);
   color: var(--warning-text-strong);
