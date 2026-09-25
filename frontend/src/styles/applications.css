@@ -461,6 +461,18 @@
   align-items: center;
 }
 
+.app-table .status-col {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.app-table .application-status-badges {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 3px;
+}
+
 .status-eligible {
   background: var(--success-bg);
   color: var(--success-text);

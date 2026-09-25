@@ -149,7 +149,7 @@ export function ApplicationsList(props: {
                   { label: "Status", key: "status" },
                 ] as Array<{ label: string; key: SortKey }>
               ).map((col) => (
-                <th key={col.key}>
+                <th key={col.key} className={col.key === "status" ? "status-col" : undefined}>
                   <button
                     type="button"
                     className={`sort-header ${appSort?.key === col.key ? "active" : ""}`}
@@ -207,7 +207,7 @@ export function ApplicationsList(props: {
                   <td>{app.coApplicantName || "—"}</td>
                   <td>{app.childCount ?? "?"}</td>
                   <td>{app.householdIncome != null ? `$${app.householdIncome.toLocaleString()}` : "?"}</td>
-                  <td>
+                  <td className="status-col">
                     <ApplicationStatusBadges selected={app.selected} status={app.status} />
                   </td>
                   <td>
