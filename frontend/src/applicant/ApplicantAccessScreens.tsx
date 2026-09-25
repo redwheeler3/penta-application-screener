@@ -4,6 +4,7 @@ import { type FormEvent, useState } from "react";
 import { formatDateOnly, formatHousingCharge } from "../format";
 import { TECH_SUPPORT_EMAIL, TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import { GoogleSignInButton } from "../components/auth/GoogleSignInButton";
+import { EmailDelayNotice } from "../components/auth/EmailDelayNotice";
 import type { ServiceRecoveryStage } from "../serviceRecovery";
 import type { ApplicantGoogleAccessResult } from "./api";
 import type { PendingCopy } from "./applicantPersistence";
@@ -20,6 +21,7 @@ export function ApplicationEntry(props: {
   onRememberDeviceChange: (remember: boolean) => void;
   onContinueGuest: () => void;
   onEmailLink: (email: string) => Promise<boolean>;
+  emailDelayed?: boolean;
 }) {
   const [email, setEmail] = useState("");
   const [validationMessage, setValidationMessage] = useState("");
@@ -56,6 +58,7 @@ export function ApplicationEntry(props: {
         </div>
       ) : null}
       {props.googleError ? <ApplicantGoogleError result={props.googleError} /> : null}
+      {props.emailDelayed ? <EmailDelayNotice /> : null}
       <ApplicantGoogleAccess
         googleSignInUrl={props.googleSignInUrl}
         rememberDevice={props.rememberDevice}

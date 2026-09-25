@@ -48,6 +48,14 @@ export type EmailDeliveryIssue = {
   quotaBlocked: boolean;
 };
 
+export type SocketLabsQueueStatus = {
+  available: boolean;
+  delayed: boolean;
+  queuedCount: number | null;
+  oldestQueuedAt: string | null;
+  retrievedAt: string | null;
+};
+
 // Faceted counts: each facet reflects the other group's active filter, so the two
 // filter groups stay consistent.
 export type AppFacets = {

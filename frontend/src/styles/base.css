@@ -34,6 +34,23 @@
   text-rendering: optimizeLegibility;
 }
 
+.email-delay-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--warning-border-soft);
+  border-radius: 8px;
+  background: var(--warning-bg);
+  color: var(--warning-text-strong);
+  line-height: 1.4;
+}
+
+.email-delay-notice svg {
+  flex: 0 0 auto;
+  margin-top: 0.08rem;
+}
+
 * {
   box-sizing: border-box;
 }

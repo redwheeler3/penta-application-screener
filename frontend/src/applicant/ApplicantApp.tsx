@@ -53,8 +53,10 @@ import {
   residenceHistoryCutoff,
 } from "./types";
 import { useApplicantPersistence } from "./useApplicantPersistence";
+import { useEmailDeliveryStatus } from "../hooks/useEmailDeliveryStatus";
 
 export function ApplicantApp() {
+  const emailDelayed = useEmailDeliveryStatus();
   const [draft, setDraft] = useState(emptyApplicantDraft);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [reviewing, setReviewing] = useState(false);
@@ -364,6 +366,7 @@ export function ApplicantApp() {
           <ApplicationsUnavailable />
         ) : !persistence.authenticated && !guestStarted ? (
           <ApplicationEntry
+            emailDelayed={emailDelayed}
             allowGuest={hasOpenOpening}
             busy={persistence.busy}
             googleError={googleAccessResult}

@@ -102,6 +102,7 @@ def test_socketlabs_adapter_maps_provider_neutral_message() -> None:
     assert payload["APIKey"] == "synthetic-key"
     provider_message = payload["Messages"][0]
     assert provider_message["MessageId"] == message_id
+    assert provider_message["MailingId"] == "return-link"
     assert provider_message["To"] == [
         {"EmailAddress": "person@jeffo.net", "FriendlyName": "Applicant"}
     ]

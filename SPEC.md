@@ -218,8 +218,8 @@ sessions and unused links, and establishes a session in the confirmation tab.
 The session that initiated the change remains valid so its original tab can
 refresh the identity when it next becomes visible; there is no polling dependency. If the proposed
 address already belongs to another current application, neither application changes and they are
-never merged. A replacement request supersedes an earlier unconfirmed address, and the applicant
-may cancel an unconfirmed change.
+never merged. Repeated confirmation requests follow the common magic-link rule: they coexist until
+one succeeds, which revokes its siblings. The applicant may cancel all unconfirmed changes.
 
 An unauthenticated browser can never overwrite an existing working or submitted copy merely by
 entering the same primary email. Before opening the guest review, the server preserves the guest
@@ -233,16 +233,17 @@ choice changes only the private working copy. The committee-facing submitted cop
 until the applicant explicitly submits again. Requests are rate-limited and notification emails
 are coalesced so this protection cannot become an email-bombing tool.
 
-An emailed credential is not a permanent bearer link. It is valid for 24 hours and single-use, and a new
-request invalidates older unused links for that applicant. Consuming it creates a revocable
-server-side session. Applicants can sign out the current browser and revoke all application
+An emailed credential is not a permanent bearer link. Every applicant and committee magic link is
+valid for seven days and single-use. Repeated requests may leave several unused links valid so a
+provider-delayed earlier email does not arrive broken; consuming any link revokes its unused siblings
+for the same identity and purpose and creates a revocable server-side session. Applicants can sign
+out the current browser and revoke all application
 sessions; an administrator can also revoke them. If the email account itself is compromised,
 recovery is administrator-mediated because another message to the same mailbox would not restore
 identity assurance.
 
 An administrator may initiate a fresh magic-link email to the application's already recorded
-primary address, but cannot see or copy the credential. This invalidates older unused links just
-like an applicant-initiated request. Administrators cannot edit applicant answers.
+primary address, but cannot see or copy the credential. Administrators cannot edit applicant answers.
 
 A dedicated **Save and return later** action deliberately moves a signed-out working copy from the
 open page into private server-side draft storage and emails the primary applicant an access link.
@@ -379,8 +380,9 @@ address owner to a compromised session.
 Email is a load-bearing part of applicant access. A failed access-link or save-and-return send
 leaves the private pending draft intact and directs the applicant to Penta Tech Support rather than
 asking them to retry an unexpected failure. Confirmation failures are recorded for administrators.
-Sending is rate-limited and repeated credential requests supersede older queued requests. A
-provider-temporary failure leaves a semantic request in a durable outbox for the next daily
+Sending is rate-limited. Repeated credential requests retain older queued requests because either
+email may arrive first at the mailbox. A provider-temporary failure leaves a semantic request in a
+durable outbox for the next daily
 maintenance pass. The outbox never stores a rendered message, applicant answers, or a raw access
 token: a credential email receives a fresh token immediately before each provider attempt, and an
 unsuccessful attempt revokes that token. Operational records contain only the provider message ID,
@@ -389,17 +391,27 @@ message.
 
 SocketLabs remains the source of truth for bounces, complaints, suppression, and account-level
 reporting; the application does not ingest provider webhooks or duplicate its suppression list.
+Every injection carries a unique provider message ID and a stable message-kind MailingID for
+diagnosis; neither changes delivery priority.
 The current plan permits 2,000 messages per billing period, and this server also carries Penta mail
 sent outside the application. The SocketLabs usage-summary API returns the server's billing-period
 boundaries, messages used, message allowance, percentage used, and overage policy. Administrator
 send previews show that current provider snapshot, its retrieval time, and projected usage after the
 previewed audience; confirmation refreshes it because other Penta mail may have been injected in the
 meantime. An unavailable usage summary is reported as unknown rather than replaced with a guess.
-Queued mail and quota-blocked mail appear in the administrator action banner and retry on the
+The provider reporting API is read on demand and cached for one minute. Because the legacy plan
+returns message-level records rather than a queue aggregate, Penta reads at most the current and two
+previous Pacific dates, immediately projects them to pending count and oldest queued time, and never
+stores or logs provider recipient, subject, or message content. A queue is considered delayed at 50
+pending messages or when its oldest message has waited 15 minutes. If reporting is unavailable,
+email remains enabled and no unsupported delay is claimed. Applicant and committee entry screens
+use the same delay notice and identify Google as immediate.
+
+Locally queued mail and quota-blocked mail appear in the administrator action banner and retry on the
 ordinary once-per-Pacific-day maintenance cadence. Unexpected terminal failures also appear in the
 banner for seven days. The Email Delivery report lists current queued and failed messages with the
 recipient address, attempted time, email type, state, attempt count, and error classification.
-Expected cancellations, such as mail superseded by a newer request or cancelled by withdrawal, do
+Expected cancellations, such as mail cancelled by withdrawal, do
 not appear as failures. The report never stores or displays rendered message contents or
 credentials. The application cannot email an alert through the same suspended account, so
 SocketLabs' own account notifications remain the out-of-band warning.
@@ -1367,7 +1379,8 @@ separate milestone with its own storage, hostname, and isolation decisions.
   emails secure access for future edits.
 - Save and return later preserves a private server-side draft and restores it from a fresh email
   link on another browser; committee members cannot read it.
-- Applicant links are single-use for 24 hours; recognizable stale links can request a replacement,
+- Applicant and committee links are single-use for seven days. Repeated requests leave earlier
+  unused links valid until any sibling succeeds; recognizable stale links can request a replacement,
   and a different active applicant session always presents both emails and requires an explicit
   keep/switch choice before the valid credential is consumed.
 - An unauthenticated submission using an existing email cannot reveal, replace, hide, or publish

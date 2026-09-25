@@ -32,6 +32,7 @@ from app.schemas.dashboard import (
     OpeningSelectionAction,
     WorkflowState,
 )
+from app.schemas.email_delivery import SocketLabsQueueStatusOut
 from app.schemas.settings import effective_reasoning_effort
 from app.services.application_scope import (
     opening_applications,
@@ -45,6 +46,10 @@ from app.services.ranking.analysis import (
     ranking_is_current,
 )
 from app.services.settings import get_app_settings
+from app.services.socketlabs_queue import (
+    SocketLabsQueueReader,
+    get_socketlabs_queue_reader,
+)
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -129,7 +134,9 @@ def read_dashboard(
 def read_email_delivery_issues(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
+    socketlabs_reader: SocketLabsQueueReader = Depends(get_socketlabs_queue_reader),
 ) -> EmailDeliveryIssuesResponse:
+    socketlabs = socketlabs_reader.fetch()
     return EmailDeliveryIssuesResponse(
         items=[
             EmailDeliveryIssueOut(
@@ -143,7 +150,14 @@ def read_email_delivery_issues(
                 quota_blocked=issue.quota_blocked,
             )
             for issue in email_delivery_issues(db)
-        ]
+        ],
+        socketlabs=SocketLabsQueueStatusOut(
+            available=socketlabs is not None,
+            delayed=socketlabs.delayed if socketlabs else False,
+            queued_count=socketlabs.queued_count if socketlabs else None,
+            oldest_queued_at=socketlabs.oldest_queued_at if socketlabs else None,
+            retrieved_at=socketlabs.retrieved_at if socketlabs else None,
+        ),
     )
 
 

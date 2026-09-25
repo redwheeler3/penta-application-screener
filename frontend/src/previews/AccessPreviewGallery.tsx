@@ -205,6 +205,9 @@ function ApplicantAccessPreviews() {
       <PreviewCard title="Applications closed" description="Only an existing applicant may request access.">
         <ApplicationEntry allowGuest={false} busy={false} googleError={null} googleSignInUrl="#" rememberDevice={false} onRememberDeviceChange={noAction} onContinueGuest={noAction} onEmailLink={emailLinkAccepted} />
       </PreviewCard>
+      <PreviewCard title="Email delivery delayed" description="The applicant can use Google immediately or still request email access.">
+        <ApplicationEntry allowGuest emailDelayed busy={false} googleError={null} googleSignInUrl="#" rememberDevice={false} onRememberDeviceChange={noAction} onContinueGuest={noAction} onEmailLink={emailLinkAccepted} />
+      </PreviewCard>
       <PreviewCard title="Google sign-in unavailable" description="The Google identity was refused without hiding email or guest access.">
         <ApplicationEntry allowGuest busy={false} googleError="identity_conflict" googleSignInUrl="#" rememberDevice={false} onRememberDeviceChange={noAction} onContinueGuest={noAction} onEmailLink={emailLinkAccepted} />
       </PreviewCard>
@@ -296,6 +299,7 @@ function CommitteeAccessPreviews() {
     <div className="access-preview-grid">
       <CommitteePreview title="Google or email" description="Normal committee sign-in, with Google primary and email as a fallback." />
       <CommitteePreview title="Google only" description="Email sign-in is hidden when delivery is not configured." emailSignInEnabled={false} />
+      <CommitteePreview title="Email delivery delayed" description="The committee member sees the same provider-delay guidance." emailDelayed />
       <CommitteePreview title="Checking Google session" description="The existing browser session is being loaded." isLoadingUser />
       <CommitteePreview title="Checking sign-in link" description="A committee sign-in link is being checked." signInState="exchanging" />
       <CommitteePreview title="Sending sign-in link" description="A committee sign-in request is in progress." signInState="requesting" initialEmail="member@example.test" />
@@ -324,6 +328,7 @@ function CommitteePreview(props: {
   linkConflict?: CommitteeLinkConflict | null;
   linkedEmail?: string | null;
   initialEmail?: string;
+  emailDelayed?: boolean;
 }) {
   return (
     <PreviewCard title={props.title} description={props.description} committee>
@@ -335,6 +340,7 @@ function CommitteePreview(props: {
         linkConflict={props.linkConflict ?? null}
         linkedEmail={props.linkedEmail ?? null}
         initialEmail={props.initialEmail}
+        emailDelayed={props.emailDelayed}
         onRequestLink={noAsyncAction}
         onKeepCurrent={noAction}
         onOpenLinked={noAsyncAction}

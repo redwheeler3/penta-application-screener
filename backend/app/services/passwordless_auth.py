@@ -22,6 +22,8 @@ from app.db.models import (
 )
 from app.services.token_credentials import new_token, token_hash
 
+MAGIC_LINK_LIFETIME = timedelta(days=7)
+
 
 @dataclass(frozen=True)
 class IssuedMagicLink:
@@ -94,11 +96,15 @@ def issue_magic_link(
     remember_device: bool = False,
     initiating_session_id: int | None = None,
 ) -> IssuedMagicLink:
-    """Create one credential and revoke older unused links for the same purpose."""
+    """Create one credential without invalidating other emailed links.
+
+    Provider delivery can be delayed, so an older email may arrive after a newer
+    request. Every unused link remains valid until one is redeemed; redemption
+    revokes its unused siblings for the same identity and purpose.
+    """
     now = now or datetime.now(UTC)
-    settings = get_settings()
     if lifetime is None:
-        lifetime = timedelta(hours=settings.magic_link_lifetime_hours)
+        lifetime = MAGIC_LINK_LIFETIME
     identity_values = _magic_link_identity_values(
         identity_kind,
         application_id=application_id,
@@ -109,20 +115,6 @@ def issue_magic_link(
     email = normalize_email(email)
     if not email:
         raise ValueError("email is required")
-
-    db.execute(
-        update(MagicLinkToken)
-        .where(
-            MagicLinkToken.identity_kind == identity_kind,
-            MagicLinkToken.purpose == purpose,
-            MagicLinkToken.application_id == identity_values["application_id"],
-            MagicLinkToken.applicant_draft_id == identity_values["applicant_draft_id"],
-            MagicLinkToken.user_id == identity_values["user_id"],
-            MagicLinkToken.consumed_at.is_(None),
-            MagicLinkToken.revoked_at.is_(None),
-        )
-        .values(revoked_at=now)
-    )
 
     raw_token = new_token()
     record = MagicLinkToken(
@@ -234,7 +226,54 @@ def consume_magic_link(
     )
     if result.rowcount != 1:
         return None
-    return db.scalar(select(MagicLinkToken).where(MagicLinkToken.token_hash == hashed_token))
+    record = db.scalar(
+        select(MagicLinkToken).where(MagicLinkToken.token_hash == hashed_token)
+    )
+    if record is None:
+        return None
+    db.execute(
+        update(MagicLinkToken)
+        .where(
+            MagicLinkToken.id != record.id,
+            MagicLinkToken.identity_kind == record.identity_kind,
+            MagicLinkToken.purpose == record.purpose,
+            MagicLinkToken.application_id == record.application_id,
+            MagicLinkToken.applicant_draft_id == record.applicant_draft_id,
+            MagicLinkToken.user_id == record.user_id,
+            MagicLinkToken.consumed_at.is_(None),
+            MagicLinkToken.revoked_at.is_(None),
+        )
+        .values(revoked_at=now)
+    )
+    _cancel_queued_sibling_links(db, record, now=now)
+    return record
+
+
+def _cancel_queued_sibling_links(
+    db: Session, consumed: MagicLinkToken, *, now: datetime
+) -> None:
+    deliveries = db.scalars(
+        select(EmailDelivery).where(
+            EmailDelivery.state == EmailDeliveryState.QUEUED,
+            EmailDelivery.application_id == consumed.application_id,
+            EmailDelivery.applicant_draft_id == consumed.applicant_draft_id,
+            EmailDelivery.user_id == consumed.user_id,
+        )
+    ).all()
+    for delivery in deliveries:
+        intent = delivery.retry_intent or {}
+        purpose = (
+            MagicLinkPurpose.APPLICANT_ACCESS.value
+            if intent.get("type") == "application_confirmation"
+            else intent.get("purpose")
+        )
+        if purpose != consumed.purpose.value:
+            continue
+        delivery.state = EmailDeliveryState.FAILED
+        delivery.retry_intent = None
+        delivery.quota_blocked = False
+        delivery.last_attempt_at = now
+        delivery.last_error_code = "CredentialUsed"
 
 
 def magic_link_for_token(

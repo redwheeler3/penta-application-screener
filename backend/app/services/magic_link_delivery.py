@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -13,8 +12,6 @@ from app.core.time import pacific_today
 from app.db.models import (
     ApplicantDraft,
     Application,
-    EmailDelivery,
-    EmailDeliveryState,
     MagicLinkPurpose,
     PasswordlessIdentityKind,
     UserRole,
@@ -80,13 +77,6 @@ def send_magic_link(
         now=now,
     ):
         return EmailSendOutcome.RECENT
-    _supersede_queued_credentials(
-        db,
-        purpose=purpose,
-        application_id=application_id,
-        applicant_draft_id=applicant_draft.id if applicant_draft is not None else None,
-        user_id=user_id,
-    )
     issued = issue_magic_link(
         db,
         identity_kind=identity_kind,
@@ -148,11 +138,6 @@ def send_application_confirmation(
 ) -> bool:
     """Send a fresh return credential after a deliberate save or publication."""
     now = now or datetime.now(UTC)
-    _supersede_queued_credentials(
-        db,
-        purpose=MagicLinkPurpose.APPLICANT_ACCESS,
-        application_id=application.id,
-    )
     issued = issue_magic_link(
         db,
         identity_kind=PasswordlessIdentityKind.APPLICANT,
@@ -186,38 +171,6 @@ def send_application_confirmation(
         },
         now=now,
     )
-
-
-def _supersede_queued_credentials(
-    db: Session,
-    *,
-    purpose: MagicLinkPurpose,
-    application_id: int | None = None,
-    applicant_draft_id: int | None = None,
-    user_id: int | None = None,
-) -> None:
-    deliveries = db.scalars(
-        select(EmailDelivery).where(
-            EmailDelivery.state == EmailDeliveryState.QUEUED,
-            EmailDelivery.application_id == application_id,
-            EmailDelivery.applicant_draft_id == applicant_draft_id,
-            EmailDelivery.user_id == user_id,
-        )
-    ).all()
-    for delivery in deliveries:
-        intent = delivery.retry_intent or {}
-        intent_purpose = (
-            MagicLinkPurpose.APPLICANT_ACCESS.value
-            if intent.get("type") == "application_confirmation"
-            else intent.get("purpose")
-        )
-        if intent_purpose != purpose.value:
-            continue
-        delivery.state = EmailDeliveryState.FAILED
-        delivery.retry_intent = None
-        delivery.quota_blocked = False
-        delivery.last_error_code = "Superseded"
-    db.commit()
 
 
 def send_email_change_notice(

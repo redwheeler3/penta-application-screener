@@ -31,7 +31,6 @@ class Settings(BaseSettings):
     socketlabs_injection_api_key: str = ""
     socketlabs_gateway: str = "https://inject-cx.socketlabs.com/api/v1/email"
     socketlabs_api_base: str = "https://api.socketlabs.com"
-    magic_link_lifetime_hours: int = 24
     magic_link_request_limit: int = 3
     magic_link_rate_window_minutes: int = 15
     magic_link_coalesce_seconds: int = 60

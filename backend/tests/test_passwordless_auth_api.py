@@ -524,7 +524,6 @@ def test_magic_link_email_uses_fragment_and_common_unsubscribe_footer() -> None:
     settings = Settings(
         applicant_frontend_url="https://applications.pentacoop.com/",
         frontend_url="https://screener.pentacoop.com/",
-        magic_link_lifetime_hours=24,
         _env_file=None,
     )
 

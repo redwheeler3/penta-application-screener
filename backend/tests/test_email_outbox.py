@@ -132,7 +132,7 @@ def test_targetless_terminal_failure_retains_recipient_for_admin_review() -> Non
     assert delivery.last_error_code == "ValueError"
 
 
-def test_new_magic_link_request_supersedes_queued_credential_intent() -> None:
+def test_new_magic_link_request_preserves_queued_credential_intent() -> None:
     db = _db()
     application = Application(
         primary_email="applicant@example.com",
@@ -177,10 +177,9 @@ def test_new_magic_link_request_supersedes_queued_credential_intent() -> None:
     )
 
     db.refresh(queued_delivery)
-    assert queued_delivery.state == EmailDeliveryState.FAILED
-    assert queued_delivery.last_error_code == "Superseded"
-    assert queued_delivery.retry_intent is None
-    assert email_queue_status(db).count == 0
+    assert queued_delivery.state == EmailDeliveryState.QUEUED
+    assert queued_delivery.retry_intent is not None
+    assert email_queue_status(db).count == 1
     assert len(sender.messages) == 1
 
 

@@ -1,4 +1,10 @@
-import type { AdminActions, Coverage, EmailDeliveryIssue, WorkflowState } from "../types";
+import type {
+  AdminActions,
+  Coverage,
+  EmailDeliveryIssue,
+  SocketLabsQueueStatus,
+  WorkflowState,
+} from "../types";
 import { getJson } from "./client";
 
 export const fetchDashboard = (openingId: number) =>
@@ -7,6 +13,8 @@ export const fetchDashboard = (openingId: number) =>
   );
 
 export const fetchEmailDeliveryIssues = () =>
-  getJson<{ items: EmailDeliveryIssue[] }>("/dashboard/email-deliveries");
+  getJson<{ items: EmailDeliveryIssue[]; socketlabs: SocketLabsQueueStatus }>(
+    "/dashboard/email-deliveries",
+  );
 
 // The whole pool, unpaginated — the client derives filtering/sorting/facets from it.

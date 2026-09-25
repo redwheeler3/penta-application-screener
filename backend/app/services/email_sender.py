@@ -110,6 +110,9 @@ class SocketLabsEmailSender:
             "Subject": message.subject,
             "TextBody": message.text_body,
             "MessageId": message_id,
+            # SocketLabs MailingId is reporting metadata, not queue priority.
+            # Its documented character set excludes underscores.
+            "MailingId": message.kind.replace("_", "-"),
         }
         if message.html_body is not None:
             provider_message["HtmlBody"] = message.html_body

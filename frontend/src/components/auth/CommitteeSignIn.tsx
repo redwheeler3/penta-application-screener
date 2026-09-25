@@ -6,6 +6,7 @@ import type { CommitteeLinkConflict, SignInState } from "../../hooks/useSession"
 import type { ServiceRecoveryStage } from "../../serviceRecovery";
 import { TECH_SUPPORT_EMAIL } from "../../support";
 import { GoogleSignInButton } from "./GoogleSignInButton";
+import { EmailDelayNotice } from "./EmailDelayNotice";
 
 type CommitteeSignInProps = {
   emailSignInEnabled: boolean;
@@ -20,6 +21,7 @@ type CommitteeSignInProps = {
   onEmailNew: () => Promise<void>;
   onReset: () => void;
   initialEmail?: string;
+  emailDelayed?: boolean;
 };
 
 export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
@@ -160,6 +162,7 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
 
       {!props.isLoadingUser ? (
         <>
+          {props.emailDelayed && props.emailSignInEnabled ? <EmailDelayNotice /> : null}
           <label className="remember-device-choice">
             <input
               type="checkbox"

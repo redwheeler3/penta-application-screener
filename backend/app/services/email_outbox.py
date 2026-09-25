@@ -140,7 +140,7 @@ EXPECTED_FAILURE_CODES = frozenset(
         "ApplicationSelected",
         "ApplicationWithdrawn",
         "CommitteeAccessRemoved",
-        "Superseded",
+        "CredentialUsed",
     }
 )
 FAILURE_BANNER_WINDOW = timedelta(days=7)

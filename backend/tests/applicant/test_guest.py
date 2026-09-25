@@ -43,7 +43,7 @@ async def test_save_immediately_persists_private_draft_and_sends_access_link() -
     assert draft.working_answers["essays"]["household_introduction"] == "Synthetic introduction"
     assert draft.working_answers["household_photo_link"] == "https://example.com/synthetic-household-photo"
     assert link.applicant_draft_id == draft.id
-    assert timedelta(hours=23, minutes=59) < link.expires_at.replace(tzinfo=UTC) - before <= timedelta(hours=24, seconds=5)
+    assert timedelta(days=6, hours=23, minutes=59) < link.expires_at.replace(tzinfo=UTC) - before <= timedelta(days=7, seconds=5)
 
 
 @pytest.mark.anyio

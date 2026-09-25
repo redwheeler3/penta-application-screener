@@ -8,6 +8,8 @@ from app.core.time import as_utc
 from app.db.models import (
     Application,
     Base,
+    EmailDelivery,
+    EmailDeliveryState,
     MagicLinkPurpose,
     PasswordlessIdentityKind,
     User,
@@ -52,7 +54,7 @@ def _user(db: Session) -> User:
     return user
 
 
-def test_applicant_and_committee_links_share_the_24_hour_lifetime() -> None:
+def test_applicant_and_committee_links_share_the_seven_day_lifetime() -> None:
     db = _session()
     application = _application(db)
     user = _user(db)
@@ -74,11 +76,11 @@ def test_applicant_and_committee_links_share_the_24_hour_lifetime() -> None:
         now=NOW,
     )
 
-    assert as_utc(applicant.record.expires_at) == NOW + timedelta(hours=24)
-    assert as_utc(committee.record.expires_at) == NOW + timedelta(hours=24)
+    assert as_utc(applicant.record.expires_at) == NOW + timedelta(days=7)
+    assert as_utc(committee.record.expires_at) == NOW + timedelta(days=7)
 
 
-def test_new_magic_link_revokes_only_older_links_for_the_same_identity_and_purpose() -> None:
+def test_links_coexist_until_one_is_consumed() -> None:
     db = _session()
     first_application = _application(db)
     second_application = Application(
@@ -117,10 +119,60 @@ def test_new_magic_link_revokes_only_older_links_for_the_same_identity_and_purpo
 
     db.refresh(first.record)
     db.refresh(other.record)
-    assert as_utc(first.record.revoked_at) == NOW + timedelta(minutes=1)
+    assert first.record.revoked_at is None
     assert other.record.revoked_at is None
     assert replacement.record.email == "avery@example.test"
     assert replacement.token != replacement.record.token_hash
+
+    assert consume_magic_link(
+        db,
+        first.token,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
+        purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+        now=NOW + timedelta(minutes=2),
+    )
+    db.refresh(replacement.record)
+    db.refresh(other.record)
+    assert as_utc(replacement.record.revoked_at) == NOW + timedelta(minutes=2)
+    assert other.record.revoked_at is None
+
+
+def test_consuming_a_link_cancels_queued_sibling_delivery() -> None:
+    db = _session()
+    application = _application(db)
+    issued = issue_magic_link(
+        db,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
+        application_id=application.id,
+        email=application.primary_email,
+        purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+        now=NOW,
+    )
+    delivery = EmailDelivery(
+        message_kind="applicant_magic_link",
+        recipient_kind=PasswordlessIdentityKind.APPLICANT,
+        application_id=application.id,
+        state=EmailDeliveryState.QUEUED,
+        retry_intent={
+            "type": "magic_link",
+            "purpose": MagicLinkPurpose.APPLICANT_ACCESS.value,
+        },
+        quota_blocked=True,
+        attempt_count=1,
+    )
+    db.add(delivery)
+    db.flush()
+
+    assert consume_magic_link(
+        db,
+        issued.token,
+        identity_kind=PasswordlessIdentityKind.APPLICANT,
+        purpose=MagicLinkPurpose.APPLICANT_ACCESS,
+        now=NOW + timedelta(minutes=2),
+    )
+    assert delivery.state == EmailDeliveryState.FAILED
+    assert delivery.retry_intent is None
+    assert delivery.last_error_code == "CredentialUsed"
 
 
 def test_magic_link_is_single_use_and_expired_links_are_indistinguishable() -> None:

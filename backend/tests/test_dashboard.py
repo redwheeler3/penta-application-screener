@@ -173,6 +173,13 @@ async def test_admin_can_review_queued_and_unexpected_failed_emails() -> None:
 
     assert dashboard.json()["adminActions"]["recentFailedEmailCount"] == 1
     assert report.status_code == 200
+    assert report.json()["socketlabs"] == {
+        "available": False,
+        "delayed": False,
+        "queuedCount": None,
+        "oldestQueuedAt": None,
+        "retrievedAt": None,
+    }
     assert report.json()["items"] == [
         {
             "id": report.json()["items"][0]["id"],

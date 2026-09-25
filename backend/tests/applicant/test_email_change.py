@@ -115,7 +115,7 @@ async def test_email_change_never_merges_with_an_existing_application() -> None:
 
 
 @pytest.mark.anyio
-async def test_different_email_change_request_immediately_replaces_the_first() -> None:
+async def test_different_email_change_requests_coexist_until_one_is_confirmed() -> None:
     app, db, sender = app_and_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -144,6 +144,6 @@ async def test_different_email_change_request_immediately_replaces_the_first() -
     assert first.json()["emailSent"] is True
     assert second.json()["emailSent"] is True
     assert len(links) == 2
-    assert links[0].revoked_at is not None
+    assert links[0].revoked_at is None
     assert links[1].revoked_at is None
     assert stored.json()["pendingEmailChange"] == "second-new@example.com"

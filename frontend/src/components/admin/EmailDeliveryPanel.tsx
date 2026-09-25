@@ -4,15 +4,19 @@ import { type ReactNode } from "react";
 import { fetchEmailDeliveryIssues } from "../../api/dashboard";
 import { formatPacificDateTime } from "../../format";
 import { useFetchResource } from "../../hooks/useFetchResource";
-import type { EmailDeliveryIssue } from "../../types";
+import type { EmailDeliveryIssue, SocketLabsQueueStatus } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
 export function EmailDeliveryPanel(props: { onError: (message: string) => void }): ReactNode {
-  const delivery = useFetchResource<EmailDeliveryIssue[]>(
-    async () => (await fetchEmailDeliveryIssues()).items,
+  const delivery = useFetchResource<{
+    items: EmailDeliveryIssue[];
+    socketlabs: SocketLabsQueueStatus;
+  }>(
+    fetchEmailDeliveryIssues,
     { onError: () => props.onError("Could not load email delivery.") },
   );
-  const issues = delivery.data;
+  const issues = delivery.data?.items ?? null;
+  const socketlabs = delivery.data?.socketlabs ?? null;
 
   const refresh = () => {
     delivery.setData(null);
@@ -34,6 +38,8 @@ export function EmailDeliveryPanel(props: { onError: (message: string) => void }
           Refresh
         </button>
       </div>
+
+      {socketlabs ? <SocketLabsStatus status={socketlabs} /> : null}
 
       {delivery.state === "error" ? (
         <RetryLoadError message="Couldn't load email delivery." onRetry={refresh} />
@@ -70,6 +76,34 @@ export function EmailDeliveryPanel(props: { onError: (message: string) => void }
         </div>
       )}
     </section>
+  );
+}
+
+function SocketLabsStatus(props: { status: SocketLabsQueueStatus }): ReactNode {
+  const { status } = props;
+  if (!status.available) {
+    return (
+      <div className="email-provider-status">
+        <strong>SocketLabs delivery queue</strong>
+        <span>Unavailable. Penta will continue sending email normally.</span>
+      </div>
+    );
+  }
+  return (
+    <div className={`email-provider-status${status.delayed ? " is-delayed" : ""}`}>
+      <strong>SocketLabs delivery queue</strong>
+      <span>
+        {status.queuedCount === 0
+          ? "No messages are waiting at SocketLabs."
+          : `${status.queuedCount} message${status.queuedCount === 1 ? " is" : "s are"} waiting at SocketLabs.`}
+      </span>
+      {status.oldestQueuedAt ? (
+        <span>Oldest waiting since: {formatPacificDateTime(status.oldestQueuedAt)}</span>
+      ) : null}
+      {status.retrievedAt ? (
+        <span>Checked: {formatPacificDateTime(status.retrievedAt)}</span>
+      ) : null}
+    </div>
   );
 }
 

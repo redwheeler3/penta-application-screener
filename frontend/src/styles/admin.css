@@ -395,3 +395,22 @@
   color: var(--muted);
   font-size: 0.92rem;
 }
+.email-provider-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.8rem;
+  margin-bottom: 1rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted, rgba(0, 0, 0, 0.02));
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.email-provider-status strong { color: var(--ink); }
+.email-provider-status.is-delayed {
+  border-color: var(--warning-border-soft);
+  background: var(--warning-bg);
+  color: var(--warning-text-strong);
+}

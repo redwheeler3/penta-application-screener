@@ -35,6 +35,7 @@ import { useSharedSettings } from "./hooks/useSharedSettings";
 import { useDashboard } from "./hooks/useDashboard";
 import { useNavigation } from "./hooks/useNavigation";
 import { useAiRuns } from "./hooks/useAiRuns";
+import { useEmailDeliveryStatus } from "./hooks/useEmailDeliveryStatus";
 
 const AIWorkspaceView = lazy(() =>
   import("./components/ai/AIWorkspaceView").then((module) => ({ default: module.AIWorkspaceView })),
@@ -47,6 +48,7 @@ const aiQualityLoading = (
 );
 
 export function App(props: { authRedirect: AuthRedirect }) {
+  const emailDelayed = useEmailDeliveryStatus();
   const {
     user,
     emailSignInEnabled,
@@ -460,6 +462,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
 
       {!user || linkConflict ? (
         <CommitteeSignIn
+          emailDelayed={emailDelayed}
           emailSignInEnabled={emailSignInEnabled}
           isLoadingUser={isLoadingUser}
           userLoadRecovery={userLoadRecovery}

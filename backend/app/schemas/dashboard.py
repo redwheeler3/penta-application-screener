@@ -9,6 +9,7 @@ from datetime import date, datetime
 
 from app.db.models import EmailDeliveryState
 from app.schemas.base import ResponseModel
+from app.schemas.email_delivery import SocketLabsQueueStatusOut
 
 
 class WorkflowState(ResponseModel):
@@ -53,6 +54,7 @@ class EmailDeliveryIssueOut(ResponseModel):
 
 class EmailDeliveryIssuesResponse(ResponseModel):
     items: list[EmailDeliveryIssueOut]
+    socketlabs: SocketLabsQueueStatusOut
 
 
 class DashboardResponse(ResponseModel):
