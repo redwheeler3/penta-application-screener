@@ -86,12 +86,11 @@ def test_queue_reader_aggregates_pending_messages_across_pages() -> None:
     assert not hasattr(status, "subject")
 
 
-def test_delay_requires_large_or_old_provider_queue() -> None:
+def test_delay_requires_ten_pending_messages() -> None:
     now = datetime.now(UTC)
 
-    assert SocketLabsQueueStatus(now, 49, now - timedelta(minutes=14)).delayed is False
-    assert SocketLabsQueueStatus(now, 50, now - timedelta(minutes=1)).delayed is True
-    assert SocketLabsQueueStatus(now, 1, now - timedelta(minutes=15)).delayed is True
+    assert SocketLabsQueueStatus(now, 9, now - timedelta(days=1)).delayed is False
+    assert SocketLabsQueueStatus(now, 10, now - timedelta(minutes=1)).delayed is True
 
 
 def test_queue_reader_caches_success_and_failure() -> None:
@@ -113,7 +112,7 @@ def test_public_status_fails_open_without_exposing_queue_details() -> None:
     delayed = CountingReader(
         SocketLabsQueueStatus(
             retrieved_at=datetime.now(UTC),
-            queued_count=50,
+            queued_count=10,
             oldest_queued_at=None,
         )
     )

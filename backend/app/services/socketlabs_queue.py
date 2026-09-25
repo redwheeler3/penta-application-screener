@@ -12,11 +12,10 @@ from app.core.config import Settings, get_settings
 from app.core.time import as_utc, pacific_today
 
 QUEUE_TIMEOUT_SECONDS = 10.0
-QUEUE_CACHE_DURATION = timedelta(seconds=60)
+QUEUE_CACHE_DURATION = timedelta(minutes=5)
 QUEUE_REPORT_LOOKBACK_DAYS = 2
 QUEUE_REPORT_PAGE_SIZE = 1000
-DELAYED_QUEUE_COUNT = 50
-DELAYED_OLDEST_AGE = timedelta(minutes=15)
+DELAYED_QUEUE_COUNT = 10
 PENDING_STATUSES = frozenset({"queued", "deferred", "processing"})
 
 
@@ -28,10 +27,7 @@ class SocketLabsQueueStatus:
 
     @property
     def delayed(self) -> bool:
-        return self.queued_count >= DELAYED_QUEUE_COUNT or (
-            self.oldest_queued_at is not None
-            and self.oldest_queued_at <= self.retrieved_at - DELAYED_OLDEST_AGE
-        )
+        return self.queued_count >= DELAYED_QUEUE_COUNT
 
 
 class SocketLabsQueueReader(Protocol):

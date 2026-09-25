@@ -399,11 +399,11 @@ boundaries, messages used, message allowance, percentage used, and overage polic
 send previews show that current provider snapshot, its retrieval time, and projected usage after the
 previewed audience; confirmation refreshes it because other Penta mail may have been injected in the
 meantime. An unavailable usage summary is reported as unknown rather than replaced with a guess.
-The provider reporting API is read on demand and cached for one minute. Because the legacy plan
+The provider reporting API is read on demand and cached for five minutes. Because the legacy plan
 returns message-level records rather than a queue aggregate, Penta reads at most the current and two
 previous Pacific dates, immediately projects them to pending count and oldest queued time, and never
-stores or logs provider recipient, subject, or message content. A queue is considered delayed at 50
-pending messages or when its oldest message has waited 15 minutes. If reporting is unavailable,
+stores or logs provider recipient, subject, or message content. A queue is considered delayed at 10
+pending messages. If reporting is unavailable,
 email remains enabled and no unsupported delay is claimed. Applicant and committee entry screens
 use the same delay notice and identify Google as immediate.
 
