@@ -4,6 +4,7 @@ from app.schemas.base import ResponseModel
 
 
 class PublicEmailDeliveryStatus(ResponseModel):
+    available: bool
     delayed: bool
 
 

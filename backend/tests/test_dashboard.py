@@ -211,8 +211,10 @@ async def test_email_delivery_report_requires_admin() -> None:
 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.get("/dashboard/email-deliveries")
+        refresh = await client.post("/dashboard/email-deliveries/socketlabs/refresh")
 
     assert response.status_code == 403
+    assert refresh.status_code == 403
 
 
 @pytest.mark.anyio

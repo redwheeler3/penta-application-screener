@@ -15,5 +15,19 @@ router = APIRouter(prefix="/email-delivery", tags=["email delivery"])
 def read_public_email_delivery_status(
     reader: SocketLabsQueueReader = Depends(get_socketlabs_queue_reader),
 ) -> PublicEmailDeliveryStatus:
+    status = reader.cached()
+    return PublicEmailDeliveryStatus(
+        available=status is not None,
+        delayed=status.delayed if status else False,
+    )
+
+
+@router.post("/status/refresh", response_model=PublicEmailDeliveryStatus)
+def refresh_public_email_delivery_status(
+    reader: SocketLabsQueueReader = Depends(get_socketlabs_queue_reader),
+) -> PublicEmailDeliveryStatus:
     status = reader.fetch()
-    return PublicEmailDeliveryStatus(delayed=status.delayed if status else False)
+    return PublicEmailDeliveryStatus(
+        available=status is not None,
+        delayed=status.delayed if status else False,
+    )

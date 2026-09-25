@@ -48,6 +48,7 @@ from app.services.ranking.analysis import (
 from app.services.settings import get_app_settings
 from app.services.socketlabs_queue import (
     SocketLabsQueueReader,
+    SocketLabsQueueStatus,
     get_socketlabs_queue_reader,
 )
 
@@ -136,7 +137,7 @@ def read_email_delivery_issues(
     db: Session = Depends(get_db),
     socketlabs_reader: SocketLabsQueueReader = Depends(get_socketlabs_queue_reader),
 ) -> EmailDeliveryIssuesResponse:
-    socketlabs = socketlabs_reader.fetch()
+    socketlabs = socketlabs_reader.cached()
     return EmailDeliveryIssuesResponse(
         items=[
             EmailDeliveryIssueOut(
@@ -151,13 +152,30 @@ def read_email_delivery_issues(
             )
             for issue in email_delivery_issues(db)
         ],
-        socketlabs=SocketLabsQueueStatusOut(
-            available=socketlabs is not None,
-            delayed=socketlabs.delayed if socketlabs else False,
-            queued_count=socketlabs.queued_count if socketlabs else None,
-            oldest_queued_at=socketlabs.oldest_queued_at if socketlabs else None,
-            retrieved_at=socketlabs.retrieved_at if socketlabs else None,
-        ),
+        socketlabs=_socketlabs_status_out(socketlabs),
+    )
+
+
+@router.post(
+    "/email-deliveries/socketlabs/refresh",
+    response_model=SocketLabsQueueStatusOut,
+)
+def refresh_socketlabs_delivery_status(
+    _admin: User = Depends(require_admin),
+    socketlabs_reader: SocketLabsQueueReader = Depends(get_socketlabs_queue_reader),
+) -> SocketLabsQueueStatusOut:
+    return _socketlabs_status_out(socketlabs_reader.fetch())
+
+
+def _socketlabs_status_out(
+    status: SocketLabsQueueStatus | None,
+) -> SocketLabsQueueStatusOut:
+    return SocketLabsQueueStatusOut(
+        available=status is not None,
+        delayed=status.delayed if status else False,
+        queued_count=status.queued_count if status else None,
+        oldest_queued_at=status.oldest_queued_at if status else None,
+        retrieved_at=status.retrieved_at if status else None,
     )
 
 

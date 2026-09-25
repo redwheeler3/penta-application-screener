@@ -1,6 +1,9 @@
 from datetime import UTC, datetime, timedelta
 
-from app.api.email_delivery import read_public_email_delivery_status
+from app.api.email_delivery import (
+    read_public_email_delivery_status,
+    refresh_public_email_delivery_status,
+)
 from app.services.socketlabs_queue import (
     CachedSocketLabsQueueReader,
     SocketLabsQueueClient,
@@ -33,6 +36,9 @@ class CountingReader:
     def __init__(self, result: SocketLabsQueueStatus | None) -> None:
         self.result = result
         self.calls = 0
+
+    def cached(self) -> SocketLabsQueueStatus | None:
+        return self.result
 
     def fetch(self) -> SocketLabsQueueStatus | None:
         self.calls += 1
@@ -97,9 +103,16 @@ def test_queue_reader_caches_success_and_failure() -> None:
     status = SocketLabsQueueStatus(datetime.now(UTC), 0, None)
     successful = CountingReader(status)
     cached_success = CachedSocketLabsQueueReader(successful)
+    assert cached_success.cached() is None
     assert cached_success.fetch() is status
+    assert cached_success.cached() is status
     assert cached_success.fetch() is status
     assert successful.calls == 1
+
+    successful.result = None
+    cached_success.cache_duration = timedelta(0)
+    assert cached_success.fetch() is None
+    assert cached_success.cached() is status
 
     unavailable = CountingReader(None)
     cached_failure = CachedSocketLabsQueueReader(unavailable)
@@ -116,9 +129,19 @@ def test_public_status_fails_open_without_exposing_queue_details() -> None:
             oldest_queued_at=None,
         )
     )
-    assert read_public_email_delivery_status(delayed).model_dump() == {"delayed": True}
+    assert read_public_email_delivery_status(delayed).model_dump() == {
+        "available": True,
+        "delayed": True,
+    }
+    assert delayed.calls == 0
+    assert refresh_public_email_delivery_status(delayed).model_dump() == {
+        "available": True,
+        "delayed": True
+    }
+    assert delayed.calls == 1
 
     unavailable = CountingReader(None)
     assert read_public_email_delivery_status(unavailable).model_dump() == {
+        "available": False,
         "delayed": False
     }

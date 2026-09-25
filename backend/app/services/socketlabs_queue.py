@@ -30,11 +30,18 @@ class SocketLabsQueueStatus:
         return self.queued_count >= DELAYED_QUEUE_COUNT
 
 
-class SocketLabsQueueReader(Protocol):
+class SocketLabsQueueSource(Protocol):
     def fetch(self) -> SocketLabsQueueStatus | None: ...
 
 
+class SocketLabsQueueReader(SocketLabsQueueSource, Protocol):
+    def cached(self) -> SocketLabsQueueStatus | None: ...
+
+
 class UnavailableSocketLabsQueueReader:
+    def cached(self) -> None:
+        return None
+
     def fetch(self) -> None:
         return None
 
@@ -105,7 +112,7 @@ class SocketLabsQueueClient:
 class CachedSocketLabsQueueReader:
     def __init__(
         self,
-        inner: SocketLabsQueueReader,
+        inner: SocketLabsQueueSource,
         *,
         cache_duration: timedelta = QUEUE_CACHE_DURATION,
     ) -> None:
@@ -114,18 +121,26 @@ class CachedSocketLabsQueueReader:
         self._lock = Lock()
         self._cached_at: datetime | None = None
         self._cached: SocketLabsQueueStatus | None = None
+        self._last_refresh: SocketLabsQueueStatus | None = None
+
+    def cached(self) -> SocketLabsQueueStatus | None:
+        """Return the last observation immediately, even when it is stale."""
+        return self._cached
 
     def fetch(self) -> SocketLabsQueueStatus | None:
         now = datetime.now(UTC)
         if self._is_fresh(now):
-            return self._cached
+            return self._last_refresh
         with self._lock:
             now = datetime.now(UTC)
             if self._is_fresh(now):
-                return self._cached
-            self._cached = self.inner.fetch()
+                return self._last_refresh
+            refreshed = self.inner.fetch()
+            self._last_refresh = refreshed
+            if refreshed is not None:
+                self._cached = refreshed
             self._cached_at = now
-            return self._cached
+            return refreshed
 
     def _is_fresh(self, now: datetime) -> bool:
         return (

@@ -1,7 +1,10 @@
 import { RefreshCw } from "lucide-react";
 import { type ReactNode } from "react";
 
-import { fetchEmailDeliveryIssues } from "../../api/dashboard";
+import {
+  fetchEmailDeliveryIssues,
+  refreshSocketLabsDeliveryStatus,
+} from "../../api/dashboard";
 import { formatPacificDateTime } from "../../format";
 import { useFetchResource } from "../../hooks/useFetchResource";
 import type { EmailDeliveryIssue, SocketLabsQueueStatus } from "../../types";
@@ -15,12 +18,15 @@ export function EmailDeliveryPanel(props: { onError: (message: string) => void }
     fetchEmailDeliveryIssues,
     { onError: () => props.onError("Could not load email delivery.") },
   );
+  const provider = useFetchResource<SocketLabsQueueStatus>(
+    refreshSocketLabsDeliveryStatus,
+  );
   const issues = delivery.data?.items ?? null;
-  const socketlabs = delivery.data?.socketlabs ?? null;
+  const socketlabs = provider.data ?? delivery.data?.socketlabs ?? null;
 
   const refresh = () => {
-    delivery.setData(null);
     void delivery.reload();
+    void provider.reload();
   };
 
   return (
