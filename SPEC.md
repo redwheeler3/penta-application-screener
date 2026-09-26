@@ -408,7 +408,8 @@ previous Pacific dates, immediately projects them to pending count and oldest qu
 stores or logs provider recipient, subject, or message content. A queue is considered delayed at 10
 pending messages. If reporting is unavailable,
 email remains enabled and no unsupported delay is claimed. Applicant and committee entry screens
-use the same delay notice and identify Google as immediate.
+use the same delay notice, say that the delay is temporary and may last up to 48 hours, and identify
+Google as immediate.
 
 Admin Email Delivery uses the same stale-while-revalidate pattern: local delivery issues and the
 last provider observation render immediately, while a separate authenticated request refreshes only

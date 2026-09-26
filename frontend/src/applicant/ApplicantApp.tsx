@@ -249,6 +249,7 @@ export function ApplicantApp() {
 
   const showWithdrawApplication = persistence.authenticated
     && persistence.openingsLoaded
+    && persistence.canEdit
     && ![
       "withdrawn",
       "session_expired",
@@ -284,7 +285,10 @@ export function ApplicantApp() {
           <div>
             <h1>Application for Membership</h1>
           </div>
-          {persistence.authenticated && rememberDevice ? (
+          {persistence.authenticated
+          && rememberDevice
+          && persistence.canEdit
+          && persistence.phase !== "applications_unavailable" ? (
             <DraftStatus savedAt={savedAt} hasContent={hasDraftContent(draft)} />
           ) : null}
         </div>

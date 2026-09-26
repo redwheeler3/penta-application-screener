@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ApplicationEntry } from "../../applicant/ApplicantAccessScreens";
 import { CommitteeSignIn } from "./CommitteeSignIn";
 
-const notice = "Email delivery is taking longer than usual.";
+const notice = "Email delivery is temporarily delayed and may take up to 48 hours. Google sign-in is immediate.";
 
 describe("email delay guidance", () => {
   it("uses the same core notice for applicants and committee members", () => {

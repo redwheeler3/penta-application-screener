@@ -5,8 +5,7 @@ export function EmailDelayNotice() {
     <div className="email-delay-notice" role="status">
       <MailWarning size={18} aria-hidden="true" />
       <span>
-        <strong>Email delivery is taking longer than usual.</strong>
-        {" "}Google sign-in is immediate.
+        Email delivery is temporarily delayed and may take up to 48 hours. Google sign-in is immediate.
       </span>
     </div>
   );
