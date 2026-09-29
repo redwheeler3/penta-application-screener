@@ -28,6 +28,9 @@ backend/data/*
 exports/
 ai-traces/
 
+# Private commercial planning and customer research
+/business/
+
 # Frontend
 node_modules/
 dist/
