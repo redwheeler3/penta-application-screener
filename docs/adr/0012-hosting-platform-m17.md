@@ -130,13 +130,16 @@ None are blockers; they are the standard localhost→prod checklist plus the one
   reality differed from the plan), and **Teardown** for how to shut it down when the co-op no
   longer needs it.
 
-## As-deployed (2026-07-25) — what actually shipped, and lessons
+## As deployed (initially 2026-07-25; region updated 2026-09-28)
 
 Live at **https://screener.pentacoop.com**, verified end-to-end: Google login → allowlist →
 sync real applicants → AI screening on Bedrock. Ways reality differed from the plan above:
 
-- **Regions: `iad` (Ashburn) + `us-east-1` (Bedrock).** The machine and Bedrock client run in
-  nearby East Coast regions, while retaining Fly's lower compute price.
+- **Regions: `yyz` (Toronto) + `us-east-1` (Bedrock source).** The Fly Machine and encrypted
+  primary SQLite volume run in Toronto so the live application database is in Canada. Bedrock
+  remains in `us-east-1`; its global inference profiles may process prompts outside Canada. Fly
+  stores volume backups and hosted operational telemetry in the United States, so Toronto is the
+  primary-database location rather than an all-data-residency guarantee.
 - **Idle behavior: `auto_stop_machines = "suspend"`, not `"stop"`.** Plain `stop` cold-started
   in ~5s — poor UX for a live app. `suspend` freezes to a RAM snapshot and **resumes
   sub-second** while keeping near-zero idle cost (verified). `min_machines_running = 0`. If

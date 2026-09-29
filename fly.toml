@@ -5,7 +5,7 @@
 #
 # First-time setup (run once, from the repo root):
 #   fly launch --no-deploy --copy-config     # or `fly apps create penta-application-screener`
-#   fly volumes create screener_data --region iad --size 1
+#   fly volumes create screener_data --region yyz --size 1
 #   fly secrets set SESSION_SECRET=$(openssl rand -hex 32) \
 #       GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... \
 #       AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
@@ -14,7 +14,7 @@
 #   fly certs add applications.pentacoop.com  # then add the DNS records Fly prints
 
 app = "penta-application-screener"
-primary_region = "iad"   # Ashburn — lower-cost region; Bedrock runs in nearby us-east-1.
+primary_region = "yyz"   # Toronto keeps the primary application database in Canada.
 
 [build]
   dockerfile = "Dockerfile"

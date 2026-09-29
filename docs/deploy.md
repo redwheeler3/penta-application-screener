@@ -146,7 +146,7 @@ secrets exist. If it offers to create a Postgres/Redis, decline — we use SQLit
 ### 2. Create the persistent volume
 
 ```
-fly volumes create screener_data --region iad --size 1
+fly volumes create screener_data --region yyz --size 1
 ```
 Matches `[[mounts]] source = "screener_data"` in `fly.toml`, mounted at
 `/app/backend/data`. 1 GB is far more than the ~20 MB DB needs (~$0.15/mo).
@@ -347,7 +347,7 @@ fly volumes snapshots create <volume-id>    # on-demand, e.g. before a big chang
 ```
 Restore by creating a new volume from a snapshot, then attaching it:
 ```
-fly volumes create screener_data --snapshot-id <snap-id> --region iad --size 1
+fly volumes create screener_data --snapshot-id <snap-id> --region yyz --size 1
 ```
 
 ### Restore-drill evidence
@@ -360,6 +360,24 @@ The restored 22,097,920-byte SQLite file passed `PRAGMA integrity_check`, had ze
 drill took about 3.5 minutes, including correcting the first disposable validator command; this
 proves the snapshot can be restored and read, not the full time to replace and route production.
 The disposable Machine, volume, and app were removed after validation.
+
+### Toronto region move evidence
+
+On 2026-09-28, production moved from Ashburn (`iad`) to Toronto (`yyz`). The suspended source
+Machine was cordoned before its encrypted volume was forked cross-region, preventing public traffic
+from waking and changing the source SQLite database during the copy. The Toronto database remained
+22,097,920 bytes, passed `PRAGMA integrity_check`, had zero `foreign_key_check` findings, contained
+all 33 tables at Alembic revision `9e0f1a2b3c4d`, and retained 233 applications and 1,592 active
+vacancy subscriptions.
+
+Both production hostnames and the database-backed `/health` endpoint returned HTTP 200. The
+authenticated committee UI rendered all 233 applications. A controlled public vacancy subscription
+was created, read through the authenticated admin API, deleted, and confirmed absent with the
+original 1,592-row count restored. The Ashburn Machine and volume were then destroyed; Toronto is the
+only production Machine and volume and retains the 30-day scheduled-snapshot policy.
+
+Fly stores backup copies and hosted operational telemetry in the United States. Toronto therefore
+describes the live Machine and primary database location, not an all-data-residency guarantee.
 
 Production recovery intentionally restores the selected snapshot as-is. There is no separate
 cross-snapshot deletion-ledger reconciliation: a restore can therefore reintroduce applicant data
