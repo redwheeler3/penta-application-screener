@@ -45,6 +45,11 @@ observability, evals, feedback, and print) rather than relying on a cross-featur
 Applicant persistence is orchestrated by `useApplicantPersistence.ts`; its related UI state and
 typed transitions are centralized in `applicantPersistenceState.ts` so restoring, saving,
 submitting, and access-link handling do not each grow independent state conventions.
+`applicantSaveFlow.ts` owns saving, review preparation, submission, and return-link requests;
+email changes and session exit live in `applicantEmailFlow.ts` and `applicantWithdrawalFlow.ts`.
+Save completion acknowledges the draft snapshot captured before the request, so edits made
+while saving remain unsaved. Restoration, completed saves, failures, lifecycle refreshes, and
+session exit each apply a named state transition.
 
 ## Applicant intake
 
@@ -150,6 +155,13 @@ The frontend holds the few-hundred-row committee list in memory and derives sear
 facets, favourites, and opening filters locally. Server reads remain the source of truth after
 mutations.
 
+`frontend/src/hooks/useRequestScope.ts` guards async reads against superseded requests, changed
+resource scope, and unmounting. Application lists, workflow state, ranking boards, and candidate
+detail navigation use that boundary. Background refresh failures preserve the last successful
+data within the current workspace. Tier and proposal writes share a serial queue in `useRanking.ts`;
+queued writes retain their opening and analysis scope, and only the latest edit's response updates
+its optimistic display. A write for an opening the member has left cannot update the new workspace.
+
 ## Eligibility and status
 
 `backend/app/domain/hard_filters.py` is pure deterministic policy. It accepts normalized
@@ -167,6 +179,12 @@ submitted fields + current member rules + cached AI findings + member override
 Structured-field reasons attribute to Rules. Pet limits attribute to AI because the screening
 pass first extracts pet facts from free text. A member's explicit override is sticky and is never
 overwritten by a later machine calculation.
+
+`backend/app/services/screening_results.py` loads only the latest screening row for each requested
+application, using the row ID to break equal timestamps. Eligibility and list presentation derive
+flags and pet facts from those same rows in one query; candidate details use the same loader for
+their screening trace. An absent result means unscreened, an empty flag list means screened clean,
+and missing pet facts remain unknown.
 
 ## AI boundary and caching
 
@@ -193,7 +211,7 @@ The main AI modules are:
 - `pool_digest.py`: bounded pool context;
 - `dimension_discovery.py`: parallel candidate-dimension discovery;
 - `dimension_decomposition.py`: one non-overlapping dimension set;
-- `dimension_identity.py`: carry-forward matching;
+- `dimension_matching.py`: carry-forward matching;
 - `dimension_scoring.py`: per-application scores and evidence;
 - `dimension_consolidation.py`: post-score duplicate confirmation.
 

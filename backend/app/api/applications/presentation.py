@@ -52,6 +52,7 @@ from app.services.rules import (
     pet_facts_from_screening,
     rules_config_for,
 )
+from app.services.screening_results import latest_screening_results
 from app.services.shared_shortlist import is_shortlisted
 from app.services.stars import is_starred
 from app.services.status_resolution import (
@@ -126,8 +127,7 @@ def _distinct_categories(flags: list[dict[str, Any]]) -> list[str]:
 
 def _pet_facts_out(output: dict[str, Any] | None) -> PetFactsOut | None:
     """The pets block of a screening result as the detail's ``PetFactsOut`` — counts plus the
-    AI's reasoning (the read shown at the pet finding). None when the app has no (or a
-    pre-reasoning) screening result."""
+    AI's reasoning (the read shown at the pet finding). None when no pet facts exist."""
     pets = (output or {}).get("pets") if output else None
     if not pets:
         return None
@@ -139,32 +139,13 @@ def _pet_facts_out(output: dict[str, Any] | None) -> PetFactsOut | None:
     )
 
 
-def _latest_results(
-    db: Session, kind: str, application_ids: list[int] | None = None
-) -> dict[int, ApplicationAIResult]:
-    """Most recent AI result of ``kind`` per application, as {application_id:
-    result}. Applications with no result of that kind are absent. Pass
-    application_ids to scope to one page.
-    """
-    query = select(ApplicationAIResult).where(ApplicationAIResult.kind == kind)
-    if application_ids is not None:
-        if not application_ids:
-            return {}
-        query = query.where(ApplicationAIResult.application_id.in_(application_ids))
-
-    latest: dict[int, ApplicationAIResult] = {}
-    for result in db.scalars(query.order_by(ApplicationAIResult.created_at)):
-        latest[result.application_id] = result
-    return latest
-
-
 def serialize_detail(
     app: Application, db: Session, user: User, opening_id: int
 ) -> ApplicationDetail:
     # The raw source row and AI narrative are shown to any committee member: they're
     # trusted screeners, and these just back the data the member already sees.
     rules_config = rules_config_for(db, user.id, opening_id)
-    flag_result = _latest_results(db, "screening", [app.id]).get(app.id)
+    flag_result = latest_screening_results(db, [app.id]).get(app.id)
     # Active flags drive both the displayed findings and the member's verdict.
     flags = active_flags(
         (flag_result.output or {}).get("flags", []) if flag_result else None,

@@ -22,23 +22,22 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     Application,
-    ApplicationAIResult,
     ApplicationStatus,
     MemberEligibility,
     MemberRules,
     StatusSource,
     User,
 )
-from app.domain.hard_filters import PetFacts, RulesConfig
+from app.domain.hard_filters import RulesConfig
 from app.schemas.settings import EligibilityRules
 from app.services.application_scope import opening_ai_applications
 from app.services.rules import (
     committee_default_rules_config,
     hard_filter_reasons_for,
-    pet_facts_from_screening,
     rules_config_for,
     rules_config_from,
 )
+from app.services.screening_results import screening_findings_by_app
 from app.services.status_resolution import effective_status
 
 
@@ -60,57 +59,6 @@ def active_flags(
         return list(flags)
     muted = set(disabled_checks)
     return [f for f in flags if f.get("category") not in muted]
-
-
-def machine_flags_by_app(
-    db: Session, application_ids: list[int]
-) -> dict[int, list[dict[str, Any]]]:
-    """The latest screening flags per application, as ``{application_id: flag_list}``.
-
-    Applications with no screening result are absent (so ``.get`` yields None). Flags are
-    returned RAW (unfiltered by any member's disabled checks) — callers apply ``active_flags``
-    with the reading member's ``disabled_checks``, because muting is per-member. An app "has AI
-    flags" for a member iff its ``active_flags`` list is non-empty. Batch-loaded in one query
-    to keep the pool filters off the N+1 path.
-    """
-    if not application_ids:
-        return {}
-    latest: dict[int, list[dict[str, Any]]] = {}
-    for result in db.scalars(
-        select(ApplicationAIResult)
-        .where(
-            ApplicationAIResult.kind == "screening",
-            ApplicationAIResult.application_id.in_(application_ids),
-        )
-        .order_by(ApplicationAIResult.created_at)
-    ):
-        latest[result.application_id] = (result.output or {}).get("flags", [])
-    return latest
-
-
-def pet_facts_by_app(
-    db: Session, application_ids: list[int]
-) -> dict[int, PetFacts]:
-    """The extracted pet inventory per application, as ``{application_id: PetFacts}``.
-    Sibling to ``machine_flags_by_app``: same latest-screening-result source, other
-    half of ``ScreeningReport`` (``pets`` rather than ``flags``). Apps without a screening
-    result — or a pre-1e result with no ``pets`` — are absent, so ``.get`` yields None and
-    the per-member pet filter is skipped for them. One query, off the N+1 path."""
-    if not application_ids:
-        return {}
-    latest: dict[int, PetFacts] = {}
-    for result in db.scalars(
-        select(ApplicationAIResult)
-        .where(
-            ApplicationAIResult.kind == "screening",
-            ApplicationAIResult.application_id.in_(application_ids),
-        )
-        .order_by(ApplicationAIResult.created_at)
-    ):
-        facts = pet_facts_from_screening(result.output)
-        if facts is not None:
-            latest[result.application_id] = facts
-    return latest
 
 
 def overrides_by_app(
@@ -153,8 +101,9 @@ def effective_status_for(
     under THIS member's rules)."""
     override = _member_override(db, user_id, opening_id, application.id)
     rules_config = rules_config_for(db, user_id, opening_id)
-    flags = machine_flags_by_app(db, [application.id]).get(application.id)
-    pet_facts = pet_facts_by_app(db, [application.id]).get(application.id)
+    flags_by_app, facts_by_app = screening_findings_by_app(db, [application.id])
+    flags = flags_by_app.get(application.id)
+    pet_facts = facts_by_app.get(application.id)
     reasons = hard_filter_reasons_for(
         rules_config,
         application,
@@ -173,8 +122,7 @@ def eligible_application_ids_for(db: Session, user_id: int, opening_id: int) -> 
     One ruleset for the member, so one hard-filter evaluation per application."""
     applications = opening_ai_applications(db, opening_id)
     ids = [app.id for app in applications]
-    flags_by_app = machine_flags_by_app(db, ids)
-    facts_by_app = pet_facts_by_app(db, ids)
+    flags_by_app, facts_by_app = screening_findings_by_app(db, ids)
     rules_config = rules_config_for(db, user_id, opening_id)
     overrides = overrides_by_app(db, user_id, opening_id, ids)
     eligible: set[int] = set()
@@ -289,8 +237,7 @@ def union_eligible_application_ids(db: Session, opening_id: int) -> set[int]:
     """
     applications = opening_ai_applications(db, opening_id)
     ids = [app.id for app in applications]
-    flags_by_app = machine_flags_by_app(db, ids)
-    facts_by_app = pet_facts_by_app(db, ids)
+    flags_by_app, facts_by_app = screening_findings_by_app(db, ids)
 
     ruleset_by_user, _ = _ruleset_by_user(db, opening_id)
     users_per_ruleset: dict[RulesConfig, int] = defaultdict(int)

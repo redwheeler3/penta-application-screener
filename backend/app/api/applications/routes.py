@@ -42,15 +42,14 @@ from app.services.application_scope import (
 from app.services.direct_openings import available_previous_applicant
 from app.services.eligibility import (
     active_flags,
-    machine_flags_by_app,
     overrides_by_app,
-    pet_facts_by_app,
 )
 from app.services.openings import opening_phase
 from app.services.rules import (
     hard_filter_reasons_for,
     rules_config_for,
 )
+from app.services.screening_results import screening_findings_by_app
 from app.services.shared_shortlist import is_shortlisted, shortlisted_ids
 from app.services.stars import is_starred, starred_ids
 from app.services.status_resolution import (
@@ -119,8 +118,7 @@ def list_applications(
         reverse=True,
     )
     ids = [app.id for app in applications]
-    flags = machine_flags_by_app(db, ids)
-    facts = pet_facts_by_app(db, ids)
+    flags, facts = screening_findings_by_app(db, ids)
     starred = starred_ids(db, user.id, ids)
     shortlisted = shortlisted_ids(db, opening_id, ids) if opening_id is not None else set()
     overrides = (
@@ -227,8 +225,9 @@ def override_status(
     opening_id = resolve_visible_opening_id(db, opening_id)
     application = _get_mutable_application_or_404(db, opening_id, application_id)
     rules_config = rules_config_for(db, user.id, opening_id)
-    flags = active_flags(machine_flags_by_app(db, [application_id]).get(application_id), rules_config.disabled_checks)
-    pet_facts = pet_facts_by_app(db, [application_id]).get(application_id)
+    flags_by_app, facts_by_app = screening_findings_by_app(db, [application_id])
+    flags = active_flags(flags_by_app.get(application_id), rules_config.disabled_checks)
+    pet_facts = facts_by_app.get(application_id)
     reasons = hard_filter_reasons_for(
         rules_config,
         application,
@@ -239,7 +238,6 @@ def override_status(
         select(MemberEligibility).where(
             MemberEligibility.application_id == application_id,
             MemberEligibility.user_id == user.id,
-            MemberEligibility.opening_id == opening_id,
             MemberEligibility.opening_id == opening_id,
         )
     )

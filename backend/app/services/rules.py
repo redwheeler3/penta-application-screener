@@ -1,7 +1,7 @@
 """Resolve copy-on-write member eligibility rules and deterministic filter reasons.
 
 Members without an override use the committee defaults. Eligibility is computed on read;
-bulk callers should use ``eligibility_snapshot`` to avoid one query per application.
+bulk callers should resolve one rules configuration and batch-load screening findings.
 """
 
 from __future__ import annotations
