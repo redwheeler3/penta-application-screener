@@ -1,4 +1,4 @@
-import type { Dispatch, RefObject } from "react";
+import type { RefObject } from "react";
 
 import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import { APPLICATION_ACCESS_EMAIL_MESSAGE } from "./accessMessages";
@@ -8,9 +8,8 @@ import {
   workingSnapshot,
 } from "./applicantPersistence";
 import type {
-  ApplicantPersistenceAction,
   ApplicantPersistenceState,
-  SetApplicantPersistence,
+  UpdateApplicantPersistence,
 } from "./applicantPersistenceState";
 import {
   checkGuestSubmission,
@@ -30,24 +29,21 @@ import {
 import type { ApplicantDraft } from "./types";
 
 type SaveFlowDependencies = {
-  state: ApplicantPersistenceState;
-  getCurrentState: () => ApplicantPersistenceState;
+  stateRef: RefObject<ApplicantPersistenceState>;
   draftRef: RefObject<ApplicantDraft>;
-  dispatch: Dispatch<ApplicantPersistenceAction>;
   invalidateReads: () => void;
-  setPersistence: SetApplicantPersistence;
+  updatePersistence: UpdateApplicantPersistence;
   fail: (response: Response) => Promise<void>;
 };
 
 /** Saving, review preparation, and submission share one snapshot acknowledgement rule. */
 export function createApplicantSaveFlow({
-  state, getCurrentState, draftRef, dispatch, invalidateReads, setPersistence, fail,
+  stateRef, draftRef, updatePersistence, invalidateReads, fail,
 }: SaveFlowDependencies) {
-  const { applicationId, workingRevision, openingIds, pendingDraftToken, openings, lastIntent } = state;
-
   async function start(intent: DraftIntent): Promise<void> {
+    const { applicationId, openingIds, pendingDraftToken } = stateRef.current;
     invalidateReads();
-    dispatch({ type: "save_started", intent });
+    updatePersistence({ lastIntent: intent, message: "", phase: "working" });
     if (applicationId != null) {
       await persistAuthenticatedApplication(intent);
       return;
@@ -70,10 +66,9 @@ export function createApplicantSaveFlow({
       emailSent: boolean;
       emailStatus: EmailSendStatus;
     };
-    dispatch({
-      type: "save_completed",
-      snapshot,
-      draftToken: body.draftToken,
+    updatePersistence({
+      savedAnswers: snapshot,
+      pendingDraftToken: body.draftToken,
       phase: body.emailStatus === "failed" ? "email_failed" : "email_sent",
       message: body.emailStatus === "failed"
         ? TECH_SUPPORT_ERROR_MESSAGE
@@ -84,16 +79,17 @@ export function createApplicantSaveFlow({
   }
 
   async function saveForReview(): Promise<boolean> {
-    if (applicationId == null) return true;
-    dispatch({ type: "save_started", intent: "save" });
+    if (stateRef.current.applicationId == null) return true;
+    updatePersistence({ lastIntent: "save", message: "", phase: "working" });
     const saved = await persistAuthenticatedApplication("save");
-    if (saved) setPersistence("phase", "idle");
+    if (saved) updatePersistence({ phase: "idle" });
     return saved;
   }
 
   async function prepareGuestReview(): Promise<boolean> {
+    const { applicationId, openingIds } = stateRef.current;
     if (applicationId != null) return true;
-    dispatch({ type: "save_started", intent: "submit" });
+    updatePersistence({ lastIntent: "submit", message: "", phase: "working" });
     const email = draftRef.current.applicant.email.trim().toLowerCase();
     const response = await checkGuestSubmission(
       workingAnswers(draftRef.current),
@@ -109,21 +105,20 @@ export function createApplicantSaveFlow({
       emailStatus: EmailSendStatus | null;
     };
     if (!body.canSubmit) {
-      setPersistence("collisionEmail", email);
+      updatePersistence({ collisionEmail: email });
       if (body.emailStatus === "failed") {
-        setPersistence("message", TECH_SUPPORT_ERROR_MESSAGE);
-        setPersistence("phase", "error");
+        updatePersistence({ message: TECH_SUPPORT_ERROR_MESSAGE, phase: "error" });
       } else {
-        setPersistence("message", APPLICATION_ACCESS_EMAIL_MESSAGE);
-        setPersistence("phase", "authentication_required");
+        updatePersistence({ message: APPLICATION_ACCESS_EMAIL_MESSAGE, phase: "authentication_required" });
       }
       return false;
     }
-    setPersistence("phase", "idle");
+    updatePersistence({ phase: "idle" });
     return true;
   }
 
   async function persistGuestApplication(): Promise<void> {
+    const { openingIds, pendingDraftToken, openings } = stateRef.current;
     const snapshot = workingSnapshot(draftRef.current, openingIds);
     const response = await submitGuestApplication(
       canonicalAnswers(draftRef.current, residenceHistoryCutoff(openings)),
@@ -132,13 +127,14 @@ export function createApplicantSaveFlow({
       pendingDraftToken,
     );
     if (!response.ok) return fail(response);
-    dispatch({ type: "save_completed", snapshot, phase: "submitted" });
+    updatePersistence({ savedAnswers: snapshot, message: "", phase: "submitted" });
   }
 
   async function persistAuthenticatedApplication(intent: DraftIntent): Promise<boolean> {
+    const { applicationId, workingRevision, openingIds, openings } = stateRef.current;
     invalidateReads();
     if (workingRevision == null) {
-      dispatch({ type: "action_failed", message: TECH_SUPPORT_ERROR_MESSAGE });
+      updatePersistence({ message: TECH_SUPPORT_ERROR_MESSAGE, phase: "error" });
       return false;
     }
     const snapshot = workingSnapshot(draftRef.current, openingIds);
@@ -155,16 +151,23 @@ export function createApplicantSaveFlow({
       return false;
     }
     const body = (await response.json()) as ApplicationResponse;
-    dispatch({ type: "save_completed", snapshot, application: body,
-      phase: intent === "submit" ? "submitted" : "saved" });
+    updatePersistence({
+      workingRevision: body.workingRevision,
+      openings: body.openings,
+      canEdit: body.canEdit,
+      savedAnswers: snapshot,
+      message: "",
+      phase: intent === "submit" ? "submitted" : "saved",
+    });
     if (intent === "submit" && applicationId != null
-      && snapshot === workingSnapshot(draftRef.current, getCurrentState().openingIds)) {
+      && snapshot === workingSnapshot(draftRef.current, stateRef.current.openingIds)) {
       clearApplicationDraft(applicationId);
     }
     return true;
   }
 
   async function emailReturnLink(): Promise<boolean> {
+    const { openingIds, workingRevision } = stateRef.current;
     invalidateReads();
     const snapshot = workingSnapshot(draftRef.current, openingIds);
     const response = await requestReturnAccessLink(
@@ -182,12 +185,13 @@ export function createApplicantSaveFlow({
     };
     if (body.emailStatus === "failed") return false;
     if (body.currentAnswersSaved) {
-      setPersistence("savedAnswers", snapshot);
+      updatePersistence({ savedAnswers: snapshot });
     }
     return true;
   }
 
   async function requestEntryLink(email: string): Promise<boolean> {
+    const { openingIds } = stateRef.current;
     const working = workingAnswers(draftRef.current);
     const answers = { ...working, applicant: { ...working.applicant, email: email.trim().toLowerCase() } };
     const response = await requestReturnAccessLink(answers, openingIds, null);
@@ -197,28 +201,24 @@ export function createApplicantSaveFlow({
     }
     const body = (await response.json()) as { emailStatus: EmailSendStatus };
     if (body.emailStatus === "failed") {
-      setPersistence("message", TECH_SUPPORT_ERROR_MESSAGE);
-      setPersistence("phase", "error");
+      updatePersistence({ message: TECH_SUPPORT_ERROR_MESSAGE, phase: "error" });
       return false;
     }
-    setPersistence("message", APPLICATION_ACCESS_EMAIL_MESSAGE);
-    setPersistence("phase", "access_link_sent");
+    updatePersistence({ message: APPLICATION_ACCESS_EMAIL_MESSAGE, phase: "access_link_sent" });
     return true;
   }
 
   async function emailSessionAccessLink(): Promise<void> {
-    setPersistence("phase", "working");
+    updatePersistence({ phase: "working" });
     if (await emailReturnLink()) {
-      setPersistence("message", APPLICATION_ACCESS_EMAIL_MESSAGE);
-      setPersistence("phase", "access_link_sent");
+      updatePersistence({ message: APPLICATION_ACCESS_EMAIL_MESSAGE, phase: "access_link_sent" });
       return;
     }
-    setPersistence("message", TECH_SUPPORT_ERROR_MESSAGE);
-    setPersistence("phase", "error");
+    updatePersistence({ message: TECH_SUPPORT_ERROR_MESSAGE, phase: "error" });
   }
 
   async function resendCurrentIntent(): Promise<void> {
-    await start(lastIntent);
+    await start(stateRef.current.lastIntent);
   }
 
   return {

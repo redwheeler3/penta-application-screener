@@ -171,3 +171,50 @@ it("does not restore a pending copy when its response arrives after sign-out", a
   expect(result.current.persistence.pendingCopy).toBeNull();
   expect(result.current.persistence.authenticated).toBe(false);
 });
+
+it("a retained save action uses the latest revision and opening choices", async () => {
+  vi.mocked(api.saveApplication).mockResolvedValueOnce(Response.json(application(2)))
+    .mockResolvedValueOnce(Response.json(application(3)));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  const save = result.current.persistence.start;
+  await act(() => save("save"));
+  act(() => result.current.persistence.setOpeningSelected(7, true));
+  await act(() => save("save"));
+  expect(vi.mocked(api.saveApplication).mock.calls[1].slice(1)).toEqual([[7], 2]);
+  expect(result.current.persistence.workingRevision).toBe(3);
+});
+
+it("email identity refresh compares with the revision saved while the request was pending", async () => {
+  const identity = deferred<Response>();
+  vi.mocked(api.saveApplication).mockResolvedValue(Response.json(application(2)));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  vi.mocked(api.fetchApplication).mockReturnValueOnce(identity.promise);
+  let refresh!: Promise<void>;
+  act(() => { refresh = result.current.persistence.refreshEmailIdentity(); });
+  await act(() => result.current.persistence.start("save"));
+  await act(async () => { identity.resolve(Response.json(application(2))); await refresh; });
+  expect(result.current.persistence.workingRevision).toBe(2);
+  expect(result.current.persistence.phase).toBe("saved");
+});
+
+it("email confirmation updates identity without acknowledging unsaved essay edits", async () => {
+  vi.mocked(api.fetchApplication).mockResolvedValueOnce(Response.json({
+    ...application(), googleSignInLinked: true,
+  }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  act(() => result.current.setDraft((draft) => ({
+    ...draft, essays: { ...draft.essays, whyCoop: "Unsaved synthetic edit" },
+  })));
+  vi.mocked(api.fetchApplication).mockResolvedValueOnce(Response.json({
+    ...application(), primaryEmail: "changed@example.com", googleSignInLinked: false,
+  }));
+  await act(() => result.current.persistence.refreshEmailIdentity());
+  expect(result.current.draft.applicant.email).toBe("changed@example.com");
+  expect(result.current.draft.essays.whyCoop).toBe("Unsaved synthetic edit");
+  expect(result.current.persistence.hasUnsavedChanges).toBe(true);
+  expect(result.current.persistence.emailChangeStatus).toBe("confirmed");
+  expect(result.current.persistence.googleDisconnectedByEmailChange).toBe(true);
+});

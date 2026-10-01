@@ -8,7 +8,7 @@ import {
   responseProblem,
   updateSnapshotEmail,
 } from "./applicantPersistence";
-import type { SetApplicantPersistence } from "./applicantPersistenceState";
+import type { UpdateApplicantPersistence } from "./applicantPersistenceState";
 import {
   cancelEmailChange,
   fetchApplication,
@@ -17,29 +17,24 @@ import {
 import type { ApplicantDraft } from "./types";
 
 type EmailFlowDependencies = {
-  setPersistence: SetApplicantPersistence;
+  updatePersistence: UpdateApplicantPersistence;
   setDraft: Dispatch<SetStateAction<ApplicantDraft>>;
-  primaryEmail: string | null;
-  workingRevision: number | null;
-  googleSignInLinked: boolean;
 };
 
 export function createApplicantEmailFlow({
-  setPersistence,
+  updatePersistence,
   setDraft,
-  primaryEmail,
-  workingRevision,
-  googleSignInLinked,
 }: EmailFlowDependencies) {
   async function beginEmailChange(newEmail: string): Promise<void> {
-    setPersistence("emailChangeStatus", "sending");
-    setPersistence("emailChangeMessage", "");
-    setPersistence("googleDisconnectedByEmailChange", false);
+    updatePersistence({
+      emailChangeStatus: "sending",
+      emailChangeMessage: "",
+      googleDisconnectedByEmailChange: false,
+    });
     const response = await requestEmailChange(newEmail);
     if (!response.ok) {
       const problem = await responseProblem(response);
-      setPersistence("emailChangeMessage", problem.detail);
-      setPersistence("emailChangeStatus", "error");
+      updatePersistence({ emailChangeMessage: problem.detail, emailChangeStatus: "error" });
       return;
     }
     const body = (await response.json()) as {
@@ -47,71 +42,68 @@ export function createApplicantEmailFlow({
       emailStatus: EmailSendStatus;
       pendingEmail: string | null;
     };
-    setPersistence("pendingEmailChange", body.pendingEmail);
+    updatePersistence({ pendingEmailChange: body.pendingEmail });
     if (body.pendingEmail === null) {
-      setPersistence("emailChangeMessage", TECH_SUPPORT_ERROR_MESSAGE);
-      setPersistence("emailChangeStatus", "error");
+      updatePersistence({ emailChangeMessage: TECH_SUPPORT_ERROR_MESSAGE, emailChangeStatus: "error" });
       return;
     }
-    setPersistence(
-      "emailChangeMessage",
-      body.emailSent
+    updatePersistence({
+      emailChangeMessage: body.emailSent
         ? "Check your email to confirm the new address."
         : "Check your inbox for the confirmation link we sent recently.",
-    );
-    setPersistence("emailChangeStatus", "sent");
+      emailChangeStatus: "sent",
+    });
   }
 
   function clearEmailChangeFeedback(): void {
-    setPersistence("emailChangeMessage", "");
-    setPersistence("emailChangeStatus", "idle");
+    updatePersistence({ emailChangeMessage: "", emailChangeStatus: "idle" });
   }
 
   async function stopEmailChange(): Promise<boolean> {
     const response = await cancelEmailChange();
     if (!response.ok) {
-      setPersistence("emailChangeMessage", await responseDetail(response));
-      setPersistence("emailChangeStatus", "error");
+      updatePersistence({ emailChangeMessage: await responseDetail(response), emailChangeStatus: "error" });
       return false;
     }
-    setPersistence("pendingEmailChange", null);
-    setPersistence("emailChangeMessage", "");
-    setPersistence("emailChangeStatus", "idle");
+    updatePersistence({ pendingEmailChange: null, emailChangeMessage: "", emailChangeStatus: "idle" });
     return true;
   }
 
   async function refreshEmailIdentity(): Promise<void> {
     const response = await fetchApplication();
     if (response.status === 401) {
-      setPersistence(
-        "emailChangeMessage",
-        "This session has ended. Continue in the tab where you confirmed the new address.",
-      );
-      setPersistence("emailChangeStatus", "error");
+      updatePersistence({
+        emailChangeMessage: "This session has ended. Continue in the tab where you confirmed the new address.",
+        emailChangeStatus: "error",
+      });
       return;
     }
     if (!response.ok) return;
     const body = (await response.json()) as ApplicationResponse;
-    const emailChanged = primaryEmail !== null && body.primaryEmail !== primaryEmail;
-    setPersistence("primaryEmail", body.primaryEmail);
-    setPersistence("googleSignInLinked", body.googleSignInLinked);
-    setPersistence("pendingEmailChange", body.pendingEmailChange);
+    updatePersistence((state) => {
+      const emailChanged = state.primaryEmail !== null && body.primaryEmail !== state.primaryEmail;
+      const stale = state.workingRevision !== null && body.workingRevision !== state.workingRevision;
+      return {
+        primaryEmail: body.primaryEmail,
+        googleSignInLinked: body.googleSignInLinked,
+        pendingEmailChange: body.pendingEmailChange,
+        ...(emailChanged ? {
+          emailChangeMessage: "",
+          emailChangeStatus: "confirmed",
+          googleDisconnectedByEmailChange: state.googleSignInLinked,
+        } : {}),
+        ...(stale ? {
+          message: "This application changed in another tab or browser.", phase: "stale_copy",
+        } : {
+          workingRevision: body.workingRevision,
+          savedAnswers: updateSnapshotEmail(state.savedAnswers, body.primaryEmail),
+        }),
+      };
+    });
     setDraft((current) => ({
       ...current,
       applicant: { ...current.applicant, email: body.primaryEmail },
     }));
-    if (emailChanged) {
-      setPersistence("emailChangeMessage", "");
-      setPersistence("emailChangeStatus", "confirmed");
-      setPersistence("googleDisconnectedByEmailChange", googleSignInLinked);
-    }
-    if (workingRevision !== null && body.workingRevision !== workingRevision) {
-      setPersistence("message", "This application changed in another tab or browser.");
-      setPersistence("phase", "stale_copy");
-      return;
-    }
-    setPersistence("workingRevision", body.workingRevision);
-    setPersistence("savedAnswers", (snapshot) => updateSnapshotEmail(snapshot, body.primaryEmail));
   }
 
   return {

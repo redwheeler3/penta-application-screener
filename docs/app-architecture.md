@@ -49,17 +49,17 @@ print rules live with their owning surface (`applications`, candidate detail/not
 observability, evals, feedback, and print) rather than relying on a cross-feature catch-all.
 `components/ai/AIWorkspaceView.tsx` is the shared shell for the Observability and Evals tabs.
 
-Applicant persistence is orchestrated by `useApplicantPersistence.ts`; its related UI state and
-typed transitions are centralized in `applicantPersistenceState.ts` so restoring, saving,
-submitting, and access-link handling do not each grow independent state conventions.
+Applicant persistence is orchestrated by `useApplicantPersistence.ts`; `applicantPersistenceState.ts`
+defines its state, defaults, and typed partial updates. Each workflow updates related fields in
+one patch beside the operation that owns them; functional patches read the latest state when needed.
 `frontend/src/applicant/types.ts` defines the applicant form and answer contracts;
 `applicationDraft.ts` owns draft defaults, household calculations, residence-history filtering,
 and conversions between editable drafts and saved or submitted answers.
 `applicantSaveFlow.ts` owns saving, review preparation, submission, and return-link requests;
 email changes and session exit live in `applicantEmailFlow.ts` and `applicantWithdrawalFlow.ts`.
 Save completion acknowledges the draft snapshot captured before the request, so edits made
-while saving remain unsaved. Restoration, completed saves, failures, lifecycle refreshes, and
-session exit each apply a named state transition.
+while saving remain unsaved. Save actions read one live state reference at request boundaries;
+the captured request snapshot remains the acknowledgement baseline when the response arrives.
 
 ## Applicant intake
 

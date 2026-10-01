@@ -18,9 +18,9 @@ import { createApplicantEmailFlow } from "./applicantEmailFlow";
 import { createApplicantSaveFlow } from "./applicantSaveFlow";
 import { createApplicantWithdrawalFlow } from "./applicantWithdrawalFlow";
 import {
-  type ApplicantPersistenceState,
   applicantPersistenceReducer,
   INITIAL_APPLICANT_PERSISTENCE_STATE,
+  resetApplicantSession,
 } from "./applicantPersistenceState";
 import {
   deletePendingDraft,
@@ -50,9 +50,10 @@ export function useApplicantPersistence(
   const applicationReads = useRequestScope();
   const pendingCopyReads = useRequestScope();
   const linkStarted = useRef(false);
-  const [persistence, dispatchPersistence] = useReducer(
+  const [persistence, updatePersistence] = useReducer(
     applicantPersistenceReducer,
     INITIAL_APPLICANT_PERSISTENCE_STATE,
+  resetApplicantSession,
   );
   const {
     phase,
@@ -84,15 +85,6 @@ export function useApplicantPersistence(
     withdrawalMessage,
   } = persistence;
 
-  function setPersistence<Key extends keyof ApplicantPersistenceState>(
-    key: Key,
-    value:
-      | ApplicantPersistenceState[Key]
-      | ((current: ApplicantPersistenceState[Key]) => ApplicantPersistenceState[Key]),
-  ): void {
-    dispatchPersistence({ key, value } as Parameters<typeof dispatchPersistence>[0]);
-  }
-
   const stateRef = useRef(persistence);
   stateRef.current = persistence;
   draftRef.current = draft;
@@ -103,7 +95,7 @@ export function useApplicantPersistence(
       savedAnswers !== workingSnapshot(draft, openingIds) &&
       (phase === "email_sent" || phase === "saved")
     ) {
-      setPersistence("phase", "idle");
+      updatePersistence({ phase: "idle" });
     }
   }, [draft, openingIds, phase, savedAnswers]);
 
@@ -113,9 +105,7 @@ export function useApplicantPersistence(
       collisionEmail !== null &&
       draft.applicant.email.trim().toLowerCase() !== collisionEmail
     ) {
-      setPersistence("collisionEmail", null);
-      setPersistence("message", "");
-      setPersistence("phase", "idle");
+      updatePersistence({ collisionEmail: null, message: "", phase: "idle" });
     }
   }, [collisionEmail, draft.applicant.email, phase]);
 
@@ -127,7 +117,7 @@ export function useApplicantPersistence(
       void restoreApplication();
       return;
     }
-    setPersistence("accessToken", token);
+    updatePersistence({ accessToken: token });
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
     void inspectLink(token);
     // Link inspection is intentionally one-shot. Depending on these render-local
@@ -149,32 +139,33 @@ export function useApplicantPersistence(
   }, [applicationId, openingsLoaded, workingRevision]);
 
   async function inspectLink(token: string): Promise<void> {
-    setPersistence("phase", "working");
+    updatePersistence({ phase: "working" });
     const response = await inspectAccessLink(token);
     if (!response.ok) return fail(response);
     const body = await linkBody(response);
-    setPersistence("accessPurpose", body.purpose ?? "applicant_access");
-    setPersistence("accessApplicationEmail", body.applicationEmail);
+    updatePersistence({
+      accessPurpose: body.purpose ?? "applicant_access",
+      accessApplicationEmail: body.applicationEmail,
+    });
     if (body.state === "unavailable") {
-      setPersistence("phase", "applications_unavailable");
+      updatePersistence({ phase: "applications_unavailable" });
       return;
     }
     if (body.switchRequired && body.currentEmail && body.linkEmail) {
-      setPersistence("linkConflict", {
-        currentEmail: body.currentEmail,
-        linkEmail: body.linkEmail,
-        applicationEmail: body.applicationEmail,
-        purpose: body.purpose ?? "applicant_access",
-        linkIsValid: body.state === "valid",
+      updatePersistence({
+        linkConflict: {
+          currentEmail: body.currentEmail,
+          linkEmail: body.linkEmail,
+          applicationEmail: body.applicationEmail,
+          purpose: body.purpose ?? "applicant_access",
+          linkIsValid: body.state === "valid",
+        },
+        phase: "link_conflict",
       });
-      setPersistence("phase", "link_conflict");
       return;
     }
     if (body.state === "valid" && body.linkEmail) {
-      setPersistence("accessEmail", body.linkEmail);
-      setPersistence("accessPurpose", body.purpose ?? "applicant_access");
-      setPersistence("accessApplicationEmail", body.applicationEmail);
-      setPersistence("phase", "link_ready");
+      updatePersistence({ accessEmail: body.linkEmail, phase: "link_ready" });
       return;
     }
     if (
@@ -185,7 +176,7 @@ export function useApplicantPersistence(
       await restoreApplication();
       return;
     }
-    setPersistence("phase", body.state === "invalid" || body.state === "abandoned" ? "link_invalid" : "link_expired");
+    updatePersistence({ phase: body.state === "invalid" || body.state === "abandoned" ? "link_invalid" : "link_expired" });
   }
 
   async function openLink(
@@ -193,34 +184,40 @@ export function useApplicantPersistence(
     switchCurrent: boolean,
     rememberDevice: boolean,
   ): Promise<void> {
-    setPersistence("phase", "working");
+    updatePersistence({ phase: "working" });
     const response = await openAccessLink(token, switchCurrent, rememberDevice);
     if (!response.ok) return fail(response);
     const body = await linkBody(response);
     if (body.state === "email_in_use" && body.applicationId != null) {
       onRememberDeviceChange(rememberDevice);
-      setPersistence("applicationId", body.applicationId);
+      updatePersistence({ applicationId: body.applicationId });
       await restoreApplication(body.applicationId);
-      setPersistence("emailChangeMessage", "That email address already has an application, so nothing was changed.");
-      setPersistence("emailChangeStatus", "error");
-      setPersistence("phase", "idle");
+      updatePersistence({
+        emailChangeMessage: "That email address already has an application, so nothing was changed.",
+        emailChangeStatus: "error",
+        phase: "idle",
+      });
       return;
     }
     if (body.state !== "valid" || body.applicationId == null) {
-      setPersistence("phase", body.state === "invalid" || body.state === "abandoned" ? "link_invalid" : "link_expired");
+      updatePersistence({ phase: body.state === "invalid" || body.state === "abandoned" ? "link_invalid" : "link_expired" });
       return;
     }
     onRememberDeviceChange(rememberDevice);
-    setPersistence("applicationId", body.applicationId);
-    setPersistence("reviewAfterAccess", body.purpose !== "email_change" && body.pendingIntent === "submit");
-    setPersistence("pendingCopy", body.pendingCopy);
-    setPersistence("linkConflict", null);
+    updatePersistence({
+      applicationId: body.applicationId,
+      reviewAfterAccess: body.purpose !== "email_change" && body.pendingIntent === "submit",
+      pendingCopy: body.pendingCopy,
+      linkConflict: null,
+    });
     await restoreApplication(body.applicationId);
     if (body.purpose === "email_change") {
-      setPersistence("pendingEmailChange", null);
-      setPersistence("emailChangeMessage", "");
-      setPersistence("emailChangeStatus", "confirmed");
-      setPersistence("googleDisconnectedByEmailChange", body.googleDisconnected);
+      updatePersistence({
+        pendingEmailChange: null,
+        emailChangeMessage: "",
+        emailChangeStatus: "confirmed",
+        googleDisconnectedByEmailChange: body.googleDisconnected,
+      });
     }
   }
 
@@ -230,11 +227,10 @@ export function useApplicantPersistence(
     if (response === null || !isCurrent()) return;
     if (response.status === 401) {
       if (knownId == null) {
-        dispatchPersistence({ type: "session_ended", phase: "idle" });
+        updatePersistence((state) => resetApplicantSession(state));
         await restorePublicOpenings();
       } else {
-        setPersistence("message", "Your application session has ended.");
-        setPersistence("phase", "session_expired");
+        updatePersistence({ message: "Your application session has ended.", phase: "session_expired" });
       }
       return;
     }
@@ -257,8 +253,19 @@ export function useApplicantPersistence(
       setDraft({ ...restored, applicant: { ...restored.applicant, email: body.primaryEmail } });
       snapshot = workingSnapshot(serverDraft, serverOpeningIds);
     }
-    dispatchPersistence({ type: "application_restored", application: body,
-      openingIds: restoredOpeningIds, snapshot });
+    updatePersistence({
+      applicationId: body.applicationId,
+      workingRevision: body.workingRevision,
+      primaryEmail: body.primaryEmail,
+      googleSignInLinked: body.googleSignInLinked,
+      pendingEmailChange: body.pendingEmailChange,
+      openings: body.openings,
+      canEdit: body.canEdit,
+      openingsLoaded: true,
+      openingIds: restoredOpeningIds,
+      savedAnswers: snapshot,
+      phase: "idle",
+    });
     await restorePendingCopy();
   }
 
@@ -268,7 +275,7 @@ export function useApplicantPersistence(
     if (!response.ok || !isCurrent()) return;
     const body = (await response.json()) as { pendingCopy: PendingCopy | null };
     if (!isCurrent()) return;
-    setPersistence("pendingCopy", body.pendingCopy);
+    updatePersistence({ pendingCopy: body.pendingCopy });
   }
 
   async function restorePublicOpenings(preserveSelection = false): Promise<void> {
@@ -279,21 +286,21 @@ export function useApplicantPersistence(
       canStartApplication: boolean;
       openings: ApplicantOpening[];
     };
-    setPersistence("openings", body.openings);
-    setPersistence("openingIds", (current) => (
-      preserveSelection
-        ? validBrowserOpeningIds(current, body.openings)
-        : defaultOpeningIds(body.openings)
-    ));
-    setPersistence("canEdit", body.canStartApplication);
-    setPersistence("openingsLoaded", true);
+    updatePersistence((state) => ({
+      openings: body.openings,
+      openingIds: preserveSelection
+        ? validBrowserOpeningIds(state.openingIds, body.openings)
+        : defaultOpeningIds(body.openings),
+      canEdit: body.canStartApplication,
+      openingsLoaded: true,
+    }));
   }
 
   async function recoverInitialLoad(
     request: () => Promise<Response>,
   ): Promise<Response | null> {
-    if (openingsLoaded) return request();
-    setPersistence("loadRecoveryStage", null);
+    if (stateRef.current.openingsLoaded) return request();
+    updatePersistence({ loadRecoveryStage: null });
     try {
       const response = await retryForServiceRecovery(async () => {
         const attempt = await request();
@@ -301,51 +308,45 @@ export function useApplicantPersistence(
           throw new Error(`Application service unavailable (${attempt.status}).`);
         }
         return attempt;
-      }, (stage) => setPersistence("loadRecoveryStage", stage));
-      setPersistence("loadRecoveryStage", null);
+      }, (stage) => updatePersistence({ loadRecoveryStage: stage }));
+      updatePersistence({ loadRecoveryStage: null });
       return response;
     } catch {
-      setPersistence("loadRecoveryStage", "failed");
-      setPersistence("message", TECH_SUPPORT_ERROR_MESSAGE);
-      setPersistence("phase", "load_error");
+      updatePersistence({
+        loadRecoveryStage: "failed",
+        message: TECH_SUPPORT_ERROR_MESSAGE,
+        phase: "load_error",
+      });
       return null;
     }
   }
 
   async function reconcilePendingCopy(choice: "saved" | "guest"): Promise<void> {
-    setPersistence("phase", "working");
+    updatePersistence({ phase: "working" });
     const response = await reconcilePendingCopyRequest(choice);
     if (!response.ok) {
       const problem = await responseProblem(response);
       if (problem.code === "pending_copy_not_found") {
-        setPersistence("pendingCopy", null);
-        setPersistence("phase", "idle");
+        updatePersistence({ pendingCopy: null, phase: "idle" });
         await restoreApplication(applicationId ?? undefined);
         return;
       }
-      setPersistence("message", problem.detail);
-      setPersistence("phase", "error");
+      updatePersistence({ message: problem.detail, phase: "error" });
       return;
     }
-    setPersistence("pendingCopy", null);
+    updatePersistence({ pendingCopy: null });
     await restoreApplication(applicationId ?? undefined);
   }
 
   function clearActionFeedback(): void {
-    setPersistence("message", "");
-    setPersistence("phase", (current) => (
-      current === "saved"
-      || current === "email_sent"
-      || current === "email_failed"
-      || current === "error"
-        ? "idle"
-        : current
-    ));
+    updatePersistence((state) => ({
+      message: "",
+      phase: ["saved", "email_sent", "email_failed", "error"].includes(state.phase) ? "idle" : state.phase,
+    }));
   }
 
   function returnToApplication(): void {
-    setPersistence("message", "");
-    setPersistence("phase", "idle");
+    updatePersistence({ message: "", phase: "idle" });
   }
 
   async function openLinkedApplication(rememberDevice: boolean): Promise<void> {
@@ -357,14 +358,13 @@ export function useApplicantPersistence(
   }
 
   async function keepCurrentApplication(): Promise<void> {
-    setPersistence("linkConflict", null);
-    setPersistence("accessToken", null);
+    updatePersistence({ linkConflict: null, accessToken: null });
     await restoreApplication();
   }
 
   async function emailNewAccessLink(): Promise<void> {
     if (!accessToken) return;
-    setPersistence("phase", "working");
+    updatePersistence({ phase: "working" });
     const response = await regenerateAccessLink(accessToken);
     if (!response.ok) return fail(response);
     const body = (await response.json()) as {
@@ -373,39 +373,40 @@ export function useApplicantPersistence(
       emailStatus: EmailSendStatus;
     };
     if (!body.targetAvailable) {
-      setPersistence("linkConflict", null);
-      setPersistence("phase", "link_invalid");
+      updatePersistence({ linkConflict: null, phase: "link_invalid" });
       return;
     }
     if (body.emailStatus === "failed") {
-      setPersistence("message", TECH_SUPPORT_ERROR_MESSAGE);
-      setPersistence("phase", "error");
+      updatePersistence({ message: TECH_SUPPORT_ERROR_MESSAGE, phase: "error" });
       return;
     }
-    setPersistence("message",
-      body.emailSent
+    updatePersistence({
+      message: body.emailSent
         ? accessPurpose === "email_change"
           ? "We emailed a new confirmation link. Open it to finish changing your email address."
           : "We emailed a new link to open your application."
         : accessPurpose === "email_change"
           ? "Check your inbox for the confirmation link we sent recently."
           : "Check your inbox for the application link we sent recently.",
-    );
-    setPersistence("linkConflict", null);
-    setPersistence("phase", "access_link_sent");
+      linkConflict: null,
+      phase: "access_link_sent",
+    });
   }
 
   async function discardDraft(): Promise<void> {
     if (pendingDraftToken) await deletePendingDraft(pendingDraftToken);
     if (applicationId != null) clearApplicationDraft(applicationId);
-    setPersistence("pendingDraftToken", null);
-    setPersistence("openingIds", defaultOpeningIds(openings));
-    setPersistence("savedAnswers", null);
-    setPersistence("phase", "idle");
+    updatePersistence({
+      pendingDraftToken: null,
+      openingIds: defaultOpeningIds(openings),
+      savedAnswers: null,
+      phase: "idle",
+    });
   }
 
   async function fail(response: Response): Promise<void> {
     const problem = await responseProblem(response);
+    const { applicationId } = stateRef.current;
     if (["applications_closed", "opening_archived", "opening_selection_required"].includes(
       problem.code ?? "",
     )) {
@@ -413,7 +414,7 @@ export function useApplicantPersistence(
         if (!(await refreshLifecycleState())) return;
       } else await restorePublicOpenings(true);
     }
-    dispatchPersistence({ type: "action_failed", message: problem.detail,
+    updatePersistence({ message: problem.detail,
       phase: problem.code === "stale_application" ? "stale_copy" : "error" });
   }
 
@@ -422,15 +423,24 @@ export function useApplicantPersistence(
     const response = await fetchApplication();
     if (!isCurrent()) return false;
     if (response.status === 401) {
-      setPersistence("message", "Your application session has ended.");
-      setPersistence("phase", "session_expired");
+      updatePersistence({ message: "Your application session has ended.", phase: "session_expired" });
       return false;
     }
     if (!response.ok) return false;
     const body = (await response.json()) as ApplicationResponse;
     if (!isCurrent()) return false;
     const currentRevision = stateRef.current.workingRevision;
-    dispatchPersistence({ type: "lifecycle_refreshed", application: body });
+    updatePersistence((state) => {
+      const stale = state.workingRevision !== null && state.workingRevision !== body.workingRevision;
+      return {
+        openings: body.openings,
+        openingIds: validBrowserOpeningIds(state.openingIds, body.openings),
+        canEdit: body.canEdit,
+        ...(stale ? {
+          message: "This application changed in another tab or browser.", phase: "stale_copy",
+        } : { workingRevision: body.workingRevision }),
+      };
+    });
     return currentRevision === null || body.workingRevision === currentRevision;
   }
 
@@ -440,25 +450,19 @@ export function useApplicantPersistence(
   }
 
   const saveFlow = createApplicantSaveFlow({
-    state: persistence,
-    getCurrentState: () => stateRef.current,
+    stateRef,
     draftRef,
-    dispatch: dispatchPersistence,
     invalidateReads: invalidateApplicationReads,
-    setPersistence,
+    updatePersistence,
     fail,
   });
   const emailFlow = createApplicantEmailFlow({
-    setPersistence,
+    updatePersistence,
     setDraft,
-    primaryEmail,
-    workingRevision,
-    googleSignInLinked,
   });
   const withdrawalFlow = createApplicantWithdrawalFlow({
-    dispatch: dispatchPersistence,
     invalidateReads: invalidateApplicationReads,
-    setPersistence,
+    updatePersistence,
     fail,
     restorePublicOpenings,
   });
@@ -473,7 +477,7 @@ export function useApplicantPersistence(
     accessPurpose,
     accessApplicationEmail,
     reviewAfterAccess,
-    clearReviewAfterAccess: () => setPersistence("reviewAfterAccess", false),
+    clearReviewAfterAccess: () => updatePersistence({ reviewAfterAccess: false }),
     clearActionFeedback,
     returnToApplication,
     reconcilePendingCopy,
@@ -491,11 +495,11 @@ export function useApplicantPersistence(
     canEdit,
     openingsLoaded,
     setOpeningSelected: (openingId: number, selected: boolean) => {
-      setPersistence("openingIds", (current) => (
-        selected
-          ? [...new Set([...current, openingId])]
-          : current.filter((id) => id !== openingId)
-      ));
+      updatePersistence((state) => ({
+        openingIds: selected
+          ? [...new Set([...state.openingIds, openingId])]
+          : state.openingIds.filter((id) => id !== openingId),
+      }));
     },
     authenticated: applicationId != null,
     applicationId,

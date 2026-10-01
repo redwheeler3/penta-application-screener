@@ -1,53 +1,48 @@
-import type { Dispatch } from "react";
-
 import { responseProblem } from "./applicantPersistence";
-import type {
-  ApplicantPersistenceAction,
-  SetApplicantPersistence,
+import {
+  resetApplicantSession,
+  type UpdateApplicantPersistence,
 } from "./applicantPersistenceState";
 import { logoutApplicant, withdrawApplication } from "./api";
 import { clearApplicantStorage } from "./draftStorage";
 
 type WithdrawalFlowDependencies = {
-  setPersistence: SetApplicantPersistence;
-  dispatch: Dispatch<ApplicantPersistenceAction>;
+  updatePersistence: UpdateApplicantPersistence;
   invalidateReads: () => void;
   fail: (response: Response) => Promise<void>;
   restorePublicOpenings: () => Promise<void>;
 };
 
 export function createApplicantWithdrawalFlow({
-  setPersistence,
-  dispatch,
+  updatePersistence,
   invalidateReads,
   fail,
   restorePublicOpenings,
 }: WithdrawalFlowDependencies) {
   async function withdraw(): Promise<boolean> {
     invalidateReads();
-    setPersistence("withdrawalStatus", "working");
-    setPersistence("withdrawalMessage", "");
+    updatePersistence({ withdrawalStatus: "working", withdrawalMessage: "" });
     const response = await withdrawApplication();
     if (!response.ok) {
       const problem = await responseProblem(response);
       if (problem.code === "unauthorized") {
-        setPersistence("message", "Your application session has ended.");
-        setPersistence("phase", "session_expired");
-        setPersistence("withdrawalStatus", "idle");
+        updatePersistence({
+          message: "Your application session has ended.",
+          phase: "session_expired",
+          withdrawalStatus: "idle",
+        });
         return false;
       }
-      setPersistence("withdrawalStatus", "error");
-      setPersistence("withdrawalMessage", problem.detail);
+      updatePersistence({ withdrawalStatus: "error", withdrawalMessage: problem.detail });
       return false;
     }
     clearApplicantStorage();
-    dispatch({ type: "session_ended", phase: "withdrawn" });
+    updatePersistence((state) => resetApplicantSession(state, "withdrawn"));
     return true;
   }
 
   function clearWithdrawalFeedback(): void {
-    setPersistence("withdrawalStatus", "idle");
-    setPersistence("withdrawalMessage", "");
+    updatePersistence({ withdrawalStatus: "idle", withdrawalMessage: "" });
   }
 
   async function signOut(): Promise<boolean> {
@@ -58,7 +53,7 @@ export function createApplicantWithdrawalFlow({
       return false;
     }
     clearApplicantStorage();
-    dispatch({ type: "session_ended", phase: "idle" });
+    updatePersistence((state) => resetApplicantSession(state));
     await restorePublicOpenings();
     return true;
   }
