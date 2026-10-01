@@ -1,20 +1,30 @@
+import type { Dispatch } from "react";
+
 import { responseProblem } from "./applicantPersistence";
-import type { SetApplicantPersistence } from "./applicantPersistenceState";
+import type {
+  ApplicantPersistenceAction,
+  SetApplicantPersistence,
+} from "./applicantPersistenceState";
 import { logoutApplicant, withdrawApplication } from "./api";
 import { clearApplicantStorage } from "./draftStorage";
 
 type WithdrawalFlowDependencies = {
   setPersistence: SetApplicantPersistence;
+  dispatch: Dispatch<ApplicantPersistenceAction>;
+  invalidateReads: () => void;
   fail: (response: Response) => Promise<void>;
   restorePublicOpenings: () => Promise<void>;
 };
 
 export function createApplicantWithdrawalFlow({
   setPersistence,
+  dispatch,
+  invalidateReads,
   fail,
   restorePublicOpenings,
 }: WithdrawalFlowDependencies) {
   async function withdraw(): Promise<boolean> {
+    invalidateReads();
     setPersistence("withdrawalStatus", "working");
     setPersistence("withdrawalMessage", "");
     const response = await withdrawApplication();
@@ -31,14 +41,7 @@ export function createApplicantWithdrawalFlow({
       return false;
     }
     clearApplicantStorage();
-    setPersistence("applicationId", null);
-    setPersistence("workingRevision", null);
-    setPersistence("primaryEmail", null);
-    setPersistence("googleSignInLinked", false);
-    setPersistence("googleDisconnectedByEmailChange", false);
-    setPersistence("pendingEmailChange", null);
-    setPersistence("withdrawalStatus", "idle");
-    setPersistence("phase", "withdrawn");
+    dispatch({ type: "session_ended", phase: "withdrawn" });
     return true;
   }
 
@@ -48,20 +51,14 @@ export function createApplicantWithdrawalFlow({
   }
 
   async function signOut(): Promise<boolean> {
+    invalidateReads();
     const response = await logoutApplicant();
     if (!response.ok) {
       await fail(response);
       return false;
     }
     clearApplicantStorage();
-    setPersistence("applicationId", null);
-    setPersistence("workingRevision", null);
-    setPersistence("primaryEmail", null);
-    setPersistence("googleSignInLinked", false);
-    setPersistence("googleDisconnectedByEmailChange", false);
-    setPersistence("pendingEmailChange", null);
-    setPersistence("emailChangeStatus", "idle");
-    setPersistence("phase", "idle");
+    dispatch({ type: "session_ended", phase: "idle" });
     await restorePublicOpenings();
     return true;
   }

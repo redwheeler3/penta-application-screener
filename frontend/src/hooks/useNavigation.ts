@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import * as api from "../api/applications";
 import type { ApplicationDetail, ViewTab } from "../types";
+import { useRequestScope } from "./useRequestScope";
 
 type BrowserLocation = {
   screenerLocation: true;
@@ -36,6 +37,15 @@ export function useNavigation(options: {
   const [activeTab, setActiveTab] = useState<ViewTab>("applications");
   const [selectedApplication, setSelectedApplication] = useState<ApplicationDetail | null>(null);
   const [selectedApplicationReadOnly, setSelectedApplicationReadOnly] = useState(false);
+  const requests = useRequestScope();
+  const requestedOpening = useRef(options.openingId);
+  const currentOpening = useRef(options.openingId);
+  if (currentOpening.current !== options.openingId) {
+    currentOpening.current = options.openingId;
+    // A cross-opening navigation can start just before React renders the selected
+    // opening. Preserve that deliberate request, but cancel requests for any other opening.
+    if (requestedOpening.current !== options.openingId) requests.invalidate();
+  }
   const loadRankingRef = useRef(options.loadRanking);
   const onErrorRef = useRef(options.onError);
   const openingIdRef = useRef(options.openingId);
@@ -59,6 +69,8 @@ export function useNavigation(options: {
 
     const onPopState = (event: PopStateEvent) => {
       if (!isBrowserLocation(event.state)) return;
+      const isCurrent = requests.begin();
+      requestedOpening.current = openingIdRef.current;
       const location = event.state;
       setSelectedApplication(null);
       setSelectedApplicationReadOnly(Boolean(location.retainedApplicant));
@@ -74,20 +86,27 @@ export function useNavigation(options: {
           };
       void loadApplication(location.applicantId)
         .then((application) => {
+          if (!isCurrent()) return;
           setSelectedApplication(application);
           setSelectedApplicationReadOnly(Boolean(location.retainedApplicant));
         })
-        .catch(() => onErrorRef.current("Couldn't load that applicant. Please try again."));
+        .catch(() => {
+          if (isCurrent()) onErrorRef.current("Couldn't load that applicant. Please try again.");
+        });
     };
 
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+  }, [requests]);
 
   async function viewApplication(id: number, openingId = options.openingId) {
     if (openingId === null) return;
+    if (openingId === options.openingId && currentOpening.current !== options.openingId) return;
+    requestedOpening.current = openingId;
+    const isCurrent = requests.begin();
     try {
       const application = await api.fetchApplication(id, openingId);
+      if (!isCurrent()) return;
       if (selectedApplication?.id === id) {
         setSelectedApplication(application);
         return;
@@ -96,13 +115,16 @@ export function useNavigation(options: {
       setSelectedApplication(application);
       setSelectedApplicationReadOnly(false);
     } catch {
-      options.onError("Couldn't load that applicant. Please try again.");
+      if (isCurrent()) options.onError("Couldn't load that applicant. Please try again.");
     }
   }
 
   async function viewRetainedApplication(id: number) {
+    requestedOpening.current = currentOpening.current;
+    const isCurrent = requests.begin();
     try {
       const application = await api.fetchRetainedApplication(id);
+      if (!isCurrent()) return;
       pushLocation({
         screenerLocation: true,
         tab: "adminSettings",
@@ -112,11 +134,12 @@ export function useNavigation(options: {
       setSelectedApplication(application);
       setSelectedApplicationReadOnly(true);
     } catch {
-      options.onError("Couldn't load that retained application.");
+      if (isCurrent()) options.onError("Couldn't load that retained application.");
     }
   }
 
   function backToList() {
+    requests.invalidate();
     if (isBrowserLocation(window.history.state) && window.history.state.applicantId) {
       window.history.back();
       return;
@@ -125,6 +148,7 @@ export function useNavigation(options: {
   }
 
   function navigateToView(tab: ViewTab) {
+    requests.invalidate();
     if (activeTab === tab && !selectedApplication) return;
     pushLocation({ screenerLocation: true, tab });
     setSelectedApplication(null);
@@ -133,6 +157,7 @@ export function useNavigation(options: {
   }
 
   function openAdminSetup() {
+    requests.invalidate();
     setActiveTab("adminSettings");
     replaceLocation({ screenerLocation: true, tab: "adminSettings" });
   }
@@ -141,7 +166,10 @@ export function useNavigation(options: {
     activeTab,
     selectedApplication,
     selectedApplicationReadOnly,
-    setSelectedApplication,
+    setSelectedApplication: (application: ApplicationDetail | null) => {
+      requests.invalidate();
+      setSelectedApplication(application);
+    },
     viewApplication,
     viewRetainedApplication,
     backToList,

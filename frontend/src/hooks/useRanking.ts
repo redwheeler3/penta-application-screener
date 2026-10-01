@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as api from "../api/ranking";
 import { problemMessage, readProblemBody } from "../api/problems";
 import type { CurrentRunResponse, RankingResponse, Tier } from "../types";
+import { type RequestIsCurrent, useRequestScope } from "./useRequestScope";
 
 export interface RankingState {
   /** The current run's discovered dimensions, shown above the list once Rank has run;
@@ -64,23 +65,48 @@ export function useRanking(
   const [rankingLoadState, setRankingLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [staleAnalysis, setStaleAnalysis] = useState(false);
 
+  const currentReads = useRequestScope(openingId);
+  const boardReads = useRequestScope(openingId);
+  const staleReads = useRequestScope(openingId);
+  const analysisId = ranking?.analysisId ?? rankingRun?.analysisId;
+  const mutationKey = `${openingId}:${analysisId ?? "none"}`;
+  const mutations = useRequestScope(mutationKey);
+  const mutationQueue = useRef<Promise<void>>(Promise.resolve());
+  const pendingMutations = useRef(new Set<RequestIsCurrent>());
+  const tierSaveVersion = useRef(0);
+  const proposalSaveVersion = useRef(0);
+  const runRef = useRef(rankingRun);
+  const tiersRef = useRef(tiers);
+  runRef.current = rankingRun;
+  tiersRef.current = tiers;
+
   useEffect(() => {
-    // Every value in this hook belongs to one opening. Clear the prior board
-    // synchronously when the opening changes so an unrelated mutation cannot try to
-    // refresh or save the previous opening's ranking.
     setRankingRun(null);
     setRanking(null);
     setTiers(null);
+    runRef.current = null;
+    tiersRef.current = null;
     setRankingLoadState("idle");
     setStaleAnalysis(false);
   }, [openingId]);
 
-  // Read the single-use problem body once. A stale analysis opens the reload toast;
-  // other failures return their message to the caller.
-  async function handleSaveFailure(
-    response: Response,
-  ): Promise<{ handled: boolean; message: string | null }> {
+  // Both controls update one member record. Serialize requests so the server receives
+  // edits in order; scope checks discard queued work for a board the member has left.
+  function enqueueMutation(isCurrent: RequestIsCurrent, request: () => Promise<Response>) {
+    pendingMutations.current.add(isCurrent);
+    currentReads.invalidate();
+    const result = mutationQueue.current.then(() => isCurrent() ? request() : undefined);
+    mutationQueue.current = result.then(() => {}, () => {});
+    return result.finally(() => { pendingMutations.current.delete(isCurrent); });
+  }
+
+  function hasPendingMutations() {
+    return [...pendingMutations.current].some((isCurrent) => isCurrent());
+  }
+
+  async function handleSaveFailure(response: Response, isCurrent: RequestIsCurrent) {
     const body = await readProblemBody(response);
+    if (!isCurrent()) return { handled: true, message: null };
     if (body?.code === "stale_analysis") {
       setStaleAnalysis(true);
       return { handled: true, message: null };
@@ -88,154 +114,173 @@ export function useRanking(
     return { handled: false, message: problemMessage(body) };
   }
 
-  // Refresh the complete board before clearing the stale flag.
   async function reloadStaleRanking(): Promise<boolean> {
-    await refreshRankingRun();
+    if (!currentReads.isFor(openingId)) return false;
+    const isCurrent = currentReads.capture();
+    const run = await refreshRankingRun();
+    if (!run || !isCurrent()) return false;
     const ok = await loadRanking();
-    if (ok) setStaleAnalysis(false);
+    if (ok && isCurrent()) setStaleAnalysis(false);
     return ok;
   }
 
-  // Passive staleness check (tab focus / visibility). Compares the server's current analysis
-  // id to the one this browser has loaded; if they differ, another member re-ranked and this
-  // view is stale. One cheap GET; no-op if nothing is loaded, already flagged stale, or the
-  // fetch fails (a transient error shouldn't nag). The reload itself stays a deliberate action
-  // (the toast), so a member mid-tiering isn't yanked.
   async function checkForStaleRanking(): Promise<void> {
-    if (openingId === null) return;
-    const loadedId = ranking?.analysisId ?? rankingRun?.analysisId;
-    if (loadedId === undefined || loadedId === null || staleAnalysis) return;
+    if (openingId === null || !staleReads.isFor(openingId) || analysisId == null || staleAnalysis) return;
+    const isCurrent = staleReads.begin();
     try {
       const current = await api.fetchRankingCurrent(openingId);
-      if (current && current.analysisId !== loadedId) setStaleAnalysis(true);
+      if (isCurrent() && current && current.analysisId !== analysisId) setStaleAnalysis(true);
     } catch {
-      /* transient — try again on the next focus */
+      /* Retry on the next focus. */
     }
   }
 
-  function refreshRankingRun() {
-    if (openingId === null) {
-      setRankingRun(null);
-      return Promise.resolve(null);
+  async function refreshRankingRun(): Promise<CurrentRunResponse | null> {
+    if (openingId === null || !currentReads.isFor(openingId)) return null;
+    if (hasPendingMutations()) return runRef.current;
+    const isCurrent = currentReads.begin();
+    try {
+      const run = await api.fetchRankingCurrent(openingId);
+      if (!isCurrent()) return null;
+      runRef.current = run;
+      setRankingRun(run);
+      return run;
+    } catch {
+      // Preserve the loaded board on a transient refresh failure.
+      return null;
     }
-    return api
-      .fetchRankingCurrent(openingId)
-      .then((run) => {
-        setRankingRun(run);
-        return run;
-      })
-      .catch(() => {
-        setRankingRun(null);
-        return null;
-      });
   }
 
   async function loadRanking(): Promise<boolean> {
-    if (openingId === null) return false;
+    if (openingId === null || !boardReads.isFor(openingId) || hasPendingMutations()) return false;
+    const isCurrent = boardReads.begin();
     setRankingLoadState("loading");
     try {
       const [nextRanking, nextTiers] = await Promise.all([
-        api.fetchRanking(openingId),
-        api.fetchTiers(openingId),
+        api.fetchRanking(openingId), api.fetchTiers(openingId),
       ]);
+      if (!isCurrent()) return false;
       setRanking(nextRanking);
+      tiersRef.current = nextTiers.tiers;
       setTiers(nextTiers.tiers);
       setRankingLoadState("ready");
       return true;
     } catch {
+      if (!isCurrent()) return false;
       onError("Could not load the ranking. Please try again.");
+      setRankingLoadState("error");
+      return false;
     }
-    setRankingLoadState("error");
-    return false;
   }
 
   async function saveTiers(
-    next: Tier[],
-    acknowledgedKeys: string[] = [],
-    acknowledgedRequestedKeys: string[] = [],
-  ) {
-    // Tie the save to the analysis we're viewing so the server rejects it (409) if
-    // another member re-ranked since. No analysis loaded → nothing to save against.
-    const analysisId = ranking?.analysisId ?? rankingRun?.analysisId;
-    if (analysisId === undefined) return;
+    next: Tier[], acknowledgedKeys: string[] = [], acknowledgedRequestedKeys: string[] = [],
+  ): Promise<void> {
+    if (openingId === null || analysisId == null || !mutations.isFor(mutationKey)) return;
+    const inScope = mutations.capture();
+    const version = ++tierSaveVersion.current;
+    const isLatest = () => inScope() && version === tierSaveVersion.current;
+    boardReads.invalidate();
+    tiersRef.current = next;
     setTiers(next);
-    if (openingId === null) return;
-    const response = await api.saveTiers(
-      openingId, analysisId, next, acknowledgedKeys, acknowledgedRequestedKeys,
-    );
-    if (response.ok) {
-      const updated: RankingResponse = await response.json();
-      setRanking(updated);
-      // The requested pill reads from rankingRun.dimensions' flag set, which the tiers
-      // PUT doesn't return — mirror the server's dismissal onto rankingRun so the pill
-      // clears in the same round-trip (it's echoed on RankingResponse.requestedDimensionKeys).
-      if (acknowledgedRequestedKeys.length > 0) {
-        setRankingRun((run) =>
-          run ? { ...run, requestedDimensionKeys: updated.requestedDimensionKeys } : run,
-        );
+    try {
+      const response = await enqueueMutation(inScope, () => api.saveTiers(
+        openingId, analysisId, next, acknowledgedKeys, acknowledgedRequestedKeys,
+      ));
+      if (!response || !isLatest()) return;
+      if (response.ok) {
+        const updated: RankingResponse = await response.json();
+        if (!isLatest()) return;
+        boardReads.invalidate();
+        setRanking(updated);
+        setRankingLoadState("ready");
+        setRankingRun((run) => {
+          if (!run) return run;
+          const updatedRun = { ...run, requestedDimensionKeys: updated.requestedDimensionKeys };
+          runRef.current = updatedRun;
+          return updatedRun;
+        });
+      } else {
+        const { handled, message } = await handleSaveFailure(response, isLatest);
+        if (!handled && isLatest()) {
+          onError(message ?? "Could not update the tiers.");
+          await loadRanking();
+        }
       }
-    } else {
-      // Not a stale-analysis rejection — a genuine failure (e.g. a rank in progress blocked
-      // the save so a late edit can't vanish). Surface the server's reason and reconcile to
-      // its truth, which reverts the optimistic setTiers above — the edit didn't persist.
-      const { handled, message } = await handleSaveFailure(response);
-      if (!handled) {
-        onError(message ?? "Could not update the tiers.");
-        loadRanking();
-      }
+    } catch {
+      if (!isLatest()) return;
+      onError("Could not update the tiers.");
+      await loadRanking();
     }
   }
 
   async function acknowledgeNewDimensions(keys: string[]) {
-    if (!tiers || keys.length === 0) return;
-    await saveTiers(tiers, keys);
+    if (!tiersRef.current || keys.length === 0) return;
+    await saveTiers(tiersRef.current, keys);
   }
 
   async function dismissRequested(keys: string[]) {
-    if (!tiers || keys.length === 0) return;
-    await saveTiers(tiers, [], keys);
+    if (!tiersRef.current || keys.length === 0) return;
+    await saveTiers(tiersRef.current, [], keys);
   }
 
-  // Persist pending free-text proposals for the current run — they feed the NEXT Rank's
-  // discovery. Optimistically update rankingRun (where the composer reads proposal
-  // state) for instant feedback; reconcile from the response.
-  async function saveSeeds(next: { proposedDimensions?: string[] }) {
-    if (!rankingRun || openingId === null) return;
-    const optimistic = {
-      ...rankingRun,
-      ...(next.proposedDimensions !== undefined ? { proposedDimensions: next.proposedDimensions } : {}),
-    };
+  async function saveProposals(proposedDimensions: string[]): Promise<void> {
+    const run = runRef.current;
+    if (!run || openingId === null || !mutations.isFor(mutationKey)) return;
+    const inScope = mutations.capture();
+    const version = ++proposalSaveVersion.current;
+    const isLatest = () => inScope() && version === proposalSaveVersion.current;
+    const optimistic = { ...run, proposedDimensions };
+    runRef.current = optimistic;
     setRankingRun(optimistic);
-    const response = await api.saveSeeds(openingId, rankingRun.analysisId, {
-      proposedDimensions: next.proposedDimensions,
-    });
-    if (response.ok) {
-      const echoed: { proposedDimensions: string[] } = await response.json();
-      setRankingRun((run) =>
-        run ? { ...run, proposedDimensions: echoed.proposedDimensions } : run,
-      );
-    } else {
-      const { handled, message } = await handleSaveFailure(response);
-      if (!handled) {
-        onError(message ?? "Could not save the suggested criteria.");
-        refreshRankingRun(); // reconcile back to server truth (reverts the optimistic set)
+    try {
+      const response = await enqueueMutation(inScope, () => api.saveSeeds(
+        openingId, run.analysisId, { proposedDimensions },
+      ));
+      if (!response || !isLatest()) return;
+      if (response.ok) {
+        const echoed: { proposedDimensions: string[] } = await response.json();
+        if (!isLatest()) return;
+        currentReads.invalidate();
+        setRankingRun((current) => {
+          if (!current) return current;
+          const updated = { ...current, proposedDimensions: echoed.proposedDimensions };
+          runRef.current = updated;
+          return updated;
+        });
+      } else {
+        const { handled, message } = await handleSaveFailure(response, isLatest);
+        if (!handled && isLatest()) {
+          onError(message ?? "Could not save the suggested criteria.");
+          await refreshRankingRun();
+        }
       }
+    } catch {
+      if (!isLatest()) return;
+      onError("Could not save the suggested criteria.");
+      await refreshRankingRun();
     }
   }
 
   function addProposal(text: string) {
-    if (!rankingRun) return;
-    if (rankingRun.proposedDimensions.includes(text)) return;
-    saveSeeds({ proposedDimensions: [...rankingRun.proposedDimensions, text] });
+    const run = runRef.current;
+    if (!run || run.proposedDimensions.includes(text)) return;
+    void saveProposals([...run.proposedDimensions, text]);
   }
 
   function removeProposal(text: string) {
-    if (!rankingRun) return;
-    saveSeeds({ proposedDimensions: rankingRun.proposedDimensions.filter((t) => t !== text) });
+    const run = runRef.current;
+    if (run) void saveProposals(run.proposedDimensions.filter((item) => item !== text));
   }
 
-  function setDisplayedProposals(proposed: string[]) {
-    setRankingRun((run) => (run ? { ...run, proposedDimensions: proposed } : run));
+  function setDisplayedProposals(proposedDimensions: string[]) {
+    proposalSaveVersion.current += 1;
+    currentReads.invalidate();
+    const run = runRef.current;
+    if (!run) return;
+    const updated = { ...run, proposedDimensions };
+    runRef.current = updated;
+    setRankingRun(updated);
   }
 
   return {

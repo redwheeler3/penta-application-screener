@@ -1,17 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { deferred } from "../testSupport";
 import { useFetchResource } from "./useFetchResource";
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
-  return { promise, resolve, reject };
-}
 
 describe("useFetchResource", () => {
   it("loads, reports failure, and retries in place", async () => {
@@ -56,5 +47,14 @@ describe("useFetchResource", () => {
 
     expect(result.current.state).toBe("ready");
     expect(result.current.data).toBe("mutation response");
+  });
+
+  it("ignores a pending response after the resource unmounts", async () => {
+    const pending = deferred<string>();
+    const onError = vi.fn();
+    const { unmount } = renderHook(() => useFetchResource(() => pending.promise, { onError }));
+    unmount();
+    await act(async () => pending.reject(new Error("offline")));
+    expect(onError).not.toHaveBeenCalled();
   });
 });

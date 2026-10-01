@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useRequestScope } from "./useRequestScope";
 
 // Shared reloadable resource state. This hook owns request ordering and retry state; callers may
 // replace the cached data directly when a successful mutation already returned the new value.
@@ -27,42 +28,36 @@ export function useFetchResource<T>(
   const [state, setState] = useState<FetchState>("loading");
   const fetcherRef = useRef(fetcher);
   const onErrorRef = useRef(options.onError);
-  const mounted = useRef(false);
-  const requestVersion = useRef(0);
+  const requests = useRequestScope(options.reloadKey ?? null);
 
   fetcherRef.current = fetcher;
   onErrorRef.current = options.onError;
 
   const reload = useCallback(async (): Promise<void> => {
-    const version = ++requestVersion.current;
+    const isCurrent = requests.begin();
     setState("loading");
     try {
       const next = await fetcherRef.current();
-      if (!mounted.current || version !== requestVersion.current) return;
+      if (!isCurrent()) return;
       setStoredData(next);
       setState("ready");
     } catch {
-      if (!mounted.current || version !== requestVersion.current) return;
+      if (!isCurrent()) return;
       setState("error");
       onErrorRef.current?.();
     }
-  }, []);
+  }, [requests]);
 
   useEffect(() => {
-    mounted.current = true;
     void reload();
-    return () => {
-      mounted.current = false;
-      requestVersion.current += 1;
-    };
   }, [reload, options.reloadKey]);
 
   const setData = useCallback<Dispatch<SetStateAction<T | null>>>((next) => {
     // A mutation response is newer server truth than any GET already in flight.
-    requestVersion.current += 1;
+    requests.invalidate();
     setStoredData(next);
     setState("ready");
-  }, []);
+  }, [requests]);
 
   return { data, state, reload, setData };
 }

@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import * as api from "../api/dashboard";
 import { retryWithBackoff } from "../retry";
 import type { AdminActions, Coverage, WorkflowState } from "../types";
+import { useRequestScope } from "./useRequestScope";
 
 const EMPTY_WORKFLOW: WorkflowState = {
   applicationsAvailable: false,
@@ -17,6 +18,7 @@ export function useDashboard(openingId: number | null) {
   const [coverage, setCoverage] = useState<Coverage>({});
   const [adminActions, setAdminActions] = useState<AdminActions | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const requests = useRequestScope(openingId);
 
   const apply = useCallback((payload: {
     workflow: WorkflowState;
@@ -30,19 +32,25 @@ export function useDashboard(openingId: number | null) {
   }, []);
 
   const refresh = useCallback(() => {
-    if (openingId === null) return Promise.resolve();
-    return api.fetchDashboard(openingId).then(apply).catch(() => {});
-  }, [apply, openingId]);
+    if (openingId === null || !requests.isFor(openingId)) return Promise.resolve();
+    const isCurrent = requests.begin();
+    return api.fetchDashboard(openingId).then((payload) => {
+      if (isCurrent()) apply(payload);
+    }).catch(() => {});
+  }, [apply, openingId, requests]);
 
   const loadInitial = useCallback(async (): Promise<void> => {
+    if (!requests.isFor(openingId)) return;
     setLoadState("loading");
     if (openingId === null) return;
+    const isCurrent = requests.begin();
     try {
-      apply(await retryWithBackoff(() => api.fetchDashboard(openingId), 5));
+      const payload = await retryWithBackoff(() => api.fetchDashboard(openingId), 5);
+      if (isCurrent()) apply(payload);
     } catch {
-      setLoadState("error");
+      if (isCurrent()) setLoadState("error");
     }
-  }, [apply, openingId]);
+  }, [apply, openingId, requests]);
 
   return { workflow, coverage, adminActions, loadState, refresh, loadInitial };
 }

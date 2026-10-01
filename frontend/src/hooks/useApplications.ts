@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import * as api from "../api/applications";
 import { retryWithBackoff } from "../retry";
 import type {
@@ -10,6 +10,7 @@ import type {
   SortState,
 } from "../types";
 import { deriveApplicationFacets, selectApplications } from "./applicationSelectors";
+import { useRequestScope } from "./useRequestScope";
 
 export interface ApplicationsState {
   /** The filtered + sorted list the UI renders (derived from the full pool). */
@@ -32,7 +33,7 @@ export interface ApplicationsState {
   loadInitialApplications: () => Promise<void>;
   toggleSort: (key: SortKey) => void;
   applyFilter: (next: AppFilter) => void;
-  selectOpening: (openingId: number) => Promise<void>;
+  selectOpening: (openingId: number) => Promise<boolean>;
   search: (value: string) => void;
 }
 
@@ -50,6 +51,10 @@ export function useApplications(): ApplicationsState {
   const [appFilter, setAppFilter] = useState<AppFilter>({});
   const [appSearch, setAppSearch] = useState("");
   const [appSort, setAppSort] = useState<SortState>(null);
+  const requests = useRequestScope();
+  const selectingOpening = useRef(false);
+  const selectedOpeningRef = useRef(selectedOpeningId);
+  selectedOpeningRef.current = selectedOpeningId;
 
   const acceptApplications = useCallback((response: Awaited<ReturnType<typeof api.fetchApplications>>) => {
     setAllApplications(response.applications);
@@ -62,18 +67,22 @@ export function useApplications(): ApplicationsState {
   }, []);
 
   const reloadApplications = useCallback(() => {
+    if (selectingOpening.current) return Promise.resolve();
+    const isCurrent = requests.begin();
     return api
-      .fetchApplications(selectedOpeningId)
+      .fetchApplications(selectedOpeningRef.current)
       .then((response) => {
-        acceptApplications(response);
+        if (isCurrent()) acceptApplications(response);
       })
       // Keep the last successful list visible when a background refresh fails. Initial loading
       // uses loadInitialApplications so it can recover deliberately instead of spinning forever.
       .catch(() => {});
-  }, [acceptApplications, selectedOpeningId]);
+  }, [acceptApplications, requests]);
 
   const loadInitialApplications = useCallback(async (): Promise<void> => {
     setApplicationsLoadState("loading");
+    const isCurrent = requests.begin();
+    selectingOpening.current = true;
     try {
       const stored = Number(window.localStorage.getItem("penta-selected-opening"));
       const requestedOpening = Number.isInteger(stored) && stored > 0 ? stored : null;
@@ -81,11 +90,13 @@ export function useApplications(): ApplicationsState {
         () => api.fetchApplications(requestedOpening),
         5,
       );
-      acceptApplications(response);
+      if (isCurrent()) acceptApplications(response);
     } catch {
-      setApplicationsLoadState("error");
+      if (isCurrent()) setApplicationsLoadState("error");
+    } finally {
+      if (isCurrent()) selectingOpening.current = false;
     }
-  }, [acceptApplications]);
+  }, [acceptApplications, requests]);
 
   // Everything below is derived from the full pool — no fetch on filter/sort/search.
   const appFacets = useMemo<AppFacets>(
@@ -98,13 +109,21 @@ export function useApplications(): ApplicationsState {
     [allApplications, appFilter, appSearch, appSort],
   );
 
-  async function selectOpening(openingId: number): Promise<void> {
+  async function selectOpening(openingId: number): Promise<boolean> {
+    const isCurrent = requests.begin();
+    selectingOpening.current = true;
     setApplicationsLoadState("loading");
     try {
-      acceptApplications(await api.fetchApplications(openingId));
+      const response = await api.fetchApplications(openingId);
+      if (!isCurrent()) return false;
+      acceptApplications(response);
+      return true;
     } catch (error) {
+      if (!isCurrent()) return false;
       setApplicationsLoadState("ready");
       throw error;
+    } finally {
+      if (isCurrent()) selectingOpening.current = false;
     }
   }
 

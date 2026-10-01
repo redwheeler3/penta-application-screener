@@ -2,7 +2,7 @@ import { type Dispatch, type SetStateAction, useEffect, useReducer, useRef } fro
 
 import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import { retryForServiceRecovery } from "../serviceRecovery";
-import { APPLICATION_ACCESS_EMAIL_MESSAGE } from "./accessMessages";
+import { useRequestScope } from "../hooks/useRequestScope";
 import {
   accessCredentialFromFragment,
   type ApplicationResponse,
@@ -14,15 +14,15 @@ import {
   validBrowserOpeningIds,
   workingSnapshot,
 } from "./applicantPersistence";
-import { createApplicantWithdrawalFlow } from "./applicantWithdrawalFlow";
 import { createApplicantEmailFlow } from "./applicantEmailFlow";
+import { createApplicantSaveFlow } from "./applicantSaveFlow";
+import { createApplicantWithdrawalFlow } from "./applicantWithdrawalFlow";
 import {
   type ApplicantPersistenceState,
   applicantPersistenceReducer,
   INITIAL_APPLICANT_PERSISTENCE_STATE,
 } from "./applicantPersistenceState";
 import {
-  checkGuestSubmission,
   deletePendingDraft,
   fetchApplicantOpenings,
   fetchApplication,
@@ -31,12 +31,6 @@ import {
   openAccessLink,
   regenerateAccessLink,
   reconcilePendingCopy as reconcilePendingCopyRequest,
-  requestReturnAccessLink,
-  saveApplication,
-  savePendingDraft,
-  submitApplication,
-  submitGuestApplication,
-  type DraftIntent,
 } from "./api";
 import {
   clearApplicationDraft,
@@ -47,10 +41,7 @@ import {
 import {
   type ApplicantDraft,
   type ApplicantOpening,
-  canonicalAnswers,
   draftFromWorking,
-  residenceHistoryCutoff,
-  workingAnswers,
 } from "./types";
 
 export function useApplicantPersistence(
@@ -59,6 +50,8 @@ export function useApplicantPersistence(
   onRememberDeviceChange: (remember: boolean) => void,
 ) {
   const draftRef = useRef(draft);
+  const applicationReads = useRequestScope();
+  const pendingCopyReads = useRequestScope();
   const linkStarted = useRef(false);
   const [persistence, dispatchPersistence] = useReducer(
     applicantPersistenceReducer,
@@ -81,7 +74,6 @@ export function useApplicantPersistence(
     accessApplicationEmail,
     linkConflict,
     pendingCopy,
-    lastIntent,
     reviewAfterAccess,
     savedAnswers,
     primaryEmail,
@@ -104,9 +96,9 @@ export function useApplicantPersistence(
     dispatchPersistence({ key, value } as Parameters<typeof dispatchPersistence>[0]);
   }
 
-  useEffect(() => {
-    draftRef.current = draft;
-  }, [draft]);
+  const stateRef = useRef(persistence);
+  stateRef.current = persistence;
+  draftRef.current = draft;
 
   useEffect(() => {
     if (
@@ -236,13 +228,12 @@ export function useApplicantPersistence(
   }
 
   async function restoreApplication(knownId?: number): Promise<void> {
+    const isCurrent = applicationReads.begin();
     const response = await recoverInitialLoad(fetchApplication);
-    if (response === null) return;
+    if (response === null || !isCurrent()) return;
     if (response.status === 401) {
       if (knownId == null) {
-        setPersistence("applicationId", null);
-        setPersistence("workingRevision", null);
-        setPersistence("phase", "idle");
+        dispatchPersistence({ type: "session_ended", phase: "idle" });
         await restorePublicOpenings();
       } else {
         setPersistence("message", "Your application session has ended.");
@@ -252,16 +243,10 @@ export function useApplicantPersistence(
     }
     if (!response.ok) return fail(response);
     const body = (await response.json()) as ApplicationResponse;
-    setPersistence("applicationId", body.applicationId);
-    setPersistence("workingRevision", body.workingRevision);
-    setPersistence("primaryEmail", body.primaryEmail);
-    setPersistence("googleSignInLinked", body.googleSignInLinked);
-    setPersistence("pendingEmailChange", body.pendingEmailChange);
-    setPersistence("openings", body.openings);
-    setPersistence("canEdit", body.canEdit);
-    setPersistence("openingsLoaded", true);
+    if (!isCurrent()) return;
     const serverOpeningIds = defaultOpeningIds(body.openings);
     let restoredOpeningIds = serverOpeningIds;
+    let snapshot: string | null = null;
     if (body.answers) {
       const stored = remembersDevice() ? loadApplicationDraft(body.applicationId) : null;
       const serverDraft = draftFromWorking(body.answers);
@@ -272,19 +257,20 @@ export function useApplicantPersistence(
       if (storedMatchesServer) {
         restoredOpeningIds = validBrowserOpeningIds(stored.openingIds, body.openings);
       }
-      restored.applicant.email = body.primaryEmail;
-      setDraft(restored);
-      setPersistence("savedAnswers", workingSnapshot(serverDraft, serverOpeningIds));
+      setDraft({ ...restored, applicant: { ...restored.applicant, email: body.primaryEmail } });
+      snapshot = workingSnapshot(serverDraft, serverOpeningIds);
     }
-    setPersistence("openingIds", restoredOpeningIds);
-    setPersistence("phase", "idle");
+    dispatchPersistence({ type: "application_restored", application: body,
+      openingIds: restoredOpeningIds, snapshot });
     await restorePendingCopy();
   }
 
   async function restorePendingCopy(): Promise<void> {
+    const isCurrent = pendingCopyReads.begin();
     const response = await fetchPendingCopy();
-    if (!response.ok) return;
+    if (!response.ok || !isCurrent()) return;
     const body = (await response.json()) as { pendingCopy: PendingCopy | null };
+    if (!isCurrent()) return;
     setPersistence("pendingCopy", body.pendingCopy);
   }
 
@@ -329,168 +315,6 @@ export function useApplicantPersistence(
     }
   }
 
-  async function start(intent: DraftIntent): Promise<void> {
-    setPersistence("lastIntent", intent);
-    setPersistence("message", "");
-    setPersistence("phase", "working");
-    if (applicationId != null) {
-      await persistAuthenticatedApplication(intent);
-      return;
-    }
-    if (intent === "submit") {
-      await persistGuestApplication();
-      return;
-    }
-
-    const response = await savePendingDraft(
-      workingAnswers(draftRef.current),
-      intent,
-      pendingDraftToken,
-      openingIds,
-    );
-    if (!response.ok) return fail(response);
-    const body = (await response.json()) as {
-      draftToken: string;
-      emailSent: boolean;
-      emailStatus: EmailSendStatus;
-    };
-    setPersistence("pendingDraftToken", body.draftToken);
-    setPersistence("savedAnswers", workingSnapshot(draftRef.current, openingIds));
-    if (body.emailStatus === "failed") {
-      setPersistence("message", TECH_SUPPORT_ERROR_MESSAGE);
-      setPersistence("phase", "email_failed");
-    } else {
-      setPersistence("message",
-        body.emailSent
-          ? "Your application is saved. Use the link in your email to open it again."
-          : "Your application is saved. Check your inbox for the link we sent recently.",
-      );
-      setPersistence("phase", "email_sent");
-    }
-  }
-
-  async function saveForReview(): Promise<boolean> {
-    if (applicationId == null) return true;
-    setPersistence("message", "");
-    setPersistence("phase", "working");
-    const saved = await persistAuthenticatedApplication("save");
-    if (saved) setPersistence("phase", "idle");
-    return saved;
-  }
-
-  async function prepareGuestReview(): Promise<boolean> {
-    if (applicationId != null) return true;
-    setPersistence("message", "");
-    setPersistence("phase", "working");
-    const email = draftRef.current.applicant.email.trim().toLowerCase();
-    const response = await checkGuestSubmission(
-      workingAnswers(draftRef.current),
-      openingIds,
-    );
-    if (!response.ok) {
-      await fail(response);
-      return false;
-    }
-    const body = (await response.json()) as {
-      canSubmit: boolean;
-      emailSent: boolean;
-      emailStatus: EmailSendStatus | null;
-    };
-    if (!body.canSubmit) {
-      setPersistence("collisionEmail", email);
-      if (body.emailStatus === "failed") {
-        setPersistence("message", TECH_SUPPORT_ERROR_MESSAGE);
-        setPersistence("phase", "error");
-      } else {
-        setPersistence("message", APPLICATION_ACCESS_EMAIL_MESSAGE);
-        setPersistence("phase", "authentication_required");
-      }
-      return false;
-    }
-    setPersistence("phase", "idle");
-    return true;
-  }
-
-  async function persistGuestApplication(): Promise<void> {
-    const response = await submitGuestApplication(
-      canonicalAnswers(draftRef.current, residenceHistoryCutoff(openings)),
-      true,
-      openingIds,
-      pendingDraftToken,
-    );
-    if (!response.ok) return fail(response);
-    setPersistence("savedAnswers", workingSnapshot(draftRef.current, openingIds));
-    setPersistence("phase", "submitted");
-  }
-
-  async function persistAuthenticatedApplication(intent: DraftIntent): Promise<boolean> {
-    if (workingRevision == null) {
-      setPersistence("message", TECH_SUPPORT_ERROR_MESSAGE);
-      setPersistence("phase", "error");
-      return false;
-    }
-    const response = intent === "submit"
-      ? await submitApplication(
-          canonicalAnswers(draftRef.current, residenceHistoryCutoff(openings)),
-          true,
-          openingIds,
-          workingRevision,
-        )
-      : await saveApplication(workingAnswers(draftRef.current), openingIds, workingRevision);
-    if (!response.ok) {
-      await fail(response);
-      return false;
-    }
-    const body = (await response.json()) as ApplicationResponse;
-    setPersistence("workingRevision", body.workingRevision);
-    setPersistence("openings", body.openings);
-    setPersistence("canEdit", body.canEdit);
-    setPersistence("savedAnswers", workingSnapshot(draftRef.current, openingIds));
-    if (intent === "submit" && applicationId != null) clearApplicationDraft(applicationId);
-    setPersistence("phase", intent === "submit" ? "submitted" : "saved");
-    return true;
-  }
-
-  async function emailReturnLink(): Promise<boolean> {
-    const response = await requestReturnAccessLink(
-      workingAnswers(draftRef.current),
-      openingIds,
-      workingRevision,
-    );
-    if (!response.ok) {
-      await fail(response);
-      return false;
-    }
-    const body = (await response.json()) as {
-      currentAnswersSaved: boolean;
-      emailStatus: EmailSendStatus;
-    };
-    if (body.emailStatus === "failed") return false;
-    if (body.currentAnswersSaved) {
-      setPersistence("savedAnswers", workingSnapshot(draftRef.current, openingIds));
-    }
-    return true;
-  }
-
-  async function requestEntryLink(email: string): Promise<boolean> {
-    const answers = workingAnswers(draftRef.current);
-    answers.applicant.email = email.trim().toLowerCase();
-    const response = await requestReturnAccessLink(answers, openingIds, null);
-    if (!response.ok) {
-      await fail(response);
-      return false;
-    }
-    const body = (await response.json()) as { emailStatus: EmailSendStatus };
-    if (body.emailStatus === "failed") {
-      setPersistence("message", TECH_SUPPORT_ERROR_MESSAGE);
-      setPersistence("phase", "error");
-      return false;
-    }
-    setPersistence("message", APPLICATION_ACCESS_EMAIL_MESSAGE);
-    setPersistence("phase", "access_link_sent");
-    return true;
-  }
-
   async function reconcilePendingCopy(choice: "saved" | "guest"): Promise<void> {
     setPersistence("phase", "working");
     const response = await reconcilePendingCopyRequest(choice);
@@ -508,21 +332,6 @@ export function useApplicantPersistence(
     }
     setPersistence("pendingCopy", null);
     await restoreApplication(applicationId ?? undefined);
-  }
-
-  async function emailSessionAccessLink(): Promise<void> {
-    setPersistence("phase", "working");
-    if (await emailReturnLink()) {
-      setPersistence("message", APPLICATION_ACCESS_EMAIL_MESSAGE);
-      setPersistence("phase", "access_link_sent");
-      return;
-    }
-    setPersistence("message", TECH_SUPPORT_ERROR_MESSAGE);
-    setPersistence("phase", "error");
-  }
-
-  async function resendCurrentIntent(): Promise<void> {
-    await start(lastIntent);
   }
 
   function clearActionFeedback(): void {
@@ -607,12 +416,14 @@ export function useApplicantPersistence(
         if (!(await refreshLifecycleState())) return;
       } else await restorePublicOpenings(true);
     }
-    setPersistence("message", problem.detail);
-    setPersistence("phase", problem.code === "stale_application" ? "stale_copy" : "error");
+    dispatchPersistence({ type: "action_failed", message: problem.detail,
+      phase: problem.code === "stale_application" ? "stale_copy" : "error" });
   }
 
   async function refreshLifecycleState(): Promise<boolean> {
+    const isCurrent = applicationReads.begin();
     const response = await fetchApplication();
+    if (!isCurrent()) return false;
     if (response.status === 401) {
       setPersistence("message", "Your application session has ended.");
       setPersistence("phase", "session_expired");
@@ -620,18 +431,26 @@ export function useApplicantPersistence(
     }
     if (!response.ok) return false;
     const body = (await response.json()) as ApplicationResponse;
-    setPersistence("openings", body.openings);
-    setPersistence("openingIds", (current) => validBrowserOpeningIds(current, body.openings));
-    setPersistence("canEdit", body.canEdit);
-    if (workingRevision !== null && body.workingRevision !== workingRevision) {
-      setPersistence("message", "This application changed in another tab or browser.");
-      setPersistence("phase", "stale_copy");
-      return false;
-    }
-    setPersistence("workingRevision", body.workingRevision);
-    return true;
+    if (!isCurrent()) return false;
+    const currentRevision = stateRef.current.workingRevision;
+    dispatchPersistence({ type: "lifecycle_refreshed", application: body });
+    return currentRevision === null || body.workingRevision === currentRevision;
   }
 
+  function invalidateApplicationReads(): void {
+    applicationReads.invalidate();
+    pendingCopyReads.invalidate();
+  }
+
+  const saveFlow = createApplicantSaveFlow({
+    state: persistence,
+    getCurrentState: () => stateRef.current,
+    draftRef,
+    dispatch: dispatchPersistence,
+    invalidateReads: invalidateApplicationReads,
+    setPersistence,
+    fail,
+  });
   const emailFlow = createApplicantEmailFlow({
     setPersistence,
     setDraft,
@@ -640,6 +459,8 @@ export function useApplicantPersistence(
     googleSignInLinked,
   });
   const withdrawalFlow = createApplicantWithdrawalFlow({
+    dispatch: dispatchPersistence,
+    invalidateReads: invalidateApplicationReads,
     setPersistence,
     fail,
     restorePublicOpenings,
@@ -658,18 +479,12 @@ export function useApplicantPersistence(
     clearReviewAfterAccess: () => setPersistence("reviewAfterAccess", false),
     clearActionFeedback,
     returnToApplication,
-    start,
-    prepareGuestReview,
-    saveForReview,
-    emailReturnLink,
-    requestEntryLink,
     reconcilePendingCopy,
-    emailSessionAccessLink,
-    resendCurrentIntent,
     openLinkedApplication,
     openReadyApplication,
     keepCurrentApplication,
     emailNewAccessLink,
+    ...saveFlow,
     ...emailFlow,
     discardDraft,
     ...withdrawalFlow,

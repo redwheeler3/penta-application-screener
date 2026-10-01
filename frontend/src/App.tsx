@@ -182,23 +182,24 @@ export function App(props: { authRedirect: AuthRedirect }) {
 
   useEffect(() => {
     if (!user || selectedOpeningId === null) return;
+    let active = true;
     setSelectedApp(null);
     resetEstimates();
     void loadInitialDashboard();
     void (async () => {
       const run = await refreshRankingRun();
-      if (activeTab !== "ranking") return;
+      if (!active || activeTab !== "ranking") return;
       if (run) await loadRanking();
       else navigateToView("applications");
     })();
+    return () => { active = false; };
     // Opening changes intentionally reset every opening-scoped member surface.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, selectedOpeningId]);
 
   async function changeOpening(openingId: number) {
     try {
-      await selectOpening(openingId);
-      return true;
+      return await selectOpening(openingId);
     } catch {
       showError("Could not load that opening.");
       return false;
