@@ -11,7 +11,7 @@ from app.api.vacancy_subscriptions import signup_limiter
 from app.core.time import as_utc
 from app.db.models import Base, User, UserRole, VacancySubscription
 from app.db.session import get_db
-from app.services.vacancy_subscriptions import consume_subscription, save_subscription
+from app.services.openings.subscriptions import consume_subscription, save_subscription
 from tests.app_support import shared_test_app
 
 

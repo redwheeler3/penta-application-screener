@@ -18,8 +18,8 @@ from app.schemas.settings import (
     EligibilityRulesResponse,
     SettingsResponse,
 )
-from app.services.eligibility_catalog import ELIGIBILITY_CHECK_CATALOG
-from app.services.rules import (
+from app.services.eligibility.catalog import ELIGIBILITY_CHECK_CATALOG
+from app.services.eligibility.rules import (
     committee_default_rules,
     member_rules,
     reset_member_rules,

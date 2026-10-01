@@ -7,8 +7,8 @@ from app.db.models import (
     Opening,
     OpeningOutcome,
 )
-from app.services.email_sender import CapturedEmailSender
-from app.services.opening_notifications import (
+from app.services.email.sender import CapturedEmailSender
+from app.services.openings.notifications import (
     send_due_unsuccessful_notices,
     stream_due_unsuccessful_notices,
 )

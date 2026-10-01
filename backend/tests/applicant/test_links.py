@@ -17,8 +17,8 @@ from app.db.models import (
     PasswordlessIdentityKind,
 )
 from app.schemas.applicant.answers import WorkingApplicationAnswers
-from app.services.intake import save_working_copy
-from app.services.passwordless_auth import issue_magic_link
+from app.services.applications.intake import save_working_copy
+from app.services.auth.passwordless import issue_magic_link
 from tests.applicant.support import (
     app_and_db,
     link_from_email,

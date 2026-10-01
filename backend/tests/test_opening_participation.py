@@ -12,7 +12,7 @@ from app.db.models import (
     Opening,
     OpeningOutcome,
 )
-from app.services.opening_participation import (
+from app.services.openings.participation import (
     applicant_opening_states,
     application_is_editable,
     apply_opening_selection,

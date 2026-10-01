@@ -13,13 +13,13 @@ from app.core.google_oauth import authorized_google_identity, get_oauth
 from app.db.models import PasswordlessIdentityKind, User
 from app.db.session import get_db
 from app.schemas.auth import CurrentUser, LogoutResponse, MeResponse
-from app.services.allowlist import get_entry
-from app.services.denied_sign_ins import record_denied_sign_in
-from app.services.passwordless_auth import (
+from app.services.auth.allowlist import get_entry
+from app.services.auth.denied_sign_ins import record_denied_sign_in
+from app.services.auth.passwordless import (
     create_browser_session,
     revoke_browser_session,
 )
-from app.services.users import GoogleIdentityConflict, upsert_google_user
+from app.services.auth.users import GoogleIdentityConflict, upsert_google_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

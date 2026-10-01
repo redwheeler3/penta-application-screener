@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.db.models import DailyMaintenanceRun
 from app.main import create_app
-from app.services.email_sender import CapturedEmailSender
+from app.services.email.sender import CapturedEmailSender
 from app.services.maintenance import run_due_maintenance_with
 from tests.db_support import memory_session
 

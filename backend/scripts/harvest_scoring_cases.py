@@ -31,7 +31,7 @@ from app.ai.dimension_scoring import (
 from app.ai.schemas import DimensionScore, PoolDimension
 from app.db.models import Analysis, Application
 from app.schemas.settings import effective_reasoning_effort
-from app.services.application_content import extract_essays
+from app.services.applications.content import extract_essays
 from app.services.ranking.dimensions import current_dimension_report
 from app.services.settings import get_app_settings
 from scripts._harvest_common import opaque_index, open_synthetic_analysis

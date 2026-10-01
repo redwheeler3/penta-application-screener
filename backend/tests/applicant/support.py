@@ -11,7 +11,7 @@ from app.db.models import (
     Opening,
 )
 from app.db.session import get_db
-from app.services.email_sender import CapturedEmailSender, get_email_sender
+from app.services.email.sender import CapturedEmailSender, get_email_sender
 from tests.app_support import shared_test_app
 
 

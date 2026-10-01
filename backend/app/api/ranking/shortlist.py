@@ -33,8 +33,10 @@ from app.schemas.ranking import (
     TierOut,
     TiersResponse,
 )
-from app.services.application_scope import resolve_visible_opening_id
-from app.services.eligibility import eligible_application_ids_for
+from app.services.applications.scope import resolve_visible_opening_id
+from app.services.applications.shared_shortlist import shortlisted_ids
+from app.services.applications.stars import starred_ids
+from app.services.eligibility.evaluation import eligible_application_ids_for
 from app.services.ranking.analysis import get_current_analysis
 from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.member_state import (
@@ -50,8 +52,6 @@ from app.services.ranking.member_state import (
 )
 from app.services.ranking.view import candidate_scores
 from app.services.run_lock import rank_run_in_progress
-from app.services.shared_shortlist import shortlisted_ids
-from app.services.stars import starred_ids
 
 router = APIRouter(prefix="/ranking")
 

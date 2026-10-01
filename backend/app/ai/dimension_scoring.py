@@ -53,8 +53,8 @@ from app.schemas.settings import (
     AppSettings,
     effective_reasoning_effort,
 )
-from app.services.application_content import extract_essays
-from app.services.eligibility import union_eligible_applications
+from app.services.applications.content import extract_essays
+from app.services.eligibility.evaluation import union_eligible_applications
 
 KIND_PREFIX = "dimension_scoring"
 

@@ -1,4 +1,4 @@
-"""Shared helpers for applicant drafts, identity links, and applications."""
+"""Applicant link claims, draft reconciliation, and application access policy."""
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -25,31 +25,25 @@ from app.schemas.applicant.answers import (
     CanonicalApplicationAnswers,
     WorkingApplicationAnswers,
 )
-from app.schemas.applicant.contracts import (
-    AccessLinkResponse,
-    ApplicantOpeningOut,
-    PendingCopyOut,
-)
-from app.services.applicant_drafts import (
+from app.services.applications.answers import working_answers_for
+from app.services.applications.drafts import (
     draft_is_available,
 )
-from app.services.application_answers import working_answers_for
-from app.services.intake import (
+from app.services.applications.intake import (
     create_application,
     save_working_copy,
 )
-from app.services.opening_participation import (
-    ApplicantOpeningState,
+from app.services.applications.selected import application_is_selected
+from app.services.auth.passwordless import (
+    magic_link_for_token,
+)
+from app.services.openings.participation import (
     applicant_opening_states,
     application_is_editable,
 )
-from app.services.passwordless_auth import (
-    magic_link_for_token,
-)
-from app.services.selected_application import application_is_selected
 
 
-def _purge_never_submitted_application(db: Session, application: Application) -> None:
+def purge_never_submitted_application(db: Session, application: Application) -> None:
     """Physically remove a draft-only application and its access records."""
     draft_ids = select(ApplicantDraft.id).where(ApplicantDraft.application_id == application.id)
     link_ids = select(MagicLinkToken.id).where(
@@ -78,7 +72,7 @@ def _purge_never_submitted_application(db: Session, application: Application) ->
     db.delete(application)
 
 
-def _applicant_link(db: Session, token: str) -> MagicLinkToken | None:
+def applicant_link(db: Session, token: str) -> MagicLinkToken | None:
     access_link = magic_link_for_token(
         db,
         token,
@@ -95,44 +89,8 @@ def _applicant_link(db: Session, token: str) -> MagicLinkToken | None:
     )
 
 
-def _access_link_response(
-    db: Session,
-    link: MagicLinkToken | None,
-    current: Application | None,
-    *,
-    now: datetime | None = None,
-) -> AccessLinkResponse:
-    now = now or datetime.now(UTC)
-    if link is None:
-        return AccessLinkResponse(state="invalid")
-    if link.consumed_at is not None:
-        state = "used"
-    elif link.revoked_at is not None:
-        state = "replaced"
-    elif as_utc(link.expires_at) <= now:
-        state = "expired"
-    elif link.applicant_draft is not None and not draft_is_available(link.applicant_draft, now=now):
-        state = "abandoned"
-    else:
-        target = _link_target(db, link)
-        if target is None:
-            state = "abandoned"
-        else:
-            state = "valid" if _access_target_is_editable(db, target) else "unavailable"
-    return AccessLinkResponse(
-        state=state,
-        purpose=link.purpose,
-        current_email=current.primary_email if current is not None else None,
-        link_email=link.email,
-        application_email=(link.application.primary_email if link.application is not None else None),
-        switch_required=_link_targets_other_application(link, current),
-        application_id=current.id if current is not None else None,
-        pending_intent=link.applicant_draft.intent if link.applicant_draft is not None else None,
-    )
-
-
 @dataclass(frozen=True)
-class _ClaimedApplicantLink:
+class ClaimedApplicantLink:
     application: Application | None
     pending_intent: ApplicantDraftIntent | None = None
     previous_email: str | None = None
@@ -141,20 +99,20 @@ class _ClaimedApplicantLink:
     google_disconnected: bool = False
 
 
-def _claim_link_target(db: Session, link: MagicLinkToken) -> _ClaimedApplicantLink:
+def claim_link_target(db: Session, link: MagicLinkToken) -> ClaimedApplicantLink:
     if link.purpose == MagicLinkPurpose.EMAIL_CHANGE:
         return _claim_email_change(db, link)
     if link.application_id is not None:
         application = _active_application(db, link.application_id)
         if application is not None and application_is_selected(db, application.id):
-            return _ClaimedApplicantLink(None, state="unavailable")
-        return _ClaimedApplicantLink(
+            return ClaimedApplicantLink(None, state="unavailable")
+        return ClaimedApplicantLink(
             application,
             state="valid" if application is not None else "abandoned",
         )
     draft = link.applicant_draft
     if draft is None or not draft_is_available(draft):
-        return _ClaimedApplicantLink(None)
+        return ClaimedApplicantLink(None)
     application = _active_application(db, draft.application_id)
     if application is None:
         application = db.scalar(
@@ -165,17 +123,17 @@ def _claim_link_target(db: Session, link: MagicLinkToken) -> _ClaimedApplicantLi
         )
     if application is not None:
         draft.application_id = application.id
-        if _pending_copy_needed(application, draft):
-            return _ClaimedApplicantLink(
+        if pending_copy_needed(application, draft):
+            return ClaimedApplicantLink(
                 application,
                 draft.intent,
                 reconciliation_draft=draft,
             )
         _resolve_pending_draft(application, draft)
-        return _ClaimedApplicantLink(application, draft.intent)
-    answers = _draft_answers(draft)
+        return ClaimedApplicantLink(application, draft.intent)
+    answers = draft_answers(draft)
     if answers is None:
-        return _ClaimedApplicantLink(None)
+        return ClaimedApplicantLink(None)
     application = create_application(
         db,
         draft.email,
@@ -185,15 +143,15 @@ def _claim_link_target(db: Session, link: MagicLinkToken) -> _ClaimedApplicantLi
     )
     draft.application_id = application.id
     draft.resolved_at = datetime.now(UTC)
-    return _ClaimedApplicantLink(application, draft.intent)
+    return ClaimedApplicantLink(application, draft.intent)
 
 
-def _claim_email_change(db: Session, link: MagicLinkToken) -> _ClaimedApplicantLink:
+def _claim_email_change(db: Session, link: MagicLinkToken) -> ClaimedApplicantLink:
     application = _active_application(db, link.application_id)
     if application is None:
-        return _ClaimedApplicantLink(None)
+        return ClaimedApplicantLink(None)
     if application_is_selected(db, application.id):
-        return _ClaimedApplicantLink(None, state="unavailable")
+        return ClaimedApplicantLink(None, state="unavailable")
     conflicting = db.scalar(
         select(Application).where(
             Application.primary_email == link.email,
@@ -202,25 +160,25 @@ def _claim_email_change(db: Session, link: MagicLinkToken) -> _ClaimedApplicantL
         )
     )
     if conflicting is not None:
-        return _ClaimedApplicantLink(application, state="email_in_use")
+        return ClaimedApplicantLink(application, state="email_in_use")
 
     old_email = application.primary_email
     google_disconnected = application.google_subject is not None
-    answers = _stored_answers(application)
+    answers = working_answers_for(application)
     if answers is not None:
         updated_applicant = answers.applicant.model_copy(update={"email": link.email})
         updated_answers = answers.model_copy(update={"applicant": updated_applicant})
         save_working_copy(application, updated_answers, saved_at=datetime.now(UTC))
     application.primary_email = link.email
     application.google_subject = None
-    return _ClaimedApplicantLink(
+    return ClaimedApplicantLink(
         application,
         previous_email=old_email,
         google_disconnected=google_disconnected,
     )
 
 
-def _link_targets_other_application(
+def link_targets_other_application(
     link: MagicLinkToken, current: Application | None
 ) -> bool:
     if current is None:
@@ -235,8 +193,8 @@ def _link_targets_other_application(
 
 def _resolve_pending_draft(application: Application, draft: ApplicantDraft) -> None:
     """Resolve a pending copy that does not require an applicant choice."""
-    answers = _draft_answers(draft)
-    if answers is not None and _stored_answers(application) is None:
+    answers = draft_answers(draft)
+    if answers is not None and working_answers_for(application) is None:
         save_working_copy(
             application,
             answers,
@@ -247,9 +205,9 @@ def _resolve_pending_draft(application: Application, draft: ApplicantDraft) -> N
     draft.resolved_at = datetime.now(UTC)
 
 
-def _pending_copy_needed(application: Application, draft: ApplicantDraft) -> bool:
-    saved = _stored_answers(application)
-    guest = _draft_answers(draft)
+def pending_copy_needed(application: Application, draft: ApplicantDraft) -> bool:
+    saved = working_answers_for(application)
+    guest = draft_answers(draft)
     if saved is None or guest is None:
         return False
     return (
@@ -258,20 +216,7 @@ def _pending_copy_needed(application: Application, draft: ApplicantDraft) -> boo
     )
 
 
-def _pending_copy(application: Application, draft: ApplicantDraft) -> PendingCopyOut:
-    saved = _stored_answers(application)
-    guest = _draft_answers(draft)
-    if saved is None or guest is None:
-        raise ValueError("pending-copy comparison requires two readable working copies")
-    return PendingCopyOut(
-        saved_answers=saved,
-        saved_opening_ids=list(application.working_opening_ids or []),
-        guest_answers=guest,
-        guest_opening_ids=list(draft.working_opening_ids or []),
-    )
-
-
-def _draft_belongs_to_application(
+def draft_belongs_to_application(
     draft: ApplicantDraft | None,
     application: Application,
 ) -> bool:
@@ -282,7 +227,7 @@ def _draft_belongs_to_application(
     )
 
 
-def _link_target(db: Session, link: MagicLinkToken) -> Application | ApplicantDraft | None:
+def link_target(db: Session, link: MagicLinkToken) -> Application | ApplicantDraft | None:
     if link.application_id is not None:
         return _active_application(db, link.application_id)
     draft = link.applicant_draft
@@ -293,7 +238,7 @@ def _link_target(db: Session, link: MagicLinkToken) -> Application | ApplicantDr
     return draft if draft_is_available(draft) else None
 
 
-def _application_for_access_target(
+def application_for_access_target(
     db: Session, target: Application | ApplicantDraft
 ) -> Application | None:
     if isinstance(target, Application):
@@ -309,13 +254,13 @@ def _application_for_access_target(
     )
 
 
-def _access_target_is_editable(
+def access_target_is_editable(
     db: Session, target: Application | ApplicantDraft
 ) -> bool:
-    application = _application_for_access_target(db, target)
+    application = application_for_access_target(db, target)
     if application is not None:
         return application_is_editable(db, application)
-    return _new_applications_are_open(db)
+    return new_applications_are_open(db)
 
 
 def _active_application(db: Session, application_id: int | None) -> Application | None:
@@ -323,7 +268,7 @@ def _active_application(db: Session, application_id: int | None) -> Application 
     return application if application is not None and application.withdrawn_at is None else None
 
 
-def _draft_answers(draft: ApplicantDraft | None) -> WorkingApplicationAnswers | None:
+def draft_answers(draft: ApplicantDraft | None) -> WorkingApplicationAnswers | None:
     if draft is None or draft.working_answers is None:
         return None
     try:
@@ -332,7 +277,7 @@ def _draft_answers(draft: ApplicantDraft | None) -> WorkingApplicationAnswers | 
         return None
 
 
-def _pending_email_change(db: Session, application_id: int) -> str | None:
+def pending_email_change(db: Session, application_id: int) -> str | None:
     now = datetime.now(UTC)
     return db.scalar(
         select(MagicLinkToken.email)
@@ -345,48 +290,28 @@ def _pending_email_change(db: Session, application_id: int) -> str | None:
         )
         .order_by(MagicLinkToken.created_at.desc())
     )
-def _applicant_opening(state: ApplicantOpeningState) -> ApplicantOpeningOut:
-    opening = state.opening
-    return ApplicantOpeningOut(
-        id=opening.id,
-        unit_size_bedrooms=opening.unit_size_bedrooms,
-        housing_charge_cents=opening.housing_charge_cents,
-        application_open_date=opening.application_open_date.isoformat(),
-        application_close_date=opening.application_close_date.isoformat(),
-        move_in_date=opening.move_in_date.isoformat(),
-        phase=state.phase,
-        selected=state.selected,
-        participating=state.participating,
-        has_participated=state.has_participated,
-        can_select=state.can_select,
-        can_withdraw=state.can_withdraw,
-    )
 
 
-def _require_new_applications_open(db: Session) -> None:
-    if not _new_applications_are_open(db):
+def require_new_applications_open(db: Session) -> None:
+    if not new_applications_are_open(db):
         raise Problem("applications_closed", detail="Applications are not currently open.")
 
 
-def _new_applications_are_open(db: Session) -> bool:
+def new_applications_are_open(db: Session) -> bool:
     return any(state.can_select for state in applicant_opening_states(db, None))
 
 
-def _require_application_editable(db: Session, application: Application) -> None:
+def require_application_editable(db: Session, application: Application) -> None:
     if not application_is_editable(db, application):
         raise Problem("applications_locked", detail="This application cannot be edited right now.")
 
 
-def _require_application_not_selected(db: Session, application: Application) -> None:
+def require_application_not_selected(db: Session, application: Application) -> None:
     if application_is_selected(db, application.id):
         raise Problem("applications_locked", detail="This application cannot be edited right now.")
 
 
-def _stored_answers(application: Application) -> WorkingApplicationAnswers | None:
-    return working_answers_for(application)
-
-
-def _require_matching_email(
+def require_matching_email(
     application: Application,
     answers: WorkingApplicationAnswers | CanonicalApplicationAnswers,
 ) -> None:
@@ -399,7 +324,7 @@ def _require_matching_email(
         )
 
 
-def _require_current_revision(application: Application, base_revision: int | None) -> None:
+def require_current_revision(application: Application, base_revision: int | None) -> None:
     if base_revision != application.working_revision:
         raise Problem(
             "stale_application",
@@ -408,3 +333,27 @@ def _require_current_revision(application: Application, base_revision: int | Non
                 "Reload the latest saved copy before continuing."
             ),
         )
+
+
+def applicant_link_state(
+    db: Session, link: MagicLinkToken | None, *, now: datetime | None = None
+) -> str:
+    """Inspect proof availability without consuming the link or changing the application."""
+    now = now or datetime.now(UTC)
+    if link is None:
+        return "invalid"
+    if link.consumed_at is not None:
+        state = "used"
+    elif link.revoked_at is not None:
+        state = "replaced"
+    elif as_utc(link.expires_at) <= now:
+        state = "expired"
+    elif link.applicant_draft is not None and not draft_is_available(link.applicant_draft, now=now):
+        state = "abandoned"
+    else:
+        target = link_target(db, link)
+        if target is None:
+            state = "abandoned"
+        else:
+            state = "valid" if access_target_is_editable(db, target) else "unavailable"
+    return state

@@ -34,17 +34,17 @@ from app.schemas.passwordless_auth import (
     MagicLinkRequest,
     MagicLinkRequestResponse,
 )
-from app.services.allowlist import get_entry
-from app.services.email_sender import EmailSender, get_email_sender
-from app.services.magic_link_delivery import send_magic_link
-from app.services.passwordless_auth import (
+from app.services.auth.allowlist import get_entry
+from app.services.auth.passwordless import (
     consume_magic_link,
     create_browser_session,
     magic_link_for_token,
     magic_link_request_allowed,
     revoke_browser_session,
 )
-from app.services.users import upsert_committee_user
+from app.services.auth.users import upsert_committee_user
+from app.services.email.sender import EmailSender, get_email_sender
+from app.services.email.transactional import send_magic_link
 
 router = APIRouter(tags=["passwordless auth"])
 

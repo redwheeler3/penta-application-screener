@@ -31,32 +31,32 @@ from app.schemas.openings import (
     PreviousApplicantSearchOut,
     SocketLabsUsageOut,
 )
-from app.services.direct_openings import (
+from app.services.auth.passwordless import as_utc
+from app.services.email.sender import EmailSender, get_email_sender
+from app.services.email.socketlabs_usage import (
+    SocketLabsUsageReader,
+    get_socketlabs_usage_reader,
+)
+from app.services.maintenance import run_email_outbox
+from app.services.openings.catalog import (
+    create_opening,
+    list_openings,
+    opening_phase,
+    update_opening,
+)
+from app.services.openings.direct_selection import (
     create_direct_selection_opening,
     search_previous_applicants,
 )
-from app.services.email_sender import EmailSender, get_email_sender
-from app.services.maintenance import run_email_outbox
-from app.services.opening_notifications import stream_due_unsuccessful_notices
-from app.services.opening_selection import (
+from app.services.openings.notifications import stream_due_unsuccessful_notices
+from app.services.openings.selection import (
     active_opening_participants,
     confirm_no_household_selected,
     confirm_opening_selection,
     selectable_opening_candidates,
     selected_participation,
 )
-from app.services.openings import (
-    create_opening,
-    list_openings,
-    opening_phase,
-    update_opening,
-)
-from app.services.passwordless_auth import as_utc
-from app.services.socketlabs_usage import (
-    SocketLabsUsageReader,
-    get_socketlabs_usage_reader,
-)
-from app.services.vacancy_notifications import (
+from app.services.openings.vacancy_notifications import (
     VacancyAudience,
     opening_audience,
     queue_opening_notifications,

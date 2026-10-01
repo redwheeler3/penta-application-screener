@@ -16,15 +16,15 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.db.models import Application, Opening, OpeningPhase
 from app.db.session import SessionLocal
-from app.services.intake import (
+from app.services.applications.intake import (
     canonical_answers,
     content_hash,
     create_application,
     publish_working_copy,
 )
-from app.services.opening_participation import opening_ids_by_application
-from app.services.openings import opening_phase
-from app.services.synthetic_fixture import read_synthetic_fixture
+from app.services.applications.synthetic_fixture import read_synthetic_fixture
+from app.services.openings.catalog import opening_phase
+from app.services.openings.participation import opening_ids_by_application
 
 DEFAULT_FIXTURE = (
     Path(__file__).resolve().parents[2]

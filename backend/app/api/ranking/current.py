@@ -23,7 +23,7 @@ from app.schemas.ranking import (
     MatchAuditResponse,
     PoolDimensionOut,
 )
-from app.services.application_scope import resolve_visible_opening_id
+from app.services.applications.scope import resolve_visible_opening_id
 from app.services.ranking.analysis import get_current_analysis
 from app.services.ranking.audit import (
     consolidate_audit_view,

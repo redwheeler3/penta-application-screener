@@ -23,7 +23,7 @@ from app.ai.provider import AIProvider, DeltaSink, Usage
 from app.ai.schemas import PoolDimensionReport
 from app.db.models import Application
 from app.schemas.settings import AppSettings, effective_reasoning_effort
-from app.services.eligibility import union_eligible_applications
+from app.services.eligibility.evaluation import union_eligible_applications
 
 
 @dataclass(frozen=True)

@@ -14,7 +14,7 @@ from app.db.models import (
     Opening,
     OpeningOutcome,
 )
-from app.services.email_sender import get_email_sender
+from app.services.email.sender import get_email_sender
 from tests.applicant.support import (
     FailingEmailSender,
     app_and_db,

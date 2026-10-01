@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import ApplicationAIResult
 from app.domain.hard_filters import PetFacts
-from app.services.rules import pet_facts_from_screening
+from app.services.eligibility.rules import pet_facts_from_screening
 
 
 def latest_screening_results(

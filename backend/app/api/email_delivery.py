@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends
 
 from app.schemas.email_delivery import PublicEmailDeliveryStatus
-from app.services.socketlabs_queue import (
+from app.services.email.socketlabs_queue import (
     SocketLabsQueueReader,
     get_socketlabs_queue_reader,
 )

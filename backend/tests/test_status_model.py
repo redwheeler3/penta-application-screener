@@ -1,5 +1,5 @@
 from app.db.models import ApplicationStatus, MemberEligibility, StatusSource
-from app.services.status_resolution import (
+from app.services.eligibility.status import (
     effective_status,
     findings_fingerprint,
     override_is_stale,

@@ -17,8 +17,8 @@ from app.db.models import (
     User,
 )
 from app.schemas.openings import DirectSelectionOpeningCreate
-from app.services.retention import refresh_application_retention
-from app.services.selected_application import revoke_selected_applicant_access
+from app.services.applications.retention import refresh_application_retention
+from app.services.applications.selected import revoke_selected_applicant_access
 
 
 def available_previous_applicants_query() -> Select[tuple[Application]]:

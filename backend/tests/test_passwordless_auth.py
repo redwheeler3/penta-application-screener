@@ -14,7 +14,7 @@ from app.db.models import (
     PasswordlessIdentityKind,
     User,
 )
-from app.services.passwordless_auth import (
+from app.services.auth.passwordless import (
     authenticate_browser_session,
     consume_magic_link,
     create_browser_session,

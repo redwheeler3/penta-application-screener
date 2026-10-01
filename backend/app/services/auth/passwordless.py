@@ -20,7 +20,7 @@ from app.db.models import (
     MagicLinkToken,
     PasswordlessIdentityKind,
 )
-from app.services.token_credentials import new_token, token_hash
+from app.services.auth.tokens import new_token, token_hash
 
 MAGIC_LINK_LIFETIME = timedelta(days=7)
 

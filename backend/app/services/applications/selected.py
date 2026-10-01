@@ -10,11 +10,11 @@ from app.db.models import (
     OpeningOutcome,
     PasswordlessIdentityKind,
 )
-from app.services.email_delivery import cancel_queued_application_emails
-from app.services.passwordless_auth import (
+from app.services.auth.passwordless import (
     revoke_identity_magic_links,
     revoke_identity_sessions,
 )
+from app.services.email.delivery import cancel_queued_application_emails
 
 
 def selected_opening_id(db: Session, application_id: int) -> int | None:

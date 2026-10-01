@@ -23,8 +23,8 @@ from app.schemas.ranking import (
     RankEstimateResponse,
 )
 from app.schemas.settings import AppSettings
-from app.services.application_scope import resolve_visible_opening_id
-from app.services.opening_selection import require_ai_actions_available
+from app.services.applications.scope import resolve_visible_opening_id
+from app.services.openings.selection import require_ai_actions_available
 from app.services.ranking.analysis import (
     get_current_analysis,
     ranking_is_current,

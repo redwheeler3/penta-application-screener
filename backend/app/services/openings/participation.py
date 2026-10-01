@@ -15,9 +15,9 @@ from app.db.models import (
     OpeningIntakeMode,
     OpeningPhase,
 )
-from app.services.openings import opening_phase
-from app.services.retention import refresh_application_retention
-from app.services.selected_application import application_is_selected
+from app.services.applications.retention import refresh_application_retention
+from app.services.applications.selected import application_is_selected
+from app.services.openings.catalog import opening_phase
 
 
 @dataclass(frozen=True)

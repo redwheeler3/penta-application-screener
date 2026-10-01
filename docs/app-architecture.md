@@ -39,6 +39,10 @@ string in development:
 `frontend/src/main.tsx` chooses the surface. `App.tsx` owns the committee shell, while
 `ApplicantApp.tsx` owns intake. Shared branding and account controls live in small components
 rather than being duplicated between them.
+`hooks/useCandidateActions.ts` owns committee status, note, favourite, and shortlist writes and
+their view refreshes. It updates the open detail only while the same applicant and opening remain
+selected; favourites and shortlist changes refresh the whole cached pool so filtered-out rows
+still contribute current facet counts.
 
 `frontend/src/styles.css` is the single ordered stylesheet entrypoint. Screen, responsive, and
 print rules live with their owning surface (`applications`, candidate detail/notes, ranking,
@@ -60,9 +64,11 @@ session exit each apply a named state transition.
 ## Applicant intake
 
 Applicant-facing routes live in the `backend/app/api/applicant/` package, grouped into guest,
-access-link, and authenticated-application workflows. Domain operations are in
-`backend/app/services/intake.py`, with authentication and draft-link concerns separated into
-their own services.
+access-link, and authenticated-application workflows. Application-copy operations live in
+`backend/app/services/applications/intake.py`. `applications/access.py` owns access-link inspection
+and claims, draft reconciliation, identity collisions, and edit guards. Applicant route
+`presentation.py` owns HTTP response serialization. Browser credentials and Google identity claims
+live in the `services/auth/` package.
 
 An `Application` has two meaningful representations:
 
@@ -105,7 +111,7 @@ email ledger. Role changes do not resend invitations, and delivery failure does 
 ## Transactional email boundary
 
 Email templates and delivery orchestration are provider-neutral. Templates are grouped by
-recipient journey under `services/transactional_email/`; `layout.py` owns the branded primitives
+recipient journey under `services/email/templates/`; `layout.py` owns the branded primitives
 used by applicant, access, and opening messages. `email_sender.py` translates `OutboundEmail` into
 SocketLabs requests at the final adapter boundary.
 
@@ -186,7 +192,7 @@ Structured-field reasons attribute to Rules. Pet limits attribute to AI because 
 pass first extracts pet facts from free text. A member's explicit override is sticky and is never
 overwritten by a later machine calculation.
 
-`backend/app/services/screening_results.py` loads only the latest screening row for each requested
+`backend/app/services/applications/screening_results.py` loads only the latest screening row for each requested
 application, using the row ID to break equal timestamps. Eligibility and list presentation derive
 flags and pet facts from those same rows in one query; candidate details use the same loader for
 their screening trace. An absent result means unscreened, an empty flag list means screened clean,
@@ -253,7 +259,7 @@ dimension report used by both.
 ## Synthetic local data
 
 `test-data/synthetic-penta-application-responses.csv` mirrors the canonical built-in application
-shape. `backend/app/services/synthetic_fixture.py` parses and validates every row through the same
+shape. `backend/app/services/applications/synthetic_fixture.py` parses and validates every row through the same
 Pydantic schema used by intake.
 
 The loader is deliberately narrow:
@@ -300,18 +306,34 @@ Safe placeholders belong in `.env.example`; actual `.env.local` files are ignore
 - `frontend/src/types/`: committee-facing TypeScript data contracts;
 - `backend/tests/`: behavior and contract coverage.
 
+Service packages group related workflows under one discoverable owner:
+
+| Package | Responsibility |
+| --- | --- |
+| `services/applications/` | Answers, working copies, submitted intake, access policy, retention, and committee saved views |
+| `services/auth/` | Applicant and committee identity, credentials, browser sessions, allowlist, and public request limits |
+| `services/openings/` | Publication, participation, selection, outcomes, vacancy subscriptions, and notification audiences |
+| `services/email/` | Transport, delivery ledger, retry intents, transactional delivery, SocketLabs reporting, and `templates/` |
+| `services/eligibility/` | Member rules, check descriptions, machine status, and effective eligibility pools |
+| `services/ranking/` | Shared analyses, member rankings, pipeline orchestration, freshness, costs, audits, and presentation |
+
+Cross-workflow infrastructure stays at the service root: settings, maintenance, backups, run locks,
+stream workers, feedback, metrics, and cost reporting. Package initializers describe ownership;
+callers import concrete modules so dependencies remain visible.
+
 For common changes, start at the owner below and follow its imports:
 
 | Change | Start here | Related implementation |
 | --- | --- | --- |
 | Applicant form fields and answer shape | `frontend/src/applicant/ApplicantFormSections.tsx` | Applicant `types.ts`, `applicationDraft.ts`, and `backend/app/schemas/applicant/answers.py` |
-| Save or submit an application | `backend/app/api/applicant/application.py` | `services/intake.py`, `services/opening_participation.py`, and frontend `applicantSaveFlow.ts` |
-| Applicant access links and email changes | `backend/app/api/applicant/links.py` | Applicant route `support.py`, `services/passwordless_auth.py`, and `services/magic_link_delivery.py` |
-| Opening publication and committee outcomes | `backend/app/api/openings.py` | `services/openings.py`, `services/opening_selection.py`, and `services/direct_openings.py` |
-| Eligibility and member overrides | `backend/app/services/eligibility.py` | `services/rules.py`, `services/status_resolution.py`, and `domain/hard_filters.py` |
+| Save or submit an application | `backend/app/api/applicant/application.py` | `services/applications/intake.py`, `services/openings/participation.py`, and frontend `applicantSaveFlow.ts` |
+| Applicant access links and email changes | `backend/app/services/applications/access.py` | Applicant routes `links.py` and `presentation.py`, `services/auth/passwordless.py`, and `services/email/transactional.py` |
+| Committee candidate actions | `frontend/src/hooks/useCandidateActions.ts` | `frontend/src/api/applications.ts` and `backend/app/api/applications/routes.py` |
+| Opening publication and committee outcomes | `backend/app/api/openings.py` | `services/openings/catalog.py`, `services/openings/selection.py`, and `services/openings/direct_selection.py` |
+| Eligibility and member overrides | `backend/app/services/eligibility/evaluation.py` | `services/eligibility/rules.py`, `services/eligibility/status.py`, and `domain/hard_filters.py` |
 | AI ranking workflow | `backend/app/services/ranking/pipeline.py` | `app/ai/`, ranking `analysis.py`, and ranking `member_state.py` |
-| Email delivery and retries | `backend/app/services/email_delivery.py` | `services/email_sender.py` for transport, `services/email_outbox.py` for retries, and `services/transactional_email/` for templates |
-| Retention and daily maintenance | `backend/app/services/maintenance.py` | `services/retention.py` and `services/retention_purge.py` |
+| Email delivery and retries | `backend/app/services/email/delivery.py` | `services/email/sender.py` for transport, `services/email/outbox.py` for retries, and `services/email/templates/` for templates |
+| Retention and daily maintenance | `backend/app/services/maintenance.py` | `services/applications/retention.py` and `services/applications/purge.py` |
 
 Ranking routes are grouped under `backend/app/api/ranking/`. The corresponding service package
 at `backend/app/services/ranking/` owns the streamed pipeline, cost projections, shared-analysis

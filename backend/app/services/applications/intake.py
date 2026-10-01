@@ -21,8 +21,8 @@ from app.schemas.applicant.answers import (
     CanonicalApplicationAnswers,
     WorkingApplicationAnswers,
 )
-from app.services.opening_participation import apply_opening_selection
-from app.services.retention import draft_expiry_for_opening_ids
+from app.services.applications.retention import draft_expiry_for_opening_ids
+from app.services.openings.participation import apply_opening_selection
 
 
 def stored_answers(answers: BaseModel) -> dict[str, Any]:

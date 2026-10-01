@@ -16,12 +16,12 @@ from app.db.models import (
     OpeningPhase,
     User,
 )
-from app.services.openings import opening_phase
-from app.services.retention import refresh_application_retention
-from app.services.selected_application import (
+from app.services.applications.retention import refresh_application_retention
+from app.services.applications.selected import (
     revoke_selected_applicant_access,
     selected_opening_id,
 )
+from app.services.openings.catalog import opening_phase
 
 
 def active_opening_participants(

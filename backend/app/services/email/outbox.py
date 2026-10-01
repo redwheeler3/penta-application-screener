@@ -16,11 +16,11 @@ from app.db.models import (
     PasswordlessIdentityKind,
     VacancySubscription,
 )
-from app.services.email_delivery import attempt_reserved_delivery
-from app.services.email_sender import EmailSender, OutboundEmail
-from app.services.passwordless_auth import issue_magic_link
-from app.services.selected_application import application_is_selected
-from app.services.transactional_email import (
+from app.services.applications.selected import application_is_selected
+from app.services.auth.passwordless import issue_magic_link
+from app.services.email.delivery import attempt_reserved_delivery
+from app.services.email.sender import EmailSender, OutboundEmail
+from app.services.email.templates import (
     application_confirmation_email,
     application_opening_email,
     application_unavailable_email,
@@ -31,11 +31,11 @@ from app.services.transactional_email import (
     unsuccessful_application_email,
     vacancy_opening_email,
 )
-from app.services.vacancy_notifications import (
+from app.services.openings.subscriptions import consume_subscription
+from app.services.openings.vacancy_notifications import (
     application_confirmation_timelines,
     opening_email_details,
 )
-from app.services.vacancy_subscriptions import consume_subscription
 
 
 @dataclass(frozen=True)

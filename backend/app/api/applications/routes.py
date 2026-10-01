@@ -32,29 +32,29 @@ from app.schemas.applications import (
     PrivateNoteUpdate,
 )
 from app.schemas.base import RequestModel
-from app.services.application_scope import (
+from app.services.applications.scope import (
     opening_ai_applications_query,
     opening_application,
     opening_applications,
     resolve_visible_opening_id,
     visible_committee_openings,
 )
-from app.services.direct_openings import available_previous_applicant
-from app.services.eligibility import (
+from app.services.applications.screening_results import screening_findings_by_app
+from app.services.applications.shared_shortlist import is_shortlisted, shortlisted_ids
+from app.services.applications.stars import is_starred, starred_ids
+from app.services.eligibility.evaluation import (
     active_flags,
     overrides_by_app,
 )
-from app.services.openings import opening_phase
-from app.services.rules import (
+from app.services.eligibility.rules import (
     hard_filter_reasons_for,
     rules_config_for,
 )
-from app.services.screening_results import screening_findings_by_app
-from app.services.shared_shortlist import is_shortlisted, shortlisted_ids
-from app.services.stars import is_starred, starred_ids
-from app.services.status_resolution import (
+from app.services.eligibility.status import (
     findings_fingerprint,
 )
+from app.services.openings.catalog import opening_phase
+from app.services.openings.direct_selection import available_previous_applicant
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 

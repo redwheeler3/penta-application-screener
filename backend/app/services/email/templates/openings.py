@@ -1,7 +1,7 @@
 """Vacancy and opening announcement emails."""
 
 from app.core.config import Settings
-from app.services.email_sender import OutboundEmail
+from app.services.email.sender import OutboundEmail
 
 from .layout import (
     VACANCY_LIST_URL,

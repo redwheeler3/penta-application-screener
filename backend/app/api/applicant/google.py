@@ -11,14 +11,14 @@ from app.core.config import get_settings
 from app.core.google_oauth import authorized_google_identity, get_oauth
 from app.db.models import PasswordlessIdentityKind
 from app.db.session import get_db
-from app.services.applicant_auth import authenticate_applicant
-from app.services.applicant_google_auth import (
+from app.services.auth.applicant import authenticate_applicant
+from app.services.auth.applicant_google import (
     ApplicantGoogleIdentityConflict,
     NewApplicationsUnavailable,
     SelectedApplicationLocked,
     claim_or_create_google_application,
 )
-from app.services.passwordless_auth import (
+from app.services.auth.passwordless import (
     create_browser_session,
     revoke_browser_session,
 )

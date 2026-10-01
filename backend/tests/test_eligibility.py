@@ -17,7 +17,7 @@ from app.db.models import (
     UserRole,
 )
 from app.schemas.settings import EligibilityRules
-from app.services.eligibility import (
+from app.services.eligibility.evaluation import (
     effective_status_for,
     eligible_application_ids_for,
     union_eligible_application_ids,

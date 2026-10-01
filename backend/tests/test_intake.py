@@ -25,7 +25,7 @@ from app.schemas.applicant.answers import (
     ReferenceAnswers,
     ResidenceAnswers,
 )
-from app.services.intake import (
+from app.services.applications.intake import (
     canonical_answers,
     content_hash,
     normalize_answers,
@@ -34,7 +34,7 @@ from app.services.intake import (
     two_years_before,
     validate_residence_history,
 )
-from app.services.rules import hard_filter_reasons_for
+from app.services.eligibility.rules import hard_filter_reasons_for
 
 
 def _answers() -> CanonicalApplicationAnswers:

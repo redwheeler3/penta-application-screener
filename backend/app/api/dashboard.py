@@ -34,23 +34,23 @@ from app.schemas.dashboard import (
 )
 from app.schemas.email_delivery import SocketLabsQueueStatusOut
 from app.schemas.settings import effective_reasoning_effort
-from app.services.application_scope import (
+from app.services.applications.scope import (
     opening_applications,
     resolve_visible_opening_id,
 )
-from app.services.email_outbox import email_delivery_issues, email_queue_status
-from app.services.opening_selection import overdue_openings_needing_decision
+from app.services.email.outbox import email_delivery_issues, email_queue_status
+from app.services.email.socketlabs_queue import (
+    SocketLabsQueueReader,
+    SocketLabsQueueStatus,
+    get_socketlabs_queue_reader,
+)
+from app.services.openings.selection import overdue_openings_needing_decision
 from app.services.ranking.analysis import (
     current_dimension_kinds,
     get_current_analysis,
     ranking_is_current,
 )
 from app.services.settings import get_app_settings
-from app.services.socketlabs_queue import (
-    SocketLabsQueueReader,
-    SocketLabsQueueStatus,
-    get_socketlabs_queue_reader,
-)
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 

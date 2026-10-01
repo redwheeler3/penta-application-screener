@@ -9,14 +9,8 @@ from sqlalchemy.orm import Session
 from app.api.applicant.dependencies import (
     optional_current_application,
 )
-from app.api.applicant.support import (
-    _access_target_is_editable,
-    _applicant_opening,
-    _new_applications_are_open,
-    _require_application_editable,
-    _require_current_revision,
-    _require_matching_email,
-    _require_new_applications_open,
+from app.api.applicant.presentation import (
+    applicant_opening,
 )
 from app.core.config import get_settings
 from app.core.problems import Problem
@@ -41,7 +35,15 @@ from app.schemas.applicant.contracts import (
     RequestAccessLinkRequest,
     RequestAccessLinkResponse,
 )
-from app.services.applicant_drafts import (
+from app.services.applications.access import (
+    access_target_is_editable,
+    new_applications_are_open,
+    require_application_editable,
+    require_current_revision,
+    require_matching_email,
+    require_new_applications_open,
+)
+from app.services.applications.drafts import (
     applicant_email_request_allowed,
     latest_pending_draft_for_email,
     pending_draft_for_token,
@@ -49,26 +51,26 @@ from app.services.applicant_drafts import (
     save_collision_copy,
     save_pending_draft,
 )
-from app.services.email_sender import EmailSender, get_email_sender
-from app.services.intake import (
+from app.services.applications.intake import (
     create_application,
     publish_working_copy,
     save_working_copy,
 )
-from app.services.magic_link_delivery import (
+from app.services.applications.selected import application_is_selected
+from app.services.email.sender import EmailSender, get_email_sender
+from app.services.email.transactional import (
     EmailSendOutcome,
     send_application_confirmation,
     send_application_unavailable,
     send_magic_link,
     send_selected_application_locked,
 )
-from app.services.opening_participation import (
+from app.services.openings.participation import (
     applicant_opening_states,
     application_is_editable,
     validate_opening_selection,
     validate_working_opening_selection,
 )
-from app.services.selected_application import application_is_selected
 
 router = APIRouter()
 
@@ -78,7 +80,7 @@ def read_applicant_openings(db: Session = Depends(get_db)) -> ApplicantOpeningsR
     states = applicant_opening_states(db, None)
     return ApplicantOpeningsResponse(
         can_start_application=any(state.can_select for state in states),
-        openings=[_applicant_opening(state) for state in states],
+        openings=[applicant_opening(state) for state in states],
     )
 
 
@@ -137,7 +139,7 @@ def save_applicant_draft(
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
 ) -> PendingDraftResponse:
-    _require_new_applications_open(db)
+    require_new_applications_open(db)
     now = datetime.now(UTC)
     validate_working_opening_selection(db, None, body.opening_ids, now=now)
     saved = save_pending_draft(
@@ -185,7 +187,7 @@ def submit_guest_application(
     """Publish a first application without making email access a submission gate."""
     if not body.declaration_accepted:
         raise Problem("declaration_required", detail="Accept the declaration before submitting.")
-    _require_new_applications_open(db)
+    require_new_applications_open(db)
     now = datetime.now(UTC)
     email = normalize_email(str(body.answers.applicant.email))
     existing = db.scalar(
@@ -266,9 +268,9 @@ def request_applicant_access_link(
     email = normalize_email(str(body.answers.applicant.email))
 
     if current is not None:
-        _require_application_editable(db, current)
-        _require_matching_email(current, body.answers)
-        _require_current_revision(current, body.base_revision)
+        require_application_editable(db, current)
+        require_matching_email(current, body.answers)
+        require_current_revision(current, body.base_revision)
         validate_working_opening_selection(db, current, body.opening_ids, now=now)
         save_working_copy(
             current,
@@ -302,7 +304,7 @@ def request_applicant_access_link(
             )
         draft = latest_pending_draft_for_email(db, email, now=now)
         if draft is not None:
-            if not _access_target_is_editable(db, draft):
+            if not access_target_is_editable(db, draft):
                 sent = send_application_unavailable(db, sender, email, now=now)
                 return RequestAccessLinkResponse(
                     current_answers_saved=False,
@@ -312,7 +314,7 @@ def request_applicant_access_link(
         elif application is not None:
             target = application
         else:
-            if not _new_applications_are_open(db):
+            if not new_applications_are_open(db):
                 sent = send_application_unavailable(db, sender, email, now=now)
                 return RequestAccessLinkResponse(
                     current_answers_saved=False,

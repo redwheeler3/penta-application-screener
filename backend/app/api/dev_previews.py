@@ -8,8 +8,8 @@ from pydantic import BaseModel
 from app.core.config import Settings, get_settings
 from app.core.problems import Problem
 from app.db.models import MagicLinkPurpose, PasswordlessIdentityKind, UserRole
-from app.services.email_sender import OutboundEmail
-from app.services.transactional_email import (
+from app.services.email.sender import OutboundEmail
+from app.services.email.templates import (
     ApplicationOpeningTimeline,
     application_confirmation_email,
     application_opening_email,

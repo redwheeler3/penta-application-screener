@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from app.db.models import Application
 from app.schemas.applicant.answers import WorkingApplicationAnswers
-from app.services.application_content import LEGACY_ESSAY_FIELDS
+from app.services.applications.content import LEGACY_ESSAY_FIELDS
 
 
 def submitted_answers_are_native(application: Application) -> bool:

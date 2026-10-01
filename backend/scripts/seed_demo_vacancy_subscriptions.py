@@ -16,7 +16,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.db.models import VacancySubscription
 from app.db.session import SessionLocal
-from app.services.vacancy_subscriptions import save_subscription
+from app.services.openings.subscriptions import save_subscription
 
 DEMO_SOURCE = "Local synthetic demo"
 

@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from html import escape
 
 from app.core.config import Settings
-from app.services.email_sender import OutboundEmail
+from app.services.email.sender import OutboundEmail
 
 from .layout import (
     VACANCY_LIST_URL,

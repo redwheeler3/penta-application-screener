@@ -26,11 +26,11 @@ from app.db.models import (
     UserRole,
 )
 from app.db.session import get_db
-from app.services.application_scope import opening_ai_applications
-from app.services.email_sender import CapturedEmailSender, get_email_sender
-from app.services.openings import opening_phase
-from app.services.passwordless_auth import create_browser_session, issue_magic_link
-from app.services.retention import one_year_after, years_after
+from app.services.applications.retention import one_year_after, years_after
+from app.services.applications.scope import opening_ai_applications
+from app.services.auth.passwordless import create_browser_session, issue_magic_link
+from app.services.email.sender import CapturedEmailSender, get_email_sender
+from app.services.openings.catalog import opening_phase
 from tests.app_support import shared_test_app
 
 

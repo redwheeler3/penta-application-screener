@@ -14,7 +14,7 @@ from app.db.models import (
     MagicLinkToken,
     PasswordlessIdentityKind,
 )
-from app.services.email_sender import (
+from app.services.email.sender import (
     EmailQuotaExceededError,
     EmailRetryableError,
     EmailSender,

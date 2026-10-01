@@ -8,7 +8,7 @@ from app.core.config import get_settings
 from app.core.problems import Problem
 from app.db.models import PasswordlessIdentityKind, User, UserRole
 from app.db.session import get_db
-from app.services.committee_auth import authenticate_committee_user
+from app.services.auth.committee import authenticate_committee_user
 from app.services.settings import get_app_settings
 
 

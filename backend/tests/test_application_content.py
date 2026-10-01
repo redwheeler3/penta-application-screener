@@ -1,4 +1,4 @@
-from app.services.application_content import extract_essays
+from app.services.applications.content import extract_essays
 from scripts.harvest_screening_cases import _essays_by_column
 
 

@@ -19,8 +19,8 @@ from app.schemas.vacancy_subscriptions import (
     VacancySubscriptionReportOut,
     VacancySubscriptionWrite,
 )
-from app.services.public_rate_limit import PublicRateLimiter
-from app.services.vacancy_subscriptions import (
+from app.services.auth.rate_limit import PublicRateLimiter
+from app.services.openings.subscriptions import (
     VALID_UNIT_SIZES,
     delete_subscription,
     find_subscription,

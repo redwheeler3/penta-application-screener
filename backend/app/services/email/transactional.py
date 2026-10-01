@@ -16,13 +16,13 @@ from app.db.models import (
     PasswordlessIdentityKind,
     UserRole,
 )
-from app.services.email_delivery import deliver_email
-from app.services.email_sender import EmailSender
-from app.services.passwordless_auth import (
+from app.services.auth.passwordless import (
     issue_magic_link,
     magic_link_request_allowed,
 )
-from app.services.transactional_email import (
+from app.services.email.delivery import deliver_email
+from app.services.email.sender import EmailSender
+from app.services.email.templates import (
     application_confirmation_email,
     application_unavailable_email,
     committee_invitation_email,
@@ -30,7 +30,9 @@ from app.services.transactional_email import (
     magic_link_email,
     selected_application_locked_email,
 )
-from app.services.vacancy_notifications import application_confirmation_timelines
+from app.services.openings.vacancy_notifications import (
+    application_confirmation_timelines,
+)
 
 
 class EmailSendOutcome(StrEnum):

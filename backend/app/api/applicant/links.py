@@ -8,14 +8,9 @@ from sqlalchemy.orm import Session
 from app.api.applicant.dependencies import (
     optional_current_application,
 )
-from app.api.applicant.support import (
-    _access_link_response,
-    _access_target_is_editable,
-    _applicant_link,
-    _application_for_access_target,
-    _claim_link_target,
-    _link_target,
-    _pending_copy,
+from app.api.applicant.presentation import (
+    access_link_response,
+    pending_copy,
 )
 from app.api.session_cookie import (
     session_token,
@@ -34,25 +29,32 @@ from app.schemas.applicant.contracts import (
     OpenAccessLinkRequest,
     RegenerateAccessLinkResponse,
 )
-from app.services.applicant_drafts import (
+from app.services.applications.access import (
+    access_target_is_editable,
+    applicant_link,
+    application_for_access_target,
+    claim_link_target,
+    link_target,
+)
+from app.services.applications.drafts import (
     applicant_email_request_allowed,
 )
-from app.services.email_sender import EmailSender, get_email_sender
-from app.services.magic_link_delivery import (
-    EmailSendOutcome,
-    send_application_unavailable,
-    send_email_change_notice,
-    send_magic_link,
-    send_selected_application_locked,
-)
-from app.services.passwordless_auth import (
+from app.services.applications.selected import application_is_selected
+from app.services.auth.passwordless import (
     consume_magic_link,
     create_browser_session,
     revoke_browser_session,
     revoke_identity_magic_links,
     revoke_identity_sessions,
 )
-from app.services.selected_application import application_is_selected
+from app.services.email.sender import EmailSender, get_email_sender
+from app.services.email.transactional import (
+    EmailSendOutcome,
+    send_application_unavailable,
+    send_email_change_notice,
+    send_magic_link,
+    send_selected_application_locked,
+)
 
 router = APIRouter()
 
@@ -63,8 +65,8 @@ def inspect_applicant_access_link(
     application: Application | None = Depends(optional_current_application),
     db: Session = Depends(get_db),
 ) -> AccessLinkResponse:
-    link = _applicant_link(db, body.token)
-    return _access_link_response(db, link, application)
+    link = applicant_link(db, body.token)
+    return access_link_response(db, link, application)
 
 
 @router.post("/access-links/open", response_model=AccessLinkResponse)
@@ -76,8 +78,8 @@ def open_applicant_access_link(
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
 ) -> AccessLinkResponse:
-    inspected = _applicant_link(db, body.token)
-    preview = _access_link_response(db, inspected, current)
+    inspected = applicant_link(db, body.token)
+    preview = access_link_response(db, inspected, current)
     if preview.state != "valid":
         return preview
     if preview.switch_required and not body.switch_current:
@@ -90,8 +92,8 @@ def open_applicant_access_link(
         purpose=inspected.purpose,
     )
     if link is None:
-        return _access_link_response(db, _applicant_link(db, body.token), current)
-    claimed = _claim_link_target(db, link)
+        return access_link_response(db, applicant_link(db, body.token), current)
+    claimed = claim_link_target(db, link)
     if claimed.application is None:
         db.commit()
         return AccessLinkResponse(state=claimed.state)
@@ -146,7 +148,7 @@ def open_applicant_access_link(
         application_id=target.id,
         pending_intent=claimed.pending_intent,
         pending_copy=(
-            _pending_copy(target, claimed.reconciliation_draft)
+            pending_copy(target, claimed.reconciliation_draft)
             if claimed.reconciliation_draft is not None
             else None
         ),
@@ -164,8 +166,8 @@ def regenerate_applicant_access_link(
     sender: EmailSender = Depends(get_email_sender),
 ) -> RegenerateAccessLinkResponse:
     now = datetime.now(UTC)
-    link = _applicant_link(db, body.token)
-    target = _link_target(db, link) if link is not None else None
+    link = applicant_link(db, body.token)
+    target = link_target(db, link) if link is not None else None
     if link is None or target is None:
         return RegenerateAccessLinkResponse(
             target_available=False,
@@ -173,8 +175,8 @@ def regenerate_applicant_access_link(
             email_status="failed",
             retry_after_seconds=0,
         )
-    if not _access_target_is_editable(db, target):
-        application = _application_for_access_target(db, target)
+    if not access_target_is_editable(db, target):
+        application = application_for_access_target(db, target)
         sent = (
             send_selected_application_locked(db, sender, application, now=now)
             if application is not None and application_is_selected(db, application.id)

@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import event
 
 from app.db.models import Application, ApplicationAIResult
-from app.services.screening_results import (
+from app.services.applications.screening_results import (
     latest_screening_results,
     screening_findings_by_app,
 )

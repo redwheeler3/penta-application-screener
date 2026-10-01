@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from app.services.synthetic_fixture import read_synthetic_fixture
+from app.services.applications.synthetic_fixture import read_synthetic_fixture
 
 FIXTURE = (
     Path(__file__).resolve().parents[2]

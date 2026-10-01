@@ -147,7 +147,7 @@ async def test_unconfigured_direct_provider_cannot_be_saved(monkeypatch) -> None
 
 def test_member_rules_defaults_to_committee_default_then_diverges() -> None:
     from app.schemas.settings import EligibilityRules
-    from app.services.rules import (
+    from app.services.eligibility.rules import (
         member_rules,
         save_committee_default_rules,
         save_member_rules,

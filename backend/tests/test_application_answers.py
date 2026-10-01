@@ -1,5 +1,5 @@
 from app.db.models import Application
-from app.services.application_answers import working_answers_for
+from app.services.applications.answers import working_answers_for
 from tests.applicant.support import legacy_answers
 
 

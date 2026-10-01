@@ -9,13 +9,13 @@ from sqlalchemy.orm import Session
 from app.core.time import as_utc, pacific_today
 from app.db.models import DailyMaintenanceRun
 from app.db.session import SessionLocal
-from app.services.email_outbox import (
+from app.services.applications.purge import purge_due_applicant_data
+from app.services.email.outbox import (
     purge_expired_vacancy_delivery_failures,
     retry_queued_emails,
 )
-from app.services.email_sender import EmailSender, get_email_sender
-from app.services.opening_notifications import send_due_unsuccessful_notices
-from app.services.retention_purge import purge_due_applicant_data
+from app.services.email.sender import EmailSender, get_email_sender
+from app.services.openings.notifications import send_due_unsuccessful_notices
 
 DAILY_LIFECYCLE_TASK = "applicant_lifecycle"
 LEASE_DURATION = timedelta(minutes=10)

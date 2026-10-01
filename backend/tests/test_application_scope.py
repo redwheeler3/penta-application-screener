@@ -13,8 +13,11 @@ from app.db.models import (
     User,
     UserRole,
 )
-from app.services.application_scope import opening_ai_applications, opening_applications
-from app.services.eligibility import (
+from app.services.applications.scope import (
+    opening_ai_applications,
+    opening_applications,
+)
+from app.services.eligibility.evaluation import (
     rules_eligible_application_ids,
     union_eligible_application_ids,
 )

@@ -15,7 +15,7 @@ from app.db.models import (
     User,
 )
 from app.schemas.settings import AppSettings
-from app.services.application_scope import opening_ai_applications
+from app.services.applications.scope import opening_ai_applications
 from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.identity import flatten_merges, transfer_merged_tiers

@@ -19,19 +19,22 @@ from app.db.models import (
     UserRole,
 )
 from app.db.session import get_db
-from app.services import allowlist
-from app.services.denied_sign_ins import list_denied_sign_ins, record_denied_sign_in
-from app.services.email_outbox import retry_queued_emails
-from app.services.email_sender import (
-    CapturedEmailSender,
-    EmailQuotaExceededError,
-    get_email_sender,
+from app.services.auth import allowlist
+from app.services.auth.denied_sign_ins import (
+    list_denied_sign_ins,
+    record_denied_sign_in,
 )
-from app.services.passwordless_auth import create_browser_session, issue_magic_link
-from app.services.users import (
+from app.services.auth.passwordless import create_browser_session, issue_magic_link
+from app.services.auth.users import (
     GoogleIdentityConflict,
     record_user_activity,
     upsert_google_user,
+)
+from app.services.email.outbox import retry_queued_emails
+from app.services.email.sender import (
+    CapturedEmailSender,
+    EmailQuotaExceededError,
+    get_email_sender,
 )
 from tests.app_support import shared_test_app
 

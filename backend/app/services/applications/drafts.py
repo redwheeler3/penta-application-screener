@@ -19,8 +19,8 @@ from app.db.models import (
     MagicLinkToken,
 )
 from app.schemas.applicant.answers import WorkingApplicationAnswers
-from app.services.retention import draft_expiry_for_opening_ids
-from app.services.token_credentials import new_token, token_hash
+from app.services.applications.retention import draft_expiry_for_opening_ids
+from app.services.auth.tokens import new_token, token_hash
 
 
 @dataclass(frozen=True)

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.ai.model_catalog import model_identity
 from app.db.models import Application
 from app.schemas.settings import AppSettings, effective_reasoning_effort
-from app.services.eligibility import union_eligible_application_ids
+from app.services.eligibility.evaluation import union_eligible_application_ids
 
 
 def pool_fingerprint(

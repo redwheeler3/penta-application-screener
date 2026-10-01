@@ -16,7 +16,7 @@ from app.db.models import (
     OpeningOutcome,
     PasswordlessIdentityKind,
 )
-from app.services.passwordless_auth import create_browser_session
+from app.services.auth.passwordless import create_browser_session
 from tests.applicant.support import (
     app_and_db,
     legacy_answers,

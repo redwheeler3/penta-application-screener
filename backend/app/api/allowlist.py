@@ -22,11 +22,11 @@ from app.schemas.allowlist import (
     DeniedSignInAttemptOut,
     DeniedSignInAttemptsResponse,
 )
-from app.services import allowlist
-from app.services.denied_sign_ins import list_denied_sign_ins
-from app.services.email_sender import EmailSender, get_email_sender
-from app.services.magic_link_delivery import send_magic_link
-from app.services.users import upsert_committee_user
+from app.services.auth import allowlist
+from app.services.auth.denied_sign_ins import list_denied_sign_ins
+from app.services.auth.users import upsert_committee_user
+from app.services.email.sender import EmailSender, get_email_sender
+from app.services.email.transactional import send_magic_link
 
 router = APIRouter(prefix="/allowlist", tags=["allowlist"])
 

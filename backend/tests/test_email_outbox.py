@@ -13,9 +13,9 @@ from app.db.models import (
     User,
     UserRole,
 )
-from app.services.email_outbox import email_queue_status, retry_queued_emails
-from app.services.email_sender import CapturedEmailSender, EmailQuotaExceededError
-from app.services.magic_link_delivery import (
+from app.services.email.outbox import email_queue_status, retry_queued_emails
+from app.services.email.sender import CapturedEmailSender, EmailQuotaExceededError
+from app.services.email.transactional import (
     EmailSendOutcome,
     send_application_unavailable,
     send_magic_link,

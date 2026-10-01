@@ -22,18 +22,21 @@ from app.db.models import (
     VacancySubscription,
 )
 from app.db.session import get_db
-from app.services.email_outbox import (
+from app.services.email.outbox import (
     purge_expired_vacancy_delivery_failures,
     retry_queued_emails,
 )
-from app.services.email_sender import (
+from app.services.email.sender import (
     CapturedEmailSender,
     EmailRetryableError,
     get_email_sender,
 )
-from app.services.socketlabs_usage import SocketLabsUsage, get_socketlabs_usage_reader
-from app.services.vacancy_notifications import opening_audience
-from app.services.vacancy_subscriptions import save_subscription
+from app.services.email.socketlabs_usage import (
+    SocketLabsUsage,
+    get_socketlabs_usage_reader,
+)
+from app.services.openings.subscriptions import save_subscription
+from app.services.openings.vacancy_notifications import opening_audience
 from tests.app_support import shared_test_app
 
 
@@ -321,7 +324,7 @@ def test_selected_applications_are_not_notified() -> None:
     )
     db.commit()
 
-    from app.services.vacancy_notifications import opening_audience
+    from app.services.openings.vacancy_notifications import opening_audience
 
     assert opening_audience(db, 2).total == 0
 
@@ -333,6 +336,6 @@ def test_applications_due_for_retention_are_not_notified() -> None:
     db.add(expired)
     db.commit()
 
-    from app.services.vacancy_notifications import opening_audience
+    from app.services.openings.vacancy_notifications import opening_audience
 
     assert opening_audience(db, 2).total == 0

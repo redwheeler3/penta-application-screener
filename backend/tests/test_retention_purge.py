@@ -12,7 +12,7 @@ from app.db.models import (
     User,
     UserRole,
 )
-from app.services.retention_purge import purge_due_applicant_data
+from app.services.applications.purge import purge_due_applicant_data
 from tests.db_support import memory_session
 
 

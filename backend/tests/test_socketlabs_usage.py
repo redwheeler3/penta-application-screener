@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import httpx
 
-from app.services.socketlabs_usage import SocketLabsUsageClient
+from app.services.email.socketlabs_usage import SocketLabsUsageClient
 
 
 def test_usage_client_reads_documented_socketlabs_summary() -> None:

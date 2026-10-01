@@ -4,7 +4,7 @@ from app.api.email_delivery import (
     read_public_email_delivery_status,
     refresh_public_email_delivery_status,
 )
-from app.services.socketlabs_queue import (
+from app.services.email.socketlabs_queue import (
     CachedSocketLabsQueueReader,
     SocketLabsQueueClient,
     SocketLabsQueueStatus,

@@ -15,10 +15,10 @@ from app.db.models import (
     OpeningPhase,
     PasswordlessIdentityKind,
 )
-from app.services.email_delivery import deliver_email
-from app.services.email_sender import EmailSender
-from app.services.openings import opening_phase
-from app.services.transactional_email import unsuccessful_application_email
+from app.services.email.delivery import deliver_email
+from app.services.email.sender import EmailSender
+from app.services.email.templates import unsuccessful_application_email
+from app.services.openings.catalog import opening_phase
 
 
 @dataclass(frozen=True)

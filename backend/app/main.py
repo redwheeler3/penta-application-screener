@@ -72,7 +72,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     import) so tests with their own DB aren't seeded from the real file; idempotent, so
     repeated starts are harmless."""
     from app.db.session import SessionLocal
-    from app.services.allowlist import seed_initial_admins
+    from app.services.auth.allowlist import seed_initial_admins
 
     db = SessionLocal()
     try:

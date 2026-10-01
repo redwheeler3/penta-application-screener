@@ -31,13 +31,27 @@ from app.schemas.applications import (
     PetFactsOut,
     ScreeningFlagOut,
 )
-from app.services.application_content import extract_essays
-from app.services.eligibility import (
+from app.services.applications.content import extract_essays
+from app.services.applications.screening_results import latest_screening_results
+from app.services.applications.shared_shortlist import is_shortlisted
+from app.services.applications.stars import is_starred
+from app.services.eligibility.evaluation import (
     active_flags,
     overrides_by_app,
 )
-from app.services.opening_participation import opening_ids_by_application
-from app.services.openings import opening_phase
+from app.services.eligibility.rules import (
+    hard_filter_reasons_for,
+    normalized_with_ages,
+    pet_facts_from_screening,
+    rules_config_for,
+)
+from app.services.eligibility.status import (
+    effective_status,
+    override_is_stale,
+    resolve_machine_status,
+)
+from app.services.openings.catalog import opening_phase
+from app.services.openings.participation import opening_ids_by_application
 from app.services.ranking.analysis import current_dimension_kinds, get_current_analysis
 from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.member_state import (
@@ -46,20 +60,6 @@ from app.services.ranking.member_state import (
     stored_tiers,
 )
 from app.services.ranking.view import candidate_scores
-from app.services.rules import (
-    hard_filter_reasons_for,
-    normalized_with_ages,
-    pet_facts_from_screening,
-    rules_config_for,
-)
-from app.services.screening_results import latest_screening_results
-from app.services.shared_shortlist import is_shortlisted
-from app.services.stars import is_starred
-from app.services.status_resolution import (
-    effective_status,
-    override_is_stale,
-    resolve_machine_status,
-)
 
 
 def serialize_summary(

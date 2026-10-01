@@ -5,7 +5,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 const emailPreviewDirectory = fileURLToPath(
-  new URL("../backend/app/services/transactional_email", import.meta.url),
+  new URL("../backend/app/services/email/templates", import.meta.url),
 );
 const emailPreviewSources = new Set([
   fileURLToPath(new URL("../backend/app/api/dev_previews.py", import.meta.url)),

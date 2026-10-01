@@ -5,7 +5,7 @@ from app.api.session_cookie import clear_session_cookie, session_token
 from app.core.problems import Problem
 from app.db.models import Application, PasswordlessIdentityKind
 from app.db.session import get_db
-from app.services.applicant_auth import authenticate_applicant
+from app.services.auth.applicant import authenticate_applicant
 
 
 def optional_current_application(

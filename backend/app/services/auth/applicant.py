@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.db.models import Application, BrowserSession, PasswordlessIdentityKind
-from app.services.passwordless_auth import authenticate_browser_session
-from app.services.selected_application import application_is_selected
+from app.services.applications.selected import application_is_selected
+from app.services.auth.passwordless import authenticate_browser_session
 
 
 @dataclass(frozen=True)

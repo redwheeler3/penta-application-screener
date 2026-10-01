@@ -25,8 +25,8 @@ from app.ai.screening import KIND as SCREENING_KIND
 from app.ai.screening import screening_prompt_version
 from app.db.models import Analysis, Application
 from app.schemas.settings import effective_reasoning_effort
-from app.services.application_content import extract_essays
-from app.services.application_scope import opening_ai_applications
+from app.services.applications.content import extract_essays
+from app.services.applications.scope import opening_ai_applications
 from app.services.settings import get_app_settings
 from scripts._harvest_common import opaque_index, open_synthetic_analysis
 

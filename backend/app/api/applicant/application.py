@@ -7,18 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.applicant.dependencies import require_current_application
-from app.api.applicant.support import (
-    _applicant_opening,
-    _draft_answers,
-    _draft_belongs_to_application,
-    _pending_copy,
-    _pending_email_change,
-    _purge_never_submitted_application,
-    _require_application_editable,
-    _require_application_not_selected,
-    _require_current_revision,
-    _require_matching_email,
-    _stored_answers,
+from app.api.applicant.presentation import (
+    applicant_opening,
+    pending_copy,
 )
 from app.api.session_cookie import (
     clear_session_cookie,
@@ -45,27 +36,40 @@ from app.schemas.applicant.contracts import (
     SubmitApplicationRequest,
     WithdrawApplicationResponse,
 )
-from app.services.email_delivery import cancel_queued_application_emails
-from app.services.email_sender import EmailSender, get_email_sender
-from app.services.intake import (
+from app.services.applications.access import (
+    draft_answers,
+    draft_belongs_to_application,
+    pending_email_change,
+    purge_never_submitted_application,
+    require_application_editable,
+    require_application_not_selected,
+    require_current_revision,
+    require_matching_email,
+)
+from app.services.applications.answers import (
+    working_answers_for,
+)
+from app.services.applications.intake import (
     publish_working_copy,
     save_working_copy,
 )
-from app.services.magic_link_delivery import (
+from app.services.applications.retention import refresh_application_retention
+from app.services.auth.passwordless import (
+    revoke_identity_magic_links,
+    revoke_identity_sessions,
+)
+from app.services.email.delivery import cancel_queued_application_emails
+from app.services.email.sender import EmailSender, get_email_sender
+from app.services.email.transactional import (
     send_application_confirmation,
     send_magic_link,
 )
-from app.services.opening_participation import (
+from app.services.openings.participation import (
     applicant_opening_states,
     application_is_editable,
     validate_opening_selection,
     validate_working_opening_selection,
 )
-from app.services.passwordless_auth import (
-    revoke_identity_magic_links,
-    revoke_identity_sessions,
-)
-from app.services.retention import refresh_application_retention
 
 router = APIRouter()
 
@@ -77,9 +81,9 @@ def get_pending_copy(
 ) -> PendingCopyResponse:
     session: BrowserSession = request.state.passwordless_session
     draft = session.reconciliation_draft
-    if not _draft_belongs_to_application(draft, application):
+    if not draft_belongs_to_application(draft, application):
         return PendingCopyResponse()
-    return PendingCopyResponse(pending_copy=_pending_copy(application, draft))
+    return PendingCopyResponse(pending_copy=pending_copy(application, draft))
 
 
 @router.post("/application/pending-copy", status_code=status.HTTP_204_NO_CONTENT)
@@ -91,11 +95,11 @@ def reconcile_pending_copy(
 ) -> Response:
     session: BrowserSession = request.state.passwordless_session
     draft = session.reconciliation_draft
-    if not _draft_belongs_to_application(draft, application):
+    if not draft_belongs_to_application(draft, application):
         raise Problem("pending_copy_not_found", detail="These answers are no longer available.")
     if body.choice == "guest":
-        _require_application_editable(db, application)
-        answers = _draft_answers(draft)
+        require_application_editable(db, application)
+        answers = draft_answers(draft)
         if answers is None:
             raise Problem("pending_copy_invalid", detail="These answers cannot be restored.")
         validate_working_opening_selection(
@@ -122,8 +126,8 @@ def get_applicant_application(
         application_id=application.id,
         primary_email=application.primary_email,
         google_sign_in_linked=application.google_subject is not None,
-        pending_email_change=_pending_email_change(db, application.id),
-        answers=_stored_answers(application),
+        pending_email_change=pending_email_change(db, application.id),
+        answers=working_answers_for(application),
         working_saved_at=(
             as_utc(application.working_saved_at)
             if application.working_saved_at is not None
@@ -132,7 +136,7 @@ def get_applicant_application(
         working_revision=application.working_revision,
         submitted=application.submitted_at is not None,
         can_edit=application_is_editable(db, application, opening_states),
-        openings=[_applicant_opening(state) for state in opening_states],
+        openings=[applicant_opening(state) for state in opening_states],
     )
 
 
@@ -148,7 +152,7 @@ def request_applicant_email_change(
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
 ) -> EmailChangeResponse:
-    _require_application_not_selected(db, application)
+    require_application_not_selected(db, application)
     new_email = normalize_email(str(body.new_email))
     if new_email == normalize_email(application.primary_email):
         raise Problem("email_unchanged", detail="Enter a different email address.")
@@ -162,7 +166,7 @@ def request_applicant_email_change(
         application_id=application.id,
         initiating_session_id=request.state.passwordless_session.id,
     )
-    pending_email = _pending_email_change(db, application.id)
+    pending_email = pending_email_change(db, application.id)
     return EmailChangeResponse(
         email_sent=outcome.email_sent,
         email_status=outcome.value,
@@ -176,7 +180,7 @@ def cancel_applicant_email_change(
     application: Application = Depends(require_current_application),
     db: Session = Depends(get_db),
 ) -> Response:
-    _require_application_not_selected(db, application)
+    require_application_not_selected(db, application)
     revoke_identity_magic_links(
         db,
         identity_kind=PasswordlessIdentityKind.APPLICANT,
@@ -193,9 +197,9 @@ def save_applicant_application(
     db: Session = Depends(get_db),
     application: Application = Depends(require_current_application),
 ) -> ApplicantApplicationResponse:
-    _require_application_editable(db, application)
-    _require_matching_email(application, body.answers)
-    _require_current_revision(application, body.base_revision)
+    require_application_editable(db, application)
+    require_matching_email(application, body.answers)
+    require_current_revision(application, body.base_revision)
     now = datetime.now(UTC)
     validate_working_opening_selection(db, application, body.opening_ids, now=now)
     save_working_copy(
@@ -217,9 +221,9 @@ def submit_applicant_application(
 ) -> ApplicantApplicationResponse:
     if not body.declaration_accepted:
         raise Problem("declaration_required", detail="Accept the declaration before submitting.")
-    _require_application_editable(db, application)
-    _require_matching_email(application, body.answers)
-    _require_current_revision(application, body.base_revision)
+    require_application_editable(db, application)
+    require_matching_email(application, body.answers)
+    require_current_revision(application, body.base_revision)
     now = datetime.now(UTC)
     openings = validate_opening_selection(db, application, body.opening_ids, now=now)
     publish_working_copy(db, application, body.answers, openings, submitted_at=now)
@@ -236,11 +240,11 @@ def withdraw_applicant_application(
     db: Session = Depends(get_db),
 ) -> WithdrawApplicationResponse:
     """Withdraw one application and every opening participation from ordinary access."""
-    _require_application_not_selected(db, application)
+    require_application_not_selected(db, application)
     now = datetime.now(UTC)
     cancel_queued_application_emails(db, application.id)
     if application.submitted_at is None:
-        _purge_never_submitted_application(db, application)
+        purge_never_submitted_application(db, application)
         db.commit()
         clear_session_cookie(response, PasswordlessIdentityKind.APPLICANT)
         return WithdrawApplicationResponse()

@@ -1,7 +1,7 @@
 import pytest
 
 from app.core.config import Settings
-from app.services.email_sender import (
+from app.services.email.sender import (
     CapturedEmailSender,
     DevelopmentEmailSender,
     EmailConfigurationError,

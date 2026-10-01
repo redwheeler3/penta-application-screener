@@ -16,17 +16,17 @@ from app.schemas.applicant.answers import (
     WorkingEmploymentAnswers,
     WorkingPersonAnswers,
 )
-from app.services.applicant_drafts import (
+from app.services.applications.drafts import (
     latest_pending_draft_for_email,
     revoke_other_pending_drafts,
 )
-from app.services.intake import create_application
-from app.services.opening_participation import (
+from app.services.applications.intake import create_application
+from app.services.applications.retention import draft_expiry_for_opening_ids
+from app.services.applications.selected import application_is_selected
+from app.services.openings.participation import (
     applicant_opening_states,
     application_is_editable,
 )
-from app.services.retention import draft_expiry_for_opening_ids
-from app.services.selected_application import application_is_selected
 
 
 class ApplicantGoogleIdentityConflict(ValueError):

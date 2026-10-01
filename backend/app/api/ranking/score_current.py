@@ -16,9 +16,9 @@ from app.db.models import User
 from app.db.session import get_db
 from app.schemas.events import PhaseEvent, ProgressEvent, RankSummary, emit
 from app.schemas.ranking import ScoreCurrentEstimateResponse
-from app.services.application_scope import resolve_visible_opening_id
+from app.services.applications.scope import resolve_visible_opening_id
 from app.services.cost_report import SCORE_CURRENT_KIND, record_run_cost
-from app.services.opening_selection import require_ai_actions_available
+from app.services.openings.selection import require_ai_actions_available
 from app.services.ranking.analysis import get_current_analysis, mark_ranking_current
 from app.services.ranking.estimates import current_scoring_estimate
 from app.services.ranking.pipeline import SCORES, ScoreTally

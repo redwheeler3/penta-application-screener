@@ -14,8 +14,8 @@ from app.db.models import (
     OpeningPhase,
 )
 from app.schemas.openings import OpeningCreate, OpeningWrite
-from app.services.retention import refresh_draft_retention_for_opening
-from app.services.rules import create_opening_rules
+from app.services.applications.retention import refresh_draft_retention_for_opening
+from app.services.eligibility.rules import create_opening_rules
 
 
 def opening_phase(opening: Opening, *, today: date | None = None) -> OpeningPhase:

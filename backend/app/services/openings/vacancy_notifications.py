@@ -16,14 +16,14 @@ from app.db.models import (
     PasswordlessIdentityKind,
     VacancySubscription,
 )
-from app.services.email_delivery import queue_email
-from app.services.opening_participation import participating_openings
-from app.services.transactional_email import (
+from app.services.email.delivery import queue_email
+from app.services.email.templates import (
     ApplicationOpeningTimeline,
     application_opening_email,
     vacancy_opening_email,
 )
-from app.services.vacancy_subscriptions import matching_subscriptions
+from app.services.openings.participation import participating_openings
+from app.services.openings.subscriptions import matching_subscriptions
 
 
 @dataclass(frozen=True)

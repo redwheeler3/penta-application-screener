@@ -6,13 +6,13 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.db.models import BrowserSession, PasswordlessIdentityKind, User
-from app.services.allowlist import get_entry
-from app.services.passwordless_auth import (
+from app.services.auth.allowlist import get_entry
+from app.services.auth.passwordless import (
     authenticate_browser_session,
     revoke_identity_magic_links,
     revoke_identity_sessions,
 )
-from app.services.users import record_user_activity
+from app.services.auth.users import record_user_activity
 
 
 @dataclass(frozen=True)

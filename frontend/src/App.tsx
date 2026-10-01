@@ -10,11 +10,8 @@ import {
 } from "react";
 import { BrandLockup } from "./components/shared/BrandLockup";
 import { HeaderAccount } from "./components/shared/HeaderAccount";
-import * as api from "./api/applications";
 import type { AuthRedirect } from "./authRedirect";
 import type {
-  ApplicationDetail,
-  AppStatus,
   ViewTab,
 } from "./types";
 import { AdminSettingsPanel, type AdminSubtab } from "./components/admin/AdminSettingsPanel";
@@ -28,6 +25,7 @@ import { FeedbackButton } from "./components/shared/FeedbackButton";
 import { Toasts } from "./components/shared/Toasts";
 import { WorkflowBar } from "./components/workflow/WorkflowBar";
 import { useApplications } from "./hooks/useApplications";
+import { useCandidateActions } from "./hooks/useCandidateActions";
 import { useRanking } from "./hooks/useRanking";
 import { useToasts } from "./hooks/useToasts";
 import { useSession } from "./hooks/useSession";
@@ -173,6 +171,27 @@ export function App(props: { authRedirect: AuthRedirect }) {
     clearSelectedApplication: () => setSelectedApp(null),
   });
 
+  const {
+    overrideStatus,
+    clearStatusOverride,
+    savePrivateNote,
+    addCommitteeNote,
+    updateCommitteeNote,
+    deleteCommitteeNote,
+    toggleStar,
+    toggleShortlist,
+    refreshEligibilityViews,
+  } = useCandidateActions({
+    openingId: selectedOpeningId,
+    selectedApplication: selectedApp,
+    rankingLoaded: ranking !== null,
+    onApplicationUpdated: setSelectedApp,
+    onError: showError,
+    refreshDashboard,
+    reloadApplications,
+    loadRanking,
+  });
+
   useEffect(() => {
     if (!user) return;
     void loadSettings();
@@ -280,15 +299,6 @@ export function App(props: { authRedirect: AuthRedirect }) {
     };
   }, [user, checkForStaleRanking]);
 
-  // Eligibility is computed from the current member's rules and overrides whenever a view is
-  // read. Every mutation therefore needs to refresh each surface that presents that derived
-  // status: the workflow bar, application rows/facets, and an already-open ranked shortlist.
-  function refreshEligibilityViews() {
-    refreshDashboard();
-    reloadApplications();
-    if (ranking) void loadRanking();
-  }
-
   async function saveSettings(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     if (await saveSettingsDraft()) {
@@ -321,124 +331,6 @@ export function App(props: { authRedirect: AuthRedirect }) {
         {icon ? <span>{label}</span> : label}
       </button>
     );
-  }
-
-  async function applicationFromResponse(
-    response: Response,
-    failureMessage?: string,
-  ): Promise<ApplicationDetail | null> {
-    if (!response.ok) {
-      if (failureMessage) showError(failureMessage);
-      return null;
-    }
-    const payload: { application: ApplicationDetail } = await response.json();
-    return payload.application;
-  }
-
-  // Apply a status-mutation response: show the updated applicant and refresh the
-  // derived eligibility surfaces. No-op on a failed response.
-  async function applyStatusResponse(response: Response) {
-    const application = await applicationFromResponse(response);
-    if (application) {
-      setSelectedApp(application);
-      refreshEligibilityViews();
-    }
-  }
-
-  // Human override of an application's status. The backend marks it human-owned and
-  // sticky against future machine runs.
-  async function overrideStatus(id: number, status: AppStatus) {
-    if (selectedOpeningId === null) return;
-    await applyStatusResponse(await api.overrideStatus(id, selectedOpeningId, status));
-  }
-
-  // Remove a human override, handing the decision back to the machine. The backend
-  // recomputes status from the current findings (see DELETE handler).
-  async function clearStatusOverride(id: number) {
-    if (selectedOpeningId === null) return;
-    await applyStatusResponse(await api.clearStatusOverride(id, selectedOpeningId));
-  }
-
-  async function savePrivateNote(id: number, note: string): Promise<boolean> {
-    if (selectedOpeningId === null) return false;
-    const application = await applicationFromResponse(
-      await api.savePrivateNote(id, selectedOpeningId, note),
-      "Could not save your private note.",
-    );
-    if (!application) return false;
-    setSelectedApp(application);
-    return true;
-  }
-
-  async function applyCommitteeNoteResponse(
-    response: Response,
-    failureMessage: string,
-  ): Promise<boolean> {
-    const application = await applicationFromResponse(response, failureMessage);
-    if (!application) return false;
-    setSelectedApp(application);
-    return true;
-  }
-
-  async function addCommitteeNote(id: number, body: string): Promise<boolean> {
-    if (selectedOpeningId === null) return false;
-    return applyCommitteeNoteResponse(
-      await api.addCommitteeNote(id, selectedOpeningId, body),
-      "Could not add the committee note.",
-    );
-  }
-
-  async function updateCommitteeNote(
-    id: number,
-    noteId: number,
-    body: string,
-  ): Promise<boolean> {
-    if (selectedOpeningId === null) return false;
-    return applyCommitteeNoteResponse(
-      await api.updateCommitteeNote(id, selectedOpeningId, noteId, body),
-      "Could not update the committee note.",
-    );
-  }
-
-  async function deleteCommitteeNote(id: number, noteId: number): Promise<boolean> {
-    if (selectedOpeningId === null) return false;
-    return applyCommitteeNoteResponse(
-      await api.deleteCommitteeNote(id, selectedOpeningId, noteId),
-      "Could not delete the committee note.",
-    );
-  }
-
-  // Toggle the current member's private star on an applicant. Invokable from the
-  // list, the ranking, or the detail header, so refresh whichever surfaces are live:
-  // the detail from the response, and the list/ranking if they hold star state.
-  async function toggleStar(id: number, starred: boolean) {
-    if (selectedOpeningId === null) return;
-    const response = await api.setStar(id, selectedOpeningId, starred);
-    const application = await applicationFromResponse(
-      response,
-      starred ? "Could not add to favourites." : "Could not remove from favourites.",
-    );
-    if (!application) return;
-    if (selectedApp?.id === id) setSelectedApp(application);
-    if (applications.some((a) => a.id === id)) reloadApplications();
-    if (ranking) loadRanking();
-  }
-
-  // The shared shortlist is committee working state, unlike the private star.
-  // Refresh every live surface because all members see the same shortlist membership.
-  async function toggleShortlist(id: number, shortlisted: boolean) {
-    if (selectedOpeningId === null) return;
-    const response = await api.setShortlist(id, selectedOpeningId, shortlisted);
-    const application = await applicationFromResponse(
-      response,
-      shortlisted
-        ? "Could not add to the shared shortlist."
-        : "Could not remove from the shared shortlist.",
-    );
-    if (!application) return;
-    if (selectedApp?.id === id) setSelectedApp(application);
-    if (applications.some((a) => a.id === id)) reloadApplications();
-    if (ranking) loadRanking();
   }
 
   const selectedOpening = openings.find((opening) => opening.id === selectedOpeningId) ?? null;

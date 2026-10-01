@@ -28,9 +28,9 @@ from app.schemas.events import (
 )
 from app.schemas.screening import ScreeningEstimateResponse
 from app.schemas.settings import AppSettings
-from app.services.application_scope import resolve_visible_opening_id
+from app.services.applications.scope import resolve_visible_opening_id
 from app.services.cost_report import record_run_cost
-from app.services.opening_selection import require_ai_actions_available
+from app.services.openings.selection import require_ai_actions_available
 from app.services.run_lock import acquire_run_lock, release_run_lock
 from app.services.settings import get_app_settings
 

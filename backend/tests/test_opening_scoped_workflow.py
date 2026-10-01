@@ -20,16 +20,16 @@ from app.db.models import (
 )
 from app.schemas.openings import OpeningCreate
 from app.schemas.settings import EligibilityRules
-from app.services.application_scope import (
+from app.services.applications.scope import (
     opening_ai_applications,
     opening_applications,
     visible_committee_openings,
 )
-from app.services.eligibility import effective_status_for
-from app.services.openings import create_opening
+from app.services.applications.shared_shortlist import is_shortlisted
+from app.services.eligibility.evaluation import effective_status_for
+from app.services.eligibility.rules import committee_default_rules
+from app.services.openings.catalog import create_opening
 from app.services.ranking.analysis import all_known_dimensions, get_current_analysis
-from app.services.rules import committee_default_rules
-from app.services.shared_shortlist import is_shortlisted
 
 
 def make_db() -> Session:
