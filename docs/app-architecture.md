@@ -2,6 +2,9 @@
 
 This document is the practical map of the current codebase. Exact HTTP contracts belong to the
 generated OpenAPI document at `/docs`; product policy belongs in [SPEC.md](../SPEC.md).
+Start with [README.md](../README.md) for the product and local setup, use this document to locate
+implementation owners, and read the relevant SPEC section before changing behavior.
+[Architecture decisions](adr/README.md) explain the reasoning behind the important boundaries.
 
 ## Runtime shape
 
@@ -45,6 +48,9 @@ observability, evals, feedback, and print) rather than relying on a cross-featur
 Applicant persistence is orchestrated by `useApplicantPersistence.ts`; its related UI state and
 typed transitions are centralized in `applicantPersistenceState.ts` so restoring, saving,
 submitting, and access-link handling do not each grow independent state conventions.
+`frontend/src/applicant/types.ts` defines the applicant form and answer contracts;
+`applicationDraft.ts` owns draft defaults, household calculations, residence-history filtering,
+and conversions between editable drafts and saved or submitted answers.
 `applicantSaveFlow.ts` owns saving, review preparation, submission, and return-link requests;
 email changes and session exit live in `applicantEmailFlow.ts` and `applicantWithdrawalFlow.ts`.
 Save completion acknowledges the draft snapshot captured before the request, so edits made
@@ -290,7 +296,22 @@ Safe placeholders belong in `.env.example`; actual `.env.local` files are ignore
   under `shared/`;
 - `frontend/src/hooks/`: stateful data orchestration;
 - `frontend/src/api/`: browser HTTP boundary, split by backend domain over one shared client;
+- `frontend/src/applicant/`: applicant UI, draft contracts and conversions, and persistence flows;
+- `frontend/src/types/`: committee-facing TypeScript data contracts;
 - `backend/tests/`: behavior and contract coverage.
+
+For common changes, start at the owner below and follow its imports:
+
+| Change | Start here | Related implementation |
+| --- | --- | --- |
+| Applicant form fields and answer shape | `frontend/src/applicant/ApplicantFormSections.tsx` | Applicant `types.ts`, `applicationDraft.ts`, and `backend/app/schemas/applicant/answers.py` |
+| Save or submit an application | `backend/app/api/applicant/application.py` | `services/intake.py`, `services/opening_participation.py`, and frontend `applicantSaveFlow.ts` |
+| Applicant access links and email changes | `backend/app/api/applicant/links.py` | Applicant route `support.py`, `services/passwordless_auth.py`, and `services/magic_link_delivery.py` |
+| Opening publication and committee outcomes | `backend/app/api/openings.py` | `services/openings.py`, `services/opening_selection.py`, and `services/direct_openings.py` |
+| Eligibility and member overrides | `backend/app/services/eligibility.py` | `services/rules.py`, `services/status_resolution.py`, and `domain/hard_filters.py` |
+| AI ranking workflow | `backend/app/services/ranking/pipeline.py` | `app/ai/`, ranking `analysis.py`, and ranking `member_state.py` |
+| Email delivery and retries | `backend/app/services/email_delivery.py` | `services/email_sender.py` for transport, `services/email_outbox.py` for retries, and `services/transactional_email/` for templates |
+| Retention and daily maintenance | `backend/app/services/maintenance.py` | `services/retention.py` and `services/retention_purge.py` |
 
 Ranking routes are grouped under `backend/app/api/ranking/`. The corresponding service package
 at `backend/app/services/ranking/` owns the streamed pipeline, cost projections, shared-analysis
@@ -312,6 +333,18 @@ Run backend checks from `backend/`:
 uv run ruff check .
 uv run pytest
 ```
+
+If Windows sandbox permissions prevent access to the shared uv cache, use a workspace-local
+cache. From `backend/`, resolve its path before running uv:
+
+```powershell
+$env:UV_CACHE_DIR = Join-Path (Get-Location).Path '.uv-cache'
+uv run ruff check .
+uv run pytest
+```
+
+The cache lives at `backend/.uv-cache` and is ignored by Git. Cache directories are generated
+tool data; they are separate from application source and the SQLite data directory.
 
 Run the frontend type and production build from `frontend/`:
 

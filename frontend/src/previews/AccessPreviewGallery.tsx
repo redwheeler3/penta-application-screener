@@ -18,7 +18,8 @@ import {
   PendingCopyDecision,
 } from "../applicant/ApplicantAccessScreens";
 import { ApplicationSubmitted, ApplicationWithdrawn } from "../applicant/ApplicantReview";
-import { emptyApplicantDraft, type ApplicantOpening, workingAnswers } from "../applicant/types";
+import { emptyApplicantDraft, workingAnswers } from "../applicant/applicationDraft";
+import type { ApplicantOpening } from "../applicant/types";
 import { BrandLockup } from "../components/shared/BrandLockup";
 import { CommitteeSignIn } from "../components/auth/CommitteeSignIn";
 import type { CommitteeLinkConflict, SignInState } from "../hooks/useSession";

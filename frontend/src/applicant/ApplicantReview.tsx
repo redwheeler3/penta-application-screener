@@ -10,11 +10,8 @@ import type { ReactNode } from "react";
 
 import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import { ApplicantErrorMessage, formatOpeningDate, openingLabel } from "./ApplicantAccessScreens";
-import {
-  type ApplicantDraft,
-  type ApplicantOpening,
-  householdIncome,
-} from "./types";
+import { householdIncome } from "./applicationDraft";
+import type { ApplicantDraft, ApplicantOpening } from "./types";
 
 export function ReviewSection(props: { title: string; children: ReactNode }) {
   return <section className="review-section"><h2>{props.title}</h2><dl>{props.children}</dl></section>;

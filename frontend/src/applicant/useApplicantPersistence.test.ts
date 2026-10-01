@@ -5,7 +5,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { deferred } from "../testSupport";
 import * as api from "./api";
 import type { ApplicationResponse } from "./applicantPersistence";
-import { emptyApplicantDraft, workingAnswers } from "./types";
+import { emptyApplicantDraft, workingAnswers } from "./applicationDraft";
 import { useApplicantPersistence } from "./useApplicantPersistence";
 
 vi.mock("./api", async (original) => ({

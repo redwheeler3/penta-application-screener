@@ -1,4 +1,5 @@
-import { emptyApplicantDraft, type ApplicantDraft } from "./types";
+import { emptyApplicantDraft } from "./applicationDraft";
+import type { ApplicantDraft } from "./types";
 
 const DRAFTS_KEY = "penta-application-drafts-v5";
 const REMEMBER_DEVICE_KEY = "penta-application-remember-device-v1";

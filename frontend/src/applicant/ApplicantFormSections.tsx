@@ -19,13 +19,15 @@ import {
   YesNoField,
 } from "./ApplicantFormFields";
 import {
-  type AddressDraft,
-  type ApplicantDraft,
-  type ApplicantOpening,
   householdIncome,
   newChild,
   previousResidencesForCutoff,
-  type ResidenceDraft,
+} from "./applicationDraft";
+import type {
+  AddressDraft,
+  ApplicantDraft,
+  ApplicantOpening,
+  ResidenceDraft,
 } from "./types";
 
 export function Introduction() {

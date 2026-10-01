@@ -48,10 +48,7 @@ import {
   saveApplicationDraft,
   setRememberDevice,
 } from "./draftStorage";
-import {
-  emptyApplicantDraft,
-  residenceHistoryCutoff,
-} from "./types";
+import { emptyApplicantDraft, residenceHistoryCutoff } from "./applicationDraft";
 import { useApplicantPersistence } from "./useApplicantPersistence";
 import { useEmailDeliveryStatus } from "../hooks/useEmailDeliveryStatus";
 

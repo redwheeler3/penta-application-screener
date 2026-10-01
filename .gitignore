@@ -5,6 +5,7 @@ __pycache__/
 .pytest-tmp/
 .ruff_cache/
 .mypy_cache/
+.uv-cache/
 
 # Python environments
 .venv/

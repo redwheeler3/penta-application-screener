@@ -1,11 +1,11 @@
 import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import { problemMessage, readProblemBody } from "../api/problems";
 import type { DraftIntent } from "./api";
-import {
-  type ApplicantDraft,
-  type ApplicantOpening,
-  type WorkingApplicationAnswers,
-  workingAnswers,
+import { workingAnswers } from "./applicationDraft";
+import type {
+  ApplicantDraft,
+  ApplicantOpening,
+  WorkingApplicationAnswers,
 } from "./types";
 
 export type PersistencePhase =

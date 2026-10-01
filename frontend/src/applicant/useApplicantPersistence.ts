@@ -38,11 +38,8 @@ import {
   loadApplicationDraft,
   remembersDevice,
 } from "./draftStorage";
-import {
-  type ApplicantDraft,
-  type ApplicantOpening,
-  draftFromWorking,
-} from "./types";
+import { draftFromWorking } from "./applicationDraft";
+import type { ApplicantDraft, ApplicantOpening } from "./types";
 
 export function useApplicantPersistence(
   draft: ApplicantDraft,

@@ -23,11 +23,11 @@ import {
 } from "./api";
 import { clearApplicationDraft } from "./draftStorage";
 import {
-  type ApplicantDraft,
   canonicalAnswers,
   residenceHistoryCutoff,
   workingAnswers,
-} from "./types";
+} from "./applicationDraft";
+import type { ApplicantDraft } from "./types";
 
 type SaveFlowDependencies = {
   state: ApplicantPersistenceState;
